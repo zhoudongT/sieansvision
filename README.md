@@ -1,5 +1,7 @@
 # SIEANS Vision
 
+算法、依赖、YOLO 模型、相机 SDK 的官方下载地址及 Windows/Linux 配置集中见 [算法与依赖下载配置 README](docs/algorithms/README.md)。
+
 仓库包含平台源码、算子插件、演示素材、测试和部署脚本。依赖、模型权重、账号与工程运行数据需在部署时安装或创建。下文 localhost 地址仅指开发机预览服务。
 
 当前工作源码预览：[1920 工程副本](http://127.0.0.1:1920/vision/)。原 1919 服务保留，副本不自动同步原工程、账号或运行数据，见 [预览说明](docs/current-preview.md)。
