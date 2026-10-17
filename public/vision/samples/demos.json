@@ -1,0 +1,1667 @@
+[
+  {
+    "id": "locate",
+    "category": "定位",
+    "name": "模板平移定位",
+    "description": "从多个形状中找到指定零件，输出中心位置和匹配分数。",
+    "image": "demo-locate.png",
+    "steps": [
+      {
+        "operation": "locate",
+        "params": {
+          "minScore": 0.9
+        },
+        "reference": "demo-template.png"
+      }
+    ],
+    "expected": "找到目标；中心约 (365, 200)，角度 0°。",
+    "check": {
+      "found": true,
+      "angleDeg": 0
+    }
+  },
+  {
+    "id": "rotate",
+    "category": "定位",
+    "name": "90° 旋转定位",
+    "description": "同一零件旋转后搜索位置及方向，比较模板旋转角度。",
+    "image": "demo-rotate.png",
+    "steps": [
+      {
+        "operation": "locate",
+        "params": {
+          "minScore": 0.85,
+          "angleStart": 0,
+          "angleEnd": 180,
+          "angleStep": 90
+        },
+        "reference": "demo-template.png"
+      }
+    ],
+    "expected": "找到目标；角度 90°，中心约 (470, 185)。",
+    "check": {
+      "found": true,
+      "angleDeg": 90
+    }
+  },
+  {
+    "id": "codes",
+    "category": "识别",
+    "name": "条码与二维码同时读取",
+    "description": "一张图同时读取 QR 和 Code128，查看码制及内容。",
+    "image": "codes.png",
+    "steps": [
+      {
+        "operation": "barcode",
+        "params": {}
+      }
+    ],
+    "expected": "读出 MACHINE-QR-2026 和 ABC123456789 两条内容。",
+    "check": {
+      "count": 2
+    }
+  },
+  {
+    "id": "qr-roi",
+    "category": "识别",
+    "name": "ROI 指定区域读码",
+    "description": "使用矩形 ROI 仅识别左上方二维码，忽略一维条码。",
+    "image": "codes.png",
+    "steps": [
+      {
+        "operation": "barcode",
+        "params": {
+          "roi": [
+            0,
+            0,
+            270,
+            230
+          ]
+        }
+      }
+    ],
+    "expected": "仅返回二维码 MACHINE-QR-2026。",
+    "check": {
+      "count": 1
+    }
+  },
+  {
+    "id": "ocr",
+    "category": "识别",
+    "name": "批次号与序列号 OCR",
+    "description": "读取两行标签文字，查看文本、置信度与顶点坐标。",
+    "image": "text.png",
+    "steps": [
+      {
+        "operation": "ocr",
+        "params": {
+          "minConfidence": 0.5
+        }
+      }
+    ],
+    "expected": "包含批次号 20261015 和序列号 ABC12345；首次加载模型稍慢。",
+    "check": {
+      "textContains": [
+        "20261015",
+        "ABC12345"
+      ]
+    }
+  },
+  {
+    "id": "contours",
+    "category": "几何",
+    "name": "轮廓与面积查找",
+    "description": "提取矩形、圆形和线条的轮廓，对比包围框及面积。",
+    "image": "parts.png",
+    "steps": [
+      {
+        "operation": "geometry",
+        "params": {
+          "feature": "contours",
+          "threshold": 127,
+          "minArea": 50
+        }
+      }
+    ],
+    "expected": "返回 3 个轮廓；矩形面积 20000 px²。",
+    "check": {
+      "count": 3
+    }
+  },
+  {
+    "id": "circle",
+    "category": "几何",
+    "name": "圆心与直径检测",
+    "description": "在圆所在区域查找圆，输出圆心、半径和直径。",
+    "image": "parts.png",
+    "steps": [
+      {
+        "operation": "geometry",
+        "params": {
+          "feature": "circles",
+          "roi": [
+            350,
+            40,
+            220,
+            200
+          ],
+          "minRadius": 45,
+          "maxRadius": 65,
+          "minDistance": 80
+        }
+      }
+    ],
+    "expected": "圆心约 (450, 135)，半径约 55 px。",
+    "check": {
+      "minCount": 1
+    }
+  },
+  {
+    "id": "line",
+    "category": "几何",
+    "name": "直线与角度检测",
+    "description": "在下方 ROI 查找直线，观察端点、长度及角度。",
+    "image": "parts.png",
+    "steps": [
+      {
+        "operation": "geometry",
+        "params": {
+          "feature": "lines",
+          "roi": [
+            40,
+            260,
+            600,
+            90
+          ],
+          "minLength": 300
+        }
+      }
+    ],
+    "expected": "检测到长度超过 400 px 的水平线；粗线可能产生多条边缘。",
+    "check": {
+      "minCount": 1
+    }
+  },
+  {
+    "id": "measure",
+    "category": "测量",
+    "name": "标定后的矩形测量",
+    "description": "用 100 px = 10 mm 的标定比例测量矩形长短边。",
+    "image": "parts.png",
+    "steps": [
+      {
+        "operation": "measure",
+        "params": {
+          "roi": [
+            30,
+            40,
+            250,
+            170
+          ],
+          "calibration": {
+            "points": [
+              [
+                0,
+                0
+              ],
+              [
+                100,
+                0
+              ]
+            ],
+            "distance": 10
+          },
+          "unit": "mm"
+        }
+      }
+    ],
+    "expected": "短边约 10 mm、长边约 20 mm；单位为 mm。",
+    "check": {
+      "count": 1,
+      "unit": "mm"
+    }
+  },
+  {
+    "id": "distance",
+    "category": "测量",
+    "name": "两点距离测量",
+    "description": "指定矩形上边两个端点，演示像素到物理距离的换算。",
+    "image": "parts.png",
+    "steps": [
+      {
+        "operation": "measure",
+        "params": {
+          "points": [
+            [
+              50,
+              70
+            ],
+            [
+              250,
+              70
+            ]
+          ],
+          "calibration": {
+            "points": [
+              [
+                0,
+                0
+              ],
+              [
+                100,
+                0
+              ]
+            ],
+            "distance": 10
+          },
+          "unit": "mm"
+        }
+      }
+    ],
+    "expected": "两点距离为 20 mm。",
+    "check": {
+      "distance": 20,
+      "unit": "mm"
+    }
+  },
+  {
+    "id": "defect",
+    "category": "检测",
+    "name": "缺口差分检测",
+    "description": "将带缺口的图像与良品对比，输出疑似缺陷区域。",
+    "image": "demo-defect.png",
+    "steps": [
+      {
+        "operation": "defects",
+        "params": {
+          "differenceThreshold": 30,
+          "minArea": 20
+        },
+        "reference": "parts.png"
+      }
+    ],
+    "expected": "返回 1 处差异区域，判定不通过。",
+    "check": {
+      "count": 1,
+      "passed": false
+    }
+  },
+  {
+    "id": "good",
+    "category": "检测",
+    "name": "良品对照验证",
+    "description": "输入图与良品参考图一致，用于观察无缺陷的输出。",
+    "image": "parts.png",
+    "steps": [
+      {
+        "operation": "defects",
+        "params": {},
+        "reference": "parts.png"
+      }
+    ],
+    "expected": "缺陷数量 0，判定通过。",
+    "check": {
+      "count": 0,
+      "passed": true
+    }
+  },
+  {
+    "id": "pipeline",
+    "category": "流程",
+    "name": "滤波 → 二值化 → 轮廓",
+    "description": "串联三个算子，观察预处理图像如何传给下一个模块。",
+    "image": "parts.png",
+    "steps": [
+      {
+        "operation": "preprocess",
+        "params": {
+          "method": "blur",
+          "kernel": 5
+        }
+      },
+      {
+        "operation": "preprocess",
+        "params": {
+          "method": "threshold",
+          "threshold": 127
+        }
+      },
+      {
+        "operation": "geometry",
+        "params": {
+          "feature": "contours",
+          "minArea": 50
+        }
+      }
+    ],
+    "expected": "流程执行 3 步，最后返回 3 个轮廓。",
+    "check": {
+      "count": 3
+    }
+  },
+  {
+    "id": "branches",
+    "category": "流程",
+    "name": "分支与汇合 · 无序连线",
+    "description": "图像源分成预处理与圆检测两路，轮廓节点等待两路完成，选择预处理图像作为输入。",
+    "image": "parts.png",
+    "steps": [
+      {
+        "operation": "geometry",
+        "params": {
+          "feature": "contours",
+          "minArea": 50
+        }
+      },
+      {
+        "operation": "preprocess",
+        "params": {
+          "method": "threshold",
+          "threshold": 127
+        }
+      },
+      {
+        "operation": "geometry",
+        "params": {
+          "feature": "circles",
+          "roi": [
+            350,
+            40,
+            220,
+            200
+          ],
+          "minRadius": 45,
+          "maxRadius": 65,
+          "minDistance": 80
+        }
+      }
+    ],
+    "expected": "节点 02、03 先执行，节点 01 汇合后返回 3 个轮廓；移动位置不改变执行关系。",
+    "check": {
+      "count": 3
+    },
+    "connections": [
+      [
+        -1,
+        1
+      ],
+      [
+        -1,
+        2
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        2,
+        0
+      ]
+    ],
+    "imageParents": [
+      1,
+      -1,
+      -1
+    ]
+  },
+  {
+    "id": "python-vars",
+    "category": "流程",
+    "name": "识别结果 → Python → 三级变量",
+    "description": "轮廓检测后由 Python 判定数量，并保存全局、流程和模块变量。载入后勾选“运行可信脚本”再运行。",
+    "image": "parts.png",
+    "steps": [
+      {
+        "operation": "geometry",
+        "params": {
+          "feature": "contours",
+          "minArea": 50
+        }
+      },
+      {
+        "operation": "script",
+        "params": {
+          "timeoutMs": 5000,
+          "code": "def run(ctx):\n    detection = next(v for v in ctx[\"results\"].values() if \"count\" in v)\n    count = detection[\"count\"]\n    expected = ctx[\"params\"][\"expectedCount\"]\n    cycles = ctx[\"vars\"][\"global\"].get(\"demoCycles\", 0) + 1\n    calls = ctx[\"vars\"][\"module\"].get(\"calls\", 0) + 1\n    print(\"Detected\", count, \"objects\")\n    return dict(result=dict(count=count, passed=count == expected, cycles=cycles, calls=calls))\n",
+          "arguments": {
+            "expectedCount": 3
+          },
+          "outputBindings": [
+            {
+              "field": "count",
+              "scope": "flow",
+              "name": "lastCount"
+            },
+            {
+              "field": "passed",
+              "scope": "flow",
+              "name": "passed"
+            },
+            {
+              "field": "cycles",
+              "scope": "global",
+              "name": "demoCycles"
+            },
+            {
+              "field": "calls",
+              "scope": "module",
+              "name": "calls"
+            }
+          ]
+        }
+      }
+    ],
+    "expected": "返回 count=3、passed=true；变量管理中可查看三级变量。",
+    "check": {
+      "count": 3,
+      "passed": true
+    }
+  },
+  {
+    "id": "error-recovery",
+    "category": "流程控制",
+    "name": "算子失败 → 错误分支 → 汇合",
+    "description": "用成功/失败连线选择后续步骤；错误信息可绑定变量，恢复后与正常分支汇合。",
+    "image": "parts.png",
+    "steps": [
+      {
+        "operation": "condition",
+        "params": {
+          "comparison": "gt",
+          "left": "无效数值",
+          "right": 1
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "route",
+          "value": "正常"
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "route",
+          "value": ""
+        }
+      },
+      {
+        "operation": "branch_merge",
+        "params": {}
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "finished",
+          "value": true
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 2,
+        "param": "value",
+        "source": 0,
+        "field": "error"
+      }
+    ],
+    "connections": [
+      [
+        -1,
+        0
+      ],
+      [
+        0,
+        1,
+        "success"
+      ],
+      [
+        0,
+        2,
+        "error"
+      ],
+      [
+        1,
+        3
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        3,
+        4
+      ]
+    ],
+    "expected": "正常分支与错误分支只激活一路；汇合后 finished=true。失败节点保留错误，后续正常分支跳过，错误信息保存到流程变量 route。"
+  },
+  {
+    "id": "error-success",
+    "category": "流程控制",
+    "name": "算子成功 → 跳过错误分支",
+    "description": "用成功/失败连线选择后续步骤；错误信息可绑定变量，恢复后与正常分支汇合。",
+    "image": "parts.png",
+    "steps": [
+      {
+        "operation": "condition",
+        "params": {
+          "comparison": "gt",
+          "left": 2,
+          "right": 1
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "route",
+          "value": "正常"
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "route",
+          "value": ""
+        }
+      },
+      {
+        "operation": "branch_merge",
+        "params": {}
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "finished",
+          "value": true
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 2,
+        "param": "value",
+        "source": 0,
+        "field": "error"
+      }
+    ],
+    "connections": [
+      [
+        -1,
+        0
+      ],
+      [
+        0,
+        1,
+        "success"
+      ],
+      [
+        0,
+        2,
+        "error"
+      ],
+      [
+        1,
+        3
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        3,
+        4
+      ]
+    ],
+    "expected": "正常分支与错误分支只激活一路；汇合后 finished=true。错误分支跳过。"
+  },
+  {
+    "id": "error-handler-failure",
+    "category": "流程控制",
+    "name": "错误处理失败 → 停止并回滚变量",
+    "description": "错误处理节点也报错且没有更下层错误处理时，整轮失败；之前的变量变更不提交。",
+    "image": "parts.png",
+    "steps": [
+      {
+        "operation": "variables",
+        "params": {
+          "name": "pending",
+          "value": 1
+        }
+      },
+      {
+        "operation": "condition",
+        "params": {
+          "comparison": "gt",
+          "left": "无效数值",
+          "right": 1
+        }
+      },
+      {
+        "operation": "delay",
+        "params": {
+          "milliseconds": -1
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "name": "never",
+          "value": true
+        }
+      }
+    ],
+    "connections": [
+      [
+        -1,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2,
+        "error"
+      ],
+      [
+        2,
+        3
+      ]
+    ],
+    "expected": "流程失败，最后一步不执行；pending 和 never 均不提交。"
+  },
+  {
+    "id": "subflow-reuse",
+    "category": "流程控制",
+    "name": "复用子流程 · 零件检测",
+    "description": "同一套预处理和检测流程调用两次，局部变量按调用点隔离。",
+    "image": "parts.png",
+    "subflows": [
+      {
+        "version": 1,
+        "id": "inspect-parts",
+        "name": "零件预处理与检测",
+        "variables": {},
+        "steps": [
+          {
+            "id": "gray",
+            "operation": "preprocess",
+            "params": {
+              "method": "grayscale"
+            }
+          },
+          {
+            "id": "find",
+            "operation": "geometry",
+            "params": {
+              "minArea": 100
+            }
+          }
+        ],
+        "outputNode": "find"
+      }
+    ],
+    "steps": [
+      {
+        "operation": "subflow",
+        "params": {
+          "subflowId": "inspect-parts"
+        }
+      },
+      {
+        "operation": "subflow",
+        "params": {
+          "subflowId": "inspect-parts"
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "name": "count",
+          "value": 0
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 2,
+        "param": "value",
+        "source": 1,
+        "field": "value.count"
+      }
+    ],
+    "expected": "两次调用都检测到 3 个目标；流程变量 count=3。"
+  },
+  {
+    "id": "loop-until",
+    "category": "流程控制",
+    "name": "循环子流程 · 满足条件停止",
+    "description": "最多 10 轮，计数达到 3 时停止；每轮结果和内部节点明细用表格展示。",
+    "image": "parts.png",
+    "subflows": [
+      {
+        "version": 1,
+        "id": "count-to-limit",
+        "name": "计数与停止判定",
+        "variables": {
+          "count": 0,
+          "limit": 3
+        },
+        "steps": [
+          {
+            "id": "inc",
+            "operation": "variables",
+            "params": {
+              "name": "count",
+              "mode": "increment",
+              "value": 1
+            }
+          },
+          {
+            "id": "check",
+            "operation": "condition",
+            "params": {
+              "comparison": "gte",
+              "left": {
+                "$ref": "flow.count"
+              },
+              "right": {
+                "$ref": "flow.limit"
+              }
+            }
+          }
+        ],
+        "outputNode": "check"
+      }
+    ],
+    "steps": [
+      {
+        "operation": "loop",
+        "params": {
+          "subflowId": "count-to-limit",
+          "mode": "until",
+          "iterations": 10,
+          "stopField": "passed",
+          "stopValue": true
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "name": "rounds",
+          "value": 0
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 1,
+        "param": "value",
+        "source": 0,
+        "field": "completedIterations"
+      }
+    ],
+    "expected": "执行 3 轮后提前停止，rounds=3；局部 count=3，不覆盖主流程变量。"
+  },
+  {
+    "id": "loop-limit",
+    "category": "流程控制",
+    "name": "循环到上限 · 错误分支接管",
+    "description": "最多 2 轮无法达到计数 3，循环报错；外层错误分支设置报警，不发布子流程中途状态。",
+    "image": "parts.png",
+    "subflows": [
+      {
+        "version": 1,
+        "id": "count-to-limit",
+        "name": "计数与停止判定",
+        "variables": {
+          "count": 0,
+          "limit": 3
+        },
+        "steps": [
+          {
+            "id": "inc",
+            "operation": "variables",
+            "params": {
+              "name": "count",
+              "mode": "increment",
+              "value": 1
+            }
+          },
+          {
+            "id": "check",
+            "operation": "condition",
+            "params": {
+              "comparison": "gte",
+              "left": {
+                "$ref": "flow.count"
+              },
+              "right": {
+                "$ref": "flow.limit"
+              }
+            }
+          }
+        ],
+        "outputNode": "check"
+      }
+    ],
+    "steps": [
+      {
+        "operation": "loop",
+        "params": {
+          "subflowId": "count-to-limit",
+          "mode": "until",
+          "iterations": 2,
+          "stopField": "passed"
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "name": "alarm",
+          "value": true
+        }
+      }
+    ],
+    "connections": [
+      [
+        -1,
+        0
+      ],
+      [
+        0,
+        1,
+        "error"
+      ]
+    ],
+    "expected": "循环达到上限并转入错误分支，流程变量 alarm=true；循环调用点不保存中途局部状态。"
+  },
+  {
+    "id": "loop-cloud",
+    "category": "流程控制",
+    "name": "循环子流程 · 3D 测量",
+    "description": "同一原始点云测量 3 次，返回最后输出及每轮测量表。",
+    "cloud": "cloud-box.json",
+    "subflows": [
+      {
+        "version": 1,
+        "id": "measure-cloud",
+        "name": "点云包围盒测量",
+        "variables": {},
+        "steps": [
+          {
+            "id": "box",
+            "operation": "cloud_measure",
+            "params": {}
+          }
+        ],
+        "outputNode": "box"
+      }
+    ],
+    "steps": [
+      {
+        "operation": "loop",
+        "params": {
+          "subflowId": "measure-cloud",
+          "mode": "count",
+          "iterations": 3,
+          "frameMode": "original"
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "name": "width",
+          "value": 0
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 1,
+        "param": "value",
+        "source": 0,
+        "field": "value.sizeX"
+      }
+    ],
+    "expected": "完成 3 轮，点云 X 尺寸为 20 mm，width=20。"
+  },
+  {
+    "id": "monitor-temperature",
+    "category": "流程控制",
+    "name": "运行画面 · 服务器报警与趋势",
+    "description": "每轮温度 +2；连续检测可生成曲线和报警。界面关闭不影响服务器采样；确认报警不消除条件。",
+    "image": "parts.png",
+    "variables": {
+      "temperature": 0
+    },
+    "hmi": {
+      "version": 1,
+      "title": "SIEANS · 温度报警与趋势",
+      "rows": 12,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "title",
+          "type": "text",
+          "label": "SIEANS · 服务器报警与趋势",
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 1,
+          "color": "#1095bd",
+          "fontSize": 18
+        },
+        {
+          "id": "temperature-trend",
+          "type": "trend",
+          "label": "温度趋势",
+          "x": 0,
+          "y": 1,
+          "w": 8,
+          "h": 5,
+          "color": "#1095bd",
+          "fontSize": 18,
+          "binding": {
+            "source": "flow",
+            "path": "temperature"
+          },
+          "capacity": 120,
+          "precision": 1,
+          "unit": "°C"
+        },
+        {
+          "id": "temperature-input",
+          "type": "input",
+          "label": "温度设定值",
+          "x": 8,
+          "y": 1,
+          "w": 4,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 18,
+          "binding": {
+            "source": "flow",
+            "path": "temperature"
+          },
+          "dataType": "number",
+          "minimum": -50,
+          "maximum": 100
+        },
+        {
+          "id": "temperature-value",
+          "type": "value",
+          "label": "当前温度",
+          "x": 8,
+          "y": 3,
+          "w": 4,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 18,
+          "binding": {
+            "source": "flow",
+            "path": "temperature"
+          },
+          "precision": 1,
+          "unit": "°C"
+        },
+        {
+          "id": "run",
+          "type": "button",
+          "label": "运行一轮（温度 +2）",
+          "x": 8,
+          "y": 5,
+          "w": 4,
+          "h": 1,
+          "color": "#1095bd",
+          "fontSize": 18,
+          "action": "run"
+        },
+        {
+          "id": "temperature-alarm",
+          "type": "alarm",
+          "label": "温度过高",
+          "x": 0,
+          "y": 6,
+          "w": 12,
+          "h": 5,
+          "color": "#1095bd",
+          "fontSize": 18,
+          "binding": {
+            "source": "flow",
+            "path": "temperature"
+          },
+          "comparison": "gte",
+          "threshold": 12,
+          "hysteresis": 2,
+          "stableSamples": 2,
+          "severity": "warning"
+        }
+      ]
+    },
+    "steps": [
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "temperature",
+          "mode": "increment",
+          "value": 2
+        }
+      }
+    ],
+    "expected": "温度达到 12 后连续两次采样触发报警；趋势按每轮采样。进入运行模式查看，连续检测建议 10 轮。温度写入 0 两次恢复报警，确认和恢复分别记录。"
+  },
+  {
+    "id": "hmi-multipage",
+    "category": "流程控制",
+    "name": "多页面运行画面 · 切页与后台监控",
+    "description": "生产概览、温度趋势、报警、参数四页；标签和跳转按钮切页，隐藏页面仍在服务器采样。",
+    "image": "parts.png",
+    "variables": {
+      "temperature": 0
+    },
+    "hmi": {
+      "version": 2,
+      "title": "SIEANS 多页面检测",
+      "defaultPageId": "overview",
+      "pages": [
+        {
+          "id": "overview",
+          "version": 1,
+          "title": "生产概览",
+          "rows": 10,
+          "rowHeight": 60,
+          "components": [
+            {
+              "id": "overview-title",
+              "type": "text",
+              "label": "SIEANS · 多页面检测平台",
+              "x": 0,
+              "y": 0,
+              "w": 12,
+              "h": 1,
+              "color": "#1095bd",
+              "fontSize": 18
+            },
+            {
+              "id": "temperature-value",
+              "type": "value",
+              "label": "当前温度",
+              "x": 0,
+              "y": 2,
+              "w": 6,
+              "h": 3,
+              "color": "#1095bd",
+              "fontSize": 18,
+              "binding": {
+                "source": "flow",
+                "path": "temperature"
+              },
+              "precision": 1,
+              "unit": "°C"
+            },
+            {
+              "id": "run",
+              "type": "button",
+              "label": "运行一轮（温度 +2）",
+              "x": 6,
+              "y": 2,
+              "w": 6,
+              "h": 3,
+              "color": "#1095bd",
+              "fontSize": 18,
+              "action": "run"
+            },
+            {
+              "id": "go-trend",
+              "type": "button",
+              "label": "查看温度趋势",
+              "x": 0,
+              "y": 6,
+              "w": 4,
+              "h": 1,
+              "color": "#1095bd",
+              "fontSize": 18,
+              "action": "navigate",
+              "targetPageId": "trend"
+            },
+            {
+              "id": "go-alarm",
+              "type": "button",
+              "label": "查看报警记录",
+              "x": 4,
+              "y": 6,
+              "w": 4,
+              "h": 1,
+              "color": "#1095bd",
+              "fontSize": 18,
+              "action": "navigate",
+              "targetPageId": "alarms"
+            },
+            {
+              "id": "go-settings",
+              "type": "button",
+              "label": "打开参数设定",
+              "x": 8,
+              "y": 6,
+              "w": 4,
+              "h": 1,
+              "color": "#1095bd",
+              "fontSize": 18,
+              "action": "navigate",
+              "targetPageId": "settings"
+            }
+          ]
+        },
+        {
+          "id": "trend",
+          "version": 1,
+          "title": "温度趋势",
+          "rows": 10,
+          "rowHeight": 60,
+          "components": [
+            {
+              "id": "trend-home",
+              "type": "button",
+              "label": "返回生产概览",
+              "x": 0,
+              "y": 0,
+              "w": 3,
+              "h": 1,
+              "color": "#1095bd",
+              "fontSize": 18,
+              "action": "navigate",
+              "targetPageId": "overview"
+            },
+            {
+              "id": "temperature-trend",
+              "type": "trend",
+              "label": "温度趋势",
+              "x": 0,
+              "y": 1,
+              "w": 12,
+              "h": 7,
+              "color": "#1095bd",
+              "fontSize": 18,
+              "binding": {
+                "source": "flow",
+                "path": "temperature"
+              },
+              "capacity": 120,
+              "precision": 1,
+              "unit": "°C"
+            }
+          ]
+        },
+        {
+          "id": "alarms",
+          "version": 1,
+          "title": "报警记录",
+          "rows": 10,
+          "rowHeight": 60,
+          "components": [
+            {
+              "id": "alarm-home",
+              "type": "button",
+              "label": "返回生产概览",
+              "x": 0,
+              "y": 0,
+              "w": 3,
+              "h": 1,
+              "color": "#1095bd",
+              "fontSize": 18,
+              "action": "navigate",
+              "targetPageId": "overview"
+            },
+            {
+              "id": "temperature-alarm",
+              "type": "alarm",
+              "label": "温度过高",
+              "x": 0,
+              "y": 1,
+              "w": 12,
+              "h": 7,
+              "color": "#1095bd",
+              "fontSize": 18,
+              "binding": {
+                "source": "flow",
+                "path": "temperature"
+              },
+              "comparison": "gte",
+              "threshold": 12,
+              "hysteresis": 2,
+              "stableSamples": 2,
+              "severity": "warning"
+            }
+          ]
+        },
+        {
+          "id": "settings",
+          "version": 1,
+          "title": "参数设定",
+          "rows": 10,
+          "rowHeight": 60,
+          "components": [
+            {
+              "id": "settings-home",
+              "type": "button",
+              "label": "返回生产概览",
+              "x": 0,
+              "y": 0,
+              "w": 3,
+              "h": 1,
+              "color": "#1095bd",
+              "fontSize": 18,
+              "action": "navigate",
+              "targetPageId": "overview"
+            },
+            {
+              "id": "temperature-input",
+              "type": "input",
+              "label": "温度设定值",
+              "x": 0,
+              "y": 2,
+              "w": 8,
+              "h": 3,
+              "color": "#1095bd",
+              "fontSize": 18,
+              "binding": {
+                "source": "flow",
+                "path": "temperature"
+              },
+              "dataType": "number",
+              "minimum": -50,
+              "maximum": 100
+            },
+            {
+              "id": "settings-note",
+              "type": "text",
+              "label": "未写入的值需先写入或放弃，再切换页面。",
+              "x": 0,
+              "y": 6,
+              "w": 12,
+              "h": 1,
+              "color": "#1095bd",
+              "fontSize": 18
+            }
+          ]
+        }
+      ]
+    },
+    "steps": [
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "temperature",
+          "mode": "increment",
+          "value": 2
+        }
+      }
+    ],
+    "expected": "进入运行模式切换四页；连续检测10轮，即使停在概览页，趋势与报警仍采样。参数输入未写入时阻止切页，可放弃或写入。切页不启动额外作业。"
+  },
+  {
+    "id": "mqtt-event-trigger",
+    "name": "MQTT 事件触发 · 消息到变量与运行画面",
+    "category": "流程控制",
+    "description": "载入后打开事件触发，启动本机模拟订阅，点击发送模拟测试消息。后台排队执行本流程并更新变量与运行画面。",
+    "variables": {
+      "receivedCount": 0,
+      "partCount": 0,
+      "passed": false
+    },
+    "steps": [
+      {
+        "operation": "variables",
+        "name": "读取消息工件数量",
+        "params": {
+          "scope": "flow",
+          "name": "partCount",
+          "value": {
+            "$ref": "flow.mqttEvent.value.count"
+          }
+        }
+      },
+      {
+        "operation": "variables",
+        "name": "读取消息判定",
+        "params": {
+          "scope": "flow",
+          "name": "passed",
+          "value": {
+            "$ref": "flow.mqttEvent.value.passed"
+          }
+        }
+      },
+      {
+        "operation": "variables",
+        "name": "事件执行计数",
+        "params": {
+          "scope": "flow",
+          "name": "receivedCount",
+          "mode": "increment",
+          "value": 1
+        }
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "SIEANS 消息驱动检测",
+      "rows": 8,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "event-caption",
+          "type": "text",
+          "label": "通过事件触发订阅 MQTT 消息",
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 1,
+          "color": "#1095bd",
+          "fontSize": 24
+        },
+        {
+          "id": "event-total",
+          "type": "value",
+          "label": "执行次数",
+          "x": 0,
+          "y": 1,
+          "w": 4,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 24,
+          "binding": {
+            "source": "flow",
+            "path": "receivedCount"
+          },
+          "precision": 0,
+          "unit": "次"
+        },
+        {
+          "id": "event-parts",
+          "type": "value",
+          "label": "消息工件数量",
+          "x": 4,
+          "y": 1,
+          "w": 4,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 24,
+          "binding": {
+            "source": "flow",
+            "path": "partCount"
+          },
+          "precision": 0,
+          "unit": "个"
+        },
+        {
+          "id": "event-pass",
+          "type": "lamp",
+          "label": "消息判定",
+          "x": 8,
+          "y": 1,
+          "w": 4,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 24,
+          "binding": {
+            "source": "flow",
+            "path": "passed"
+          }
+        },
+        {
+          "id": "event-table",
+          "type": "table",
+          "label": "最近接收消息",
+          "x": 0,
+          "y": 3,
+          "w": 12,
+          "h": 4,
+          "color": "#1095bd",
+          "fontSize": 24,
+          "binding": {
+            "source": "flow",
+            "path": "mqttEvent"
+          }
+        }
+      ]
+    },
+    "camera": true,
+    "loadOnly": true,
+    "expected": "模拟消息驱动流程：数量 3、判定通过，每条有效消息执行次数 +1。"
+  },
+  {
+    "id": "mqtt-camera-trigger",
+    "name": "MQTT 事件 → 相机采集 → 数量检测",
+    "category": "流程控制",
+    "description": "MQTT 消息触发模拟相机采集和真实轮廓算子，将检测数量与消息中的目标数量比较，结果显示到运行画面。",
+    "variables": {
+      "receivedCount": 0,
+      "partCount": 0,
+      "passed": false
+    },
+    "steps": [
+      {
+        "operation": "camera_capture",
+        "params": {
+          "driver": "simulator",
+          "deviceId": "synthetic-parts",
+          "trigger": "freerun",
+          "timeoutMs": 5000
+        }
+      },
+      {
+        "operation": "geometry",
+        "params": {
+          "feature": "contours",
+          "threshold": 127,
+          "minArea": 50
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "partCount",
+          "mode": "set",
+          "value": 0
+        }
+      },
+      {
+        "operation": "condition",
+        "params": {
+          "comparison": "eq",
+          "left": {
+            "$ref": "flow.partCount"
+          },
+          "right": {
+            "$ref": "flow.mqttEvent.value.count"
+          }
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "passed",
+          "value": false
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "receivedCount",
+          "mode": "increment",
+          "value": 1
+        }
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "SIEANS 消息触发视觉检测",
+      "rows": 8,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "event-caption",
+          "type": "text",
+          "label": "通过事件触发订阅 MQTT 消息",
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 1,
+          "color": "#1095bd",
+          "fontSize": 24
+        },
+        {
+          "id": "event-total",
+          "type": "value",
+          "label": "执行次数",
+          "x": 0,
+          "y": 1,
+          "w": 4,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 24,
+          "binding": {
+            "source": "flow",
+            "path": "receivedCount"
+          },
+          "precision": 0,
+          "unit": "次"
+        },
+        {
+          "id": "event-parts",
+          "type": "value",
+          "label": "检测工件数量",
+          "x": 4,
+          "y": 1,
+          "w": 4,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 24,
+          "binding": {
+            "source": "flow",
+            "path": "partCount"
+          },
+          "precision": 0,
+          "unit": "个"
+        },
+        {
+          "id": "event-pass",
+          "type": "lamp",
+          "label": "数量判定",
+          "x": 8,
+          "y": 1,
+          "w": 4,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 24,
+          "binding": {
+            "source": "flow",
+            "path": "passed"
+          }
+        },
+        {
+          "id": "event-table",
+          "type": "table",
+          "label": "最近接收消息",
+          "x": 6,
+          "y": 3,
+          "w": 6,
+          "h": 4,
+          "color": "#1095bd",
+          "fontSize": 24,
+          "binding": {
+            "source": "flow",
+            "path": "mqttEvent"
+          }
+        },
+        {
+          "id": "event-image",
+          "type": "image",
+          "label": "本轮检测图像",
+          "x": 0,
+          "y": 3,
+          "w": 6,
+          "h": 4,
+          "color": "#1095bd",
+          "fontSize": 24,
+          "binding": {
+            "source": "result",
+            "path": "",
+            "nodeId": "bind-on-load"
+          }
+        }
+      ]
+    },
+    "camera": true,
+    "loadOnly": true,
+    "expected": "每条模拟测试消息触发一次采集与检测：3 个轮廓、目标数量 3，判定通过。消息传递不是相机硬件触发。",
+    "bindings": [
+      {
+        "step": 2,
+        "param": "value",
+        "source": 1,
+        "field": "count"
+      },
+      {
+        "step": 4,
+        "param": "value",
+        "source": 3,
+        "field": "passed"
+      }
+    ],
+    "hmiBindings": [
+      {
+        "component": 5,
+        "step": 1
+      }
+    ]
+  },
+  {
+    "id": "camera-session-2d",
+    "name": "连续相机连接 · 新帧取图与数量检测",
+    "category": "相机采集",
+    "camera": true,
+    "cameraSession": {
+      "driver": "simulator",
+      "deviceId": "synthetic-parts",
+      "timeoutMs": 5000
+    },
+    "description": "打开模拟相机长连接，每次运行等待下一帧，再由 OpenCV 计数。连接持续保留，可在相机管理中查看缓存统计并停止；不会打开真实相机。",
+    "expected": "每轮帧序号递增，零件数量为 3；可点击连续检测重复验证。",
+    "steps": [
+      {
+        "operation": "camera_capture",
+        "params": {
+          "driver": "session",
+          "sessionId": "current-session",
+          "framePolicy": "next",
+          "timeoutMs": 5000,
+          "maxAgeMs": 1000
+        }
+      },
+      {
+        "operation": "geometry",
+        "params": {
+          "feature": "contours",
+          "threshold": 127,
+          "minArea": 50
+        }
+      }
+    ]
+  }
+]

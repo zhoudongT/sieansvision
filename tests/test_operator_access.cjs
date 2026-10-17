@@ -1,0 +1,29 @@
+'use strict';
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
+const {Runtime}=require('../lib/runtime.cjs'),{OperatorRuntime}=require('../lib/operator-runtime.cjs'),access=require('../lib/access-control.cjs'),graph=require('../public/vision/flow-graph.js');
+function fixture(){const directory=fs.mkdtempSync(path.join(os.tmpdir(),'sieans-operator-'));const runtime=new Runtime(directory,{}),operator=new OperatorRuntime(directory,runtime,{busy:false},{busy:false});return {directory,runtime,operator};}
+function project(){return graph.normalize({version:1,id:'operator-approved',name:'已发布检测',variables:{setpoint:2,secret:'unpublished-secret'},steps:[{id:'code',operation:'script',params:{code:'def run(ctx):\n    return dict(result=dict(count=ctx["vars"]["flow"]["setpoint"],hidden="result-secret",passed=True))\n'}}],hmi:{version:1,title:'检测画面',rows:6,rowHeight:60,components:[{id:'input',type:'input',label:'允许设定值',x:0,y:0,w:4,h:2,color:'#1095bd',fontSize:20,dataType:'number',minimum:1,maximum:10,binding:{source:'flow',path:'setpoint'}},{id:'value',type:'value',label:'计数',x:4,y:0,w:4,h:2,color:'#1095bd',fontSize:24,precision:0,unit:'',binding:{source:'result',nodeId:'code',path:'count'}},{id:'alarm',type:'alarm',label:'设定值超过4',x:0,y:2,w:12,h:4,color:'#1095bd',fontSize:16,binding:{source:'flow',path:'setpoint'},comparison:'gt',threshold:4,hysteresis:0,stableSamples:1,severity:'warning'}]}});}
+function save(f,p=project()){fs.writeFileSync(path.join(f.directory,'vision-project.json'),JSON.stringify(p));return f.operator.summary().draft;}
+function publish(f){const draft=save(f);return f.operator.publish({draftHash:draft.draftHash,allowScripts:true},'engineer');}
+test('account definitions reject operator without administrator and shared username',()=>{
+ const hash=require('bcryptjs').hashSync('secret',4);assert.throws(()=>access.accounts({OPERATOR_PASSWORD_HASH:hash}),/管理员/);assert.throws(()=>access.accounts({ADMIN_USER:'same',ADMIN_PASSWORD_HASH:hash,OPERATOR_USER:'same',OPERATOR_PASSWORD_HASH:hash}),/不同/);
+ assert.throws(()=>access.accounts({ADMIN_USER:'a:b'}),/无效/);assert.equal(access.accounts({}).adminHash,'');
+ assert.throws(()=>access.accounts({OPERATOR_PASSWORD_HASH:false}),/类型无效/);
+});
+test('publication requires exact saved draft, explicit script trust, and persists immutable snapshot',()=>{
+ const f=fixture(),draft=save(f);assert.throws(()=>f.operator.publish({draftHash:draft.draftHash,allowScripts:false},'admin'),/可信脚本/);assert.throws(()=>f.operator.publish({draftHash:'old',allowScripts:true},'admin'),/已变化/);
+ f.operator.publish({draftHash:draft.draftHash,allowScripts:true},'admin');const original=f.operator.load();save(f,{...project(),name:'未发布草稿'});assert.equal(f.operator.load().project.name,'已发布检测');assert.equal(new OperatorRuntime(f.directory,f.runtime,{busy:false},{busy:false}).load().version,original.version);
+ const content=JSON.parse(fs.readFileSync(f.operator.file));content.project.name='tampered';fs.writeFileSync(f.operator.file,JSON.stringify(content));assert.throws(()=>f.operator.load(),/完整性/);
+});
+test('operator run cannot inject project/parameters and public state excludes unpublished secrets',async()=>{
+ const f=fixture();publish(f);const version=f.operator.load().version;assert.throws(()=>f.operator.run({version,project:project()}),/未开放/);assert.throws(()=>f.operator.run({version:'stale'}),/已更新/);
+ const started=f.operator.run({version});assert.deepEqual(Object.keys(started).sort(),['id','state']);await f.runtime.jobs.get(started.id).promise;const state=f.operator.publicState();assert.equal(state.status.state,'completed');assert.equal(state.variables.flow.setpoint,2);assert.equal(state.variables.flow.secret,undefined);assert.equal(state.results[0].output.result.count,2);assert.equal(state.results[0].output.result.hidden,undefined);assert.equal(state.project.steps[0].params.code,undefined);assert.equal(JSON.stringify(state).includes('unpublished-secret'),false);assert.equal(JSON.stringify(state).includes('result-secret'),false);
+});
+test('only published input components may write, with bounds, revision and alarm ownership',async()=>{
+ const f=fixture();publish(f);const version=f.operator.load().version,started=f.operator.run({version});await f.runtime.jobs.get(started.id).promise;let revision=f.operator.publicState().variables.revision;
+ for(const body of [{version,componentId:'unknown',value:5,revision},{version,componentId:'input',value:99,revision},{version,componentId:'input',value:'5',revision},{version,componentId:'input',value:5,revision:revision-1},{version,componentId:'input',value:5,revision,values:{secret:'bad'}}])assert.throws(()=>f.operator.write(body));
+ const updated=f.operator.write({version,componentId:'input',value:5,revision});assert.equal(updated.flow.setpoint,5);assert.equal(f.runtime.snapshot(project()).flow.secret,'unpublished-secret');const event=f.operator.publicState().monitor.events[0];assert(event);assert.equal(f.operator.acknowledge({version,id:event.id,comment:'已检查'}).events[0].comment,'已检查');assert.throws(()=>f.operator.acknowledge({version,id:'unrelated'}),/不属于/);
+});
+test('busy execution prevents publishing and setting changes; stop cancels current task',async()=>{
+ const f=fixture(),p=project();p.steps.unshift({id:'wait',operation:'delay',params:{milliseconds:5000}});p.version=1;save(f,p);const draft=f.operator.summary().draft;f.operator.publish({draftHash:draft.draftHash,allowScripts:true},'admin');const version=f.operator.load().version,job=f.operator.run({version});assert.throws(()=>f.operator.publish({draftHash:draft.draftHash,allowScripts:true},'admin'),/运行期间/);assert.throws(()=>f.operator.write({version,componentId:'input',value:4,revision:f.runtime.snapshot(p).revision}),/执行期间/);f.operator.stop({});await f.runtime.jobs.get(job.id).promise;assert.equal(f.runtime.poll(job.id).state,'cancelled');
+});

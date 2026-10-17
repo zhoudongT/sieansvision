@@ -1,0 +1,163 @@
+{
+  "apiVersion": 1,
+  "id": "sieans-image-quality",
+  "name": "SIEANS 采图质量检测",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "基于 OpenCV 的灰度清晰度与曝光采样检查。阈值依赖纹理、分辨率、光照及噪声，须以现场样本确定。",
+  "operators": [
+    {
+      "id": "inspect",
+      "name": "2D 清晰度与曝光检测",
+      "description": "ROI 内计算拉普拉斯方差、过暗与过曝灰度比例。导数统计剔除 ROI 外圈；原图继续传给下游。不是通用失焦判定或相机自动曝光控制。",
+      "input": "image",
+      "entry": "quality.py",
+      "timeoutMs": 10000,
+      "parameters": [
+        {
+          "key": "roiX",
+          "label": "检测区域 X",
+          "type": "integer",
+          "required": true,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 32766
+        },
+        {
+          "key": "roiY",
+          "label": "检测区域 Y",
+          "type": "integer",
+          "required": true,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 32766
+        },
+        {
+          "key": "roiWidth",
+          "label": "宽度（0 延伸至边界）",
+          "type": "integer",
+          "required": true,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 32766
+        },
+        {
+          "key": "roiHeight",
+          "label": "高度（0 延伸至边界）",
+          "type": "integer",
+          "required": true,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 32766
+        },
+        {
+          "key": "minimumSharpness",
+          "label": "最低拉普拉斯方差",
+          "type": "number",
+          "required": true,
+          "default": 100,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "darkThreshold",
+          "label": "过暗灰度阈值（含）",
+          "type": "integer",
+          "required": true,
+          "default": 5,
+          "minimum": 0,
+          "maximum": 254
+        },
+        {
+          "key": "brightThreshold",
+          "label": "过曝灰度阈值（含）",
+          "type": "integer",
+          "required": true,
+          "default": 250,
+          "minimum": 1,
+          "maximum": 255
+        },
+        {
+          "key": "maximumDarkPercent",
+          "label": "允许过暗比例 (%)",
+          "type": "number",
+          "required": true,
+          "default": 5,
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "key": "maximumBrightPercent",
+          "label": "允许过曝比例 (%)",
+          "type": "number",
+          "required": true,
+          "default": 5,
+          "minimum": 0,
+          "maximum": 100
+        }
+      ],
+      "outputs": [
+        {
+          "key": "sharpness",
+          "label": "拉普拉斯方差",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "meanIntensity",
+          "label": "平均灰度",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "darkPercent",
+          "label": "过暗比例 (%)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "brightPercent",
+          "label": "过曝比例 (%)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "pixelCount",
+          "label": "检测像素数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "focusPassed",
+          "label": "清晰度是否合格",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "darkPassed",
+          "label": "过暗比例是否合格",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "brightPassed",
+          "label": "过曝比例是否合格",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "passed",
+          "label": "整体是否合格",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "质量判定明细",
+          "type": "array",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+<script type="text/javascript">
+(function(){
+  var labels={};
+  function editor(value,change,label,options,depth){
+    depth=depth||0;var box=$('<div>').css({minWidth:0});
+    if(options&&typeof value!=='object'){
+      var select=$('<select>').attr('aria-label',label).css('width','100%');
+      if(!Object.hasOwn(options,value))select.append($('<option>').val(value).text(value));
+      Object.entries(options).forEach(function(pair){select.append($('<option>').val(pair[0]).text(pair[1]));});
+      select.val(value).on('change',function(){change(this.value);});return box.append(select);
+    }
+    if(value!==null&&typeof value==='object'){
+      var array=Array.isArray(value),details=$('<details>'),summary=$('<summary>').text((array?'数组':'结构体')+' · '+Object.keys(value).length+' 项'),body=$('<div>');details.append(summary,body);box.append(details);
+      var built=false;details.on('toggle',function(){if(!this.open||built)return;built=true;
+        if(depth>=20){body.append($('<p>').text('嵌套层级超过编辑上限'));return;}
+        var table=$('<table>').css({width:'100%',borderCollapse:'collapse'}),head=$('<tr>');['字段 / 序号','值','操作'].forEach(function(t){head.append($('<th>').text(t));});table.append(head);body.append(table);
+        var entries=Object.keys(value),cursor=0,more=$('<button type="button">').text('显示更多');
+        function append(){entries.slice(cursor,cursor+50).forEach(function(key){var row=$('<tr>');row.append($('<td>').text(array?Number(key)+1:(labels[key]||key)));row.append($('<td>').append(editor(value[key],function(next){value[key]=next;change(value);},label+' '+key,null,depth+1)));row.append($('<td>').append($('<button type="button">').text('删除').on('click',function(){if(array)value.splice(Number(key),1);else delete value[key];change(value);box.replaceWith(editor(value,change,label,null,depth));})));table.append(row);});cursor+=50;more.toggle(cursor<entries.length);}
+        more.on('click',append);append();body.append(more);
+        var name=$('<input>').attr({placeholder:'字段名称','aria-label':label+' 新字段名称'}).css('width','40%');if(!array)body.append(name);
+        var type=$('<select>').attr('aria-label',label+' 新字段类型').css('width','30%');[['number','数值'],['string','文本'],['boolean','开关'],['array','数组'],['object','结构体']].forEach(function(x){type.append($('<option>').val(x[0]).text(x[1]));});
+        body.append(type,$('<button type="button">').text(array?'添加元素':'添加字段').on('click',function(){var key=array?value.length:name.val().trim();if(!array&&(!key||['__proto__','constructor','prototype'].includes(key)||Object.hasOwn(value,key))){name[0].setCustomValidity('名称为空、重复或为保留字');name[0].reportValidity();return;}var next={number:0,string:'',boolean:false,array:[],object:{}}[type.val()];value[key]=next;change(value);box.replaceWith(editor(value,change,label,null,depth));}));name.on('input',function(){this.setCustomValidity('');});
+      });return box;
+    }
+    if(typeof value==='boolean')return box.append($('<select>').attr('aria-label',label).append($('<option>').val('true').text('是'),$('<option>').val('false').text('否')).val(String(value)).on('change',function(){change(this.value==='true');}));
+    if(value===null)return box.append($('<span>').text('空值'));
+    return box.append($('<input>').attr({type:typeof value==='number'?'number':'text',step:'any','aria-label':label}).css('width','100%').val(value).on('input',function(){if(typeof value==='number'){if(this.value===''||!Number.isFinite(Number(this.value)))return;change(Number(this.value));}else change(this.value);}));
+  }
+
+  var typeNames={number:'数值',integer:'整数',string:'文本',boolean:'开关',array:'数组',object:'结构体'};
+  function initial(field){return Object.hasOwn(field,'default')?structuredClone(field.default):field.choices?field.choices[0].value:({number:0,integer:0,string:'',boolean:false,array:[],object:{}}[field.type]);}
+  function scalar(field,value,change,label){
+    if(field.choices){var select=$('<select>').attr('aria-label',label);field.choices.forEach(function(c,i){select.append($('<option>').val(i).text(c.label));});select.val(field.choices.findIndex(function(c){return c.value===value;}));select.on('change',function(){change(field.choices[Number(this.value)].value);});return select;}
+    if(field.type==='boolean')return $('<select>').attr('aria-label',label).append($('<option>').val('true').text('是'),$('<option>').val('false').text('否')).val(String(value)).on('change',function(){change(this.value==='true');});
+    var numeric=['number','integer'].includes(field.type),input=$('<input>').attr({type:numeric?'number':'text','aria-label':label,required:true}).val(value);
+    if(numeric){input.attr('step',field.type==='integer'?1:'any');if(field.minimum!==undefined)input.attr('min',field.minimum);if(field.maximum!==undefined)input.attr('max',field.maximum);}
+    input.on('input',function(){change(numeric?(this.value===''?null:Number(this.value)):this.value);});return input;
+  }
+  function recordTable(field,value,change,label){
+    var box=$('<div>').addClass('machine-op-record');
+    if(!Array.isArray(value)||value.some(function(row){return !row||typeof row!=='object'||Array.isArray(row)||Object.keys(row).some(function(k){return !field.columns.some(function(c){return c.key===k;});})||field.columns.some(function(c){return !Object.hasOwn(row,c.key);});}))return box.append($('<p>').text('表格值无效，请恢复默认点表或绑定有效消息字段'),$('<button type="button">').text('恢复默认点表').on('click',function(){var next=initial(field);change(next);box.replaceWith(recordTable(field,next,change,label));}));
+    var table=$('<table>').css({minWidth:field.columns.length*80+80,tableLayout:'fixed'}),head=$('<tr>').append($('<th>').css('width',32).text('序号'));field.columns.forEach(function(c){head.append($('<th>').text(c.label));});head.append($('<th>').css('width',52).text('操作'));table.append(head);box.append($('<p>').text(value.length+' 行 · 允许 '+(field.minimumRows||0)+'–'+(field.maximumRows??1000)+' 行'),table);
+    var cursor=0,more=$('<button type="button">').text('显示更多');
+    function append(){value.slice(cursor,cursor+50).forEach(function(row,i){var index=cursor+i,tr=$('<tr>').append($('<td>').text(index+1));field.columns.forEach(function(c){tr.append($('<td>').append(scalar(c,row[c.key],function(v){value[index][c.key]=v;change(value);},label+' 第 '+(index+1)+' 行 '+c.label)));});tr.append($('<td>').append($('<button type="button">').text('删除').on('click',function(){value.splice(index,1);change(value);box.replaceWith(recordTable(field,value,change,label));})));table.append(tr);});cursor+=50;more.toggle(cursor<value.length);}
+    more.on('click',append);append();box.append(more,$('<button type="button">').text('添加点位').prop('disabled',value.length>=(field.maximumRows??1000)).on('click',function(){value.push(Object.fromEntries(field.columns.map(function(c){return [c.key,initial(c)];})));change(value);box.replaceWith(recordTable(field,value,change,label));}));return box;
+  }
+  function prepare(node){
+    var draft,bindings,parseFailed=false;try{draft=JSON.parse(node.arguments||'{}');bindings=JSON.parse(node.parameterBindings||'{}');if(!draft||Array.isArray(draft)||typeof draft!=='object'||!bindings||Array.isArray(bindings)||typeof bindings!=='object')throw Error('参数格式错误');}catch(e){parseFailed=true;draft={};bindings={};}
+    node._opDraft=parseFailed?undefined:draft;node._opBindings=bindings;node._opReady=false;
+    var list=[],select=$('#machine-op-select'),fields=$('#machine-op-fields'),outputs=$('#machine-op-outputs'),pin=node.pluginId&&node.pluginVersion&&node.operatorId?[node.pluginId,node.pluginVersion,node.operatorId].join('/'):'';
+    function selection(){return list.find(function(item){return item.key===select.val();});}
+    function render(){
+      fields.empty();outputs.empty();var item=selection();node._opReady=!!item&&!parseFailed;if(parseFailed){$('#machine-op-status').text('已有参数无法读取，配置保留。请显式重新选择算子以恢复默认值。');return;}if(!item)return;
+      $('#machine-op-status').text(item.op.description);$('#machine-op-version').text(item.plugin.version+' · '+item.plugin.license+' · 超时 '+item.op.timeoutMs+' ms');
+      var known=new Set(item.op.parameters.map(function(f){return f.key;}));
+      Array.from(new Set(Object.keys(draft).concat(Object.keys(bindings)))).filter(function(k){return !known.has(k);}).forEach(function(k){fields.append($('<p>').text('未声明参数：'+k+' ').append($('<button type="button">').text('移除此参数').on('click',function(){delete draft[k];delete bindings[k];render();})));});
+      item.op.parameters.forEach(function(field){
+        if(field.choices?.length===1&&!Object.hasOwn(bindings,field.key)&&(!Object.hasOwn(draft,field.key)||draft[field.key]===field.choices[0].value)){draft[field.key]=field.choices[0].value;return;}
+        var section=$('<section>'),label=field.label,enabled=Object.hasOwn(draft,field.key)||Object.hasOwn(bindings,field.key)||field.required||Object.hasOwn(field,'default');
+        var include=$('<input type="checkbox">').attr('aria-label','启用 '+label).prop('checked',enabled).prop('disabled',!!field.required);
+        var source=$('<select>').attr('aria-label',label+'取值方式').append($('<option>').val('literal').text('表单值'),$('<option>').val('msg').text('上游消息字段')).val(Object.hasOwn(bindings,field.key)?'msg':'literal'),body=$('<div>');
+        section.append($('<h4>').text(label+' · '+typeNames[field.type]),$('<label>').append(include,document.createTextNode(' 使用此参数')),source,body);fields.append(section);
+        function show(){body.empty();source.prop('disabled',!include.prop('checked'));if(!include.prop('checked'))return;
+          if(source.val()==='msg'){
+            var path=$('<input>').attr({type:'text','aria-label':label+'消息字段',placeholder:'payload.value',required:true,pattern:'[^.]+(?:\\.[^.]+)*'}).val(bindings[field.key]||'');path.on('input',function(){bindings[field.key]=this.value.trim();});body.append(path,$('<small>').text('填写消息字段路径，例如 payload.count；运行时按清单检查类型。'));
+          }else{
+            if(!Object.hasOwn(draft,field.key))draft[field.key]=initial(field);var change=function(v){draft[field.key]=v;};
+            body.append(field.columns?recordTable(field,draft[field.key],change,label):['array','object'].includes(field.type)?editor(draft[field.key],change,label,null,0):scalar(field,draft[field.key],change,label));
+          }
+        }
+        source.on('change',function(){if(this.value==='msg')bindings[field.key]='payload.'+field.key;else delete bindings[field.key];show();});
+        include.on('change',function(){if(!this.checked){delete draft[field.key];delete bindings[field.key];}show();});show();
+      });
+      var table=$('<table>'),head=$('<tr>');['结果字段','说明','类型'].forEach(function(s){head.append($('<th>').text(s));});table.append(head);item.op.outputs.forEach(function(f){table.append($('<tr>').append($('<td>').text(f.key),$('<td>').text(f.label),$('<td>').text(typeNames[f.type])));});outputs.append(table);
+    }
+    select.on('change',function(){var item=selection();if(item){parseFailed=false;draft={};bindings={};node._opDraft=draft;node._opBindings=bindings;$('#node-input-pluginId').val(item.plugin.id);$('#node-input-pluginVersion').val(item.plugin.version);$('#node-input-operatorId').val(item.op.id);$('#node-input-operatorName').val(item.op.name);}render();});
+    function load(){var selected=select.val()||pin;$('#machine-op-status').text('正在读取服务器插件清单…');
+      $.getJSON('machine/operators').done(function(data){if(select[0]!==$('#machine-op-select')[0])return;list=[];data.plugins.filter(function(p){return p.enabled;}).forEach(function(p){p.operators.forEach(function(op){list.push({plugin:p,op:op,key:[p.id,p.version,op.id].join('/')});});});
+        select.empty().append($('<option>').val('').text('请选择已安装算子'));list.forEach(function(item){select.append($('<option>').val(item.key).text(item.op.name+' · '+item.plugin.version));});
+        if(selected&&!list.some(function(item){return item.key===selected;})){select.append($('<option>').val(selected).text('原算子/版本不可用：'+selected));$('#machine-op-status').text('未找到固定版本，请恢复插件或显式选择其他算子。已有参数保留。');}
+        select.val(selected);render();
+      }).fail(function(){if(select[0]!==$('#machine-op-select')[0])return;node._opReady=false;$('#machine-op-status').text('读取插件清单失败，已有配置保留。请检查服务后刷新。');});
+    }
+    $('#machine-op-refresh').on('click',load);load();
+  }
+  RED.nodes.registerType('machine-operator',{category:'SIEANS Vision',color:'#b8e4f0',defaults:{name:{value:''},pluginId:{value:'',required:true},pluginVersion:{value:'',required:true},operatorId:{value:'',required:true},operatorName:{value:''},arguments:{value:'{}'},parameterBindings:{value:'{}'},validConfig:{value:true,validate:function(v){return v===true;}}},inputs:1,outputs:2,icon:'font-awesome/fa-puzzle-piece',paletteLabel:'扩展算子',label:function(){return this.name||this.operatorName||'扩展算子';},outputLabels:['结果及完整数据帧','显示图像 / 点云'],oneditprepare:function(){prepare(this);},oneditsave:function(){
+    if(this._opDraft!==undefined){$('#node-input-arguments').val(JSON.stringify(this._opDraft));$('#node-input-parameterBindings').val(JSON.stringify(this._opBindings));}
+    $('#node-input-validConfig').prop('checked',this._opReady&&$('#machine-op-fields input:invalid').length===0);
+    delete this._opDraft;delete this._opBindings;delete this._opReady;
+  },oneditcancel:function(){delete this._opDraft;delete this._opBindings;delete this._opReady;}});
+})();
+</script>
+<style>
+#machine-op-fields section{padding:10px 0;border-bottom:1px solid #dce6ee}#machine-op-fields h4{margin:4px 0 8px}#machine-op-fields label{display:inline-block!important;width:auto!important;margin-right:16px}#machine-op-fields input[type=checkbox]{width:auto}#machine-op-fields section>select{width:180px;margin-bottom:8px}#machine-op-fields section>div>input,#machine-op-fields section>div>select{width:100%}#machine-op-fields small{display:block;color:#666}#machine-op-fields table,#machine-op-outputs table{width:100%;border-collapse:collapse;font-size:12px}#machine-op-fields td,#machine-op-fields th,#machine-op-outputs td,#machine-op-outputs th{padding:5px;border:1px solid #dce6ee;text-align:left}#machine-op-fields td input,#machine-op-fields td select{width:100%;min-width:70px}#machine-op-fields input:invalid{border-color:#b32632}.machine-op-record{overflow:auto}.machine-op-record table{min-width:480px}#machine-op-status{padding:10px;background:#edf7fb}#machine-op-select{width:100%}
+</style>
+<script type="text/html" data-template-name="machine-operator">
+<div class="form-row"><label for="node-input-name">名称</label><input id="node-input-name" type="text"></div>
+<input id="node-input-pluginId" type="hidden"><input id="node-input-pluginVersion" type="hidden"><input id="node-input-operatorId" type="hidden"><input id="node-input-operatorName" type="hidden"><input id="node-input-arguments" type="hidden"><input id="node-input-parameterBindings" type="hidden"><input id="node-input-validConfig" type="checkbox" style="display:none">
+<div class="form-row"><label for="machine-op-select">插件算子</label><select id="machine-op-select" aria-label="插件算子"></select><button type="button" id="machine-op-refresh">刷新插件清单</button></div>
+<p id="machine-op-version"></p><p id="machine-op-status"></p><p>切换算子会重置参数。固定版本不会自动升级。配置由表单和表格完成。</p>
+<div id="machine-op-fields"></div><h4>输出字段</h4><div id="machine-op-outputs"></div>
+</script>
+<script type="text/html" data-help-name="machine-operator">
+<p>执行服务器安装并启用的独立 Python 算子，使用插件清单生成参数表单。</p>
+<p>输入图像为 msg.image，点云为 msg.cloud，深度为 msg.depth；也可从 payload 对应字段读取。msg.operatorArgs 覆盖表单值，显式消息字段绑定最后生效。</p>
+<p>第一输出：msg.payload 为算子结果，msg.vision 为完整输出，图像/点云/深度沿原消息字段传递。第二输出是用于显示的点云或图像。空通道会清除，失败通过 Catch 节点处理。</p>
+<p>msg.operatorVariables 携带本条消息的 global/flow/module 范围字典；这些只是插件上下文，不自动读写 Node-RED context 或工作台的持久化变量。跨消息状态请使用 Node-RED 的变量节点，或在视觉工作台中运行完整工程。</p>
+<p>每节点同时处理一条消息，忙时拒绝新消息；全服务最多 4 个插件并发，不自动排队或重试。重新部署会取消旧节点子进程，外部动作不能回滚。</p>
+</script>

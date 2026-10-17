@@ -1,0 +1,172 @@
+[
+  {
+    "id": "mqtt-count",
+    "name": "视觉检测 → MQTT → 流程变量",
+    "category": "通信",
+    "image": "parts.png",
+    "description": "使用本机 Aedes 消息服务器发布保留消息，然后订阅并写入流程变量。参数和内容使用表单与表格配置。",
+    "expected": "流程变量 mqttValue 为 3。此演示仅访问本机消息服务器。",
+    "steps": [
+      {
+        "operation": "geometry",
+        "params": {
+          "feature": "contours",
+          "threshold": 127,
+          "minArea": 50
+        }
+      },
+      {
+        "operation": "mqtt_publish",
+        "params": {
+          "connection": "simulator",
+          "qos": 1,
+          "timeoutMs": 3000,
+          "topic": "sieans/demo/count",
+          "encoding": "structured",
+          "retain": true,
+          "value": 0
+        }
+      },
+      {
+        "operation": "mqtt_receive",
+        "params": {
+          "connection": "simulator",
+          "qos": 1,
+          "timeoutMs": 3000,
+          "topic": "sieans/demo/count",
+          "encoding": "structured",
+          "acceptRetained": true
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "mqttValue",
+          "value": 0
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 1,
+        "source": 0,
+        "param": "value",
+        "field": "count"
+      },
+      {
+        "step": 3,
+        "source": 2,
+        "param": "value",
+        "field": "value"
+      }
+    ]
+  },
+  {
+    "id": "mqtt-text",
+    "name": "MQTT 中文文本发布与接收",
+    "category": "通信",
+    "image": "parts.png",
+    "description": "使用本机 Aedes 消息服务器发布保留消息，然后订阅并写入流程变量。参数和内容使用表单与表格配置。",
+    "expected": "流程变量 mqttValue 为 SIEANS 工件 A · 合格。此演示仅访问本机消息服务器。",
+    "steps": [
+      {
+        "operation": "mqtt_publish",
+        "params": {
+          "connection": "simulator",
+          "qos": 1,
+          "timeoutMs": 3000,
+          "topic": "sieans/demo/text",
+          "encoding": "text",
+          "retain": true,
+          "value": "SIEANS 工件 A · 合格"
+        }
+      },
+      {
+        "operation": "mqtt_receive",
+        "params": {
+          "connection": "simulator",
+          "qos": 1,
+          "timeoutMs": 3000,
+          "topic": "sieans/demo/text",
+          "encoding": "text",
+          "acceptRetained": true
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "mqttValue",
+          "value": 0
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 2,
+        "source": 1,
+        "param": "value",
+        "field": "value"
+      }
+    ]
+  },
+  {
+    "id": "mqtt-bytes",
+    "name": "MQTT 字节数组发布与接收",
+    "category": "通信",
+    "image": "parts.png",
+    "description": "使用本机 Aedes 消息服务器发布保留消息，然后订阅并写入流程变量。参数和内容使用表单与表格配置。",
+    "expected": "流程变量 mqttValue 为 8 个字节；末尾为 255。此演示仅访问本机消息服务器。",
+    "steps": [
+      {
+        "operation": "mqtt_publish",
+        "params": {
+          "connection": "simulator",
+          "qos": 1,
+          "timeoutMs": 3000,
+          "topic": "sieans/demo/bytes",
+          "encoding": "bytes",
+          "retain": true,
+          "value": [
+            83,
+            73,
+            69,
+            65,
+            78,
+            83,
+            0,
+            255
+          ]
+        }
+      },
+      {
+        "operation": "mqtt_receive",
+        "params": {
+          "connection": "simulator",
+          "qos": 1,
+          "timeoutMs": 3000,
+          "topic": "sieans/demo/bytes",
+          "encoding": "bytes",
+          "acceptRetained": true
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "mqttValue",
+          "value": 0
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 2,
+        "source": 1,
+        "param": "value",
+        "field": "value"
+      }
+    ]
+  }
+]

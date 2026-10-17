@@ -1,0 +1,3 @@
+'use strict';
+const {spawnSync}=require('node:child_process'),path=require('node:path');const root=path.resolve(__dirname,'..');
+for(const args of [['--test','tests/test_operator_access.cjs','tests/test_operator_page.cjs','tests/test_operator_continuous.cjs','tests/test_operator_publication_ui.cjs','tests/test_operator_cloud_input.cjs','tests/test_operator_cloud_ui.cjs','tests/test_operator_image_input.cjs'],['tests/test_operator_access_http.cjs']]){const r=spawnSync(process.execPath,args,{cwd:root,windowsHide:true,stdio:'inherit'});if(r.error)throw r.error;if(r.status!==0)process.exit(r.status||1);}

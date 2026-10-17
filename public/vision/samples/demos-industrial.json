@@ -1,0 +1,312 @@
+[
+  {
+    "id": "modbus-vision",
+    "category": "通信",
+    "name": "视觉检测 → Modbus → 三级变量",
+    "image": "parts.png",
+    "description": "检测轮廓，将数量写到本机模拟设备的保持寄存器 10，再读回并保存为流程变量。",
+    "expected": "轮廓数量 3；写入/读回值 3；流程变量 plcCount=3。仅访问本机模拟设备。",
+    "steps": [
+      {
+        "operation": "geometry",
+        "params": {
+          "feature": "contours",
+          "threshold": 127,
+          "minArea": 50
+        }
+      },
+      {
+        "operation": "modbus_write",
+        "params": {
+          "transport": "simulator",
+          "area": "holding",
+          "address": 10,
+          "dataType": "uint16",
+          "value": 0,
+          "timeoutMs": 1500
+        }
+      },
+      {
+        "operation": "modbus_read",
+        "params": {
+          "transport": "simulator",
+          "area": "holding",
+          "address": 10,
+          "dataType": "uint16",
+          "count": 1,
+          "timeoutMs": 1500
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "plcCount",
+          "value": 0
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 1,
+        "param": "value",
+        "source": 0,
+        "field": "count"
+      },
+      {
+        "step": 3,
+        "param": "value",
+        "source": 2,
+        "field": "value"
+      }
+    ]
+  },
+  {
+    "id": "modbus-float",
+    "category": "通信",
+    "name": "浮点寄存器写入与读回",
+    "image": "parts.png",
+    "description": "以小字序写入两个 float32，观察寄存器原始值与解码数据。",
+    "expected": "读回 12.5 和 -3.25，共使用 4 个保持寄存器。",
+    "steps": [
+      {
+        "operation": "modbus_write",
+        "params": {
+          "transport": "simulator",
+          "area": "holding",
+          "address": 30,
+          "dataType": "float32",
+          "byteOrder": "big",
+          "wordOrder": "little",
+          "values": [
+            12.5,
+            -3.25
+          ],
+          "timeoutMs": 1500
+        }
+      },
+      {
+        "operation": "modbus_read",
+        "params": {
+          "transport": "simulator",
+          "area": "holding",
+          "address": 30,
+          "dataType": "float32",
+          "byteOrder": "big",
+          "wordOrder": "little",
+          "count": 2,
+          "timeoutMs": 1500
+        }
+      }
+    ]
+  },
+  {
+    "id": "plc-trigger-camera",
+    "category": "流程",
+    "name": "PLC 信号 → 相机采集 → 检测",
+    "image": "parts.png",
+    "camera": true,
+    "description": "先向本机模拟 PLC 写入就绪值，再连续采样确认 150 ms，触发模拟相机采集及轮廓检测。仅访问本机模拟设备。",
+    "expected": "等待模块触发为是；相机采集后检测 3 个目标，流程变量 triggeredCount=3。",
+    "steps": [
+      {
+        "operation": "modbus_write",
+        "params": {
+          "transport": "simulator",
+          "address": 60,
+          "value": 1
+        }
+      },
+      {
+        "operation": "modbus_wait",
+        "params": {
+          "transport": "simulator",
+          "area": "holding",
+          "address": 60,
+          "comparison": "eq",
+          "expectedValue": 1,
+          "triggerMode": "level",
+          "pollIntervalMs": 50,
+          "stableMs": 150,
+          "waitTimeoutMs": 1500,
+          "onTimeout": "error",
+          "timeoutMs": 500
+        }
+      },
+      {
+        "operation": "camera_capture",
+        "params": {
+          "driver": "simulator",
+          "deviceId": "synthetic-parts",
+          "trigger": "freerun",
+          "timeoutMs": 5000
+        }
+      },
+      {
+        "operation": "geometry",
+        "params": {
+          "feature": "contours",
+          "threshold": 127,
+          "minArea": 50
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "triggeredCount",
+          "value": 0
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 4,
+        "param": "value",
+        "source": 3,
+        "field": "count"
+      }
+    ]
+  },
+  {
+    "id": "plc-edge-timeout",
+    "category": "流程",
+    "name": "PLC 边沿等待 → 超时分支",
+    "image": "parts.png",
+    "description": "模拟值初始已经满足条件，但边沿模式必须先观察不成立再成立。等待 500 ms 后输出未触发，条件节点选择超时分支。",
+    "expected": "等待模块 triggered=否；检测分支跳过；流程变量 triggerRoute=TIMEOUT。",
+    "steps": [
+      {
+        "operation": "modbus_write",
+        "params": {
+          "transport": "simulator",
+          "address": 60,
+          "value": 1
+        }
+      },
+      {
+        "operation": "modbus_wait",
+        "params": {
+          "transport": "simulator",
+          "area": "holding",
+          "address": 60,
+          "comparison": "eq",
+          "expectedValue": 1,
+          "triggerMode": "rising",
+          "pollIntervalMs": 50,
+          "stableMs": 0,
+          "waitTimeoutMs": 500,
+          "onTimeout": "continue",
+          "timeoutMs": 500
+        }
+      },
+      {
+        "operation": "condition",
+        "params": {
+          "comparison": "is_true",
+          "left": false
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "name": "triggerRoute",
+          "value": "DETECT"
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "name": "triggerRoute",
+          "value": "TIMEOUT"
+        }
+      },
+      {
+        "operation": "branch_merge",
+        "params": {}
+      }
+    ],
+    "connections": [
+      [
+        -1,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        3,
+        "true"
+      ],
+      [
+        2,
+        4,
+        "false"
+      ],
+      [
+        3,
+        5
+      ],
+      [
+        4,
+        5
+      ]
+    ],
+    "bindings": [
+      {
+        "step": 2,
+        "param": "left",
+        "source": 1,
+        "field": "triggered"
+      }
+    ]
+  },
+  {
+    "id": "plc-wait-stop",
+    "category": "流程",
+    "name": "PLC 等待超时 → 停止检测",
+    "image": "parts.png",
+    "description": "本机模拟 PLC 值为 0，要求值为 1。等待 500 ms 未满足，模块报错并停止，不执行后续视觉检测。",
+    "expected": "第二步等待超时，后续几何检测不执行。",
+    "steps": [
+      {
+        "operation": "modbus_write",
+        "params": {
+          "transport": "simulator",
+          "address": 60,
+          "value": 0
+        }
+      },
+      {
+        "operation": "modbus_wait",
+        "params": {
+          "transport": "simulator",
+          "area": "holding",
+          "address": 60,
+          "comparison": "eq",
+          "expectedValue": 1,
+          "triggerMode": "level",
+          "pollIntervalMs": 50,
+          "stableMs": 0,
+          "waitTimeoutMs": 500,
+          "onTimeout": "error",
+          "timeoutMs": 500
+        }
+      },
+      {
+        "operation": "geometry",
+        "params": {
+          "feature": "contours",
+          "threshold": 127,
+          "minArea": 50
+        }
+      }
+    ]
+  }
+]

@@ -1,0 +1,396 @@
+{
+  "apiVersion": 1,
+  "id": "sieans-shape",
+  "name": "SIEANS 2D 轮廓形状识别",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "OpenCV 二值外轮廓 Hu 匹配与孔洞检查；支持旋转、平移和均匀缩放识别，不产生定位角度或透视位姿。",
+  "operators": [
+    {
+      "id": "teach",
+      "name": "轮廓形状 · 建立模型",
+      "description": "在区域内保留恰好一个完整目标，模型可绑定变量供后续图像复用。",
+      "entry": "shape.py",
+      "input": "image",
+      "timeoutMs": 10000,
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "required": true,
+          "default": "teach",
+          "choices": [
+            {
+              "value": "teach",
+              "label": "轮廓形状 · 建立模型"
+            }
+          ]
+        },
+        {
+          "key": "roiX",
+          "label": "检测区域 X (px)",
+          "type": "integer",
+          "required": true,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 32767
+        },
+        {
+          "key": "roiY",
+          "label": "检测区域 Y (px)",
+          "type": "integer",
+          "required": true,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 32767
+        },
+        {
+          "key": "roiWidth",
+          "label": "区域宽度（0 到右边界）",
+          "type": "integer",
+          "required": true,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 32768
+        },
+        {
+          "key": "roiHeight",
+          "label": "区域高度（0 到下边界）",
+          "type": "integer",
+          "required": true,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 32768
+        },
+        {
+          "key": "threshold",
+          "label": "分割灰度阈值",
+          "type": "integer",
+          "required": true,
+          "default": 127,
+          "minimum": 0,
+          "maximum": 255
+        },
+        {
+          "key": "polarity",
+          "label": "前景极性",
+          "type": "string",
+          "required": true,
+          "default": "bright",
+          "choices": [
+            {
+              "value": "bright",
+              "label": "亮目标 > 阈值"
+            },
+            {
+              "value": "dark",
+              "label": "暗目标 ≤ 阈值"
+            }
+          ]
+        },
+        {
+          "key": "minimumArea",
+          "label": "最小外轮廓面积 (px²)",
+          "type": "number",
+          "required": true,
+          "default": 100,
+          "minimum": 4,
+          "maximum": 16000000
+        },
+        {
+          "key": "maximumArea",
+          "label": "最大外轮廓面积 (px²)",
+          "type": "number",
+          "required": true,
+          "default": 1000000,
+          "minimum": 4,
+          "maximum": 16000000
+        },
+        {
+          "key": "minimumHoleRatio",
+          "label": "计入孔洞的最小外轮廓面积比例",
+          "type": "number",
+          "required": true,
+          "default": 0.005,
+          "minimum": 0,
+          "maximum": 1
+        }
+      ],
+      "outputs": [
+        {
+          "key": "items",
+          "label": "候选形状明细",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "candidateCount",
+          "label": "完整候选数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "boundaryRejectedCount",
+          "label": "边界排除数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "count",
+          "label": "匹配数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "found",
+          "label": "是否找到匹配",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "passed",
+          "label": "是否通过",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "diagnostic",
+          "label": "判定说明",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "model",
+          "label": "轮廓模型",
+          "type": "object",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "match",
+      "name": "轮廓形状 · 旋转缩放识别",
+      "description": "Hu 外轮廓差异与面积比例、孔洞数量/比例筛选。输出外轮廓质心，不输出角度或位姿；不用于正反面识别。",
+      "entry": "shape.py",
+      "input": "image",
+      "timeoutMs": 10000,
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "required": true,
+          "default": "match",
+          "choices": [
+            {
+              "value": "match",
+              "label": "轮廓形状 · 旋转缩放识别"
+            }
+          ]
+        },
+        {
+          "key": "roiX",
+          "label": "检测区域 X (px)",
+          "type": "integer",
+          "required": true,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 32767
+        },
+        {
+          "key": "roiY",
+          "label": "检测区域 Y (px)",
+          "type": "integer",
+          "required": true,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 32767
+        },
+        {
+          "key": "roiWidth",
+          "label": "区域宽度（0 到右边界）",
+          "type": "integer",
+          "required": true,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 32768
+        },
+        {
+          "key": "roiHeight",
+          "label": "区域高度（0 到下边界）",
+          "type": "integer",
+          "required": true,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 32768
+        },
+        {
+          "key": "threshold",
+          "label": "分割灰度阈值",
+          "type": "integer",
+          "required": true,
+          "default": 127,
+          "minimum": 0,
+          "maximum": 255
+        },
+        {
+          "key": "polarity",
+          "label": "前景极性",
+          "type": "string",
+          "required": true,
+          "default": "bright",
+          "choices": [
+            {
+              "value": "bright",
+              "label": "亮目标 > 阈值"
+            },
+            {
+              "value": "dark",
+              "label": "暗目标 ≤ 阈值"
+            }
+          ]
+        },
+        {
+          "key": "minimumArea",
+          "label": "最小外轮廓面积 (px²)",
+          "type": "number",
+          "required": true,
+          "default": 100,
+          "minimum": 4,
+          "maximum": 16000000
+        },
+        {
+          "key": "maximumArea",
+          "label": "最大外轮廓面积 (px²)",
+          "type": "number",
+          "required": true,
+          "default": 1000000,
+          "minimum": 4,
+          "maximum": 16000000
+        },
+        {
+          "key": "minimumHoleRatio",
+          "label": "计入孔洞的最小外轮廓面积比例",
+          "type": "number",
+          "required": true,
+          "default": 0.005,
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "key": "model",
+          "label": "绑定已建立的轮廓模型",
+          "type": "object",
+          "required": true,
+          "default": {}
+        },
+        {
+          "key": "maximumScore",
+          "label": "最大 Hu 差异（越低越严格）",
+          "type": "number",
+          "required": true,
+          "default": 0.08,
+          "minimum": 0,
+          "maximum": 10
+        },
+        {
+          "key": "minimumScale",
+          "label": "最小面积等效线性比例",
+          "type": "number",
+          "required": true,
+          "default": 0.5,
+          "minimum": 0.01,
+          "maximum": 100
+        },
+        {
+          "key": "maximumScale",
+          "label": "最大面积等效线性比例",
+          "type": "number",
+          "required": true,
+          "default": 2,
+          "minimum": 0.01,
+          "maximum": 100
+        },
+        {
+          "key": "checkHoles",
+          "label": "检查孔洞数量与面积比例",
+          "type": "boolean",
+          "required": true,
+          "default": true
+        },
+        {
+          "key": "maximumHoleRatioError",
+          "label": "孔洞面积比例最大绝对差",
+          "type": "number",
+          "required": true,
+          "default": 0.03,
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "key": "minimumCount",
+          "label": "合格匹配数量下限",
+          "type": "integer",
+          "required": true,
+          "default": 1,
+          "minimum": 1,
+          "maximum": 200
+        },
+        {
+          "key": "maximumCount",
+          "label": "合格匹配数量上限",
+          "type": "integer",
+          "required": true,
+          "default": 1,
+          "minimum": 1,
+          "maximum": 200
+        }
+      ],
+      "outputs": [
+        {
+          "key": "items",
+          "label": "候选形状明细",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "candidateCount",
+          "label": "完整候选数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "boundaryRejectedCount",
+          "label": "边界排除数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "count",
+          "label": "匹配数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "found",
+          "label": "是否找到匹配",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "passed",
+          "label": "是否通过",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "diagnostic",
+          "label": "判定说明",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,416 @@
+[
+  {
+    "id": "depth-file-top",
+    "name": "深度文件 · 原始 PNG16 到顶面测量",
+    "category": "3D",
+    "depthFile": "depth-file-mm.png",
+    "depthParams": {
+      "projection": "rectified-z",
+      "fx": 100,
+      "fy": 100,
+      "cx": 31.5,
+      "cy": 23.5,
+      "scaleMeters": 0.001,
+      "minDepth": 0.1,
+      "maxDepth": 2,
+      "pointStride": 1,
+      "invalidValue": 65535,
+      "frame": "depth-file-optical"
+    },
+    "description": "原始光轴 Z 深度，已知针孔内参；原始深度保留，裁剪点云不裁剪深度栅格。测量是采样可见顶面尺寸，不是物体实体尺寸。",
+    "expected": "裁剪后 200 点，采样顶面宽度 185.25 mm；深度标签仍显示完整 64 × 48 原始图。",
+    "steps": [
+      {
+        "operation": "cloud_filter",
+        "params": {
+          "method": "crop",
+          "minimum": [
+            -1000,
+            -1000,
+            970
+          ],
+          "maximum": [
+            1000,
+            1000,
+            980
+          ]
+        }
+      },
+      {
+        "operation": "cloud_measure",
+        "params": {}
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "topWidth",
+          "value": {
+            "$ref": "results.placeholder.sizeX"
+          }
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 2,
+        "param": "value",
+        "source": 1,
+        "field": "sizeX"
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "深度文件 · 原始 PNG16 到顶面测量",
+      "rows": 8,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "depth-width",
+          "type": "value",
+          "label": "采样顶面宽度",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "precision": 2,
+          "unit": "mm",
+          "binding": {
+            "source": "result",
+            "nodeId": "measure",
+            "path": "sizeX"
+          }
+        },
+        {
+          "id": "depth-count",
+          "type": "value",
+          "label": "采样点数",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "measure",
+            "path": "pointCount"
+          }
+        },
+        {
+          "id": "depth-cloud",
+          "type": "cloud",
+          "label": "采样顶面点云",
+          "x": 0,
+          "y": 2,
+          "w": 12,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "maxPoints": 12000,
+          "pointSize": 3,
+          "initialView": "iso",
+          "binding": {
+            "source": "result",
+            "nodeId": "measure",
+            "path": ""
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 0,
+        "step": 1
+      },
+      {
+        "component": 1,
+        "step": 1
+      },
+      {
+        "component": 2,
+        "step": 1
+      }
+    ]
+  },
+  {
+    "id": "depth-file-stride",
+    "name": "深度文件 · 采样步长影响",
+    "category": "3D",
+    "depthFile": "depth-file-mm.png",
+    "depthParams": {
+      "projection": "rectified-z",
+      "fx": 100,
+      "fy": 100,
+      "cx": 31.5,
+      "cy": 23.5,
+      "scaleMeters": 0.001,
+      "minDepth": 0.1,
+      "maxDepth": 2,
+      "pointStride": 2,
+      "invalidValue": 65535,
+      "frame": "depth-file-optical"
+    },
+    "description": "原始光轴 Z 深度，已知针孔内参；原始深度保留，裁剪点云不裁剪深度栅格。测量是采样可见顶面尺寸，不是物体实体尺寸。",
+    "expected": "裁剪后 50 点，采样顶面宽度 175.5 mm；深度标签仍显示完整 64 × 48 原始图。",
+    "steps": [
+      {
+        "operation": "cloud_filter",
+        "params": {
+          "method": "crop",
+          "minimum": [
+            -1000,
+            -1000,
+            970
+          ],
+          "maximum": [
+            1000,
+            1000,
+            980
+          ]
+        }
+      },
+      {
+        "operation": "cloud_measure",
+        "params": {}
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "topWidth",
+          "value": {
+            "$ref": "results.placeholder.sizeX"
+          }
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 2,
+        "param": "value",
+        "source": 1,
+        "field": "sizeX"
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "深度文件 · 采样步长影响",
+      "rows": 8,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "depth-width",
+          "type": "value",
+          "label": "采样顶面宽度",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "precision": 2,
+          "unit": "mm",
+          "binding": {
+            "source": "result",
+            "nodeId": "measure",
+            "path": "sizeX"
+          }
+        },
+        {
+          "id": "depth-count",
+          "type": "value",
+          "label": "采样点数",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "measure",
+            "path": "pointCount"
+          }
+        },
+        {
+          "id": "depth-cloud",
+          "type": "cloud",
+          "label": "采样顶面点云",
+          "x": 0,
+          "y": 2,
+          "w": 12,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "maxPoints": 12000,
+          "pointSize": 3,
+          "initialView": "iso",
+          "binding": {
+            "source": "result",
+            "nodeId": "measure",
+            "path": ""
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 0,
+        "step": 1
+      },
+      {
+        "component": 1,
+        "step": 1
+      },
+      {
+        "component": 2,
+        "step": 1
+      }
+    ]
+  },
+  {
+    "id": "depth-file-scale",
+    "name": "深度文件 · 0.1 毫米原始单位",
+    "category": "3D",
+    "depthFile": "depth-file-tenth-mm.png",
+    "depthParams": {
+      "projection": "rectified-z",
+      "fx": 100,
+      "fy": 100,
+      "cx": 31.5,
+      "cy": 23.5,
+      "scaleMeters": 0.0001,
+      "minDepth": 0.1,
+      "maxDepth": 2,
+      "pointStride": 1,
+      "invalidValue": 65535,
+      "frame": "depth-file-optical"
+    },
+    "description": "原始光轴 Z 深度，已知针孔内参；原始深度保留，裁剪点云不裁剪深度栅格。测量是采样可见顶面尺寸，不是物体实体尺寸。",
+    "expected": "裁剪后 200 点，采样顶面宽度 185.25 mm；深度标签仍显示完整 64 × 48 原始图。",
+    "steps": [
+      {
+        "operation": "cloud_filter",
+        "params": {
+          "method": "crop",
+          "minimum": [
+            -1000,
+            -1000,
+            970
+          ],
+          "maximum": [
+            1000,
+            1000,
+            980
+          ]
+        }
+      },
+      {
+        "operation": "cloud_measure",
+        "params": {}
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "topWidth",
+          "value": {
+            "$ref": "results.placeholder.sizeX"
+          }
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 2,
+        "param": "value",
+        "source": 1,
+        "field": "sizeX"
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "深度文件 · 0.1 毫米原始单位",
+      "rows": 8,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "depth-width",
+          "type": "value",
+          "label": "采样顶面宽度",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "precision": 2,
+          "unit": "mm",
+          "binding": {
+            "source": "result",
+            "nodeId": "measure",
+            "path": "sizeX"
+          }
+        },
+        {
+          "id": "depth-count",
+          "type": "value",
+          "label": "采样点数",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "measure",
+            "path": "pointCount"
+          }
+        },
+        {
+          "id": "depth-cloud",
+          "type": "cloud",
+          "label": "采样顶面点云",
+          "x": 0,
+          "y": 2,
+          "w": 12,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "maxPoints": 12000,
+          "pointSize": 3,
+          "initialView": "iso",
+          "binding": {
+            "source": "result",
+            "nodeId": "measure",
+            "path": ""
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 0,
+        "step": 1
+      },
+      {
+        "component": 1,
+        "step": 1
+      },
+      {
+        "component": 2,
+        "step": 1
+      }
+    ]
+  }
+]

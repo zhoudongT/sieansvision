@@ -1,0 +1,761 @@
+{
+  "apiVersion": 1,
+  "id": "sieans-rigid",
+  "name": "SIEANS 三维坐标标定与转换",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "对应点刚体标定、独立验证、正反向点位/点云坐标转换。",
+  "operators": [
+    {
+      "id": "calibrate",
+      "name": "3D 对应点刚体标定",
+      "input": "none",
+      "entry": "rigid.py",
+      "timeoutMs": 15000,
+      "description": "默认点表为合成演示，生产须替换。按行对应同一物理点。至少三个不共线点，建议六个以上并覆盖三维空间。估计旋转/平移；长度单位明确换算，不估计未知缩放。此方法不是运动式手眼标定。",
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "default": "calibrate",
+          "required": true,
+          "choices": [
+            {
+              "value": "calibrate",
+              "label": "3D 对应点刚体标定"
+            }
+          ]
+        },
+        {
+          "key": "sourceFrame",
+          "label": "输入坐标系名称",
+          "type": "string",
+          "default": "camera-optical",
+          "required": true
+        },
+        {
+          "key": "targetFrame",
+          "label": "目标坐标系名称",
+          "type": "string",
+          "default": "fixture-base",
+          "required": true
+        },
+        {
+          "key": "sourceUnit",
+          "label": "输入点长度单位",
+          "type": "string",
+          "default": "mm",
+          "required": true,
+          "choices": [
+            {
+              "value": "mm",
+              "label": "毫米 mm"
+            },
+            {
+              "value": "m",
+              "label": "米 m"
+            }
+          ]
+        },
+        {
+          "key": "targetUnit",
+          "label": "目标点长度单位",
+          "type": "string",
+          "default": "mm",
+          "required": true,
+          "choices": [
+            {
+              "value": "mm",
+              "label": "毫米 mm"
+            },
+            {
+              "value": "m",
+              "label": "米 m"
+            }
+          ]
+        },
+        {
+          "key": "pairs",
+          "label": "输入/目标对应点表",
+          "type": "array",
+          "default": [
+            {
+              "sourceX": 0.0,
+              "sourceY": 0.0,
+              "sourceZ": 0.0,
+              "targetX": 300.0,
+              "targetY": 500.0,
+              "targetZ": 100.0
+            },
+            {
+              "sourceX": 100.0,
+              "sourceY": 0.0,
+              "sourceZ": 0.0,
+              "targetX": 300.0,
+              "targetY": 600.0,
+              "targetZ": 100.0
+            },
+            {
+              "sourceX": 0.0,
+              "sourceY": 100.0,
+              "sourceZ": 0.0,
+              "targetX": 200.0,
+              "targetY": 500.0,
+              "targetZ": 100.0
+            },
+            {
+              "sourceX": 0.0,
+              "sourceY": 0.0,
+              "sourceZ": 100.0,
+              "targetX": 300.0,
+              "targetY": 500.0,
+              "targetZ": 200.0
+            },
+            {
+              "sourceX": 100.0,
+              "sourceY": 100.0,
+              "sourceZ": 100.0,
+              "targetX": 200.0,
+              "targetY": 600.0,
+              "targetZ": 200.0
+            },
+            {
+              "sourceX": 30.0,
+              "sourceY": 60.0,
+              "sourceZ": 90.0,
+              "targetX": 240.0,
+              "targetY": 530.0,
+              "targetZ": 190.0
+            },
+            {
+              "sourceX": 90.0,
+              "sourceY": 30.0,
+              "sourceZ": 60.0,
+              "targetX": 270.0,
+              "targetY": 590.0,
+              "targetZ": 160.0
+            },
+            {
+              "sourceX": 60.0,
+              "sourceY": 90.0,
+              "sourceZ": 30.0,
+              "targetX": 210.0,
+              "targetY": 560.0,
+              "targetZ": 130.0
+            }
+          ],
+          "required": true,
+          "columns": [
+            {
+              "key": "sourceX",
+              "label": "输入点 X",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "sourceY",
+              "label": "输入点 Y",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "sourceZ",
+              "label": "输入点 Z",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "targetX",
+              "label": "目标对应点 X",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "targetY",
+              "label": "目标对应点 Y",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "targetZ",
+              "label": "目标对应点 Z",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            }
+          ],
+          "minimumRows": 3,
+          "maximumRows": 500
+        },
+        {
+          "key": "method",
+          "label": "拟合方式",
+          "type": "string",
+          "default": "all",
+          "required": true,
+          "choices": [
+            {
+              "value": "all",
+              "label": "全部对应点最小二乘"
+            },
+            {
+              "value": "ransac",
+              "label": "RANSAC 排除错误对应"
+            }
+          ]
+        },
+        {
+          "key": "inlierThreshold",
+          "label": "内点距离阈值（目标单位）",
+          "type": "number",
+          "default": 1,
+          "required": true,
+          "minimum": 1e-09,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "minimumInlierRatio",
+          "label": "最低内点比例",
+          "type": "number",
+          "default": 0.8,
+          "required": true,
+          "minimum": 0.1,
+          "maximum": 1
+        },
+        {
+          "key": "iterations",
+          "label": "RANSAC 抽样次数",
+          "type": "integer",
+          "default": 300,
+          "required": true,
+          "minimum": 10,
+          "maximum": 2000
+        },
+        {
+          "key": "seed",
+          "label": "RANSAC 随机种子",
+          "type": "integer",
+          "default": 0,
+          "required": true,
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        {
+          "key": "maximumRms",
+          "label": "最大均方根误差（目标单位）",
+          "type": "number",
+          "default": 0.2,
+          "required": true,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "maximumError",
+          "label": "最大单点误差（目标单位）",
+          "type": "number",
+          "default": 0.5,
+          "required": true,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        }
+      ],
+      "outputs": [
+        {
+          "key": "calibration",
+          "label": "可绑定的三维标定结果",
+          "type": "object",
+          "required": true
+        },
+        {
+          "key": "inlierCount",
+          "label": "有效对应点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "rejectedCount",
+          "label": "排除对应点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "rmsError",
+          "label": "拟合内点均方根误差",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "maximumError",
+          "label": "拟合内点最大误差",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "unit",
+          "label": "误差长度单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "逐点残差与内点表",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "note",
+          "label": "标定范围说明",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "points",
+      "name": "3D 点位坐标转换",
+      "input": "none",
+      "entry": "rigid.py",
+      "timeoutMs": 15000,
+      "description": "绑定完整标定结果，点表按标定输入单位填写。反向转换会交换坐标系与单位。输出点可绑定 PLC/脚本所需变量；不自动写设备。",
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "default": "points",
+          "required": true,
+          "choices": [
+            {
+              "value": "points",
+              "label": "3D 点位坐标转换"
+            }
+          ]
+        },
+        {
+          "key": "calibration",
+          "label": "完整三维标定结果",
+          "type": "object",
+          "default": {},
+          "required": true
+        },
+        {
+          "key": "inverse",
+          "label": "反向转换（目标到输入）",
+          "type": "boolean",
+          "default": false,
+          "required": true
+        },
+        {
+          "key": "points",
+          "label": "待转换点表",
+          "type": "array",
+          "default": [
+            {
+              "x": 10,
+              "y": 20,
+              "z": 30
+            }
+          ],
+          "required": true,
+          "columns": [
+            {
+              "key": "x",
+              "label": "X",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "y",
+              "label": "Y",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "z",
+              "label": "Z",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            }
+          ],
+          "minimumRows": 1,
+          "maximumRows": 500
+        }
+      ],
+      "outputs": [
+        {
+          "key": "sourceFrame",
+          "label": "输入坐标系",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "targetFrame",
+          "label": "输出坐标系",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "sourceUnit",
+          "label": "输入单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "targetUnit",
+          "label": "输出单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "pointCount",
+          "label": "点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "输入/输出坐标表",
+          "type": "array",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "cloud",
+      "name": "3D 点云坐标转换",
+      "input": "cloud",
+      "entry": "rigid.py",
+      "timeoutMs": 15000,
+      "description": "严格检查点云单位和坐标系，转换后更新名称/单位。颜色保留、法向仅旋转；清除旧投影内外参及图像/深度通道，避免混用两种坐标。",
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "default": "cloud",
+          "required": true,
+          "choices": [
+            {
+              "value": "cloud",
+              "label": "3D 点云坐标转换"
+            }
+          ]
+        },
+        {
+          "key": "calibration",
+          "label": "完整三维标定结果",
+          "type": "object",
+          "default": {},
+          "required": true
+        },
+        {
+          "key": "inverse",
+          "label": "反向转换（目标到输入）",
+          "type": "boolean",
+          "default": false,
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "key": "sourceFrame",
+          "label": "输入坐标系",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "targetFrame",
+          "label": "输出坐标系",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "sourceUnit",
+          "label": "输入单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "targetUnit",
+          "label": "输出单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "pointCount",
+          "label": "点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "minimum",
+          "label": "转换后各轴最小值",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "maximum",
+          "label": "转换后各轴最大值",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "note",
+          "label": "通道说明",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "check",
+      "name": "3D 标定独立点验证",
+      "input": "none",
+      "entry": "rigid.py",
+      "timeoutMs": 15000,
+      "description": "使用没有参与拟合的独立点表验证标定。超出误差门限返回不通过，供条件分支使用；不重新拟合，也不替换原标定。",
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "default": "check",
+          "required": true,
+          "choices": [
+            {
+              "value": "check",
+              "label": "3D 标定独立点验证"
+            }
+          ]
+        },
+        {
+          "key": "calibration",
+          "label": "完整三维标定结果",
+          "type": "object",
+          "default": {},
+          "required": true
+        },
+        {
+          "key": "inverse",
+          "label": "反向转换（目标到输入）",
+          "type": "boolean",
+          "default": false,
+          "required": true
+        },
+        {
+          "key": "pairs",
+          "label": "输入/目标对应点表",
+          "type": "array",
+          "default": [
+            {
+              "sourceX": 0.0,
+              "sourceY": 0.0,
+              "sourceZ": 0.0,
+              "targetX": 300.0,
+              "targetY": 500.0,
+              "targetZ": 100.0
+            },
+            {
+              "sourceX": 100.0,
+              "sourceY": 0.0,
+              "sourceZ": 0.0,
+              "targetX": 300.0,
+              "targetY": 600.0,
+              "targetZ": 100.0
+            },
+            {
+              "sourceX": 0.0,
+              "sourceY": 100.0,
+              "sourceZ": 0.0,
+              "targetX": 200.0,
+              "targetY": 500.0,
+              "targetZ": 100.0
+            },
+            {
+              "sourceX": 0.0,
+              "sourceY": 0.0,
+              "sourceZ": 100.0,
+              "targetX": 300.0,
+              "targetY": 500.0,
+              "targetZ": 200.0
+            },
+            {
+              "sourceX": 100.0,
+              "sourceY": 100.0,
+              "sourceZ": 100.0,
+              "targetX": 200.0,
+              "targetY": 600.0,
+              "targetZ": 200.0
+            },
+            {
+              "sourceX": 30.0,
+              "sourceY": 60.0,
+              "sourceZ": 90.0,
+              "targetX": 240.0,
+              "targetY": 530.0,
+              "targetZ": 190.0
+            },
+            {
+              "sourceX": 90.0,
+              "sourceY": 30.0,
+              "sourceZ": 60.0,
+              "targetX": 270.0,
+              "targetY": 590.0,
+              "targetZ": 160.0
+            },
+            {
+              "sourceX": 60.0,
+              "sourceY": 90.0,
+              "sourceZ": 30.0,
+              "targetX": 210.0,
+              "targetY": 560.0,
+              "targetZ": 130.0
+            }
+          ],
+          "required": true,
+          "columns": [
+            {
+              "key": "sourceX",
+              "label": "输入点 X",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "sourceY",
+              "label": "输入点 Y",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "sourceZ",
+              "label": "输入点 Z",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "targetX",
+              "label": "目标对应点 X",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "targetY",
+              "label": "目标对应点 Y",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "targetZ",
+              "label": "目标对应点 Z",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            }
+          ],
+          "minimumRows": 3,
+          "maximumRows": 500
+        },
+        {
+          "key": "maximumRms",
+          "label": "最大均方根误差（目标单位）",
+          "type": "number",
+          "default": 0.2,
+          "required": true,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "maximumError",
+          "label": "最大单点误差（目标单位）",
+          "type": "number",
+          "default": 0.5,
+          "required": true,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        }
+      ],
+      "outputs": [
+        {
+          "key": "passed",
+          "label": "独立点验证通过",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "rmsError",
+          "label": "验证点均方根误差",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "maximumError",
+          "label": "验证点最大误差",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "unit",
+          "label": "验证误差单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "pointCount",
+          "label": "验证点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "逐点误差与判定表",
+          "type": "array",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

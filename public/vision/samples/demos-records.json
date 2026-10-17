@@ -1,0 +1,667 @@
+[
+  {
+    "id": "records-inspection",
+    "name": "检测记录 · 连续累积与统计",
+    "category": "流程控制",
+    "image": "parts.png",
+    "variables": {
+      "sequence": 0,
+      "detectedCount": 0,
+      "currentRecord": {},
+      "inspectionRecords": [],
+      "recordCount": 0,
+      "meanCount": 0
+    },
+    "description": "每轮真实 OpenCV 计数，按字段创建记录并追加到流程变量；最多保留三行，满表显式丢弃最早记录。",
+    "expected": "每条 count=3；多次运行后行数最多 3，序号递增，统计平均值为 3。",
+    "steps": [
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "sequence",
+          "mode": "increment",
+          "value": 1
+        }
+      },
+      {
+        "operation": "geometry",
+        "params": {
+          "feature": "contours",
+          "threshold": 127,
+          "minArea": 50
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "detectedCount",
+          "value": 0
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-records",
+          "pluginVersion": "1.0.0",
+          "operatorId": "build",
+          "arguments": {
+            "fields": {
+              "sequence": {
+                "$ref": "flow.sequence"
+              },
+              "count": {
+                "$ref": "flow.detectedCount"
+              },
+              "passed": true
+            }
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "currentRecord",
+              "field": "record"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-records",
+          "pluginVersion": "1.0.0",
+          "operatorId": "append",
+          "arguments": {
+            "records": {
+              "$ref": "flow.inspectionRecords"
+            },
+            "record": {
+              "$ref": "flow.currentRecord"
+            },
+            "capacity": 3,
+            "overflow": "drop-oldest",
+            "keyField": "sequence"
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "inspectionRecords",
+              "field": "records"
+            },
+            {
+              "scope": "flow",
+              "name": "recordCount",
+              "field": "count"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-records",
+          "pluginVersion": "1.0.0",
+          "operatorId": "summary",
+          "arguments": {
+            "records": {
+              "$ref": "flow.inspectionRecords"
+            },
+            "field": "count"
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "meanCount",
+              "field": "summary.mean"
+            }
+          ]
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 2,
+        "param": "value",
+        "source": 1,
+        "field": "count"
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "SIEANS 检测记录采样",
+      "rows": 8,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "records-value-0",
+          "type": "value",
+          "label": "采样序号",
+          "x": 0,
+          "y": 0,
+          "w": 4,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "flow",
+            "path": "sequence"
+          }
+        },
+        {
+          "id": "records-value-1",
+          "type": "value",
+          "label": "保留记录数",
+          "x": 4,
+          "y": 0,
+          "w": 4,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "flow",
+            "path": "recordCount"
+          }
+        },
+        {
+          "id": "records-value-2",
+          "type": "value",
+          "label": "平均检测数量",
+          "x": 8,
+          "y": 0,
+          "w": 4,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "flow",
+            "path": "meanCount"
+          }
+        },
+        {
+          "id": "records-history",
+          "type": "table",
+          "label": "检测记录表",
+          "x": 0,
+          "y": 2,
+          "w": 7,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "flow",
+            "path": "inspectionRecords"
+          }
+        },
+        {
+          "id": "records-image",
+          "type": "image",
+          "label": "本轮检测图像",
+          "x": 7,
+          "y": 2,
+          "w": 5,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-geometry",
+            "path": ""
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 4,
+        "step": 1
+      }
+    ]
+  },
+  {
+    "id": "records-query",
+    "name": "记录查询 · 筛选排序与最大项",
+    "category": "流程控制",
+    "image": "parts.png",
+    "description": "筛选宽度至少 6 的记录、按宽度降序、读取首行并统计。显式跳过缺宽度的记录。",
+    "expected": "保留宽度 12、8、6；首行宽度 12，统计平均值 26/3。",
+    "variables": {
+      "filteredRecords": [],
+      "sortedRecords": []
+    },
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-records",
+          "pluginVersion": "1.0.0",
+          "operatorId": "filter",
+          "arguments": {
+            "records": [
+              {
+                "id": 1,
+                "width": 3
+              },
+              {
+                "id": 2,
+                "width": 8
+              },
+              {
+                "id": 3,
+                "width": 12
+              },
+              {
+                "id": 4
+              },
+              {
+                "id": 5,
+                "width": 6
+              }
+            ],
+            "field": "width",
+            "comparison": "gte",
+            "operand": {
+              "value": 6
+            },
+            "missing": "skip"
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "filteredRecords",
+              "field": "records"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-records",
+          "pluginVersion": "1.0.0",
+          "operatorId": "sort",
+          "arguments": {
+            "records": {
+              "$ref": "flow.filteredRecords"
+            },
+            "field": "width",
+            "direction": "descending"
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "sortedRecords",
+              "field": "records"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-records",
+          "pluginVersion": "1.0.0",
+          "operatorId": "select",
+          "arguments": {
+            "records": {
+              "$ref": "flow.sortedRecords"
+            },
+            "index": 0
+          },
+          "outputBindings": []
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-records",
+          "pluginVersion": "1.0.0",
+          "operatorId": "summary",
+          "arguments": {
+            "records": {
+              "$ref": "flow.sortedRecords"
+            },
+            "field": "width"
+          },
+          "outputBindings": []
+        }
+      }
+    ]
+  },
+  {
+    "id": "records-handeye",
+    "name": "采样记录 → 满六组后手眼标定",
+    "category": "流程控制",
+    "image": "handeye-board.png",
+    "description": "每次运行读取一组预制合成姿态、去重追加、提取十二列。满六组后才进入手眼求解，无需自定义脚本或复制配置文本。",
+    "expected": "前五次只累积；第六次起恢复相机→工具平移 (30,-20,80) mm。共八条预制样本，第九次索引越界并保留已提交记录。",
+    "variables": {
+      "sampleIndex": 0,
+      "poseCount": 0,
+      "sampleRecord": {},
+      "poseRecords": [],
+      "poseRows": []
+    },
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-records",
+          "pluginVersion": "1.0.0",
+          "operatorId": "select",
+          "arguments": {
+            "records": [
+              {
+                "sampleId": 1,
+                "robotX": 482.9997470935343,
+                "robotY": -69.81894840341016,
+                "robotZ": 280.929952753511,
+                "robotRx": -0.3509028159221339,
+                "robotRy": 0.1071885177756737,
+                "robotRz": 0.1331866461770381,
+                "cameraX": -80.0,
+                "cameraY": -50.0,
+                "cameraZ": 550.0,
+                "cameraRx": 0.25,
+                "cameraRy": 0.15,
+                "cameraRz": 0.0
+              },
+              {
+                "sampleId": 2,
+                "robotX": 462.1563467309473,
+                "robotY": 260.22703724787493,
+                "robotZ": 315.1488066728556,
+                "robotRx": 0.20486698877093795,
+                "robotRy": 0.13151064768266302,
+                "robotRz": 0.06040916514167263,
+                "cameraX": -77.0,
+                "cameraY": -49.0,
+                "cameraZ": 565.0,
+                "cameraRx": -0.3,
+                "cameraRy": 0.2,
+                "cameraRz": 0.1
+              },
+              {
+                "sampleId": 3,
+                "robotX": 182.64707224879209,
+                "robotY": -81.0963978127409,
+                "robotZ": 284.44773295185064,
+                "robotRx": -0.31437044403199876,
+                "robotRy": 0.5620991417230564,
+                "robotRz": 0.25952796810643414,
+                "cameraX": -74.0,
+                "cameraY": -48.0,
+                "cameraZ": 580.0,
+                "cameraRx": 0.15,
+                "cameraRy": -0.3,
+                "cameraRz": -0.1
+              },
+              {
+                "sampleId": 4,
+                "robotX": 219.95932365628502,
+                "robotY": 172.4413804908846,
+                "robotZ": 275.3929929284762,
+                "robotRx": 0.06264378642595719,
+                "robotRy": 0.5208997322129484,
+                "robotRz": -0.027901578221075373,
+                "cameraX": -71.0,
+                "cameraY": -47.0,
+                "cameraZ": 595.0,
+                "cameraRx": -0.2,
+                "cameraRy": -0.2,
+                "cameraRz": 0.2
+              },
+              {
+                "sampleId": 5,
+                "robotX": 349.0028569694355,
+                "robotY": -220.70722698556847,
+                "robotZ": 251.15234977367572,
+                "robotRx": -0.5432224334319292,
+                "robotRy": 0.32225604451606704,
+                "robotRz": 0.3364109269208864,
+                "cameraX": -68.0,
+                "cameraY": -46.0,
+                "cameraZ": 610.0,
+                "cameraRx": 0.4,
+                "cameraRy": -0.1,
+                "cameraRz": -0.2
+              },
+              {
+                "sampleId": 6,
+                "robotX": 600.9557544547034,
+                "robotY": 168.10152272580285,
+                "robotZ": 248.71250712732132,
+                "robotRx": 0.029775728385369894,
+                "robotRy": -0.09240162495713859,
+                "robotRz": 0.09024859099311702,
+                "cameraX": -65.0,
+                "cameraY": -45.0,
+                "cameraZ": 625.0,
+                "cameraRx": -0.1,
+                "cameraRy": 0.4,
+                "cameraRz": 0.05
+              },
+              {
+                "sampleId": 7,
+                "robotX": 587.824788526928,
+                "robotY": -94.61935710169689,
+                "robotZ": 214.7578272183918,
+                "robotRx": -0.38568763223612273,
+                "robotRy": -0.056065477729137246,
+                "robotRz": 0.24207475361992614,
+                "cameraX": -62.0,
+                "cameraY": -44.0,
+                "cameraZ": 640.0,
+                "cameraRx": 0.3,
+                "cameraRy": 0.3,
+                "cameraRz": -0.12
+              },
+              {
+                "sampleId": 8,
+                "robotX": 532.3463171390737,
+                "robotY": 250.93929100001563,
+                "robotZ": 225.6537924978541,
+                "robotRx": 0.16973882464868117,
+                "robotRy": 0.029528215521103383,
+                "robotRz": 0.0035808951585208364,
+                "cameraX": -59.0,
+                "cameraY": -43.0,
+                "cameraZ": 655.0,
+                "cameraRx": -0.25,
+                "cameraRy": 0.3,
+                "cameraRz": 0.15
+              }
+            ],
+            "index": {
+              "$ref": "flow.sampleIndex"
+            }
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "sampleRecord",
+              "field": "record"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-records",
+          "pluginVersion": "1.0.0",
+          "operatorId": "append",
+          "arguments": {
+            "records": {
+              "$ref": "flow.poseRecords"
+            },
+            "record": {
+              "$ref": "flow.sampleRecord"
+            },
+            "capacity": 8,
+            "keyField": "sampleId"
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "poseRecords",
+              "field": "records"
+            },
+            {
+              "scope": "flow",
+              "name": "poseCount",
+              "field": "count"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-records",
+          "pluginVersion": "1.0.0",
+          "operatorId": "project",
+          "arguments": {
+            "records": {
+              "$ref": "flow.poseRecords"
+            },
+            "columns": [
+              {
+                "output": "robotX",
+                "source": "robotX"
+              },
+              {
+                "output": "robotY",
+                "source": "robotY"
+              },
+              {
+                "output": "robotZ",
+                "source": "robotZ"
+              },
+              {
+                "output": "robotRx",
+                "source": "robotRx"
+              },
+              {
+                "output": "robotRy",
+                "source": "robotRy"
+              },
+              {
+                "output": "robotRz",
+                "source": "robotRz"
+              },
+              {
+                "output": "cameraX",
+                "source": "cameraX"
+              },
+              {
+                "output": "cameraY",
+                "source": "cameraY"
+              },
+              {
+                "output": "cameraZ",
+                "source": "cameraZ"
+              },
+              {
+                "output": "cameraRx",
+                "source": "cameraRx"
+              },
+              {
+                "output": "cameraRy",
+                "source": "cameraRy"
+              },
+              {
+                "output": "cameraRz",
+                "source": "cameraRz"
+              }
+            ]
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "poseRows",
+              "field": "records"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "sampleIndex",
+          "mode": "increment",
+          "value": 1
+        }
+      },
+      {
+        "operation": "condition",
+        "params": {
+          "comparison": "gte",
+          "left": {
+            "$ref": "flow.poseCount"
+          },
+          "right": 6
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-handeye",
+          "pluginVersion": "1.0.0",
+          "operatorId": "fit",
+          "arguments": {
+            "poses": {
+              "$ref": "flow.poseRows"
+            }
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "handeyeCalibration",
+              "field": "calibration"
+            },
+            {
+              "scope": "flow",
+              "name": "handeyeReference",
+              "field": "reference"
+            }
+          ]
+        }
+      }
+    ],
+    "connections": [
+      [
+        -1,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        3,
+        4
+      ],
+      [
+        4,
+        5,
+        "true"
+      ]
+    ]
+  }
+]

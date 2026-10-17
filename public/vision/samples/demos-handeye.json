@@ -1,0 +1,620 @@
+[
+  {
+    "id": "handeye-pose",
+    "name": "棋盘格位姿 · 相机外参求解",
+    "category": "定位与测量",
+    "image": "handeye-board.png",
+    "description": "已知合成内参，检测棋盘并输出标定板到相机的平移和轴角向量，展示坐标轴。",
+    "expected": "54 个内角点；Z 约 550 mm，rvec 约 (0.25,0.15,0) rad。普通棋盘原点须核对。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-handeye",
+          "pluginVersion": "1.0.0",
+          "operatorId": "pose",
+          "arguments": {
+            "intrinsics": {
+              "model": "pinhole-opencv5",
+              "version": 1,
+              "width": 640,
+              "height": 480,
+              "fx": 710.0,
+              "fy": 725.0,
+              "cx": 320.0,
+              "cy": 240.0,
+              "k1": 0.0,
+              "k2": 0.0,
+              "p1": 0.0,
+              "p2": 0.0,
+              "k3": 0.0
+            },
+            "reverseCorners": true
+          },
+          "outputBindings": []
+        }
+      }
+    ]
+  },
+  {
+    "id": "handeye-fit",
+    "name": "手眼标定 · 八姿态求解与独立验证",
+    "category": "3D 点云",
+    "image": "handeye-board.png",
+    "description": "八组同步合成姿态求相机→工具关系，另三组独立验证固定标定板位置。",
+    "expected": "相机→工具平移约 (30,-20,80) mm，独立验证通过。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-handeye",
+          "pluginVersion": "1.0.0",
+          "operatorId": "fit",
+          "arguments": {
+            "poses": [
+              {
+                "robotX": 482.9997470935343,
+                "robotY": -69.81894840341016,
+                "robotZ": 280.929952753511,
+                "robotRx": -0.3509028159221339,
+                "robotRy": 0.1071885177756737,
+                "robotRz": 0.1331866461770381,
+                "cameraX": -80.0,
+                "cameraY": -50.0,
+                "cameraZ": 550.0,
+                "cameraRx": 0.25,
+                "cameraRy": 0.15,
+                "cameraRz": 0.0
+              },
+              {
+                "robotX": 462.1563467309473,
+                "robotY": 260.22703724787493,
+                "robotZ": 315.1488066728556,
+                "robotRx": 0.20486698877093795,
+                "robotRy": 0.13151064768266302,
+                "robotRz": 0.06040916514167263,
+                "cameraX": -77.0,
+                "cameraY": -49.0,
+                "cameraZ": 565.0,
+                "cameraRx": -0.3,
+                "cameraRy": 0.2,
+                "cameraRz": 0.1
+              },
+              {
+                "robotX": 182.64707224879209,
+                "robotY": -81.0963978127409,
+                "robotZ": 284.44773295185064,
+                "robotRx": -0.31437044403199876,
+                "robotRy": 0.5620991417230564,
+                "robotRz": 0.25952796810643414,
+                "cameraX": -74.0,
+                "cameraY": -48.0,
+                "cameraZ": 580.0,
+                "cameraRx": 0.15,
+                "cameraRy": -0.3,
+                "cameraRz": -0.1
+              },
+              {
+                "robotX": 219.95932365628502,
+                "robotY": 172.4413804908846,
+                "robotZ": 275.3929929284762,
+                "robotRx": 0.06264378642595719,
+                "robotRy": 0.5208997322129484,
+                "robotRz": -0.027901578221075373,
+                "cameraX": -71.0,
+                "cameraY": -47.0,
+                "cameraZ": 595.0,
+                "cameraRx": -0.2,
+                "cameraRy": -0.2,
+                "cameraRz": 0.2
+              },
+              {
+                "robotX": 349.0028569694355,
+                "robotY": -220.70722698556847,
+                "robotZ": 251.15234977367572,
+                "robotRx": -0.5432224334319292,
+                "robotRy": 0.32225604451606704,
+                "robotRz": 0.3364109269208864,
+                "cameraX": -68.0,
+                "cameraY": -46.0,
+                "cameraZ": 610.0,
+                "cameraRx": 0.4,
+                "cameraRy": -0.1,
+                "cameraRz": -0.2
+              },
+              {
+                "robotX": 600.9557544547034,
+                "robotY": 168.10152272580285,
+                "robotZ": 248.71250712732132,
+                "robotRx": 0.029775728385369894,
+                "robotRy": -0.09240162495713859,
+                "robotRz": 0.09024859099311702,
+                "cameraX": -65.0,
+                "cameraY": -45.0,
+                "cameraZ": 625.0,
+                "cameraRx": -0.1,
+                "cameraRy": 0.4,
+                "cameraRz": 0.05
+              },
+              {
+                "robotX": 587.824788526928,
+                "robotY": -94.61935710169689,
+                "robotZ": 214.7578272183918,
+                "robotRx": -0.38568763223612273,
+                "robotRy": -0.056065477729137246,
+                "robotRz": 0.24207475361992614,
+                "cameraX": -62.0,
+                "cameraY": -44.0,
+                "cameraZ": 640.0,
+                "cameraRx": 0.3,
+                "cameraRy": 0.3,
+                "cameraRz": -0.12
+              },
+              {
+                "robotX": 532.3463171390737,
+                "robotY": 250.93929100001563,
+                "robotZ": 225.6537924978541,
+                "robotRx": 0.16973882464868117,
+                "robotRy": 0.029528215521103383,
+                "robotRz": 0.0035808951585208364,
+                "cameraX": -59.0,
+                "cameraY": -43.0,
+                "cameraZ": 655.0,
+                "cameraRx": -0.25,
+                "cameraRy": 0.3,
+                "cameraRz": 0.15
+              }
+            ]
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "handeyeCalibration",
+              "field": "calibration"
+            },
+            {
+              "scope": "flow",
+              "name": "handeyeReference",
+              "field": "reference"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-handeye",
+          "pluginVersion": "1.0.0",
+          "operatorId": "check",
+          "arguments": {
+            "calibration": {
+              "$ref": "flow.handeyeCalibration"
+            },
+            "reference": {
+              "$ref": "flow.handeyeReference"
+            },
+            "poses": [
+              {
+                "robotX": 520.7782320642114,
+                "robotY": -177.829598831588,
+                "robotZ": 185.20687667154738,
+                "robotRx": -0.4399384657118058,
+                "robotRy": 0.046869694344545645,
+                "robotRz": 0.06467827554850458,
+                "cameraX": -56.0,
+                "cameraY": -42.0,
+                "cameraZ": 670.0,
+                "cameraRx": 0.35,
+                "cameraRy": 0.2,
+                "cameraRz": 0.06
+              },
+              {
+                "robotX": 133.57568644114235,
+                "robotY": 109.328592444444,
+                "robotZ": 195.31115060899162,
+                "robotRx": -0.028078711536237335,
+                "robotRy": 0.5566523147180995,
+                "robotRz": 0.0705252369247971,
+                "cameraX": -53.0,
+                "cameraY": -41.0,
+                "cameraZ": 685.0,
+                "cameraRx": -0.12,
+                "cameraRy": -0.25,
+                "cameraRz": 0.1
+              },
+              {
+                "robotX": 216.46780917107247,
+                "robotY": -134.92497275749082,
+                "robotZ": 158.05438823890182,
+                "robotRx": -0.3468554609230766,
+                "robotRy": 0.4389453486054842,
+                "robotRz": 0.2012225862764599,
+                "cameraX": -50.0,
+                "cameraY": -40.0,
+                "cameraZ": 700.0,
+                "cameraRx": 0.2,
+                "cameraRy": -0.18,
+                "cameraRz": -0.05
+              }
+            ]
+          },
+          "outputBindings": []
+        }
+      }
+    ]
+  },
+  {
+    "id": "handeye-drift",
+    "name": "手眼验证 · 独立姿态误差检出",
+    "category": "3D 点云",
+    "image": "handeye-board.png",
+    "description": "独立验证中一组机器人 X 人为偏差 10 mm；不重拟合原模型。",
+    "expected": "独立验证不通过，最大平移误差约 10 mm。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-handeye",
+          "pluginVersion": "1.0.0",
+          "operatorId": "fit",
+          "arguments": {
+            "poses": [
+              {
+                "robotX": 482.9997470935343,
+                "robotY": -69.81894840341016,
+                "robotZ": 280.929952753511,
+                "robotRx": -0.3509028159221339,
+                "robotRy": 0.1071885177756737,
+                "robotRz": 0.1331866461770381,
+                "cameraX": -80.0,
+                "cameraY": -50.0,
+                "cameraZ": 550.0,
+                "cameraRx": 0.25,
+                "cameraRy": 0.15,
+                "cameraRz": 0.0
+              },
+              {
+                "robotX": 462.1563467309473,
+                "robotY": 260.22703724787493,
+                "robotZ": 315.1488066728556,
+                "robotRx": 0.20486698877093795,
+                "robotRy": 0.13151064768266302,
+                "robotRz": 0.06040916514167263,
+                "cameraX": -77.0,
+                "cameraY": -49.0,
+                "cameraZ": 565.0,
+                "cameraRx": -0.3,
+                "cameraRy": 0.2,
+                "cameraRz": 0.1
+              },
+              {
+                "robotX": 182.64707224879209,
+                "robotY": -81.0963978127409,
+                "robotZ": 284.44773295185064,
+                "robotRx": -0.31437044403199876,
+                "robotRy": 0.5620991417230564,
+                "robotRz": 0.25952796810643414,
+                "cameraX": -74.0,
+                "cameraY": -48.0,
+                "cameraZ": 580.0,
+                "cameraRx": 0.15,
+                "cameraRy": -0.3,
+                "cameraRz": -0.1
+              },
+              {
+                "robotX": 219.95932365628502,
+                "robotY": 172.4413804908846,
+                "robotZ": 275.3929929284762,
+                "robotRx": 0.06264378642595719,
+                "robotRy": 0.5208997322129484,
+                "robotRz": -0.027901578221075373,
+                "cameraX": -71.0,
+                "cameraY": -47.0,
+                "cameraZ": 595.0,
+                "cameraRx": -0.2,
+                "cameraRy": -0.2,
+                "cameraRz": 0.2
+              },
+              {
+                "robotX": 349.0028569694355,
+                "robotY": -220.70722698556847,
+                "robotZ": 251.15234977367572,
+                "robotRx": -0.5432224334319292,
+                "robotRy": 0.32225604451606704,
+                "robotRz": 0.3364109269208864,
+                "cameraX": -68.0,
+                "cameraY": -46.0,
+                "cameraZ": 610.0,
+                "cameraRx": 0.4,
+                "cameraRy": -0.1,
+                "cameraRz": -0.2
+              },
+              {
+                "robotX": 600.9557544547034,
+                "robotY": 168.10152272580285,
+                "robotZ": 248.71250712732132,
+                "robotRx": 0.029775728385369894,
+                "robotRy": -0.09240162495713859,
+                "robotRz": 0.09024859099311702,
+                "cameraX": -65.0,
+                "cameraY": -45.0,
+                "cameraZ": 625.0,
+                "cameraRx": -0.1,
+                "cameraRy": 0.4,
+                "cameraRz": 0.05
+              },
+              {
+                "robotX": 587.824788526928,
+                "robotY": -94.61935710169689,
+                "robotZ": 214.7578272183918,
+                "robotRx": -0.38568763223612273,
+                "robotRy": -0.056065477729137246,
+                "robotRz": 0.24207475361992614,
+                "cameraX": -62.0,
+                "cameraY": -44.0,
+                "cameraZ": 640.0,
+                "cameraRx": 0.3,
+                "cameraRy": 0.3,
+                "cameraRz": -0.12
+              },
+              {
+                "robotX": 532.3463171390737,
+                "robotY": 250.93929100001563,
+                "robotZ": 225.6537924978541,
+                "robotRx": 0.16973882464868117,
+                "robotRy": 0.029528215521103383,
+                "robotRz": 0.0035808951585208364,
+                "cameraX": -59.0,
+                "cameraY": -43.0,
+                "cameraZ": 655.0,
+                "cameraRx": -0.25,
+                "cameraRy": 0.3,
+                "cameraRz": 0.15
+              }
+            ]
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "handeyeCalibration",
+              "field": "calibration"
+            },
+            {
+              "scope": "flow",
+              "name": "handeyeReference",
+              "field": "reference"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-handeye",
+          "pluginVersion": "1.0.0",
+          "operatorId": "check",
+          "arguments": {
+            "calibration": {
+              "$ref": "flow.handeyeCalibration"
+            },
+            "reference": {
+              "$ref": "flow.handeyeReference"
+            },
+            "poses": [
+              {
+                "robotX": 530.7782320642114,
+                "robotY": -177.829598831588,
+                "robotZ": 185.20687667154738,
+                "robotRx": -0.4399384657118058,
+                "robotRy": 0.046869694344545645,
+                "robotRz": 0.06467827554850458,
+                "cameraX": -56.0,
+                "cameraY": -42.0,
+                "cameraZ": 670.0,
+                "cameraRx": 0.35,
+                "cameraRy": 0.2,
+                "cameraRz": 0.06
+              },
+              {
+                "robotX": 133.57568644114235,
+                "robotY": 109.328592444444,
+                "robotZ": 195.31115060899162,
+                "robotRx": -0.028078711536237335,
+                "robotRy": 0.5566523147180995,
+                "robotRz": 0.0705252369247971,
+                "cameraX": -53.0,
+                "cameraY": -41.0,
+                "cameraZ": 685.0,
+                "cameraRx": -0.12,
+                "cameraRy": -0.25,
+                "cameraRz": 0.1
+              },
+              {
+                "robotX": 216.46780917107247,
+                "robotY": -134.92497275749082,
+                "robotZ": 158.05438823890182,
+                "robotRx": -0.3468554609230766,
+                "robotRy": 0.4389453486054842,
+                "robotRz": 0.2012225862764599,
+                "cameraX": -50.0,
+                "cameraY": -40.0,
+                "cameraZ": 700.0,
+                "cameraRx": 0.2,
+                "cameraRy": -0.18,
+                "cameraRz": -0.05
+              }
+            ]
+          },
+          "outputBindings": []
+        }
+      }
+    ]
+  },
+  {
+    "id": "handeye-point",
+    "name": "手眼关系 → 相机点转换到工具",
+    "category": "3D 点云",
+    "image": "handeye-board.png",
+    "description": "手眼模型与现有刚体坐标插件兼容，将相机测得的点变换到工具坐标，不直接向机器人发送动作。",
+    "expected": "输出工具坐标点；长度单位与模型一致。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-handeye",
+          "pluginVersion": "1.0.0",
+          "operatorId": "fit",
+          "arguments": {
+            "poses": [
+              {
+                "robotX": 482.9997470935343,
+                "robotY": -69.81894840341016,
+                "robotZ": 280.929952753511,
+                "robotRx": -0.3509028159221339,
+                "robotRy": 0.1071885177756737,
+                "robotRz": 0.1331866461770381,
+                "cameraX": -80.0,
+                "cameraY": -50.0,
+                "cameraZ": 550.0,
+                "cameraRx": 0.25,
+                "cameraRy": 0.15,
+                "cameraRz": 0.0
+              },
+              {
+                "robotX": 462.1563467309473,
+                "robotY": 260.22703724787493,
+                "robotZ": 315.1488066728556,
+                "robotRx": 0.20486698877093795,
+                "robotRy": 0.13151064768266302,
+                "robotRz": 0.06040916514167263,
+                "cameraX": -77.0,
+                "cameraY": -49.0,
+                "cameraZ": 565.0,
+                "cameraRx": -0.3,
+                "cameraRy": 0.2,
+                "cameraRz": 0.1
+              },
+              {
+                "robotX": 182.64707224879209,
+                "robotY": -81.0963978127409,
+                "robotZ": 284.44773295185064,
+                "robotRx": -0.31437044403199876,
+                "robotRy": 0.5620991417230564,
+                "robotRz": 0.25952796810643414,
+                "cameraX": -74.0,
+                "cameraY": -48.0,
+                "cameraZ": 580.0,
+                "cameraRx": 0.15,
+                "cameraRy": -0.3,
+                "cameraRz": -0.1
+              },
+              {
+                "robotX": 219.95932365628502,
+                "robotY": 172.4413804908846,
+                "robotZ": 275.3929929284762,
+                "robotRx": 0.06264378642595719,
+                "robotRy": 0.5208997322129484,
+                "robotRz": -0.027901578221075373,
+                "cameraX": -71.0,
+                "cameraY": -47.0,
+                "cameraZ": 595.0,
+                "cameraRx": -0.2,
+                "cameraRy": -0.2,
+                "cameraRz": 0.2
+              },
+              {
+                "robotX": 349.0028569694355,
+                "robotY": -220.70722698556847,
+                "robotZ": 251.15234977367572,
+                "robotRx": -0.5432224334319292,
+                "robotRy": 0.32225604451606704,
+                "robotRz": 0.3364109269208864,
+                "cameraX": -68.0,
+                "cameraY": -46.0,
+                "cameraZ": 610.0,
+                "cameraRx": 0.4,
+                "cameraRy": -0.1,
+                "cameraRz": -0.2
+              },
+              {
+                "robotX": 600.9557544547034,
+                "robotY": 168.10152272580285,
+                "robotZ": 248.71250712732132,
+                "robotRx": 0.029775728385369894,
+                "robotRy": -0.09240162495713859,
+                "robotRz": 0.09024859099311702,
+                "cameraX": -65.0,
+                "cameraY": -45.0,
+                "cameraZ": 625.0,
+                "cameraRx": -0.1,
+                "cameraRy": 0.4,
+                "cameraRz": 0.05
+              },
+              {
+                "robotX": 587.824788526928,
+                "robotY": -94.61935710169689,
+                "robotZ": 214.7578272183918,
+                "robotRx": -0.38568763223612273,
+                "robotRy": -0.056065477729137246,
+                "robotRz": 0.24207475361992614,
+                "cameraX": -62.0,
+                "cameraY": -44.0,
+                "cameraZ": 640.0,
+                "cameraRx": 0.3,
+                "cameraRy": 0.3,
+                "cameraRz": -0.12
+              },
+              {
+                "robotX": 532.3463171390737,
+                "robotY": 250.93929100001563,
+                "robotZ": 225.6537924978541,
+                "robotRx": 0.16973882464868117,
+                "robotRy": 0.029528215521103383,
+                "robotRz": 0.0035808951585208364,
+                "cameraX": -59.0,
+                "cameraY": -43.0,
+                "cameraZ": 655.0,
+                "cameraRx": -0.25,
+                "cameraRy": 0.3,
+                "cameraRz": 0.15
+              }
+            ]
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "handeyeCalibration",
+              "field": "calibration"
+            },
+            {
+              "scope": "flow",
+              "name": "handeyeReference",
+              "field": "reference"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-rigid",
+          "pluginVersion": "1.0.0",
+          "operatorId": "points",
+          "arguments": {
+            "calibration": {
+              "$ref": "flow.handeyeCalibration"
+            },
+            "points": [
+              {
+                "x": 10,
+                "y": 20,
+                "z": 30
+              }
+            ]
+          },
+          "outputBindings": []
+        }
+      }
+    ]
+  }
+]

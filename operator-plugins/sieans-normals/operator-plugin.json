@@ -1,0 +1,209 @@
+{
+  "apiVersion": 1,
+  "id": "sieans-normals",
+  "name": "SIEANS 三维局部表面检测",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "基于 Open3D 邻域搜索和局部 PCA，检测表面法向、坡度与局部拟合残差。",
+  "operators": [
+    {
+      "id": "inspect",
+      "name": "3D 法向与坡度检测",
+      "description": "坡度为局部法向与参考方向的无向夹角（0–90°）；灰色点表示邻域不足或退化。残差是邻域平面拟合 RMS，不是标准粗糙度 Ra。阈值与邻域半径按点云单位设置。",
+      "entry": "normals.py",
+      "input": "cloud",
+      "timeoutMs": 30000,
+      "parameters": [
+        {
+          "key": "radius",
+          "label": "邻域半径（点云单位）",
+          "type": "number",
+          "required": true,
+          "minimum": 1e-09,
+          "maximum": 1000000000.0,
+          "default": 2.5
+        },
+        {
+          "key": "minimumNeighbors",
+          "label": "最少邻居数（含自身，去重后）",
+          "type": "integer",
+          "required": true,
+          "minimum": 3,
+          "maximum": 256,
+          "default": 6
+        },
+        {
+          "key": "maximumNeighbors",
+          "label": "最多邻居数",
+          "type": "integer",
+          "required": true,
+          "minimum": 3,
+          "maximum": 256,
+          "default": 30
+        },
+        {
+          "key": "referenceX",
+          "label": "参考方向 X",
+          "type": "number",
+          "required": true,
+          "default": 0
+        },
+        {
+          "key": "referenceY",
+          "label": "参考方向 Y",
+          "type": "number",
+          "required": true,
+          "default": 0
+        },
+        {
+          "key": "referenceZ",
+          "label": "参考方向 Z",
+          "type": "number",
+          "required": true,
+          "default": 1
+        },
+        {
+          "key": "maximumSlopeDegrees",
+          "label": "最大坡度 (°，0–90)",
+          "type": "number",
+          "required": true,
+          "minimum": 0,
+          "maximum": 90,
+          "default": 35
+        },
+        {
+          "key": "maximumResidual",
+          "label": "最大局部拟合残差（点云单位）",
+          "type": "number",
+          "required": true,
+          "minimum": 0,
+          "maximum": 1000000000.0,
+          "default": 0.1
+        },
+        {
+          "key": "maximumInvalidPercent",
+          "label": "允许无效点比例 (%)",
+          "type": "number",
+          "required": true,
+          "minimum": 0,
+          "maximum": 100,
+          "default": 0
+        },
+        {
+          "key": "maximumOutsidePercent",
+          "label": "允许有效点中超差比例 (%)",
+          "type": "number",
+          "required": true,
+          "minimum": 0,
+          "maximum": 100,
+          "default": 0
+        },
+        {
+          "key": "colorize",
+          "label": "输出着色点云（最多 10000 点）",
+          "type": "boolean",
+          "required": true,
+          "default": true
+        }
+      ],
+      "outputs": [
+        {
+          "key": "pointCount",
+          "label": "总点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "uniquePointCount",
+          "label": "独立坐标点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "validCount",
+          "label": "有效法向点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "invalidCount",
+          "label": "无效法向点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "invalidPercent",
+          "label": "无效点比例 (%)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "outsideCount",
+          "label": "有效点中超差点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "outsidePercent",
+          "label": "有效点中超差比例 (%)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "hasValidNormals",
+          "label": "存在有效法向",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "unit",
+          "label": "距离单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "referenceDirection",
+          "label": "归一化参考方向",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "meanSlopeDegrees",
+          "label": "平均坡度 (°)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "maxSlopeDegrees",
+          "label": "最大坡度 (°)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "maxLocalResidual",
+          "label": "最大局部拟合残差",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "passed",
+          "label": "是否通过",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "逐点检测明细（无效、超差优先）",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "detailsTruncated",
+          "label": "明细超过 500 条",
+          "type": "boolean",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

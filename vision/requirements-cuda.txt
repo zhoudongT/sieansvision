@@ -1,0 +1,5 @@
+# Optional NVIDIA CUDA 12.8 environment; keep separate from a CPU deployment.
+--extra-index-url https://download.pytorch.org/whl/cu128
+-r requirements-yolo.txt
+torch==2.11.0+cu128
+torchvision==0.26.0+cu128

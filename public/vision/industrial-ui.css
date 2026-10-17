@@ -1,0 +1,10 @@
+#communications-dialog{max-width:640px;width:calc(100vw - 40px)}
+#communications-dialog p{font-size:12px;line-height:1.8;color:#547189}
+.communication-card{border:1px solid #d3e1eb;border-radius:6px;margin:16px 0;padding:14px;background:#f7fafc}
+.communication-card h3{font-size:13px;margin:0 0 8px;color:#173e61}
+.communication-card button{margin:5px 6px 0 0}
+#simulator-status{font-size:12px;line-height:1.7}
+#modbus-value{width:100%;box-sizing:border-box;font-family:Consolas,monospace;font-size:12px;min-height:85px}
+#modbus-write-tools .muted{font-size:11px}
+
+#opcua-browser{width:min(1000px,94vw);max-height:88vh;overflow:auto}#opcua-browser .form-table{table-layout:auto}#opcua-browser .form-table th:last-child{width:170px}#opcua-browser .form-table td{overflow-wrap:anywhere}#opcua-browser .form-table button{margin:2px}#opcua-preview{margin-top:12px}#opcua-browse-node{min-width:240px;flex:1}.opcua-node-list{max-height:350px;overflow:auto}

@@ -1,0 +1,46 @@
+<script type="text/javascript">+(function(){
+ const labels={simulator:'本机模拟设备',broker:'外部消息服务器',plain:'TCP · 不加密',tls:'TLS · 验证证书',text:'UTF-8 文本',structured:'结构化数据',bytes:'字节数组'};
+ const fields=[['connection','消息服务器',['simulator','broker']],['host','服务器主机','text'],['port','端口','number',1,65535],['security','连接安全',['plain','tls']],['username','用户名','text'],['passwordEnv','密码环境变量名','text'],['caFile','CA 证书路径','text'],['clientCertificate','客户端证书路径','text'],['privateKey','客户端私钥路径','text'],['keyPasswordEnv','私钥密码环境变量','text'],['clientId','客户端标识','text'],['topic','主题','text'],['encoding','消息内容格式',['structured','text','bytes']],['qos','QoS 等级','number',0,2],['timeoutMs','操作超时 (ms)','number',100,60000]];
+ const defaults={connection:'simulator',host:'127.0.0.1',port:1883,security:'plain',topic:'sieans/inspection',encoding:'structured',qos:1,timeoutMs:5000,retain:true,acceptRetained:true,value:{count:0,passed:false}};
+ const types={number:'数值',string:'文本',boolean:'开关',array:'数组',object:'结构体',null:'空值'},initial={number:0,string:'',boolean:false,array:[],object:{},null:null};
+ function typeOf(v){return v===null?'null':Array.isArray(v)?'array':typeof v;}
+ function editor(value,change,label,depth=0){
+  const box=$('<div>').css({padding:'4px',minWidth:'120px'}),kind=typeOf(value),type=$('<select>').attr('aria-label',label+'类型').css('width','110px');
+  Object.keys(types).forEach(k=>type.append($('<option>').val(k).text(types[k])));type.val(kind);box.append(type);
+  type.on('change',function(){const next=structuredClone(initial[this.value]);change(next);box.replaceWith(editor(next,change,label,depth));});
+  if(depth>=20)return box.append($('<p>').text('嵌套层级达到编辑上限'));
+  if(kind==='array'||kind==='object'){
+   const details=$('<details>').prop('open',depth===0).append($('<summary>').text(types[kind]+' · '+Object.keys(value).length+' 项')),body=$('<div>');box.append(details.append(body));
+   const table=$('<table>').css({width:'100%',borderCollapse:'collapse'}).append($('<tr>').append($('<th>').text(kind==='array'?'序号':'字段'),$('<th>').text('类型与值'),$('<th>').text('操作')));body.append(table);let cursor=0;const keys=Object.keys(value),more=$('<button type="button">').text('显示更多');
+   const append=()=>{for(const key of keys.slice(cursor,cursor+50)){const row=$('<tr>');row.append($('<td>').text(kind==='array'?Number(key)+1:key),$('<td>').append(editor(value[key],next=>{value[key]=next;change(value);},label+' '+key,depth+1)),$('<td>').append($('<button type="button">').text('删除').on('click',()=>{if(kind==='array')value.splice(Number(key),1);else delete value[key];change(value);box.replaceWith(editor(value,change,label,depth));})));table.append(row);}cursor+=50;more.toggle(cursor<keys.length);};more.on('click',append);append();body.append(more);
+   const name=$('<input>').attr({placeholder:'字段名称','aria-label':label+'新字段'}).css('width','150px');if(kind==='object')body.append(name);
+   body.append($('<button type="button">').text(kind==='array'?'添加元素':'添加字段').on('click',()=>{const key=kind==='array'?value.length:name.val().trim();if(kind==='object'&&(!key||['__proto__','constructor','prototype'].includes(key)||Object.hasOwn(value,key))){name[0].setCustomValidity('字段名为空、重复或为保留字');name[0].reportValidity();return;}value[key]=0;change(value);box.replaceWith(editor(value,change,label,depth));}));name.on('input',function(){this.setCustomValidity('');});
+  }else if(kind==='boolean')box.append($('<select>').attr('aria-label',label).css('width','100px').append($('<option>').val('true').text('是'),$('<option>').val('false').text('否')).val(String(value)).on('change',function(){change(this.value==='true');}));
+  else if(kind==='null')box.append($('<span>').text('未设置'));
+  else {
+   let parsed=null;if(kind==='string'&&value.length<=1000000&&/^\s*[\[{]/.test(value)){try{parsed=JSON.parse(value);}catch{}}
+   if(parsed&&typeof parsed==='object')box.append($('<small>').text('结构化文本 · 按字段编辑，仍保存为文本'),editor(parsed,next=>change(JSON.stringify(next)),label+'字段',depth+1));
+   else box.append($('<input>').attr({type:kind==='number'?'number':'text',step:'any','aria-label':label,required:kind==='number'}).css('width','100%').val(value).on('input',function(){change(kind==='number'?(this.value===''?null:Number(this.value)):this.value);}));
+  }
+  return box;
+ }
+ for(const operation of ['mqtt_publish','mqtt_receive']){
+  const publish=operation==='mqtt_publish',type='machine-'+operation,name=publish?'MQTT 发布':'MQTT 接收';
+  let html='<div class="form-row"><label for="node-input-name">名称</label><input id="node-input-name"></div><input type="hidden" id="node-input-params"><div id="mqtt-fields"></div>';
+  if(publish)html+='<div class="form-row"><label>发送内容来源</label><select id="node-input-valueSource" aria-label="发送内容来源"><option value="message">输入消息内容</option><option value="constant">表单常量</option></select></div><div id="mqtt-value"></div>';
+  html+='<p>MQTT 3.1.1，每次执行独立连接，无自动重连。空客户端标识自动生成。密码填写服务器环境变量名。</p><p>'+(publish?'QoS 0 仅表示已发送；QoS 1/2 为服务器应答，不代表设备已执行。失败或停止不能回滚发布。':'限时等待一条消息后结束，不是长期订阅。关闭保留消息选项后等待新消息。')+'</p><p>输出结果在 msg.payload，完整信息在 msg.industrial；动态连接参数可由 msg.industrialParams 提供。</p>';
+  $('<script>',{type:'text/html','data-template-name':type}).html(html).appendTo('body');
+  $('<script>',{type:'text/html','data-help-name':type}).text(name+'：文本、结构化数据或字节数组，最多 64 KiB；使用 Catch 节点处理通信失败。外部服务器 TLS 始终验证证书，证书路径为服务器本地文件。').appendTo('body');
+  RED.nodes.registerType(type,{category:'工业通信',color:'#86c6d9',paletteLabel:name,inputs:1,outputs:1,icon:'font-awesome/fa-exchange',label:function(){return this.name||name;},defaults:{name:{value:''},valueSource:{value:'message'},params:{value:JSON.stringify(defaults),validate:function(v){try{const p=JSON.parse(v);return !!p&&typeof p.topic==='string'&&p.topic.length>0&&Number.isInteger(p.qos)&&p.qos>=0&&p.qos<=2&&Number.isInteger(p.timeoutMs)&&p.timeoutMs>=100&&p.timeoutMs<=60000&&(p.connection==='simulator'||(typeof p.host==='string'&&p.host.length>0&&Number.isInteger(p.port)&&p.port>=1&&p.port<=65535));}catch{return false;}}}},
+   oneditprepare:function(){
+    const p={...defaults,...JSON.parse(this.params||'{}')};this._mqtt=p;const list=[...fields,[publish?'retain':'acceptRetained',publish?'保留最后一条消息':'接收保留消息','checkbox']];
+    for(const [key,label,type,min,max] of list){const input=Array.isArray(type)?$('<select>'):$('<input>').attr('type',type);input.attr({id:'mqtt-'+key,'aria-label':label}).css('width','65%');if(Array.isArray(type))for(const value of type)input.append($('<option>').val(value).text(labels[value]||value));if(type==='checkbox')input.prop('checked',p[key]);else input.val(p[key]??'');if(type==='number')input.attr({min,max,step:1,required:true});$('#mqtt-fields').append($('<div>').addClass('form-row').attr('data-key',key).append($('<label>').text(label).css('width','32%'),input));}
+    const visibility=()=>{const remote=$('#mqtt-connection').val()==='broker',tls=$('#mqtt-security').val()==='tls';$('#mqtt-fields [data-key]').each(function(){const key=$(this).attr('data-key');$(this).toggle(!['host','port','security','username','passwordEnv','caFile','clientCertificate','privateKey','keyPasswordEnv'].includes(key)||(remote&&(!['caFile','clientCertificate','privateKey','keyPasswordEnv'].includes(key)||tls)));});$('#mqtt-value').toggle($('#node-input-valueSource').val()==='constant');};
+    if(publish)$('#mqtt-value').append(editor(structuredClone(p.value),v=>p.value=v,'发送内容'));
+    $('#mqtt-fields select,#node-input-valueSource').on('change',visibility);visibility();
+   },
+   oneditsave:function(){const p=this._mqtt;for(const [key,,type] of [...fields,[publish?'retain':'acceptRetained','', 'checkbox']]){const input=$('#mqtt-'+key);p[key]=type==='checkbox'?input.prop('checked'):type==='number'?(input.val()===''?null:Number(input.val())):input.val();}this.params=JSON.stringify(p);$('#node-input-params').val(this.params);delete this._mqtt;},oneditcancel:function(){delete this._mqtt;}
+  });
+ }
+})();
+</script>

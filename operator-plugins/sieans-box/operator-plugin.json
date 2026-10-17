@@ -1,0 +1,217 @@
+{
+  "apiVersion": 1,
+  "id": "sieans-box",
+  "name": "SIEANS 三维旋转包围盒",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "基于 Open3D 凸包优化的旋转包围盒长中短边、公差与角点；包围体积不是实体体积，方向不是机器人定位位姿。",
+  "operators": [
+    {
+      "id": "measure",
+      "name": "3D 旋转包围盒尺寸",
+      "description": "围绕完整已输入点集优化包围盒方向，按长中短边排序；拒绝共面或退化数据，不添加随机扰动。坐标轴尺寸仅作对照。",
+      "entry": "box.py",
+      "input": "cloud",
+      "timeoutMs": 30000,
+      "parameters": [
+        {
+          "key": "minimumThickness",
+          "label": "最小可靠厚度（输入点云单位）",
+          "type": "number",
+          "required": true,
+          "default": 0.0001,
+          "minimum": 1e-09,
+          "maximum": 1000000.0
+        },
+        {
+          "key": "minimumLong",
+          "label": "长边公差下限（输入单位）",
+          "type": "number",
+          "required": true,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "maximumLong",
+          "label": "长边公差上限（输入单位）",
+          "type": "number",
+          "required": true,
+          "default": 1000000000.0,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "minimumMiddle",
+          "label": "中边公差下限（输入单位）",
+          "type": "number",
+          "required": true,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "maximumMiddle",
+          "label": "中边公差上限（输入单位）",
+          "type": "number",
+          "required": true,
+          "default": 1000000000.0,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "minimumShort",
+          "label": "短边公差下限（输入单位）",
+          "type": "number",
+          "required": true,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "maximumShort",
+          "label": "短边公差上限（输入单位）",
+          "type": "number",
+          "required": true,
+          "default": 1000000000.0,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        }
+      ],
+      "outputs": [
+        {
+          "key": "found",
+          "label": "是否形成测量",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "passed",
+          "label": "是否通过",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "尺寸公差表",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "length",
+          "label": "旋转包围盒长边",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "width",
+          "label": "旋转包围盒中边",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "thickness",
+          "label": "旋转包围盒短边",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "boxCenterX",
+          "label": "包围盒中心 X",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "boxCenterY",
+          "label": "包围盒中心 Y",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "boxCenterZ",
+          "label": "包围盒中心 Z",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "boundingBoxVolume",
+          "label": "旋转包围盒体积（非实体体积）",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "axisAlignedVolume",
+          "label": "坐标轴包围盒体积",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "axisAlignedDimensions",
+          "label": "原坐标轴尺寸对照",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "axes",
+          "label": "右手单位轴方向表",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "corners",
+          "label": "包围盒角点表",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "pointCount",
+          "label": "输入点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "uniquePointCount",
+          "label": "独立点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "hullTriangles",
+          "label": "凸包三角面数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "nearEqualDimensions",
+          "label": "存在近等长边（方向可能不稳定）",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "unit",
+          "label": "输入坐标单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "frame",
+          "label": "输入坐标系",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "method",
+          "label": "计算方法",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "diagnostic",
+          "label": "检测说明",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

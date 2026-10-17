@@ -1,0 +1,138 @@
+[
+  {
+    "id": "c2efb8ae13fb4d07",
+    "type": "tab",
+    "label": "我的视觉工程",
+    "disabled": false,
+    "info": "由 Machine Studio 导出。运行画面上传图片执行视觉流程。"
+  },
+  {
+    "id": "f01a712f5cf84ff9",
+    "type": "ui-theme",
+    "name": "视觉主题",
+    "colors": {
+      "surface": "#ffffff",
+      "primary": "#2563eb",
+      "bgPage": "#eef2f7",
+      "groupBg": "#ffffff",
+      "groupOutline": "#cbd5e1"
+    },
+    "sizes": {
+      "density": "default",
+      "pagePadding": "12px",
+      "groupGap": "12px",
+      "groupBorderRadius": "8px",
+      "widgetGap": "12px"
+    }
+  },
+  {
+    "id": "8746a02d70b44eb4",
+    "type": "ui-page",
+    "name": "我的视觉工程",
+    "ui": "dashboard-base",
+    "path": "/vision-demo",
+    "icon": "image",
+    "layout": "grid",
+    "theme": "f01a712f5cf84ff9",
+    "order": 1,
+    "visible": "true",
+    "disabled": "false"
+  },
+  {
+    "id": "048675d90eba4ac5",
+    "type": "ui-group",
+    "name": "视觉运行",
+    "page": "8746a02d70b44eb4",
+    "width": "12",
+    "height": "1",
+    "order": 1,
+    "showTitle": true,
+    "visible": "true",
+    "disabled": "false",
+    "groupType": "default"
+  },
+  {
+    "id": "249686a088934102",
+    "type": "ui-template",
+    "z": "c2efb8ae13fb4d07",
+    "group": "048675d90eba4ac5",
+    "name": "图像输入",
+    "order": 1,
+    "width": 12,
+    "height": 1,
+    "templateScope": "local",
+    "format": "<template><div style=\"padding:12px\"><label>选择图像 <input type=\"file\" accept=\"image/*\" @change=\"readImage\"></label><p>{{ error }}</p></div></template><script>export default { data(){return {error:\"\"}}, methods:{readImage(event){const file=event.target.files[0];if(!file)return;if(file.size>12000000){this.error=\"图像超过 12 MB\";return;}this.error=\"\";const r=new FileReader();r.onload=()=>this.send({image:r.result});r.readAsDataURL(file);}}}</script>",
+    "x": 140,
+    "y": 160,
+    "wires": [
+      [
+        "7d1fec707e8845d2"
+      ]
+    ]
+  },
+  {
+    "id": "7d1fec707e8845d2",
+    "type": "machine-preprocess",
+    "z": "c2efb8ae13fb4d07",
+    "name": "图像预处理",
+    "params": "{\"method\":\"grayscale\"}",
+    "reference": "",
+    "x": 380,
+    "y": 160,
+    "wires": [
+      [
+        "507c0afb45944495"
+      ],
+      []
+    ]
+  },
+  {
+    "id": "507c0afb45944495",
+    "type": "machine-geometry",
+    "z": "c2efb8ae13fb4d07",
+    "name": "几何特征查找",
+    "params": "{\"feature\":\"contours\",\"threshold\":127,\"minArea\":50}",
+    "reference": "",
+    "x": 590,
+    "y": 160,
+    "wires": [
+      [
+        "f6f5ac03982344c3"
+      ],
+      []
+    ]
+  },
+  {
+    "id": "55805555e59a450f",
+    "type": "catch",
+    "z": "c2efb8ae13fb4d07",
+    "name": "视觉错误",
+    "scope": [
+      "7d1fec707e8845d2",
+      "507c0afb45944495"
+    ],
+    "uncaught": false,
+    "x": 180,
+    "y": 280,
+    "wires": [
+      [
+        "f6f5ac03982344c3"
+      ]
+    ]
+  },
+  {
+    "id": "f6f5ac03982344c3",
+    "type": "ui-template",
+    "z": "c2efb8ae13fb4d07",
+    "group": "048675d90eba4ac5",
+    "name": "视觉结果",
+    "order": 2,
+    "width": 12,
+    "height": 8,
+    "templateScope": "local",
+    "format": "<template><div><p v-if=\"msg?.error\" style=\"color:#d22\">{{ msg.error.message }}</p><img v-else-if=\"msg?.vision?.annotatedImage\" :src=\"msg.vision.annotatedImage\" style=\"max-width:100%;max-height:650px\"><pre style=\"white-space:pre-wrap;max-height:240px;overflow:auto\">{{ JSON.stringify(msg?.error ? {error:msg.error.message} : (msg?.vision?.result || {}), null, 2) }}</pre></div></template>",
+    "x": 800,
+    "y": 160,
+    "wires": []
+  }
+]

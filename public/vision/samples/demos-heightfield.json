@@ -1,0 +1,1124 @@
+[
+  {
+    "id": "heightfield-block",
+    "name": "倾斜基准 · 法向高度与体积",
+    "category": "3D",
+    "cloud": "heightfield-block.json",
+    "description": "独立基准点表标定 → 模型写流程变量 → 法向高度网格。绿色为合格有效格，红色高度超差，橙色为采样/高度跨度不合格格；测量点不参与基准拟合。",
+    "expected": "基准倾斜 30°，有效覆盖 100%，最大法向高度 2 mm，正向观测体积约 32 mm³，通过。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-heightfield",
+          "pluginVersion": "1.0.0",
+          "operatorId": "fit",
+          "arguments": {
+            "unit": "mm",
+            "frame": "height-fixture",
+            "points": [
+              {
+                "x": 5.669872981077806,
+                "y": -9.0,
+                "z": 32.5
+              },
+              {
+                "x": 14.330127018922195,
+                "y": -9.0,
+                "z": 27.5
+              },
+              {
+                "x": 14.330127018922195,
+                "y": 1.0,
+                "z": 27.5
+              },
+              {
+                "x": 5.669872981077806,
+                "y": 1.0,
+                "z": 32.5
+              }
+            ],
+            "normalHint": [
+              0.49999999999999994,
+              -0.0,
+              0.8660254037844387
+            ],
+            "axisHint": [
+              0.8660254037844387,
+              0.0,
+              -0.49999999999999994
+            ]
+          },
+          "outputBindings": [
+            {
+              "field": "plane",
+              "name": "heightDatum",
+              "scope": "flow"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-heightfield",
+          "pluginVersion": "1.0.0",
+          "operatorId": "integrate",
+          "arguments": {
+            "plane": {
+              "$ref": "flow.heightDatum"
+            },
+            "minimumPositiveVolume": 31.99,
+            "maximumPositiveVolume": 32.01
+          },
+          "outputBindings": [
+            {
+              "field": "passed",
+              "name": "heightOK",
+              "scope": "flow"
+            },
+            {
+              "field": "coverage",
+              "name": "heightCoverage",
+              "scope": "flow"
+            },
+            {
+              "field": "validCells",
+              "name": "heightCells",
+              "scope": "flow"
+            }
+          ]
+        }
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "倾斜基准 · 法向高度与体积",
+      "rows": 8,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "heightfield-summary-0",
+          "type": "value",
+          "label": "正向观测体积",
+          "x": 0,
+          "y": 0,
+          "w": 3,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 28,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "positiveVolume"
+          },
+          "precision": 3,
+          "unit": "mm³"
+        },
+        {
+          "id": "heightfield-summary-1",
+          "type": "value",
+          "label": "最大法向高度",
+          "x": 3,
+          "y": 0,
+          "w": 3,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 28,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "maximumHeight"
+          },
+          "precision": 3,
+          "unit": "mm"
+        },
+        {
+          "id": "heightfield-summary-2",
+          "type": "value",
+          "label": "有效格覆盖率",
+          "x": 6,
+          "y": 0,
+          "w": 3,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 28,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "coverage"
+          },
+          "precision": 3,
+          "unit": "比例"
+        },
+        {
+          "id": "heightfield-summary-3",
+          "type": "lamp",
+          "label": "测量通过",
+          "x": 9,
+          "y": 0,
+          "w": 3,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 28,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "passed"
+          }
+        },
+        {
+          "id": "heightfield-table",
+          "type": "table",
+          "label": "网格测量明细（缺测不填零）",
+          "x": 7,
+          "y": 2,
+          "w": 5,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "items"
+          }
+        },
+        {
+          "id": "heightfield-cloud",
+          "type": "cloud",
+          "label": "检测点云 · 拖动旋转 / 滚轮缩放",
+          "x": 0,
+          "y": 2,
+          "w": 7,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "maxPoints": 12000,
+          "pointSize": 3,
+          "initialView": "iso",
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": ""
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 0,
+        "step": 1
+      },
+      {
+        "component": 1,
+        "step": 1
+      },
+      {
+        "component": 2,
+        "step": 1
+      },
+      {
+        "component": 3,
+        "step": 1
+      },
+      {
+        "component": 4,
+        "step": 1
+      },
+      {
+        "component": 5,
+        "step": 1
+      }
+    ]
+  },
+  {
+    "id": "heightfield-missing",
+    "name": "倾斜高度网格 · 缺测拒绝通过",
+    "category": "3D",
+    "cloud": "heightfield-missing.json",
+    "description": "独立基准点表标定 → 模型写流程变量 → 法向高度网格。绿色为合格有效格，红色高度超差，橙色为采样/高度跨度不合格格；测量点不参与基准拟合。",
+    "expected": "缺少 10 格，有效覆盖 90%，最低覆盖要求 95%；缺失区域不填零、不补齐，判定不通过。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-heightfield",
+          "pluginVersion": "1.0.0",
+          "operatorId": "fit",
+          "arguments": {
+            "unit": "mm",
+            "frame": "height-fixture",
+            "points": [
+              {
+                "x": 5.669872981077806,
+                "y": -9.0,
+                "z": 32.5
+              },
+              {
+                "x": 14.330127018922195,
+                "y": -9.0,
+                "z": 27.5
+              },
+              {
+                "x": 14.330127018922195,
+                "y": 1.0,
+                "z": 27.5
+              },
+              {
+                "x": 5.669872981077806,
+                "y": 1.0,
+                "z": 32.5
+              }
+            ],
+            "normalHint": [
+              0.49999999999999994,
+              -0.0,
+              0.8660254037844387
+            ],
+            "axisHint": [
+              0.8660254037844387,
+              0.0,
+              -0.49999999999999994
+            ]
+          },
+          "outputBindings": [
+            {
+              "field": "plane",
+              "name": "heightDatum",
+              "scope": "flow"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-heightfield",
+          "pluginVersion": "1.0.0",
+          "operatorId": "integrate",
+          "arguments": {
+            "plane": {
+              "$ref": "flow.heightDatum"
+            }
+          },
+          "outputBindings": [
+            {
+              "field": "passed",
+              "name": "heightOK",
+              "scope": "flow"
+            },
+            {
+              "field": "coverage",
+              "name": "heightCoverage",
+              "scope": "flow"
+            },
+            {
+              "field": "validCells",
+              "name": "heightCells",
+              "scope": "flow"
+            }
+          ]
+        }
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "倾斜高度网格 · 缺测拒绝通过",
+      "rows": 8,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "heightfield-summary-0",
+          "type": "value",
+          "label": "正向观测体积",
+          "x": 0,
+          "y": 0,
+          "w": 3,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 28,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "positiveVolume"
+          },
+          "precision": 3,
+          "unit": "mm³"
+        },
+        {
+          "id": "heightfield-summary-1",
+          "type": "value",
+          "label": "最大法向高度",
+          "x": 3,
+          "y": 0,
+          "w": 3,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 28,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "maximumHeight"
+          },
+          "precision": 3,
+          "unit": "mm"
+        },
+        {
+          "id": "heightfield-summary-2",
+          "type": "value",
+          "label": "有效格覆盖率",
+          "x": 6,
+          "y": 0,
+          "w": 3,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 28,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "coverage"
+          },
+          "precision": 3,
+          "unit": "比例"
+        },
+        {
+          "id": "heightfield-summary-3",
+          "type": "lamp",
+          "label": "测量通过",
+          "x": 9,
+          "y": 0,
+          "w": 3,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 28,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "passed"
+          }
+        },
+        {
+          "id": "heightfield-table",
+          "type": "table",
+          "label": "网格测量明细（缺测不填零）",
+          "x": 7,
+          "y": 2,
+          "w": 5,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "items"
+          }
+        },
+        {
+          "id": "heightfield-cloud",
+          "type": "cloud",
+          "label": "检测点云 · 拖动旋转 / 滚轮缩放",
+          "x": 0,
+          "y": 2,
+          "w": 7,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "maxPoints": 12000,
+          "pointSize": 3,
+          "initialView": "iso",
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": ""
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 0,
+        "step": 1
+      },
+      {
+        "component": 1,
+        "step": 1
+      },
+      {
+        "component": 2,
+        "step": 1
+      },
+      {
+        "component": 3,
+        "step": 1
+      },
+      {
+        "component": 4,
+        "step": 1
+      },
+      {
+        "component": 5,
+        "step": 1
+      }
+    ]
+  },
+  {
+    "id": "heightfield-signed",
+    "name": "倾斜高度网格 · 凸起与凹槽",
+    "category": "3D",
+    "cloud": "heightfield-signed.json",
+    "description": "独立基准点表标定 → 模型写流程变量 → 法向高度网格。绿色为合格有效格，红色高度超差，橙色为采样/高度跨度不合格格；测量点不参与基准拟合。",
+    "expected": "正向观测体积 32 mm³、负向观测体积绝对值 10 mm³、净值 22 mm³；允许 −1～2 mm 高度。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-heightfield",
+          "pluginVersion": "1.0.0",
+          "operatorId": "fit",
+          "arguments": {
+            "unit": "mm",
+            "frame": "height-fixture",
+            "points": [
+              {
+                "x": 5.669872981077806,
+                "y": -9.0,
+                "z": 32.5
+              },
+              {
+                "x": 14.330127018922195,
+                "y": -9.0,
+                "z": 27.5
+              },
+              {
+                "x": 14.330127018922195,
+                "y": 1.0,
+                "z": 27.5
+              },
+              {
+                "x": 5.669872981077806,
+                "y": 1.0,
+                "z": 32.5
+              }
+            ],
+            "normalHint": [
+              0.49999999999999994,
+              -0.0,
+              0.8660254037844387
+            ],
+            "axisHint": [
+              0.8660254037844387,
+              0.0,
+              -0.49999999999999994
+            ]
+          },
+          "outputBindings": [
+            {
+              "field": "plane",
+              "name": "heightDatum",
+              "scope": "flow"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-heightfield",
+          "pluginVersion": "1.0.0",
+          "operatorId": "integrate",
+          "arguments": {
+            "plane": {
+              "$ref": "flow.heightDatum"
+            },
+            "minimumHeight": -1,
+            "maximumHeight": 2.01
+          },
+          "outputBindings": [
+            {
+              "field": "passed",
+              "name": "heightOK",
+              "scope": "flow"
+            },
+            {
+              "field": "coverage",
+              "name": "heightCoverage",
+              "scope": "flow"
+            },
+            {
+              "field": "validCells",
+              "name": "heightCells",
+              "scope": "flow"
+            }
+          ]
+        }
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "倾斜高度网格 · 凸起与凹槽",
+      "rows": 8,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "heightfield-summary-0",
+          "type": "value",
+          "label": "正向观测体积",
+          "x": 0,
+          "y": 0,
+          "w": 3,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 28,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "positiveVolume"
+          },
+          "precision": 3,
+          "unit": "mm³"
+        },
+        {
+          "id": "heightfield-summary-1",
+          "type": "value",
+          "label": "最大法向高度",
+          "x": 3,
+          "y": 0,
+          "w": 3,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 28,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "maximumHeight"
+          },
+          "precision": 3,
+          "unit": "mm"
+        },
+        {
+          "id": "heightfield-summary-2",
+          "type": "value",
+          "label": "有效格覆盖率",
+          "x": 6,
+          "y": 0,
+          "w": 3,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 28,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "coverage"
+          },
+          "precision": 3,
+          "unit": "比例"
+        },
+        {
+          "id": "heightfield-summary-3",
+          "type": "lamp",
+          "label": "测量通过",
+          "x": 9,
+          "y": 0,
+          "w": 3,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 28,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "passed"
+          }
+        },
+        {
+          "id": "heightfield-table",
+          "type": "table",
+          "label": "网格测量明细（缺测不填零）",
+          "x": 7,
+          "y": 2,
+          "w": 5,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "items"
+          }
+        },
+        {
+          "id": "heightfield-cloud",
+          "type": "cloud",
+          "label": "检测点云 · 拖动旋转 / 滚轮缩放",
+          "x": 0,
+          "y": 2,
+          "w": 7,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "maxPoints": 12000,
+          "pointSize": 3,
+          "initialView": "iso",
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": ""
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 0,
+        "step": 1
+      },
+      {
+        "component": 1,
+        "step": 1
+      },
+      {
+        "component": 2,
+        "step": 1
+      },
+      {
+        "component": 3,
+        "step": 1
+      },
+      {
+        "component": 4,
+        "step": 1
+      },
+      {
+        "component": 5,
+        "step": 1
+      }
+    ]
+  },
+  {
+    "id": "heightfield-layered",
+    "name": "倾斜高度网格 · 同格多层诊断",
+    "category": "3D",
+    "cloud": "heightfield-layered.json",
+    "description": "独立基准点表标定 → 模型写流程变量 → 法向高度网格。绿色为合格有效格，红色高度超差，橙色为采样/高度跨度不合格格；测量点不参与基准拟合。",
+    "expected": "一个格同时含 2 mm 和 5 mm 点，高度跨度超限，该格无效；要求 100% 覆盖时判定不通过。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-heightfield",
+          "pluginVersion": "1.0.0",
+          "operatorId": "fit",
+          "arguments": {
+            "unit": "mm",
+            "frame": "height-fixture",
+            "points": [
+              {
+                "x": 5.669872981077806,
+                "y": -9.0,
+                "z": 32.5
+              },
+              {
+                "x": 14.330127018922195,
+                "y": -9.0,
+                "z": 27.5
+              },
+              {
+                "x": 14.330127018922195,
+                "y": 1.0,
+                "z": 27.5
+              },
+              {
+                "x": 5.669872981077806,
+                "y": 1.0,
+                "z": 32.5
+              }
+            ],
+            "normalHint": [
+              0.49999999999999994,
+              -0.0,
+              0.8660254037844387
+            ],
+            "axisHint": [
+              0.8660254037844387,
+              0.0,
+              -0.49999999999999994
+            ]
+          },
+          "outputBindings": [
+            {
+              "field": "plane",
+              "name": "heightDatum",
+              "scope": "flow"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-heightfield",
+          "pluginVersion": "1.0.0",
+          "operatorId": "integrate",
+          "arguments": {
+            "plane": {
+              "$ref": "flow.heightDatum"
+            },
+            "minimumCoverage": 1,
+            "detailMode": "invalid"
+          },
+          "outputBindings": [
+            {
+              "field": "passed",
+              "name": "heightOK",
+              "scope": "flow"
+            },
+            {
+              "field": "coverage",
+              "name": "heightCoverage",
+              "scope": "flow"
+            },
+            {
+              "field": "validCells",
+              "name": "heightCells",
+              "scope": "flow"
+            }
+          ]
+        }
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "倾斜高度网格 · 同格多层诊断",
+      "rows": 8,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "heightfield-summary-0",
+          "type": "value",
+          "label": "正向观测体积",
+          "x": 0,
+          "y": 0,
+          "w": 3,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 28,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "positiveVolume"
+          },
+          "precision": 3,
+          "unit": "mm³"
+        },
+        {
+          "id": "heightfield-summary-1",
+          "type": "value",
+          "label": "最大法向高度",
+          "x": 3,
+          "y": 0,
+          "w": 3,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 28,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "maximumHeight"
+          },
+          "precision": 3,
+          "unit": "mm"
+        },
+        {
+          "id": "heightfield-summary-2",
+          "type": "value",
+          "label": "有效格覆盖率",
+          "x": 6,
+          "y": 0,
+          "w": 3,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 28,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "coverage"
+          },
+          "precision": 3,
+          "unit": "比例"
+        },
+        {
+          "id": "heightfield-summary-3",
+          "type": "lamp",
+          "label": "测量通过",
+          "x": 9,
+          "y": 0,
+          "w": 3,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 28,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "passed"
+          }
+        },
+        {
+          "id": "heightfield-table",
+          "type": "table",
+          "label": "网格测量明细（缺测不填零）",
+          "x": 7,
+          "y": 2,
+          "w": 5,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "items"
+          }
+        },
+        {
+          "id": "heightfield-cloud",
+          "type": "cloud",
+          "label": "检测点云 · 拖动旋转 / 滚轮缩放",
+          "x": 0,
+          "y": 2,
+          "w": 7,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "maxPoints": 12000,
+          "pointSize": 3,
+          "initialView": "iso",
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": ""
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 0,
+        "step": 1
+      },
+      {
+        "component": 1,
+        "step": 1
+      },
+      {
+        "component": 2,
+        "step": 1
+      },
+      {
+        "component": 3,
+        "step": 1
+      },
+      {
+        "component": 4,
+        "step": 1
+      },
+      {
+        "component": 5,
+        "step": 1
+      }
+    ]
+  },
+  {
+    "id": "heightfield-reference",
+    "name": "已知倾斜基准 · 直接模型测量",
+    "category": "3D",
+    "cloud": "heightfield-block.json",
+    "description": "工程直接保存已有基准模型，法向指定高度方向，模型单位/坐标系与点云严格一致。",
+    "expected": "直接得到 100 个有效格，最大高度 2 mm，正向观测体积约 32 mm³。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-heightfield",
+          "pluginVersion": "1.0.0",
+          "operatorId": "integrate",
+          "arguments": {
+            "plane": {
+              "format": "sieans-plane-grid-v1",
+              "unit": "mm",
+              "frame": "height-fixture",
+              "origin": [
+                10.0,
+                -4.0,
+                30.0
+              ],
+              "axisU": [
+                0.8660254037844387,
+                0.0,
+                -0.49999999999999994
+              ],
+              "axisV": [
+                0.0,
+                1.0,
+                0.0
+              ],
+              "normal": [
+                0.49999999999999994,
+                -0.0,
+                0.8660254037844387
+              ]
+            }
+          },
+          "outputBindings": [
+            {
+              "field": "positiveVolume",
+              "name": "observedVolume",
+              "scope": "flow"
+            },
+            {
+              "field": "maximumHeight",
+              "name": "maxNormalHeight",
+              "scope": "flow"
+            }
+          ]
+        }
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "已知倾斜基准 · 直接模型测量",
+      "rows": 8,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "heightfield-summary-0",
+          "type": "value",
+          "label": "正向观测体积",
+          "x": 0,
+          "y": 0,
+          "w": 3,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 28,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "positiveVolume"
+          },
+          "precision": 3,
+          "unit": "mm³"
+        },
+        {
+          "id": "heightfield-summary-1",
+          "type": "value",
+          "label": "最大法向高度",
+          "x": 3,
+          "y": 0,
+          "w": 3,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 28,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "maximumHeight"
+          },
+          "precision": 3,
+          "unit": "mm"
+        },
+        {
+          "id": "heightfield-summary-2",
+          "type": "value",
+          "label": "有效格覆盖率",
+          "x": 6,
+          "y": 0,
+          "w": 3,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 28,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "coverage"
+          },
+          "precision": 3,
+          "unit": "比例"
+        },
+        {
+          "id": "heightfield-summary-3",
+          "type": "lamp",
+          "label": "测量通过",
+          "x": 9,
+          "y": 0,
+          "w": 3,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 28,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "passed"
+          }
+        },
+        {
+          "id": "heightfield-table",
+          "type": "table",
+          "label": "网格测量明细（缺测不填零）",
+          "x": 7,
+          "y": 2,
+          "w": 5,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": "items"
+          }
+        },
+        {
+          "id": "heightfield-cloud",
+          "type": "cloud",
+          "label": "检测点云 · 拖动旋转 / 滚轮缩放",
+          "x": 0,
+          "y": 2,
+          "w": 7,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "maxPoints": 12000,
+          "pointSize": 3,
+          "initialView": "iso",
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-heightfield",
+            "path": ""
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 0,
+        "step": 0
+      },
+      {
+        "component": 1,
+        "step": 0
+      },
+      {
+        "component": 2,
+        "step": 0
+      },
+      {
+        "component": 3,
+        "step": 0
+      },
+      {
+        "component": 4,
+        "step": 0
+      },
+      {
+        "component": 5,
+        "step": 0
+      }
+    ]
+  }
+]

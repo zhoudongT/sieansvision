@@ -1,0 +1,557 @@
+{
+  "apiVersion": 1,
+  "id": "sieans-circle",
+  "name": "SIEANS 圆孔与双圆测量",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "径向卡尺提取亚像素边缘、RANSAC/几何拟合圆，以及内外圆中心偏移和理想圆壁厚；不等同圆度或同轴度计量。",
+  "operators": [
+    {
+      "id": "caliper",
+      "name": "圆形卡尺 · 圆心与直径",
+      "description": "径向向外采样、极性/边缘选择、稳健圆拟合和直径公差。有效比例以全部卡尺为分母，缺失或覆盖不足不输出虚假圆心。",
+      "entry": "circle.py",
+      "input": "image",
+      "timeoutMs": 10000,
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "required": true,
+          "default": "caliper",
+          "choices": [
+            {
+              "value": "caliper",
+              "label": "圆形边缘卡尺"
+            }
+          ]
+        },
+        {
+          "key": "centerX",
+          "label": "搜索中心 X (px)",
+          "type": "number",
+          "required": true,
+          "default": 320,
+          "minimum": 0,
+          "maximum": 32766
+        },
+        {
+          "key": "centerY",
+          "label": "搜索中心 Y (px)",
+          "type": "number",
+          "required": true,
+          "default": 240,
+          "minimum": 0,
+          "maximum": 32766
+        },
+        {
+          "key": "expectedRadius",
+          "label": "预计半径 (px)",
+          "type": "number",
+          "required": true,
+          "default": 80,
+          "minimum": 8,
+          "maximum": 16000
+        },
+        {
+          "key": "searchLength",
+          "label": "径向搜索长度 (px)",
+          "type": "number",
+          "required": true,
+          "default": 32,
+          "minimum": 16,
+          "maximum": 2048
+        },
+        {
+          "key": "caliperWidth",
+          "label": "切向平均宽度 (px)",
+          "type": "integer",
+          "required": true,
+          "default": 5,
+          "minimum": 1,
+          "maximum": 51
+        },
+        {
+          "key": "probeCount",
+          "label": "卡尺数量",
+          "type": "integer",
+          "required": true,
+          "default": 72,
+          "minimum": 12,
+          "maximum": 360
+        },
+        {
+          "key": "startAngle",
+          "label": "起始角（顺时针 °）",
+          "type": "number",
+          "required": true,
+          "default": 0,
+          "minimum": -360,
+          "maximum": 360
+        },
+        {
+          "key": "arcSpan",
+          "label": "搜索圆弧范围 (°)",
+          "type": "number",
+          "required": true,
+          "default": 360,
+          "minimum": 60,
+          "maximum": 360
+        },
+        {
+          "key": "minimumCoverage",
+          "label": "有效点最小角度覆盖 (°)",
+          "type": "number",
+          "required": true,
+          "default": 240,
+          "minimum": 60,
+          "maximum": 350
+        },
+        {
+          "key": "sigma",
+          "label": "灰度平滑尺度 (px)",
+          "type": "number",
+          "required": true,
+          "default": 1,
+          "minimum": 0.2,
+          "maximum": 5
+        },
+        {
+          "key": "minimumGradient",
+          "label": "最小灰度梯度",
+          "type": "number",
+          "required": true,
+          "default": 10,
+          "minimum": 0.1,
+          "maximum": 255
+        },
+        {
+          "key": "minimumValidRatio",
+          "label": "最小拟合有效点比例",
+          "type": "number",
+          "required": true,
+          "default": 0.8,
+          "minimum": 0.1,
+          "maximum": 1
+        },
+        {
+          "key": "maximumResidual",
+          "label": "剔除径向残差 (px)",
+          "type": "number",
+          "required": true,
+          "default": 1,
+          "minimum": 0.01,
+          "maximum": 100
+        },
+        {
+          "key": "maximumRms",
+          "label": "最大拟合 RMS (px)",
+          "type": "number",
+          "required": true,
+          "default": 0.3,
+          "minimum": 0.001,
+          "maximum": 100
+        },
+        {
+          "key": "unitsPerPixel",
+          "label": "每像素长度（均匀比例）",
+          "type": "number",
+          "required": true,
+          "default": 1,
+          "minimum": 1e-06,
+          "maximum": 10000
+        },
+        {
+          "key": "minimumDiameter",
+          "label": "合格直径下限",
+          "type": "number",
+          "required": true,
+          "default": 150,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "maximumDiameter",
+          "label": "合格直径上限",
+          "type": "number",
+          "required": true,
+          "default": 170,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "polarity",
+          "label": "沿半径向外的边缘极性",
+          "type": "string",
+          "required": true,
+          "default": "falling",
+          "choices": [
+            {
+              "value": "falling",
+              "label": "亮 → 暗"
+            },
+            {
+              "value": "rising",
+              "label": "暗 → 亮"
+            },
+            {
+              "value": "either",
+              "label": "任意极性"
+            }
+          ]
+        },
+        {
+          "key": "selection",
+          "label": "多个候选边缘的选择",
+          "type": "string",
+          "required": true,
+          "default": "strongest",
+          "choices": [
+            {
+              "value": "strongest",
+              "label": "最强边缘"
+            },
+            {
+              "value": "inner",
+              "label": "最内边缘"
+            },
+            {
+              "value": "outer",
+              "label": "最外边缘"
+            }
+          ]
+        },
+        {
+          "key": "unit",
+          "label": "长度单位",
+          "type": "string",
+          "required": true,
+          "default": "px",
+          "choices": [
+            {
+              "value": "px",
+              "label": "px"
+            },
+            {
+              "value": "mm",
+              "label": "mm"
+            },
+            {
+              "value": "cm",
+              "label": "cm"
+            },
+            {
+              "value": "m",
+              "label": "m"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "key": "found",
+          "label": "是否形成有效测量",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "passed",
+          "label": "检测通过",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "unit",
+          "label": "长度单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "unitsPerPixel",
+          "label": "每像素长度",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "检测明细",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "diagnostic",
+          "label": "诊断说明",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "probeCount",
+          "label": "卡尺数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "detectedCount",
+          "label": "检出边缘点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "missingCount",
+          "label": "未检出卡尺数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "inlierCount",
+          "label": "拟合采用点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "validRatio",
+          "label": "拟合有效点比例",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "circle",
+          "label": "拟合圆模型",
+          "type": "object",
+          "required": false
+        },
+        {
+          "key": "centerX",
+          "label": "圆心 X (px)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "centerY",
+          "label": "圆心 Y (px)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "radiusPixels",
+          "label": "半径 (px)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "diameterPixels",
+          "label": "直径 (px)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "diameter",
+          "label": "直径",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "rmsPixels",
+          "label": "径向拟合 RMS (px)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "maximumDeviationPixels",
+          "label": "拟合采用点最大偏差 (px)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "radialRangePixels",
+          "label": "拟合采用点径向残差范围 (px)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "coverageDeg",
+          "label": "有效点角度覆盖 (°)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "rejectedCount",
+          "label": "剔除边缘点数",
+          "type": "integer",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "nested",
+      "name": "双圆检测 · 中心偏移与壁厚",
+      "description": "绑定同一图像坐标系的内外圆模型，检测中心距离与理想圆壁厚范围；不是沿真实轮廓的壁厚或 GD&T 同轴度。",
+      "entry": "circle.py",
+      "input": "none",
+      "timeoutMs": 10000,
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "required": true,
+          "default": "nested",
+          "choices": [
+            {
+              "value": "nested",
+              "label": "双圆中心偏移与理想壁厚"
+            }
+          ]
+        },
+        {
+          "key": "innerCircle",
+          "label": "内圆模型（可绑定上游圆）",
+          "type": "object",
+          "required": true,
+          "default": {
+            "format": "sieans-circle-v1",
+            "width": 640,
+            "height": 480,
+            "centerX": 320,
+            "centerY": 240,
+            "radiusPixels": 80,
+            "unit": "px",
+            "unitsPerPixel": 1,
+            "imageSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        },
+        {
+          "key": "outerCircle",
+          "label": "外圆模型（可绑定上游圆）",
+          "type": "object",
+          "required": true,
+          "default": {
+            "format": "sieans-circle-v1",
+            "width": 640,
+            "height": 480,
+            "centerX": 320,
+            "centerY": 240,
+            "radiusPixels": 120,
+            "unit": "px",
+            "unitsPerPixel": 1,
+            "imageSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        },
+        {
+          "key": "maximumCenterDistance",
+          "label": "允许最大中心距离",
+          "type": "number",
+          "required": true,
+          "default": 2,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "minimumWall",
+          "label": "允许最小壁厚",
+          "type": "number",
+          "required": true,
+          "default": 38,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "maximumWall",
+          "label": "允许最大壁厚",
+          "type": "number",
+          "required": true,
+          "default": 42,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        }
+      ],
+      "outputs": [
+        {
+          "key": "found",
+          "label": "是否形成有效测量",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "passed",
+          "label": "检测通过",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "unit",
+          "label": "长度单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "unitsPerPixel",
+          "label": "每像素长度",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "检测明细",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "diagnostic",
+          "label": "诊断说明",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "nested",
+          "label": "内圆完全包含于外圆",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "centerDistancePixels",
+          "label": "中心距离 (px)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "centerDistance",
+          "label": "中心距离",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "offsetX",
+          "label": "中心偏移 X",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "offsetY",
+          "label": "中心偏移 Y",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "minimumWall",
+          "label": "理想圆最小壁厚",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "maximumWall",
+          "label": "理想圆最大壁厚",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "nominalWall",
+          "label": "半径差",
+          "type": "number",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

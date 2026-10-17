@@ -1,0 +1,608 @@
+[
+  {
+    "id": "plugin-brightness",
+    "name": "扩展插件 · 图像亮度检测",
+    "category": "检测",
+    "image": "parts.png",
+    "description": "独立 Python 插件使用 OpenCV 统计全图灰度亮度，输入与输出由插件清单生成表单。",
+    "expected": "像素数量 294000；亮度均值在 10–230 内；流程变量 brightnessOK 为是。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-inspection",
+          "pluginVersion": "1.0.0",
+          "operatorId": "brightness",
+          "arguments": {
+            "minimumMean": 10,
+            "maximumMean": 230
+          },
+          "outputBindings": [
+            {
+              "field": "passed",
+              "scope": "flow",
+              "name": "brightnessOK"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "plugin-centroid",
+    "name": "扩展插件 · 点云质心偏差",
+    "category": "3D",
+    "image": "parts.png",
+    "cloud": "cloud-box.json",
+    "description": "独立 Python 插件计算采样点质心并检查到目标的距离，按输入点云单位显示。",
+    "expected": "箱体表面采样质心为 (10, 5, 2.5) mm；到目标偏差接近 0，判定通过。采样质心不是实体质量重心。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-inspection",
+          "pluginVersion": "1.0.0",
+          "operatorId": "centroid",
+          "arguments": {
+            "targetX": 10,
+            "targetY": 5,
+            "targetZ": 2.5,
+            "tolerance": 0.01
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "color-regions",
+    "name": "色彩区域 · 红色跨端点筛选",
+    "category": "检测",
+    "image": "color-regions.png",
+    "description": "HSV 色相 170–10 跨越红色端点，排除绿色与蓝色。面积按像素计数，参数由插件生成表单。",
+    "expected": "2 个红色区域，面积 12000 和 4800 px²，总面积 16800 px²；流程变量 redCount=2。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-regions",
+          "pluginVersion": "1.0.0",
+          "operatorId": "color",
+          "arguments": {
+            "hueMin": 170,
+            "hueMax": 10,
+            "minimumCount": 2,
+            "maximumCount": 2,
+            "outputImage": "annotated"
+          },
+          "outputBindings": [
+            {
+              "field": "count",
+              "scope": "flow",
+              "name": "redCount"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "color-to-blobs",
+    "name": "色彩掩膜 → 斑点尺寸筛选",
+    "category": "流程",
+    "image": "color-regions.png",
+    "description": "色彩算子输出筛选后的二值图，再按像素面积保留大红色目标；展示插件图像通道的串联。",
+    "expected": "色彩筛选得到 2 个区域；斑点面积下限 6000 后剩 1 个，面积 12000 px²，质心 (109.5, 109.5)。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-regions",
+          "pluginVersion": "1.0.0",
+          "operatorId": "color",
+          "arguments": {
+            "outputImage": "mask"
+          },
+          "outputBindings": []
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-regions",
+          "pluginVersion": "1.0.0",
+          "operatorId": "blobs",
+          "arguments": {
+            "minimumArea": 6000,
+            "minimumCount": 1,
+            "maximumCount": 1,
+            "outputImage": "annotated"
+          },
+          "outputBindings": []
+        }
+      }
+    ]
+  },
+  {
+    "id": "surface-deviations",
+    "name": "3D 表面 · 凸起与凹陷偏差",
+    "category": "3D",
+    "image": "color-regions.png",
+    "cloud": "cloud-deviations.json",
+    "description": "以 z=10 mm 为基准面，检查 ±0.1 mm 公差带。超差点红色、合格点绿色；不代表最小区域平面度。",
+    "expected": "121 点中 2 点超差；最大偏差 +0.5 mm、最小 -0.3 mm，判定未通过。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-surface",
+          "pluginVersion": "1.0.0",
+          "operatorId": "plane-distance",
+          "arguments": {
+            "planeOffset": -10,
+            "lowerDistance": -0.1,
+            "upperDistance": 0.1
+          },
+          "outputBindings": [
+            {
+              "field": "outsideCount",
+              "scope": "flow",
+              "name": "surfaceDefects"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "planar-length",
+    "name": "透视标定 → 实际长度测量",
+    "category": "测量",
+    "image": "planar-calibration.png",
+    "description": "九组图像与实际坐标建立平面标定，保存到流程变量，再测量倾斜图像中的已知线段。",
+    "expected": "9 个有效标定点；测量长度约 60 mm。只适用于当前成像配置和同一平面。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-planar",
+          "pluginVersion": "1.0.0",
+          "operatorId": "calibrate",
+          "arguments": {
+            "points": [
+              {
+                "pixelX": 100.0,
+                "pixelY": 80.0,
+                "worldX": 0.0,
+                "worldY": 0.0
+              },
+              {
+                "pixelX": 333.33333333333337,
+                "pixelY": 79.16666666666667,
+                "worldX": 50.0,
+                "worldY": 0.0
+              },
+              {
+                "pixelX": 500.0,
+                "pixelY": 78.57142857142857,
+                "worldX": 100.0,
+                "worldY": 0.0
+              },
+              {
+                "pixelX": 118.66028708133973,
+                "pixelY": 234.44976076555025,
+                "worldX": 0.0,
+                "worldY": 30.0
+              },
+              {
+                "pixelX": 340.5622489959839,
+                "pixelY": 208.83534136546183,
+                "worldX": 50.0,
+                "worldY": 30.0
+              },
+              {
+                "pixelX": 501.03806228373696,
+                "pixelY": 190.31141868512108,
+                "worldX": 100.0,
+                "worldY": 30.0
+              },
+              {
+                "pixelX": 135.77981651376146,
+                "pixelY": 376.14678899082566,
+                "worldX": 0.0,
+                "worldY": 60.0
+              },
+              {
+                "pixelX": 347.28682170542635,
+                "pixelY": 329.4573643410852,
+                "worldX": 50.0,
+                "worldY": 60.0
+              },
+              {
+                "pixelX": 502.013422818792,
+                "pixelY": 295.3020134228188,
+                "worldX": 100.0,
+                "worldY": 60.0
+              }
+            ]
+          },
+          "outputBindings": [
+            {
+              "field": "calibration",
+              "name": "planeCalibration",
+              "scope": "flow"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-planar",
+          "pluginVersion": "1.0.0",
+          "operatorId": "measure",
+          "arguments": {
+            "calibration": {
+              "$ref": "flow.planeCalibration"
+            },
+            "points": [
+              {
+                "x": 210.43083900226756,
+                "y": 152.8344671201814
+              },
+              {
+                "x": 440.9683426443203,
+                "y": 138.91992551210427
+              }
+            ],
+            "closed": false
+          },
+          "outputBindings": [
+            {
+              "field": "length",
+              "name": "measuredLength",
+              "scope": "flow"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "planar-perimeter",
+    "name": "标定平面 → 矩形周长",
+    "category": "测量",
+    "image": "planar-calibration.png",
+    "description": "按四个角点计算闭合周长，分别列出每段长度、方向和转换后的坐标。",
+    "expected": "四条边约 60、30、60、30 mm；周长约 180 mm。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-planar",
+          "pluginVersion": "1.0.0",
+          "operatorId": "calibrate",
+          "arguments": {
+            "points": [
+              {
+                "pixelX": 100.0,
+                "pixelY": 80.0,
+                "worldX": 0.0,
+                "worldY": 0.0
+              },
+              {
+                "pixelX": 333.33333333333337,
+                "pixelY": 79.16666666666667,
+                "worldX": 50.0,
+                "worldY": 0.0
+              },
+              {
+                "pixelX": 500.0,
+                "pixelY": 78.57142857142857,
+                "worldX": 100.0,
+                "worldY": 0.0
+              },
+              {
+                "pixelX": 118.66028708133973,
+                "pixelY": 234.44976076555025,
+                "worldX": 0.0,
+                "worldY": 30.0
+              },
+              {
+                "pixelX": 340.5622489959839,
+                "pixelY": 208.83534136546183,
+                "worldX": 50.0,
+                "worldY": 30.0
+              },
+              {
+                "pixelX": 501.03806228373696,
+                "pixelY": 190.31141868512108,
+                "worldX": 100.0,
+                "worldY": 30.0
+              },
+              {
+                "pixelX": 135.77981651376146,
+                "pixelY": 376.14678899082566,
+                "worldX": 0.0,
+                "worldY": 60.0
+              },
+              {
+                "pixelX": 347.28682170542635,
+                "pixelY": 329.4573643410852,
+                "worldX": 50.0,
+                "worldY": 60.0
+              },
+              {
+                "pixelX": 502.013422818792,
+                "pixelY": 295.3020134228188,
+                "worldX": 100.0,
+                "worldY": 60.0
+              }
+            ]
+          },
+          "outputBindings": [
+            {
+              "field": "calibration",
+              "name": "planeCalibration",
+              "scope": "flow"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-planar",
+          "pluginVersion": "1.0.0",
+          "operatorId": "measure",
+          "arguments": {
+            "calibration": {
+              "$ref": "flow.planeCalibration"
+            },
+            "points": [
+              {
+                "x": 210.43083900226756,
+                "y": 152.8344671201814
+              },
+              {
+                "x": 440.9683426443203,
+                "y": 138.91992551210427
+              },
+              {
+                "x": 443.96396396396403,
+                "y": 253.33333333333337
+              },
+              {
+                "x": 223.09368191721134,
+                "y": 290.63180827886714
+              }
+            ],
+            "closed": true
+          },
+          "outputBindings": [
+            {
+              "field": "length",
+              "name": "measuredLength",
+              "scope": "flow"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "planar-outlier",
+    "name": "平面标定 → 剔除错误对应点",
+    "category": "测量",
+    "image": "planar-calibration.png",
+    "description": "人为将第 5 个图像点偏移，RANSAC 标记并剔除该错误对应点，再验证已知长度。",
+    "expected": "有效点 8、剔除点 1；测量长度仍约 60 mm。四点精确拟合不能独立证明标定精度。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-planar",
+          "pluginVersion": "1.0.0",
+          "operatorId": "calibrate",
+          "arguments": {
+            "points": [
+              {
+                "pixelX": 100.0,
+                "pixelY": 80.0,
+                "worldX": 0.0,
+                "worldY": 0.0
+              },
+              {
+                "pixelX": 333.33333333333337,
+                "pixelY": 79.16666666666667,
+                "worldX": 50.0,
+                "worldY": 0.0
+              },
+              {
+                "pixelX": 500.0,
+                "pixelY": 78.57142857142857,
+                "worldX": 100.0,
+                "worldY": 0.0
+              },
+              {
+                "pixelX": 118.66028708133973,
+                "pixelY": 234.44976076555025,
+                "worldX": 0.0,
+                "worldY": 30.0
+              },
+              {
+                "pixelX": 400.5622489959839,
+                "pixelY": 168.83534136546183,
+                "worldX": 50.0,
+                "worldY": 30.0
+              },
+              {
+                "pixelX": 501.03806228373696,
+                "pixelY": 190.31141868512108,
+                "worldX": 100.0,
+                "worldY": 30.0
+              },
+              {
+                "pixelX": 135.77981651376146,
+                "pixelY": 376.14678899082566,
+                "worldX": 0.0,
+                "worldY": 60.0
+              },
+              {
+                "pixelX": 347.28682170542635,
+                "pixelY": 329.4573643410852,
+                "worldX": 50.0,
+                "worldY": 60.0
+              },
+              {
+                "pixelX": 502.013422818792,
+                "pixelY": 295.3020134228188,
+                "worldX": 100.0,
+                "worldY": 60.0
+              }
+            ]
+          },
+          "outputBindings": [
+            {
+              "field": "calibration",
+              "name": "planeCalibration",
+              "scope": "flow"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-planar",
+          "pluginVersion": "1.0.0",
+          "operatorId": "measure",
+          "arguments": {
+            "calibration": {
+              "$ref": "flow.planeCalibration"
+            },
+            "points": [
+              {
+                "x": 210.43083900226756,
+                "y": 152.8344671201814
+              },
+              {
+                "x": 440.9683426443203,
+                "y": 138.91992551210427
+              }
+            ],
+            "closed": false
+          },
+          "outputBindings": [
+            {
+              "field": "length",
+              "name": "measuredLength",
+              "scope": "flow"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "normals-pass",
+    "name": "3D 法向 → 30° 斜面合格",
+    "category": "3D",
+    "image": "parts.png",
+    "cloud": "cloud-slope.json",
+    "description": "合成倾斜平面；使用局部邻域拟合，结果按法向、坡度和拟合残差明细表显示。",
+    "expected": "121 个有效点，坡度 30°；零超差，判定通过，绿色显示。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-normals",
+          "pluginVersion": "1.0.0",
+          "operatorId": "inspect",
+          "arguments": {
+            "maximumSlopeDegrees": 35
+          },
+          "outputBindings": [
+            {
+              "field": "passed",
+              "scope": "flow",
+              "name": "slopeOK"
+            },
+            {
+              "field": "invalidCount",
+              "scope": "flow",
+              "name": "invalidNormals"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "normals-fail",
+    "name": "3D 法向 → 坡度超差",
+    "category": "3D",
+    "image": "parts.png",
+    "cloud": "cloud-slope.json",
+    "description": "合成倾斜平面；使用局部邻域拟合，结果按法向、坡度和拟合残差明细表显示。",
+    "expected": "121 个有效点，坡度 30°；121 点超出 20° 上限，判定不通过，红色显示。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-normals",
+          "pluginVersion": "1.0.0",
+          "operatorId": "inspect",
+          "arguments": {
+            "maximumSlopeDegrees": 20
+          },
+          "outputBindings": [
+            {
+              "field": "passed",
+              "scope": "flow",
+              "name": "slopeOK"
+            },
+            {
+              "field": "invalidCount",
+              "scope": "flow",
+              "name": "invalidNormals"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "normals-invalid",
+    "name": "3D 法向 → 邻域不足诊断",
+    "category": "3D",
+    "image": "parts.png",
+    "cloud": "cloud-slope.json",
+    "description": "合成倾斜平面；使用局部邻域拟合，结果按法向、坡度和拟合残差明细表显示。",
+    "expected": "121 个点均只有自身邻居，法向无效，判定不通过，灰色显示；不显示虚假的零坡度。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-normals",
+          "pluginVersion": "1.0.0",
+          "operatorId": "inspect",
+          "arguments": {
+            "radius": 0.5
+          },
+          "outputBindings": [
+            {
+              "field": "passed",
+              "scope": "flow",
+              "name": "slopeOK"
+            },
+            {
+              "field": "invalidCount",
+              "scope": "flow",
+              "name": "invalidNormals"
+            }
+          ]
+        }
+      }
+    ]
+  }
+]

@@ -1,0 +1,192 @@
+[
+  {
+    "id": "tcp-detection",
+    "name": "视觉检测 → TCP → 流程变量",
+    "category": "通信",
+    "image": "parts.png",
+    "description": "使用本机 TCP 回显设备，将轮廓数量作为结构化报文发送，按四字节大端长度头读取应答。",
+    "expected": "轮廓数量 3，流程变量 networkReply 为 3。回显仅用于验证协议。",
+    "steps": [
+      {
+        "operation": "geometry",
+        "params": {
+          "feature": "contours",
+          "threshold": 127,
+          "minArea": 50
+        }
+      },
+      {
+        "operation": "tcp_exchange",
+        "params": {
+          "connection": "simulator",
+          "mode": "exchange",
+          "encoding": "structured",
+          "timeoutMs": 3000,
+          "maxBytes": 65536,
+          "txFraming": "length32be",
+          "rxFraming": "length32be",
+          "value": 0
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "networkReply",
+          "value": 0
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 1,
+        "source": 0,
+        "param": "value",
+        "field": "count"
+      },
+      {
+        "step": 2,
+        "source": 1,
+        "param": "value",
+        "field": "value"
+      }
+    ]
+  },
+  {
+    "id": "tcp-text",
+    "name": "TCP 扫码文本 · 结束符分帧",
+    "category": "通信",
+    "image": "parts.png",
+    "description": "模拟扫码报文，以回车换行结束。结果自动移除结束符，变量仅保存扫码文本。",
+    "expected": "networkReply 为 SIEANS-A-00042。",
+    "steps": [
+      {
+        "operation": "tcp_exchange",
+        "params": {
+          "connection": "simulator",
+          "mode": "exchange",
+          "encoding": "text",
+          "timeoutMs": 3000,
+          "maxBytes": 65536,
+          "txFraming": "crlf",
+          "rxFraming": "crlf",
+          "value": "SIEANS-A-00042"
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "networkReply",
+          "value": ""
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 1,
+        "source": 0,
+        "param": "value",
+        "field": "value"
+      }
+    ]
+  },
+  {
+    "id": "udp-record",
+    "name": "UDP 检测记录 · 字段表",
+    "category": "通信",
+    "image": "parts.png",
+    "description": "以单个数据报发送检测编号、判定和测量数组。发送内容通过字段表配置，接收内容以结果表展示。",
+    "expected": "返回 id=42、passed=是、两条测量记录；UDP 不保证实际设备交付。",
+    "steps": [
+      {
+        "operation": "udp_exchange",
+        "params": {
+          "connection": "simulator",
+          "mode": "exchange",
+          "encoding": "structured",
+          "timeoutMs": 3000,
+          "maxBytes": 65536,
+          "value": {
+            "id": 42,
+            "passed": true,
+            "measurements": [
+              {
+                "name": "width",
+                "value": 12.5,
+                "unit": "mm"
+              },
+              {
+                "name": "height",
+                "value": 8.2,
+                "unit": "mm"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "networkReply",
+          "value": {}
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 1,
+        "source": 0,
+        "param": "value",
+        "field": "value"
+      }
+    ]
+  },
+  {
+    "id": "udp-bytes",
+    "name": "UDP 字节报文 · 二进制数据",
+    "category": "通信",
+    "image": "parts.png",
+    "description": "通过字节数组表定义二进制数据，使用本机 UDP 回显设备验证 0 和高位字节。",
+    "expected": "返回 83、73、69、65、78、83、0、255 八个字节。",
+    "steps": [
+      {
+        "operation": "udp_exchange",
+        "params": {
+          "connection": "simulator",
+          "mode": "exchange",
+          "encoding": "bytes",
+          "timeoutMs": 3000,
+          "maxBytes": 65536,
+          "value": [
+            83,
+            73,
+            69,
+            65,
+            78,
+            83,
+            0,
+            255
+          ]
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "networkReply",
+          "value": []
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 1,
+        "source": 0,
+        "param": "value",
+        "field": "value"
+      }
+    ]
+  }
+]

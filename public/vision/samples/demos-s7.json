@@ -1,0 +1,132 @@
+[
+  {
+    "id": "s7-vision",
+    "category": "通信",
+    "name": "视觉检测 → S7 → 流程变量",
+    "image": "parts.png",
+    "description": "轮廓数量写入本机 S7 模拟设备 DB1 的字节偏移 10，再读回并绑定流程变量。",
+    "expected": "检测数量 3；DBW10 读回 3，流程变量 s7Count=3。仅访问本机模拟设备。",
+    "steps": [
+      {
+        "operation": "geometry",
+        "params": {
+          "feature": "contours",
+          "threshold": 127,
+          "minArea": 200
+        }
+      },
+      {
+        "operation": "s7_write",
+        "params": {
+          "connection": "simulator",
+          "area": "db",
+          "dbNumber": 1,
+          "byteOffset": 10,
+          "dataType": "uint16",
+          "value": 0
+        }
+      },
+      {
+        "operation": "s7_read",
+        "params": {
+          "connection": "simulator",
+          "area": "db",
+          "dbNumber": 1,
+          "byteOffset": 10,
+          "dataType": "uint16"
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "s7Count",
+          "mode": "set",
+          "value": 0
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 1,
+        "param": "value",
+        "source": 0,
+        "field": "count"
+      },
+      {
+        "step": 3,
+        "param": "value",
+        "source": 2,
+        "field": "value"
+      }
+    ]
+  },
+  {
+    "id": "s7-floats",
+    "category": "通信",
+    "name": "S7 浮点数组写入与读回",
+    "image": "parts.png",
+    "description": "以西门子大端布局写入两个 float32，使用结果表格检查数据和字节位置。",
+    "expected": "DB1 字节偏移 20 和 24：12.5、-3.25。",
+    "steps": [
+      {
+        "operation": "s7_write",
+        "params": {
+          "connection": "simulator",
+          "byteOffset": 20,
+          "dataType": "float32",
+          "value": [
+            12.5,
+            -3.25
+          ]
+        }
+      },
+      {
+        "operation": "s7_read",
+        "params": {
+          "connection": "simulator",
+          "byteOffset": 20,
+          "dataType": "float32",
+          "count": 2
+        }
+      }
+    ]
+  },
+  {
+    "id": "s7-bit",
+    "category": "通信",
+    "name": "S7 单个位写入 · 保留相邻位",
+    "image": "parts.png",
+    "description": "先向 DBB100 写入 170，再清除第 1 位，验证其他位不受影响。",
+    "expected": "DBB100 读回 168；本机模拟器验证，仍需真实 PLC 验收。",
+    "steps": [
+      {
+        "operation": "s7_write",
+        "params": {
+          "connection": "simulator",
+          "byteOffset": 100,
+          "dataType": "uint8",
+          "value": 170
+        }
+      },
+      {
+        "operation": "s7_write",
+        "params": {
+          "connection": "simulator",
+          "byteOffset": 100,
+          "bitOffset": 1,
+          "dataType": "bool",
+          "value": false
+        }
+      },
+      {
+        "operation": "s7_read",
+        "params": {
+          "connection": "simulator",
+          "byteOffset": 100,
+          "dataType": "uint8"
+        }
+      }
+    ]
+  }
+]

@@ -1,0 +1,330 @@
+[
+  {
+    "id": "rigid-points",
+    "name": "3D 坐标标定 · 相机点转工装点",
+    "category": "3D 点云",
+    "cloud": "rigid-source.json",
+    "description": "八组合成对应点恢复绕 Z 轴旋转 90° 及平移 (300,500,100) mm；结果绑定流程变量后转换新点。",
+    "expected": "输入 (10,20,30) mm，工装坐标为 (280,510,130) mm。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-rigid",
+          "pluginVersion": "1.0.0",
+          "operatorId": "calibrate",
+          "arguments": {},
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "frameCalibration",
+              "field": "calibration"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-rigid",
+          "pluginVersion": "1.0.0",
+          "operatorId": "points",
+          "arguments": {
+            "calibration": {
+              "$ref": "flow.frameCalibration"
+            }
+          },
+          "outputBindings": []
+        }
+      }
+    ]
+  },
+  {
+    "id": "rigid-outlier",
+    "name": "3D 对应点 · 排除一个错误配对",
+    "category": "3D 点云",
+    "cloud": "rigid-source.json",
+    "description": "八组对应点中一个错误配对，采用 RANSAC 拟合，其余七点独立决定刚体关系。",
+    "expected": "7 个内点、1 个排除点，仍输出 (280,510,130) mm。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-rigid",
+          "pluginVersion": "1.0.0",
+          "operatorId": "calibrate",
+          "arguments": {
+            "pairs": [
+              {
+                "sourceX": 0.0,
+                "sourceY": 0.0,
+                "sourceZ": 0.0,
+                "targetX": 300.0,
+                "targetY": 500.0,
+                "targetZ": 100.0
+              },
+              {
+                "sourceX": 100.0,
+                "sourceY": 0.0,
+                "sourceZ": 0.0,
+                "targetX": 300.0,
+                "targetY": 600.0,
+                "targetZ": 100.0
+              },
+              {
+                "sourceX": 0.0,
+                "sourceY": 100.0,
+                "sourceZ": 0.0,
+                "targetX": 200.0,
+                "targetY": 500.0,
+                "targetZ": 100.0
+              },
+              {
+                "sourceX": 0.0,
+                "sourceY": 0.0,
+                "sourceZ": 100.0,
+                "targetX": 300.0,
+                "targetY": 500.0,
+                "targetZ": 200.0
+              },
+              {
+                "sourceX": 100.0,
+                "sourceY": 100.0,
+                "sourceZ": 100.0,
+                "targetX": 200.0,
+                "targetY": 600.0,
+                "targetZ": 200.0
+              },
+              {
+                "sourceX": 30.0,
+                "sourceY": 60.0,
+                "sourceZ": 90.0,
+                "targetX": 240.0,
+                "targetY": 530.0,
+                "targetZ": 190.0
+              },
+              {
+                "sourceX": 90.0,
+                "sourceY": 30.0,
+                "sourceZ": 60.0,
+                "targetX": 270.0,
+                "targetY": 590.0,
+                "targetZ": 160.0
+              },
+              {
+                "sourceX": 60.0,
+                "sourceY": 90.0,
+                "sourceZ": 30.0,
+                "targetX": 250.0,
+                "targetY": 560.0,
+                "targetZ": 130.0
+              }
+            ],
+            "method": "ransac"
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "frameCalibration",
+              "field": "calibration"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-rigid",
+          "pluginVersion": "1.0.0",
+          "operatorId": "points",
+          "arguments": {
+            "calibration": {
+              "$ref": "flow.frameCalibration"
+            }
+          },
+          "outputBindings": []
+        }
+      }
+    ]
+  },
+  {
+    "id": "rigid-cloud",
+    "name": "3D 点云 · 坐标转换后测量",
+    "category": "3D 点云",
+    "cloud": "rigid-source.json",
+    "description": "标定结果驱动整个点云进入工装坐标，再由真实 Open3D 计算包围尺寸。",
+    "expected": "坐标系变为 fixture-base；范围 X=200–300、Y=500–600、Z=100–200 mm。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-rigid",
+          "pluginVersion": "1.0.0",
+          "operatorId": "calibrate",
+          "arguments": {},
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "frameCalibration",
+              "field": "calibration"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-rigid",
+          "pluginVersion": "1.0.0",
+          "operatorId": "cloud",
+          "arguments": {
+            "calibration": {
+              "$ref": "flow.frameCalibration"
+            }
+          },
+          "outputBindings": []
+        }
+      },
+      {
+        "operation": "cloud_measure",
+        "params": {}
+      }
+    ]
+  },
+  {
+    "id": "rigid-check",
+    "name": "3D 标定验证 · 独立点超差",
+    "category": "3D 点云",
+    "cloud": "rigid-source.json",
+    "description": "使用三组未参与拟合的独立点，其中一个目标坐标偏差 2 mm；验证保留原模型并返回不通过。",
+    "expected": "独立验证不通过，最大误差约 2 mm。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-rigid",
+          "pluginVersion": "1.0.0",
+          "operatorId": "calibrate",
+          "arguments": {},
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "frameCalibration",
+              "field": "calibration"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-rigid",
+          "pluginVersion": "1.0.0",
+          "operatorId": "check",
+          "arguments": {
+            "calibration": {
+              "$ref": "flow.frameCalibration"
+            },
+            "pairs": [
+              {
+                "sourceX": 10.0,
+                "sourceY": 20.0,
+                "sourceZ": 30.0,
+                "targetX": 282.0,
+                "targetY": 510.0,
+                "targetZ": 130.0
+              },
+              {
+                "sourceX": 15.0,
+                "sourceY": 50.0,
+                "sourceZ": 80.0,
+                "targetX": 250.0,
+                "targetY": 515.0,
+                "targetZ": 180.0
+              },
+              {
+                "sourceX": 60.0,
+                "sourceY": 70.0,
+                "sourceZ": 10.0,
+                "targetX": 230.0,
+                "targetY": 560.0,
+                "targetZ": 110.0
+              }
+            ]
+          },
+          "outputBindings": []
+        }
+      }
+    ]
+  },
+  {
+    "id": "rigid-modbus",
+    "name": "3D 坐标 → Modbus 模拟寄存器",
+    "category": "工业通信",
+    "cloud": "rigid-source.json",
+    "description": "标定后的点位 X 保存到流程变量，再以 float32 写入并读回本机 Modbus 模拟器，不连接现场 PLC。",
+    "expected": "工装点 X=280 mm；保持寄存器 80–81 写入/读回 float32 值 280。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-rigid",
+          "pluginVersion": "1.0.0",
+          "operatorId": "calibrate",
+          "arguments": {},
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "frameCalibration",
+              "field": "calibration"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-rigid",
+          "pluginVersion": "1.0.0",
+          "operatorId": "points",
+          "arguments": {
+            "calibration": {
+              "$ref": "flow.frameCalibration"
+            }
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "fixtureX",
+              "field": "items.0.targetX"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "modbus_write",
+        "params": {
+          "transport": "simulator",
+          "area": "holding",
+          "address": 80,
+          "dataType": "float32",
+          "value": {
+            "$ref": "flow.fixtureX"
+          },
+          "timeoutMs": 1500
+        }
+      },
+      {
+        "operation": "modbus_read",
+        "params": {
+          "transport": "simulator",
+          "area": "holding",
+          "address": 80,
+          "dataType": "float32",
+          "count": 1,
+          "timeoutMs": 1500
+        }
+      }
+    ]
+  }
+]

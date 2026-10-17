@@ -1,0 +1,617 @@
+[
+  {
+    "id": "circle-hole",
+    "name": "圆形卡尺 · 圆孔定位与直径",
+    "category": "测量",
+    "image": "circle-hole.png",
+    "description": "72 组向外灰度扫描，亚像素梯度峰值与几何圆拟合。0.1 mm/px 为演示比例，真实尺寸需先标定。",
+    "expected": "圆心约 (321.35,239.65) px，直径约 16.08 mm，判定通过。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-circle",
+          "pluginVersion": "1.0.0",
+          "operatorId": "caliper",
+          "arguments": {
+            "unitsPerPixel": 0.1,
+            "unit": "mm",
+            "minimumDiameter": 16,
+            "maximumDiameter": 16.2
+          },
+          "outputBindings": [
+            {
+              "field": "passed",
+              "scope": "flow",
+              "name": "circleOK"
+            },
+            {
+              "field": "detectedCount",
+              "scope": "flow",
+              "name": "circleEdges"
+            }
+          ]
+        }
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "圆形卡尺 · 圆孔定位与直径",
+      "rows": 8,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "circle-summary-0",
+          "type": "value",
+          "label": "测量直径",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-circle",
+            "path": "diameter"
+          },
+          "precision": 3,
+          "unit": "mm"
+        },
+        {
+          "id": "circle-summary-1",
+          "type": "lamp",
+          "label": "检测通过",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-circle",
+            "path": "passed"
+          }
+        },
+        {
+          "id": "circle-image",
+          "type": "image",
+          "label": "圆测量标记图",
+          "x": 0,
+          "y": 2,
+          "w": 6,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-circle",
+            "path": ""
+          }
+        },
+        {
+          "id": "circle-details",
+          "type": "table",
+          "label": "逐卡尺检测明细",
+          "x": 6,
+          "y": 2,
+          "w": 6,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-circle",
+            "path": "items"
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 0,
+        "step": 0
+      },
+      {
+        "component": 1,
+        "step": 0
+      },
+      {
+        "component": 2,
+        "step": 0
+      },
+      {
+        "component": 3,
+        "step": 0
+      }
+    ]
+  },
+  {
+    "id": "circle-oversize",
+    "name": "圆形卡尺 · 直径超差",
+    "category": "测量",
+    "image": "circle-oversize.png",
+    "description": "使用相同公差检测更大的圆；测量成功和公差通过是两个独立结果。",
+    "expected": "直径约 17.04 mm，找到圆但公差不通过。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-circle",
+          "pluginVersion": "1.0.0",
+          "operatorId": "caliper",
+          "arguments": {
+            "unitsPerPixel": 0.1,
+            "unit": "mm",
+            "minimumDiameter": 16,
+            "maximumDiameter": 16.2
+          },
+          "outputBindings": [
+            {
+              "field": "passed",
+              "scope": "flow",
+              "name": "circleOK"
+            },
+            {
+              "field": "detectedCount",
+              "scope": "flow",
+              "name": "circleEdges"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "circle-outliers",
+    "name": "圆形卡尺 · 局部边缘偏移剔除",
+    "category": "测量",
+    "image": "circle-outliers.png",
+    "description": "局部边缘偏移 6 px，RANSAC 排除该段。剔除点在明细表中保留，拟合残差仅描述采用点。",
+    "expected": "圆心和直径接近正常样本；部分点被剔除，判定通过。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-circle",
+          "pluginVersion": "1.0.0",
+          "operatorId": "caliper",
+          "arguments": {},
+          "outputBindings": [
+            {
+              "field": "passed",
+              "scope": "flow",
+              "name": "circleOK"
+            },
+            {
+              "field": "detectedCount",
+              "scope": "flow",
+              "name": "circleEdges"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "circle-occluded",
+    "name": "圆形卡尺 · 部分遮挡",
+    "category": "测量",
+    "image": "circle-occluded.png",
+    "description": "约 55° 扇区被遮挡，缺失点不作为零坐标参与拟合。",
+    "expected": "未检出部分卡尺，其余有效点覆盖足够，仍能测得圆。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-circle",
+          "pluginVersion": "1.0.0",
+          "operatorId": "caliper",
+          "arguments": {},
+          "outputBindings": [
+            {
+              "field": "passed",
+              "scope": "flow",
+              "name": "circleOK"
+            },
+            {
+              "field": "detectedCount",
+              "scope": "flow",
+              "name": "circleEdges"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "circle-no-edge",
+    "name": "圆形卡尺 · 无边缘诊断",
+    "category": "测量",
+    "image": "circle-no-edge.png",
+    "description": "均匀图像没有边缘，不输出伪造的圆心、半径或直径。",
+    "expected": "找到圆和公差通过均为否，结果显示各卡尺原因。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-circle",
+          "pluginVersion": "1.0.0",
+          "operatorId": "caliper",
+          "arguments": {},
+          "outputBindings": [
+            {
+              "field": "passed",
+              "scope": "flow",
+              "name": "circleOK"
+            },
+            {
+              "field": "detectedCount",
+              "scope": "flow",
+              "name": "circleEdges"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "circle-ring",
+    "name": "双圆检测 · 正常圆环",
+    "category": "测量",
+    "image": "circle-ring.png",
+    "description": "两次圆形卡尺分别提取内外边缘，再绑定圆模型计算中心偏移与理想圆壁厚。两圆需来自同一图像坐标系；不等同沿真实轮廓测壁厚。",
+    "expected": "中心距离约 0.10 mm，理想圆壁厚约 3.93–4.13 mm，通过。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-circle",
+          "pluginVersion": "1.0.0",
+          "operatorId": "caliper",
+          "arguments": {
+            "expectedRadius": 80,
+            "polarity": "rising",
+            "unitsPerPixel": 0.1,
+            "unit": "mm",
+            "minimumDiameter": 15,
+            "maximumDiameter": 18
+          },
+          "outputBindings": [
+            {
+              "field": "circle",
+              "scope": "flow",
+              "name": "innerCircle"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-circle",
+          "pluginVersion": "1.0.0",
+          "operatorId": "caliper",
+          "arguments": {
+            "expectedRadius": 120,
+            "polarity": "falling",
+            "unitsPerPixel": 0.1,
+            "unit": "mm",
+            "minimumDiameter": 23,
+            "maximumDiameter": 25
+          },
+          "outputBindings": [
+            {
+              "field": "circle",
+              "scope": "flow",
+              "name": "outerCircle"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-circle",
+          "pluginVersion": "1.0.0",
+          "operatorId": "nested",
+          "arguments": {
+            "innerCircle": {
+              "$ref": "flow.innerCircle"
+            },
+            "outerCircle": {
+              "$ref": "flow.outerCircle"
+            },
+            "maximumCenterDistance": 0.2,
+            "minimumWall": 3.8,
+            "maximumWall": 4.3
+          },
+          "outputBindings": [
+            {
+              "field": "passed",
+              "scope": "flow",
+              "name": "ringOK"
+            },
+            {
+              "field": "centerDistance",
+              "scope": "flow",
+              "name": "centerOffset"
+            }
+          ]
+        }
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "双圆检测 · 正常圆环",
+      "rows": 8,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "circle-summary-0",
+          "type": "value",
+          "label": "中心距离",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-circle",
+            "path": "centerDistance"
+          },
+          "precision": 3,
+          "unit": "mm"
+        },
+        {
+          "id": "circle-summary-1",
+          "type": "lamp",
+          "label": "检测通过",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-circle",
+            "path": "passed"
+          }
+        },
+        {
+          "id": "circle-image",
+          "type": "image",
+          "label": "圆测量标记图",
+          "x": 0,
+          "y": 2,
+          "w": 6,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-circle",
+            "path": ""
+          }
+        },
+        {
+          "id": "circle-details",
+          "type": "table",
+          "label": "双圆尺寸表",
+          "x": 6,
+          "y": 2,
+          "w": 6,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-circle",
+            "path": "items"
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 0,
+        "step": 2
+      },
+      {
+        "component": 1,
+        "step": 2
+      },
+      {
+        "component": 2,
+        "step": 2
+      },
+      {
+        "component": 3,
+        "step": 2
+      }
+    ]
+  },
+  {
+    "id": "circle-ring-offset",
+    "name": "双圆检测 · 偏心圆环",
+    "category": "测量",
+    "image": "circle-ring-offset.png",
+    "description": "两次圆形卡尺分别提取内外边缘，再绑定圆模型计算中心偏移与理想圆壁厚。两圆需来自同一图像坐标系；不等同沿真实轮廓测壁厚。",
+    "expected": "中心偏移约 0.70 mm，超过 0.2 mm 公差，不通过。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-circle",
+          "pluginVersion": "1.0.0",
+          "operatorId": "caliper",
+          "arguments": {
+            "expectedRadius": 80,
+            "polarity": "rising",
+            "unitsPerPixel": 0.1,
+            "unit": "mm",
+            "minimumDiameter": 15,
+            "maximumDiameter": 18
+          },
+          "outputBindings": [
+            {
+              "field": "circle",
+              "scope": "flow",
+              "name": "innerCircle"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-circle",
+          "pluginVersion": "1.0.0",
+          "operatorId": "caliper",
+          "arguments": {
+            "expectedRadius": 120,
+            "polarity": "falling",
+            "unitsPerPixel": 0.1,
+            "unit": "mm",
+            "minimumDiameter": 23,
+            "maximumDiameter": 25
+          },
+          "outputBindings": [
+            {
+              "field": "circle",
+              "scope": "flow",
+              "name": "outerCircle"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-circle",
+          "pluginVersion": "1.0.0",
+          "operatorId": "nested",
+          "arguments": {
+            "innerCircle": {
+              "$ref": "flow.innerCircle"
+            },
+            "outerCircle": {
+              "$ref": "flow.outerCircle"
+            },
+            "maximumCenterDistance": 0.2,
+            "minimumWall": 3.8,
+            "maximumWall": 4.3
+          },
+          "outputBindings": [
+            {
+              "field": "passed",
+              "scope": "flow",
+              "name": "ringOK"
+            },
+            {
+              "field": "centerDistance",
+              "scope": "flow",
+              "name": "centerOffset"
+            }
+          ]
+        }
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "双圆检测 · 偏心圆环",
+      "rows": 8,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "circle-summary-0",
+          "type": "value",
+          "label": "中心距离",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-circle",
+            "path": "centerDistance"
+          },
+          "precision": 3,
+          "unit": "mm"
+        },
+        {
+          "id": "circle-summary-1",
+          "type": "lamp",
+          "label": "检测通过",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-circle",
+            "path": "passed"
+          }
+        },
+        {
+          "id": "circle-image",
+          "type": "image",
+          "label": "圆测量标记图",
+          "x": 0,
+          "y": 2,
+          "w": 6,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-circle",
+            "path": ""
+          }
+        },
+        {
+          "id": "circle-details",
+          "type": "table",
+          "label": "双圆尺寸表",
+          "x": 6,
+          "y": 2,
+          "w": 6,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-circle",
+            "path": "items"
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 0,
+        "step": 2
+      },
+      {
+        "component": 1,
+        "step": 2
+      },
+      {
+        "component": 2,
+        "step": 2
+      },
+      {
+        "component": 3,
+        "step": 2
+      }
+    ]
+  }
+]

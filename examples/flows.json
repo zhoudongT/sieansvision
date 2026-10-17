@@ -1,0 +1,11 @@
+[
+  {"id":"demo-tab","type":"tab","label":"示例流程","disabled":false,"info":"按钮 → 插件 → 运行画面"},
+  {"id":"dashboard-base","type":"ui-base","name":"运行画面","path":"/dashboard","includeClientData":true,"acceptsClientConfig":["ui-control","ui-notification"],"showPathInSidebar":false},
+  {"id":"dashboard-theme","type":"ui-theme","name":"默认主题","colors":{"surface":"#ffffff","primary":"#2563eb","bgPage":"#eef2f7","groupBg":"#ffffff","groupOutline":"#cbd5e1"},"sizes":{"density":"default","pagePadding":"12px","groupGap":"12px","groupBorderRadius":"8px","widgetGap":"12px"}},
+  {"id":"dashboard-page","type":"ui-page","name":"设备运行","ui":"dashboard-base","path":"/machine","icon":"home","layout":"grid","theme":"dashboard-theme","order":1,"className":"","visible":"true","disabled":"false"},
+  {"id":"dashboard-group","type":"ui-group","name":"操作与状态","page":"dashboard-page","width":"6","height":"1","order":1,"showTitle":true,"className":"","visible":"true","disabled":"false","groupType":"default"},
+  {"id":"demo-button","type":"ui-button","z":"demo-tab","group":"dashboard-group","name":"运行按钮","label":"执行示例","order":1,"width":"3","height":"1","icon":"play_arrow","payload":"运行成功","payloadType":"str","topic":"demo","topicType":"str","enableClick":true,"x":160,"y":160,"wires":[["demo-relay"]]},
+  {"id":"demo-relay","type":"machine-relay","z":"demo-tab","name":"示例插件","label":"demo","x":380,"y":160,"wires":[["demo-text","demo-debug"]]},
+  {"id":"demo-text","type":"ui-text","z":"demo-tab","group":"dashboard-group","order":2,"width":"3","height":"1","name":"结果","label":"执行结果","format":"{{msg.payload}}","layout":"row-spread","x":600,"y":120,"wires":[]},
+  {"id":"demo-debug","type":"debug","z":"demo-tab","name":"插件输出","active":true,"tosidebar":true,"console":false,"tostatus":false,"complete":"true","targetType":"full","x":600,"y":200,"wires":[]}
+]

@@ -1,0 +1,245 @@
+[
+  {
+    "id": "cloud-deviation-pass",
+    "name": "参考点云一致",
+    "category": "3D",
+    "cloud": "cloud-deviation-pass.json",
+    "image": "relations-planes.png",
+    "description": "已配准合成点云的双向最近采样点偏差；参考坐标表来自流程变量。",
+    "expected": "双向无超差，合格",
+    "variables": {
+      "referencePoints": [
+        {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        {
+          "x": 0,
+          "y": 10,
+          "z": 0
+        },
+        {
+          "x": 0,
+          "y": 20,
+          "z": 0
+        },
+        {
+          "x": 10,
+          "y": 0,
+          "z": 0
+        },
+        {
+          "x": 10,
+          "y": 10,
+          "z": 0
+        },
+        {
+          "x": 10,
+          "y": 20,
+          "z": 0
+        },
+        {
+          "x": 20,
+          "y": 0,
+          "z": 0
+        },
+        {
+          "x": 20,
+          "y": 10,
+          "z": 0
+        },
+        {
+          "x": 20,
+          "y": 20,
+          "z": 0
+        }
+      ]
+    },
+    "steps": [
+      {
+        "id": "deviation",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-deviation",
+          "pluginVersion": "1.0.0",
+          "operatorId": "cloud-distance",
+          "arguments": {
+            "referencePoints": {
+              "$ref": "flow.referencePoints"
+            }
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "deviationOK",
+              "field": "passed"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "cloud-deviation-shift",
+    "name": "参考点云高度偏移",
+    "category": "3D",
+    "cloud": "cloud-deviation-shift.json",
+    "image": "relations-planes.png",
+    "description": "已配准合成点云的双向最近采样点偏差；参考坐标表来自流程变量。",
+    "expected": "双向 18 个采样超差，不合格",
+    "variables": {
+      "referencePoints": [
+        {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        {
+          "x": 0,
+          "y": 10,
+          "z": 0
+        },
+        {
+          "x": 0,
+          "y": 20,
+          "z": 0
+        },
+        {
+          "x": 10,
+          "y": 0,
+          "z": 0
+        },
+        {
+          "x": 10,
+          "y": 10,
+          "z": 0
+        },
+        {
+          "x": 10,
+          "y": 20,
+          "z": 0
+        },
+        {
+          "x": 20,
+          "y": 0,
+          "z": 0
+        },
+        {
+          "x": 20,
+          "y": 10,
+          "z": 0
+        },
+        {
+          "x": 20,
+          "y": 20,
+          "z": 0
+        }
+      ]
+    },
+    "steps": [
+      {
+        "id": "deviation",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-deviation",
+          "pluginVersion": "1.0.0",
+          "operatorId": "cloud-distance",
+          "arguments": {
+            "referencePoints": {
+              "$ref": "flow.referencePoints"
+            }
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "deviationOK",
+              "field": "passed"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "cloud-deviation-missing",
+    "name": "参考点云区域缺失",
+    "category": "3D",
+    "cloud": "cloud-deviation-missing.json",
+    "image": "relations-planes.png",
+    "description": "已配准合成点云的双向最近采样点偏差；参考坐标表来自流程变量。",
+    "expected": "反向发现 1 个缺失参考点，不合格",
+    "variables": {
+      "referencePoints": [
+        {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        {
+          "x": 0,
+          "y": 10,
+          "z": 0
+        },
+        {
+          "x": 0,
+          "y": 20,
+          "z": 0
+        },
+        {
+          "x": 10,
+          "y": 0,
+          "z": 0
+        },
+        {
+          "x": 10,
+          "y": 10,
+          "z": 0
+        },
+        {
+          "x": 10,
+          "y": 20,
+          "z": 0
+        },
+        {
+          "x": 20,
+          "y": 0,
+          "z": 0
+        },
+        {
+          "x": 20,
+          "y": 10,
+          "z": 0
+        },
+        {
+          "x": 20,
+          "y": 20,
+          "z": 0
+        }
+      ]
+    },
+    "steps": [
+      {
+        "id": "deviation",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-deviation",
+          "pluginVersion": "1.0.0",
+          "operatorId": "cloud-distance",
+          "arguments": {
+            "referencePoints": {
+              "$ref": "flow.referencePoints"
+            }
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "deviationOK",
+              "field": "passed"
+            }
+          ]
+        }
+      }
+    ]
+  }
+]

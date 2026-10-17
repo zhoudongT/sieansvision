@@ -1,0 +1,92 @@
+[
+  {
+    "id": "opcua-vision",
+    "category": "通信",
+    "name": "视觉检测 → OPC UA → 流程变量",
+    "image": "parts.png",
+    "description": "轮廓数量通过 OPC UA 写入本机模拟设备的 Count 节点，再读取并保存为流程变量。",
+    "expected": "检测数量 3，节点 Count 读回 3、质量 Good，流程变量 uaCount=3。仅访问本机模拟设备。",
+    "steps": [
+      {
+        "operation": "geometry",
+        "params": {
+          "feature": "contours",
+          "threshold": 127,
+          "minArea": 50
+        }
+      },
+      {
+        "operation": "opcua_write",
+        "params": {
+          "connection": "simulator",
+          "nodeId": "ns=2;s=SIEANS.Count",
+          "dataType": "UInt32",
+          "value": 0,
+          "timeoutMs": 3000
+        }
+      },
+      {
+        "operation": "opcua_read",
+        "params": {
+          "connection": "simulator",
+          "nodeId": "ns=2;s=SIEANS.Count",
+          "requireGood": true,
+          "timeoutMs": 3000
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "uaCount",
+          "value": 0
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 1,
+        "param": "value",
+        "source": 0,
+        "field": "count"
+      },
+      {
+        "step": 3,
+        "param": "value",
+        "source": 2,
+        "field": "value"
+      }
+    ]
+  },
+  {
+    "id": "opcua-array",
+    "category": "通信",
+    "name": "OPC UA 数组写入与读取",
+    "image": "parts.png",
+    "description": "通过值表格编辑浮点数组，观察带类型的写入与读回。",
+    "expected": "Samples 节点读回 12.5、-3.25、8，类型 Double，质量 Good。",
+    "steps": [
+      {
+        "operation": "opcua_write",
+        "params": {
+          "connection": "simulator",
+          "nodeId": "ns=2;s=SIEANS.Samples",
+          "dataType": "Double",
+          "value": [
+            12.5,
+            -3.25,
+            8
+          ]
+        }
+      },
+      {
+        "operation": "opcua_read",
+        "params": {
+          "connection": "simulator",
+          "nodeId": "ns=2;s=SIEANS.Samples",
+          "requireGood": true
+        }
+      }
+    ]
+  }
+]

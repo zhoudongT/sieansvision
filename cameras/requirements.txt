@@ -1,0 +1,4 @@
+# OpenCV / NumPy are pinned in vision/requirements.txt.
+harvesters==1.4.3
+genicam==1.6.0
+cv2-enumerate-cameras==1.4.0

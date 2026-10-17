@@ -1,0 +1,400 @@
+{
+  "apiVersion": 1,
+  "id": "sieans-intrinsics",
+  "name": "SIEANS 相机内参与畸变校正",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "基于 OpenCV 的多视图棋盘格针孔标定、角点累积与图像畸变校正。",
+  "operators": [
+    {
+      "id": "corners",
+      "name": "棋盘格角点采集",
+      "input": "image",
+      "entry": "intrinsics.py",
+      "timeoutMs": 30000,
+      "description": "内角点行列不含外围方格。将累计角点表输入与输出绑定同一流程变量，逐次更换棋盘姿态、递增视图编号并执行。各次图像必须来自同一分辨率、焦距和相机。",
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "default": "corners",
+          "required": true,
+          "choices": [
+            {
+              "value": "corners",
+              "label": "棋盘格角点采集"
+            }
+          ]
+        },
+        {
+          "key": "columns",
+          "label": "棋盘内角点列数",
+          "type": "integer",
+          "default": 9,
+          "required": true,
+          "minimum": 3,
+          "maximum": 15
+        },
+        {
+          "key": "rows",
+          "label": "棋盘内角点行数",
+          "type": "integer",
+          "default": 6,
+          "required": true,
+          "minimum": 3,
+          "maximum": 15
+        },
+        {
+          "key": "squareSize",
+          "label": "棋盘格边长（同一长度单位）",
+          "type": "number",
+          "default": 20,
+          "required": true,
+          "minimum": 0.001,
+          "maximum": 10000
+        },
+        {
+          "key": "view",
+          "label": "本次视图编号",
+          "type": "integer",
+          "default": 1,
+          "required": true,
+          "minimum": 1,
+          "maximum": 999999
+        },
+        {
+          "key": "points",
+          "label": "累计角点表",
+          "type": "array",
+          "default": [],
+          "required": true,
+          "columns": [
+            {
+              "key": "view",
+              "label": "视图编号",
+              "type": "integer",
+              "default": 1,
+              "required": true,
+              "minimum": 1,
+              "maximum": 999999
+            },
+            {
+              "key": "column",
+              "label": "角点列（从 0 开始）",
+              "type": "integer",
+              "default": 0,
+              "required": true,
+              "minimum": 0,
+              "maximum": 14
+            },
+            {
+              "key": "row",
+              "label": "角点行（从 0 开始）",
+              "type": "integer",
+              "default": 0,
+              "required": true,
+              "minimum": 0,
+              "maximum": 14
+            },
+            {
+              "key": "x",
+              "label": "图像 X (px)",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": 0,
+              "maximum": 15999
+            },
+            {
+              "key": "y",
+              "label": "图像 Y (px)",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": 0,
+              "maximum": 15999
+            },
+            {
+              "key": "width",
+              "label": "采集宽度 (px)",
+              "type": "integer",
+              "default": 640,
+              "required": true,
+              "minimum": 32,
+              "maximum": 16000
+            },
+            {
+              "key": "height",
+              "label": "采集高度 (px)",
+              "type": "integer",
+              "default": 480,
+              "required": true,
+              "minimum": 32,
+              "maximum": 16000
+            }
+          ],
+          "minimumRows": 0,
+          "maximumRows": 1000
+        }
+      ],
+      "outputs": [
+        {
+          "key": "points",
+          "label": "累计角点表",
+          "type": "array"
+        },
+        {
+          "key": "viewCount",
+          "label": "累计视图数",
+          "type": "integer"
+        },
+        {
+          "key": "width",
+          "label": "图像宽度",
+          "type": "integer"
+        },
+        {
+          "key": "height",
+          "label": "图像高度",
+          "type": "integer"
+        },
+        {
+          "key": "cornerCount",
+          "label": "本次角点数",
+          "type": "integer"
+        }
+      ]
+    },
+    {
+      "id": "calibrate",
+      "name": "相机内参标定",
+      "input": "none",
+      "entry": "intrinsics.py",
+      "timeoutMs": 30000,
+      "description": "至少六个不同倾斜姿态；建议 10–15 个。针孔模型包含 k1/k2/p1/p2/k3，非鱼眼模型。错误或退化视图拒绝输出。低拟合误差不代表现场测量准确度。",
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "default": "calibrate",
+          "required": true,
+          "choices": [
+            {
+              "value": "calibrate",
+              "label": "相机内参标定"
+            }
+          ]
+        },
+        {
+          "key": "columns",
+          "label": "棋盘内角点列数",
+          "type": "integer",
+          "default": 9,
+          "required": true,
+          "minimum": 3,
+          "maximum": 15
+        },
+        {
+          "key": "rows",
+          "label": "棋盘内角点行数",
+          "type": "integer",
+          "default": 6,
+          "required": true,
+          "minimum": 3,
+          "maximum": 15
+        },
+        {
+          "key": "squareSize",
+          "label": "棋盘格边长（同一长度单位）",
+          "type": "number",
+          "default": 20,
+          "required": true,
+          "minimum": 0.001,
+          "maximum": 10000
+        },
+        {
+          "key": "width",
+          "label": "标定图像宽度 (px)",
+          "type": "integer",
+          "default": 640,
+          "required": true,
+          "minimum": 32,
+          "maximum": 16000
+        },
+        {
+          "key": "height",
+          "label": "标定图像高度 (px)",
+          "type": "integer",
+          "default": 480,
+          "required": true,
+          "minimum": 32,
+          "maximum": 16000
+        },
+        {
+          "key": "points",
+          "label": "累计角点表",
+          "type": "array",
+          "default": [],
+          "required": true,
+          "columns": [
+            {
+              "key": "view",
+              "label": "视图编号",
+              "type": "integer",
+              "default": 1,
+              "required": true,
+              "minimum": 1,
+              "maximum": 999999
+            },
+            {
+              "key": "column",
+              "label": "角点列（从 0 开始）",
+              "type": "integer",
+              "default": 0,
+              "required": true,
+              "minimum": 0,
+              "maximum": 14
+            },
+            {
+              "key": "row",
+              "label": "角点行（从 0 开始）",
+              "type": "integer",
+              "default": 0,
+              "required": true,
+              "minimum": 0,
+              "maximum": 14
+            },
+            {
+              "key": "x",
+              "label": "图像 X (px)",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": 0,
+              "maximum": 15999
+            },
+            {
+              "key": "y",
+              "label": "图像 Y (px)",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": 0,
+              "maximum": 15999
+            },
+            {
+              "key": "width",
+              "label": "采集宽度 (px)",
+              "type": "integer",
+              "default": 640,
+              "required": true,
+              "minimum": 32,
+              "maximum": 16000
+            },
+            {
+              "key": "height",
+              "label": "采集高度 (px)",
+              "type": "integer",
+              "default": 480,
+              "required": true,
+              "minimum": 32,
+              "maximum": 16000
+            }
+          ],
+          "minimumRows": 0,
+          "maximumRows": 1000
+        },
+        {
+          "key": "maxRms",
+          "label": "最大重投影误差 (px)",
+          "type": "number",
+          "default": 1,
+          "required": true,
+          "minimum": 0.001,
+          "maximum": 100
+        }
+      ],
+      "outputs": [
+        {
+          "key": "calibration",
+          "label": "针孔相机标定结果",
+          "type": "object"
+        },
+        {
+          "key": "rmsPixels",
+          "label": "总重投影均方根误差 (px)",
+          "type": "number"
+        },
+        {
+          "key": "viewCount",
+          "label": "有效视图数",
+          "type": "integer"
+        },
+        {
+          "key": "items",
+          "label": "逐视图误差表",
+          "type": "array"
+        },
+        {
+          "key": "note",
+          "label": "使用说明",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "undistort",
+      "name": "镜头畸变校正",
+      "input": "image",
+      "entry": "intrinsics.py",
+      "timeoutMs": 30000,
+      "description": "绑定完整标定结果；尺寸必须一致。校正图进入下游图像通道，保持原尺寸及内参，边缘无效区填黑。校正后重新采集平面标定点，不得套用畸变原图的点位。",
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "default": "undistort",
+          "required": true,
+          "choices": [
+            {
+              "value": "undistort",
+              "label": "镜头畸变校正"
+            }
+          ]
+        },
+        {
+          "key": "calibration",
+          "label": "针孔相机标定结果",
+          "type": "object",
+          "default": {},
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "key": "width",
+          "label": "输出宽度",
+          "type": "integer"
+        },
+        {
+          "key": "height",
+          "label": "输出高度",
+          "type": "integer"
+        },
+        {
+          "key": "calibration",
+          "label": "校正图内参（畸变系数置零）",
+          "type": "object"
+        },
+        {
+          "key": "note",
+          "label": "坐标说明",
+          "type": "string"
+        }
+      ]
+    }
+  ]
+}

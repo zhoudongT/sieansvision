@@ -1,0 +1,28 @@
+/* Free-form directed graph; coordinates and topology are independent. */
+.flow-panel .flow-tabs{flex-shrink:0;gap:6px}.flow-tabs .flow-kind{display:block;padding:0;margin-left:auto}.flow-tabs #flow-expand{font-size:11px;margin-right:8px;padding:3px 7px;border-radius:4px}
+.flow-tools{display:flex;align-items:center;flex-wrap:wrap;gap:4px;padding:7px;background:#f8fafc;border-bottom:1px solid #d5e0e9;flex-shrink:0}
+.flow-tools button,.flow-tools select{font-size:11px;height:26px;padding:3px 6px;border-radius:4px}.flow-tools button:disabled{opacity:.4}.flow-tools #flow-zoom-value{font-size:10px;color:#5a7892;width:32px;text-align:center}.flow-tools #flow-minus,.flow-tools #flow-plus{border:0;background:transparent;font-size:15px}
+.flow-panel .flow-viewport{padding:0;position:relative;overflow:auto;touch-action:none;cursor:grab;background-size:20px 20px;min-height:0}
+.flow-viewport:active{cursor:grabbing}#flow-space{position:relative;min-width:100%;min-height:100%}
+#pipeline{position:absolute;display:block;left:0;top:0;padding:0;margin:0;transform-origin:0 0;min-height:0}
+#pipeline:before,#pipeline .step:before,#pipeline .step:after{display:none}
+#pipeline .step{position:absolute;margin:0;width:200px;max-width:none;height:72px;border-radius:5px;cursor:move;overflow:visible;z-index:2;background:#fff}
+#pipeline .node-heading{height:40px;border-radius:4px 4px 0 0;overflow:hidden;gap:5px}#pipeline .node-icon{width:29px;font-size:18px;flex-shrink:0}#pipeline .step strong{font-size:12px;overflow:hidden;text-overflow:ellipsis}#pipeline .node-index{font-size:10px}
+#pipeline .node-meta{height:30px;padding:5px 8px}#pipeline .step-actions{opacity:1}#pipeline .step small{font-size:10px}
+.flow-source{position:absolute;width:200px;height:40px;border-radius:20px;border:2px solid #1292c1;background:#fff;z-index:2;cursor:move;touch-action:none;display:flex;justify-content:center;align-items:center}
+.flow-source>span{font-size:12px;color:#075b7c;padding:4px 16px;user-select:none}
+#pipeline .flow-port{position:absolute;z-index:3;width:12px;height:12px;min-width:0;padding:0;border-radius:50%;border:2px solid #1292c1;background:#fff;cursor:crosshair;touch-action:none}
+#pipeline .flow-port.output{background:#1292c1;border-color:#fff;box-shadow:0 0 0 1px #1292c1}
+.port-top{top:-7px;left:calc(50% - 6px)}.port-bottom{bottom:-7px;left:calc(50% - 6px)}.port-left{left:-7px;top:calc(50% - 6px)}.port-right{right:-7px;top:calc(50% - 6px)}
+#pipeline .flow-port:hover,#pipeline .flow-port.connecting{box-shadow:0 0 0 5px #1292c130;background:#021d58}
+#pipeline .flow-port:disabled{cursor:default}
+#flow-edges{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none;z-index:1}
+.flow-edge{pointer-events:stroke;cursor:pointer;outline:none}.edge-hit{fill:none;stroke:transparent;stroke-width:16}.edge-line{fill:none;stroke:#1292c1;stroke-width:2}.dependency-edge .edge-line{stroke-dasharray:6 5;stroke:#7e94ac}.flow-edge:hover .edge-line,.flow-edge.selected .edge-line,.flow-edge:focus .edge-line{stroke:#df8730;stroke-width:3}.edge-preview{fill:none;stroke:#1292c1;stroke-width:2;stroke-dasharray:5 4}
+.edge-condition{font-size:13px;fill:#075b7c;stroke:#f7fafc;stroke-width:4px;paint-order:stroke;pointer-events:none}#pipeline .step.skipped{border-style:dashed;background:#f1f4f7}#pipeline .step.skipped .node-icon{background:#8094a5}#pipeline .step.skipped small{color:#758394}.branch-table th:first-child{width:60%}.branch-table th:last-child{width:40%}
+.flow-edge.inactive .edge-line{stroke:#9ba9b7;stroke-dasharray:3 5;opacity:.55}
+#flow-inputs{padding-top:4px}#flow-inputs .muted{font-size:11px;line-height:1.65}#flow-inputs select{max-width:100%!important;width:100%!important}
+.flow-help{min-height:34px;line-height:1.5;text-align:left}
+body.flow-expanded .flow-panel{position:fixed;inset:114px 12px 34px;z-index:30;box-shadow:0 8px 35px #021d5833;border:1px solid #9abfd5;border-radius:6px;overflow:hidden;height:auto}
+body.flow-expanded .flow-panel .flow-viewport{flex:1}body.flow-expanded .flow-panel .flow-tools{padding:8px 14px;gap:8px}
+@media(max-width:760px){.flow-panel{height:440px}body.flow-expanded .flow-panel{inset:12px 8px 32px}}
+@media(min-width:1251px){body:not(.runtime):not(.parameters-open) .studio{grid-template-columns:190px minmax(340px,.9fr) minmax(360px,1.2fr)}}

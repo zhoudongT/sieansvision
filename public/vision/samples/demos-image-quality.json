@@ -1,0 +1,110 @@
+[
+  {
+    "id": "quality-sharp",
+    "name": "采图质量 · 清晰",
+    "category": "2D",
+    "image": "quality-sharp.png",
+    "description": "合成灰度图的拉普拉斯方差和曝光比例检查；实际阈值需根据工件设定。",
+    "expected": "整体合格",
+    "steps": [
+      {
+        "id": "quality",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-image-quality",
+          "pluginVersion": "1.0.0",
+          "operatorId": "inspect",
+          "arguments": {},
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "captureOK",
+              "field": "passed"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "quality-blur",
+    "name": "采图质量 · 模糊",
+    "category": "2D",
+    "image": "quality-blur.png",
+    "description": "合成灰度图的拉普拉斯方差和曝光比例检查；实际阈值需根据工件设定。",
+    "expected": "整体不合格",
+    "steps": [
+      {
+        "id": "quality",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-image-quality",
+          "pluginVersion": "1.0.0",
+          "operatorId": "inspect",
+          "arguments": {},
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "captureOK",
+              "field": "passed"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "quality-dark",
+    "name": "采图质量 · 过暗",
+    "category": "2D",
+    "image": "quality-dark.png",
+    "description": "合成灰度图的拉普拉斯方差和曝光比例检查；实际阈值需根据工件设定。",
+    "expected": "整体不合格",
+    "steps": [
+      {
+        "id": "quality",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-image-quality",
+          "pluginVersion": "1.0.0",
+          "operatorId": "inspect",
+          "arguments": {},
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "captureOK",
+              "field": "passed"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "quality-bright",
+    "name": "采图质量 · 过曝",
+    "category": "2D",
+    "image": "quality-bright.png",
+    "description": "合成灰度图的拉普拉斯方差和曝光比例检查；实际阈值需根据工件设定。",
+    "expected": "整体不合格",
+    "steps": [
+      {
+        "id": "quality",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-image-quality",
+          "pluginVersion": "1.0.0",
+          "operatorId": "inspect",
+          "arguments": {},
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "captureOK",
+              "field": "passed"
+            }
+          ]
+        }
+      }
+    ]
+  }
+]

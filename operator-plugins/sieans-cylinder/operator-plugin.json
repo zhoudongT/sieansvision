@@ -1,0 +1,487 @@
+{
+  "apiVersion": 1,
+  "id": "sieans-cylinder",
+  "name": "SIEANS 三维圆柱检测",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "基于 NumPy / SciPy 的自由轴圆柱拟合、直径判定及有符号侧面偏差；参数与基准模型以表格配置。",
+  "operators": [
+    {
+      "id": "fit",
+      "name": "3D 圆柱拟合",
+      "description": "多组初始轴线与几何优化估计自由轴圆柱，稳健模式剔除离群点；拒绝周向/轴向覆盖不足或病态拟合。采样跨度不是零件长度，绿色仅表示拟合内点。",
+      "entry": "cylinder.py",
+      "input": "cloud",
+      "timeoutMs": 30000,
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "default": "fit",
+          "required": true,
+          "choices": [
+            {
+              "value": "fit",
+              "label": "3D 圆柱拟合"
+            }
+          ]
+        },
+        {
+          "key": "method",
+          "label": "拟合方法",
+          "type": "string",
+          "default": "robust",
+          "required": true,
+          "choices": [
+            {
+              "value": "robust",
+              "label": "稳健几何拟合 + 内点优化"
+            },
+            {
+              "value": "all",
+              "label": "采样点最小二乘"
+            }
+          ]
+        },
+        {
+          "key": "minimumAngularCoverage",
+          "label": "最低周向覆盖角（°）",
+          "type": "number",
+          "default": 120,
+          "required": true,
+          "minimum": 10,
+          "maximum": 350
+        },
+        {
+          "key": "minimumAxialSpanRatio",
+          "label": "最低轴向跨度 / 半径",
+          "type": "number",
+          "default": 0.5,
+          "required": true,
+          "minimum": 0.01,
+          "maximum": 100
+        },
+        {
+          "key": "inlierThreshold",
+          "label": "内点径向误差阈值（点云单位）",
+          "type": "number",
+          "default": 0.05,
+          "required": true,
+          "minimum": 1e-09,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "minimumRadius",
+          "label": "搜索半径下限",
+          "type": "number",
+          "default": 0.001,
+          "required": true,
+          "minimum": 1e-09,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "maximumRadius",
+          "label": "搜索半径上限",
+          "type": "number",
+          "default": 1000,
+          "required": true,
+          "minimum": 1e-09,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "seed",
+          "label": "随机种子",
+          "type": "integer",
+          "default": 0,
+          "required": true,
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        {
+          "key": "maximumFitPoints",
+          "label": "最多拟合独立点数",
+          "type": "integer",
+          "default": 3000,
+          "required": true,
+          "minimum": 12,
+          "maximum": 10000
+        },
+        {
+          "key": "maximumCondition",
+          "label": "允许最大拟合条件数",
+          "type": "number",
+          "default": 100,
+          "required": true,
+          "minimum": 2,
+          "maximum": 1000000.0
+        },
+        {
+          "key": "minimumInlierRatio",
+          "label": "最低独立内点比例",
+          "type": "number",
+          "default": 0.8,
+          "required": true,
+          "minimum": 0.01,
+          "maximum": 1
+        },
+        {
+          "key": "maximumRms",
+          "label": "合格内点均方根误差",
+          "type": "number",
+          "default": 0.03,
+          "required": true,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "minimumDiameter",
+          "label": "合格直径下限",
+          "type": "number",
+          "default": 19.8,
+          "required": true,
+          "minimum": 0,
+          "maximum": 2000000000.0
+        },
+        {
+          "key": "maximumDiameter",
+          "label": "合格直径上限",
+          "type": "number",
+          "default": 20.2,
+          "required": true,
+          "minimum": 0,
+          "maximum": 2000000000.0
+        },
+        {
+          "key": "colorize",
+          "label": "输出点云着色（最多 10000 点）",
+          "type": "boolean",
+          "default": true,
+          "required": true
+        },
+        {
+          "key": "detailMode",
+          "label": "明细范围（最多 500 行）",
+          "type": "string",
+          "default": "all",
+          "required": true,
+          "choices": [
+            {
+              "value": "all",
+              "label": "全部点"
+            },
+            {
+              "value": "outside",
+              "label": "仅超差点"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "key": "found",
+          "label": "是否找到可靠模型",
+          "type": "boolean"
+        },
+        {
+          "key": "passed",
+          "label": "是否通过",
+          "type": "boolean"
+        },
+        {
+          "key": "diagnostic",
+          "label": "检测说明",
+          "type": "string"
+        },
+        {
+          "key": "pointCount",
+          "label": "输入点数",
+          "type": "integer"
+        },
+        {
+          "key": "axisPoint",
+          "label": "轴线上基准点",
+          "type": "array"
+        },
+        {
+          "key": "axisDirection",
+          "label": "轴线单位方向",
+          "type": "array"
+        },
+        {
+          "key": "radius",
+          "label": "拟合半径",
+          "type": "number"
+        },
+        {
+          "key": "diameter",
+          "label": "拟合直径",
+          "type": "number"
+        },
+        {
+          "key": "rmsDistance",
+          "label": "径向均方根误差",
+          "type": "number"
+        },
+        {
+          "key": "sampledAxialSpan",
+          "label": "采样点轴向跨度（非零件长度）",
+          "type": "number"
+        },
+        {
+          "key": "outsideCount",
+          "label": "离群 / 超差点数",
+          "type": "integer"
+        },
+        {
+          "key": "unit",
+          "label": "点云单位",
+          "type": "string"
+        },
+        {
+          "key": "cylinder",
+          "label": "圆柱基准模型",
+          "type": "object"
+        },
+        {
+          "key": "items",
+          "label": "点位偏差明细",
+          "type": "array"
+        },
+        {
+          "key": "detailsTruncated",
+          "label": "明细已截断",
+          "type": "boolean"
+        },
+        {
+          "key": "uniquePointCount",
+          "label": "独立坐标点数",
+          "type": "integer"
+        },
+        {
+          "key": "sampleCount",
+          "label": "拟合采样点数",
+          "type": "integer"
+        },
+        {
+          "key": "uniqueInlierCount",
+          "label": "独立内点数",
+          "type": "integer"
+        },
+        {
+          "key": "inlierRatio",
+          "label": "独立内点比例",
+          "type": "number"
+        },
+        {
+          "key": "angularCoverageDeg",
+          "label": "周向覆盖角（°）",
+          "type": "number"
+        },
+        {
+          "key": "axialSpanRatio",
+          "label": "采样轴向跨度 / 半径",
+          "type": "number"
+        },
+        {
+          "key": "conditionNumber",
+          "label": "拟合条件数",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "inspect",
+      "name": "3D 圆柱侧面偏差",
+      "description": "比较点云到基准圆柱无限侧面的径向偏差，向外为正、向内为负。要求单位与坐标系一致；不检查端面，不计算实体体积或最小区域圆柱度。",
+      "entry": "cylinder.py",
+      "input": "cloud",
+      "timeoutMs": 30000,
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "default": "inspect",
+          "required": true,
+          "choices": [
+            {
+              "value": "inspect",
+              "label": "3D 圆柱侧面偏差"
+            }
+          ]
+        },
+        {
+          "key": "cylinder",
+          "label": "基准圆柱模型",
+          "type": "object",
+          "default": {
+            "model": "sieans-cylinder-v1",
+            "axisPoint": [
+              0,
+              0,
+              0
+            ],
+            "axisDirection": [
+              0,
+              0,
+              1
+            ],
+            "radius": 10,
+            "unit": "mm",
+            "frame": ""
+          },
+          "required": true
+        },
+        {
+          "key": "lowerDistance",
+          "label": "径向偏差下限（点云单位）",
+          "type": "number",
+          "default": -0.1,
+          "required": true,
+          "minimum": -1000000000.0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "upperDistance",
+          "label": "径向偏差上限（点云单位）",
+          "type": "number",
+          "default": 0.1,
+          "required": true,
+          "minimum": -1000000000.0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "maximumOutsidePercent",
+          "label": "允许超差点比例 (%)",
+          "type": "number",
+          "default": 0,
+          "required": true,
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "key": "colorize",
+          "label": "输出点云着色（最多 10000 点）",
+          "type": "boolean",
+          "default": true,
+          "required": true
+        },
+        {
+          "key": "detailMode",
+          "label": "明细范围（最多 500 行）",
+          "type": "string",
+          "default": "all",
+          "required": true,
+          "choices": [
+            {
+              "value": "all",
+              "label": "全部点"
+            },
+            {
+              "value": "outside",
+              "label": "仅超差点"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "key": "found",
+          "label": "是否找到可靠模型",
+          "type": "boolean"
+        },
+        {
+          "key": "passed",
+          "label": "是否通过",
+          "type": "boolean"
+        },
+        {
+          "key": "diagnostic",
+          "label": "检测说明",
+          "type": "string"
+        },
+        {
+          "key": "pointCount",
+          "label": "输入点数",
+          "type": "integer"
+        },
+        {
+          "key": "axisPoint",
+          "label": "轴线上基准点",
+          "type": "array"
+        },
+        {
+          "key": "axisDirection",
+          "label": "轴线单位方向",
+          "type": "array"
+        },
+        {
+          "key": "radius",
+          "label": "拟合半径",
+          "type": "number"
+        },
+        {
+          "key": "diameter",
+          "label": "拟合直径",
+          "type": "number"
+        },
+        {
+          "key": "rmsDistance",
+          "label": "径向均方根误差",
+          "type": "number"
+        },
+        {
+          "key": "sampledAxialSpan",
+          "label": "采样点轴向跨度（非零件长度）",
+          "type": "number"
+        },
+        {
+          "key": "outsideCount",
+          "label": "离群 / 超差点数",
+          "type": "integer"
+        },
+        {
+          "key": "unit",
+          "label": "点云单位",
+          "type": "string"
+        },
+        {
+          "key": "cylinder",
+          "label": "圆柱基准模型",
+          "type": "object"
+        },
+        {
+          "key": "items",
+          "label": "点位偏差明细",
+          "type": "array"
+        },
+        {
+          "key": "detailsTruncated",
+          "label": "明细已截断",
+          "type": "boolean"
+        },
+        {
+          "key": "outsidePercent",
+          "label": "超差点比例（%）",
+          "type": "number"
+        },
+        {
+          "key": "minimumDistance",
+          "label": "最小径向偏差",
+          "type": "number"
+        },
+        {
+          "key": "maximumDistance",
+          "label": "最大径向偏差",
+          "type": "number"
+        },
+        {
+          "key": "peakToValley",
+          "label": "径向偏差峰谷差",
+          "type": "number"
+        }
+      ]
+    }
+  ]
+}

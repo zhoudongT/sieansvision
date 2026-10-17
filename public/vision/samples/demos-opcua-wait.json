@@ -1,0 +1,189 @@
+[
+  {
+    "category": "工业通信",
+    "camera": true,
+    "description": "使用本机 OPC UA 协议服务器订阅单节点，初始值只在条件成立模式触发；不是硬件同步或无遗漏事件队列。",
+    "id": "opcua-wait-camera",
+    "name": "OPC UA 订阅 → 相机采集 → 检测",
+    "expected": "初始计数为 0，条件触发后采集模拟相机，检出 3 个零件。",
+    "steps": [
+      {
+        "operation": "opcua_write",
+        "params": {
+          "connection": "simulator",
+          "nodeId": "ns=2;s=SIEANS.Count",
+          "dataType": "UInt32",
+          "value": 0
+        }
+      },
+      {
+        "operation": "opcua_wait",
+        "params": {
+          "connection": "simulator",
+          "nodeId": "ns=2;s=SIEANS.Count",
+          "timeoutMs": 3000,
+          "publishingIntervalMs": 20,
+          "waitTimeoutMs": 3000,
+          "comparison": "eq",
+          "expectedValue": 0,
+          "triggerMode": "level",
+          "onTimeout": "error"
+        }
+      },
+      {
+        "operation": "camera_capture",
+        "params": {
+          "driver": "simulator"
+        }
+      },
+      {
+        "operation": "geometry",
+        "params": {
+          "threshold": 127,
+          "minArea": 50
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "uaDetected",
+          "value": 0
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 4,
+        "param": "value",
+        "source": 3,
+        "field": "count"
+      }
+    ]
+  },
+  {
+    "category": "工业通信",
+    "camera": true,
+    "description": "使用本机 OPC UA 协议服务器订阅单节点，初始值只在条件成立模式触发；不是硬件同步或无遗漏事件队列。",
+    "id": "opcua-wait-edge-timeout",
+    "name": "OPC UA 边沿 → 超时分支",
+    "expected": "初始条件已成立不是新上升边沿；超时后进入“未触发”分支，相机跳过。",
+    "steps": [
+      {
+        "operation": "opcua_write",
+        "params": {
+          "connection": "simulator",
+          "nodeId": "ns=2;s=SIEANS.Count",
+          "dataType": "UInt32",
+          "value": 0
+        }
+      },
+      {
+        "operation": "opcua_wait",
+        "params": {
+          "connection": "simulator",
+          "nodeId": "ns=2;s=SIEANS.Count",
+          "timeoutMs": 3000,
+          "publishingIntervalMs": 20,
+          "waitTimeoutMs": 1000,
+          "comparison": "eq",
+          "expectedValue": 0,
+          "triggerMode": "rising",
+          "onTimeout": "continue"
+        }
+      },
+      {
+        "operation": "condition",
+        "params": {
+          "left": false,
+          "comparison": "is_true"
+        }
+      },
+      {
+        "operation": "camera_capture",
+        "params": {
+          "driver": "simulator"
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "uaTimeout",
+          "value": true
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 2,
+        "param": "left",
+        "source": 1,
+        "field": "triggered"
+      }
+    ],
+    "connections": [
+      [
+        -1,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        3,
+        "true"
+      ],
+      [
+        2,
+        4,
+        "false"
+      ]
+    ]
+  },
+  {
+    "category": "工业通信",
+    "camera": true,
+    "description": "使用本机 OPC UA 协议服务器订阅单节点，初始值只在条件成立模式触发；不是硬件同步或无遗漏事件队列。",
+    "id": "opcua-wait-error",
+    "name": "OPC UA 等待超时 → 停止",
+    "expected": "等待计数 99 超时，流程失败；相机不执行。",
+    "steps": [
+      {
+        "operation": "opcua_write",
+        "params": {
+          "connection": "simulator",
+          "nodeId": "ns=2;s=SIEANS.Count",
+          "dataType": "UInt32",
+          "value": 0
+        }
+      },
+      {
+        "operation": "opcua_wait",
+        "params": {
+          "connection": "simulator",
+          "nodeId": "ns=2;s=SIEANS.Count",
+          "timeoutMs": 3000,
+          "publishingIntervalMs": 20,
+          "waitTimeoutMs": 1000,
+          "comparison": "eq",
+          "expectedValue": 99,
+          "triggerMode": "level",
+          "onTimeout": "error"
+        }
+      },
+      {
+        "operation": "camera_capture",
+        "params": {
+          "driver": "simulator"
+        }
+      }
+    ]
+  }
+]

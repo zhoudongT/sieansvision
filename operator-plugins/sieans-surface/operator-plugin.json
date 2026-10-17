@@ -1,0 +1,169 @@
+{
+  "apiVersion": 1,
+  "id": "sieans-surface",
+  "name": "SIEANS 三维表面检测",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "基准或最小二乘平面的有符号距离、公差带和超差点检测。",
+  "operators": [
+    {
+      "id": "plane-distance",
+      "name": "3D 平面偏差检测",
+      "description": "基准方程为 aX+bY+cZ+d=0；输入单位沿用点云。拟合模式使用全部点的最小二乘平面，不是最小区域平面度，也不自动剔除异常点。",
+      "entry": "plane_distance.py",
+      "input": "cloud",
+      "timeoutMs": 15000,
+      "parameters": [
+        {
+          "key": "planeMode",
+          "label": "基准方式",
+          "type": "string",
+          "default": "reference",
+          "required": true,
+          "choices": [
+            {
+              "value": "reference",
+              "label": "指定基准平面"
+            },
+            {
+              "value": "fit",
+              "label": "最小二乘拟合平面"
+            }
+          ]
+        },
+        {
+          "key": "normalX",
+          "label": "法向量 a（指定基准）",
+          "type": "number",
+          "default": 0,
+          "required": true
+        },
+        {
+          "key": "normalY",
+          "label": "法向量 b（指定基准）",
+          "type": "number",
+          "default": 0,
+          "required": true
+        },
+        {
+          "key": "normalZ",
+          "label": "法向量 c（指定基准）",
+          "type": "number",
+          "default": 1,
+          "required": true
+        },
+        {
+          "key": "planeOffset",
+          "label": "方程常数 d（指定基准）",
+          "type": "number",
+          "default": 0,
+          "required": true
+        },
+        {
+          "key": "lowerDistance",
+          "label": "偏差下限（点云单位）",
+          "type": "number",
+          "default": -0.1,
+          "required": true
+        },
+        {
+          "key": "upperDistance",
+          "label": "偏差上限（点云单位）",
+          "type": "number",
+          "default": 0.1,
+          "required": true
+        },
+        {
+          "key": "maximumOutsidePercent",
+          "label": "允许超差点比例 (%)",
+          "type": "number",
+          "default": 0,
+          "required": true,
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "key": "colorize",
+          "label": "输出超差着色点云（最多 10000 点）",
+          "type": "boolean",
+          "default": true,
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "key": "pointCount",
+          "label": "总点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "outsideCount",
+          "label": "超差点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "outsidePercent",
+          "label": "超差点比例 (%)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "minimumDistance",
+          "label": "最小有符号偏差",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "maximumDistance",
+          "label": "最大有符号偏差",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "peakToValley",
+          "label": "偏差峰谷差",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "rmsDistance",
+          "label": "偏差均方根",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "plane",
+          "label": "归一化平面方程",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "unit",
+          "label": "单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "超差点明细（索引从 0 起）",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "detailsTruncated",
+          "label": "明细超过 500 条",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "passed",
+          "label": "是否通过",
+          "type": "boolean",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

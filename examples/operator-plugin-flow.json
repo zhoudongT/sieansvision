@@ -1,0 +1,9 @@
+[
+  {"id":"operator-example","type":"tab","label":"SIEANS 扩展算子演示","disabled":false,"info":"点击注入按钮，默认四点标定后测量 100 mm。所有参数均可双击节点在表单/点表中编辑。"},
+  {"id":"operator-inject","type":"inject","z":"operator-example","name":"运行 100 mm 测量","props":[{"p":"payload"}],"payload":"","payloadType":"date","repeat":"","crontab":"","once":false,"x":180,"y":140,"wires":[["operator-calibrate"]]},
+  {"id":"operator-calibrate","type":"machine-operator","z":"operator-example","name":"四点平面标定","pluginId":"sieans-planar","pluginVersion":"1.0.0","operatorId":"calibrate","operatorName":"平面透视标定","arguments":"{}","parameterBindings":"{}","validConfig":true,"x":430,"y":140,"wires":[["operator-measure"],[]]},
+  {"id":"operator-measure","type":"machine-operator","z":"operator-example","name":"测量 100 mm","pluginId":"sieans-planar","pluginVersion":"1.0.0","operatorId":"measure","operatorName":"标定平面坐标与距离","arguments":"{\"points\":[{\"x\":100,\"y\":100},{\"x\":500,\"y\":100}]}","parameterBindings":"{\"calibration\":\"payload.calibration\"}","validConfig":true,"x":670,"y":140,"wires":[["operator-result"],[]]},
+  {"id":"operator-result","type":"debug","z":"operator-example","name":"长度 (mm)","active":true,"tosidebar":true,"console":false,"tostatus":false,"complete":"payload.length","targetType":"msg","x":900,"y":140,"wires":[]},
+  {"id":"operator-catch","type":"catch","z":"operator-example","name":"算子错误","scope":["operator-calibrate","operator-measure"],"uncaught":false,"x":430,"y":260,"wires":[["operator-error"]]},
+  {"id":"operator-error","type":"debug","z":"operator-example","name":"错误原因","active":true,"tosidebar":true,"console":false,"tostatus":false,"complete":"error.message","targetType":"msg","x":670,"y":260,"wires":[]}
+]

@@ -1,0 +1,577 @@
+[
+  {
+    "id": "fixture-multiple",
+    "name": "多目标定位 · 旋转与缩放去重",
+    "category": "定位",
+    "image": "fixture-multiple.png",
+    "description": "非对称模板在三种角度/比例下出现，按旋转四边形重叠去重；每个目标提供坐标和位姿表。",
+    "expected": "检出 3 个独立目标：约 (110,100)、(320,110)、(230,270) px；角度 0°、30°、−30°。",
+    "steps": [
+      {
+        "operation": "locate",
+        "reference": "fixture-template.png",
+        "params": {
+          "minScore": 0.94,
+          "angleStart": -30,
+          "angleEnd": 30,
+          "angleStep": 30,
+          "scales": [
+            0.8,
+            1,
+            1.2
+          ],
+          "maxMatches": 5,
+          "overlapThreshold": 0.3
+        }
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "多目标定位 · 旋转与缩放去重",
+      "rows": 7,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "fixture-image",
+          "type": "image",
+          "label": "本步处理图像",
+          "x": 0,
+          "y": 0,
+          "w": 7,
+          "h": 7,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-fixture",
+            "path": ""
+          }
+        },
+        {
+          "id": "fixture-table",
+          "type": "table",
+          "label": "检测明细",
+          "x": 7,
+          "y": 0,
+          "w": 5,
+          "h": 7,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-fixture",
+            "path": "items"
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 0,
+        "step": 0
+      },
+      {
+        "component": 1,
+        "step": 0
+      }
+    ]
+  },
+  {
+    "id": "fixture-rotated",
+    "name": "定位跟随 · 点位坐标转换",
+    "category": "定位",
+    "image": "fixture-rotated.png",
+    "description": "先定位旋转且放大的工件，再将模板中的圆孔/方孔中心转换为当前图像坐标。",
+    "expected": "唯一目标约 (240,180) px，30° / 1.2 倍；两条转换点位在图像范围内。",
+    "steps": [
+      {
+        "operation": "locate",
+        "reference": "fixture-template.png",
+        "params": {
+          "minScore": 0.94,
+          "angleStart": -30,
+          "angleEnd": 30,
+          "angleStep": 30,
+          "scales": [
+            0.8,
+            1,
+            1.2
+          ],
+          "maxMatches": 5,
+          "overlapThreshold": 0.3
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "partPose",
+          "value": {}
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-fixture",
+          "pluginVersion": "1.0.0",
+          "operatorId": "points",
+          "arguments": {
+            "pose": {
+              "$ref": "flow.partPose"
+            },
+            "points": [
+              {
+                "x": 26,
+                "y": 30
+              },
+              {
+                "x": 53.5,
+                "y": 30.5
+              }
+            ]
+          },
+          "outputBindings": []
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 1,
+        "param": "value",
+        "source": 0,
+        "field": "pose"
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "定位跟随 · 点位坐标转换",
+      "rows": 7,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "fixture-image",
+          "type": "image",
+          "label": "本步处理图像",
+          "x": 0,
+          "y": 0,
+          "w": 7,
+          "h": 7,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-fixture",
+            "path": ""
+          }
+        },
+        {
+          "id": "fixture-table",
+          "type": "table",
+          "label": "检测明细",
+          "x": 7,
+          "y": 0,
+          "w": 5,
+          "h": 7,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-fixture",
+            "path": "items"
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 0,
+        "step": 2
+      },
+      {
+        "component": 1,
+        "step": 2
+      }
+    ]
+  },
+  {
+    "id": "fixture-inspect",
+    "name": "定位跟随 · 校正后检测双孔",
+    "category": "定位",
+    "image": "fixture-rotated.png",
+    "description": "模板定位 → 固定模板坐标的 56×40 检测区域校正 → 灰度斑点检测；目标移动、旋转和缩放后，下游仍在固定坐标检测。",
+    "expected": "校正图为 56×40，检出 2 个暗区域；圆孔中心约 (14,18) px。",
+    "steps": [
+      {
+        "operation": "locate",
+        "reference": "fixture-template.png",
+        "params": {
+          "minScore": 0.94,
+          "angleStart": -30,
+          "angleEnd": 30,
+          "angleStep": 30,
+          "scales": [
+            0.8,
+            1,
+            1.2
+          ],
+          "maxMatches": 5,
+          "overlapThreshold": 0.3
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "partPose",
+          "value": {}
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-fixture",
+          "pluginVersion": "1.0.0",
+          "operatorId": "rectify",
+          "arguments": {
+            "pose": {
+              "$ref": "flow.partPose"
+            },
+            "cropX": 12,
+            "cropY": 12,
+            "cropWidth": 56,
+            "cropHeight": 40
+          },
+          "outputBindings": []
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-regions",
+          "pluginVersion": "1.0.0",
+          "operatorId": "blobs",
+          "arguments": {
+            "polarity": "dark",
+            "threshold": 100,
+            "minimumArea": 30,
+            "maximumArea": 500,
+            "minimumCount": 2,
+            "maximumCount": 2
+          },
+          "outputBindings": [
+            {
+              "field": "count",
+              "scope": "flow",
+              "name": "holeCount"
+            }
+          ]
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 1,
+        "param": "value",
+        "source": 0,
+        "field": "pose"
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "定位跟随 · 校正后检测双孔",
+      "rows": 7,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "fixture-image",
+          "type": "image",
+          "label": "本步处理图像",
+          "x": 0,
+          "y": 0,
+          "w": 7,
+          "h": 7,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-fixture",
+            "path": ""
+          }
+        },
+        {
+          "id": "fixture-table",
+          "type": "table",
+          "label": "检测明细",
+          "x": 7,
+          "y": 0,
+          "w": 5,
+          "h": 7,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-fixture",
+            "path": "items"
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 0,
+        "step": 3
+      },
+      {
+        "component": 1,
+        "step": 3
+      }
+    ]
+  },
+  {
+    "id": "fixture-blank",
+    "name": "模板定位 · 未检出诊断",
+    "category": "定位",
+    "image": "fixture-blank.png",
+    "description": "没有达到阈值时只返回分数、状态与空目标表，不提供伪造的定位位姿。",
+    "expected": "found=false、count=0、unique=false，无 pose / center。后续跟随应由条件分支保护。",
+    "steps": [
+      {
+        "operation": "locate",
+        "reference": "fixture-template.png",
+        "params": {
+          "minScore": 0.94,
+          "angleStart": -30,
+          "angleEnd": 30,
+          "angleStep": 30,
+          "scales": [
+            0.8,
+            1,
+            1.2
+          ],
+          "maxMatches": 5,
+          "overlapThreshold": 0.3
+        }
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "模板定位 · 未检出诊断",
+      "rows": 7,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "fixture-image",
+          "type": "image",
+          "label": "本步处理图像",
+          "x": 0,
+          "y": 0,
+          "w": 7,
+          "h": 7,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-fixture",
+            "path": ""
+          }
+        },
+        {
+          "id": "fixture-table",
+          "type": "table",
+          "label": "检测明细",
+          "x": 7,
+          "y": 0,
+          "w": 5,
+          "h": 7,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-fixture",
+            "path": "items"
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 0,
+        "step": 0
+      },
+      {
+        "component": 1,
+        "step": 0
+      }
+    ]
+  },
+  {
+    "id": "fixture-guard",
+    "name": "定位跟随 · 唯一目标条件保护",
+    "category": "定位",
+    "image": "fixture-blank.png",
+    "description": "仅在目标唯一且搜索结果完整时进入校正和检测。未找到、多个目标或结果截断时跳过下游，不引用缺失的位姿。可换用单目标或多目标演示图片验证分支。",
+    "expected": "空图时后三步均跳过；换为单目标旋转图时校正后检出两孔；多目标图时也跳过。",
+    "steps": [
+      {
+        "operation": "locate",
+        "reference": "fixture-template.png",
+        "params": {
+          "minScore": 0.94,
+          "angleStart": -30,
+          "angleEnd": 30,
+          "angleStep": 30,
+          "scales": [
+            0.8,
+            1,
+            1.2
+          ],
+          "maxMatches": 5,
+          "overlapThreshold": 0.3
+        }
+      },
+      {
+        "operation": "condition",
+        "params": {
+          "comparison": "is_true",
+          "left": false
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "partPose",
+          "value": {}
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-fixture",
+          "pluginVersion": "1.0.0",
+          "operatorId": "rectify",
+          "arguments": {
+            "pose": {
+              "$ref": "flow.partPose"
+            },
+            "cropX": 12,
+            "cropY": 12,
+            "cropWidth": 56,
+            "cropHeight": 40
+          },
+          "outputBindings": []
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-regions",
+          "pluginVersion": "1.0.0",
+          "operatorId": "blobs",
+          "arguments": {
+            "polarity": "dark",
+            "threshold": 100,
+            "minimumArea": 30,
+            "maximumArea": 500,
+            "minimumCount": 2,
+            "maximumCount": 2
+          },
+          "outputBindings": [
+            {
+              "field": "count",
+              "scope": "flow",
+              "name": "holeCount"
+            }
+          ]
+        }
+      }
+    ],
+    "connections": [
+      [
+        -1,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2,
+        "true"
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        3,
+        4
+      ]
+    ],
+    "bindings": [
+      {
+        "step": 1,
+        "param": "left",
+        "source": 0,
+        "field": "unique"
+      },
+      {
+        "step": 2,
+        "param": "value",
+        "source": 0,
+        "field": "pose"
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "定位跟随 · 唯一目标条件保护",
+      "rows": 7,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "fixture-image",
+          "type": "image",
+          "label": "本步处理图像",
+          "x": 0,
+          "y": 0,
+          "w": 7,
+          "h": 7,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-fixture",
+            "path": ""
+          }
+        },
+        {
+          "id": "fixture-table",
+          "type": "table",
+          "label": "检测明细",
+          "x": 7,
+          "y": 0,
+          "w": 5,
+          "h": 7,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "nodeId": "demo-fixture",
+            "path": "items"
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 0,
+        "step": 4
+      },
+      {
+        "component": 1,
+        "step": 4
+      }
+    ]
+  }
+]

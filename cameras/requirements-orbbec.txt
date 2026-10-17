@@ -1,0 +1,2 @@
+# Optional official Orbbec SDK v2 wrapper (Python 3.12).
+pyorbbecsdk2==2.1.2

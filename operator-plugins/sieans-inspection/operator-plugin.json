@@ -1,0 +1,49 @@
+{
+  "apiVersion": 1,
+  "id": "sieans-inspection",
+  "name": "SIEANS 检测扩展示例",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "可独立开发的 Python 算子示例：OpenCV 亮度检测与点云质心偏差。",
+  "operators": [
+    {
+      "id": "brightness",
+      "name": "图像亮度检测",
+      "description": "统计灰度亮度均值与标准差，按上下限判定。全图计算，范围 0–255。",
+      "entry": "brightness.py",
+      "input": "image",
+      "timeoutMs": 5000,
+      "parameters": [
+        {"key": "minimumMean", "label": "最低平均亮度", "type": "number", "minimum": 0, "maximum": 255, "default": 10, "required": true},
+        {"key": "maximumMean", "label": "最高平均亮度", "type": "number", "minimum": 0, "maximum": 255, "default": 230, "required": true}
+      ],
+      "outputs": [
+        {"key": "meanIntensity", "label": "平均灰度亮度", "type": "number", "required": true},
+        {"key": "intensityDeviation", "label": "亮度标准差", "type": "number", "required": true},
+        {"key": "pixelCount", "label": "像素数量", "type": "integer", "required": true},
+        {"key": "passed", "label": "是否通过", "type": "boolean", "required": true}
+      ]
+    },
+    {
+      "id": "centroid",
+      "name": "点云质心偏差",
+      "description": "计算已采样点的算术平均坐标及到目标位置的距离。单位沿用输入点云；不是实体质量重心。",
+      "entry": "centroid.py",
+      "input": "cloud",
+      "timeoutMs": 5000,
+      "parameters": [
+        {"key": "targetX", "label": "目标 X", "type": "number", "default": 0, "required": true},
+        {"key": "targetY", "label": "目标 Y", "type": "number", "default": 0, "required": true},
+        {"key": "targetZ", "label": "目标 Z", "type": "number", "default": 0, "required": true},
+        {"key": "tolerance", "label": "允许偏差（输入点云单位）", "type": "number", "minimum": 0, "default": 100, "required": true}
+      ],
+      "outputs": [
+        {"key": "centroid", "label": "质心坐标", "type": "array", "required": true},
+        {"key": "distanceToTarget", "label": "到目标距离", "type": "number", "required": true},
+        {"key": "pointCount", "label": "点数", "type": "integer", "required": true},
+        {"key": "unit", "label": "单位", "type": "string", "required": true},
+        {"key": "passed", "label": "是否通过", "type": "boolean", "required": true}
+      ]
+    }
+  ]
+}

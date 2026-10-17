@@ -1,0 +1,2287 @@
+[
+  {
+    "id": "inspection-chain-pass",
+    "name": "完整检测链 · 直角合格",
+    "category": "流程",
+    "image": "caliper-corner.png",
+    "description": "图像质量门控、双卡尺定位、边缘存在判定、几何关系和互斥分支汇合；无自定义脚本。",
+    "expected": "检测完成，交点约 (159.5,119.5) px，cornerOK=是",
+    "variables": {
+      "cornerOK": false,
+      "captureOK": false,
+      "inspectionRoute": "尚未检测"
+    },
+    "variableTypes": {
+      "cornerOK": "boolean",
+      "captureOK": "boolean",
+      "inspectionRoute": "string"
+    },
+    "steps": [
+      {
+        "id": "resetCorner",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "cornerOK",
+          "mode": "set",
+          "value": false
+        }
+      },
+      {
+        "id": "quality",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-image-quality",
+          "pluginVersion": "1.0.0",
+          "operatorId": "inspect",
+          "arguments": {
+            "minimumSharpness": 10
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "captureOK",
+              "field": "passed"
+            }
+          ]
+        }
+      },
+      {
+        "id": "qualityGate",
+        "operation": "condition",
+        "params": {
+          "comparison": "eq",
+          "left": {
+            "$ref": "results.quality.passed"
+          },
+          "right": true
+        }
+      },
+      {
+        "id": "vertical",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-caliper",
+          "pluginVersion": "1.0.0",
+          "operatorId": "edge-line",
+          "arguments": {
+            "centerX": 160,
+            "centerY": 200,
+            "scanAngle": 0,
+            "searchLength": 80,
+            "probeCount": 9,
+            "probeSpacing": 8
+          }
+        }
+      },
+      {
+        "id": "verticalGate",
+        "operation": "condition",
+        "params": {
+          "comparison": "eq",
+          "left": {
+            "$ref": "results.vertical.found"
+          },
+          "right": true
+        }
+      },
+      {
+        "id": "horizontal",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-caliper",
+          "pluginVersion": "1.0.0",
+          "operatorId": "edge-line",
+          "arguments": {
+            "centerX": 250,
+            "centerY": 120,
+            "scanAngle": 90,
+            "searchLength": 80,
+            "probeCount": 9,
+            "probeSpacing": 8
+          }
+        }
+      },
+      {
+        "id": "horizontalGate",
+        "operation": "condition",
+        "params": {
+          "comparison": "eq",
+          "left": {
+            "$ref": "results.horizontal.found"
+          },
+          "right": true
+        }
+      },
+      {
+        "id": "corner",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-relations",
+          "pluginVersion": "1.0.0",
+          "operatorId": "lines-2d",
+          "arguments": {
+            "entities": [
+              {
+                "x1": {
+                  "$ref": "results.vertical.line.start.0"
+                },
+                "y1": {
+                  "$ref": "results.vertical.line.start.1"
+                },
+                "x2": {
+                  "$ref": "results.vertical.line.end.0"
+                },
+                "y2": {
+                  "$ref": "results.vertical.line.end.1"
+                }
+              },
+              {
+                "x1": {
+                  "$ref": "results.horizontal.line.start.0"
+                },
+                "y1": {
+                  "$ref": "results.horizontal.line.start.1"
+                },
+                "x2": {
+                  "$ref": "results.horizontal.line.end.0"
+                },
+                "y2": {
+                  "$ref": "results.horizontal.line.end.1"
+                }
+              }
+            ],
+            "minimumAngle": 89.5,
+            "maximumAngle": 90
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "cornerOK",
+              "field": "passed"
+            }
+          ]
+        }
+      },
+      {
+        "id": "measured",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "inspectionRoute",
+          "mode": "set",
+          "value": "检测完成"
+        }
+      },
+      {
+        "id": "qualityRejected",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "inspectionRoute",
+          "mode": "set",
+          "value": "采图不合格"
+        }
+      },
+      {
+        "id": "verticalMissing",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "inspectionRoute",
+          "mode": "set",
+          "value": "未找到第一条边缘"
+        }
+      },
+      {
+        "id": "horizontalMissing",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "inspectionRoute",
+          "mode": "set",
+          "value": "未找到第二条边缘"
+        }
+      },
+      {
+        "id": "merge",
+        "operation": "branch_merge",
+        "params": {}
+      }
+    ],
+    "connections": [
+      [
+        -1,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        3,
+        "true"
+      ],
+      [
+        2,
+        9,
+        "false"
+      ],
+      [
+        3,
+        4
+      ],
+      [
+        4,
+        5,
+        "true"
+      ],
+      [
+        4,
+        10,
+        "false"
+      ],
+      [
+        5,
+        6
+      ],
+      [
+        6,
+        7,
+        "true"
+      ],
+      [
+        6,
+        11,
+        "false"
+      ],
+      [
+        7,
+        8
+      ],
+      [
+        8,
+        12
+      ],
+      [
+        9,
+        12
+      ],
+      [
+        10,
+        12
+      ],
+      [
+        11,
+        12
+      ]
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "SIEANS · 直角检测运行画面",
+      "rows": 14,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "title",
+          "type": "text",
+          "label": "SIEANS · 直角检测工作站",
+          "x": 0,
+          "y": 0,
+          "w": 8,
+          "h": 1,
+          "color": "#1095bd",
+          "fontSize": 20
+        },
+        {
+          "id": "run",
+          "type": "button",
+          "label": "运行检测",
+          "x": 8,
+          "y": 0,
+          "w": 2,
+          "h": 1,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "action": "run"
+        },
+        {
+          "id": "stop",
+          "type": "button",
+          "label": "停止",
+          "x": 10,
+          "y": 0,
+          "w": 2,
+          "h": 1,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "action": "stop"
+        },
+        {
+          "id": "image",
+          "type": "image",
+          "label": "采集图像",
+          "x": 0,
+          "y": 1,
+          "w": 7,
+          "h": 8,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "path": "",
+            "nodeId": "quality"
+          }
+        },
+        {
+          "id": "capture",
+          "type": "lamp",
+          "label": "采图质量合格",
+          "x": 7,
+          "y": 1,
+          "w": 5,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "flow",
+            "path": "captureOK"
+          }
+        },
+        {
+          "id": "corner",
+          "type": "lamp",
+          "label": "直角判定合格",
+          "x": 7,
+          "y": 3,
+          "w": 5,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "flow",
+            "path": "cornerOK"
+          }
+        },
+        {
+          "id": "route",
+          "type": "value",
+          "label": "本次检测状态",
+          "x": 7,
+          "y": 5,
+          "w": 5,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "flow",
+            "path": "inspectionRoute"
+          },
+          "precision": 0,
+          "unit": ""
+        },
+        {
+          "id": "angle",
+          "type": "value",
+          "label": "两直线夹角",
+          "x": 7,
+          "y": 7,
+          "w": 5,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "path": "angleDegrees",
+            "nodeId": "corner"
+          },
+          "precision": 3,
+          "unit": "°"
+        },
+        {
+          "id": "qualityDetails",
+          "type": "table",
+          "label": "采图质量明细",
+          "x": 0,
+          "y": 9,
+          "w": 6,
+          "h": 5,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "path": "items",
+            "nodeId": "quality"
+          }
+        },
+        {
+          "id": "geometryDetails",
+          "type": "table",
+          "label": "几何测量明细",
+          "x": 6,
+          "y": 9,
+          "w": 6,
+          "h": 5,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "path": "items",
+            "nodeId": "corner"
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 3,
+        "step": 1
+      },
+      {
+        "component": 7,
+        "step": 7
+      },
+      {
+        "component": 8,
+        "step": 1
+      },
+      {
+        "component": 9,
+        "step": 7
+      }
+    ]
+  },
+  {
+    "id": "inspection-chain-dark",
+    "name": "完整检测链 · 采图失败",
+    "category": "流程",
+    "image": "caliper-corner-dark.png",
+    "description": "图像质量门控、双卡尺定位、边缘存在判定、几何关系和互斥分支汇合；无自定义脚本。",
+    "expected": "采图不合格，两个卡尺和交点节点均跳过",
+    "variables": {
+      "cornerOK": false,
+      "captureOK": false,
+      "inspectionRoute": "尚未检测"
+    },
+    "variableTypes": {
+      "cornerOK": "boolean",
+      "captureOK": "boolean",
+      "inspectionRoute": "string"
+    },
+    "steps": [
+      {
+        "id": "resetCorner",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "cornerOK",
+          "mode": "set",
+          "value": false
+        }
+      },
+      {
+        "id": "quality",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-image-quality",
+          "pluginVersion": "1.0.0",
+          "operatorId": "inspect",
+          "arguments": {
+            "minimumSharpness": 10
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "captureOK",
+              "field": "passed"
+            }
+          ]
+        }
+      },
+      {
+        "id": "qualityGate",
+        "operation": "condition",
+        "params": {
+          "comparison": "eq",
+          "left": {
+            "$ref": "results.quality.passed"
+          },
+          "right": true
+        }
+      },
+      {
+        "id": "vertical",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-caliper",
+          "pluginVersion": "1.0.0",
+          "operatorId": "edge-line",
+          "arguments": {
+            "centerX": 160,
+            "centerY": 200,
+            "scanAngle": 0,
+            "searchLength": 80,
+            "probeCount": 9,
+            "probeSpacing": 8
+          }
+        }
+      },
+      {
+        "id": "verticalGate",
+        "operation": "condition",
+        "params": {
+          "comparison": "eq",
+          "left": {
+            "$ref": "results.vertical.found"
+          },
+          "right": true
+        }
+      },
+      {
+        "id": "horizontal",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-caliper",
+          "pluginVersion": "1.0.0",
+          "operatorId": "edge-line",
+          "arguments": {
+            "centerX": 250,
+            "centerY": 120,
+            "scanAngle": 90,
+            "searchLength": 80,
+            "probeCount": 9,
+            "probeSpacing": 8
+          }
+        }
+      },
+      {
+        "id": "horizontalGate",
+        "operation": "condition",
+        "params": {
+          "comparison": "eq",
+          "left": {
+            "$ref": "results.horizontal.found"
+          },
+          "right": true
+        }
+      },
+      {
+        "id": "corner",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-relations",
+          "pluginVersion": "1.0.0",
+          "operatorId": "lines-2d",
+          "arguments": {
+            "entities": [
+              {
+                "x1": {
+                  "$ref": "results.vertical.line.start.0"
+                },
+                "y1": {
+                  "$ref": "results.vertical.line.start.1"
+                },
+                "x2": {
+                  "$ref": "results.vertical.line.end.0"
+                },
+                "y2": {
+                  "$ref": "results.vertical.line.end.1"
+                }
+              },
+              {
+                "x1": {
+                  "$ref": "results.horizontal.line.start.0"
+                },
+                "y1": {
+                  "$ref": "results.horizontal.line.start.1"
+                },
+                "x2": {
+                  "$ref": "results.horizontal.line.end.0"
+                },
+                "y2": {
+                  "$ref": "results.horizontal.line.end.1"
+                }
+              }
+            ],
+            "minimumAngle": 89.5,
+            "maximumAngle": 90
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "cornerOK",
+              "field": "passed"
+            }
+          ]
+        }
+      },
+      {
+        "id": "measured",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "inspectionRoute",
+          "mode": "set",
+          "value": "检测完成"
+        }
+      },
+      {
+        "id": "qualityRejected",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "inspectionRoute",
+          "mode": "set",
+          "value": "采图不合格"
+        }
+      },
+      {
+        "id": "verticalMissing",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "inspectionRoute",
+          "mode": "set",
+          "value": "未找到第一条边缘"
+        }
+      },
+      {
+        "id": "horizontalMissing",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "inspectionRoute",
+          "mode": "set",
+          "value": "未找到第二条边缘"
+        }
+      },
+      {
+        "id": "merge",
+        "operation": "branch_merge",
+        "params": {}
+      }
+    ],
+    "connections": [
+      [
+        -1,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        3,
+        "true"
+      ],
+      [
+        2,
+        9,
+        "false"
+      ],
+      [
+        3,
+        4
+      ],
+      [
+        4,
+        5,
+        "true"
+      ],
+      [
+        4,
+        10,
+        "false"
+      ],
+      [
+        5,
+        6
+      ],
+      [
+        6,
+        7,
+        "true"
+      ],
+      [
+        6,
+        11,
+        "false"
+      ],
+      [
+        7,
+        8
+      ],
+      [
+        8,
+        12
+      ],
+      [
+        9,
+        12
+      ],
+      [
+        10,
+        12
+      ],
+      [
+        11,
+        12
+      ]
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "SIEANS · 直角检测运行画面",
+      "rows": 14,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "title",
+          "type": "text",
+          "label": "SIEANS · 直角检测工作站",
+          "x": 0,
+          "y": 0,
+          "w": 8,
+          "h": 1,
+          "color": "#1095bd",
+          "fontSize": 20
+        },
+        {
+          "id": "run",
+          "type": "button",
+          "label": "运行检测",
+          "x": 8,
+          "y": 0,
+          "w": 2,
+          "h": 1,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "action": "run"
+        },
+        {
+          "id": "stop",
+          "type": "button",
+          "label": "停止",
+          "x": 10,
+          "y": 0,
+          "w": 2,
+          "h": 1,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "action": "stop"
+        },
+        {
+          "id": "image",
+          "type": "image",
+          "label": "采集图像",
+          "x": 0,
+          "y": 1,
+          "w": 7,
+          "h": 8,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "path": "",
+            "nodeId": "quality"
+          }
+        },
+        {
+          "id": "capture",
+          "type": "lamp",
+          "label": "采图质量合格",
+          "x": 7,
+          "y": 1,
+          "w": 5,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "flow",
+            "path": "captureOK"
+          }
+        },
+        {
+          "id": "corner",
+          "type": "lamp",
+          "label": "直角判定合格",
+          "x": 7,
+          "y": 3,
+          "w": 5,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "flow",
+            "path": "cornerOK"
+          }
+        },
+        {
+          "id": "route",
+          "type": "value",
+          "label": "本次检测状态",
+          "x": 7,
+          "y": 5,
+          "w": 5,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "flow",
+            "path": "inspectionRoute"
+          },
+          "precision": 0,
+          "unit": ""
+        },
+        {
+          "id": "angle",
+          "type": "value",
+          "label": "两直线夹角",
+          "x": 7,
+          "y": 7,
+          "w": 5,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "path": "angleDegrees",
+            "nodeId": "corner"
+          },
+          "precision": 3,
+          "unit": "°"
+        },
+        {
+          "id": "qualityDetails",
+          "type": "table",
+          "label": "采图质量明细",
+          "x": 0,
+          "y": 9,
+          "w": 6,
+          "h": 5,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "path": "items",
+            "nodeId": "quality"
+          }
+        },
+        {
+          "id": "geometryDetails",
+          "type": "table",
+          "label": "几何测量明细",
+          "x": 6,
+          "y": 9,
+          "w": 6,
+          "h": 5,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "path": "items",
+            "nodeId": "corner"
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 3,
+        "step": 1
+      },
+      {
+        "component": 7,
+        "step": 7
+      },
+      {
+        "component": 8,
+        "step": 1
+      },
+      {
+        "component": 9,
+        "step": 7
+      }
+    ]
+  },
+  {
+    "id": "inspection-chain-missing",
+    "name": "完整检测链 · 无边缘",
+    "category": "流程",
+    "image": "caliper-no-corner.png",
+    "description": "图像质量门控、双卡尺定位、边缘存在判定、几何关系和互斥分支汇合；无自定义脚本。",
+    "expected": "未找到第一条边缘，第二卡尺与交点节点跳过",
+    "variables": {
+      "cornerOK": false,
+      "captureOK": false,
+      "inspectionRoute": "尚未检测"
+    },
+    "variableTypes": {
+      "cornerOK": "boolean",
+      "captureOK": "boolean",
+      "inspectionRoute": "string"
+    },
+    "steps": [
+      {
+        "id": "resetCorner",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "cornerOK",
+          "mode": "set",
+          "value": false
+        }
+      },
+      {
+        "id": "quality",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-image-quality",
+          "pluginVersion": "1.0.0",
+          "operatorId": "inspect",
+          "arguments": {
+            "minimumSharpness": 10
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "captureOK",
+              "field": "passed"
+            }
+          ]
+        }
+      },
+      {
+        "id": "qualityGate",
+        "operation": "condition",
+        "params": {
+          "comparison": "eq",
+          "left": {
+            "$ref": "results.quality.passed"
+          },
+          "right": true
+        }
+      },
+      {
+        "id": "vertical",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-caliper",
+          "pluginVersion": "1.0.0",
+          "operatorId": "edge-line",
+          "arguments": {
+            "centerX": 160,
+            "centerY": 200,
+            "scanAngle": 0,
+            "searchLength": 80,
+            "probeCount": 9,
+            "probeSpacing": 8
+          }
+        }
+      },
+      {
+        "id": "verticalGate",
+        "operation": "condition",
+        "params": {
+          "comparison": "eq",
+          "left": {
+            "$ref": "results.vertical.found"
+          },
+          "right": true
+        }
+      },
+      {
+        "id": "horizontal",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-caliper",
+          "pluginVersion": "1.0.0",
+          "operatorId": "edge-line",
+          "arguments": {
+            "centerX": 250,
+            "centerY": 120,
+            "scanAngle": 90,
+            "searchLength": 80,
+            "probeCount": 9,
+            "probeSpacing": 8
+          }
+        }
+      },
+      {
+        "id": "horizontalGate",
+        "operation": "condition",
+        "params": {
+          "comparison": "eq",
+          "left": {
+            "$ref": "results.horizontal.found"
+          },
+          "right": true
+        }
+      },
+      {
+        "id": "corner",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-relations",
+          "pluginVersion": "1.0.0",
+          "operatorId": "lines-2d",
+          "arguments": {
+            "entities": [
+              {
+                "x1": {
+                  "$ref": "results.vertical.line.start.0"
+                },
+                "y1": {
+                  "$ref": "results.vertical.line.start.1"
+                },
+                "x2": {
+                  "$ref": "results.vertical.line.end.0"
+                },
+                "y2": {
+                  "$ref": "results.vertical.line.end.1"
+                }
+              },
+              {
+                "x1": {
+                  "$ref": "results.horizontal.line.start.0"
+                },
+                "y1": {
+                  "$ref": "results.horizontal.line.start.1"
+                },
+                "x2": {
+                  "$ref": "results.horizontal.line.end.0"
+                },
+                "y2": {
+                  "$ref": "results.horizontal.line.end.1"
+                }
+              }
+            ],
+            "minimumAngle": 89.5,
+            "maximumAngle": 90
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "cornerOK",
+              "field": "passed"
+            }
+          ]
+        }
+      },
+      {
+        "id": "measured",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "inspectionRoute",
+          "mode": "set",
+          "value": "检测完成"
+        }
+      },
+      {
+        "id": "qualityRejected",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "inspectionRoute",
+          "mode": "set",
+          "value": "采图不合格"
+        }
+      },
+      {
+        "id": "verticalMissing",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "inspectionRoute",
+          "mode": "set",
+          "value": "未找到第一条边缘"
+        }
+      },
+      {
+        "id": "horizontalMissing",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "inspectionRoute",
+          "mode": "set",
+          "value": "未找到第二条边缘"
+        }
+      },
+      {
+        "id": "merge",
+        "operation": "branch_merge",
+        "params": {}
+      }
+    ],
+    "connections": [
+      [
+        -1,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        3,
+        "true"
+      ],
+      [
+        2,
+        9,
+        "false"
+      ],
+      [
+        3,
+        4
+      ],
+      [
+        4,
+        5,
+        "true"
+      ],
+      [
+        4,
+        10,
+        "false"
+      ],
+      [
+        5,
+        6
+      ],
+      [
+        6,
+        7,
+        "true"
+      ],
+      [
+        6,
+        11,
+        "false"
+      ],
+      [
+        7,
+        8
+      ],
+      [
+        8,
+        12
+      ],
+      [
+        9,
+        12
+      ],
+      [
+        10,
+        12
+      ],
+      [
+        11,
+        12
+      ]
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "SIEANS · 直角检测运行画面",
+      "rows": 14,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "title",
+          "type": "text",
+          "label": "SIEANS · 直角检测工作站",
+          "x": 0,
+          "y": 0,
+          "w": 8,
+          "h": 1,
+          "color": "#1095bd",
+          "fontSize": 20
+        },
+        {
+          "id": "run",
+          "type": "button",
+          "label": "运行检测",
+          "x": 8,
+          "y": 0,
+          "w": 2,
+          "h": 1,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "action": "run"
+        },
+        {
+          "id": "stop",
+          "type": "button",
+          "label": "停止",
+          "x": 10,
+          "y": 0,
+          "w": 2,
+          "h": 1,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "action": "stop"
+        },
+        {
+          "id": "image",
+          "type": "image",
+          "label": "采集图像",
+          "x": 0,
+          "y": 1,
+          "w": 7,
+          "h": 8,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "path": "",
+            "nodeId": "quality"
+          }
+        },
+        {
+          "id": "capture",
+          "type": "lamp",
+          "label": "采图质量合格",
+          "x": 7,
+          "y": 1,
+          "w": 5,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "flow",
+            "path": "captureOK"
+          }
+        },
+        {
+          "id": "corner",
+          "type": "lamp",
+          "label": "直角判定合格",
+          "x": 7,
+          "y": 3,
+          "w": 5,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "flow",
+            "path": "cornerOK"
+          }
+        },
+        {
+          "id": "route",
+          "type": "value",
+          "label": "本次检测状态",
+          "x": 7,
+          "y": 5,
+          "w": 5,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "flow",
+            "path": "inspectionRoute"
+          },
+          "precision": 0,
+          "unit": ""
+        },
+        {
+          "id": "angle",
+          "type": "value",
+          "label": "两直线夹角",
+          "x": 7,
+          "y": 7,
+          "w": 5,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "path": "angleDegrees",
+            "nodeId": "corner"
+          },
+          "precision": 3,
+          "unit": "°"
+        },
+        {
+          "id": "qualityDetails",
+          "type": "table",
+          "label": "采图质量明细",
+          "x": 0,
+          "y": 9,
+          "w": 6,
+          "h": 5,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "path": "items",
+            "nodeId": "quality"
+          }
+        },
+        {
+          "id": "geometryDetails",
+          "type": "table",
+          "label": "几何测量明细",
+          "x": 6,
+          "y": 9,
+          "w": 6,
+          "h": 5,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "path": "items",
+            "nodeId": "corner"
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 3,
+        "step": 1
+      },
+      {
+        "component": 7,
+        "step": 7
+      },
+      {
+        "component": 8,
+        "step": 1
+      },
+      {
+        "component": 9,
+        "step": 7
+      }
+    ]
+  },
+  {
+    "id": "inspection-chain-blur",
+    "name": "完整检测链 · 模糊拒绝",
+    "category": "流程",
+    "image": "caliper-corner-blur.png",
+    "description": "图像质量门控、双卡尺定位、边缘存在判定、几何关系和互斥分支汇合；无自定义脚本。",
+    "expected": "采图不合格，两个卡尺与交点节点均跳过",
+    "variables": {
+      "cornerOK": false,
+      "captureOK": false,
+      "inspectionRoute": "尚未检测"
+    },
+    "variableTypes": {
+      "cornerOK": "boolean",
+      "captureOK": "boolean",
+      "inspectionRoute": "string"
+    },
+    "steps": [
+      {
+        "id": "resetCorner",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "cornerOK",
+          "mode": "set",
+          "value": false
+        }
+      },
+      {
+        "id": "quality",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-image-quality",
+          "pluginVersion": "1.0.0",
+          "operatorId": "inspect",
+          "arguments": {
+            "minimumSharpness": 10
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "captureOK",
+              "field": "passed"
+            }
+          ]
+        }
+      },
+      {
+        "id": "qualityGate",
+        "operation": "condition",
+        "params": {
+          "comparison": "eq",
+          "left": {
+            "$ref": "results.quality.passed"
+          },
+          "right": true
+        }
+      },
+      {
+        "id": "vertical",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-caliper",
+          "pluginVersion": "1.0.0",
+          "operatorId": "edge-line",
+          "arguments": {
+            "centerX": 160,
+            "centerY": 200,
+            "scanAngle": 0,
+            "searchLength": 80,
+            "probeCount": 9,
+            "probeSpacing": 8
+          }
+        }
+      },
+      {
+        "id": "verticalGate",
+        "operation": "condition",
+        "params": {
+          "comparison": "eq",
+          "left": {
+            "$ref": "results.vertical.found"
+          },
+          "right": true
+        }
+      },
+      {
+        "id": "horizontal",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-caliper",
+          "pluginVersion": "1.0.0",
+          "operatorId": "edge-line",
+          "arguments": {
+            "centerX": 250,
+            "centerY": 120,
+            "scanAngle": 90,
+            "searchLength": 80,
+            "probeCount": 9,
+            "probeSpacing": 8
+          }
+        }
+      },
+      {
+        "id": "horizontalGate",
+        "operation": "condition",
+        "params": {
+          "comparison": "eq",
+          "left": {
+            "$ref": "results.horizontal.found"
+          },
+          "right": true
+        }
+      },
+      {
+        "id": "corner",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-relations",
+          "pluginVersion": "1.0.0",
+          "operatorId": "lines-2d",
+          "arguments": {
+            "entities": [
+              {
+                "x1": {
+                  "$ref": "results.vertical.line.start.0"
+                },
+                "y1": {
+                  "$ref": "results.vertical.line.start.1"
+                },
+                "x2": {
+                  "$ref": "results.vertical.line.end.0"
+                },
+                "y2": {
+                  "$ref": "results.vertical.line.end.1"
+                }
+              },
+              {
+                "x1": {
+                  "$ref": "results.horizontal.line.start.0"
+                },
+                "y1": {
+                  "$ref": "results.horizontal.line.start.1"
+                },
+                "x2": {
+                  "$ref": "results.horizontal.line.end.0"
+                },
+                "y2": {
+                  "$ref": "results.horizontal.line.end.1"
+                }
+              }
+            ],
+            "minimumAngle": 89.5,
+            "maximumAngle": 90
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "cornerOK",
+              "field": "passed"
+            }
+          ]
+        }
+      },
+      {
+        "id": "measured",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "inspectionRoute",
+          "mode": "set",
+          "value": "检测完成"
+        }
+      },
+      {
+        "id": "qualityRejected",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "inspectionRoute",
+          "mode": "set",
+          "value": "采图不合格"
+        }
+      },
+      {
+        "id": "verticalMissing",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "inspectionRoute",
+          "mode": "set",
+          "value": "未找到第一条边缘"
+        }
+      },
+      {
+        "id": "horizontalMissing",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "inspectionRoute",
+          "mode": "set",
+          "value": "未找到第二条边缘"
+        }
+      },
+      {
+        "id": "merge",
+        "operation": "branch_merge",
+        "params": {}
+      }
+    ],
+    "connections": [
+      [
+        -1,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        3,
+        "true"
+      ],
+      [
+        2,
+        9,
+        "false"
+      ],
+      [
+        3,
+        4
+      ],
+      [
+        4,
+        5,
+        "true"
+      ],
+      [
+        4,
+        10,
+        "false"
+      ],
+      [
+        5,
+        6
+      ],
+      [
+        6,
+        7,
+        "true"
+      ],
+      [
+        6,
+        11,
+        "false"
+      ],
+      [
+        7,
+        8
+      ],
+      [
+        8,
+        12
+      ],
+      [
+        9,
+        12
+      ],
+      [
+        10,
+        12
+      ],
+      [
+        11,
+        12
+      ]
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "SIEANS · 直角检测运行画面",
+      "rows": 14,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "title",
+          "type": "text",
+          "label": "SIEANS · 直角检测工作站",
+          "x": 0,
+          "y": 0,
+          "w": 8,
+          "h": 1,
+          "color": "#1095bd",
+          "fontSize": 20
+        },
+        {
+          "id": "run",
+          "type": "button",
+          "label": "运行检测",
+          "x": 8,
+          "y": 0,
+          "w": 2,
+          "h": 1,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "action": "run"
+        },
+        {
+          "id": "stop",
+          "type": "button",
+          "label": "停止",
+          "x": 10,
+          "y": 0,
+          "w": 2,
+          "h": 1,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "action": "stop"
+        },
+        {
+          "id": "image",
+          "type": "image",
+          "label": "采集图像",
+          "x": 0,
+          "y": 1,
+          "w": 7,
+          "h": 8,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "path": "",
+            "nodeId": "quality"
+          }
+        },
+        {
+          "id": "capture",
+          "type": "lamp",
+          "label": "采图质量合格",
+          "x": 7,
+          "y": 1,
+          "w": 5,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "flow",
+            "path": "captureOK"
+          }
+        },
+        {
+          "id": "corner",
+          "type": "lamp",
+          "label": "直角判定合格",
+          "x": 7,
+          "y": 3,
+          "w": 5,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "flow",
+            "path": "cornerOK"
+          }
+        },
+        {
+          "id": "route",
+          "type": "value",
+          "label": "本次检测状态",
+          "x": 7,
+          "y": 5,
+          "w": 5,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "flow",
+            "path": "inspectionRoute"
+          },
+          "precision": 0,
+          "unit": ""
+        },
+        {
+          "id": "angle",
+          "type": "value",
+          "label": "两直线夹角",
+          "x": 7,
+          "y": 7,
+          "w": 5,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "path": "angleDegrees",
+            "nodeId": "corner"
+          },
+          "precision": 3,
+          "unit": "°"
+        },
+        {
+          "id": "qualityDetails",
+          "type": "table",
+          "label": "采图质量明细",
+          "x": 0,
+          "y": 9,
+          "w": 6,
+          "h": 5,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "path": "items",
+            "nodeId": "quality"
+          }
+        },
+        {
+          "id": "geometryDetails",
+          "type": "table",
+          "label": "几何测量明细",
+          "x": 6,
+          "y": 9,
+          "w": 6,
+          "h": 5,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "path": "items",
+            "nodeId": "corner"
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 3,
+        "step": 1
+      },
+      {
+        "component": 7,
+        "step": 7
+      },
+      {
+        "component": 8,
+        "step": 1
+      },
+      {
+        "component": 9,
+        "step": 7
+      }
+    ]
+  },
+  {
+    "id": "inspection-chain-horizontal-missing",
+    "name": "完整检测链 · 第二边缘缺失",
+    "category": "流程",
+    "image": "caliper-vertical-only.png",
+    "description": "图像质量门控、双卡尺定位、边缘存在判定、几何关系和互斥分支汇合；无自定义脚本。",
+    "expected": "未找到第二条边缘，交点节点跳过",
+    "variables": {
+      "cornerOK": false,
+      "captureOK": false,
+      "inspectionRoute": "尚未检测"
+    },
+    "variableTypes": {
+      "cornerOK": "boolean",
+      "captureOK": "boolean",
+      "inspectionRoute": "string"
+    },
+    "steps": [
+      {
+        "id": "resetCorner",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "cornerOK",
+          "mode": "set",
+          "value": false
+        }
+      },
+      {
+        "id": "quality",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-image-quality",
+          "pluginVersion": "1.0.0",
+          "operatorId": "inspect",
+          "arguments": {
+            "minimumSharpness": 10
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "captureOK",
+              "field": "passed"
+            }
+          ]
+        }
+      },
+      {
+        "id": "qualityGate",
+        "operation": "condition",
+        "params": {
+          "comparison": "eq",
+          "left": {
+            "$ref": "results.quality.passed"
+          },
+          "right": true
+        }
+      },
+      {
+        "id": "vertical",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-caliper",
+          "pluginVersion": "1.0.0",
+          "operatorId": "edge-line",
+          "arguments": {
+            "centerX": 160,
+            "centerY": 200,
+            "scanAngle": 0,
+            "searchLength": 80,
+            "probeCount": 9,
+            "probeSpacing": 8
+          }
+        }
+      },
+      {
+        "id": "verticalGate",
+        "operation": "condition",
+        "params": {
+          "comparison": "eq",
+          "left": {
+            "$ref": "results.vertical.found"
+          },
+          "right": true
+        }
+      },
+      {
+        "id": "horizontal",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-caliper",
+          "pluginVersion": "1.0.0",
+          "operatorId": "edge-line",
+          "arguments": {
+            "centerX": 250,
+            "centerY": 120,
+            "scanAngle": 90,
+            "searchLength": 80,
+            "probeCount": 9,
+            "probeSpacing": 8
+          }
+        }
+      },
+      {
+        "id": "horizontalGate",
+        "operation": "condition",
+        "params": {
+          "comparison": "eq",
+          "left": {
+            "$ref": "results.horizontal.found"
+          },
+          "right": true
+        }
+      },
+      {
+        "id": "corner",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-relations",
+          "pluginVersion": "1.0.0",
+          "operatorId": "lines-2d",
+          "arguments": {
+            "entities": [
+              {
+                "x1": {
+                  "$ref": "results.vertical.line.start.0"
+                },
+                "y1": {
+                  "$ref": "results.vertical.line.start.1"
+                },
+                "x2": {
+                  "$ref": "results.vertical.line.end.0"
+                },
+                "y2": {
+                  "$ref": "results.vertical.line.end.1"
+                }
+              },
+              {
+                "x1": {
+                  "$ref": "results.horizontal.line.start.0"
+                },
+                "y1": {
+                  "$ref": "results.horizontal.line.start.1"
+                },
+                "x2": {
+                  "$ref": "results.horizontal.line.end.0"
+                },
+                "y2": {
+                  "$ref": "results.horizontal.line.end.1"
+                }
+              }
+            ],
+            "minimumAngle": 89.5,
+            "maximumAngle": 90
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "cornerOK",
+              "field": "passed"
+            }
+          ]
+        }
+      },
+      {
+        "id": "measured",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "inspectionRoute",
+          "mode": "set",
+          "value": "检测完成"
+        }
+      },
+      {
+        "id": "qualityRejected",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "inspectionRoute",
+          "mode": "set",
+          "value": "采图不合格"
+        }
+      },
+      {
+        "id": "verticalMissing",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "inspectionRoute",
+          "mode": "set",
+          "value": "未找到第一条边缘"
+        }
+      },
+      {
+        "id": "horizontalMissing",
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "inspectionRoute",
+          "mode": "set",
+          "value": "未找到第二条边缘"
+        }
+      },
+      {
+        "id": "merge",
+        "operation": "branch_merge",
+        "params": {}
+      }
+    ],
+    "connections": [
+      [
+        -1,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        3,
+        "true"
+      ],
+      [
+        2,
+        9,
+        "false"
+      ],
+      [
+        3,
+        4
+      ],
+      [
+        4,
+        5,
+        "true"
+      ],
+      [
+        4,
+        10,
+        "false"
+      ],
+      [
+        5,
+        6
+      ],
+      [
+        6,
+        7,
+        "true"
+      ],
+      [
+        6,
+        11,
+        "false"
+      ],
+      [
+        7,
+        8
+      ],
+      [
+        8,
+        12
+      ],
+      [
+        9,
+        12
+      ],
+      [
+        10,
+        12
+      ],
+      [
+        11,
+        12
+      ]
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "SIEANS · 直角检测运行画面",
+      "rows": 14,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "title",
+          "type": "text",
+          "label": "SIEANS · 直角检测工作站",
+          "x": 0,
+          "y": 0,
+          "w": 8,
+          "h": 1,
+          "color": "#1095bd",
+          "fontSize": 20
+        },
+        {
+          "id": "run",
+          "type": "button",
+          "label": "运行检测",
+          "x": 8,
+          "y": 0,
+          "w": 2,
+          "h": 1,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "action": "run"
+        },
+        {
+          "id": "stop",
+          "type": "button",
+          "label": "停止",
+          "x": 10,
+          "y": 0,
+          "w": 2,
+          "h": 1,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "action": "stop"
+        },
+        {
+          "id": "image",
+          "type": "image",
+          "label": "采集图像",
+          "x": 0,
+          "y": 1,
+          "w": 7,
+          "h": 8,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "path": "",
+            "nodeId": "quality"
+          }
+        },
+        {
+          "id": "capture",
+          "type": "lamp",
+          "label": "采图质量合格",
+          "x": 7,
+          "y": 1,
+          "w": 5,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "flow",
+            "path": "captureOK"
+          }
+        },
+        {
+          "id": "corner",
+          "type": "lamp",
+          "label": "直角判定合格",
+          "x": 7,
+          "y": 3,
+          "w": 5,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "flow",
+            "path": "cornerOK"
+          }
+        },
+        {
+          "id": "route",
+          "type": "value",
+          "label": "本次检测状态",
+          "x": 7,
+          "y": 5,
+          "w": 5,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "flow",
+            "path": "inspectionRoute"
+          },
+          "precision": 0,
+          "unit": ""
+        },
+        {
+          "id": "angle",
+          "type": "value",
+          "label": "两直线夹角",
+          "x": 7,
+          "y": 7,
+          "w": 5,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "path": "angleDegrees",
+            "nodeId": "corner"
+          },
+          "precision": 3,
+          "unit": "°"
+        },
+        {
+          "id": "qualityDetails",
+          "type": "table",
+          "label": "采图质量明细",
+          "x": 0,
+          "y": 9,
+          "w": 6,
+          "h": 5,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "path": "items",
+            "nodeId": "quality"
+          }
+        },
+        {
+          "id": "geometryDetails",
+          "type": "table",
+          "label": "几何测量明细",
+          "x": 6,
+          "y": 9,
+          "w": 6,
+          "h": 5,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "binding": {
+            "source": "result",
+            "path": "items",
+            "nodeId": "corner"
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 3,
+        "step": 1
+      },
+      {
+        "component": 7,
+        "step": 7
+      },
+      {
+        "component": 8,
+        "step": 1
+      },
+      {
+        "component": 9,
+        "step": 7
+      }
+    ]
+  }
+]

@@ -1,0 +1,180 @@
+{
+  "apiVersion": 1,
+  "id": "sieans-deviation",
+  "name": "SIEANS 点云参考偏差",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "Open3D 最近点距离与双向采样覆盖检查；非带符号曲面偏差，不自动配准。",
+  "operators": [
+    {
+      "id": "cloud-distance",
+      "name": "3D 参考点云偏差检测",
+      "description": "输入和参考必须已配准且单位一致。双向检查可发现参考点缺失；距离受采样密度影响，不等同于曲面距离或尺寸误差。着色仅显示当前点云，缺失参考点见明细。",
+      "entry": "deviation.py",
+      "input": "cloud",
+      "timeoutMs": 30000,
+      "parameters": [
+        {
+          "key": "referencePoints",
+          "label": "参考点坐标表（同一坐标系）",
+          "type": "array",
+          "required": true,
+          "columns": [
+            {
+              "key": "x",
+              "label": "X",
+              "type": "number",
+              "required": true
+            },
+            {
+              "key": "y",
+              "label": "Y",
+              "type": "number",
+              "required": true
+            },
+            {
+              "key": "z",
+              "label": "Z",
+              "type": "number",
+              "required": true
+            }
+          ],
+          "minimumRows": 1,
+          "maximumRows": 1000,
+          "default": [
+            {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            }
+          ]
+        },
+        {
+          "key": "referenceUnit",
+          "label": "参考点单位",
+          "type": "string",
+          "required": true,
+          "default": "mm"
+        },
+        {
+          "key": "maximumDistance",
+          "label": "允许最近点距离（输入单位）",
+          "type": "number",
+          "required": true,
+          "default": 0.1,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "maximumOutsidePercent",
+          "label": "允许超差采样点比例 (%)",
+          "type": "number",
+          "required": true,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "key": "bidirectional",
+          "label": "双向检查（包含参考点缺失）",
+          "type": "boolean",
+          "required": true,
+          "default": true
+        },
+        {
+          "key": "colorize",
+          "label": "输出当前点云偏差着色",
+          "type": "boolean",
+          "required": true,
+          "default": true
+        }
+      ],
+      "outputs": [
+        {
+          "key": "pointCount",
+          "label": "输入点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "referenceCount",
+          "label": "参考点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "evaluatedCount",
+          "label": "双向合计采样数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "outsideCount",
+          "label": "超差采样数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "outsidePercent",
+          "label": "超差采样比例 (%)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "forwardOutsideCount",
+          "label": "输入到参考超差数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "reverseOutsideCount",
+          "label": "参考到输入超差数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "maximumDistance",
+          "label": "最大最近点距离",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "meanDistance",
+          "label": "平均最近点距离",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "rmsDistance",
+          "label": "最近点距离均方根",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "unit",
+          "label": "单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "passed",
+          "label": "是否通过",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "超差采样明细",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "detailsTruncated",
+          "label": "明细超过 500 条",
+          "type": "boolean",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

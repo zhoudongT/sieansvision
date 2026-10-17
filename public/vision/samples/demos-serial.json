@@ -1,0 +1,139 @@
+[
+  {
+    "id": "serial-text",
+    "name": "串口扫码文本 · 回环模拟",
+    "category": "通信",
+    "image": "parts.png",
+    "description": "使用 pySerial 软件回环，发送内容按表单或字段表设置，再将应答写入流程变量。不会访问真实串口。",
+    "expected": "serialReply 为 SIEANS-SERIAL-00042。",
+    "steps": [
+      {
+        "operation": "serial_exchange",
+        "params": {
+          "connection": "simulator",
+          "mode": "exchange",
+          "encoding": "text",
+          "timeoutMs": 3000,
+          "maxBytes": 65536,
+          "txFraming": "crlf",
+          "rxFraming": "crlf",
+          "clearInput": false,
+          "value": "SIEANS-SERIAL-00042",
+          "responseEncoding": "text"
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "serialReply",
+          "value": 0
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 1,
+        "source": 0,
+        "param": "value",
+        "field": "value"
+      }
+    ]
+  },
+  {
+    "id": "serial-record",
+    "name": "串口检测记录 · 字段表",
+    "category": "通信",
+    "image": "parts.png",
+    "description": "使用 pySerial 软件回环，发送内容按表单或字段表设置，再将应答写入流程变量。不会访问真实串口。",
+    "expected": "返回数量 3、判定通过、宽度 12.5。",
+    "steps": [
+      {
+        "operation": "serial_exchange",
+        "params": {
+          "connection": "simulator",
+          "mode": "exchange",
+          "encoding": "structured",
+          "timeoutMs": 3000,
+          "maxBytes": 65536,
+          "txFraming": "length16be",
+          "rxFraming": "length16be",
+          "clearInput": false,
+          "value": {
+            "count": 3,
+            "passed": true,
+            "width": 12.5
+          },
+          "responseEncoding": "structured"
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "serialReply",
+          "value": 0
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 1,
+        "source": 0,
+        "param": "value",
+        "field": "value"
+      }
+    ]
+  },
+  {
+    "id": "serial-bytes",
+    "name": "串口字节报文 · 定长接收",
+    "category": "通信",
+    "image": "parts.png",
+    "description": "使用 pySerial 软件回环，发送内容按表单或字段表设置，再将应答写入流程变量。不会访问真实串口。",
+    "expected": "返回 8 个字节，包括 0 和 255。",
+    "steps": [
+      {
+        "operation": "serial_exchange",
+        "params": {
+          "connection": "simulator",
+          "mode": "exchange",
+          "encoding": "bytes",
+          "timeoutMs": 3000,
+          "maxBytes": 65536,
+          "txFraming": "raw",
+          "rxFraming": "fixed",
+          "clearInput": false,
+          "value": [
+            83,
+            73,
+            69,
+            65,
+            78,
+            83,
+            0,
+            255
+          ],
+          "responseBytes": 8,
+          "responseEncoding": "bytes"
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "serialReply",
+          "value": 0
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 1,
+        "source": 0,
+        "param": "value",
+        "field": "value"
+      }
+    ]
+  }
+]

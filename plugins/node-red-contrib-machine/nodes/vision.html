@@ -1,0 +1,114 @@
+<script type="text/javascript">
+(function () {
+  var nodes = {
+    yolo_segment:['YOLO 实例分割',{device:'cpu',model:'yolo11n-seg.pt',confidence:.25,iou:.45,imageSize:640,maxDetections:50,minArea:1,contourTolerance:.5,overlayAlpha:.35,output:'overlay'}],
+    cloud_filter: ['点云滤波', {method:'voxel',voxelSize:1}],
+    cloud_plane: ['3D 平面分割', {distanceThreshold:0.5,iterations:500,output:'inliers'}],
+    cloud_cluster: ['3D 目标聚类', {eps:3,minPoints:8}],
+    cloud_measure: ['3D 尺寸测量', {}],
+    cloud_height: ['高度与体积估计', {baselineZ:0,cellSize:1}],
+    cloud_register: ['3D 点云配准', {method:'icp',maxDistance:5,iterations:50}],
+    preprocess: ['图像预处理', {method:'grayscale'}],
+    locate: ['模板定位', {minScore:0.85,angleStart:0,angleEnd:0,angleStep:10,maxMatches:1,overlapThreshold:0.3}],
+    geometry: ['几何特征', {feature:'contours',threshold:127,minArea:50}],
+    measure: ['标定测量', {feature:'contours',threshold:127,minArea:50}],
+    barcode: ['ZXing 条码', {}], ocr: ['文字 OCR', {minConfidence:0.5}],
+    defects: ['参考图缺陷', {differenceThreshold:30,minArea:20,maxDefectRatio:0}],
+    yolo: ['YOLO 检测', {device:'cpu',model:'yolo11n.pt',confidence:0.25,iou:0.45}]
+  };
+  var labels={maxMatches:'最多目标数',overlapThreshold:'去重重叠比例',device:'计算设备（CPU / 自动 / cuda:编号）',method:'处理方式',feature:'特征类型',threshold:'二值阈值',kernel:'卷积核大小',invert:'反色',minArea:'最小面积',cannyLow:'边缘低阈值',cannyHigh:'边缘高阈值',minRadius:'最小半径',maxRadius:'最大半径',minDistance:'圆心最小间距',votes:'检测票数',minLength:'最短直线',maxGap:'最大断点间距',minScore:'最低匹配分数',angleStart:'起始角度',angleEnd:'终止角度',angleStep:'角度步长',roi:'检测区域（X、Y、宽、高）',templateRoi:'模板区域（X、Y、宽、高）',scales:'搜索比例',origin:'坐标原点',calibration:'平面标定',points:'坐标点',distance:'实际距离',unit:'单位',minConfidence:'最低置信度',differenceThreshold:'差异阈值',maxDefectRatio:'允许差异比例',model:'模型文件名',confidence:'最低置信度',iou:'重叠阈值',imageSize:'推理尺寸',classes:'类别编号',voxelSize:'体素边长',minimum:'最小坐标（X、Y、Z）',maximum:'最大坐标（X、Y、Z）',neighbors:'统计邻域点数',stdRatio:'标准差倍数',radius:'邻域半径',minPoints:'最少邻域点数',distanceThreshold:'平面距离阈值',iterations:'迭代次数',output:'输出点云',eps:'聚类邻域半径',baselineZ:'基准高度 Z',cellSize:'网格边长',maxDistance:'最大对应距离',initialTransform:'初始变换矩阵',targetCloud:'参考点云'};
+  var choices={preprocess:{method:{grayscale:'灰度化',blur:'高斯模糊',threshold:'二值化',canny:'边缘提取',open:'开运算',close:'闭运算',erode:'腐蚀',dilate:'膨胀'}},geometry:{feature:{contours:'轮廓',lines:'直线',circles:'圆',edges:'边缘'}},measure:{feature:{contours:'轮廓',circles:'圆'}},cloud_filter:{method:{voxel:'体素降采样',crop:'空间裁剪',statistical:'统计去噪',radius:'半径去噪'}},cloud_plane:{output:{inliers:'平面内点',outliers:'平面外点',all:'全部点'}}};
+  var optional={preprocess:{threshold:127,kernel:5,invert:false,cannyLow:50,cannyHigh:150},locate:{roi:[0,0,100,100],templateRoi:[0,0,50,50],scales:[1],origin:[0,0]},geometry:{invert:false,minRadius:5,maxRadius:200,minDistance:30,votes:30,minLength:40,maxGap:10,cannyLow:50,cannyHigh:150},measure:{invert:false,calibration:{points:[[0,0],[100,0]],distance:10},unit:'mm',points:[[0,0],[100,0]],origin:[0,0],minRadius:5,maxRadius:200,minDistance:30,votes:30,cannyHigh:150},yolo:{classes:[0],imageSize:640},cloud_filter:{minimum:[0,0,0],maximum:[100,100,100],neighbors:20,stdRatio:2,radius:1,minPoints:8,voxelSize:1},cloud_register:{initialTransform:[[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]],targetCloud:{unit:'mm',points:[]}}};
+  Object.assign(labels,{ransacIterations:'粗配准最大尝试次数',ransacConfidence:'粗配准停止概率',minFitness:'输入最低覆盖比例',minTargetFitness:'参考最低覆盖比例',maxRmsError:'最大均方根误差'});
+  choices.cloud_register={method:{icp:'局部 ICP · 已知近似姿态',global:'全局定位 · 粗配准与精配准'}};
+  Object.assign(labels,{maxDetections:'最大目标数',contourTolerance:'轮廓简化容差 (px)',overlayAlpha:'叠加透明度'});
+  choices.yolo_segment={output:{overlay:'彩色叠加（下游保留原图）',mask:'二值掩膜（传给下游）'}};
+  optional.yolo_segment={classes:[0]};optional.yolo.device='cpu';optional.yolo_segment.device='cpu';
+  function visible(op,p,key){
+    if(op==='yolo_segment'&&key==='overlayAlpha')return typeof p.output==='object'||(p.output||'overlay')==='overlay';
+    var method=p.method||'grayscale',feature=p.feature||'contours';
+    if(typeof method==='object'||typeof feature==='object')return true;
+    if(op==='cloud_register'){
+      if(key==='initialTransform')return (p.method||'icp')==='icp';
+      if(['voxelSize','ransacIterations','ransacConfidence','minFitness','minTargetFitness','maxRmsError'].includes(key))return p.method==='global';
+    }
+    if(op==='preprocess'){
+      if(['threshold','invert'].includes(key))return method==='threshold';
+      if(key==='kernel')return ['blur','open','close','erode','dilate'].includes(method);
+      if(['cannyLow','cannyHigh'].includes(key))return method==='canny';
+    }
+    if(['geometry','measure'].includes(op)){
+      if(['threshold','minArea','invert'].includes(key))return feature==='contours';
+      if(['minRadius','maxRadius','minDistance'].includes(key))return feature==='circles';
+      if(['minLength','maxGap'].includes(key))return feature==='lines';
+      if(key==='votes')return ['lines','circles'].includes(feature);
+      if(key==='cannyLow')return ['lines','edges'].includes(feature);
+      if(key==='cannyHigh')return ['lines','edges','circles'].includes(feature);
+    }
+    if(op==='cloud_filter'&&key!=='method'){
+      var groups={voxel:['voxelSize'],crop:['minimum','maximum'],statistical:['neighbors','stdRatio'],radius:['radius','minPoints']};
+      if(Object.values(groups).flat().includes(key))return (groups[p.method||'voxel']||[]).includes(key);
+    }
+    return true;
+  }
+  function editor(value,change,label,options,depth){
+    depth=depth||0;var box=$('<div>').css({minWidth:0});
+    if(options&&typeof value!=='object'){
+      var select=$('<select>').attr('aria-label',label).css('width','100%');
+      if(!Object.hasOwn(options,value))select.append($('<option>').val(value).text(value));
+      Object.entries(options).forEach(function(pair){select.append($('<option>').val(pair[0]).text(pair[1]));});
+      select.val(value).on('change',function(){change(this.value);});return box.append(select);
+    }
+    if(value!==null&&typeof value==='object'){
+      var array=Array.isArray(value),details=$('<details>'),summary=$('<summary>').text((array?'数组':'结构体')+' · '+Object.keys(value).length+' 项'),body=$('<div>');details.append(summary,body);box.append(details);
+      var built=false;details.on('toggle',function(){if(!this.open||built)return;built=true;
+        if(depth>=20){body.append($('<p>').text('嵌套层级超过编辑上限'));return;}
+        var table=$('<table>').css({width:'100%',borderCollapse:'collapse'}),head=$('<tr>');['字段 / 序号','值','操作'].forEach(function(t){head.append($('<th>').text(t));});table.append(head);body.append(table);
+        var entries=Object.keys(value),cursor=0,more=$('<button type="button">').text('显示更多');
+        function append(){entries.slice(cursor,cursor+50).forEach(function(key){var row=$('<tr>');row.append($('<td>').text(array?Number(key)+1:(labels[key]||key)));row.append($('<td>').append(editor(value[key],function(next){value[key]=next;change(value);},label+' '+key,null,depth+1)));row.append($('<td>').append($('<button type="button">').text('删除').on('click',function(){if(array)value.splice(Number(key),1);else delete value[key];change(value);box.replaceWith(editor(value,change,label,null,depth));})));table.append(row);});cursor+=50;more.toggle(cursor<entries.length);}
+        more.on('click',append);append();body.append(more);
+        var name=$('<input>').attr({placeholder:'字段名称','aria-label':label+' 新字段名称'}).css('width','40%');if(!array)body.append(name);
+        var type=$('<select>').attr('aria-label',label+' 新字段类型').css('width','30%');[['number','数值'],['string','文本'],['boolean','开关'],['array','数组'],['object','结构体']].forEach(function(x){type.append($('<option>').val(x[0]).text(x[1]));});
+        body.append(type,$('<button type="button">').text(array?'添加元素':'添加字段').on('click',function(){var key=array?value.length:name.val().trim();if(!array&&(!key||['__proto__','constructor','prototype'].includes(key)||Object.hasOwn(value,key))){name[0].setCustomValidity('名称为空、重复或为保留字');name[0].reportValidity();return;}var next={number:0,string:'',boolean:false,array:[],object:{}}[type.val()];value[key]=next;change(value);box.replaceWith(editor(value,change,label,null,depth));}));name.on('input',function(){this.setCustomValidity('');});
+      });return box;
+    }
+    if(typeof value==='boolean')return box.append($('<select>').attr('aria-label',label).append($('<option>').val('true').text('是'),$('<option>').val('false').text('否')).val(String(value)).on('change',function(){change(this.value==='true');}));
+    if(value===null)return box.append($('<span>').text('空值'));
+    return box.append($('<input>').attr({type:typeof value==='number'?'number':'text',step:'any','aria-label':label}).css('width','100%').val(value).on('input',function(){if(typeof value==='number'){if(this.value===''||!Number.isFinite(Number(this.value)))return;change(Number(this.value));}else change(this.value);}));
+  }
+  function prepare(op,node){
+    var p=JSON.parse(node.params||'{}'),holder=$('#machine-vision-fields');node._visionParams=p;
+    var extra=Object.assign({},optional[op]);if(!op.startsWith('cloud_'))extra.roi=[0,0,100,100];
+    function render(){
+      var defaults=op==='cloud_register'?{method:'icp',maxDistance:5,iterations:50,voxelSize:1,ransacIterations:25000,ransacConfidence:.999,minFitness:.7,minTargetFitness:.3,maxRmsError:typeof p.maxDistance==='number'?p.maxDistance/2:2.5}:{};
+      var values=Object.assign({},defaults,p);
+      holder.empty();Object.keys(values).filter(function(k){return visible(op,p,k);}).forEach(function(key){
+        var row=$('<div>').css({display:'grid',gridTemplateColumns:'150px minmax(0,1fr) 50px',gap:'8px',marginBottom:'12px'}),label=op==='yolo_segment'&&key==='output'?'输出图像':labels[key]||key;
+        row.append($('<label>').text(label),editor(values[key],function(v){p[key]=v;if(['method','feature','output'].includes(key))render();},label,(choices[op]||{})[key]));
+        if(!Object.hasOwn(nodes[op][1],key))row.append($('<button type="button">').text(Object.hasOwn(defaults,key)?'默认':'移除').on('click',function(){delete p[key];render();}));holder.append(row);
+      });
+      var available=Object.keys(extra).filter(function(k){return !Object.hasOwn(p,k)&&visible(op,p,k);});
+      if(available.length){var select=$('<select>').attr('aria-label','可选参数');available.forEach(function(k){select.append($('<option>').val(k).text(labels[k]||k));});holder.append(select,$('<button type="button">').text('添加参数').on('click',function(){p[select.val()]=JSON.parse(JSON.stringify(extra[select.val()]));render();}));}
+      if(!Object.keys(p).length)holder.prepend($('<p>').text('使用默认处理参数，可按需添加设置。'));
+    }render();
+  }
+  Object.keys(nodes).forEach(function(op) {
+    var type = 'machine-'+op;
+    var template = '<div class="form-row"><label for="node-input-name">名称</label><input id="node-input-name"></div>' +
+      '<input id="node-input-params" type="hidden"><div id="machine-vision-fields"></div>' +
+      '<p>2D 输入：图像通道 msg.image；模板/良品参考图通道 msg.reference。3D 输入：点云通道 msg.cloud；配准参考点云由参数表配置。</p><p>输出 1：检测结果。输出 2：标记图像或点云。交互选区和文件导入请使用 <a href="/vision/" target="_blank">视觉工作台</a>。</p>';
+    $('<script>', {type:'text/html', 'data-template-name':type}).html(template).appendTo('body');
+    $('<script>', {type:'text/html', 'data-help-name':type}).html('<p>'+nodes[op][0]+'：参数使用表单配置，数组和结构体展开为表格。2D 输入 msg.image；3D 输入 msg.cloud。动态参数通道为 msg.visionParams。结果在 msg.payload，完整结果在 msg.vision。预处理更新 msg.image；3D 更新 msg.cloud。输出 2 为标记图像或点云。长度单位跟随输入声明，包围盒体积和网格体积均不能直接当作真实实体体积。用 Catch 节点处理错误。</p>').appendTo('body');
+    RED.nodes.registerType(type, {
+      category:'视觉算子', color:op==='yolo'?'#bba0ed':'#86c6d9',
+      paletteLabel:nodes[op][0],
+      defaults:{name:{value:''},reference:{value:''},params:{value:JSON.stringify(nodes[op][1],null,2),validate:function(v){try{return typeof JSON.parse(v)==='object'&&!Array.isArray(JSON.parse(v))&&JSON.parse(v)!==null;}catch(e){return false;}}}},
+      inputs:1, outputs:2, outputLabels:['结果',op.indexOf('cloud_')===0?'点云':'标记图像'], icon:'font-awesome/fa-eye',
+      label:function(){return this.name || nodes[op][0];},
+      oneditprepare:function(){prepare(op,this);},
+      oneditsave:function(){this.params=JSON.stringify(this._visionParams);$('#node-input-params').val(this.params);delete this._visionParams;},
+      oneditcancel:function(){delete this._visionParams;}
+    });
+  });
+})();
+</script>

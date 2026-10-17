@@ -1,0 +1,606 @@
+{
+  "apiVersion": 1,
+  "id": "sieans-heightfield",
+  "name": "SIEANS 倾斜基准高度与可见体积",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "独立基准点标定正交平面坐标系，再对单值可见表面做法向高度网格积分；报告缺测、层叠点、覆盖率和公差，不补齐未知体积。",
+  "operators": [
+    {
+      "id": "fit",
+      "name": "3D 高度基准 · 独立平面标定",
+      "description": "使用独立的基准点表拟合平面，显式指定高度正方向和 U 轴方向，模型绑定后用于测量；不在工件表面自拟合基准。",
+      "entry": "heightfield.py",
+      "input": "none",
+      "timeoutMs": 10000,
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "required": true,
+          "default": "fit",
+          "choices": [
+            {
+              "value": "fit",
+              "label": "独立基准平面标定"
+            }
+          ]
+        },
+        {
+          "key": "unit",
+          "label": "基准长度单位",
+          "type": "string",
+          "required": true,
+          "default": "mm",
+          "choices": [
+            {
+              "value": "mm",
+              "label": "毫米"
+            },
+            {
+              "value": "m",
+              "label": "米"
+            }
+          ]
+        },
+        {
+          "key": "frame",
+          "label": "基准坐标系（需与点云一致）",
+          "type": "string",
+          "required": false,
+          "default": ""
+        },
+        {
+          "key": "points",
+          "label": "独立基准点表（与点云相同单位）",
+          "type": "array",
+          "required": true,
+          "default": [
+            {
+              "x": -5,
+              "y": -5,
+              "z": 0
+            },
+            {
+              "x": 5,
+              "y": -5,
+              "z": 0
+            },
+            {
+              "x": 5,
+              "y": 5,
+              "z": 0
+            },
+            {
+              "x": -5,
+              "y": 5,
+              "z": 0
+            }
+          ],
+          "columns": [
+            {
+              "key": "x",
+              "label": "X",
+              "type": "number",
+              "required": true,
+              "default": 0,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "y",
+              "label": "Y",
+              "type": "number",
+              "required": true,
+              "default": 0,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "z",
+              "label": "Z",
+              "type": "number",
+              "required": true,
+              "default": 0,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            }
+          ],
+          "minimumRows": 3,
+          "maximumRows": 1000
+        },
+        {
+          "key": "normalHint",
+          "label": "高度正方向提示（X/Y/Z）",
+          "type": "array",
+          "required": true,
+          "default": [
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "key": "axisHint",
+          "label": "网格 U 轴方向提示（X/Y/Z）",
+          "type": "array",
+          "required": true,
+          "default": [
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "key": "maximumRms",
+          "label": "最大拟合 RMS（所选单位）",
+          "type": "number",
+          "required": true,
+          "default": 0.01,
+          "minimum": 1e-12,
+          "maximum": 1000000.0
+        },
+        {
+          "key": "maximumError",
+          "label": "最大单点误差（所选单位）",
+          "type": "number",
+          "required": true,
+          "default": 0.03,
+          "minimum": 1e-12,
+          "maximum": 1000000.0
+        }
+      ],
+      "outputs": [
+        {
+          "key": "found",
+          "label": "存在有效测量",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "passed",
+          "label": "测量通过",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "unit",
+          "label": "长度单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "检测明细",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "diagnostic",
+          "label": "诊断说明",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "pointCount",
+          "label": "基准点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "uniquePointCount",
+          "label": "独立基准点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "rmsError",
+          "label": "基准 RMS",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "maximumError",
+          "label": "最大单点误差",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "plane",
+          "label": "独立高度基准模型",
+          "type": "object",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "integrate",
+      "name": "3D 法向高度 · 可见体积网格积分",
+      "description": "按独立基准的 U/V 网格统计高度，缺测不填零、不插值，按覆盖、高度、正向体积判定。不是封闭实体真实体积。",
+      "entry": "heightfield.py",
+      "input": "cloud",
+      "timeoutMs": 10000,
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "required": true,
+          "default": "integrate",
+          "choices": [
+            {
+              "value": "integrate",
+              "label": "法向高度与可见体积积分"
+            }
+          ]
+        },
+        {
+          "key": "plane",
+          "label": "独立基准平面（可绑定标定结果）",
+          "type": "object",
+          "required": true,
+          "default": {
+            "format": "sieans-plane-grid-v1",
+            "unit": "mm",
+            "frame": "",
+            "origin": [
+              0,
+              0,
+              0
+            ],
+            "axisU": [
+              1,
+              0,
+              0
+            ],
+            "axisV": [
+              0,
+              1,
+              0
+            ],
+            "normal": [
+              0,
+              0,
+              1
+            ]
+          }
+        },
+        {
+          "key": "uMinimum",
+          "label": "网格 U 起点",
+          "type": "number",
+          "required": true,
+          "default": -5,
+          "minimum": -1000000000.0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "vMinimum",
+          "label": "网格 V 起点",
+          "type": "number",
+          "required": true,
+          "default": -5,
+          "minimum": -1000000000.0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "cellSize",
+          "label": "网格边长（点云单位）",
+          "type": "number",
+          "required": true,
+          "default": 1,
+          "minimum": 1e-09,
+          "maximum": 1000000.0
+        },
+        {
+          "key": "cellsU",
+          "label": "U 方向格数",
+          "type": "integer",
+          "required": true,
+          "default": 10,
+          "minimum": 1,
+          "maximum": 512
+        },
+        {
+          "key": "cellsV",
+          "label": "V 方向格数",
+          "type": "integer",
+          "required": true,
+          "default": 10,
+          "minimum": 1,
+          "maximum": 512
+        },
+        {
+          "key": "minimumSamples",
+          "label": "每格最少独立点数",
+          "type": "integer",
+          "required": true,
+          "default": 1,
+          "minimum": 1,
+          "maximum": 10000
+        },
+        {
+          "key": "maximumCellSpread",
+          "label": "允许同格高度跨度",
+          "type": "number",
+          "required": true,
+          "default": 0.5,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "minimumCoverage",
+          "label": "最小有效网格覆盖率",
+          "type": "number",
+          "required": true,
+          "default": 0.95,
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "key": "minimumHeight",
+          "label": "合格高度下限",
+          "type": "number",
+          "required": true,
+          "default": 0,
+          "minimum": -1000000000.0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "maximumHeight",
+          "label": "合格高度上限",
+          "type": "number",
+          "required": true,
+          "default": 10,
+          "minimum": -1000000000.0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "minimumPositiveVolume",
+          "label": "正向观测体积下限",
+          "type": "number",
+          "required": true,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 1e+30
+        },
+        {
+          "key": "maximumPositiveVolume",
+          "label": "正向观测体积上限",
+          "type": "number",
+          "required": true,
+          "default": 10000,
+          "minimum": 0,
+          "maximum": 1e+30
+        },
+        {
+          "key": "detailLimit",
+          "label": "最多显示明细行数",
+          "type": "integer",
+          "required": true,
+          "default": 200,
+          "minimum": 1,
+          "maximum": 1000
+        },
+        {
+          "key": "cellStatistic",
+          "label": "网格高度代表值",
+          "type": "string",
+          "required": true,
+          "default": "maximum",
+          "choices": [
+            {
+              "value": "maximum",
+              "label": "向正法向最高点"
+            },
+            {
+              "value": "mean",
+              "label": "独立点平均高度"
+            }
+          ]
+        },
+        {
+          "key": "detailMode",
+          "label": "明细范围",
+          "type": "string",
+          "required": true,
+          "default": "all",
+          "choices": [
+            {
+              "value": "all",
+              "label": "全部网格"
+            },
+            {
+              "value": "invalid",
+              "label": "缺测 / 无效 / 高度超差网格"
+            }
+          ]
+        },
+        {
+          "key": "colorize",
+          "label": "输出检测着色点云（最多10000点）",
+          "type": "boolean",
+          "required": true,
+          "default": true
+        }
+      ],
+      "outputs": [
+        {
+          "key": "found",
+          "label": "存在有效测量",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "passed",
+          "label": "测量通过",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "unit",
+          "label": "长度单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "检测明细",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "diagnostic",
+          "label": "诊断说明",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "pointCount",
+          "label": "输入点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "uniquePointCount",
+          "label": "独立坐标点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "roiPointCount",
+          "label": "ROI 内独立点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "outsideRoiPointCount",
+          "label": "ROI 外独立点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "totalCells",
+          "label": "网格总数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "occupiedCells",
+          "label": "已采样网格数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "validCells",
+          "label": "有效网格数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "missingCells",
+          "label": "未采样网格数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "insufficientCells",
+          "label": "独立采样不足格数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "spreadRejectedCells",
+          "label": "高度跨度超限格数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "outsideHeightCells",
+          "label": "高度超差格数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "coverage",
+          "label": "有效网格覆盖率",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "roiArea",
+          "label": "定义 ROI 面积",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "observedArea",
+          "label": "有效观测面积",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "areaUnit",
+          "label": "面积单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "volumeUnit",
+          "label": "体积单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "cellStatistic",
+          "label": "网格代表值方式",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "detailsTruncated",
+          "label": "明细已截断",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "minimumHeight",
+          "label": "已观测最小高度",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "maximumHeight",
+          "label": "已观测最大高度",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "meanHeight",
+          "label": "有效网格平均高度",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "positiveVolume",
+          "label": "已观测正向体积估计",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "negativeVolume",
+          "label": "已观测负向体积估计（绝对值）",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "netVolume",
+          "label": "已观测净体积估计",
+          "type": "number",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

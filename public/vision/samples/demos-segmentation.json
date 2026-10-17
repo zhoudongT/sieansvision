@@ -1,0 +1,27 @@
+[
+  {
+    "id": "segmentation-overlay",
+    "name": "YOLOv8 实例分割 · 轮廓与面积",
+    "category": "AI 分割",
+    "image": "segmentation-bus.jpg",
+    "description": "使用本地 YOLOv8 分割权重，逐个标记公交车和行人，表格查看类别、置信度、中心与掩膜面积。标记图只用于显示，下游保留原图。",
+    "expected": "检出公交车与行人；每个目标有独立轮廓和像素面积。需要 yolov8n-seg.pt；通用场景演示不代表工业缺陷精度。",
+    "steps": [{"operation":"yolo_segment","params":{"model":"yolov8n-seg.pt","confidence":0.25,"iou":0.45,"imageSize":640,"maxDetections":50,"minArea":1,"contourTolerance":0.5,"output":"overlay","overlayAlpha":0.35}}]
+  },
+  {
+    "id": "segmentation-measure",
+    "name": "YOLO11 分割掩膜 → 几何测量 → 变量",
+    "category": "AI 分割",
+    "image": "segmentation-bus.jpg",
+    "description": "按 COCO 类别 5 仅提取公交车，输出二值掩膜给几何检测，并把掩膜像素面积写入流程整数变量。",
+    "expected": "1 辆公交车、1 个主要轮廓；maskAreaPixels 约 26 万像素。几何轮廓面积和像素面积计算方式不同；此流程不代表真实尺寸标定。需要 yolo11n-seg.pt。",
+    "variables":{"maskAreaPixels":0},
+    "variableTypes":{"maskAreaPixels":"integer"},
+    "steps":[
+      {"operation":"yolo_segment","params":{"model":"yolo11n-seg.pt","confidence":0.25,"iou":0.45,"imageSize":640,"maxDetections":50,"minArea":100,"contourTolerance":0.5,"classes":[5],"output":"mask"}},
+      {"operation":"geometry","params":{"feature":"contours","threshold":127,"minArea":100}},
+      {"operation":"variables","params":{"scope":"flow","name":"maskAreaPixels","mode":"set","value":0}}
+    ],
+    "bindings":[{"step":2,"param":"value","source":0,"field":"unionAreaPixels"}]
+  }
+]

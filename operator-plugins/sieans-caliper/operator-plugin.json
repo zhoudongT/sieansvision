@@ -1,0 +1,543 @@
+{
+  "apiVersion": 1,
+  "id": "sieans-caliper",
+  "name": "SIEANS 2D 边缘卡尺",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "基于 OpenCV 定向采样与拟合的直线卡尺、双边缘宽度检测；标记图独立显示，原图继续传给下游。",
+  "operators": [
+    {
+      "id": "edge-line",
+      "name": "边缘卡尺 · 直线拟合",
+      "description": "定向灰度扫描、亚像素梯度峰值插值、稳健直线拟合；有效点比例和残差判定。",
+      "entry": "caliper.py",
+      "input": "image",
+      "timeoutMs": 10000,
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "default": "line",
+          "required": true,
+          "choices": [
+            {
+              "value": "line",
+              "label": "边缘卡尺 · 直线拟合"
+            }
+          ]
+        },
+        {
+          "key": "centerX",
+          "label": "卡尺阵列中心 X (px)",
+          "type": "number",
+          "default": 320,
+          "required": true,
+          "minimum": 0,
+          "maximum": 32766
+        },
+        {
+          "key": "centerY",
+          "label": "卡尺阵列中心 Y (px)",
+          "type": "number",
+          "default": 240,
+          "required": true,
+          "minimum": 0,
+          "maximum": 32766
+        },
+        {
+          "key": "scanAngle",
+          "label": "扫描角度（顺时针 °）",
+          "type": "number",
+          "default": 0,
+          "required": true,
+          "minimum": -180,
+          "maximum": 180
+        },
+        {
+          "key": "searchLength",
+          "label": "搜索长度 (px)",
+          "type": "number",
+          "default": 160,
+          "required": true,
+          "minimum": 16,
+          "maximum": 2048
+        },
+        {
+          "key": "caliperWidth",
+          "label": "平均采样宽度（点数）",
+          "type": "integer",
+          "default": 7,
+          "required": true,
+          "minimum": 1,
+          "maximum": 51
+        },
+        {
+          "key": "probeCount",
+          "label": "卡尺数量",
+          "type": "integer",
+          "default": 15,
+          "required": true,
+          "minimum": 3,
+          "maximum": 100
+        },
+        {
+          "key": "probeSpacing",
+          "label": "卡尺间隔 (px)",
+          "type": "number",
+          "default": 16,
+          "required": true,
+          "minimum": 1,
+          "maximum": 1000
+        },
+        {
+          "key": "sigma",
+          "label": "平滑尺度 (px)",
+          "type": "number",
+          "default": 1,
+          "required": true,
+          "minimum": 0.2,
+          "maximum": 5
+        },
+        {
+          "key": "minimumGradient",
+          "label": "最低梯度（灰度/px）",
+          "type": "number",
+          "default": 5,
+          "required": true,
+          "minimum": 0.1,
+          "maximum": 255
+        },
+        {
+          "key": "minimumValidRatio",
+          "label": "最低有效卡尺比例",
+          "type": "number",
+          "default": 0.8,
+          "required": true,
+          "minimum": 0.1,
+          "maximum": 1
+        },
+        {
+          "key": "polarity",
+          "label": "边缘极性",
+          "type": "string",
+          "default": "rising",
+          "required": true,
+          "choices": [
+            {
+              "value": "rising",
+              "label": "由暗到亮"
+            },
+            {
+              "value": "falling",
+              "label": "由亮到暗"
+            },
+            {
+              "value": "either",
+              "label": "任意极性"
+            }
+          ]
+        },
+        {
+          "key": "selection",
+          "label": "边缘选择",
+          "type": "string",
+          "default": "strongest",
+          "required": true,
+          "choices": [
+            {
+              "value": "strongest",
+              "label": "梯度最强"
+            },
+            {
+              "value": "first",
+              "label": "沿扫描方向第一个"
+            },
+            {
+              "value": "last",
+              "label": "沿扫描方向最后一个"
+            }
+          ]
+        },
+        {
+          "key": "maximumResidual",
+          "label": "拟合点最大残差 (px)",
+          "type": "number",
+          "default": 1,
+          "required": true,
+          "minimum": 0.01,
+          "maximum": 100
+        },
+        {
+          "key": "maximumRms",
+          "label": "合格拟合均方根误差 (px)",
+          "type": "number",
+          "default": 0.5,
+          "required": true,
+          "minimum": 0.001,
+          "maximum": 100
+        }
+      ],
+      "outputs": [
+        {
+          "key": "items",
+          "label": "卡尺测量明细",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "probeCount",
+          "label": "卡尺数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "detectedCount",
+          "label": "检出卡尺数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "missingCount",
+          "label": "未检出数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "validRatio",
+          "label": "有效卡尺比例",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "found",
+          "label": "是否形成测量",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "passed",
+          "label": "是否通过",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "diagnostic",
+          "label": "测量说明",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "line",
+          "label": "拟合直线",
+          "type": "object",
+          "required": false
+        },
+        {
+          "key": "inlierCount",
+          "label": "拟合有效点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "rmsPixels",
+          "label": "拟合均方根误差 (px)",
+          "type": "number",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "edge-width",
+      "name": "双边缘卡尺 · 测宽",
+      "description": "相邻反向边缘对测宽；多组候选选择较弱边缘梯度最强的一组。测得的是扫描方向截距，扫描方向需垂直被测条带。实际单位仅使用均匀比例，不补偿透视或畸变。",
+      "entry": "caliper.py",
+      "input": "image",
+      "timeoutMs": 10000,
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "default": "width",
+          "required": true,
+          "choices": [
+            {
+              "value": "width",
+              "label": "双边缘卡尺 · 测宽"
+            }
+          ]
+        },
+        {
+          "key": "centerX",
+          "label": "卡尺阵列中心 X (px)",
+          "type": "number",
+          "default": 320,
+          "required": true,
+          "minimum": 0,
+          "maximum": 32766
+        },
+        {
+          "key": "centerY",
+          "label": "卡尺阵列中心 Y (px)",
+          "type": "number",
+          "default": 240,
+          "required": true,
+          "minimum": 0,
+          "maximum": 32766
+        },
+        {
+          "key": "scanAngle",
+          "label": "扫描角度（顺时针 °）",
+          "type": "number",
+          "default": 0,
+          "required": true,
+          "minimum": -180,
+          "maximum": 180
+        },
+        {
+          "key": "searchLength",
+          "label": "搜索长度 (px)",
+          "type": "number",
+          "default": 160,
+          "required": true,
+          "minimum": 16,
+          "maximum": 2048
+        },
+        {
+          "key": "caliperWidth",
+          "label": "平均采样宽度（点数）",
+          "type": "integer",
+          "default": 7,
+          "required": true,
+          "minimum": 1,
+          "maximum": 51
+        },
+        {
+          "key": "probeCount",
+          "label": "卡尺数量",
+          "type": "integer",
+          "default": 15,
+          "required": true,
+          "minimum": 3,
+          "maximum": 100
+        },
+        {
+          "key": "probeSpacing",
+          "label": "卡尺间隔 (px)",
+          "type": "number",
+          "default": 16,
+          "required": true,
+          "minimum": 1,
+          "maximum": 1000
+        },
+        {
+          "key": "sigma",
+          "label": "平滑尺度 (px)",
+          "type": "number",
+          "default": 1,
+          "required": true,
+          "minimum": 0.2,
+          "maximum": 5
+        },
+        {
+          "key": "minimumGradient",
+          "label": "最低梯度（灰度/px）",
+          "type": "number",
+          "default": 5,
+          "required": true,
+          "minimum": 0.1,
+          "maximum": 255
+        },
+        {
+          "key": "minimumValidRatio",
+          "label": "最低有效卡尺比例",
+          "type": "number",
+          "default": 0.8,
+          "required": true,
+          "minimum": 0.1,
+          "maximum": 1
+        },
+        {
+          "key": "bandPolarity",
+          "label": "条带极性",
+          "type": "string",
+          "default": "bright",
+          "required": true,
+          "choices": [
+            {
+              "value": "bright",
+              "label": "亮条带（暗→亮→暗）"
+            },
+            {
+              "value": "dark",
+              "label": "暗条带（亮→暗→亮）"
+            }
+          ]
+        },
+        {
+          "key": "minimumSeparation",
+          "label": "搜索最小边缘间距 (px)",
+          "type": "number",
+          "default": 10,
+          "required": true,
+          "minimum": 1,
+          "maximum": 2048
+        },
+        {
+          "key": "maximumSeparation",
+          "label": "搜索最大边缘间距 (px)",
+          "type": "number",
+          "default": 120,
+          "required": true,
+          "minimum": 1,
+          "maximum": 2048
+        },
+        {
+          "key": "unitsPerPixel",
+          "label": "每像素实际尺寸",
+          "type": "number",
+          "default": 1,
+          "required": true,
+          "minimum": 1e-06,
+          "maximum": 10000
+        },
+        {
+          "key": "unit",
+          "label": "宽度单位",
+          "type": "string",
+          "default": "px",
+          "required": true,
+          "choices": [
+            {
+              "value": "px",
+              "label": "像素 px"
+            },
+            {
+              "value": "mm",
+              "label": "毫米 mm"
+            },
+            {
+              "value": "cm",
+              "label": "厘米 cm"
+            },
+            {
+              "value": "m",
+              "label": "米 m"
+            }
+          ]
+        },
+        {
+          "key": "minimumWidth",
+          "label": "合格宽度下限",
+          "type": "number",
+          "default": 78,
+          "required": true,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "maximumWidth",
+          "label": "合格宽度上限",
+          "type": "number",
+          "default": 82,
+          "required": true,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        }
+      ],
+      "outputs": [
+        {
+          "key": "items",
+          "label": "卡尺测量明细",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "probeCount",
+          "label": "卡尺数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "detectedCount",
+          "label": "检出卡尺数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "missingCount",
+          "label": "未检出数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "validRatio",
+          "label": "有效卡尺比例",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "found",
+          "label": "是否形成测量",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "passed",
+          "label": "是否通过",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "diagnostic",
+          "label": "测量说明",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "meanWidth",
+          "label": "平均宽度",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "minimumWidth",
+          "label": "最小宽度",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "maximumWidth",
+          "label": "最大宽度",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "widthStdDev",
+          "label": "宽度标准差",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "unit",
+          "label": "宽度单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "unitsPerPixel",
+          "label": "每像素实际尺寸",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "outOfToleranceCount",
+          "label": "宽度超差数量",
+          "type": "integer",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

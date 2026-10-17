@@ -1,0 +1,258 @@
+{
+  "apiVersion": 1,
+  "id": "sieans-relations",
+  "name": "SIEANS 几何关系测量",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "两直线交点与夹角、两平面夹角与平行间距。坐标必须使用同一坐标系和单位。",
+  "operators": [
+    {
+      "id": "lines-2d",
+      "name": "2D 两直线关系",
+      "description": "以两点定义无限直线，输出锐夹角；近似平行时不输出不稳定交点，返回第二条线起点到第一条线距离。",
+      "entry": "relations.py",
+      "input": "none",
+      "timeoutMs": 5000,
+      "parameters": [
+        {
+          "key": "geometry",
+          "label": "几何类型",
+          "type": "string",
+          "required": true,
+          "default": "lines-2d",
+          "choices": [
+            {
+              "value": "lines-2d",
+              "label": "2D 两直线关系"
+            }
+          ]
+        },
+        {
+          "key": "entities",
+          "label": "两组几何要素",
+          "type": "array",
+          "required": true,
+          "default": [
+            {
+              "x1": 0,
+              "y1": 0,
+              "x2": 100,
+              "y2": 0
+            },
+            {
+              "x1": 50,
+              "y1": -50,
+              "x2": 50,
+              "y2": 50
+            }
+          ],
+          "columns": [
+            {
+              "key": "x1",
+              "label": "起点 X",
+              "type": "number",
+              "required": true
+            },
+            {
+              "key": "y1",
+              "label": "起点 Y",
+              "type": "number",
+              "required": true
+            },
+            {
+              "key": "x2",
+              "label": "终点 X",
+              "type": "number",
+              "required": true
+            },
+            {
+              "key": "y2",
+              "label": "终点 Y",
+              "type": "number",
+              "required": true
+            }
+          ],
+          "minimumRows": 2,
+          "maximumRows": 2
+        },
+        {
+          "key": "parallelTolerance",
+          "label": "平行判定角阈值 (°)",
+          "type": "number",
+          "required": true,
+          "default": 0.001,
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "key": "minimumAngle",
+          "label": "夹角下限 (°)",
+          "type": "number",
+          "required": true,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 90
+        },
+        {
+          "key": "maximumAngle",
+          "label": "夹角上限 (°)",
+          "type": "number",
+          "required": true,
+          "default": 90,
+          "minimum": 0,
+          "maximum": 90
+        }
+      ],
+      "outputs": [
+        {
+          "key": "angleDegrees",
+          "label": "无向锐夹角 (°)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "parallel",
+          "label": "阈值内平行",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "几何关系测量结果",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "passed",
+          "label": "夹角是否合格",
+          "type": "boolean",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "planes-3d",
+      "name": "3D 两平面关系",
+      "description": "方程 aX+bY+cZ+d=0，支持不归一化及反向法向量。仅阈值内平行时给出两平面的对称参考距离；有夹角时不输出平行间距。",
+      "entry": "relations.py",
+      "input": "none",
+      "timeoutMs": 5000,
+      "parameters": [
+        {
+          "key": "geometry",
+          "label": "几何类型",
+          "type": "string",
+          "required": true,
+          "default": "planes-3d",
+          "choices": [
+            {
+              "value": "planes-3d",
+              "label": "3D 两平面关系"
+            }
+          ]
+        },
+        {
+          "key": "entities",
+          "label": "两组几何要素",
+          "type": "array",
+          "required": true,
+          "default": [
+            {
+              "a": 0,
+              "b": 0,
+              "c": 1,
+              "d": 0
+            },
+            {
+              "a": 0,
+              "b": 0,
+              "c": 1,
+              "d": -10
+            }
+          ],
+          "columns": [
+            {
+              "key": "a",
+              "label": "法向量 a",
+              "type": "number",
+              "required": true
+            },
+            {
+              "key": "b",
+              "label": "法向量 b",
+              "type": "number",
+              "required": true
+            },
+            {
+              "key": "c",
+              "label": "法向量 c",
+              "type": "number",
+              "required": true
+            },
+            {
+              "key": "d",
+              "label": "常数 d",
+              "type": "number",
+              "required": true
+            }
+          ],
+          "minimumRows": 2,
+          "maximumRows": 2
+        },
+        {
+          "key": "parallelTolerance",
+          "label": "平行判定角阈值 (°)",
+          "type": "number",
+          "required": true,
+          "default": 0.001,
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "key": "minimumAngle",
+          "label": "夹角下限 (°)",
+          "type": "number",
+          "required": true,
+          "default": 0,
+          "minimum": 0,
+          "maximum": 90
+        },
+        {
+          "key": "maximumAngle",
+          "label": "夹角上限 (°)",
+          "type": "number",
+          "required": true,
+          "default": 90,
+          "minimum": 0,
+          "maximum": 90
+        }
+      ],
+      "outputs": [
+        {
+          "key": "angleDegrees",
+          "label": "无向锐夹角 (°)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "parallel",
+          "label": "阈值内平行",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "几何关系测量结果",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "passed",
+          "label": "夹角是否合格",
+          "type": "boolean",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

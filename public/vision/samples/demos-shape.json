@@ -1,0 +1,783 @@
+[
+  {
+    "id": "shape-multi",
+    "name": "轮廓识别 · 多角度与比例",
+    "category": "识别",
+    "image": "shape-multi.png",
+    "description": "先在左侧参考区域建模，再在右侧识别完整二值轮廓。Hu 差异不是置信度；不估计朝向、正反面或定位跟随位姿。",
+    "expected": "三个 L 形轮廓通过，圆形被排除；计数为 3。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-shape",
+          "pluginVersion": "1.0.0",
+          "operatorId": "teach",
+          "arguments": {
+            "roiX": 20,
+            "roiY": 20,
+            "roiWidth": 130,
+            "roiHeight": 170
+          },
+          "outputBindings": [
+            {
+              "field": "model",
+              "scope": "flow",
+              "name": "silhouette"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-shape",
+          "pluginVersion": "1.0.0",
+          "operatorId": "match",
+          "arguments": {
+            "roiX": 200,
+            "model": {
+              "$ref": "flow.silhouette"
+            },
+            "minimumCount": 3,
+            "maximumCount": 3
+          },
+          "outputBindings": [
+            {
+              "field": "count",
+              "scope": "flow",
+              "name": "shapeCount"
+            },
+            {
+              "field": "passed",
+              "scope": "flow",
+              "name": "shapeOK"
+            }
+          ]
+        }
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "轮廓识别 · 多角度与比例",
+      "rows": 8,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "shape-0",
+          "type": "value",
+          "label": "匹配数量",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "shape-match",
+            "path": "count"
+          }
+        },
+        {
+          "id": "shape-1",
+          "type": "lamp",
+          "label": "数量判定",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "shape-match",
+            "path": "passed"
+          }
+        },
+        {
+          "id": "shape-2",
+          "type": "image",
+          "label": "候选轮廓标记",
+          "x": 0,
+          "y": 2,
+          "w": 6,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "shape-match",
+            "path": ""
+          }
+        },
+        {
+          "id": "shape-3",
+          "type": "table",
+          "label": "候选形状明细",
+          "x": 6,
+          "y": 2,
+          "w": 6,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "shape-match",
+            "path": "items"
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 0,
+        "step": 1
+      },
+      {
+        "component": 1,
+        "step": 1
+      },
+      {
+        "component": 2,
+        "step": 1
+      },
+      {
+        "component": 3,
+        "step": 1
+      }
+    ]
+  },
+  {
+    "id": "shape-hole-missing",
+    "name": "轮廓识别 · 缺孔排除",
+    "category": "识别",
+    "image": "shape-hole-missing.png",
+    "description": "先在左侧参考区域建模，再在右侧识别完整二值轮廓。Hu 差异不是置信度；不估计朝向、正反面或定位跟随位姿。",
+    "expected": "外轮廓相似但孔洞缺失，不匹配、不通过。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-shape",
+          "pluginVersion": "1.0.0",
+          "operatorId": "teach",
+          "arguments": {
+            "roiX": 20,
+            "roiY": 20,
+            "roiWidth": 130,
+            "roiHeight": 170
+          },
+          "outputBindings": [
+            {
+              "field": "model",
+              "scope": "flow",
+              "name": "silhouette"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-shape",
+          "pluginVersion": "1.0.0",
+          "operatorId": "match",
+          "arguments": {
+            "roiX": 200,
+            "model": {
+              "$ref": "flow.silhouette"
+            }
+          },
+          "outputBindings": [
+            {
+              "field": "count",
+              "scope": "flow",
+              "name": "shapeCount"
+            },
+            {
+              "field": "passed",
+              "scope": "flow",
+              "name": "shapeOK"
+            }
+          ]
+        }
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "轮廓识别 · 缺孔排除",
+      "rows": 8,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "shape-0",
+          "type": "value",
+          "label": "匹配数量",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "shape-match",
+            "path": "count"
+          }
+        },
+        {
+          "id": "shape-1",
+          "type": "lamp",
+          "label": "数量判定",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "shape-match",
+            "path": "passed"
+          }
+        },
+        {
+          "id": "shape-2",
+          "type": "image",
+          "label": "候选轮廓标记",
+          "x": 0,
+          "y": 2,
+          "w": 6,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "shape-match",
+            "path": ""
+          }
+        },
+        {
+          "id": "shape-3",
+          "type": "table",
+          "label": "候选形状明细",
+          "x": 6,
+          "y": 2,
+          "w": 6,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "shape-match",
+            "path": "items"
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 0,
+        "step": 1
+      },
+      {
+        "component": 1,
+        "step": 1
+      },
+      {
+        "component": 2,
+        "step": 1
+      },
+      {
+        "component": 3,
+        "step": 1
+      }
+    ]
+  },
+  {
+    "id": "shape-empty",
+    "name": "轮廓识别 · 无目标诊断",
+    "category": "识别",
+    "image": "shape-empty.png",
+    "description": "先在左侧参考区域建模，再在右侧识别完整二值轮廓。Hu 差异不是置信度；不估计朝向、正反面或定位跟随位姿。",
+    "expected": "搜索区域无候选；计数 0，不通过，不产生目标坐标。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-shape",
+          "pluginVersion": "1.0.0",
+          "operatorId": "teach",
+          "arguments": {
+            "roiX": 20,
+            "roiY": 20,
+            "roiWidth": 130,
+            "roiHeight": 170
+          },
+          "outputBindings": [
+            {
+              "field": "model",
+              "scope": "flow",
+              "name": "silhouette"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-shape",
+          "pluginVersion": "1.0.0",
+          "operatorId": "match",
+          "arguments": {
+            "roiX": 200,
+            "model": {
+              "$ref": "flow.silhouette"
+            }
+          },
+          "outputBindings": [
+            {
+              "field": "count",
+              "scope": "flow",
+              "name": "shapeCount"
+            },
+            {
+              "field": "passed",
+              "scope": "flow",
+              "name": "shapeOK"
+            }
+          ]
+        }
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "轮廓识别 · 无目标诊断",
+      "rows": 8,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "shape-0",
+          "type": "value",
+          "label": "匹配数量",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "shape-match",
+            "path": "count"
+          }
+        },
+        {
+          "id": "shape-1",
+          "type": "lamp",
+          "label": "数量判定",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "shape-match",
+            "path": "passed"
+          }
+        },
+        {
+          "id": "shape-2",
+          "type": "image",
+          "label": "候选轮廓标记",
+          "x": 0,
+          "y": 2,
+          "w": 6,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "shape-match",
+            "path": ""
+          }
+        },
+        {
+          "id": "shape-3",
+          "type": "table",
+          "label": "候选形状明细",
+          "x": 6,
+          "y": 2,
+          "w": 6,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "shape-match",
+            "path": "items"
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 0,
+        "step": 1
+      },
+      {
+        "component": 1,
+        "step": 1
+      },
+      {
+        "component": 2,
+        "step": 1
+      },
+      {
+        "component": 3,
+        "step": 1
+      }
+    ]
+  },
+  {
+    "id": "shape-unique-guard",
+    "name": "轮廓识别 · 唯一目标保护",
+    "category": "识别",
+    "image": "shape-multi.png",
+    "description": "先在左侧参考区域建模，再在右侧识别完整二值轮廓。Hu 差异不是置信度；不估计朝向、正反面或定位跟随位姿。",
+    "expected": "三个匹配但允许数量为 1，找到为是、通过为否。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-shape",
+          "pluginVersion": "1.0.0",
+          "operatorId": "teach",
+          "arguments": {
+            "roiX": 20,
+            "roiY": 20,
+            "roiWidth": 130,
+            "roiHeight": 170
+          },
+          "outputBindings": [
+            {
+              "field": "model",
+              "scope": "flow",
+              "name": "silhouette"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-shape",
+          "pluginVersion": "1.0.0",
+          "operatorId": "match",
+          "arguments": {
+            "roiX": 200,
+            "model": {
+              "$ref": "flow.silhouette"
+            }
+          },
+          "outputBindings": [
+            {
+              "field": "count",
+              "scope": "flow",
+              "name": "shapeCount"
+            },
+            {
+              "field": "passed",
+              "scope": "flow",
+              "name": "shapeOK"
+            }
+          ]
+        }
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "轮廓识别 · 唯一目标保护",
+      "rows": 8,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "shape-0",
+          "type": "value",
+          "label": "匹配数量",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "shape-match",
+            "path": "count"
+          }
+        },
+        {
+          "id": "shape-1",
+          "type": "lamp",
+          "label": "数量判定",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "shape-match",
+            "path": "passed"
+          }
+        },
+        {
+          "id": "shape-2",
+          "type": "image",
+          "label": "候选轮廓标记",
+          "x": 0,
+          "y": 2,
+          "w": 6,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "shape-match",
+            "path": ""
+          }
+        },
+        {
+          "id": "shape-3",
+          "type": "table",
+          "label": "候选形状明细",
+          "x": 6,
+          "y": 2,
+          "w": 6,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "shape-match",
+            "path": "items"
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 0,
+        "step": 1
+      },
+      {
+        "component": 1,
+        "step": 1
+      },
+      {
+        "component": 2,
+        "step": 1
+      },
+      {
+        "component": 3,
+        "step": 1
+      }
+    ]
+  },
+  {
+    "id": "shape-dark",
+    "name": "轮廓识别 · 暗目标",
+    "category": "识别",
+    "image": "shape-dark.png",
+    "description": "先在左侧参考区域建模，再在右侧识别完整二值轮廓。Hu 差异不是置信度；不估计朝向、正反面或定位跟随位姿。",
+    "expected": "反转前景极性，仍识别三个旋转缩放目标。",
+    "steps": [
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-shape",
+          "pluginVersion": "1.0.0",
+          "operatorId": "teach",
+          "arguments": {
+            "roiX": 20,
+            "roiY": 20,
+            "roiWidth": 130,
+            "roiHeight": 170,
+            "polarity": "dark"
+          },
+          "outputBindings": [
+            {
+              "field": "model",
+              "scope": "flow",
+              "name": "silhouette"
+            }
+          ]
+        }
+      },
+      {
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-shape",
+          "pluginVersion": "1.0.0",
+          "operatorId": "match",
+          "arguments": {
+            "roiX": 200,
+            "model": {
+              "$ref": "flow.silhouette"
+            },
+            "polarity": "dark",
+            "minimumCount": 3,
+            "maximumCount": 3
+          },
+          "outputBindings": [
+            {
+              "field": "count",
+              "scope": "flow",
+              "name": "shapeCount"
+            },
+            {
+              "field": "passed",
+              "scope": "flow",
+              "name": "shapeOK"
+            }
+          ]
+        }
+      }
+    ],
+    "hmi": {
+      "version": 1,
+      "title": "轮廓识别 · 暗目标",
+      "rows": 8,
+      "rowHeight": 60,
+      "components": [
+        {
+          "id": "shape-0",
+          "type": "value",
+          "label": "匹配数量",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "shape-match",
+            "path": "count"
+          }
+        },
+        {
+          "id": "shape-1",
+          "type": "lamp",
+          "label": "数量判定",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "color": "#1095bd",
+          "fontSize": 32,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "shape-match",
+            "path": "passed"
+          }
+        },
+        {
+          "id": "shape-2",
+          "type": "image",
+          "label": "候选轮廓标记",
+          "x": 0,
+          "y": 2,
+          "w": 6,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "shape-match",
+            "path": ""
+          }
+        },
+        {
+          "id": "shape-3",
+          "type": "table",
+          "label": "候选形状明细",
+          "x": 6,
+          "y": 2,
+          "w": 6,
+          "h": 6,
+          "color": "#1095bd",
+          "fontSize": 20,
+          "precision": 0,
+          "unit": "",
+          "binding": {
+            "source": "result",
+            "nodeId": "shape-match",
+            "path": "items"
+          }
+        }
+      ]
+    },
+    "hmiBindings": [
+      {
+        "component": 0,
+        "step": 1
+      },
+      {
+        "component": 1,
+        "step": 1
+      },
+      {
+        "component": 2,
+        "step": 1
+      },
+      {
+        "component": 3,
+        "step": 1
+      }
+    ]
+  }
+]

@@ -1,0 +1,313 @@
+{
+  "apiVersion": 1,
+  "id": "sieans-fixture",
+  "name": "SIEANS 2D 定位跟随",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "使用模板定位位姿转换点位或校正检测图像，跟随平移、旋转与均匀缩放；验证同帧，拒绝越界填充。",
+  "operators": [
+    {
+      "id": "points",
+      "name": "定位跟随 · 点位转换",
+      "description": "模板与当前图像间转换点位；按行显示转换坐标及范围状态，支持正反向。",
+      "entry": "fixture.py",
+      "input": "none",
+      "timeoutMs": 10000,
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "default": "points",
+          "required": true,
+          "choices": [
+            {
+              "value": "points",
+              "label": "点位跟随转换"
+            }
+          ]
+        },
+        {
+          "key": "pose",
+          "label": "定位位姿（绑定模板定位结果）",
+          "type": "object",
+          "default": {
+            "format": "sieans-pose2d-v1",
+            "sourceWidth": 640,
+            "sourceHeight": 480,
+            "templateWidth": 80,
+            "templateHeight": 60,
+            "sourcePixelSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "templatePixelSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "matrix": [
+              [
+                1,
+                0,
+                0
+              ],
+              [
+                0,
+                1,
+                0
+              ]
+            ],
+            "inverse": [
+              [
+                1,
+                0,
+                0
+              ],
+              [
+                0,
+                1,
+                0
+              ]
+            ],
+            "angleDeg": 0,
+            "scale": 1
+          },
+          "required": true
+        },
+        {
+          "key": "direction",
+          "label": "转换方向",
+          "type": "string",
+          "default": "template-to-image",
+          "required": true,
+          "choices": [
+            {
+              "value": "template-to-image",
+              "label": "模板 → 当前图像"
+            },
+            {
+              "value": "image-to-template",
+              "label": "当前图像 → 模板"
+            }
+          ]
+        },
+        {
+          "key": "points",
+          "label": "模板 / 图像点位表 (px)",
+          "type": "array",
+          "default": [
+            {
+              "x": 10,
+              "y": 10
+            }
+          ],
+          "required": true,
+          "columns": [
+            {
+              "key": "x",
+              "label": "输入 X (px)",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000.0,
+              "maximum": 1000000.0
+            },
+            {
+              "key": "y",
+              "label": "输入 Y (px)",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000.0,
+              "maximum": 1000000.0
+            }
+          ],
+          "minimumRows": 1,
+          "maximumRows": 1000
+        }
+      ],
+      "outputs": [
+        {
+          "key": "passed",
+          "label": "全部点位在目标范围内",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "direction",
+          "label": "转换方向",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "count",
+          "label": "转换点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "outsideCount",
+          "label": "超出目标范围点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "点位明细",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "diagnostic",
+          "label": "说明",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "rectify",
+      "name": "定位跟随 · 图像校正",
+      "description": "将同帧目标校正回模板坐标，输出可接几何/条码/卡尺等算子；越界直接报错，不补造像素。",
+      "entry": "fixture.py",
+      "input": "image",
+      "timeoutMs": 10000,
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "default": "rectify",
+          "required": true,
+          "choices": [
+            {
+              "value": "rectify",
+              "label": "图像跟随校正"
+            }
+          ]
+        },
+        {
+          "key": "pose",
+          "label": "定位位姿（绑定模板定位结果）",
+          "type": "object",
+          "default": {
+            "format": "sieans-pose2d-v1",
+            "sourceWidth": 640,
+            "sourceHeight": 480,
+            "templateWidth": 80,
+            "templateHeight": 60,
+            "sourcePixelSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "templatePixelSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "matrix": [
+              [
+                1,
+                0,
+                0
+              ],
+              [
+                0,
+                1,
+                0
+              ]
+            ],
+            "inverse": [
+              [
+                1,
+                0,
+                0
+              ],
+              [
+                0,
+                1,
+                0
+              ]
+            ],
+            "angleDeg": 0,
+            "scale": 1
+          },
+          "required": true
+        },
+        {
+          "key": "cropX",
+          "label": "模板坐标检测区域 X (px)",
+          "type": "integer",
+          "default": 0,
+          "required": true,
+          "minimum": -32766,
+          "maximum": 32766
+        },
+        {
+          "key": "cropY",
+          "label": "模板坐标检测区域 Y (px)",
+          "type": "integer",
+          "default": 0,
+          "required": true,
+          "minimum": -32766,
+          "maximum": 32766
+        },
+        {
+          "key": "cropWidth",
+          "label": "校正宽度（0 使用模板宽度）",
+          "type": "integer",
+          "default": 0,
+          "required": true,
+          "minimum": 0,
+          "maximum": 2048
+        },
+        {
+          "key": "cropHeight",
+          "label": "校正高度（0 使用模板高度）",
+          "type": "integer",
+          "default": 0,
+          "required": true,
+          "minimum": 0,
+          "maximum": 2048
+        }
+      ],
+      "outputs": [
+        {
+          "key": "passed",
+          "label": "校正成功",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "rectified",
+          "label": "已转到模板坐标",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "width",
+          "label": "校正图宽度 (px)",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "height",
+          "label": "校正图高度 (px)",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "templateOriginX",
+          "label": "检测区模板 X (px)",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "templateOriginY",
+          "label": "检测区模板 Y (px)",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "sourcePolygon",
+          "label": "检测区原图顶点",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "diagnostic",
+          "label": "说明",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

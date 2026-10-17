@@ -1,0 +1,5 @@
+'use strict';
+const {test}=require('node:test'),assert=require('node:assert/strict'),g=require('../public/vision/annotation-geometry.js');
+test('drawing rectangle in either direction produces the same normalized box',()=>{assert.deepEqual(g.box([.8,.9],[.2,.1]),[.5,.5,.6000000000000001,.8]);assert.deepEqual(g.box([.2,.1],[.8,.9]),g.box([.8,.9],[.2,.1]));});
+test('movement preserves shape and clamps the whole object to image boundaries',()=>{const r={classId:0,box:[.5,.5,.4,.6]},m=g.move(r,10,-10);assert.deepEqual(m.box,[.8,.3,.4,.6]);assert.deepEqual(r.box,[.5,.5,.4,.6]);const polygon={classId:0,points:[[.1,.2],[.4,.2],[.3,.5]]},moved=g.move(polygon,-1,1);assert.deepEqual(moved.points,[[0,.7],[.30000000000000004,.7],[.19999999999999998,1]]);});
+test('simple concave polygons are valid; crossings, repeated vertices and degenerate outlines are rejected',()=>{assert.equal(g.polygonValid([[.1,.1],[.9,.1],[.5,.5],[.9,.9],[.1,.9]]),true);for(const points of [[],[[0,0],[1,1],[.5,.5]],[[.1,.1],[.9,.8],[.1,.8],[.9,.1],[.5,.95]],[[0,0],[1,0],[1,0],[1,1]],[[0,0],[1,0],[2,1]]])assert.equal(g.polygonValid(points),false);});

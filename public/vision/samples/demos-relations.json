@@ -1,0 +1,208 @@
+[
+  {
+    "id": "relations-lines-2d",
+    "name": "2D 两直线关系",
+    "description": "以两点定义无限直线，输出锐夹角；近似平行时不输出不稳定交点，返回第二条线起点到第一条线距离。",
+    "steps": [
+      {
+        "id": "relation",
+        "name": "2D 两直线关系",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-relations",
+          "pluginVersion": "1.0.0",
+          "operatorId": "lines-2d",
+          "arguments": {
+            "minimumAngle": 89.9,
+            "maximumAngle": 90,
+            "entities": [
+              {
+                "x1": 0,
+                "y1": 0,
+                "x2": 100,
+                "y2": 0
+              },
+              {
+                "x1": {
+                  "$ref": "flow.intersectionX"
+                },
+                "y1": -50,
+                "x2": {
+                  "$ref": "flow.intersectionX"
+                },
+                "y2": 50
+              }
+            ]
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "measuredAngle",
+              "field": "angleDegrees"
+            },
+            {
+              "scope": "flow",
+              "name": "angleOK",
+              "field": "passed"
+            }
+          ]
+        }
+      }
+    ],
+    "category": "2D 测量",
+    "expected": "夹角 90°，交点 (50, 0)",
+    "image": "relations-lines.png",
+    "variables": {
+      "intersectionX": 50
+    }
+  },
+  {
+    "id": "relations-planes-3d",
+    "name": "3D 两平面关系",
+    "description": "方程 aX+bY+cZ+d=0，支持不归一化及反向法向量。仅阈值内平行时给出两平面的对称参考距离；有夹角时不输出平行间距。",
+    "steps": [
+      {
+        "id": "relation",
+        "name": "3D 两平面关系",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-relations",
+          "pluginVersion": "1.0.0",
+          "operatorId": "planes-3d",
+          "arguments": {
+            "minimumAngle": 0,
+            "maximumAngle": 0.1,
+            "entities": [
+              {
+                "a": 0,
+                "b": 0,
+                "c": {
+                  "$ref": "flow.normalZ"
+                },
+                "d": 0
+              },
+              {
+                "a": 0,
+                "b": 0,
+                "c": 1,
+                "d": -10
+              }
+            ]
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "measuredAngle",
+              "field": "angleDegrees"
+            },
+            {
+              "scope": "flow",
+              "name": "angleOK",
+              "field": "passed"
+            }
+          ]
+        }
+      }
+    ],
+    "category": "3D 测量",
+    "expected": "夹角 0°，平行参考间距 10",
+    "image": "relations-planes.png",
+    "variables": {
+      "normalZ": 1
+    }
+  },
+  {
+    "id": "caliper-corner-relations",
+    "name": "双直线定位 · 交点与直角判定",
+    "category": "2D",
+    "image": "caliper-corner.png",
+    "description": "两组边缘卡尺拟合直线，几何关系表逐格绑定端点，无需中间脚本。",
+    "expected": "夹角约 90°；交点约 (159.5, 119.5) px，直角判定合格。",
+    "steps": [
+      {
+        "id": "vertical",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-caliper",
+          "pluginVersion": "1.0.0",
+          "operatorId": "edge-line",
+          "arguments": {
+            "centerX": 160,
+            "centerY": 200,
+            "scanAngle": 0,
+            "searchLength": 80,
+            "probeCount": 9,
+            "probeSpacing": 8
+          }
+        }
+      },
+      {
+        "id": "horizontal",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-caliper",
+          "pluginVersion": "1.0.0",
+          "operatorId": "edge-line",
+          "arguments": {
+            "centerX": 250,
+            "centerY": 120,
+            "scanAngle": 90,
+            "searchLength": 80,
+            "probeCount": 9,
+            "probeSpacing": 8
+          }
+        }
+      },
+      {
+        "id": "corner",
+        "operation": "plugin",
+        "params": {
+          "pluginId": "sieans-relations",
+          "pluginVersion": "1.0.0",
+          "operatorId": "lines-2d",
+          "arguments": {
+            "entities": [
+              {
+                "x1": {
+                  "$ref": "results.vertical.line.start.0"
+                },
+                "y1": {
+                  "$ref": "results.vertical.line.start.1"
+                },
+                "x2": {
+                  "$ref": "results.vertical.line.end.0"
+                },
+                "y2": {
+                  "$ref": "results.vertical.line.end.1"
+                }
+              },
+              {
+                "x1": {
+                  "$ref": "results.horizontal.line.start.0"
+                },
+                "y1": {
+                  "$ref": "results.horizontal.line.start.1"
+                },
+                "x2": {
+                  "$ref": "results.horizontal.line.end.0"
+                },
+                "y2": {
+                  "$ref": "results.horizontal.line.end.1"
+                }
+              }
+            ],
+            "minimumAngle": 89.5,
+            "maximumAngle": 90
+          },
+          "outputBindings": [
+            {
+              "scope": "flow",
+              "name": "cornerOK",
+              "field": "passed"
+            }
+          ]
+        }
+      }
+    ]
+  }
+]

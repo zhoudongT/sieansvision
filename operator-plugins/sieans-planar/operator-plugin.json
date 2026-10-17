@@ -1,0 +1,352 @@
+{
+  "apiVersion": 1,
+  "id": "sieans-planar",
+  "name": "SIEANS 平面标定与测量",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "基于 OpenCV 单应性模型的平面标定、坐标换算和线段/周长测量。仅适用于固定拍摄配置下的同一平面，不补偿镜头畸变。",
+  "operators": [
+    {
+      "id": "calibrate",
+      "name": "平面透视标定",
+      "description": "至少四组图像/实际坐标对应点；建议使用分布均匀的多个点并独立验证。RANSAC 阈值及误差以像素计。",
+      "entry": "planar.py",
+      "input": "none",
+      "timeoutMs": 5000,
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "default": "calibrate",
+          "required": true,
+          "choices": [
+            {
+              "value": "calibrate",
+              "label": "平面标定"
+            }
+          ]
+        },
+        {
+          "key": "points",
+          "label": "标定点对应表",
+          "type": "array",
+          "default": [
+            {
+              "pixelX": 100,
+              "pixelY": 100,
+              "worldX": 0,
+              "worldY": 0
+            },
+            {
+              "pixelX": 500,
+              "pixelY": 100,
+              "worldX": 100,
+              "worldY": 0
+            },
+            {
+              "pixelX": 500,
+              "pixelY": 340,
+              "worldX": 100,
+              "worldY": 60
+            },
+            {
+              "pixelX": 100,
+              "pixelY": 340,
+              "worldX": 0,
+              "worldY": 60
+            }
+          ],
+          "required": true,
+          "minimumRows": 4,
+          "maximumRows": 500,
+          "columns": [
+            {
+              "key": "pixelX",
+              "label": "图像 X (px)",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -10000000,
+              "maximum": 10000000
+            },
+            {
+              "key": "pixelY",
+              "label": "图像 Y (px)",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -10000000,
+              "maximum": 10000000
+            },
+            {
+              "key": "worldX",
+              "label": "实际 X",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -10000000,
+              "maximum": 10000000
+            },
+            {
+              "key": "worldY",
+              "label": "实际 Y",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -10000000,
+              "maximum": 10000000
+            }
+          ]
+        },
+        {
+          "key": "unit",
+          "label": "实际坐标单位",
+          "type": "string",
+          "default": "mm",
+          "required": true,
+          "choices": [
+            {
+              "value": "mm",
+              "label": "毫米 mm"
+            },
+            {
+              "value": "cm",
+              "label": "厘米 cm"
+            },
+            {
+              "value": "m",
+              "label": "米 m"
+            }
+          ]
+        },
+        {
+          "key": "method",
+          "label": "拟合方法",
+          "type": "string",
+          "default": "ransac",
+          "required": true,
+          "choices": [
+            {
+              "value": "ransac",
+              "label": "RANSAC 剔除异常点"
+            },
+            {
+              "value": "all",
+              "label": "全部对应点拟合"
+            }
+          ]
+        },
+        {
+          "key": "inlierThreshold",
+          "label": "RANSAC 内点阈值 (px)",
+          "type": "number",
+          "default": 2,
+          "required": true,
+          "minimum": 0.01,
+          "maximum": 100
+        },
+        {
+          "key": "minimumInlierRatio",
+          "label": "最低有效点比例",
+          "type": "number",
+          "default": 0.75,
+          "required": true,
+          "minimum": 0.1,
+          "maximum": 1
+        },
+        {
+          "key": "maximumRmsError",
+          "label": "最大均方根误差 (px)",
+          "type": "number",
+          "default": 1,
+          "required": true,
+          "minimum": 1e-06,
+          "maximum": 100
+        }
+      ],
+      "outputs": [
+        {
+          "key": "calibration",
+          "label": "完整标定结果",
+          "type": "object",
+          "required": true
+        },
+        {
+          "key": "unit",
+          "label": "单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "pointCount",
+          "label": "对应点数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "inlierCount",
+          "label": "有效点数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "rejectedCount",
+          "label": "剔除点数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "rmsErrorPixels",
+          "label": "拟合均方根误差 (px)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "maximumErrorPixels",
+          "label": "最大内点误差 (px)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "accepted",
+          "label": "标定已接受",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "标定点误差明细",
+          "type": "array",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "measure",
+      "name": "标定平面坐标与距离",
+      "description": "绑定上游完整标定结果，将图像点换算为实际坐标，计算相邻点距离或闭合周长。默认拒绝区域外推。",
+      "entry": "planar.py",
+      "input": "none",
+      "timeoutMs": 5000,
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "default": "measure",
+          "required": true,
+          "choices": [
+            {
+              "value": "measure",
+              "label": "坐标与距离测量"
+            }
+          ]
+        },
+        {
+          "key": "calibration",
+          "label": "标定结果",
+          "type": "object",
+          "default": {},
+          "required": true
+        },
+        {
+          "key": "points",
+          "label": "测量点表",
+          "type": "array",
+          "default": [
+            {
+              "x": 180,
+              "y": 160
+            },
+            {
+              "x": 420,
+              "y": 160
+            }
+          ],
+          "required": true,
+          "minimumRows": 2,
+          "maximumRows": 500,
+          "columns": [
+            {
+              "key": "x",
+              "label": "图像 X (px)",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -10000000,
+              "maximum": 10000000
+            },
+            {
+              "key": "y",
+              "label": "图像 Y (px)",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -10000000,
+              "maximum": 10000000
+            }
+          ]
+        },
+        {
+          "key": "closed",
+          "label": "连接末点与首点",
+          "type": "boolean",
+          "default": false,
+          "required": true
+        },
+        {
+          "key": "allowExtrapolation",
+          "label": "允许超出标定区域",
+          "type": "boolean",
+          "default": false,
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "key": "unit",
+          "label": "单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "pointCount",
+          "label": "测量点数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "segmentCount",
+          "label": "线段数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "length",
+          "label": "总长度",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "extrapolated",
+          "label": "使用外推",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "线段测量明细",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "points",
+          "label": "坐标换算明细",
+          "type": "array",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

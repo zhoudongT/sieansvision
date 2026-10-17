@@ -1,0 +1,13 @@
+<script type="text/javascript">
+RED.nodes.registerType('machine-relay', {
+  category: 'Machine', color: '#7eb6e8',
+  defaults: { name: { value: '' }, label: { value: 'demo' } },
+  inputs: 1, outputs: 1, icon: 'font-awesome/fa-cube',
+  label: function () { return this.name || '插件示例'; }
+});
+</script>
+<script type="text/html" data-template-name="machine-relay">
+  <div class="form-row"><label for="node-input-name">名称</label><input type="text" id="node-input-name"></div>
+  <div class="form-row"><label for="node-input-label">标记</label><input type="text" id="node-input-label"></div>
+</script>
+<script type="text/html" data-help-name="machine-relay"><p>透传消息，在 msg.machine 中添加标记和时间戳。作为后续算法、设备插件的结构示例。</p></script>

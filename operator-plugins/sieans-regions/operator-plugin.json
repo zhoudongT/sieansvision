@@ -1,0 +1,530 @@
+{
+  "apiVersion": 1,
+  "id": "sieans-regions",
+  "name": "SIEANS 色彩与斑点检测",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "HSV 色彩筛选和灰度连通区域分析；像素面积、区域坐标和数量判定。",
+  "operators": [
+    {
+      "id": "color",
+      "name": "HSV 色彩区域检测",
+      "description": "H 为 0–179，S/V 为 0–255；色相下限大于上限时跨越红色端点。支持矩形区域、形态学和像素面积筛选。",
+      "entry": "regions.py",
+      "input": "image",
+      "timeoutMs": 15000,
+      "parameters": [
+        {
+          "key": "method",
+          "label": "检测方式",
+          "type": "string",
+          "default": "hsv",
+          "required": true,
+          "choices": [
+            {
+              "value": "hsv",
+              "label": "HSV 色彩范围"
+            }
+          ]
+        },
+        {
+          "key": "hueMin",
+          "label": "色相下限 H",
+          "type": "integer",
+          "default": 170,
+          "required": true,
+          "minimum": 0,
+          "maximum": 179
+        },
+        {
+          "key": "hueMax",
+          "label": "色相上限 H",
+          "type": "integer",
+          "default": 10,
+          "required": true,
+          "minimum": 0,
+          "maximum": 179
+        },
+        {
+          "key": "saturationMin",
+          "label": "饱和度下限 S",
+          "type": "integer",
+          "default": 100,
+          "required": true,
+          "minimum": 0,
+          "maximum": 255
+        },
+        {
+          "key": "saturationMax",
+          "label": "饱和度上限 S",
+          "type": "integer",
+          "default": 255,
+          "required": true,
+          "minimum": 0,
+          "maximum": 255
+        },
+        {
+          "key": "valueMin",
+          "label": "亮度下限 V",
+          "type": "integer",
+          "default": 80,
+          "required": true,
+          "minimum": 0,
+          "maximum": 255
+        },
+        {
+          "key": "valueMax",
+          "label": "亮度上限 V",
+          "type": "integer",
+          "default": 255,
+          "required": true,
+          "minimum": 0,
+          "maximum": 255
+        },
+        {
+          "key": "roiX",
+          "label": "区域左上角 X",
+          "type": "integer",
+          "default": 0,
+          "required": true,
+          "minimum": 0,
+          "maximum": 100000000
+        },
+        {
+          "key": "roiY",
+          "label": "区域左上角 Y",
+          "type": "integer",
+          "default": 0,
+          "required": true,
+          "minimum": 0,
+          "maximum": 100000000
+        },
+        {
+          "key": "roiWidth",
+          "label": "区域宽度（0 到右边界）",
+          "type": "integer",
+          "default": 0,
+          "required": true,
+          "minimum": 0,
+          "maximum": 100000000
+        },
+        {
+          "key": "roiHeight",
+          "label": "区域高度（0 到下边界）",
+          "type": "integer",
+          "default": 0,
+          "required": true,
+          "minimum": 0,
+          "maximum": 100000000
+        },
+        {
+          "key": "minimumArea",
+          "label": "最小像素面积",
+          "type": "integer",
+          "default": 10,
+          "required": true,
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        {
+          "key": "maximumArea",
+          "label": "最大像素面积",
+          "type": "integer",
+          "default": 100000000,
+          "required": true,
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        {
+          "key": "minimumCount",
+          "label": "最少目标数",
+          "type": "integer",
+          "default": 1,
+          "required": true,
+          "minimum": 0,
+          "maximum": 100000000
+        },
+        {
+          "key": "maximumCount",
+          "label": "最多目标数",
+          "type": "integer",
+          "default": 100,
+          "required": true,
+          "minimum": 0,
+          "maximum": 100000000
+        },
+        {
+          "key": "excludeBorder",
+          "label": "排除接触区域边界的目标",
+          "type": "boolean",
+          "default": false,
+          "required": true
+        },
+        {
+          "key": "connectivity",
+          "label": "像素连通方式",
+          "type": "integer",
+          "default": 8,
+          "required": true,
+          "choices": [
+            {
+              "value": 4,
+              "label": "4 邻域"
+            },
+            {
+              "value": 8,
+              "label": "8 邻域"
+            }
+          ]
+        },
+        {
+          "key": "morphology",
+          "label": "形态学处理",
+          "type": "string",
+          "default": "none",
+          "required": true,
+          "choices": [
+            {
+              "value": "none",
+              "label": "不处理"
+            },
+            {
+              "value": "open",
+              "label": "开运算（去小噪点）"
+            },
+            {
+              "value": "close",
+              "label": "闭运算（填小孔隙）"
+            }
+          ]
+        },
+        {
+          "key": "kernelSize",
+          "label": "形态学核尺寸（奇数）",
+          "type": "integer",
+          "default": 3,
+          "required": true,
+          "minimum": 1,
+          "maximum": 31
+        },
+        {
+          "key": "outputImage",
+          "label": "传递给下游的图像",
+          "type": "string",
+          "default": "original",
+          "required": true,
+          "choices": [
+            {
+              "value": "original",
+              "label": "原图"
+            },
+            {
+              "value": "mask",
+              "label": "筛选后的二值区域"
+            },
+            {
+              "value": "annotated",
+              "label": "编号及包围框标注"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "key": "count",
+          "label": "目标数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "areaPixels",
+          "label": "总像素面积",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "coveragePercent",
+          "label": "区域覆盖率 (%)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "largestArea",
+          "label": "最大目标面积 (px²)",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "roi",
+          "label": "检测区域",
+          "type": "object",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "目标明细",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "detailsTruncated",
+          "label": "明细超过 500 条",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "passed",
+          "label": "是否通过",
+          "type": "boolean",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "blobs",
+      "name": "灰度斑点分析",
+      "description": "亮目标取灰度大于阈值，暗目标取小于等于阈值。按 4/8 邻域计算像素面积与质心；不以轮廓几何面积代替像素计数。",
+      "entry": "regions.py",
+      "input": "image",
+      "timeoutMs": 15000,
+      "parameters": [
+        {
+          "key": "method",
+          "label": "检测方式",
+          "type": "string",
+          "default": "gray",
+          "required": true,
+          "choices": [
+            {
+              "value": "gray",
+              "label": "灰度阈值"
+            }
+          ]
+        },
+        {
+          "key": "threshold",
+          "label": "灰度阈值",
+          "type": "integer",
+          "default": 127,
+          "required": true,
+          "minimum": 0,
+          "maximum": 255
+        },
+        {
+          "key": "polarity",
+          "label": "目标极性",
+          "type": "string",
+          "default": "bright",
+          "required": true,
+          "choices": [
+            {
+              "value": "bright",
+              "label": "亮目标（大于阈值）"
+            },
+            {
+              "value": "dark",
+              "label": "暗目标（小于等于阈值）"
+            }
+          ]
+        },
+        {
+          "key": "roiX",
+          "label": "区域左上角 X",
+          "type": "integer",
+          "default": 0,
+          "required": true,
+          "minimum": 0,
+          "maximum": 100000000
+        },
+        {
+          "key": "roiY",
+          "label": "区域左上角 Y",
+          "type": "integer",
+          "default": 0,
+          "required": true,
+          "minimum": 0,
+          "maximum": 100000000
+        },
+        {
+          "key": "roiWidth",
+          "label": "区域宽度（0 到右边界）",
+          "type": "integer",
+          "default": 0,
+          "required": true,
+          "minimum": 0,
+          "maximum": 100000000
+        },
+        {
+          "key": "roiHeight",
+          "label": "区域高度（0 到下边界）",
+          "type": "integer",
+          "default": 0,
+          "required": true,
+          "minimum": 0,
+          "maximum": 100000000
+        },
+        {
+          "key": "minimumArea",
+          "label": "最小像素面积",
+          "type": "integer",
+          "default": 10,
+          "required": true,
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        {
+          "key": "maximumArea",
+          "label": "最大像素面积",
+          "type": "integer",
+          "default": 100000000,
+          "required": true,
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        {
+          "key": "minimumCount",
+          "label": "最少目标数",
+          "type": "integer",
+          "default": 1,
+          "required": true,
+          "minimum": 0,
+          "maximum": 100000000
+        },
+        {
+          "key": "maximumCount",
+          "label": "最多目标数",
+          "type": "integer",
+          "default": 100,
+          "required": true,
+          "minimum": 0,
+          "maximum": 100000000
+        },
+        {
+          "key": "excludeBorder",
+          "label": "排除接触区域边界的目标",
+          "type": "boolean",
+          "default": false,
+          "required": true
+        },
+        {
+          "key": "connectivity",
+          "label": "像素连通方式",
+          "type": "integer",
+          "default": 8,
+          "required": true,
+          "choices": [
+            {
+              "value": 4,
+              "label": "4 邻域"
+            },
+            {
+              "value": 8,
+              "label": "8 邻域"
+            }
+          ]
+        },
+        {
+          "key": "morphology",
+          "label": "形态学处理",
+          "type": "string",
+          "default": "none",
+          "required": true,
+          "choices": [
+            {
+              "value": "none",
+              "label": "不处理"
+            },
+            {
+              "value": "open",
+              "label": "开运算（去小噪点）"
+            },
+            {
+              "value": "close",
+              "label": "闭运算（填小孔隙）"
+            }
+          ]
+        },
+        {
+          "key": "kernelSize",
+          "label": "形态学核尺寸（奇数）",
+          "type": "integer",
+          "default": 3,
+          "required": true,
+          "minimum": 1,
+          "maximum": 31
+        },
+        {
+          "key": "outputImage",
+          "label": "传递给下游的图像",
+          "type": "string",
+          "default": "original",
+          "required": true,
+          "choices": [
+            {
+              "value": "original",
+              "label": "原图"
+            },
+            {
+              "value": "mask",
+              "label": "筛选后的二值区域"
+            },
+            {
+              "value": "annotated",
+              "label": "编号及包围框标注"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "key": "count",
+          "label": "目标数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "areaPixels",
+          "label": "总像素面积",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "coveragePercent",
+          "label": "区域覆盖率 (%)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "largestArea",
+          "label": "最大目标面积 (px²)",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "roi",
+          "label": "检测区域",
+          "type": "object",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "目标明细",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "detailsTruncated",
+          "label": "明细超过 500 条",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "passed",
+          "label": "是否通过",
+          "type": "boolean",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,478 @@
+{
+  "apiVersion": 1,
+  "id": "sieans-sphere",
+  "name": "SIEANS 三维球面检测",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "基于 NumPy / SciPy 的球面拟合、直径判定与有符号径向偏差检测；参数表、变量绑定和点云着色。",
+  "operators": [
+    {
+      "id": "fit",
+      "name": "3D 球面拟合",
+      "description": "从点云估计球心、直径和径向残差；RANSAC 排除离群点，病态条件数用于拒绝过窄覆盖。拟合去重并限制采样数，全点云验证。颜色表示内点/离群点，不表示直径公差。",
+      "entry": "sphere.py",
+      "input": "cloud",
+      "timeoutMs": 30000,
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "default": "fit",
+          "required": true,
+          "choices": [
+            {
+              "value": "fit",
+              "label": "3D 球面拟合"
+            }
+          ]
+        },
+        {
+          "key": "method",
+          "label": "拟合方法",
+          "type": "string",
+          "default": "ransac",
+          "required": true,
+          "choices": [
+            {
+              "value": "ransac",
+              "label": "RANSAC + 几何优化"
+            },
+            {
+              "value": "all",
+              "label": "采样点最小二乘"
+            }
+          ]
+        },
+        {
+          "key": "inlierThreshold",
+          "label": "内点径向误差阈值（点云单位）",
+          "type": "number",
+          "default": 0.05,
+          "required": true,
+          "minimum": 1e-09,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "minimumRadius",
+          "label": "搜索半径下限",
+          "type": "number",
+          "default": 0.001,
+          "required": true,
+          "minimum": 1e-09,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "maximumRadius",
+          "label": "搜索半径上限",
+          "type": "number",
+          "default": 1000,
+          "required": true,
+          "minimum": 1e-09,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "iterations",
+          "label": "RANSAC 候选次数",
+          "type": "integer",
+          "default": 300,
+          "required": true,
+          "minimum": 10,
+          "maximum": 2000
+        },
+        {
+          "key": "seed",
+          "label": "随机种子",
+          "type": "integer",
+          "default": 0,
+          "required": true,
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        {
+          "key": "maximumFitPoints",
+          "label": "最多拟合独立点数",
+          "type": "integer",
+          "default": 5000,
+          "required": true,
+          "minimum": 8,
+          "maximum": 10000
+        },
+        {
+          "key": "maximumCondition",
+          "label": "允许最大拟合条件数",
+          "type": "number",
+          "default": 100,
+          "required": true,
+          "minimum": 2,
+          "maximum": 1000000.0
+        },
+        {
+          "key": "minimumInlierRatio",
+          "label": "最低独立内点比例",
+          "type": "number",
+          "default": 0.8,
+          "required": true,
+          "minimum": 0.01,
+          "maximum": 1
+        },
+        {
+          "key": "maximumRms",
+          "label": "合格内点均方根误差",
+          "type": "number",
+          "default": 0.03,
+          "required": true,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "minimumDiameter",
+          "label": "合格直径下限",
+          "type": "number",
+          "default": 19.8,
+          "required": true,
+          "minimum": 0,
+          "maximum": 2000000000.0
+        },
+        {
+          "key": "maximumDiameter",
+          "label": "合格直径上限",
+          "type": "number",
+          "default": 20.2,
+          "required": true,
+          "minimum": 0,
+          "maximum": 2000000000.0
+        },
+        {
+          "key": "colorize",
+          "label": "输出点云着色（最多 10000 点）",
+          "type": "boolean",
+          "default": true,
+          "required": true
+        },
+        {
+          "key": "detailMode",
+          "label": "明细范围（最多 500 行）",
+          "type": "string",
+          "default": "all",
+          "required": true,
+          "choices": [
+            {
+              "value": "all",
+              "label": "全部点"
+            },
+            {
+              "value": "outside",
+              "label": "仅超差点"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "key": "found",
+          "label": "形成有效测量",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "passed",
+          "label": "是否通过",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "diagnostic",
+          "label": "检测说明",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "pointCount",
+          "label": "输入点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "unit",
+          "label": "坐标单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "点位径向偏差明细",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "detailsTruncated",
+          "label": "明细超过 500 行",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "sphere",
+          "label": "球面模型",
+          "type": "object",
+          "required": false
+        },
+        {
+          "key": "center",
+          "label": "球心坐标",
+          "type": "array",
+          "required": false
+        },
+        {
+          "key": "radius",
+          "label": "球半径",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "diameter",
+          "label": "球直径",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "rmsDistance",
+          "label": "径向残差均方根",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "outsideCount",
+          "label": "超差点数",
+          "type": "integer",
+          "required": false
+        },
+        {
+          "key": "uniquePointCount",
+          "label": "独立坐标点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "sampleCount",
+          "label": "实际拟合采样点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "uniqueInlierCount",
+          "label": "独立内点数量",
+          "type": "integer",
+          "required": false
+        },
+        {
+          "key": "inlierRatio",
+          "label": "独立内点比例",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "conditionNumber",
+          "label": "拟合条件数",
+          "type": "number",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "inspect",
+      "name": "3D 球面偏差检测",
+      "description": "比较输入点与基准球面的有符号径向距离；正值在球外，负值在球内。要求单位和坐标系一致。只评价实测点，不等于完整球面标准球度。",
+      "entry": "sphere.py",
+      "input": "cloud",
+      "timeoutMs": 30000,
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "default": "inspect",
+          "required": true,
+          "choices": [
+            {
+              "value": "inspect",
+              "label": "3D 球面偏差检测"
+            }
+          ]
+        },
+        {
+          "key": "sphere",
+          "label": "基准球面（可绑定拟合结果）",
+          "type": "object",
+          "default": {
+            "model": "sieans-sphere-v1",
+            "center": [
+              0,
+              0,
+              0
+            ],
+            "radius": 10,
+            "unit": "mm",
+            "frame": ""
+          },
+          "required": true
+        },
+        {
+          "key": "lowerDistance",
+          "label": "径向偏差下限（点云单位）",
+          "type": "number",
+          "default": -0.1,
+          "required": true,
+          "minimum": -1000000000.0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "upperDistance",
+          "label": "径向偏差上限（点云单位）",
+          "type": "number",
+          "default": 0.1,
+          "required": true,
+          "minimum": -1000000000.0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "maximumOutsidePercent",
+          "label": "允许超差点比例 (%)",
+          "type": "number",
+          "default": 0,
+          "required": true,
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "key": "colorize",
+          "label": "输出点云着色（最多 10000 点）",
+          "type": "boolean",
+          "default": true,
+          "required": true
+        },
+        {
+          "key": "detailMode",
+          "label": "明细范围（最多 500 行）",
+          "type": "string",
+          "default": "all",
+          "required": true,
+          "choices": [
+            {
+              "value": "all",
+              "label": "全部点"
+            },
+            {
+              "value": "outside",
+              "label": "仅超差点"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "key": "found",
+          "label": "形成有效测量",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "passed",
+          "label": "是否通过",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "diagnostic",
+          "label": "检测说明",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "pointCount",
+          "label": "输入点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "unit",
+          "label": "坐标单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "点位径向偏差明细",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "detailsTruncated",
+          "label": "明细超过 500 行",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "sphere",
+          "label": "球面模型",
+          "type": "object",
+          "required": false
+        },
+        {
+          "key": "center",
+          "label": "球心坐标",
+          "type": "array",
+          "required": false
+        },
+        {
+          "key": "radius",
+          "label": "球半径",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "diameter",
+          "label": "球直径",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "rmsDistance",
+          "label": "径向残差均方根",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "outsideCount",
+          "label": "超差点数",
+          "type": "integer",
+          "required": false
+        },
+        {
+          "key": "minimumDistance",
+          "label": "最小径向偏差",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "maximumDistance",
+          "label": "最大径向偏差",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "peakToValley",
+          "label": "径向偏差峰谷差",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "outsidePercent",
+          "label": "超差点比例 (%)",
+          "type": "number",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

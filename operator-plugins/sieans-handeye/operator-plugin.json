@@ -1,0 +1,703 @@
+{
+  "apiVersion": 1,
+  "id": "sieans-handeye",
+  "name": "SIEANS 眼在手上标定",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "棋盘位姿、同步多姿态手眼标定与独立姿态验证。",
+  "operators": [
+    {
+      "id": "pose",
+      "name": "棋盘格位姿 · 标定板到相机",
+      "input": "image",
+      "entry": "handeye.py",
+      "timeoutMs": 30000,
+      "description": "使用已有内参，IPPE 求平面位姿并检查正深度、重投影及双解歧义。rvec 为弧度轴角。普通棋盘无唯一标记，跨采样须人工核对同一原点/轴向；不自动保证角点编号一致。",
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "default": "pose",
+          "required": true,
+          "choices": [
+            {
+              "value": "pose",
+              "label": "棋盘格位姿 · 标定板到相机"
+            }
+          ]
+        },
+        {
+          "key": "intrinsics",
+          "label": "针孔相机内参标定结果",
+          "type": "object",
+          "default": {},
+          "required": true
+        },
+        {
+          "key": "columns",
+          "label": "棋盘内角点列数",
+          "type": "integer",
+          "default": 9,
+          "required": true,
+          "minimum": 3,
+          "maximum": 15
+        },
+        {
+          "key": "rows",
+          "label": "棋盘内角点行数",
+          "type": "integer",
+          "default": 6,
+          "required": true,
+          "minimum": 3,
+          "maximum": 15
+        },
+        {
+          "key": "squareSize",
+          "label": "实际格边长",
+          "type": "number",
+          "default": 20,
+          "required": true,
+          "minimum": 0.001,
+          "maximum": 10000
+        },
+        {
+          "key": "unit",
+          "label": "格边长单位",
+          "type": "string",
+          "default": "mm",
+          "required": true,
+          "choices": [
+            {
+              "value": "mm",
+              "label": "毫米 mm"
+            },
+            {
+              "value": "m",
+              "label": "米 m"
+            }
+          ]
+        },
+        {
+          "key": "reverseCorners",
+          "label": "反转角点顺序以核对同一原点",
+          "type": "boolean",
+          "default": false,
+          "required": true
+        },
+        {
+          "key": "maximumReprojectionError",
+          "label": "最大重投影误差 (px)",
+          "type": "number",
+          "default": 1,
+          "required": true,
+          "minimum": 0.001,
+          "maximum": 100
+        },
+        {
+          "key": "minimumAmbiguityGap",
+          "label": "候选位姿最小误差差距 (px)",
+          "type": "number",
+          "default": 0.05,
+          "required": true,
+          "minimum": 0,
+          "maximum": 10
+        }
+      ],
+      "outputs": [
+        {
+          "key": "pose",
+          "label": "标定板→相机的平移/旋转向量",
+          "type": "object",
+          "required": true
+        },
+        {
+          "key": "unit",
+          "label": "平移长度单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "rotationConvention",
+          "label": "旋转向量约定",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "rmsPixels",
+          "label": "重投影 RMS (px)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "cornerCount",
+          "label": "内角点数",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "originX",
+          "label": "选定原点图像 X (px)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "originY",
+          "label": "选定原点图像 Y (px)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "note",
+          "label": "坐标及原点说明",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "fit",
+      "name": "眼在手上 · 多姿态手眼标定",
+      "input": "none",
+      "entry": "handeye.py",
+      "timeoutMs": 30000,
+      "description": "相机固定在工具上、标定板固定在基座。表格必须为工具→基座及标定板→相机，且对应同一停止姿态。至少六组，建议十组以上绕不同轴旋转。旋转向量不是欧拉角；模型可传给 3D 坐标转换。",
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "default": "fit",
+          "required": true,
+          "choices": [
+            {
+              "value": "fit",
+              "label": "眼在手上 · 多姿态手眼标定"
+            }
+          ]
+        },
+        {
+          "key": "cameraFrame",
+          "label": "相机光学坐标系",
+          "type": "string",
+          "default": "camera-optical",
+          "required": true
+        },
+        {
+          "key": "toolFrame",
+          "label": "机器人工具坐标系",
+          "type": "string",
+          "default": "tool0",
+          "required": true
+        },
+        {
+          "key": "baseFrame",
+          "label": "机器人基座坐标系",
+          "type": "string",
+          "default": "robot-base",
+          "required": true
+        },
+        {
+          "key": "boardFrame",
+          "label": "固定标定板坐标系",
+          "type": "string",
+          "default": "calibration-board",
+          "required": true
+        },
+        {
+          "key": "robotUnit",
+          "label": "机器人平移单位",
+          "type": "string",
+          "default": "mm",
+          "required": true,
+          "choices": [
+            {
+              "value": "mm",
+              "label": "毫米 mm"
+            },
+            {
+              "value": "m",
+              "label": "米 m"
+            }
+          ]
+        },
+        {
+          "key": "cameraUnit",
+          "label": "标定板位姿平移单位",
+          "type": "string",
+          "default": "mm",
+          "required": true,
+          "choices": [
+            {
+              "value": "mm",
+              "label": "毫米 mm"
+            },
+            {
+              "value": "m",
+              "label": "米 m"
+            }
+          ]
+        },
+        {
+          "key": "robotRotation",
+          "label": "机器人旋转约定",
+          "type": "string",
+          "default": "rodrigues-rad",
+          "required": true,
+          "choices": [
+            {
+              "value": "rodrigues-rad",
+              "label": "Rodrigues 轴角向量 · 弧度"
+            },
+            {
+              "value": "euler-zyx-deg",
+              "label": "固定轴 Rz(z) × Ry(y) × Rx(x) · 度"
+            }
+          ]
+        },
+        {
+          "key": "method",
+          "label": "手眼求解方法",
+          "type": "string",
+          "default": "park",
+          "required": true,
+          "choices": [
+            {
+              "value": "park",
+              "label": "Park · 旋转对齐与平移最小二乘"
+            }
+          ]
+        },
+        {
+          "key": "poses",
+          "label": "同步采样姿态表",
+          "type": "array",
+          "default": [],
+          "required": true,
+          "columns": [
+            {
+              "key": "robotX",
+              "label": "工具→基座 X",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "robotY",
+              "label": "工具→基座 Y",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "robotZ",
+              "label": "工具→基座 Z",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "robotRx",
+              "label": "工具→基座 Rx",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "robotRy",
+              "label": "工具→基座 Ry",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "robotRz",
+              "label": "工具→基座 Rz",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "cameraX",
+              "label": "标定板→相机 X",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "cameraY",
+              "label": "标定板→相机 Y",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "cameraZ",
+              "label": "标定板→相机 Z",
+              "type": "number",
+              "default": 1,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "cameraRx",
+              "label": "标定板→相机 Rx (rad)",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "cameraRy",
+              "label": "标定板→相机 Ry (rad)",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "cameraRz",
+              "label": "标定板→相机 Rz (rad)",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            }
+          ],
+          "minimumRows": 0,
+          "maximumRows": 100
+        },
+        {
+          "key": "maximumTranslationRms",
+          "label": "最大平移 RMS (mm)",
+          "type": "number",
+          "default": 1,
+          "required": true,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "maximumTranslationError",
+          "label": "最大单次平移误差 (mm)",
+          "type": "number",
+          "default": 2,
+          "required": true,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "maximumAngleError",
+          "label": "最大角度误差 (°)",
+          "type": "number",
+          "default": 1,
+          "required": true,
+          "minimum": 0,
+          "maximum": 180
+        }
+      ],
+      "outputs": [
+        {
+          "key": "calibration",
+          "label": "相机→工具刚体标定结果",
+          "type": "object",
+          "required": true
+        },
+        {
+          "key": "reference",
+          "label": "固定标定板参考记录",
+          "type": "object",
+          "required": true
+        },
+        {
+          "key": "sampleCount",
+          "label": "采样姿态数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "rmsTranslationError",
+          "label": "标定板平移 RMS",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "maximumTranslationError",
+          "label": "标定板最大平移误差",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "maximumAngleErrorDegrees",
+          "label": "标定板最大旋转误差 (°)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "unit",
+          "label": "平移误差单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "各姿态一致性明细",
+          "type": "array",
+          "required": true
+        },
+        {
+          "key": "note",
+          "label": "适用条件说明",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "check",
+      "name": "手眼标定 · 独立姿态验证",
+      "input": "none",
+      "entry": "handeye.py",
+      "timeoutMs": 30000,
+      "description": "用未参与拟合的三组以上同步姿态，对比原标定板基座位姿，不重新拟合。约定/单位沿用参考记录；移动标定板后应重新建立标定，不能直接沿用该验证参考。",
+      "parameters": [
+        {
+          "key": "task",
+          "label": "算子功能",
+          "type": "string",
+          "default": "check",
+          "required": true,
+          "choices": [
+            {
+              "value": "check",
+              "label": "手眼标定 · 独立姿态验证"
+            }
+          ]
+        },
+        {
+          "key": "calibration",
+          "label": "相机→工具标定结果",
+          "type": "object",
+          "default": {},
+          "required": true
+        },
+        {
+          "key": "reference",
+          "label": "原标定板参考记录",
+          "type": "object",
+          "default": {},
+          "required": true
+        },
+        {
+          "key": "poses",
+          "label": "同步采样姿态表",
+          "type": "array",
+          "default": [],
+          "required": true,
+          "columns": [
+            {
+              "key": "robotX",
+              "label": "工具→基座 X",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "robotY",
+              "label": "工具→基座 Y",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "robotZ",
+              "label": "工具→基座 Z",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "robotRx",
+              "label": "工具→基座 Rx",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "robotRy",
+              "label": "工具→基座 Ry",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "robotRz",
+              "label": "工具→基座 Rz",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "cameraX",
+              "label": "标定板→相机 X",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "cameraY",
+              "label": "标定板→相机 Y",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "cameraZ",
+              "label": "标定板→相机 Z",
+              "type": "number",
+              "default": 1,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "cameraRx",
+              "label": "标定板→相机 Rx (rad)",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "cameraRy",
+              "label": "标定板→相机 Ry (rad)",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            },
+            {
+              "key": "cameraRz",
+              "label": "标定板→相机 Rz (rad)",
+              "type": "number",
+              "default": 0,
+              "required": true,
+              "minimum": -1000000000.0,
+              "maximum": 1000000000.0
+            }
+          ],
+          "minimumRows": 0,
+          "maximumRows": 100
+        },
+        {
+          "key": "maximumTranslationRms",
+          "label": "最大平移 RMS (mm)",
+          "type": "number",
+          "default": 1,
+          "required": true,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "maximumTranslationError",
+          "label": "最大单次平移误差 (mm)",
+          "type": "number",
+          "default": 2,
+          "required": true,
+          "minimum": 0,
+          "maximum": 1000000000.0
+        },
+        {
+          "key": "maximumAngleError",
+          "label": "最大角度误差 (°)",
+          "type": "number",
+          "default": 1,
+          "required": true,
+          "minimum": 0,
+          "maximum": 180
+        }
+      ],
+      "outputs": [
+        {
+          "key": "passed",
+          "label": "独立姿态验证通过",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "key": "sampleCount",
+          "label": "采样姿态数量",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "rmsTranslationError",
+          "label": "标定板平移 RMS",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "maximumTranslationError",
+          "label": "标定板最大平移误差",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "maximumAngleErrorDegrees",
+          "label": "标定板最大旋转误差 (°)",
+          "type": "number",
+          "required": true
+        },
+        {
+          "key": "unit",
+          "label": "平移误差单位",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "items",
+          "label": "各姿态一致性明细",
+          "type": "array",
+          "required": true
+        }
+      ]
+    }
+  ]
+}
