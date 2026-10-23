@@ -31,6 +31,11 @@ def main():
     interval = request['intervalMs']/1000
     attempts = request['reconnectAttempts']
     reconnect = request['reconnectMs']/1000
+    if p['driver'] == 'gentl':
+        # Harvesters' version discovery can spawn Git on import. On Windows,
+        # starting it after a thread blocks on the inherited stdin pipe can
+        # stall import. Finish this dependency initialization before watch_stop.
+        from harvesters.core import Harvester
     threading.Thread(target=watch_stop, daemon=True).start()
     retries = 0
     while not stopped.is_set():

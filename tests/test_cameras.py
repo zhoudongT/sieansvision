@@ -10,9 +10,74 @@ import cv2
 import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'cameras'))
 import adapter as a
+import gentl_compat as compat
+from genicam import gentl
 
 
 class CameraTests(unittest.TestCase):
+    def test_burst_only_camera_freerun_without_invalid_frame_selector(self):
+        nodes = NS(TriggerSelector=NS(symbolics=('FrameBurstStart',)))
+        with patch.object(a, 'set_feature') as setter:
+            a.prepare_trigger(nodes, 'freerun', [])
+            setter.assert_called_once_with(nodes, 'TriggerMode', 'Off', [])
+            setter.reset_mock()
+            for trigger in ('software', 'external'):
+                with self.assertRaisesRegex(ValueError, '帧突发'):
+                    a.prepare_trigger(nodes, trigger, [])
+            setter.assert_not_called()
+
+    def test_hikrobot_malformed_status_preserves_exception_semantics(self):
+        for prefix, code, kind in [(compat._NOT_IMPLEMENTED, -1003, gentl.NotImplementedException),
+                                   (compat._TIMEOUT, -1011, gentl.TimeoutException),
+                                   (compat._RESOURCE_EXHAUSTED, -1020, gentl.ResourceExhaustedException)]:
+            raw = prefix + b'\xff\x80' + (') (ID: %d)' % code).encode('ascii')
+            error = UnicodeDecodeError('utf-8', raw, len(prefix), len(prefix)+1, 'invalid start byte')
+            fn = MagicMock(side_effect=error)
+            with self.assertRaises(kind) as raised:
+                compat.normalize_error(fn, prefix, code, kind)(42)
+            self.assertIs(raised.exception.__cause__, error)
+            fn.assert_called_once_with(42)
+
+    def test_hikrobot_does_not_hide_other_encoding_or_driver_failures(self):
+        for raw in [b'camera serial \xff', compat._TIMEOUT+b'\xff) (ID: -1003)',
+                    compat._NOT_IMPLEMENTED+b'\xff) (ID: -1011)']:
+            pos = raw.index(b'\xff')
+            error = UnicodeDecodeError('utf-8', raw, pos, pos+1, 'invalid start byte')
+            with self.assertRaises(UnicodeDecodeError) as raised:
+                compat.normalize_error(MagicMock(side_effect=error), compat._NOT_IMPLEMENTED,
+                                       -1003, gentl.NotImplementedException)()
+            self.assertIs(raised.exception, error)
+        error = RuntimeError('device disconnected')
+        with self.assertRaises(RuntimeError) as raised:
+            compat.normalize_error(MagicMock(side_effect=error), compat._TIMEOUT,
+                                   -1011, gentl.TimeoutException)()
+        self.assertIs(raised.exception, error)
+
+    def test_hikrobot_scope_restores_hooks_after_error_and_nested_use(self):
+        if os.name != 'nt': self.skipTest('Windows producer compatibility')
+        original = gentl.Interface.register_event
+        urls = gentl.Port.url_info_list
+        poll = gentl.EventManagerNewBuffer.update_event_data
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'MvProducerU3V.cti'
+            with self.assertRaisesRegex(RuntimeError, 'capture failure'):
+                with compat.hikrobot_transport(path):
+                    outer = gentl.Interface.register_event
+                    self.assertIsNot(outer, original)
+                    with compat.hikrobot_transport(path):
+                        self.assertIsNot(gentl.Interface.register_event, outer)
+                    self.assertIs(gentl.Interface.register_event, outer)
+                    raise RuntimeError('capture failure')
+        self.assertIs(gentl.Interface.register_event, original)
+        self.assertIs(gentl.Port.url_info_list, urls)
+        self.assertIs(gentl.EventManagerNewBuffer.update_event_data, poll)
+
+    def test_other_producers_do_not_receive_hikrobot_hooks(self):
+        original = gentl.Interface.register_event
+        for path in (None, 'OtherVendor.cti'):
+            with compat.hikrobot_transport(path):
+                self.assertIs(gentl.Interface.register_event, original)
+
     def test_simulated_frame_is_real_png_with_three_shapes(self):
         out = a.run(dict(operation='camera_capture', params=dict(driver='simulator')))
         image = cv2.imdecode(np.frombuffer(base64.b64decode(out['annotatedImage'].split(',')[1]), np.uint8), cv2.IMREAD_GRAYSCALE)

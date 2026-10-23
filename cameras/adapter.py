@@ -5,6 +5,7 @@ import math
 import os
 import platform
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -14,10 +15,12 @@ try:
     from . import depth_adapter as rgbd
     from . import orbbec_adapter as orbbec
     from . import gentl3d
+    from .gentl_compat import hikrobot_transport
 except ImportError:
     import depth_adapter as rgbd
     import orbbec_adapter as orbbec
     import gentl3d
+    from gentl_compat import hikrobot_transport
 
 MAX_PIXELS = 16_000_000
 FEATURES = ('DeviceVendorName', 'DeviceModelName', 'DeviceSerialNumber', 'Width', 'Height',
@@ -162,6 +165,17 @@ def gentl_devices(h):
     return rows
 
 
+@contextmanager
+def gentl_session(provider_id):
+    match = next((item for item in providers() if item['id'] == provider_id), None)
+    with hikrobot_transport(match['path'] if match and match['available'] else None):
+        h = harvester(provider_id)
+        try:
+            yield h
+        finally:
+            h.reset()
+
+
 def list_devices(p):
     if p['driver']=='orbbec':
         return orbbec.devices(p)
@@ -173,11 +187,8 @@ def list_devices(p):
         return [dict(deviceId='synthetic-parts', name='合成零件相机（模拟）', driver='simulator', serial='SIM-CAMERA-001')]
     if p['driver'] == 'uvc':
         return uvc_devices()
-    h = harvester(p.get('providerId'))
-    try:
+    with gentl_session(p.get('providerId')) as h:
         return gentl_devices(h)
-    finally:
-        h.reset()
 
 
 def feature_rows(node_map):
@@ -260,9 +271,21 @@ def pixels(component):
                        conversion='固定满量程右移到 8 位' if bits > 8 else '保持灰度或转 BGR8')
 
 
+def prepare_trigger(node_map, trigger, applied):
+    choices = node_map.TriggerSelector.symbolics
+    # This USB model exposes only FrameBurstStart. Free-running acquisition
+    # merely disables it; a burst must never be silently used as a frame trigger.
+    burst_only = isinstance(choices, (tuple, list)) and tuple(choices) == ('FrameBurstStart',)
+    if burst_only and trigger != 'freerun':
+        raise ValueError('该相机仅提供帧突发触发；当前适配器支持自由采集，尚不支持该型号的软件/外部突发触发')
+    set_feature(node_map, 'TriggerMode', 'Off', applied)
+    if not burst_only:
+        set_feature(node_map, 'TriggerSelector', 'FrameStart', applied)
+        set_feature(node_map, 'TriggerMode', 'Off', applied)
+
+
 def acquire_gentl_frames(p, inspect=False):
-    h = harvester(p.get('providerId'))
-    try:
+    with gentl_session(p.get('providerId')) as h:
         matches = [d for d in gentl_devices(h) if d['deviceId'] == p.get('deviceId')]
         if len(matches) != 1:
             raise ValueError('设备不存在或标识不唯一，请重新枚举并选择')
@@ -274,9 +297,7 @@ def acquire_gentl_frames(p, inspect=False):
             applied = []
             is_3d = p.get('dataMode') == 'pointcloud'
             # Disable trigger before changing selector and acquisition settings.
-            set_feature(node_map, 'TriggerMode', 'Off', applied)
-            set_feature(node_map, 'TriggerSelector', 'FrameStart', applied)
-            set_feature(node_map, 'TriggerMode', 'Off', applied)
+            prepare_trigger(node_map, p['trigger'], applied)
             set_feature(node_map, 'AcquisitionMode', 'Continuous', applied)
             if is_3d:
                 set_feature(node_map,'ComponentSelector','Range',applied)
@@ -317,8 +338,6 @@ def acquire_gentl_frames(p, inspect=False):
                     yield (*result,depth,cloud) if is_3d else result
             finally:
                 ia.stop()
-    finally:
-        h.reset()
 
 
 def acquire_uvc_frames(p, inspect=False):

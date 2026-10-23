@@ -1,5 +1,22 @@
 # 相机采集：USB UVC / GenTL
 
+## 海康 USB 实机兼容修复（2026-10-23）
+
+Windows 11 x64、MVS 4.5.1 / SDK Runtime 4.6.1.103、海康 **MV-CB013-A0UM-C** 已通过本平台后台的 GenTL 取图：1280 × 1024、Mono8，三次独立单帧取图、五次连续新帧读取，以及“相机→几何检测→流程变量”实际执行和停止释放。测试图像只用于采集链路验证，不作为检测精度依据；其他型号、GigE、外部触发和 Linux 仍需各自实测。
+
+该版本海康 CTI 的部分错误描述含非 UTF-8 字节，使 GenICam 将原始状态转换为 UnicodeDecodeError。`cameras/gentl_compat.py` 在 Windows 的 MvProducerU3V/MvProducerGEV 连接期间，仅为已识别的可选 URL 查询、事件注册和取帧轮询恢复对应 GenTL 异常类型，让 Harvesters 继续使用原有处理和超时逻辑。未知错误仍抛出，退出时还原兼容钩子；不修改已安装的 SDK 或 Python 包。
+
+此相机只公布 FrameBurstStart 触发选择项。自由采集关闭该触发即可，不再强制写入不存在的 FrameStart；软件/外部突发触发尚未适配，选择时明确报错，不将一次突发当作单帧触发。连续 worker 在启动停止监听线程之前加载 Harvesters，避免本机 Windows 环境下首次导入的子进程阻塞。
+
+启动服务前配置本机实际 CTI 路径，例如：
+
+```powershell
+$env:SIEANS_GENTL_CTI = 'C:\Program Files (x86)\Common Files\MVS\Runtime\Win64_x64\MvProducerU3V.cti;C:\Program Files (x86)\Common Files\MVS\Runtime\Win64_x64\MvProducerGEV.cti'
+npm start
+```
+
+网页“相机设备”选择 GenTL → MvProducerU3V.cti → 枚举 → 选择实际相机 → 预览采集 / 添加采集节点，触发模式用“自由采集”。连续使用见下文链接。上述环境变量只在当前终端及其子进程生效；现有部署使用相同环境启动其原部署命令，服务方式需向对应服务传递变量。
+
 已增加 [连续相机连接与帧缓存](camera-session.md)：SDK 连接/预热跨帧复用，提供下一帧/缓存取图、过期检查、统计及明确停止。下文单帧接口仍保持采集后释放。
 
 RealSense RGB-D、原始 16 位深度和点云通道另见 [深度相机说明](depth-camera.md)。
