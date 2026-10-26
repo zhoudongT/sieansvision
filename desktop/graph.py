@@ -13,14 +13,16 @@ class Port(QGraphicsObject):
         self.setPos(x,y);self.setZValue(4)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
         self.highlight=None
-        self.setToolTip(('输出' if output else '输入')+'端口：按住拖到另一端口连接，也可依次点击；Esc 取消')
+        kind='图像链路' if side in ('top','bottom') else '数据/控制';self.setToolTip(('输出' if output else '输入')+' · '+kind+'：拖到另一端口连接，或依次点击；Esc 取消')
         self.setCursor(Qt.CursorShape.CrossCursor)
 
     def boundingRect(self):
         return QRectF(-8,-8,16,16)
 
     def paint(self,painter,option,widget=None):
-        color=QColor('#d26345' if self.highlight=='invalid' else '#18a66d' if self.highlight=='valid' else '#159dcc')
+        # Halcon-inspired: top/bottom ≈ iconic image chain (cyan); left/right ≈ control/data (amber).
+        base='#159dcc' if self.side in ('top','bottom') else '#d4a017'
+        color=QColor('#d26345' if self.highlight=='invalid' else '#18a66d' if self.highlight=='valid' else base)
         painter.setPen(QPen(color,2 if self.highlight else 1.5));painter.setBrush(color if self.output or self.highlight=='valid' else QColor('white'))
         if self.highlight:painter.drawEllipse(QRectF(-8,-8,16,16))
         painter.drawEllipse(QRectF(-5,-5,10,10))

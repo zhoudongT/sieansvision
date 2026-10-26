@@ -8,7 +8,7 @@ import re
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout,
+    QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout,
     QHeaderView, QLabel, QLineEdit, QPushButton, QScrollArea, QSpinBox,
     QStackedWidget, QTabWidget, QTableWidget, QTreeWidget, QTreeWidgetItem,
     QVBoxLayout, QWidget,
@@ -63,6 +63,42 @@ def _label(schema):
     if schema.get('unit'):
         label += ' (' + schema['unit'] + ')'
     return label + (' *' if schema.get('required') else '')
+
+
+# Halcon/VisionMaster-style: separate iconic vs control, with compact type marks.
+_TYPE_MARK = {
+    'integer': '整', 'number': '数', 'boolean': '开关', 'string': '文',
+    'object': '结构', 'array': '列表', 'any': '任意', 'image': '图',
+}
+
+
+def _type_badge(schema_or_type):
+    kind = schema_or_type if isinstance(schema_or_type, str) else schema_or_type.get('type', 'string')
+    return _TYPE_MARK.get(kind, '文')
+
+
+def _section(title, hint=''):
+    """VisionMaster-like property group (标题 + 可选说明)."""
+    from PySide6.QtWidgets import QGroupBox, QVBoxLayout, QFormLayout, QLabel
+    box = QGroupBox(title)
+    box.setObjectName('propertySection')
+    root = QVBoxLayout(box)
+    root.setContentsMargins(8, 10, 8, 8)
+    root.setSpacing(6)
+    if hint:
+        tip = QLabel(hint)
+        tip.setWordWrap(True)
+        tip.setObjectName('sectionHint')
+        tip.setStyleSheet('color:#5a7188;font-size:11px;')
+        root.addWidget(tip)
+    form = QFormLayout()
+    form.setContentsMargins(0, 0, 0, 0)
+    form.setSpacing(8)
+    form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+    form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+    form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+    root.addLayout(form)
+    return box, form
 
 
 def _clear(layout):
@@ -152,7 +188,7 @@ class ReferenceEditor(QWidget):
 
 
 class ValueEditor(QWidget):
-    """A typed constant or a reference, also used recursively in records."""
+    """Typed constant or reference — Halcon/VM style: value first, bind on the side."""
     changed = Signal(object)
 
     def __init__(self, schema, value, nodes=(), parent=None):
@@ -163,7 +199,9 @@ class ValueEditor(QWidget):
         self.mode = QComboBox()
         self.mode.setObjectName('valueMode')
         self.mode.addItem('固定值', 'literal')
-        self.mode.addItem('绑定变量 / 上游结果', 'reference')
+        self.mode.addItem('绑定上游', 'reference')
+        self.mode.setMaximumWidth(96)
+        self.mode.setToolTip('固定值 = 直接填写；绑定上游 = 引用变量或上游模块结果（类似 VisionMaster 订阅）')
         self.stack = QStackedWidget()
         self.literal = self._make_literal(self._literal, nodes)
         self.reference = ReferenceEditor(value if is_ref else {}, nodes)
@@ -174,8 +212,23 @@ class ValueEditor(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
-        layout.addWidget(self.mode)
-        layout.addWidget(self.stack)
+        # Compact row: editor fills width, mode sits beside (not stacked above).
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+        mark = QLabel(_type_badge(schema))
+        mark.setObjectName('typeMark')
+        mark.setFixedWidth(28)
+        mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        mark.setStyleSheet(
+            'QLabel#typeMark{background:#e8f4fb;color:#0b6e99;border:1px solid #b7d9ea;'
+            'border-radius:3px;font-size:11px;padding:1px 2px;}'
+        )
+        mark.setToolTip('类型：' + str(schema.get('type', 'string')))
+        row.addWidget(mark)
+        row.addWidget(self.stack, 1)
+        row.addWidget(self.mode)
+        layout.addLayout(row)
         self.mode.currentIndexChanged.connect(self._mode_changed)
         self.reference.changed.connect(self._reference_changed)
         if schema.get('description'):
@@ -466,6 +519,11 @@ class OutputBindings(QWidget):
 
 
 class ParameterPanel(QWidget):
+    """Right-side property inspector (VisionMaster / Halcon Operator Window style).
+
+    One scrollable panel with sections: 基本 → 图像输入 → 控制参数 → 结果输出.
+    Avoids hunting across three tabs for image source vs scalars vs outputs.
+    """
     changed = Signal(dict)
 
     def __init__(self, parent=None):
@@ -474,27 +532,42 @@ class ParameterPanel(QWidget):
         self._definition = None
         self._context = None
         layout = QVBoxLayout(self)
-        self.title = QLabel('模块设置')
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(6)
+        self.title = QLabel('算子属性')
         self.title.setObjectName('panelTitle')
+        title_font = self.title.font()
+        title_font.setPointSize(max(11, title_font.pointSize() + 1))
+        title_font.setBold(True)
+        self.title.setFont(title_font)
         layout.addWidget(self.title)
-        self.description = QLabel('在流程图中选择模块以编辑。')
+        self.signature = QLabel('')
+        self.signature.setObjectName('operatorSignature')
+        self.signature.setWordWrap(True)
+        self.signature.setStyleSheet('color:#0b6e99;font-size:11px;')
+        layout.addWidget(self.signature)
+        self.description = QLabel('在流程图中选择模块以编辑输入 / 参数 / 输出。')
         self.description.setWordWrap(True)
+        self.description.setStyleSheet('color:#5a7188;')
         layout.addWidget(self.description)
+        # Keep tabs object for compatibility; hide and host a single scroll inspector.
         self.tabs = QTabWidget()
         self.tabs.setObjectName('parameterTabs')
+        self.tabs.tabBar().hide()
         layout.addWidget(self.tabs, 1)
         self.set_step(None, None, {})
 
     def _page(self, label):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setFrameShape(scroll.frameShape().NoFrame)
         content = QWidget()
-        form = QFormLayout(content)
-        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        outer = QVBoxLayout(content)
+        outer.setContentsMargins(2, 2, 2, 8)
+        outer.setSpacing(10)
         scroll.setWidget(content)
         self.tabs.addTab(scroll, label)
-        return form
+        return outer
 
     def set_step(self, step, definition, project):
         definition = definition or {}
@@ -502,75 +575,130 @@ class ParameterPanel(QWidget):
         if step == self._step and definition == self._definition and context == self._context:
             return
         self._step, self._definition, self._context = deepcopy(step), deepcopy(definition), deepcopy(context)
-        selected_tab = self.tabs.currentIndex()
         while self.tabs.count():
             widget = self.tabs.widget(0)
             self.tabs.removeTab(0)
             widget.deleteLater()
         self.tabs.setEnabled(step is not None)
         if step is None:
-            self.title.setText('模块设置')
-            self.description.setText('在流程图中选择模块以编辑。')
+            self.title.setText('算子属性')
+            self.signature.setText('')
+            self.description.setText('在流程图中选择模块以编辑输入 / 参数 / 输出。')
             return
-        self.title.setText(definition.get('name', step.get('name', step.get('operation', '模块'))))
-        self.description.setText(definition.get('description', '输入、参数和输出按模块契约显示。'))
-        inputs, parameters, outputs = [self._page(label) for label in ('输入', '参数', '输出')]
+        op_name = definition.get('name', step.get('name', step.get('operation', '模块')))
+        self.title.setText(op_name)
+        n_in = len(definition.get('inputs', []) or [])
+        n_param = len(definition.get('parameters', []) or [])
+        n_out = len(definition.get('outputs', []) or [])
+        # Halcon-like signature strip: iconic | control | results
+        self.signature.setText(
+            f'图像输入 · 控制参数 {n_param} · 声明输出 {n_out}'
+            + (f' · 附加输入 {n_in}' if n_in else '')
+        )
+        self.description.setText(definition.get('description') or '在下方分区编辑：图像来源（图标数据）与控制参数分开，类似 VisionMaster 属性面板 / Halcon 算子窗口。')
+
+        page = self._page('属性')
+        # —— 基本 ——
+        basic_box, basic = _section('基本', '模块在流程图中的显示名称。')
         self.name_edit = QLineEdit(step.get('name', definition.get('name', '')))
         self.name_edit.setObjectName('stepName')
         self.name_edit.setMaxLength(80)
         self.name_edit.editingFinished.connect(lambda: self._set_top('name', self.name_edit.text()))
-        inputs.addRow('模块名称', self.name_edit)
+        basic.addRow('模块名称', self.name_edit)
+        page.addWidget(basic_box)
+
+        # —— 图像输入 (iconic) —— VisionMaster「订阅图像源」
+        image_box, image_form = _section(
+            '图像输入',
+            '图标数据（Iconic）：选择上游图像 / 点云。先在画布连线，再在此指定本算子读哪一路（VisionMaster 订阅图像源）。',
+        )
         self.image_from = QComboBox()
         self.image_from.setObjectName('imageFrom')
-        self.image_from.addItem('无图像输入', None)
+        self.image_from.addItem('（无图像输入）', None)
         incoming = {e['from'] for e in project.get('edges', []) if e.get('to') == step['id']}
         names = {s['id']: s.get('name', s['id']) for s in project.get('steps', [])}
         names['source'] = '图像 / 点云源'
         for node in sorted(incoming):
-            self.image_from.addItem(names.get(node, node), node)
+            label = names.get(node, node)
+            prefix = '源 · ' if node == 'source' else '上游 · '
+            self.image_from.addItem(prefix + label, node)
         current = step.get('imageFrom')
         if current and self.image_from.findData(current) < 0:
             self.image_from.addItem('已断开的来源：' + current, current)
         self.image_from.setCurrentIndex(max(0, self.image_from.findData(current)))
         self.image_from.currentIndexChanged.connect(lambda _: self._set_top('imageFrom', self.image_from.currentData()))
-        inputs.addRow('图像 / 点云来源', self.image_from)
+        image_form.addRow('🖼 图像 / 点云来源', self.image_from)
+        page.addWidget(image_box)
+
         nodes = _upstream(project, step['id'])
         plugin = step.get('operation') == 'plugin'
         params = step.get('params', {})
+
+        # —— 附加输入 (plugin/script typed inputs) ——
+        input_defs = definition.get('inputs', []) or []
+        if input_defs:
+            in_box, in_form = _section('附加输入', '结构化输入端口；可填固定值或绑定上游结果。')
+            values = params.get('inputs', {}) if plugin else params
+            for field in input_defs:
+                key = field['key']
+                editor = ValueEditor(field, values.get(key, _default(field)), nodes)
+                editor.setObjectName('input:' + key)
+                editor.changed.connect(lambda value, key=key, group=('inputs' if plugin else None): self._set_param(group, key, value))
+                in_form.addRow(_label(field), editor)
+            page.addWidget(in_box)
+
+        # —— 控制参数 (control) ——
+        param_defs = definition.get('parameters', []) or []
+        param_box, param_form = _section(
+            '控制参数',
+            '控制数据（Control）：阈值、开关、枚举等。右侧「固定值 / 绑定上游」切换引用（类似 Halcon 算子窗口）。',
+        )
         if step.get('operation') == 'script':
             note = QLabel('脚本通过 Python 文件导入并在外部编辑；此处仅配置输入与输出。运行前需勾选本次可信脚本执行。')
             note.setWordWrap(True)
-            parameters.addRow(note)
-        for group, page, definitions, values in (
-            ('inputs' if plugin else None, inputs, definition.get('inputs', []), params.get('inputs', {}) if plugin else params),
-            ('arguments' if plugin else None, parameters, definition.get('parameters', []), params.get('arguments', {}) if plugin else params),
-        ):
-            for field in definitions:
-                key = field['key']
-                if step.get('operation')=='script' and key=='code':continue
-                editor = ValueEditor(field, values.get(key, _default(field)), nodes)
-                editor.setObjectName(('input:' if page is inputs else 'parameter:') + key)
-                editor.changed.connect(lambda value, key=key, group=group: self._set_param(group, key, value))
-                page.addRow(_label(field), editor)
-        if not definition.get('parameters'):
+            param_form.addRow(note)
+        values = params.get('arguments', {}) if plugin else params
+        group = 'arguments' if plugin else None
+        shown = 0
+        for field in param_defs:
+            key = field['key']
+            if step.get('operation') == 'script' and key == 'code':
+                continue
+            editor = ValueEditor(field, values.get(key, _default(field)), nodes)
+            editor.setObjectName('parameter:' + key)
+            editor.changed.connect(lambda value, key=key, group=group: self._set_param(group, key, value))
+            param_form.addRow(_label(field), editor)
+            shown += 1
+        if not shown:
             note = QLabel('此模块没有可编辑的声明参数；原有配置保留。')
             note.setWordWrap(True)
-            parameters.addRow(note)
+            param_form.addRow(note)
+        page.addWidget(param_box)
+
+        # —— 结果输出 ——
+        out_box, out_form = _section(
+            '结果输出',
+            '运行后写入结果树；可将字段绑定到流程 / 全局变量（VisionMaster 结果显示 / 变量订阅）。',
+        )
         schema = QTreeWidget()
         schema.setObjectName('outputSchema')
-        schema.setHeaderLabels(['结果字段', '类型 / 说明'])
+        schema.setHeaderLabels(['输出字段', '类型'])
         for path, label in _output_paths(definition.get('outputs', [])):
-            QTreeWidgetItem(schema, [label, path])
+            kind = path.rsplit('.', 1)[-1] if path else ''
+            QTreeWidgetItem(schema, [label, kind or '结果'])
         if not schema.topLevelItemCount():
             QTreeWidgetItem(schema, ['运行后显示实际结果', ''])
-        schema.setMinimumHeight(100)
+        schema.setMinimumHeight(88)
+        schema.setMaximumHeight(160)
         schema.header().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        outputs.addRow('输出契约', schema)
-        if plugin or step.get('operation')=='script':
+        out_form.addRow(schema)
+        if plugin or step.get('operation') == 'script':
             bindings = OutputBindings(params.get('outputBindings', []), definition.get('outputs', []))
             bindings.changed.connect(lambda value: self._set_param(None, 'outputBindings', value))
-            outputs.addRow(bindings)
-        self.tabs.setCurrentIndex(max(0, min(selected_tab, self.tabs.count() - 1)))
+            out_form.addRow(bindings)
+        page.addWidget(out_box)
+        page.addStretch(1)
+        self.tabs.setCurrentIndex(0)
 
     def _set_top(self, key, value):
         if self._step is not None and self._step.get(key) != value:

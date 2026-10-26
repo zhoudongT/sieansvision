@@ -103,7 +103,7 @@ class MainWindow(QMainWindow):
             b=QPushButton(label);b.clicked.connect(lambda checked=False,cb=callback:self.guard(cb) if not self.busy else None);bar.addWidget(b)
         fl.addWidget(self.flow);fl.addWidget(QLabel('端口间拖拽连线 / 依次点击 · Esc 取消 · Ctrl+滚轮缩放'))
         horizontal.addWidget(flow)
-        self.parameters=ParameterPanel();self.parameters.setMinimumWidth(280);self.parameters.changed.connect(self.update_step);horizontal.addWidget(self.parameters)
+        self.parameters=ParameterPanel();self.parameters.setMinimumWidth(320);self.parameters.setMaximumWidth(440);self.parameters.changed.connect(self.update_step);horizontal.addWidget(self.parameters)
         right=QSplitter(Qt.Orientation.Vertical);self.images=QTabWidget();self.input_view=ImageView();self.output_view=ImageView()
         self.images.addTab(self.input_view,'输入图像');self.images.addTab(self.output_view,'处理结果');right.addWidget(self.images)
         self.cloud_view=CloudView();self.images.addTab(self.cloud_view,'3D 点云');self.input_view.roi_changed.connect(self.update_roi)
