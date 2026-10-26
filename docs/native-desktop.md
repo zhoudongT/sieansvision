@@ -104,3 +104,22 @@ Qt 依赖：`PySide6-Essentials==6.12.0`；打包：`pyinstaller==6.22.3`。
 - [原生引擎通信协议](native-engine-protocol.md)
 
 原生迁移按三省六部流程分工，独立工作包使用 `gpt-6-astra` / `ultra`；演示库续接采用标准流程，委派一项独立后端任务，主执行者负责界面与整体验收。主聊天模型由宿主管理，技能没有切换主聊天模型。任务级 token 用量未知。上述未迁移项单列，不能将本轮原生开发工作台验收视为整个产品已经完成。
+
+## Linux 启动（本机 GNOME / Wayland）
+
+工程后续以 **原生桌面 App（PySide6）** 为主，不再依赖网页连续预览。
+
+```bash
+cd /home/allen/文档/sieansvision
+# 完整工作台（流程 / 相机 / 连续采集）
+./scripts/start-linux-desktop.sh
+
+# 仅相机满速连续预览（GenTL → QLabel，无浏览器、无 OpenCV HighGUI）
+./scripts/start-linux-live.sh
+```
+
+注意：
+
+- U3V USB 独占：网页 Node-RED、MVS Client、live 预览、桌面工作台同一时刻只开一个。
+- 本机缺 `libxcb-cursor0` 时 PySide6 的 `xcb` 插件会失败，启动脚本默认 `QT_QPA_PLATFORM=wayland`。
+- 桌面「连续连接」预览读的是会话一帧 PNG 缓存（约十几 fps）；要接近相机满速用 `start-linux-live.sh`。

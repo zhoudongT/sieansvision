@@ -15,7 +15,7 @@ from PySide6.QtGui import QPixmap, QColor, QPen, QPolygonF, QDesktopServices
 from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
-    QDoubleSpinBox, QFileDialog, QFormLayout, QGraphicsScene, QGraphicsView,
+    QDoubleSpinBox, QFileDialog, QFormLayout, QGraphicsPixmapItem, QGraphicsScene, QGraphicsView,
     QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMessageBox,
     QPushButton, QScrollArea, QSpinBox, QSplitter, QTabWidget, QTableWidget,
     QTableWidgetItem, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
@@ -112,7 +112,11 @@ def _tree_data(tree, data):
 
 
 class _Preview(QGraphicsView):
-    """Image coordinates are shared by overlays and pointer annotation."""
+    """Image coordinates are shared by overlays and pointer annotation.
+
+    Live camera frames update the pixmap item in place — never scene.clear()
+    + fitInView every tick (that flash is the main App-side flicker).
+    """
     box_drawn = Signal(object)
     polygon_drawn = Signal(object)
 
@@ -120,12 +124,15 @@ class _Preview(QGraphicsView):
         super().__init__()
         self.setScene(QGraphicsScene(self))
         self.setMinimumSize(280, 200)
+        self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.MinimalViewportUpdate)
         self.pixmap = QPixmap()
+        self._pixmap_item = None
         self.records = []
         self.mode = ''
         self.origin = None
         self.vertices = []
         self.rubber = None
+        self._overlay_items = []
 
     def set_image(self, data):
         try:
@@ -133,39 +140,86 @@ class _Preview(QGraphicsView):
             pixmap = QPixmap()
             if not pixmap.loadFromData(pixels):
                 raise ValueError('图像无法解码')
-            self.pixmap = pixmap
-            self.redraw()
+            self._set_pixmap(pixmap)
         except (ValueError, IndexError):
             self.scene().clear()
+            self._pixmap_item = None
+            self.rubber = None
+            self._overlay_items = []
             self.scene().addText('暂无可显示图像')
 
-    def redraw(self):
-        self.scene().clear()
-        self.rubber = None
+    def _set_pixmap(self, pixmap: QPixmap, *, refit: bool | None = None):
+        size_changed = self.pixmap.isNull() or pixmap.size() != self.pixmap.size()
+        self.pixmap = pixmap
+        if self._pixmap_item is None:
+            # Drop placeholder text etc., keep a stable pixmap item.
+            self.scene().clear()
+            self.rubber = None
+            self._overlay_items = []
+            self._pixmap_item = self.scene().addPixmap(pixmap)
+            self._pixmap_item.setZValue(0)
+            self.setSceneRect(QRectF(pixmap.rect()))
+            self.fitInView(self.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        else:
+            self._pixmap_item.setPixmap(pixmap)
+            if refit is True or (refit is None and size_changed):
+                self.setSceneRect(QRectF(pixmap.rect()))
+                self.fitInView(self.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        # Annotation overlays only when present (training); live camera has none.
+        if self.records or self.vertices or self.mode:
+            self._redraw_overlays()
+
+    def _clear_overlays(self):
+        for item in self._overlay_items:
+            self.scene().removeItem(item)
+        self._overlay_items = []
+        if self.rubber is not None:
+            self.scene().removeItem(self.rubber)
+            self.rubber = None
+
+    def _redraw_overlays(self):
+        self._clear_overlays()
         if self.pixmap.isNull():
             return
-        self.scene().addPixmap(self.pixmap)
         w, h = self.pixmap.width(), self.pixmap.height()
         pen = QPen(QColor('#00d9a3'), 2)
         pen.setCosmetic(True)
         for record in self.records:
             if 'box' in record:
                 x, y, bw, bh = record['box']
-                self.scene().addRect((x-bw/2)*w, (y-bh/2)*h, bw*w, bh*h, pen)
+                item = self.scene().addRect((x-bw/2)*w, (y-bh/2)*h, bw*w, bh*h, pen)
+                item.setZValue(1)
+                self._overlay_items.append(item)
                 anchor = QPointF((x-bw/2)*w, (y-bh/2)*h)
             else:
                 points = [QPointF(x*w, y*h) for x, y in record.get('points', [])]
                 if not points:
                     continue
-                self.scene().addPolygon(QPolygonF(points), pen)
+                item = self.scene().addPolygon(QPolygonF(points), pen)
+                item.setZValue(1)
+                self._overlay_items.append(item)
                 anchor = points[0]
             label = self.scene().addText(str(record.get('classId', 0)))
             label.setDefaultTextColor(QColor('#00d9a3'))
             label.setPos(anchor)
+            label.setZValue(2)
+            self._overlay_items.append(label)
         if self.vertices:
             self.rubber = self.scene().addPolygon(QPolygonF(self.vertices), QPen(QColor('#ffb545'), 2))
-        self.setSceneRect(QRectF(0, 0, w, h))
-        self.fitInView(self.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+            self.rubber.setZValue(1)
+
+    def redraw(self):
+        if self.pixmap.isNull():
+            self.scene().clear()
+            self._pixmap_item = None
+            self.rubber = None
+            self._overlay_items = []
+            return
+        if self._pixmap_item is None:
+            self._set_pixmap(self.pixmap, refit=True)
+        else:
+            self._pixmap_item.setPixmap(self.pixmap)
+            self._redraw_overlays()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -368,6 +422,12 @@ class CameraDialog(_RpcDialog):
         self.timer = QTimer(self)
         self.timer.setInterval(1000)
         self.timer.timeout.connect(self.refresh)
+        # Live preview: pull latest buffered frame while continuous session runs.
+        # Avoids browser JPEG/HTTP paint stutter; still uses cached PNG from session.
+        self.live_timer = QTimer(self)
+        self.live_timer.setInterval(50)  # ~20 Hz; PNG session cache still caps real rate
+        self.live_timer.timeout.connect(self._live_tick)
+        self._live_pending = False
         self._buttons()
 
     def showEvent(self, event):
@@ -380,6 +440,7 @@ class CameraDialog(_RpcDialog):
 
     def hideEvent(self, event):
         self.timer.stop()
+        self.live_timer.stop()
         self.cancel_request()
         super().hideEvent(event)
 
@@ -588,6 +649,36 @@ class CameraDialog(_RpcDialog):
     def session_preview(self):
         self._request('camera/capture', {'driver': 'session', 'sessionId': self.state.get('id'), 'framePolicy': 'latest', 'maxAgeMs': 5000, 'timeoutMs': 5000}, self._captured)
 
+    def _error(self, request_id, message):
+        entry = self.pending.get(request_id)
+        if entry and entry[0] == 'camera/capture':
+            self._live_pending = False
+        super()._error(request_id, message)
+
+    def _live_tick(self):
+        if self._live_pending or not self.backend.is_ready:
+            return
+        if self.state.get('state') != 'running' or not self.state.get('id'):
+            return
+        if any(method == 'camera/capture' for method, _, _ in self.pending.values()):
+            return
+        self._live_pending = True
+
+        def done(value):
+            self._live_pending = False
+            self.frame = deepcopy(value)
+            image = value.get('annotatedImage', '')
+            if image:
+                self.preview.set_image(image)
+
+        # kind=status：实时预览不锁住其它按钮；读的是会话已缓存帧。
+        self._request(
+            'camera/capture',
+            {'driver': 'session', 'sessionId': self.state.get('id'), 'framePolicy': 'latest', 'maxAgeMs': 2000, 'timeoutMs': 2000},
+            done,
+            kind='status',
+        )
+
     def use_session(self, apply):
         self.camera_selected.emit(dict(driver='session', sessionId=self.state.get('bindingId') or self.state['id'], framePolicy='next', maxAgeMs=1000, timeoutMs=5000), apply)
         self.accept()
@@ -603,6 +694,13 @@ class CameraDialog(_RpcDialog):
             self.retries.setValue(config.get('reconnectAttempts', 0))
             self.reconnect.setValue(config.get('reconnectMs', 1000))
         _rows(self.statistics, [('会话编号', state.get('id')), ('设备驱动', config.get('params', {}).get('driver')), ('设备标识', config.get('params', {}).get('deviceId')), ('接收帧数', state.get('received', 0)), ('流程 / 预览取帧次数', state.get('consumed', 0)), ('覆盖未取帧数', state.get('overwritten', 0)), ('重复缓存帧数', state.get('reused', 0)), ('重连次数', state.get('reconnects', 0)), ('缓存帧龄 (ms)', state.get('frameAgeMs'))])
+        if state.get('state') == 'running':
+            if not self.live_timer.isActive():
+                self.live_timer.start()
+                self.message.setText('连续采集中：原生预览刷新最新缓存帧（无 scene.clear 闪烁；速率受会话 PNG 缓存限制）。')
+        else:
+            self.live_timer.stop()
+            self._live_pending = False
 
 
 class TrainingDialog(_RpcDialog):

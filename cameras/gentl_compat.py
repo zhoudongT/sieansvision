@@ -1,4 +1,4 @@
-"""Scoped workaround for malformed error strings from Windows Hikrobot CTIs.
+"""Scoped workaround for malformed error strings from Hikrobot CTIs (Windows/Linux).
 
 Some MVS producers return non-UTF-8 bytes in GCGetLastError's description.
 GenICam then raises UnicodeDecodeError instead of the actual GenTL exception.
@@ -38,7 +38,9 @@ def normalize_error(function, prefix, code, exception_type):
 
 @contextmanager
 def hikrobot_transport(path):
-    if (os.name != 'nt' or not path
+    # Same non-UTF-8 GenTL error strings appear on Linux Hikrobot CTIs; apply hooks
+    # on all OS. add_dll_directory is Windows-only and skipped elsewhere.
+    if (not path
             or Path(path).name.lower() not in ('mvproduceru3v.cti', 'mvproducergev.cti')):
         yield
         return
@@ -46,8 +48,9 @@ def hikrobot_transport(path):
     # Workers own one physical camera operation. Scope also protects nested use;
     # all attributes and DLL search handles are restored on close or failure.
     with _lock, ExitStack() as cleanup:
-        cookie = os.add_dll_directory(str(Path(path).parent))
-        cleanup.callback(cookie.close)
+        if os.name == 'nt':
+            cookie = os.add_dll_directory(str(Path(path).parent))
+            cleanup.callback(cookie.close)
 
         def replace(owner, name, value):
             original = getattr(owner, name)
