@@ -19,6 +19,7 @@
       if(legacy&&!s.id)s.id='legacy-'+i;
       if(typeof s.id!=='string'||!s.id||s.id.length>80||ids.has(s.id))throw Error('节点 ID 无效或重复');
       ids.add(s.id);
+      if(s.name!==undefined&&(typeof s.name!=='string'||!s.name.trim()||s.name.length>80))throw Error('模块名称应为 1–80 个字符');
       if(['__proto__','constructor','prototype'].includes(s.id))throw Error('节点 ID 保留字不可使用');
       s.variables=s.variables||{};dataObject(s.variables);dataObject(s.params);
       if(s.variableTypes!==undefined){s.variableTypes=VariableTypes.definitions(s.variableTypes);VariableTypes.assert(s.variables,s.variableTypes,'模块 '+s.id+' 初始变量');}

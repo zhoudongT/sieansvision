@@ -152,6 +152,7 @@ function renderResultTable(value) {
   head.append(header);table.append(head,body);panel.append(table);
 }
 function dirty(clearResults=true) {
+  flowEditRecord();
   $('saved-state').textContent='有未保存修改';
   if(clearResults&&results.length){rememberBindingFields(results);results=[];renderResults();renderPipeline();$('run-timing').textContent='总耗时 —';}
 }
@@ -227,11 +228,15 @@ function renderLibrary() {
 }
 function addStep(operation,position,pluginKey) {
   if(running)return;if(project.steps.length>=50)throw Error('一个工程最多 50 个算子');applyParams();
-  const parent=selectedStep()?.id||'source';
+  const insertEdge=flowEdge&&project.edges.find(e=>e.id===flowEdge);
+  const parent=insertEdge?.from||selectedStep()?.id||'source';
   const step={id:uid(),operation,params:operation==='plugin'?pluginDefaults(pluginKey):clone(catalog[operation].defaults),reference:'',position:position||{x:flowPosition(parent).x,y:Math.min(9800,flowPosition(parent).y+130)},imageFrom:position?null:parent};
-  project.steps.push(step);
+  if(insertEdge&&!position){step.position={x:Math.min(9600,flowPosition(parent).x+240),y:Math.min(9800,flowPosition(parent).y+100)};while(project.steps.some(s=>Math.abs(s.position.x-step.position.x)<210&&Math.abs(s.position.y-step.position.y)<90)&&step.position.y<9700)step.position.y+=100;}
+  const next=clone(project);next.steps.push(step);
   // Palette click extends the selected branch; a canvas drop creates an unconnected node.
-  if(!position)project.edges.push({id:uid(),from:parent,to:step.id,fromPort:'bottom',toPort:'top'});
+  if(insertEdge){step.imageFrom=null;project=FlowEdit.insert(next,insertEdge.id,step.id,uid);flowEdge=null;}
+  else{if(!position)next.edges.push({id:uid(),from:parent,to:step.id,fromPort:'bottom',toPort:'top'});project=next;}
+  flowSelection.clear();flowSelection.add(step.id);
   selected=project.steps.length-1;dirty();renderPipeline();renderParams();
 }
 function renderPipeline(){flowRender();subflowWorkspaceRender();}
@@ -239,7 +244,7 @@ function renderParams() {
   runtimeFields();cloudFields();industrialFields();
   flowRenderInputs();
   const step=selectedStep();$('form-fields').replaceChildren();
-  $('selected-name').textContent=step?stepDefinition(step).name:'尚未选择算子';
+  $('selected-name').textContent=step?flowLabel(step):'尚未选择算子';
   $('selected-glyph').textContent=step?catalog[step.operation].glyph:'◇';
   $('selected-type').textContent=step?`模块 ${String(selected+1).padStart(2,'0')} / ${step.operation}`:'从工具箱添加模块';
   $('operator-description').textContent=step?stepDefinition(step).description:'';
@@ -318,7 +323,7 @@ function setBusy(busy) {
   $('stop').disabled=!busy;document.querySelectorAll('#parameter-dialog input,#parameter-dialog select,#parameter-dialog button,#parameter-dialog textarea').forEach(e=>e.disabled=busy);
   $('form-fields').querySelectorAll('input,select').forEach(el=>el.disabled=busy);
   document.querySelectorAll('.operator').forEach(el=>{el.disabled=busy;});
-  $('operator-search').disabled=busy;$('flow-inputs').querySelectorAll('select').forEach(el=>el.disabled=busy||el.dataset.fixed==='true');subflowWorkspaceControls(busy);
+  $('operator-search').disabled=busy;$('flow-inputs').querySelectorAll('select').forEach(el=>el.disabled=busy||el.dataset.fixed==='true');subflowWorkspaceControls(busy);flowEditButtons();
 }
 function renderResults() {
   refreshOutputBindingValues();
@@ -345,7 +350,7 @@ function download(name,data,type='application/json') {
 }
 function currentProject() {applyParams();project.name=$('project-name').value.trim()||'我的视觉工程';return project;}
 function validateProject(value) {return FlowGraph.normalize(value);}
-function useProject(value) {hmiRuntimeRenderedSignature='';subflowWorkspaceCheck(value);framePreviews.clear();bindingResultFields.clear();$('script-trust').checked=false;project=validateProject(value);selected=project.steps.length?0:-1;results=[];flowLink=null;flowEdge=null;$('project-name').value=project.name;renderPipeline();renderParams();renderResults();$('run-timing').textContent='总耗时 —';requestAnimationFrame(flowFit);hmiSyncMode();}
+function useProject(value) {hmiRuntimeRenderedSignature='';subflowWorkspaceCheck(value);framePreviews.clear();bindingResultFields.clear();$('script-trust').checked=false;project=validateProject(value);flowEditReset();selected=project.steps.length?0:-1;results=[];flowLink=null;flowEdge=null;$('project-name').value=project.name;renderPipeline();renderParams();renderResults();$('run-timing').textContent='总耗时 —';requestAnimationFrame(flowFit);hmiSyncMode();}
 $('source-file').onchange=safe(async event=>{await loadImage(await readFile(event.target.files[0]));event.target.value='';});
 $('reference-file').onchange=safe(async event=>{if(!selectedStep())throw Error('请先选择算子');const data=await readFile(event.target.files[0]);const image=new Image();image.src=data;await image.decode();if(image.width*image.height>16000000)throw Error('参考图超过 1600 万像素');selectedStep().reference=data;dirty();renderParams();event.target.value='';});
 $('clear-reference').onclick=()=>{if(selectedStep()){selectedStep().reference='';dirty();renderParams();}};
@@ -411,7 +416,7 @@ async function loadDemo(item) {
 $('return-demo').onclick=safe(async()=>{
   if(running||demoLoading||!demoBackup)return;
   const saved=demoBackup;
-  bindingResultFields.clear();project=clone(saved.project);selected=saved.selected;$('project-name').value=project.name;
+  bindingResultFields.clear();project=clone(saved.project);flowEditReset();selected=saved.selected;$('project-name').value=project.name;
   if(saved.source)await loadImage(saved.source);
   else {source='';originalImage=null;ctx.clearRect(0,0,canvas.width,canvas.height);$('empty-image').hidden=false;$('image-size').textContent='未载入图像';}
   sourceCloud=saved.sourceCloud||null;sourceDepth=saved.sourceDepth||null;resultCloud=null;results=clone(saved.results);results.forEach(rememberFrame);renderPipeline();renderParams();renderResults();
@@ -426,7 +431,7 @@ $('save-project').onclick=safe(async()=>{const result=await api('project',{metho
 $('load-project').onclick=safe(async()=>{const value=await api('project');if(!value)throw Error('尚无已保存的工程');useProject(value);$('saved-state').textContent='已读取';status('已读取服务器工程');});
 $('export-project').onclick=safe(()=>download('machine-vision-project.json',JSON.stringify(currentProject(),null,2)));
 $('import-project').onchange=safe(async event=>{const file=event.target.files[0];if(!file)return;if(file.size>35000000)throw Error('工程文件超过 35 MB');useProject(JSON.parse(await file.text()));dirty();event.target.value='';status('工程已导入');});
-$('project-name').oninput=()=>dirty(false);
+$('project-name').oninput=()=>{project.name=$('project-name').value.trim()||'我的视觉工程';dirty(false);};
 function setMode(runtime) {if(runtime){closeParameters();document.body.classList.remove('flow-expanded');$('flow-expand').textContent='展开';$('flow-expand').setAttribute('aria-expanded','false');}document.body.classList.toggle('runtime',runtime);$('runtime').classList.toggle('active',runtime);$('develop').classList.toggle('active',!runtime);$('view-title').textContent=runtime?'视觉运行平台':'图像';hmiSyncMode();}
 function closeParameters() {$('parameter-dialog').hidden=true;document.body.classList.remove('parameters-open','parameters-expanded');$('expand-parameters').textContent='展开编辑';$('expand-parameters').setAttribute('aria-expanded','false');$('configure-step').setAttribute('aria-expanded','false');}
 function openParameters() {if(!selectedStep())return status('请先选择一个算子');if(document.body.classList.contains('flow-expanded')){$('flow-expand').click();}$('parameter-dialog').hidden=false;document.body.classList.add('parameters-open');$('configure-step').setAttribute('aria-expanded','true');}
@@ -468,7 +473,7 @@ if(new URLSearchParams(location.search).get('mode')==='run')setMode(true);
 initPluginUI().then(()=>api('project')).then(value=>{if(value&&!source&&!project.steps.length){useProject(value);$('saved-state').textContent='已载入保存的工程';}}).catch(error=>status(error.message,'error'));
 api('models').then(value=>{$('models').textContent=value.models.length?value.models.join(' · '):'暂无权重文件；将 YOLO 检测模型放入 models 目录';$('engine-state').textContent='服务已连接';$('engine-dot').classList.add('ready');}).catch(error=>{renderDataMessage($('models'),error.message);$('engine-state').textContent='服务未连接';});
 
-flowInit();
+flowInit();flowWorkbenchInit();
 
 $('output-image').onload=imageSizeStatus;
 initRuntimeUI();initCloudUI();initIndustrialUI();initS7UI();initMqttUI();initSocketUI();initOpcuaUI();initCameraUI();initHmiUI();initContinuousUI();initMqttTriggerUI();initHistoryUI();initTrainingUI();initAnnotationUI();initComputeUI();initSubflowUI();initMonitorUI();

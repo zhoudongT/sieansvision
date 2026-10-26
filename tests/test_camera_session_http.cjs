@@ -35,6 +35,15 @@ async function main(){
  const saved=(await json('project')).body;assert.equal(saved.steps[0].params.sessionId,s.id);
  const view=(await json('runtime/view','POST',{project:interrupted})).body;assert.equal(view.variables.global.mustRollbackCamera,undefined);
  assert.equal((await json('cameras/run','POST',{operation:'camera_capture',params:read})).status,400);
+ const auto=await json('cameras/session','POST',{...config,autoStart:true,intervalMs:100});assert.equal(auto.status,202);await ready();
+ const durable={...read,sessionId:auto.body.bindingId};
+ project.steps[0].params=durable;assert.equal((await json('project','PUT',project)).status,200);
+ await stop();await start();const running=await ready();assert.notEqual(running.id,auto.body.id);assert.equal(running.bindingId,auto.body.bindingId);
+ assert.equal((await json('cameras/run','POST',{operation:'camera_providers',params:{}})).status,200);
+ const savedAuto=(await json('project')).body;
+ const autoRun=await json('runtime/jobs','POST',{project:savedAuto});assert.equal(autoRun.status,202);
+ assert.equal((await jobDone(autoRun.body.id)).state,'completed');assert.equal((await json('cameras/session')).body.active,true);
  console.log('PASS: authenticated session lifecycle, shared camera lock, cache preview, next-frame OpenCV demo, runtime stop exclusion, cross-client read/stop, stale ID rejection, graceful shutdown with waiting-job rollback and configuration-only restart');
+ console.log('PASS: opt-in automatic connection on real server restart, saved project stable binding, provider metadata while connected and connection retained after job completion');
 }
 main().catch(e=>{console.error(e,logs);process.exitCode=1;}).finally(()=>stop().catch(e=>{console.error(e);process.exitCode=1;}));

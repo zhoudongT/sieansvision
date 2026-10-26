@@ -1,6 +1,7 @@
 'use strict';
 let flowZoom=1,flowLink=null,flowEdge=null,flowRoute='elbow';
-const flowName=id=>id==='source'?'数据源1':(project.steps.findIndex(s=>s.id===id)+1)+' · '+(stepDefinition(project.steps.find(s=>s.id===id))?.name||id);
+const flowLabel=s=>s?.name||stepDefinition(s)?.name||s?.id||'';
+const flowName=id=>id==='source'?'数据源1':(project.steps.findIndex(s=>s.id===id)+1)+' · '+flowLabel(project.steps.find(s=>s.id===id));
 const flowPoint=event=>{const box=$('pipeline').getBoundingClientRect();return {x:Math.max(12,Math.min(9900,(event.clientX-box.left)/flowZoom)),y:Math.max(12,Math.min(9900,(event.clientY-box.top)/flowZoom))};};
 function flowCommit(next,message){project=next;flowLink=null;flowEdge=null;dirty();renderPipeline();renderParams();if(message)status(message,'success');}
 function flowConnect(from,to,fromPort='bottom',toPort='top'){
@@ -48,7 +49,8 @@ function flowUpdateSelection(){
   document.querySelectorAll('.flow-port.output').forEach(b=>b.classList.toggle('connecting',flowLink?.from===b.dataset.node&&flowLink?.fromPort===b.dataset.side));
   document.querySelectorAll('.flow-edge').forEach(e=>e.classList.toggle('selected',e.dataset.edgeId===flowEdge));
   $('flow-disconnect').disabled=running||!flowEdge;
-  $('flow-hint').textContent=flowLink?'点击目标输入端口 · Esc 取消':flowEdge?'已选择连线 · Delete 或“断开”移除':'拖动节点自由布局 · 输出端口 → 输入端口';
+  $('flow-hint').textContent=flowLink?'点击目标输入端口 · Esc 取消':flowEdge?'已选择连线 · 点击工具箱插入模块 · Delete 断开':'Ctrl 多选 · Shift 框选 · 右键编辑 · 拖动节点自由布局';
+  flowEditButtons();
 }
 function flowResize(){
   const positions=[project.sourcePosition,...project.steps.map(s=>s.position)];
@@ -60,13 +62,17 @@ function flowFit(){const viewport=document.querySelector('.flow-viewport');flowR
 function flowDrag(el,id){
   let start=null,moved=false,skip=false;
   el.addEventListener('click',e=>{if(skip){e.stopImmediatePropagation();skip=false;}},true);
-  el.onpointerdown=e=>{if(running||e.button!==0||e.target.closest('button'))return;start={x:e.clientX,y:e.clientY,...{position:{...flowPosition(id)}}};moved=false;el.setPointerCapture(e.pointerId);};
-  el.onpointermove=e=>{if(!start)return;const dx=(e.clientX-start.x)/flowZoom,dy=(e.clientY-start.y)/flowZoom;if(!moved&&Math.hypot(dx,dy)<4)return;moved=true;const p=flowPosition(id);p.x=Math.max(12,Math.min(9800,Math.round((start.position.x+dx)/10)*10));p.y=Math.max(12,Math.min(9800,Math.round((start.position.y+dy)/10)*10));el.style.left=p.x+'px';el.style.top=p.y+'px';flowResize();flowDrawEdges();};
+  el.onpointerdown=e=>{if(running||e.button!==0||e.target.closest('button')||e.ctrlKey||e.metaKey)return;const ids=id!=='source'&&flowSelection.has(id)?[...flowSelection]:[id];start={x:e.clientX,y:e.clientY,positions:ids.map(key=>({id:key,position:{...flowPosition(key)}}))};moved=false;el.setPointerCapture(e.pointerId);};
+  el.onpointermove=e=>{if(!start)return;let dx=Math.round((e.clientX-start.x)/flowZoom/10)*10,dy=Math.round((e.clientY-start.y)/flowZoom/10)*10;if(!moved&&Math.hypot(dx,dy)<4)return;moved=true;
+    dx=Math.max(...start.positions.map(item=>12-item.position.x),Math.min(dx,...start.positions.map(item=>9800-item.position.x)));
+    dy=Math.max(...start.positions.map(item=>12-item.position.y),Math.min(dy,...start.positions.map(item=>9800-item.position.y)));
+    for(const item of start.positions){const p=flowPosition(item.id);p.x=item.position.x+dx;p.y=item.position.y+dy;const element=item.id==='source'?document.querySelector('.flow-source'):[...document.querySelectorAll('#pipeline .step')].find(n=>n.dataset.nodeId===item.id);element.style.left=p.x+'px';element.style.top=p.y+'px';}flowResize();flowDrawEdges();};
   el.onpointerup=()=>{if(!start)return;start=null;if(moved){skip=true;dirty(false);}};
-  el.onpointercancel=()=>{if(start&&moved){Object.assign(flowPosition(id),start.position);renderPipeline();}start=null;};
+  el.onpointercancel=()=>{if(start&&moved){for(const item of start.positions)Object.assign(flowPosition(item.id),item.position);renderPipeline();}start=null;};
   el.addEventListener('keydown',e=>{if(e.target!==el||running||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;e.preventDefault();const p=flowPosition(id),d=e.shiftKey?50:10;p.x=Math.max(12,Math.min(9800,p.x+(e.key==='ArrowLeft'?-d:e.key==='ArrowRight'?d:0)));p.y=Math.max(12,Math.min(9800,p.y+(e.key==='ArrowUp'?-d:e.key==='ArrowDown'?d:0)));el.style.left=p.x+'px';el.style.top=p.y+'px';dirty(false);flowResize();flowDrawEdges();});
 }
 function flowRender(){
+  for(const id of flowSelection)if(!project.steps.some(s=>s.id===id))flowSelection.delete(id);
   const pipeline=$('pipeline');pipeline.replaceChildren();$('step-count').textContent=project.steps.length+' 个算子';
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.id='flow-edges';pipeline.append(svg);
   const sourceNode=document.createElement('div');sourceNode.className='flow-source';sourceNode.tabIndex=0;sourceNode.setAttribute('aria-label','数据源1 节点');sourceNode.style.left=project.sourcePosition.x+'px';sourceNode.style.top=project.sourcePosition.y+'px';
@@ -75,15 +81,15 @@ function flowRender(){
   const openSource=()=>{if(!running)$(wantsCloud?'open-cloud':'source-file').click();};
   sourceNode.title='拖动移动 · 双击打开'+(wantsCloud?'点云':'图像');sourceNode.ondblclick=openSource;sourceNode.addEventListener('keydown',e=>{if(e.target===sourceNode&&e.key==='Enter')openSource();});sourceNode.append(sourceLabel,flowPort('source','bottom',true),flowPort('source','right',true));flowDrag(sourceNode,'source');pipeline.append(sourceNode);
   project.steps.forEach((s,index)=>{
-    const el=document.createElement('div');el.className='step'+(index===selected?' selected':'');el.dataset.index=index;el.dataset.nodeId=s.id;el.tabIndex=0;el.setAttribute('aria-label',`算子 ${index+1} ${stepDefinition(s).name}`);el.style.left=s.position.x+'px';el.style.top=s.position.y+'px';
+    const el=document.createElement('div');el.className='step'+(index===selected?' selected':'');el.dataset.index=index;el.dataset.nodeId=s.id;el.tabIndex=0;el.setAttribute('aria-label',`算子 ${index+1} ${flowLabel(s)}`);el.style.left=s.position.x+'px';el.style.top=s.position.y+'px';
     const result=results.find(item=>item.id===s.id);if(result)el.classList.add(result.error?'failed':result.skipped?'skipped':'done');if(activeStepId===s.id)el.classList.add('executing');
     const heading=document.createElement('div');heading.className='node-heading';
-    const icon=document.createElement('span');icon.className='node-icon';icon.textContent=catalog[s.operation].glyph;const number=document.createElement('span');number.className='node-index';number.textContent=String(index+1).padStart(2,'0');const name=document.createElement('strong');name.textContent=stepDefinition(s).name;heading.append(icon,number,name);
+    const icon=document.createElement('span');icon.className='node-icon';icon.textContent=catalog[s.operation].glyph;const number=document.createElement('span');number.className='node-index';number.textContent=String(index+1).padStart(2,'0');const name=document.createElement('strong');name.textContent=flowLabel(s);heading.append(icon,number,name);
     const meta=document.createElement('div');meta.className='node-meta';const state=document.createElement('small');state.textContent=activeStepId===s.id?'正在执行…':result?(result.error?(result.handled?'失败 · 已转入处理分支':'执行失败'):result.skipped?'已跳过':`完成 · ${result.output.elapsedMs} ms`):s.imageFrom?'等待执行':'未连接';meta.append(state);
     const actions=document.createElement('div');actions.className='step-actions';
-    for(const [text,label,action] of [['⚙','配置',()=>{selected=index;renderPipeline();renderParams();openParameters();}],['×','移除',()=>{const next=FlowGraph.remove(project,s.id);selected=Math.min(selected,next.steps.length-1);flowCommit(next,'节点及关联连线已移除');}]]){const b=document.createElement('button');b.textContent=text;b.setAttribute('aria-label',label+' '+stepDefinition(s).name);b.disabled=running;b.onclick=safe(e=>{e.stopPropagation();applyParams();action();});actions.append(b);}
+    for(const [text,label,action] of [['⚙','配置',()=>{flowSelect(s.id);renderPipeline();renderParams();openParameters();}],['×','移除',()=>{const next=FlowGraph.remove(project,s.id);selected=Math.min(selected,next.steps.length-1);flowCommit(next,'节点及关联连线已移除');}]]){const b=document.createElement('button');b.textContent=text;b.setAttribute('aria-label',label+' '+flowLabel(s));b.disabled=running;b.onclick=safe(e=>{e.stopPropagation();applyParams();action();});actions.append(b);}
     meta.append(actions);el.append(heading,meta,flowPort(s.id,'top',false),flowPort(s.id,'left',false),flowPort(s.id,'bottom',true),flowPort(s.id,'right',true));
-    flowDrag(el,s.id);el.onclick=safe(()=>{if(running)return;applyParams();selected=index;flowEdge=null;flowLink=null;flowUpdateSelection();document.querySelectorAll('.step').forEach(n=>n.classList.toggle('selected',Number(n.dataset.index)===index));renderParams();if(result)showResult(result);});el.ondblclick=safe(()=>{if(!running){el.click();openParameters();}});el.addEventListener('keydown',e=>{if(e.target===el&&e.key==='Enter'){el.click();openParameters();}});pipeline.append(el);
+    flowDrag(el,s.id);el.onclick=safe(event=>{if(running)return;applyParams();flowSelect(s.id,event.ctrlKey||event.metaKey);flowEdge=null;flowLink=null;flowUpdateSelection();document.querySelectorAll('.step').forEach(n=>n.classList.toggle('selected',Number(n.dataset.index)===selected));renderParams();if(result)showResult(result);});el.ondblclick=safe(()=>{if(!running){el.click();openParameters();}});el.addEventListener('keydown',e=>{if(e.target===el&&e.key==='Enter'){el.click();openParameters();}});pipeline.append(el);
   });
   flowResize();flowDrawEdges();flowUpdateSelection();
 }
@@ -112,6 +118,6 @@ function flowInit(){
   document.addEventListener('keydown',safe(e=>{if(e.key==='Escape'){flowLink=null;flowEdge=null;flowDrawEdges();flowUpdateSelection();}if(e.key==='Delete'&&flowEdge&&!running&&!e.target.closest('input,textarea,select')){e.preventDefault();flowCommit(FlowGraph.disconnect(project,flowEdge),'连线已删除');}}));
   const viewport=document.querySelector('.flow-viewport');
   viewport.ondragover=e=>e.preventDefault();viewport.ondrop=safe(e=>{e.preventDefault();if(running)return;const payload=JSON.parse(e.dataTransfer.getData('text/plain'));if(catalog[payload.operation])addStep(payload.operation,flowPoint(e),payload.pluginKey);});
-  let pan=null;viewport.addEventListener('pointerdown',e=>{if(e.button!==0||e.target.closest('.step,.flow-source,.flow-edge'))return;pan={x:e.clientX,y:e.clientY,left:viewport.scrollLeft,top:viewport.scrollTop};viewport.setPointerCapture(e.pointerId);});
+  let pan=null;viewport.addEventListener('pointerdown',e=>{if(e.button!==0||e.shiftKey||e.target.closest('.step,.flow-source,.flow-edge'))return;pan={x:e.clientX,y:e.clientY,left:viewport.scrollLeft,top:viewport.scrollTop};viewport.setPointerCapture(e.pointerId);});
   viewport.addEventListener('pointermove',e=>{if(pan){viewport.scrollLeft=pan.left+pan.x-e.clientX;viewport.scrollTop=pan.top+pan.y-e.clientY;}});viewport.addEventListener('pointerup',()=>pan=null);viewport.addEventListener('pointercancel',()=>pan=null);
 }

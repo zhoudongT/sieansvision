@@ -15,7 +15,9 @@ from threading import RLock
 _lock = RLock()
 _NOT_IMPLEMENTED = b'GenTL exception: Requested operation not implemented. (Message from the source: '
 _TIMEOUT = b'GenTL exception: Operation timed out. (Message from the source: '
+_TIMEOUT_BEFORE_COMPLETION = b'GenTL exception: Operation timed out before completion. (Message from the source: '
 _RESOURCE_EXHAUSTED = b'GenTL exception: The requested resource is exhausted. (Message from the source: '
+_INVALID_HANDLE = b'GenTL exception: Given handle does not support the operation. (Message from the source: '
 
 
 def normalize_error(function, prefix, code, exception_type):
@@ -54,12 +56,14 @@ def hikrobot_transport(path):
 
         prop = gentl.Port.url_info_list
         replace(gentl.Port, 'url_info_list', property(
-            normalize_error(normalize_error(prop.fget, _NOT_IMPLEMENTED, -1003, gentl.NotImplementedException),
+            normalize_error(normalize_error(normalize_error(prop.fget, _NOT_IMPLEMENTED, -1003, gentl.NotImplementedException),
                             _RESOURCE_EXHAUSTED, -1020, gentl.ResourceExhaustedException),
+                            _INVALID_HANDLE, -1006, gentl.InvalidHandleException),
             prop.fset, prop.fdel, prop.__doc__))
         for owner in (gentl.System, gentl.Interface, gentl.Device):
             replace(owner, 'register_event', normalize_error(
                 owner.register_event, _NOT_IMPLEMENTED, -1003, gentl.NotImplementedException))
         replace(gentl.EventManagerNewBuffer, 'update_event_data', normalize_error(
-            gentl.EventManagerNewBuffer.update_event_data, _TIMEOUT, -1011, gentl.TimeoutException))
+            normalize_error(gentl.EventManagerNewBuffer.update_event_data, _TIMEOUT, -1011, gentl.TimeoutException),
+            _TIMEOUT_BEFORE_COMPLETION, -1011, gentl.TimeoutException))
         yield

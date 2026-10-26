@@ -85,8 +85,8 @@ Linux 将解释器替换为 `.venv/bin/python`。当前平台没有提供自定�
 先安装 Node.js 24 与 Python 3.12。将 `--python` 后的示例路径换成本机 Python 3.12 的真实位置。运行数据目录必须在程序目录之外。
 
 ```powershell
-git clone https://github.com/zhoudongT/vision.git
-cd vision
+git clone https://github.com/zhoudongT/sieansvision.git
+cd sieansvision
 node scripts/platform.cjs install --python 'C:\Python312\python.exe' --data-dir 'D:\SIEANS\runtime' --features 2d,3d,industrial,camera,yolo
 node scripts/platform.cjs doctor --data-dir 'D:\SIEANS\runtime'
 node scripts/platform.cjs start --data-dir 'D:\SIEANS\runtime'
@@ -99,8 +99,8 @@ node scripts/platform.cjs start --data-dir 'D:\SIEANS\runtime'
 预先安装 Node.js 24、Python 3.12、pip 和 venv 支持，再执行：
 
 ```sh
-git clone https://github.com/zhoudongT/vision.git
-cd vision
+git clone https://github.com/zhoudongT/sieansvision.git
+cd sieansvision
 node scripts/platform.cjs install --python /usr/bin/python3.12 --data-dir "$HOME/.local/share/SIEANS/Vision" --features 2d,3d,industrial,camera,yolo
 node scripts/platform.cjs doctor --data-dir "$HOME/.local/share/SIEANS/Vision"
 node scripts/platform.cjs start --data-dir "$HOME/.local/share/SIEANS/Vision"

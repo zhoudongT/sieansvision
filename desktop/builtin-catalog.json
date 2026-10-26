@@ -1,0 +1,2700 @@
+{
+  "subflow": {
+    "name": "子流程调用",
+    "tag": "复用 · 独立作用域",
+    "glyph": "▣",
+    "defaults": {
+      "subflowId": "",
+      "arguments": {},
+      "stateMode": "reset"
+    },
+    "description": "调用工程内可复用子流程，返回所选输出节点的数据帧和结果。",
+    "fields": [],
+    "hint": "在子流程管理中定义流程。局部变量按调用点隔离，全局变量随主流程统一提交；失败可接错误分支。"
+  },
+  "loop": {
+    "name": "循环子流程",
+    "tag": "固定次数 · 条件停止",
+    "glyph": "↻",
+    "defaults": {
+      "subflowId": "",
+      "arguments": {},
+      "iterations": 1,
+      "mode": "count",
+      "frameMode": "previous",
+      "stateMode": "reset",
+      "stopField": "passed",
+      "stopValue": true
+    },
+    "description": "重复执行子流程，固定次数或输出满足开关条件后停止。",
+    "fields": [],
+    "hint": "最多 100 轮、4 层调用，整轮共 1000 次节点访问；达到上限未满足停止条件时报错。取消传递给内部节点。"
+  },
+  "plugin": {
+    "name": "算子插件",
+    "tag": "扩展 · Python",
+    "glyph": "▧",
+    "defaults": {},
+    "description": "使用服务器已安装的算子插件。参数和结果按插件定义显示。",
+    "fields": [],
+    "hint": "插件使用服务器账户执行；工程固定插件版本。输出可绑定全局、流程或模块变量。"
+  },
+  "yolo_segment": {
+    "name": "YOLO 实例分割",
+    "tag": "YOLOv8 / YOLO11 · 轮廓与面积",
+    "glyph": "AI",
+    "defaults": {
+      "device": "cpu",
+      "model": "yolo11n-seg.pt",
+      "confidence": 0.25,
+      "iou": 0.45,
+      "imageSize": 640,
+      "maxDetections": 50,
+      "minArea": 1,
+      "contourTolerance": 0.5,
+      "overlayAlpha": 0.35,
+      "output": "overlay"
+    },
+    "description": "使用本地分割模型逐个提取目标掩膜，返回类别、置信度、轮廓、像素面积和中心。可输出二值掩膜继续进行几何检测。",
+    "fields": [
+      [
+        "device",
+        "计算设备",
+        [
+          "cpu",
+          "auto",
+          "cuda:0"
+        ]
+      ],
+      [
+        "model",
+        "分割模型文件名",
+        "text"
+      ],
+      [
+        "confidence",
+        "最低置信度",
+        0,
+        1,
+        "any"
+      ],
+      [
+        "iou",
+        "NMS IoU 阈值",
+        0,
+        1,
+        "any"
+      ],
+      [
+        "imageSize",
+        "推理尺寸",
+        32,
+        1280,
+        32
+      ],
+      [
+        "maxDetections",
+        "最大目标数",
+        1,
+        100
+      ],
+      [
+        "minArea",
+        "最小掩膜面积 (px²)",
+        1,
+        16000000
+      ],
+      [
+        "contourTolerance",
+        "轮廓简化容差 (px)",
+        0,
+        10,
+        "any"
+      ],
+      [
+        "output",
+        "输出图像",
+        [
+          "overlay",
+          "mask"
+        ]
+      ],
+      [
+        "overlayAlpha",
+        "叠加透明度",
+        0,
+        1,
+        "any"
+      ]
+    ],
+    "hint": "仅使用本地可信的分割 .pt 权重，不自动下载。计算设备可选择 CPU、自动或可用 GPU。面积保留空洞，重叠实例的面积和可能大于并集面积；轮廓简化不改变掩膜面积。通过类别编号表筛选，通用 COCO 模型不能代替工业缺陷模型。"
+  },
+  "cloud_filter": {
+    "name": "点云滤波",
+    "tag": "3D · 裁剪 / 降采样 / 去噪",
+    "glyph": "▦",
+    "defaults": {
+      "method": "voxel",
+      "voxelSize": 1
+    },
+    "description": "处理点云并传给下游。所有距离参数使用输入点云的单位。",
+    "fields": [
+      [
+        "method",
+        "处理方式",
+        [
+          "voxel",
+          "crop",
+          "statistical",
+          "radius"
+        ]
+      ],
+      [
+        "voxelSize",
+        "体素边长",
+        0.000001,
+        1000000,
+        0.1
+      ],
+      [
+        "neighbors",
+        "统计邻域点数",
+        2,
+        200
+      ],
+      [
+        "stdRatio",
+        "标准差倍数",
+        0.01,
+        100,
+        0.1
+      ],
+      [
+        "radius",
+        "邻域半径",
+        0.000001,
+        1000000,
+        0.1
+      ],
+      [
+        "minPoints",
+        "最少邻域点数",
+        1,
+        1000
+      ]
+    ],
+    "hint": "裁剪时通过最小坐标、最大坐标表设置三轴边界。voxel：体素降采样；statistical：统计去噪；radius：半径去噪。"
+  },
+  "cloud_plane": {
+    "name": "3D 平面分割",
+    "tag": "Open3D · RANSAC",
+    "glyph": "▱",
+    "defaults": {
+      "distanceThreshold": 0.5,
+      "iterations": 500,
+      "output": "inliers"
+    },
+    "description": "拟合主平面，输出法向、平面方程与残差，可提取平面内点或移除背景平面。",
+    "fields": [
+      [
+        "distanceThreshold",
+        "距离阈值",
+        0.000001,
+        1000000,
+        0.1
+      ],
+      [
+        "iterations",
+        "迭代次数",
+        10,
+        10000
+      ],
+      [
+        "output",
+        "输出点云",
+        [
+          "inliers",
+          "outliers",
+          "all"
+        ]
+      ]
+    ],
+    "hint": "inliers：平面内点；outliers：平面外点；all：保留全部。方程 ax+by+cz+d=0；法向最大绝对分量朝正方向。"
+  },
+  "cloud_cluster": {
+    "name": "3D 目标聚类",
+    "tag": "DBSCAN · 数量 / 尺寸",
+    "glyph": "◈",
+    "defaults": {
+      "eps": 3,
+      "minPoints": 8
+    },
+    "description": "按空间密度分组，输出每个目标的点数与轴对齐尺寸，不推断物体类别。",
+    "fields": [
+      [
+        "eps",
+        "邻域半径",
+        0.000001,
+        1000000,
+        0.1
+      ],
+      [
+        "minPoints",
+        "最小邻域点数",
+        2,
+        1000
+      ]
+    ],
+    "hint": "最多 3 万点、100 个聚类，请先滤波。不同聚类着不同颜色，灰色为噪声。"
+  },
+  "cloud_measure": {
+    "name": "3D 尺寸测量",
+    "tag": "X / Y / Z · 包围盒",
+    "glyph": "↗",
+    "defaults": {},
+    "description": "测量当前坐标系下的轴对齐包围盒，输出三轴尺寸、中心和边界。",
+    "fields": [],
+    "hint": "坐标系旋转会影响尺寸。boundingBoxVolume 仅为包围盒体积，不等于实际物体体积。"
+  },
+  "cloud_height": {
+    "name": "高度与体积估计",
+    "tag": "3D · 基准高度 / 表面网格",
+    "glyph": "▤",
+    "defaults": {
+      "baselineZ": 0,
+      "cellSize": 1
+    },
+    "description": "相对水平基准 Z 测高度，按 XY 网格最高表面估计体积。适合单值高度表面。",
+    "fields": [
+      [
+        "baselineZ",
+        "基准 Z",
+        -1000000000,
+        1000000000,
+        0.1
+      ],
+      [
+        "cellSize",
+        "网格边长",
+        0.000001,
+        1000000,
+        0.1
+      ]
+    ],
+    "hint": "缺失格不补齐，负高度归零；每个已观测网格计一个完整单元。遮挡、边缘和网格大小会影响估计，不是封闭实体真实体积。"
+  },
+  "cloud_register": {
+    "name": "3D 点云配准",
+    "tag": "全局定位 · ICP 精配准",
+    "glyph": "⌖",
+    "defaults": {
+      "method": "icp",
+      "maxDistance": 5,
+      "iterations": 50
+    },
+    "description": "将输入点云对齐参考坐标系。初始姿态未知时使用全局定位；已接近参考姿态时使用局部 ICP。",
+    "fields": [
+      [
+        "method",
+        "配准方式",
+        [
+          "icp",
+          "global"
+        ]
+      ],
+      [
+        "voxelSize",
+        "特征体素边长",
+        0.000001,
+        1000000,
+        "any"
+      ],
+      [
+        "ransacIterations",
+        "粗配准最大尝试次数",
+        100,
+        100000
+      ],
+      [
+        "ransacConfidence",
+        "粗配准停止概率",
+        0.9,
+        0.999999,
+        "any"
+      ],
+      [
+        "maxDistance",
+        "最大对应距离",
+        0.000001,
+        1000000,
+        "any"
+      ],
+      [
+        "iterations",
+        "精配准迭代次数",
+        1,
+        500
+      ],
+      [
+        "minFitness",
+        "输入最低覆盖比例",
+        0,
+        1,
+        "any"
+      ],
+      [
+        "minTargetFitness",
+        "参考最低覆盖比例",
+        0,
+        1,
+        "any"
+      ],
+      [
+        "maxRmsError",
+        "最大均方根误差",
+        0.000001,
+        1000000,
+        "any"
+      ]
+    ],
+    "hint": "先上传同单位的参考点云。全局定位使用 FPFH 特征和 RANSAC，再进行精配准；质量不达标保留原点云、返回未找到。后接条件判断的“是否找到”字段，可阻止下游测量。覆盖率和停止概率均不是识别置信度；对称件可能有多解。"
+  },
+  "modbus_wait": {
+    "name": "等待 PLC 信号",
+    "tag": "Modbus · 条件 / 边沿触发",
+    "glyph": "↯",
+    "defaults": {
+      "transport": "simulator",
+      "area": "holding",
+      "address": 0,
+      "dataType": "uint16",
+      "byteOrder": "big",
+      "wordOrder": "big",
+      "timeoutMs": 1500,
+      "deviceId": 1,
+      "host": "127.0.0.1",
+      "port": 502,
+      "serialPort": "",
+      "baudrate": 19200,
+      "parity": "N",
+      "stopbits": 1,
+      "comparison": "eq",
+      "expectedValue": 123,
+      "triggerMode": "level",
+      "pollIntervalMs": 100,
+      "stableMs": 0,
+      "waitTimeoutMs": 10000,
+      "onTimeout": "error"
+    },
+    "description": "使用一个连接轮询单个 PLC 值，满足条件后执行下游。边沿模式每次启动重新建立基线；等待中可停止。",
+    "fields": [
+      [
+        "transport",
+        "连接方式",
+        [
+          "simulator",
+          "tcp",
+          "rtu"
+        ]
+      ],
+      [
+        "host",
+        "设备 IP / 主机名",
+        "text"
+      ],
+      [
+        "port",
+        "TCP 端口",
+        1,
+        65535
+      ],
+      [
+        "serialPort",
+        "串口路径",
+        "text"
+      ],
+      [
+        "baudrate",
+        "波特率",
+        300,
+        4000000
+      ],
+      [
+        "parity",
+        "校验位",
+        [
+          "N",
+          "E",
+          "O"
+        ]
+      ],
+      [
+        "stopbits",
+        "停止位",
+        1,
+        2
+      ],
+      [
+        "deviceId",
+        "设备站号",
+        0,
+        255
+      ],
+      [
+        "area",
+        "数据区域",
+        [
+          "holding",
+          "input",
+          "coils",
+          "discrete"
+        ]
+      ],
+      [
+        "address",
+        "起始地址（从 0 开始）",
+        0,
+        65535
+      ],
+      [
+        "dataType",
+        "数据类型",
+        [
+          "uint16",
+          "int16",
+          "uint32",
+          "int32",
+          "float32",
+          "float64"
+        ]
+      ],
+      [
+        "byteOrder",
+        "字节序",
+        [
+          "big",
+          "little"
+        ]
+      ],
+      [
+        "wordOrder",
+        "字序",
+        [
+          "big",
+          "little"
+        ]
+      ],
+      [
+        "timeoutMs",
+        "超时 (ms)",
+        100,
+        10000,
+        100
+      ],
+      [
+        "comparison",
+        "信号条件",
+        [
+          "eq",
+          "ne",
+          "gt",
+          "gte",
+          "lt",
+          "lte",
+          "is_true",
+          "is_false"
+        ]
+      ],
+      [
+        "expectedValue",
+        "比较值",
+        -1000000000000000,
+        1000000000000000,
+        0.01
+      ],
+      [
+        "triggerMode",
+        "触发方式",
+        [
+          "level",
+          "rising",
+          "falling"
+        ]
+      ],
+      [
+        "pollIntervalMs",
+        "采样间隔 (ms)",
+        20,
+        10000
+      ],
+      [
+        "stableMs",
+        "连续采样稳定时间 (ms)",
+        0,
+        60000
+      ],
+      [
+        "waitTimeoutMs",
+        "等待超时 (ms)",
+        100,
+        600000
+      ],
+      [
+        "onTimeout",
+        "超时处理",
+        [
+          "error",
+          "continue"
+        ]
+      ]
+    ],
+    "hint": "轮询可能漏掉两次采样之间的短脉冲。稳定时间只验证连续采样结果。超时继续时，应使用条件节点检查 triggered 再决定是否检测；通信错误始终停止。读取后间隔指定时间再采样；超时含连接与读取，正在进行的通信结束后返回，不接受超时后信号。"
+  },
+  "modbus_read": {
+    "name": "Modbus 读取",
+    "tag": "TCP / RTU · 寄存器 / 线圈",
+    "glyph": "R",
+    "defaults": {
+      "transport": "simulator",
+      "area": "holding",
+      "address": 0,
+      "count": 1,
+      "dataType": "uint16",
+      "byteOrder": "big",
+      "wordOrder": "big",
+      "timeoutMs": 1500,
+      "deviceId": 1,
+      "host": "127.0.0.1",
+      "port": 502,
+      "serialPort": "",
+      "baudrate": 19200,
+      "parity": "N",
+      "stopbits": 1
+    },
+    "description": "读取真实 Modbus TCP/RTU 设备，或本机模拟设备。count 是数据值个数，32 位/64 位占多个寄存器。",
+    "fields": [
+      [
+        "transport",
+        "连接方式",
+        [
+          "simulator",
+          "tcp",
+          "rtu"
+        ]
+      ],
+      [
+        "host",
+        "设备 IP / 主机名",
+        "text"
+      ],
+      [
+        "port",
+        "TCP 端口",
+        1,
+        65535
+      ],
+      [
+        "serialPort",
+        "串口路径",
+        "text"
+      ],
+      [
+        "baudrate",
+        "波特率",
+        300,
+        4000000
+      ],
+      [
+        "parity",
+        "校验位",
+        [
+          "N",
+          "E",
+          "O"
+        ]
+      ],
+      [
+        "stopbits",
+        "停止位",
+        1,
+        2
+      ],
+      [
+        "deviceId",
+        "设备站号",
+        0,
+        255
+      ],
+      [
+        "area",
+        "数据区域",
+        [
+          "holding",
+          "input",
+          "coils",
+          "discrete"
+        ]
+      ],
+      [
+        "address",
+        "起始地址（从 0 开始）",
+        0,
+        65535
+      ],
+      [
+        "dataType",
+        "数据类型",
+        [
+          "uint16",
+          "int16",
+          "uint32",
+          "int32",
+          "float32",
+          "float64"
+        ]
+      ],
+      [
+        "byteOrder",
+        "字节序",
+        [
+          "big",
+          "little"
+        ]
+      ],
+      [
+        "wordOrder",
+        "字序",
+        [
+          "big",
+          "little"
+        ]
+      ],
+      [
+        "timeoutMs",
+        "超时 (ms)",
+        100,
+        10000,
+        100
+      ],
+      [
+        "count",
+        "读取值数量",
+        1,
+        2000
+      ]
+    ],
+    "hint": "使用协议零起始地址，不能把手册 40001 直接当地址 0。原始寄存器在 registers；解码结果在 values / value，可绑定三级变量。当前每次操作建立并关闭连接。"
+  },
+  "modbus_write": {
+    "name": "Modbus 写入",
+    "tag": "TCP / RTU · 检测结果输出",
+    "glyph": "W",
+    "defaults": {
+      "transport": "simulator",
+      "area": "holding",
+      "address": 10,
+      "dataType": "uint16",
+      "byteOrder": "big",
+      "wordOrder": "big",
+      "value": 0,
+      "timeoutMs": 1500,
+      "deviceId": 1,
+      "host": "127.0.0.1",
+      "port": 502,
+      "serialPort": "",
+      "baudrate": 19200,
+      "parity": "N",
+      "stopbits": 1
+    },
+    "description": "写入线圈或保持寄存器。可输入数值/数组，或绑定检测结果与变量。外部设备写入不随流程失败回滚。",
+    "fields": [
+      [
+        "transport",
+        "连接方式",
+        [
+          "simulator",
+          "tcp",
+          "rtu"
+        ]
+      ],
+      [
+        "host",
+        "设备 IP / 主机名",
+        "text"
+      ],
+      [
+        "port",
+        "TCP 端口",
+        1,
+        65535
+      ],
+      [
+        "serialPort",
+        "串口路径",
+        "text"
+      ],
+      [
+        "baudrate",
+        "波特率",
+        300,
+        4000000
+      ],
+      [
+        "parity",
+        "校验位",
+        [
+          "N",
+          "E",
+          "O"
+        ]
+      ],
+      [
+        "stopbits",
+        "停止位",
+        1,
+        2
+      ],
+      [
+        "deviceId",
+        "设备站号",
+        0,
+        255
+      ],
+      [
+        "area",
+        "数据区域",
+        [
+          "holding",
+          "input",
+          "coils",
+          "discrete"
+        ]
+      ],
+      [
+        "address",
+        "起始地址（从 0 开始）",
+        0,
+        65535
+      ],
+      [
+        "dataType",
+        "数据类型",
+        [
+          "uint16",
+          "int16",
+          "uint32",
+          "int32",
+          "float32",
+          "float64"
+        ]
+      ],
+      [
+        "byteOrder",
+        "字节序",
+        [
+          "big",
+          "little"
+        ]
+      ],
+      [
+        "wordOrder",
+        "字序",
+        [
+          "big",
+          "little"
+        ]
+      ],
+      [
+        "timeoutMs",
+        "超时 (ms)",
+        100,
+        10000,
+        100
+      ]
+    ],
+    "hint": "不自动重试写入。通信中断时设备可能已收到请求，应读取状态确认；设备应答仅表示协议确认，不代表物理动作已完成。线圈使用 true / false。"
+  },
+  "s7_read": {
+    "name": "S7 读取",
+    "tag": "西门子 · DB / M / I / Q",
+    "glyph": "S7",
+    "defaults": {
+      "connection": "simulator",
+      "host": "127.0.0.1",
+      "port": 102,
+      "rack": 0,
+      "slot": 1,
+      "area": "db",
+      "dbNumber": 1,
+      "byteOffset": 0,
+      "bitOffset": 0,
+      "dataType": "uint16",
+      "timeoutMs": 3000,
+      "count": 1
+    },
+    "fields": [
+      [
+        "connection",
+        "连接方式",
+        [
+          "simulator",
+          "plc"
+        ]
+      ],
+      [
+        "host",
+        "设备 IP / 主机名",
+        "text"
+      ],
+      [
+        "port",
+        "TCP 端口",
+        1,
+        65535
+      ],
+      [
+        "rack",
+        "机架号",
+        0,
+        7
+      ],
+      [
+        "slot",
+        "槽号",
+        0,
+        31
+      ],
+      [
+        "area",
+        "数据区域",
+        [
+          "db",
+          "mk",
+          "pe",
+          "pa"
+        ]
+      ],
+      [
+        "dbNumber",
+        "数据块编号",
+        1,
+        65535
+      ],
+      [
+        "byteOffset",
+        "字节偏移（从 0 开始）",
+        0,
+        2097151
+      ],
+      [
+        "dataType",
+        "数据类型",
+        [
+          "bool",
+          "uint8",
+          "int8",
+          "uint16",
+          "int16",
+          "uint32",
+          "int32",
+          "float32",
+          "float64"
+        ]
+      ],
+      [
+        "bitOffset",
+        "位偏移",
+        0,
+        7
+      ],
+      [
+        "timeoutMs",
+        "事务超时 (ms)",
+        100,
+        10000,
+        100
+      ],
+      [
+        "count",
+        "读取值数量",
+        1,
+        200
+      ]
+    ],
+    "description": "通过经典 S7 协议读取 PLC 或本机模拟设备。数值采用西门子大端布局；BOOL 访问单个位。",
+    "hint": "单次最多 200 字节。DB1.DBW10：DB 编号 1、字节偏移 10、类型 uint16。1200/1500 需具备 PUT/GET 访问和非优化数据块；不自动改变 PLC 配置。"
+  },
+  "s7_write": {
+    "name": "S7 写入",
+    "tag": "西门子 · 检测结果输出",
+    "glyph": "S7",
+    "defaults": {
+      "connection": "simulator",
+      "host": "127.0.0.1",
+      "port": 102,
+      "rack": 0,
+      "slot": 1,
+      "area": "db",
+      "dbNumber": 1,
+      "byteOffset": 10,
+      "bitOffset": 0,
+      "dataType": "uint16",
+      "timeoutMs": 3000,
+      "value": 0
+    },
+    "fields": [
+      [
+        "connection",
+        "连接方式",
+        [
+          "simulator",
+          "plc"
+        ]
+      ],
+      [
+        "host",
+        "设备 IP / 主机名",
+        "text"
+      ],
+      [
+        "port",
+        "TCP 端口",
+        1,
+        65535
+      ],
+      [
+        "rack",
+        "机架号",
+        0,
+        7
+      ],
+      [
+        "slot",
+        "槽号",
+        0,
+        31
+      ],
+      [
+        "area",
+        "数据区域",
+        [
+          "db",
+          "mk",
+          "pe",
+          "pa"
+        ]
+      ],
+      [
+        "dbNumber",
+        "数据块编号",
+        1,
+        65535
+      ],
+      [
+        "byteOffset",
+        "字节偏移（从 0 开始）",
+        0,
+        2097151
+      ],
+      [
+        "dataType",
+        "数据类型",
+        [
+          "bool",
+          "uint8",
+          "int8",
+          "uint16",
+          "int16",
+          "uint32",
+          "int32",
+          "float32",
+          "float64"
+        ]
+      ],
+      [
+        "bitOffset",
+        "位偏移",
+        0,
+        7
+      ],
+      [
+        "timeoutMs",
+        "事务超时 (ms)",
+        100,
+        10000,
+        100
+      ]
+    ],
+    "description": "向 DB、M 或 Q 写入数值、数组或单个位。输入区 I 只读；BOOL 直接使用位写入，不覆盖相邻位。",
+    "hint": "写入不自动重试。应答丢失时状态可能未知，需读回确认；流程失败不会回滚设备写入。单次最多 200 字节；BOOL 值选择开关类型。"
+  },
+  "mqtt_publish": {
+    "name": "MQTT 发布",
+    "tag": "检测结果 · 消息输出",
+    "glyph": "MQ",
+    "defaults": {
+      "connection": "simulator",
+      "host": "127.0.0.1",
+      "port": 1883,
+      "security": "plain",
+      "topic": "sieans/inspection",
+      "encoding": "structured",
+      "qos": 1,
+      "timeoutMs": 5000,
+      "clientId": "",
+      "retain": true,
+      "value": {
+        "count": 0,
+        "passed": false
+      }
+    },
+    "fields": [
+      [
+        "connection",
+        "消息服务器",
+        [
+          "simulator",
+          "broker"
+        ]
+      ],
+      [
+        "host",
+        "服务器 IP / 主机名",
+        "text"
+      ],
+      [
+        "port",
+        "MQTT 端口",
+        1,
+        65535
+      ],
+      [
+        "security",
+        "连接安全",
+        [
+          "plain",
+          "tls"
+        ]
+      ],
+      [
+        "username",
+        "用户名（可选）",
+        "text"
+      ],
+      [
+        "passwordEnv",
+        "密码环境变量名",
+        "text"
+      ],
+      [
+        "caFile",
+        "CA 证书路径（可选）",
+        "text"
+      ],
+      [
+        "clientCertificate",
+        "客户端证书路径（可选）",
+        "text"
+      ],
+      [
+        "privateKey",
+        "客户端私钥路径",
+        "text"
+      ],
+      [
+        "keyPasswordEnv",
+        "私钥密码环境变量名",
+        "text"
+      ],
+      [
+        "clientId",
+        "客户端标识（空白自动生成）",
+        "text"
+      ],
+      [
+        "topic",
+        "消息主题",
+        "text"
+      ],
+      [
+        "encoding",
+        "消息内容格式",
+        [
+          "structured",
+          "text",
+          "bytes"
+        ]
+      ],
+      [
+        "qos",
+        "QoS 等级",
+        0,
+        2
+      ],
+      [
+        "timeoutMs",
+        "操作总超时 (ms)",
+        100,
+        60000,
+        100
+      ],
+      [
+        "retain",
+        "服务器保留最后一条消息",
+        "boolean"
+      ]
+    ],
+    "description": "将文本、结构化数据或字节数组发布到消息服务器。发送内容通过表格编辑或绑定变量和上游结果。",
+    "hint": "QoS 0 仅表示已发送；QoS 1/2 表示服务器协议应答，不代表下游设备已执行。发布不自动重试；流程失败或停止不能回滚已发布消息。保留消息为空文本/空字节数组时清除该主题保留值。"
+  },
+  "mqtt_receive": {
+    "name": "MQTT 接收",
+    "tag": "限时接收 · 主题筛选",
+    "glyph": "MQ",
+    "defaults": {
+      "connection": "simulator",
+      "host": "127.0.0.1",
+      "port": 1883,
+      "security": "plain",
+      "topic": "sieans/inspection",
+      "encoding": "structured",
+      "qos": 1,
+      "timeoutMs": 5000,
+      "clientId": "",
+      "acceptRetained": true
+    },
+    "fields": [
+      [
+        "connection",
+        "消息服务器",
+        [
+          "simulator",
+          "broker"
+        ]
+      ],
+      [
+        "host",
+        "服务器 IP / 主机名",
+        "text"
+      ],
+      [
+        "port",
+        "MQTT 端口",
+        1,
+        65535
+      ],
+      [
+        "security",
+        "连接安全",
+        [
+          "plain",
+          "tls"
+        ]
+      ],
+      [
+        "username",
+        "用户名（可选）",
+        "text"
+      ],
+      [
+        "passwordEnv",
+        "密码环境变量名",
+        "text"
+      ],
+      [
+        "caFile",
+        "CA 证书路径（可选）",
+        "text"
+      ],
+      [
+        "clientCertificate",
+        "客户端证书路径（可选）",
+        "text"
+      ],
+      [
+        "privateKey",
+        "客户端私钥路径",
+        "text"
+      ],
+      [
+        "keyPasswordEnv",
+        "私钥密码环境变量名",
+        "text"
+      ],
+      [
+        "clientId",
+        "客户端标识（空白自动生成）",
+        "text"
+      ],
+      [
+        "topic",
+        "消息主题",
+        "text"
+      ],
+      [
+        "encoding",
+        "消息内容格式",
+        [
+          "structured",
+          "text",
+          "bytes"
+        ]
+      ],
+      [
+        "qos",
+        "QoS 等级",
+        0,
+        2
+      ],
+      [
+        "timeoutMs",
+        "操作总超时 (ms)",
+        100,
+        60000,
+        100
+      ],
+      [
+        "acceptRetained",
+        "允许读取服务器保留消息",
+        "boolean"
+      ]
+    ],
+    "description": "订阅主题，在限定时间内接收一条消息后结束。实际主题、内容、QoS 和保留标记以结果表显示，内容可写入三级变量。",
+    "hint": "支持 + 单层与 # 多层通配符。关闭保留消息后只接收新消息。每次执行建立新连接，不自动重连；持续订阅与事件触发另行配置。"
+  },
+  "tcp_exchange": {
+    "name": "TCP 报文通信",
+    "tag": "请求应答 · 报文分帧",
+    "glyph": "⇄",
+    "defaults": {
+      "connection": "simulator",
+      "mode": "exchange",
+      "host": "127.0.0.1",
+      "port": 9000,
+      "encoding": "text",
+      "timeoutMs": 3000,
+      "maxBytes": 65536,
+      "value": "SIEANS 检测完成",
+      "txFraming": "crlf",
+      "rxFraming": "crlf",
+      "responseBytes": 8
+    },
+    "fields": [
+      [
+        "connection",
+        "通信设备",
+        [
+          "simulator",
+          "device"
+        ]
+      ],
+      [
+        "mode",
+        "通信方式",
+        [
+          "exchange",
+          "send",
+          "receive"
+        ]
+      ],
+      [
+        "host",
+        "远端 IP / 主机名",
+        "text"
+      ],
+      [
+        "port",
+        "远端端口",
+        1,
+        65535
+      ],
+      [
+        "encoding",
+        "消息内容格式",
+        [
+          "text",
+          "structured",
+          "bytes"
+        ]
+      ],
+      [
+        "timeoutMs",
+        "操作总超时 (ms)",
+        100,
+        60000,
+        100
+      ],
+      [
+        "maxBytes",
+        "接收字节上限",
+        1,
+        65536
+      ],
+      [
+        "txFraming",
+        "发送分帧方式",
+        [
+          "raw",
+          "lf",
+          "crlf",
+          "nul",
+          "length16be",
+          "length16le",
+          "length32be",
+          "length32le"
+        ]
+      ],
+      [
+        "rxFraming",
+        "接收完成条件",
+        [
+          "lf",
+          "crlf",
+          "nul",
+          "length16be",
+          "length16le",
+          "length32be",
+          "length32le",
+          "fixed",
+          "eof"
+        ]
+      ],
+      [
+        "responseBytes",
+        "应答字节数",
+        1,
+        65536
+      ]
+    ],
+    "description": "连接设备 TCP 服务，发送报文或等待一帧数据。自动拼接分段到达的数据，按所选规则识别完整报文。",
+    "hint": "每次执行创建并关闭连接；仅接收仍主动连接远端服务。长度前缀不计自身，结果移除前缀/结束符；定长按字节数。仅返回首帧，已收到的尾随字节计数显示在结果中。无自动重试，发送完成不代表设备已执行。"
+  },
+  "udp_exchange": {
+    "name": "UDP 报文通信",
+    "tag": "单个数据报 · 对端筛选",
+    "glyph": "⇄",
+    "defaults": {
+      "connection": "simulator",
+      "mode": "exchange",
+      "host": "127.0.0.1",
+      "port": 9000,
+      "encoding": "text",
+      "timeoutMs": 3000,
+      "maxBytes": 65536,
+      "value": "SIEANS 检测完成",
+      "localAddress": "",
+      "localPort": 0
+    },
+    "fields": [
+      [
+        "connection",
+        "通信设备",
+        [
+          "simulator",
+          "device"
+        ]
+      ],
+      [
+        "mode",
+        "通信方式",
+        [
+          "exchange",
+          "send",
+          "receive"
+        ]
+      ],
+      [
+        "host",
+        "远端 IP / 主机名",
+        "text"
+      ],
+      [
+        "port",
+        "远端端口",
+        1,
+        65535
+      ],
+      [
+        "encoding",
+        "消息内容格式",
+        [
+          "text",
+          "structured",
+          "bytes"
+        ]
+      ],
+      [
+        "timeoutMs",
+        "操作总超时 (ms)",
+        100,
+        60000,
+        100
+      ],
+      [
+        "maxBytes",
+        "接收字节上限",
+        1,
+        65536
+      ],
+      [
+        "localAddress",
+        "本地 IP（空白自动选择）",
+        "text"
+      ],
+      [
+        "localPort",
+        "本地 UDP 端口（0 自动）",
+        0,
+        65535
+      ]
+    ],
+    "description": "发送一个 UDP 数据报，或接收来自指定设备的一条数据报。仅接收模式需要填写本地端口，其他模式可自动分配。",
+    "hint": "仅接收所配置远端 IP 和端口的数据；发送上限 65507 字节。UDP 不保证送达、顺序或不重复；请求应答建议在内容中携带事务编号。此节点不自动重试，不支持广播/组播。"
+  },
+  "serial_exchange": {
+    "name": "串口报文通信",
+    "tag": "扫码枪 · 测量仪 · 自定义报文",
+    "glyph": "⇄",
+    "defaults": {
+      "connection": "simulator",
+      "mode": "exchange",
+      "serialPort": "",
+      "baudrate": 115200,
+      "dataBits": 8,
+      "parity": "N",
+      "stopbits": 1,
+      "flowControl": "none",
+      "rts": true,
+      "dtr": true,
+      "clearInput": false,
+      "encoding": "text",
+      "responseEncoding": "text",
+      "timeoutMs": 3000,
+      "maxBytes": 65536,
+      "txFraming": "crlf",
+      "rxFraming": "crlf",
+      "responseBytes": 8,
+      "value": "SIEANS-SERIAL-00042"
+    },
+    "fields": [
+      [
+        "connection",
+        "串口连接",
+        [
+          "simulator",
+          "device"
+        ]
+      ],
+      [
+        "mode",
+        "通信方式",
+        [
+          "exchange",
+          "send",
+          "receive"
+        ]
+      ],
+      [
+        "serialPort",
+        "服务器串口路径",
+        "text"
+      ],
+      [
+        "baudrate",
+        "波特率",
+        300,
+        4000000
+      ],
+      [
+        "dataBits",
+        "数据位",
+        5,
+        8
+      ],
+      [
+        "parity",
+        "校验位",
+        [
+          "N",
+          "E",
+          "O",
+          "M",
+          "S"
+        ]
+      ],
+      [
+        "stopbits",
+        "停止位",
+        1,
+        2,
+        0.5
+      ],
+      [
+        "flowControl",
+        "流量控制",
+        [
+          "none",
+          "rtscts",
+          "xonxoff",
+          "dsrdtr"
+        ]
+      ],
+      [
+        "rts",
+        "打开时 RTS 状态",
+        "boolean"
+      ],
+      [
+        "dtr",
+        "打开时 DTR 状态",
+        "boolean"
+      ],
+      [
+        "encoding",
+        "发送内容格式",
+        [
+          "text",
+          "structured",
+          "bytes"
+        ]
+      ],
+      [
+        "responseEncoding",
+        "接收内容格式",
+        [
+          "text",
+          "structured",
+          "bytes"
+        ]
+      ],
+      [
+        "timeoutMs",
+        "通信超时 (ms)",
+        100,
+        10000,
+        100
+      ],
+      [
+        "maxBytes",
+        "接收字节上限",
+        1,
+        65536
+      ],
+      [
+        "clearInput",
+        "发送前丢弃已有接收数据",
+        "boolean"
+      ],
+      [
+        "txFraming",
+        "发送分帧方式",
+        [
+          "raw",
+          "lf",
+          "crlf",
+          "nul",
+          "length16be",
+          "length16le",
+          "length32be",
+          "length32le"
+        ]
+      ],
+      [
+        "rxFraming",
+        "接收完成条件",
+        [
+          "lf",
+          "crlf",
+          "nul",
+          "length16be",
+          "length16le",
+          "length32be",
+          "length32le",
+          "fixed"
+        ]
+      ],
+      [
+        "responseBytes",
+        "应答字节数",
+        1,
+        65536
+      ]
+    ],
+    "description": "通过服务器上的串口与设备收发一帧报文。支持文本、结构化字段和字节表，以及结束符、长度头和定长分帧。回环模拟使用 pySerial 软件回环，不访问真实端口。",
+    "hint": "在工业通信面板刷新串口表，可选择到本模块。每次执行打开/关闭端口，与 Modbus RTU 互斥；打开端口可能改变 RTS/DTR。默认不丢弃已有输入。回环模式固定 115200、8N1、无流控，报文含头部最多 4096 字节。仅发送不表示设备已执行；无自动重试。"
+  },
+  "opcua_wait": {
+    "name": "等待 OPC UA 信号",
+    "glyph": "UA",
+    "tag": "订阅 · 条件 / 边沿触发",
+    "defaults": {
+      "connection": "simulator",
+      "endpoint": "opc.tcp://127.0.0.1:4840/",
+      "security": "None",
+      "applicationUri": "urn:sieans:vision:client",
+      "nodeId": "ns=2;s=SIEANS.Count",
+      "timeoutMs": 3000,
+      "comparison": "eq",
+      "expectedValue": 0,
+      "triggerMode": "level",
+      "publishingIntervalMs": 100,
+      "waitTimeoutMs": 10000,
+      "onTimeout": "error"
+    },
+    "fields": [
+      [
+        "connection",
+        "连接目标",
+        [
+          "simulator",
+          "server"
+        ]
+      ],
+      [
+        "endpoint",
+        "服务器端点",
+        "text"
+      ],
+      [
+        "security",
+        "安全策略",
+        [
+          "None",
+          "Basic256Sha256"
+        ]
+      ],
+      [
+        "applicationUri",
+        "客户端应用 URI",
+        "text"
+      ],
+      [
+        "clientCertificate",
+        "客户端证书路径",
+        "text"
+      ],
+      [
+        "privateKey",
+        "客户端私钥路径",
+        "text"
+      ],
+      [
+        "serverCertificate",
+        "已信任服务器证书路径",
+        "text"
+      ],
+      [
+        "username",
+        "用户名（留空为匿名）",
+        "text"
+      ],
+      [
+        "passwordEnv",
+        "密码环境变量名（SIEANS_OPCUA_ 前缀）",
+        "text"
+      ],
+      [
+        "namespaceUri",
+        "命名空间 URI（可选）",
+        "text"
+      ],
+      [
+        "nodeId",
+        "节点地址",
+        "text"
+      ],
+      [
+        "timeoutMs",
+        "单次通信超时 (ms)",
+        100,
+        10000,
+        100
+      ],
+      [
+        "comparison",
+        "信号条件",
+        [
+          "eq",
+          "ne",
+          "gt",
+          "gte",
+          "lt",
+          "lte",
+          "is_true",
+          "is_false"
+        ]
+      ],
+      [
+        "expectedValue",
+        "比较值",
+        -1000000000000000,
+        1000000000000000,
+        "any"
+      ],
+      [
+        "triggerMode",
+        "触发方式",
+        [
+          "level",
+          "rising",
+          "falling"
+        ]
+      ],
+      [
+        "publishingIntervalMs",
+        "请求发布/采样间隔 (ms)",
+        20,
+        10000
+      ],
+      [
+        "waitTimeoutMs",
+        "等待超时 (ms)",
+        100,
+        600000
+      ],
+      [
+        "onTimeout",
+        "超时处理",
+        [
+          "error",
+          "continue"
+        ]
+      ]
+    ],
+    "description": "单次有界订阅一个数值或开关节点，收到满足条件的通知后执行下游。初始值仅在条件成立模式立即触发，边沿模式先建立基线。",
+    "hint": "每次调用重新建立基线，不缓存跨轮事件。服务端可能修订采样/发布间隔，不能保证捕获短脉冲。只接受良好质量；通知溢出、断线、类型或协议错误停止，不作为条件超时继续。等待占用本平台同一端点。"
+  },
+  "opcua_browse": {
+    "name": "OPC UA 浏览",
+    "glyph": "UA",
+    "tag": "设备 · 地址空间",
+    "defaults": {
+      "connection": "simulator",
+      "endpoint": "opc.tcp://127.0.0.1:4840/",
+      "security": "None",
+      "applicationUri": "urn:sieans:vision:client",
+      "nodeId": "ns=2;s=SIEANS",
+      "timeoutMs": 3000,
+      "browseLimit": 100
+    },
+    "fields": [
+      [
+        "connection",
+        "连接目标",
+        [
+          "simulator",
+          "server"
+        ]
+      ],
+      [
+        "endpoint",
+        "服务器端点",
+        "text"
+      ],
+      [
+        "security",
+        "安全策略",
+        [
+          "None",
+          "Basic256Sha256"
+        ]
+      ],
+      [
+        "applicationUri",
+        "客户端应用 URI",
+        "text"
+      ],
+      [
+        "clientCertificate",
+        "客户端证书路径",
+        "text"
+      ],
+      [
+        "privateKey",
+        "客户端私钥路径",
+        "text"
+      ],
+      [
+        "serverCertificate",
+        "已信任服务器证书路径",
+        "text"
+      ],
+      [
+        "username",
+        "用户名（留空为匿名）",
+        "text"
+      ],
+      [
+        "passwordEnv",
+        "密码环境变量名（SIEANS_OPCUA_ 前缀）",
+        "text"
+      ],
+      [
+        "namespaceUri",
+        "命名空间 URI（可选）",
+        "text"
+      ],
+      [
+        "nodeId",
+        "节点地址",
+        "text"
+      ],
+      [
+        "timeoutMs",
+        "总操作超时 (ms)",
+        100,
+        10000,
+        100
+      ],
+      [
+        "browseLimit",
+        "单层浏览上限",
+        1,
+        500
+      ]
+    ],
+    "description": "浏览节点下的层级引用，输出名称、节点地址、类型及命名空间。",
+    "hint": "节点浏览器可逐层进入并选用节点。每次建立独立会话；结果超过上限会标记截断，不代表已列出全部节点。"
+  },
+  "opcua_read": {
+    "name": "OPC UA 读取",
+    "glyph": "UA",
+    "tag": "状态码 · 时间戳 · 变量",
+    "defaults": {
+      "connection": "simulator",
+      "endpoint": "opc.tcp://127.0.0.1:4840/",
+      "security": "None",
+      "applicationUri": "urn:sieans:vision:client",
+      "nodeId": "ns=2;s=SIEANS.Count",
+      "timeoutMs": 3000,
+      "requireGood": true
+    },
+    "fields": [
+      [
+        "connection",
+        "连接目标",
+        [
+          "simulator",
+          "server"
+        ]
+      ],
+      [
+        "endpoint",
+        "服务器端点",
+        "text"
+      ],
+      [
+        "security",
+        "安全策略",
+        [
+          "None",
+          "Basic256Sha256"
+        ]
+      ],
+      [
+        "applicationUri",
+        "客户端应用 URI",
+        "text"
+      ],
+      [
+        "clientCertificate",
+        "客户端证书路径",
+        "text"
+      ],
+      [
+        "privateKey",
+        "客户端私钥路径",
+        "text"
+      ],
+      [
+        "serverCertificate",
+        "已信任服务器证书路径",
+        "text"
+      ],
+      [
+        "username",
+        "用户名（留空为匿名）",
+        "text"
+      ],
+      [
+        "passwordEnv",
+        "密码环境变量名（SIEANS_OPCUA_ 前缀）",
+        "text"
+      ],
+      [
+        "namespaceUri",
+        "命名空间 URI（可选）",
+        "text"
+      ],
+      [
+        "nodeId",
+        "节点地址",
+        "text"
+      ],
+      [
+        "timeoutMs",
+        "总操作超时 (ms)",
+        100,
+        10000,
+        100
+      ],
+      [
+        "requireGood",
+        "仅接受良好数据质量",
+        "boolean"
+      ]
+    ],
+    "description": "读取节点值、类型、质量和源端/服务器时间戳。结果可绑定三级变量。",
+    "hint": "64 位整数以十进制文本返回，避免精度丢失；数组最多 1000 项。当前按流程单次读取，不是持续订阅。"
+  },
+  "opcua_write": {
+    "name": "OPC UA 写入",
+    "glyph": "UA",
+    "tag": "带类型写入 · 检测结果",
+    "defaults": {
+      "connection": "simulator",
+      "endpoint": "opc.tcp://127.0.0.1:4840/",
+      "security": "None",
+      "applicationUri": "urn:sieans:vision:client",
+      "nodeId": "ns=2;s=SIEANS.Count",
+      "timeoutMs": 3000,
+      "dataType": "UInt32",
+      "value": 0
+    },
+    "fields": [
+      [
+        "connection",
+        "连接目标",
+        [
+          "simulator",
+          "server"
+        ]
+      ],
+      [
+        "endpoint",
+        "服务器端点",
+        "text"
+      ],
+      [
+        "security",
+        "安全策略",
+        [
+          "None",
+          "Basic256Sha256"
+        ]
+      ],
+      [
+        "applicationUri",
+        "客户端应用 URI",
+        "text"
+      ],
+      [
+        "clientCertificate",
+        "客户端证书路径",
+        "text"
+      ],
+      [
+        "privateKey",
+        "客户端私钥路径",
+        "text"
+      ],
+      [
+        "serverCertificate",
+        "已信任服务器证书路径",
+        "text"
+      ],
+      [
+        "username",
+        "用户名（留空为匿名）",
+        "text"
+      ],
+      [
+        "passwordEnv",
+        "密码环境变量名（SIEANS_OPCUA_ 前缀）",
+        "text"
+      ],
+      [
+        "namespaceUri",
+        "命名空间 URI（可选）",
+        "text"
+      ],
+      [
+        "nodeId",
+        "节点地址",
+        "text"
+      ],
+      [
+        "timeoutMs",
+        "总操作超时 (ms)",
+        100,
+        10000,
+        100
+      ],
+      [
+        "dataType",
+        "节点值类型",
+        [
+          "Boolean",
+          "SByte",
+          "Byte",
+          "Int16",
+          "UInt16",
+          "Int32",
+          "UInt32",
+          "Int64",
+          "UInt64",
+          "Float",
+          "Double",
+          "String",
+          "DateTime",
+          "Guid",
+          "ByteString"
+        ]
+      ]
+    ],
+    "description": "按指定 OPC UA 类型写入标量或一维数组。请选择与服务端节点一致的类型。",
+    "hint": "Boolean 使用开关；Int64/UInt64 大整数使用十进制文本；DateTime 使用带时区日期文本，ByteString 使用 Base64 文本。写入不重试，外部动作不会回滚。"
+  },
+  "camera_capture": {
+    "name": "相机采集",
+    "glyph": "▣",
+    "tag": "USB · GenTL · 软/硬触发",
+    "defaults": {
+      "driver": "simulator",
+      "deviceId": "synthetic-parts",
+      "trigger": "freerun",
+      "timeoutMs": 5000
+    },
+    "description": "单帧模式打开设备、采集后释放；连续会话模式复用相机管理中已打开的连接。输出图像供下游算子使用；支持 USB UVC、厂商 CTI 的 GenTL 相机和 RealSense / 奥比中光深度相机。RGB-D 设备保留原始深度；GenTL 3D 模式输出毫米点云和亮度 / Z 坐标预览。",
+    "fields": [
+      [
+        "sessionId",
+        "相机连接引用（自动填写）",
+        "text"
+      ],
+      [
+        "framePolicy",
+        "缓存取帧策略",
+        [
+          "next",
+          "latest"
+        ]
+      ],
+      [
+        "maxAgeMs",
+        "最大缓存帧龄 (ms)",
+        1,
+        60000
+      ],
+      [
+        "driver",
+        "采集驱动",
+        [
+          "simulator",
+          "uvc",
+          "gentl",
+          "realsense",
+          "orbbec",
+          "rgbd_simulator",
+          "session"
+        ]
+      ],
+      [
+        "dataMode",
+        "GenTL 输出",
+        [
+          "image",
+          "pointcloud"
+        ]
+      ],
+      [
+        "configure3d",
+        "配置 Range 为标定 XYZ",
+        "boolean"
+      ],
+      [
+        "coordinateFormat",
+        "XYZ 像素格式",
+        [
+          "Coord3D_ABC32f",
+          "Coord3D_ABC32f_Planar",
+          "Coord3D_ABC16",
+          "Coord3D_ABC16_Planar"
+        ]
+      ],
+      [
+        "rangeComponent",
+        "XYZ 分量索引（-1 自动）",
+        -1,
+        63
+      ],
+      [
+        "intensityComponent",
+        "亮度分量索引（-1 关闭）",
+        -1,
+        63
+      ],
+      [
+        "confidenceComponent",
+        "置信度分量索引（-1 关闭）",
+        -1,
+        63
+      ],
+      [
+        "confidenceThreshold",
+        "置信度最低原始值",
+        1,
+        65535
+      ],
+      [
+        "alignedComponents",
+        "所选分量与 XYZ 逐像素对应",
+        "boolean"
+      ],
+      [
+        "providerId",
+        "GenTL 驱动编号",
+        "text"
+      ],
+      [
+        "deviceId",
+        "设备标识",
+        "text"
+      ],
+      [
+        "trigger",
+        "触发模式",
+        [
+          "freerun",
+          "software",
+          "external"
+        ]
+      ],
+      [
+        "triggerSource",
+        "触发线路",
+        [
+          "Line0",
+          "Line1",
+          "Line2",
+          "Line3"
+        ]
+      ],
+      [
+        "timeoutMs",
+        "采集超时 (ms)",
+        100,
+        30000
+      ],
+      [
+        "width",
+        "采集宽度",
+        16,
+        8192
+      ],
+      [
+        "height",
+        "采集高度",
+        16,
+        8192
+      ],
+      [
+        "fps",
+        "采集帧率",
+        1,
+        240,
+        0.1
+      ],
+      [
+        "warmupFrames",
+        "预热帧数",
+        0,
+        30
+      ],
+      [
+        "exposureTime",
+        "曝光时间 (µs)",
+        1,
+        10000000,
+        0.1
+      ],
+      [
+        "gain",
+        "相机增益",
+        0,
+        1000,
+        0.01
+      ],
+      [
+        "pixelFormat",
+        "相机像素格式",
+        "text"
+      ],
+      [
+        "discoverNetwork",
+        "发现 Orbbec 网络设备",
+        "boolean"
+      ],
+      [
+        "colorFormat",
+        "Orbbec 彩色格式",
+        [
+          "RGB",
+          "BGR",
+          "MJPG",
+          "YUYV",
+          "UYVY",
+          "NV12",
+          "NV21"
+        ]
+      ],
+      [
+        "enableColor",
+        "同时采集彩色图",
+        "boolean"
+      ],
+      [
+        "colorWidth",
+        "彩色宽度",
+        16,
+        4096
+      ],
+      [
+        "colorHeight",
+        "彩色高度",
+        16,
+        4096
+      ],
+      [
+        "pointStride",
+        "点云采样步长",
+        1,
+        64
+      ],
+      [
+        "minDepth",
+        "最近深度 (m)",
+        0.001,
+        100,
+        0.001
+      ],
+      [
+        "maxDepth",
+        "最远深度 (m)",
+        0.002,
+        100,
+        0.001
+      ]
+    ],
+    "hint": "UVC/GenTL 空白可选参数沿用设备当前值；深度相机使用表单默认值。GenTL 3D 要求设备提供 SFNC 标定栅格、坐标单位和轴比例。分量索引从 0 起；亮度/置信度须先由设备工具启用并确认逐像素对应。Z 预览不是原始深度图。GenTL 修改参数会影响设备；失败不会回滚，不自动重试触发。GenTL 高位深灰度转换到 8 位；RGB-D 原始深度保留 16 位。深度范围单位为米，点云坐标为毫米；采样步长越大，点越稀疏。"
+  },
+  "condition": {
+    "name": "条件判断",
+    "tag": "数值 · 文本 · 开关分支",
+    "glyph": "?",
+    "defaults": {
+      "comparison": "eq",
+      "left": 0,
+      "right": 0
+    },
+    "description": "比较输入值，输出成立或不成立。在连线表中为后续节点选择触发条件。支持变量及上游结果绑定，不执行表达式代码。",
+    "fields": [
+      [
+        "comparison",
+        "判断方式",
+        [
+          "eq",
+          "ne",
+          "gt",
+          "gte",
+          "lt",
+          "lte",
+          "contains",
+          "is_true",
+          "is_false"
+        ]
+      ]
+    ],
+    "hint": "相等比较保留类型：数值 1 与文本 1 不相等；大小比较只接受数值。未选中的分支及其下游会显示已跳过。"
+  },
+  "branch_merge": {
+    "name": "分支汇合",
+    "tag": "互斥分支 · 数据合并",
+    "glyph": "⋈",
+    "defaults": {},
+    "description": "等待所有上游完成或跳过，再接收唯一激活分支的图像、深度、点云及结果。用于条件分支重新合并。",
+    "fields": [],
+    "hint": "没有激活分支时跳过；同时激活多路时失败，避免混用数据。多个并行上游需全部执行时，使用普通节点汇合。"
+  },
+  "delay": {
+    "name": "延时等待",
+    "tag": "可取消 · 毫秒等待",
+    "glyph": "◷",
+    "defaults": {
+      "milliseconds": 100
+    },
+    "description": "延时后继续流程，保留输入图像、深度及点云。点击停止可立即取消等待。",
+    "fields": [
+      [
+        "milliseconds",
+        "等待时间 (ms)",
+        0,
+        30000
+      ]
+    ],
+    "hint": "范围 0–30000 ms。不用于硬实时触发或精确曝光同步。"
+  },
+  "script": {
+    "name": "Python 自定义脚本",
+    "tag": "脚本 · 变量 · 结果处理",
+    "glyph": "Py",
+    "defaults": {
+      "code": "def run(ctx):\n    count = ctx[\"params\"].get(\"count\", 0)\n    return dict(result=dict(count=count, passed=count > 0))\n",
+      "timeoutMs": 5000,
+      "arguments": {
+        "count": 0
+      },
+      "outputBindings": [
+        {
+          "field": "passed",
+          "scope": "flow",
+          "name": "passed"
+        }
+      ]
+    },
+    "description": "定义 run(ctx)，可读取上游结果、输入图像和三级变量。脚本使用服务器账户权限执行，仅运行可信代码。",
+    "fields": [
+      [
+        "timeoutMs",
+        "超时 (ms)",
+        100,
+        30000,
+        100
+      ]
+    ],
+    "hint": "ctx.vars 含 global / flow / module；ctx.results 以上游节点 ID 为键。返回 result、variables，可选 image。"
+  },
+  "variables": {
+    "name": "变量赋值",
+    "tag": "全局 · 流程 · 模块",
+    "glyph": "V",
+    "defaults": {
+      "scope": "flow",
+      "name": "counter",
+      "mode": "increment",
+      "value": 1
+    },
+    "description": "写入或累加变量。通过表单输入值或选择变量及上游结果，流程成功结束后统一保存。",
+    "fields": [
+      [
+        "scope",
+        "作用域",
+        [
+          "global",
+          "flow",
+          "module"
+        ]
+      ],
+      [
+        "name",
+        "变量名",
+        "text"
+      ],
+      [
+        "mode",
+        "写入方式",
+        [
+          "set",
+          "increment"
+        ]
+      ]
+    ],
+    "hint": "赋值内容可选择数值、文本、开关、数组、结构体或变量 / 结果绑定。"
+  },
+  "preprocess": {
+    "name": "图像预处理",
+    "tag": "OpenCV · 灰度 / 滤波",
+    "glyph": "◐",
+    "defaults": {
+      "method": "grayscale"
+    },
+    "description": "预处理输出成为下一步的输入图像。支持灰度、模糊、二值化、边缘及形态学。",
+    "fields": [
+      [
+        "method",
+        "处理方法",
+        [
+          "grayscale",
+          "blur",
+          "threshold",
+          "canny",
+          "open",
+          "close",
+          "erode",
+          "dilate"
+        ]
+      ],
+      [
+        "threshold",
+        "二值阈值",
+        0,
+        255
+      ],
+      [
+        "kernel",
+        "卷积核大小",
+        1,
+        51
+      ]
+    ],
+    "hint": "按处理方法显示参数。高斯模糊的卷积核大小须为奇数；边缘提取使用低、高两个阈值。"
+  },
+  "locate": {
+    "name": "模板与定位",
+    "tag": "多目标 · 旋转 · 定位跟随",
+    "glyph": "⌖",
+    "defaults": {
+      "minScore": 0.85,
+      "angleStart": 0,
+      "angleEnd": 0,
+      "angleStep": 10,
+      "maxMatches": 1,
+      "overlapThreshold": 0.3
+    },
+    "description": "上传或框选模板，搜索平移/旋转/均匀缩放目标，去除重复匹配并返回目标表及定位跟随位姿。",
+    "fields": [
+      [
+        "minScore",
+        "最低匹配分数",
+        0,
+        1,
+        0.01
+      ],
+      [
+        "angleStart",
+        "起始角度",
+        -180,
+        180
+      ],
+      [
+        "angleEnd",
+        "终止角度",
+        -180,
+        180
+      ],
+      [
+        "angleStep",
+        "角度步长",
+        1,
+        180
+      ],
+      [
+        "maxMatches",
+        "最多目标数",
+        1,
+        50,
+        1
+      ],
+      [
+        "overlapThreshold",
+        "去重重叠比例",
+        0.01,
+        0.9,
+        0.01
+      ]
+    ],
+    "hint": "搜索比例和坐标原点按表格设置。OpenCV 正角为逆时针；对称模板不能区分方向。多目标时应按目标表选择位姿；唯一目标可绑定 pose 接定位跟随。搜索范围和组合数有上限。"
+  },
+  "geometry": {
+    "name": "几何特征查找",
+    "tag": "直线 · 圆 · 轮廓",
+    "glyph": "◇",
+    "defaults": {
+      "feature": "contours",
+      "threshold": 127,
+      "minArea": 50
+    },
+    "description": "查找直线、圆、边缘与轮廓，返回原图像素坐标及标记结果。",
+    "fields": [
+      [
+        "feature",
+        "特征类型",
+        [
+          "contours",
+          "lines",
+          "circles",
+          "edges"
+        ]
+      ],
+      [
+        "threshold",
+        "轮廓二值阈值",
+        0,
+        255
+      ],
+      [
+        "minArea",
+        "最小轮廓面积",
+        1,
+        16000000
+      ],
+      [
+        "invert",
+        "反色提取深色目标",
+        "boolean"
+      ]
+    ],
+    "hint": "按所选特征显示圆半径、圆心间距或直线长度等参数。输出最多 100 个特征。"
+  },
+  "measure": {
+    "name": "尺寸测量与标定",
+    "tag": "尺寸 · 距离 · 偏移",
+    "glyph": "↔",
+    "defaults": {
+      "feature": "contours",
+      "threshold": 127,
+      "minArea": 50
+    },
+    "description": "测量轮廓外接矩形或圆直径，也可指定两点测距。未标定时使用 px。",
+    "fields": [
+      [
+        "feature",
+        "测量对象",
+        [
+          "contours",
+          "circles"
+        ]
+      ],
+      [
+        "threshold",
+        "轮廓二值阈值",
+        0,
+        255
+      ],
+      [
+        "minArea",
+        "最小轮廓面积",
+        1,
+        16000000
+      ],
+      [
+        "invert",
+        "深色目标",
+        "boolean"
+      ]
+    ],
+    "hint": "添加平面标定，填写两个像素点及实际距离、单位；添加坐标点可进行两点测距。仅支持等比例平面标定。"
+  },
+  "barcode": {
+    "name": "条码 / 二维码",
+    "tag": "ZXing · 多码识别",
+    "glyph": "▥",
+    "defaults": {},
+    "description": "使用 ZXing-C++ 读取一维码、QR、Data Matrix 等。输出内容、码制和角点。",
+    "fields": [],
+    "hint": "可框选 ROI 缩小搜索范围。无识别结果时 count 为 0。"
+  },
+  "ocr": {
+    "name": "文字识别 OCR",
+    "tag": "中英文 · 置信度",
+    "glyph": "文",
+    "defaults": {
+      "minConfidence": 0.5
+    },
+    "description": "本地中英文文字检测与识别，输出文字、置信度和文本框。首次运行需加载模型。",
+    "fields": [
+      [
+        "minConfidence",
+        "最低置信度",
+        0,
+        1,
+        0.01
+      ]
+    ],
+    "hint": "适用于批次号、标签、日期等文字。使用清晰且方向正常的图片，实际准确率需要样本验证。"
+  },
+  "defects": {
+    "name": "参考图缺陷检测",
+    "tag": "差异 · 区域 · 判定",
+    "glyph": "⊙",
+    "defaults": {
+      "differenceThreshold": 30,
+      "minArea": 20,
+      "maxDefectRatio": 0
+    },
+    "description": "上传同尺寸良品参考图，提取灰度差异区域并按面积比例判定。",
+    "fields": [
+      [
+        "differenceThreshold",
+        "灰度差异阈值",
+        1,
+        255
+      ],
+      [
+        "minArea",
+        "最小差异区域面积",
+        1,
+        16000000
+      ],
+      [
+        "maxDefectRatio",
+        "允许差异比例",
+        0,
+        1,
+        0.001
+      ]
+    ],
+    "hint": "要求拍摄位置和光照一致。输出疑似缺陷，不自动区分划痕、污点或错装。"
+  },
+  "yolo": {
+    "name": "YOLO 目标检测",
+    "tag": "YOLOv8 / YOLO11",
+    "glyph": "AI",
+    "defaults": {
+      "device": "cpu",
+      "model": "yolo11n.pt",
+      "confidence": 0.25,
+      "iou": 0.45,
+      "imageSize": 640
+    },
+    "description": "加载本地 YOLOv8 / YOLO11 检测权重，输出类别、置信度、边界框和标记图。",
+    "fields": [
+      [
+        "device",
+        "计算设备",
+        [
+          "cpu",
+          "auto",
+          "cuda:0"
+        ]
+      ],
+      [
+        "model",
+        "模型文件名",
+        "text"
+      ],
+      [
+        "confidence",
+        "最低置信度",
+        0,
+        1,
+        0.01
+      ],
+      [
+        "iou",
+        "NMS IoU 阈值",
+        0,
+        1,
+        0.01
+      ],
+      [
+        "imageSize",
+        "推理尺寸",
+        32,
+        1920,
+        32
+      ]
+    ],
+    "hint": "权重放入 models 目录，支持 .pt 或 Ultralytics 导出的 .onnx。默认 CPU，可在设备表单中选择自动或可用 GPU。通过类别筛选表设置类别编号。"
+  }
+}

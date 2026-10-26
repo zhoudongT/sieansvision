@@ -29,6 +29,8 @@ class CameraTests(unittest.TestCase):
     def test_hikrobot_malformed_status_preserves_exception_semantics(self):
         for prefix, code, kind in [(compat._NOT_IMPLEMENTED, -1003, gentl.NotImplementedException),
                                    (compat._TIMEOUT, -1011, gentl.TimeoutException),
+                                   (compat._TIMEOUT_BEFORE_COMPLETION, -1011, gentl.TimeoutException),
+                                   (compat._INVALID_HANDLE, -1006, gentl.InvalidHandleException),
                                    (compat._RESOURCE_EXHAUSTED, -1020, gentl.ResourceExhaustedException)]:
             raw = prefix + b'\xff\x80' + (') (ID: %d)' % code).encode('ascii')
             error = UnicodeDecodeError('utf-8', raw, len(prefix), len(prefix)+1, 'invalid start byte')

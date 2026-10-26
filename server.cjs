@@ -220,7 +220,10 @@ if(loginAccounts.adminHash)app.use(settings.httpNodeRoot,workbenchAuth,(req,res,
 app.use(settings.httpNodeRoot, RED.httpNode);
 async function main() {
   await RED.start();
-  server.listen(port, host, () => console.log(`Machine Visual Studio: http://${host}:${port}`));
+  server.listen(port, host, () => {
+    console.log(`Machine Visual Studio: http://${host}:${port}`);
+    if(!shuttingDown)cameraSession.restore();
+  });
 }
 async function shutdown() {
   if(shuttingDown)return;shuttingDown=true;

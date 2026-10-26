@@ -12,7 +12,39 @@ after(async()=>{await camera.stop();camera.setSessions(null);vision.stop();});
 
 test('session and frame settings are bounded; background triggering is rejected',()=>{
  assert.equal(settings(config()).reconnectAttempts,0);
+ assert.equal(settings(config()).autoStart,false);
+ assert.throws(()=>settings(config({autoStart:'true'})),/布尔/);
  for(const body of [config({intervalMs:1}),config({reconnectAttempts:6}),config({reconnectMs:false}),{...config(),params:{driver:'session'}},{...config(),params:{driver:'gentl',trigger:'software'}},{...config(),unknown:true}])assert.throws(()=>settings(body));
+});
+
+test('configured connection survives service restarts; manual stop releases it until the next launch',async()=>{
+ const dir=folder();let manager=new CameraSession(dir,camera);
+ try{
+  const original=manager.start(config({autoStart:true}));await ready(manager);
+  const binding=manager.status().bindingId;
+  const frame=await manager.capture(read(binding));assert(frame.result.frameSequence>0);
+  await manager.shutdown();assert.equal(manager.busy,false);assert.equal(manager.status().buffered,false);
+  manager=new CameraSession(dir,camera);assert.equal(manager.busy,false);
+  const restored=manager.restore();assert.notEqual(restored.id,original.id);assert.equal(restored.bindingId,binding);
+  await ready(manager);const pid=manager.child.pid;
+  const first=await manager.capture(read(binding)),second=await manager.capture(read(binding));
+  assert(second.result.frameSequence>first.result.frameSequence);assert.equal(manager.child.pid,pid);
+  assert.equal(manager.restore().id,restored.id);
+  await assert.rejects(manager.capture(read(original.id)),/编号/);
+  await manager.stop(restored.id);assert.equal(manager.busy,false);
+  await assert.rejects(manager.capture(read(binding)),/未运行/);
+  manager.start(config({autoStart:false,params:{driver:'rgbd_simulator',deviceId:'synthetic-rgbd',timeoutMs:1000}}));
+  await ready(manager);await assert.rejects(manager.capture(read(binding)),/配置/);
+  await manager.shutdown();manager=new CameraSession(dir,camera);manager.restore();assert.equal(manager.busy,false);
+ }finally{await manager.shutdown();}
+});
+
+test('autostart failure remains visible without blocking startup or retaining the device lock',async()=>{
+ const dir=folder(),seed=new CameraSession(dir,camera);
+ seed.start(config({autoStart:true,params:{driver:'simulator',deviceId:'missing',timeoutMs:1000}}));await seed.closed;
+ const manager=new CameraSession(dir,camera);
+ try{manager.restore();await manager.closed;assert.equal(manager.status().state,'failed');assert.match(manager.status().error,/不存在/);assert.equal(manager.busy,false);assert.equal(manager.status().buffered,false);}
+ finally{await manager.shutdown();}
 });
 
 test('real persistent worker supplies increasing next frames, bounded cache, reuse and shared single-shot resource lock',async()=>{
@@ -23,6 +55,8 @@ test('real persistent worker supplies increasing next frames, bounded cache, reu
   assert(out.result.frameSequence>before);assert.equal(out.result.reusedFrame,false);assert(out.annotatedImage.startsWith('data:image/png;base64,'));
   const latest=await manager.capture(read(s.id,{framePolicy:'latest',maxAgeMs:1000}));assert.equal(latest.result.frameSequence,out.result.frameSequence);assert.equal(latest.result.reusedFrame,true);
   await assert.rejects(camera.run({operation:'camera_list',params:{driver:'simulator'}}),/正在进行/);
+  assert(Array.isArray((await camera.run({operation:'camera_providers',params:{}})).result.items));
+  assert.equal(manager.busy,true);
   assert.throws(()=>manager.start(config()),/先停止/);
   await assert.rejects(manager.capture(read('stale-session')),/编号/);
   assert.equal((await manager.stop(s.id)).state,'stopped');assert.equal(manager.status().buffered,false);
