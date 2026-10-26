@@ -16,20 +16,8 @@ from desktop.toolbox import Toolbox
 from desktop.image_view import ImageView
 from desktop.cloud_view import CloudView
 
-STYLE='''
-QMainWindow,QWidget{font-family:"Microsoft YaHei UI","Noto Sans CJK SC";font-size:13px;color:#183954;}
-QMainWindow{background:#e9f0f5;} QMenuBar,QToolBar{background:#fff;border-bottom:1px solid #cbdce8;spacing:9px;padding:7px;}
-QToolButton{padding:7px 11px;border-radius:4px;}QToolButton:hover,QPushButton:hover{background:#e6f5fc;}
-QPushButton{background:white;border:1px solid #bad2e1;border-radius:4px;padding:6px 10px;}
-QPushButton:disabled,QToolButton:disabled{color:#9aabb7;}
-QLineEdit,QSpinBox,QDoubleSpinBox,QComboBox{background:#fff;border:1px solid #bed1de;border-radius:3px;padding:5px;}
-QTreeWidget,QTableWidget,QPlainTextEdit{background:white;border:1px solid #ccdce8;alternate-background-color:#f4f8fb;}
-QHeaderView::section{background:#eef4f8;color:#355a74;padding:7px;border:0;border-bottom:1px solid #cedfe9;}
-QTabWidget::pane{border:1px solid #cbdce8;background:#fff;}QTabBar::tab{background:#e9f1f6;padding:8px 15px;}
-QTabBar::tab:selected{background:white;color:#008ebd;border-bottom:2px solid #109ecb;}
-QSplitter::handle{background:#dae6ee;}QStatusBar{background:#092552;color:white;}
-QLabel#brand{color:#0098c7;font-size:22px;font-weight:700;padding:5px 12px;}
-'''
+from desktop.theme import WORKBENCH_QSS
+STYLE = WORKBENCH_QSS
 
 
 class MainWindow(QMainWindow):
@@ -94,15 +82,17 @@ class MainWindow(QMainWindow):
         self.stop_action=self.action('■ 停止',lambda:self.request('stop',{},lambda _:None));toolbar.addAction(self.stop_action)
         toolbar.addSeparator();self.engine_label=QLabel('引擎启动中');toolbar.addWidget(self.engine_label)
         horizontal=QSplitter(Qt.Orientation.Horizontal);self.setCentralWidget(horizontal)
-        library=QWidget();ll=QVBoxLayout(library);ll.setContentsMargins(8,8,8,8)
-        ll.addWidget(QLabel('算子工具箱'));self.search=QLineEdit();self.search.setPlaceholderText('搜索算子…');ll.addWidget(self.search)
-        self.toolbox=Toolbox();ll.addWidget(self.toolbox)
+        library=QWidget();library.setObjectName('libraryPane');ll=QVBoxLayout(library);ll.setContentsMargins(10,10,8,8);ll.setSpacing(6)
+        lib_title=QLabel('算子库');lib_title.setObjectName('libraryTitle');ll.addWidget(lib_title)
+        lib_hint=QLabel('按分类浏览 · 搜索过滤 · 拖到画布');lib_hint.setObjectName('libraryHint');ll.addWidget(lib_hint)
+        self.search=QLineEdit();self.search.setObjectName('operatorSearch');self.search.setPlaceholderText('搜索算子名称或类别…');self.search.setClearButtonEnabled(True);ll.addWidget(self.search)
+        self.toolbox=Toolbox();ll.addWidget(self.toolbox, 1)
         self.toolbox.operatorActivated.connect(lambda key:self.guard(lambda:self.add_node(key)))
-        self.search.textChanged.connect(self.populate_toolbox);ll.addWidget(QLabel('双击图标添加 · 拖入流程画布'))
+        self.search.textChanged.connect(self.populate_toolbox)
         horizontal.addWidget(library)
         flow=QWidget();fl=QVBoxLayout(flow);fl.setContentsMargins(0,6,0,0)
         self.demo_notice=QLabel();self.demo_notice.setWordWrap(True);self.demo_notice.setTextFormat(Qt.TextFormat.PlainText)
-        self.demo_notice.setStyleSheet('background:#e4f5fc;color:#16779c;padding:8px;');self.demo_notice.hide();fl.addWidget(self.demo_notice)
+        self.demo_notice.setStyleSheet('background:#e8f6fb;color:#0b6e99;padding:10px 12px;border:1px solid #b7d9ea;border-radius:8px;');self.demo_notice.hide();fl.addWidget(self.demo_notice)
         self.project_name=QLineEdit(self.document.project['name']);self.project_name.setAccessibleName('工程名称');self.project_name.editingFinished.connect(self.rename_project);fl.addWidget(self.project_name)
         bar=QHBoxLayout();fl.addLayout(bar)
         self.scene=FlowScene(self.document);self.flow=FlowView(self.scene)
@@ -112,7 +102,7 @@ class MainWindow(QMainWindow):
             b=QPushButton(label);b.clicked.connect(lambda checked=False,cb=callback:self.guard(cb) if not self.busy else None);bar.addWidget(b)
         fl.addWidget(self.flow);fl.addWidget(QLabel('端口间拖拽连线 / 依次点击 · Esc 取消 · Ctrl+滚轮缩放'))
         horizontal.addWidget(flow)
-        self.parameters=ParameterPanel();self.parameters.setMinimumWidth(320);self.parameters.setMaximumWidth(440);self.parameters.changed.connect(self.update_step);horizontal.addWidget(self.parameters)
+        self.parameters=ParameterPanel();self.parameters.setMinimumWidth(340);self.parameters.setMaximumWidth(460);self.parameters.changed.connect(self.update_step);horizontal.addWidget(self.parameters)
         right=QSplitter(Qt.Orientation.Vertical);self.images=QTabWidget();self.input_view=ImageView();self.output_view=ImageView()
         self.images.addTab(self.input_view,'输入图像');self.images.addTab(self.output_view,'处理结果');right.addWidget(self.images)
         self.cloud_view=CloudView();self.images.addTab(self.cloud_view,'3D 点云');self.input_view.roi_changed.connect(self.update_roi)
@@ -121,7 +111,7 @@ class MainWindow(QMainWindow):
         self.results=ResultPanel();self.logs=QPlainTextEdit();self.logs.setReadOnly(True);self.logs.document().setMaximumBlockCount(200)
         if hasattr(self.results,'image_requested'):self.results.image_requested.connect(self.output_view.show_data)
         bottom=QTabWidget();bottom.addTab(self.results,'模块结果');bottom.addTab(self.logs,'运行记录');right.addWidget(bottom);right.setSizes([500,230])
-        horizontal.addWidget(right);horizontal.setSizes([270,450,340,540]);horizontal.setChildrenCollapsible(False)
+        horizontal.addWidget(right);horizontal.setSizes([290,460,360,520]);horizontal.setChildrenCollapsible(False)
         view.addAction(self.action('适应流程',self.flow.fit));view.addAction(self.action('适应图像',lambda:(self.input_view.fit(),self.output_view.fit())))
         self.roi_action=self.action('框选所选模块 ROI',self.roi_mode);self.roi_action.setCheckable(True);view.addAction(self.roi_action)
         view.addAction(self.action('清除所选模块 ROI',lambda:self.update_roi(None)))

@@ -83,17 +83,17 @@ def _section(title, hint=''):
     box = QGroupBox(title)
     box.setObjectName('propertySection')
     root = QVBoxLayout(box)
-    root.setContentsMargins(8, 10, 8, 8)
-    root.setSpacing(6)
+    root.setContentsMargins(10, 12, 10, 10)
+    root.setSpacing(8)
     if hint:
         tip = QLabel(hint)
         tip.setWordWrap(True)
         tip.setObjectName('sectionHint')
-        tip.setStyleSheet('color:#5a7188;font-size:11px;')
         root.addWidget(tip)
     form = QFormLayout()
     form.setContentsMargins(0, 0, 0, 0)
-    form.setSpacing(8)
+    form.setSpacing(10)
+    form.setHorizontalSpacing(12)
     form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
     form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
     form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -220,10 +220,7 @@ class ValueEditor(QWidget):
         mark.setObjectName('typeMark')
         mark.setFixedWidth(28)
         mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        mark.setStyleSheet(
-            'QLabel#typeMark{background:#e8f4fb;color:#0b6e99;border:1px solid #b7d9ea;'
-            'border-radius:3px;font-size:11px;padding:1px 2px;}'
-        )
+        # Styling via theme QLabel#typeMark
         mark.setToolTip('类型：' + str(schema.get('type', 'string')))
         row.addWidget(mark)
         row.addWidget(self.stack, 1)
@@ -528,27 +525,31 @@ class ParameterPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName('propertyPanel')
         self._step = None
         self._definition = None
         self._context = None
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(6)
+        layout.setContentsMargins(10, 10, 10, 8)
+        layout.setSpacing(4)
+        head = QHBoxLayout()
+        head.setContentsMargins(0, 0, 0, 0)
+        head.setSpacing(8)
         self.title = QLabel('算子属性')
         self.title.setObjectName('panelTitle')
-        title_font = self.title.font()
-        title_font.setPointSize(max(11, title_font.pointSize() + 1))
-        title_font.setBold(True)
-        self.title.setFont(title_font)
-        layout.addWidget(self.title)
+        head.addWidget(self.title, 1)
+        self.badge = QLabel('')
+        self.badge.setObjectName('typeMark')
+        self.badge.setVisible(False)
+        head.addWidget(self.badge)
+        layout.addLayout(head)
         self.signature = QLabel('')
         self.signature.setObjectName('operatorSignature')
         self.signature.setWordWrap(True)
-        self.signature.setStyleSheet('color:#0b6e99;font-size:11px;')
         layout.addWidget(self.signature)
-        self.description = QLabel('在流程图中选择模块以编辑输入 / 参数 / 输出。')
+        self.description = QLabel('在流程图中选择模块，于下方分区设置图像输入与控制参数。')
+        self.description.setObjectName('panelDescription')
         self.description.setWordWrap(True)
-        self.description.setStyleSheet('color:#5a7188;')
         layout.addWidget(self.description)
         # Keep tabs object for compatibility; hide and host a single scroll inspector.
         self.tabs = QTabWidget()
@@ -559,12 +560,13 @@ class ParameterPanel(QWidget):
 
     def _page(self, label):
         scroll = QScrollArea()
+        scroll.setObjectName('propertyScroll')
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(scroll.frameShape().NoFrame)
         content = QWidget()
         outer = QVBoxLayout(content)
-        outer.setContentsMargins(2, 2, 2, 8)
-        outer.setSpacing(10)
+        outer.setContentsMargins(2, 4, 4, 12)
+        outer.setSpacing(12)
         scroll.setWidget(content)
         self.tabs.addTab(scroll, label)
         return outer
@@ -583,10 +585,15 @@ class ParameterPanel(QWidget):
         if step is None:
             self.title.setText('算子属性')
             self.signature.setText('')
-            self.description.setText('在流程图中选择模块以编辑输入 / 参数 / 输出。')
+            self.description.setText('在流程图中选择模块，于下方分区设置图像输入与控制参数。')
+            self.badge.setVisible(False)
+            self.badge.setText('')
             return
         op_name = definition.get('name', step.get('name', step.get('operation', '模块')))
         self.title.setText(op_name)
+        cat = definition.get('category') or ''
+        self.badge.setText((cat[:8] + '…') if len(cat) > 8 else cat)
+        self.badge.setVisible(bool(cat))
         n_in = len(definition.get('inputs', []) or [])
         n_param = len(definition.get('parameters', []) or [])
         n_out = len(definition.get('outputs', []) or [])
@@ -595,11 +602,11 @@ class ParameterPanel(QWidget):
             f'图像输入 · 控制参数 {n_param} · 声明输出 {n_out}'
             + (f' · 附加输入 {n_in}' if n_in else '')
         )
-        self.description.setText(definition.get('description') or '在下方分区编辑：图像来源（图标数据）与控制参数分开，类似 VisionMaster 属性面板 / Halcon 算子窗口。')
+        self.description.setText(definition.get('description') or '分区编辑图像来源与控制参数（工业视觉属性面板）。')
 
         page = self._page('属性')
         # —— 基本 ——
-        basic_box, basic = _section('基本', '模块在流程图中的显示名称。')
+        basic_box, basic = _section('基本', '流程图中显示的名称')
         self.name_edit = QLineEdit(step.get('name', definition.get('name', '')))
         self.name_edit.setObjectName('stepName')
         self.name_edit.setMaxLength(80)
@@ -610,7 +617,7 @@ class ParameterPanel(QWidget):
         # —— 图像输入 (iconic) —— VisionMaster「订阅图像源」
         image_box, image_form = _section(
             '图像输入',
-            '图标数据（Iconic）：选择上游图像 / 点云。先在画布连线，再在此指定本算子读哪一路（VisionMaster 订阅图像源）。',
+            '选择本算子读取的图像 / 点云来源（需先在画布连线）。',
         )
         self.image_from = QComboBox()
         self.image_from.setObjectName('imageFrom')
@@ -627,7 +634,7 @@ class ParameterPanel(QWidget):
             self.image_from.addItem('已断开的来源：' + current, current)
         self.image_from.setCurrentIndex(max(0, self.image_from.findData(current)))
         self.image_from.currentIndexChanged.connect(lambda _: self._set_top('imageFrom', self.image_from.currentData()))
-        image_form.addRow('🖼 图像 / 点云来源', self.image_from)
+        image_form.addRow('图像 / 点云来源', self.image_from)
         page.addWidget(image_box)
 
         nodes = _upstream(project, step['id'])
@@ -637,7 +644,7 @@ class ParameterPanel(QWidget):
         # —— 附加输入 (plugin/script typed inputs) ——
         input_defs = definition.get('inputs', []) or []
         if input_defs:
-            in_box, in_form = _section('附加输入', '结构化输入端口；可填固定值或绑定上游结果。')
+            in_box, in_form = _section('附加输入', '可填固定值，或绑定上游结果')
             values = params.get('inputs', {}) if plugin else params
             for field in input_defs:
                 key = field['key']
@@ -651,7 +658,7 @@ class ParameterPanel(QWidget):
         param_defs = definition.get('parameters', []) or []
         param_box, param_form = _section(
             '控制参数',
-            '控制数据（Control）：阈值、开关、枚举等。右侧「固定值 / 绑定上游」切换引用（类似 Halcon 算子窗口）。',
+            '阈值、开关、枚举等；右侧可切换「固定值 / 绑定上游」。',
         )
         if step.get('operation') == 'script':
             note = QLabel('脚本通过 Python 文件导入并在外部编辑；此处仅配置输入与输出。运行前需勾选本次可信脚本执行。')
@@ -678,7 +685,7 @@ class ParameterPanel(QWidget):
         # —— 结果输出 ——
         out_box, out_form = _section(
             '结果输出',
-            '运行后写入结果树；可将字段绑定到流程 / 全局变量（VisionMaster 结果显示 / 变量订阅）。',
+            '运行后写入结果树；可绑定到流程 / 全局变量。',
         )
         schema = QTreeWidget()
         schema.setObjectName('outputSchema')

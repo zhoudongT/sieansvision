@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from .catalog import builtin_definitions
+from .theme import WORKBENCH_QSS
 
 
 def _button(label, callback, layout):
@@ -276,6 +277,7 @@ class _Preview(QGraphicsView):
 class _RpcDialog(QDialog):
     def __init__(self, backend, parent=None):
         super().__init__(parent)
+        self.setStyleSheet(WORKBENCH_QSS)
         self.backend = backend
         self.pending = {}
         self.message = QLabel()
