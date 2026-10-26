@@ -124,11 +124,22 @@ cd /home/allen/文档/sieansvision
 - 本机缺 `libxcb-cursor0` 时 PySide6 的 `xcb` 插件会失败，启动脚本默认 `QT_QPA_PLATFORM=wayland`。
 - 桌面「连续连接」预览读的是会话一帧 PNG 缓存（约十几 fps）；要接近相机满速用 `start-linux-live.sh`。
 
-## 相机接入 + 字符识别（开发测试）
+## 相机接入 + 字符识别（接入本仓库工程）
+
+主入口是 **原生桌面工作台**（不是独立 demo 窗）：
 
 ```bash
 cd /home/allen/文档/sieansvision
-./scripts/start-linux-camera-ocr.sh
+./scripts/start-linux-desktop.sh
+# 等同：./scripts/start-linux-camera-ocr.sh
 ```
 
-引擎：仓库自带 `vision/engine.py` 同款 **RapidOCR onnxruntime 1.4.4**（装在 `.pydeps`）。流程：GenTL 连续取流 → 点「字符识别」对当前帧 OCR → 右侧文本 + 叠加框。完整工作台里也可拖「OCR」算子接相机会话（仍走原生引擎，不经网页连续预览）。
+默认打开 `projects/mv-camera-ocr.sieans`：`MV相机(camera_capture/GenTL)` → `字符识别 OCR`（`vision/engine.py` RapidOCR）。
+
+1. 关闭网页 :1880 / MVS / 其它 U3V 占用  
+2. 工具栏 **运行流程**（无需先打开图像）  
+3. 结果表看 OCR 文本；输出图有绿框叠加  
+4. 也可：**演示工程** →「MV相机 → 字符识别 OCR」载入后手动运行  
+5. 要连续画面：设备与模型 → 相机与连续采集 → GenTL → 打开连续连接（可把节点驱动改为 `session`）
+
+OCR 依赖装在 `.pydeps`（`rapidocr-onnxruntime==1.4.4`）。

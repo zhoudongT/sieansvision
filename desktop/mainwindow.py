@@ -33,9 +33,9 @@ QLabel#brand{color:#0098c7;font-size:22px;font-weight:700;padding:5px 12px;}
 
 
 class MainWindow(QMainWindow):
-    def __init__(self,root,data,start_engine=True):
+    def __init__(self,root,data,start_engine=True,project=None):
         super().__init__();self.root=Path(root);self.data=Path(data);self.document=Document()
-        self.definitions=all_definitions([]);self.selected=None;self.image='';self.filename=None;self.busy=False
+        self.definitions=all_definitions([]);self.selected=None;self.image='';self.filename=None;self.busy=False;self.pending_project=Path(project) if project else None
         self.pending={};self.closing=False;self.engine_stopped=not start_engine;self.engine_ready=False
         self.cloud=None;self.depth=None;self.dialogs={};self.last_result=None
         self.demo_backup=None;self.demo_loading=False;self.demo_request=None
@@ -138,6 +138,9 @@ class MainWindow(QMainWindow):
     def plugins_loaded(self,plugins):
         self.definitions=all_definitions(plugins);self.populate_toolbox();self.refresh_parameters()
         self.log(f'已加载 {len(plugins)} 个插件包，{len(self.definitions)} 个可添加算子')
+        if self.pending_project:
+            path=self.pending_project;self.pending_project=None
+            self.guard(lambda:self.open_project_file(path))
 
     def engine_result(self,request_id,result):
         callback=self.pending.pop(request_id,None)
@@ -211,13 +214,19 @@ class MainWindow(QMainWindow):
         if self.busy or not self.engine_ready or not self.confirm_discard():return
         name,_=QFileDialog.getOpenFileName(self,'打开视觉工程','','SIEANS 工程 (*.sieans *.json)')
         if not name:return
-        if Path(name).stat().st_size>32*1024*1024:raise ValueError('工程文件不能超过 32 MB')
-        value=json.loads(Path(name).read_text(encoding='utf-8-sig'))
+        self.open_project_file(Path(name))
+
+    def open_project_file(self, path):
+        path=Path(path)
+        if not path.is_file():raise ValueError('工程不存在：'+str(path))
+        if path.stat().st_size>32*1024*1024:raise ValueError('工程文件不能超过 32 MB')
+        value=json.loads(path.read_text(encoding='utf-8-sig'))
         def loaded(reply):
-            self.document.load(reply['project']);self.filename=Path(name);self.results.set_results([])
-            self.image='';self.input_view.show_data('');self.output_view.show_data('');self.flow.fit();self.log('已打开工程，请载入检测图像')
-            self.clear_cloud()
-            self.last_result=None
+            self.document.load(reply['project']);self.filename=path;self.results.set_results([])
+            self.image='';self.input_view.show_data('');self.output_view.show_data('');self.flow.fit()
+            self.clear_cloud();self.last_result=None
+            ops=', '.join(s.get('name') or s.get('operation') for s in reply['project'].get('steps',[]))
+            self.log('已打开工程：'+path.name+' · 模块：'+ops+'（含相机采集时无需预先打开图像，直接运行流程）')
         self.request('project/validate',{'project':value},loaded)
 
     def save_project(self):

@@ -1,4 +1,135 @@
 [
- {"id":"camera-parts","name":"相机采集 → 检测 → 变量","category":"采集","image":"parts.png","camera":true,"description":"从模拟采集适配器产生一帧图像，传入轮廓检测，并把数量保存为流程变量。无需预先打开图像。","expected":"采集 640 × 400 图像，检测 3 个目标，流程变量 cameraCount=3；此演示不访问真实相机。","steps":[{"operation":"camera_capture","params":{"driver":"simulator","deviceId":"synthetic-parts","trigger":"freerun","timeoutMs":5000}},{"operation":"geometry","params":{"feature":"contours","threshold":127,"minArea":50}},{"operation":"variables","params":{"scope":"flow","name":"cameraCount","mode":"set","value":0}}],"bindings":[{"step":2,"param":"value","source":1,"field":"count"}]}
- ,{"id":"camera-depth-measure","name":"深度相机 → 点云裁剪 → 尺寸测量","category":"采集","image":"parts.png","camera":true,"description":"模拟带内参的 RGB-D 单帧采集，保留原始 16 位深度，将标定点云传给 3D 裁剪和测量算子。可切换深度图与 3D 点云查看。","expected":"采集 3071 个有效点；裁剪后顶面 200 点，X=185.25 mm、Y=87.75 mm；流程变量 topWidth=185.25。单个可见顶面不代表完整实体体积。","steps":[{"operation":"camera_capture","params":{"driver":"rgbd_simulator","deviceId":"synthetic-rgbd","trigger":"freerun","timeoutMs":5000,"pointStride":1,"minDepth":0.9,"maxDepth":1.1}},{"operation":"cloud_filter","params":{"method":"crop","minimum":[-1000,-1000,970],"maximum":[1000,1000,980]}},{"operation":"cloud_measure","params":{}},{"operation":"variables","params":{"scope":"flow","name":"topWidth","mode":"set","value":0}}],"bindings":[{"step":3,"param":"value","source":2,"field":"sizeX"}]}
+  {
+    "id": "camera-parts",
+    "name": "相机采集 → 检测 → 变量",
+    "category": "采集",
+    "image": "parts.png",
+    "camera": true,
+    "description": "从模拟采集适配器产生一帧图像，传入轮廓检测，并把数量保存为流程变量。无需预先打开图像。",
+    "expected": "采集 640 × 400 图像，检测 3 个目标，流程变量 cameraCount=3；此演示不访问真实相机。",
+    "steps": [
+      {
+        "operation": "camera_capture",
+        "params": {
+          "driver": "simulator",
+          "deviceId": "synthetic-parts",
+          "trigger": "freerun",
+          "timeoutMs": 5000
+        }
+      },
+      {
+        "operation": "geometry",
+        "params": {
+          "feature": "contours",
+          "threshold": 127,
+          "minArea": 50
+        }
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "cameraCount",
+          "mode": "set",
+          "value": 0
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 2,
+        "param": "value",
+        "source": 1,
+        "field": "count"
+      }
+    ]
+  },
+  {
+    "id": "camera-depth-measure",
+    "name": "深度相机 → 点云裁剪 → 尺寸测量",
+    "category": "采集",
+    "image": "parts.png",
+    "camera": true,
+    "description": "模拟带内参的 RGB-D 单帧采集，保留原始 16 位深度，将标定点云传给 3D 裁剪和测量算子。可切换深度图与 3D 点云查看。",
+    "expected": "采集 3071 个有效点；裁剪后顶面 200 点，X=185.25 mm、Y=87.75 mm；流程变量 topWidth=185.25。单个可见顶面不代表完整实体体积。",
+    "steps": [
+      {
+        "operation": "camera_capture",
+        "params": {
+          "driver": "rgbd_simulator",
+          "deviceId": "synthetic-rgbd",
+          "trigger": "freerun",
+          "timeoutMs": 5000,
+          "pointStride": 1,
+          "minDepth": 0.9,
+          "maxDepth": 1.1
+        }
+      },
+      {
+        "operation": "cloud_filter",
+        "params": {
+          "method": "crop",
+          "minimum": [
+            -1000,
+            -1000,
+            970
+          ],
+          "maximum": [
+            1000,
+            1000,
+            980
+          ]
+        }
+      },
+      {
+        "operation": "cloud_measure",
+        "params": {}
+      },
+      {
+        "operation": "variables",
+        "params": {
+          "scope": "flow",
+          "name": "topWidth",
+          "mode": "set",
+          "value": 0
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "step": 3,
+        "param": "value",
+        "source": 2,
+        "field": "sizeX"
+      }
+    ]
+  },
+  {
+    "id": "mv-camera-ocr",
+    "name": "MV相机 → 字符识别 OCR",
+    "category": "采集",
+    "image": "text.png",
+    "camera": true,
+    "description": "使用本机海康 MV-CB013-A0UM-C（GenTL U3V）采集一帧，再经 RapidOCR 识别标签文字。走 sieansvision 原生算子链路，不是独立演示脚本。",
+    "expected": "输出相机分辨率与 OCR 文本/置信度；镜头前需有清晰文字。首次加载 OCR 模型稍慢。请先关闭网页连续预览与 MVS。",
+    "steps": [
+      {
+        "operation": "camera_capture",
+        "params": {
+          "driver": "gentl",
+          "providerId": "8ae6d0c0a0009dd6b793",
+          "deviceId": "Hikrobot MV-CB013-A0UM-C (K13917662)",
+          "dataMode": "image",
+          "trigger": "freerun",
+          "timeoutMs": 5000
+        }
+      },
+      {
+        "operation": "ocr",
+        "params": {
+          "minConfidence": 0.5
+        }
+      }
+    ]
+  }
 ]

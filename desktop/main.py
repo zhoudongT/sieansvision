@@ -9,6 +9,7 @@ def main():
     parser=argparse.ArgumentParser(description='SIEANS Vision native desktop')
     parser.add_argument('--root',type=Path)
     parser.add_argument('--data',type=Path)
+    parser.add_argument('--project',type=Path,help='启动后打开的 .sieans 工程')
     args=parser.parse_args()
     app=QApplication(sys.argv[:1]);app.setOrganizationName('SIEANS');app.setApplicationName('SIEANS Vision Native')
     root=args.root
@@ -19,7 +20,7 @@ def main():
         QMessageBox.critical(None,'无法找到算法运行环境','请使用附带运行环境的目录，或通过 --root 指定现有 SIEANS 工程目录。');return 2
     data=args.data or Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation))/'native-data'
     from desktop.mainwindow import MainWindow
-    window=MainWindow(root,data);window.show()
+    window=MainWindow(root,data,project=args.project);window.show()
     return app.exec()
 
 
