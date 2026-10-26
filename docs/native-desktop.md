@@ -123,3 +123,12 @@ cd /home/allen/文档/sieansvision
 - U3V USB 独占：网页 Node-RED、MVS Client、live 预览、桌面工作台同一时刻只开一个。
 - 本机缺 `libxcb-cursor0` 时 PySide6 的 `xcb` 插件会失败，启动脚本默认 `QT_QPA_PLATFORM=wayland`。
 - 桌面「连续连接」预览读的是会话一帧 PNG 缓存（约十几 fps）；要接近相机满速用 `start-linux-live.sh`。
+
+## 相机接入 + 字符识别（开发测试）
+
+```bash
+cd /home/allen/文档/sieansvision
+./scripts/start-linux-camera-ocr.sh
+```
+
+引擎：仓库自带 `vision/engine.py` 同款 **RapidOCR onnxruntime 1.4.4**（装在 `.pydeps`）。流程：GenTL 连续取流 → 点「字符识别」对当前帧 OCR → 右侧文本 + 叠加框。完整工作台里也可拖「OCR」算子接相机会话（仍走原生引擎，不经网页连续预览）。
