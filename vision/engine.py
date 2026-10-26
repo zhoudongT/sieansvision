@@ -162,7 +162,12 @@ def measure(image, canvas, p, offset):
 
 
 def barcode(image, canvas, p, offset):
-    import zxingcpp
+    try:
+        import zxingcpp
+    except ImportError as exc:
+        raise RuntimeError(
+            "条码识别需要 zxing-cpp。请执行：python3 -m pip install --target .pydeps -i https://pypi.tuna.tsinghua.edu.cn/simple 'zxing-cpp==3.1.1'"
+        ) from exc
     results = []
     for code in zxingcpp.read_barcodes(image):
         if not code.valid:
