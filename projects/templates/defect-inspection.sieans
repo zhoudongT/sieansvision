@@ -1,0 +1,64 @@
+{
+  "version": 2,
+  "id": "fe1c1eee-241a-44a3-99ce-a80e8ffc7d23",
+  "name": "检测模板 · 参考图缺陷",
+  "steps": [
+    {
+      "id": "e4d31a0881594548",
+      "name": "图像输入",
+      "operation": "camera_capture",
+      "params": {
+        "driver": "simulator",
+        "dataMode": "image",
+        "trigger": "freerun",
+        "timeoutMs": 3000
+      },
+      "reference": "",
+      "position": {
+        "x": 280,
+        "y": 140
+      },
+      "imageFrom": "source",
+      "variables": {}
+    },
+    {
+      "id": "3b96a2b021494777",
+      "name": "差异缺陷检测",
+      "operation": "defects",
+      "params": {
+        "differenceThreshold": 30,
+        "minArea": 20,
+        "maxDefectRatio": 0
+      },
+      "reference": "",
+      "position": {
+        "x": 280,
+        "y": 300
+      },
+      "imageFrom": "e4d31a0881594548",
+      "variables": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "6472da9d77d84799",
+      "from": "source",
+      "to": "e4d31a0881594548",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "8923542b49ed414b",
+      "from": "e4d31a0881594548",
+      "to": "3b96a2b021494777",
+      "fromPort": "bottom",
+      "toPort": "top"
+    }
+  ],
+  "sourcePosition": {
+    "x": 280,
+    "y": 40
+  },
+  "variables": {},
+  "notes": "缺陷检测模板。运行前可为「差异缺陷检测」设置参考图（工具栏「设置参考图」）。"
+}

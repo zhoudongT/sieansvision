@@ -1,0 +1,64 @@
+{
+  "version": 2,
+  "id": "2ef92842-f762-4034-b41f-020bdb595232",
+  "name": "设备模板 · MV GenTL → OCR",
+  "steps": [
+    {
+      "id": "f1c76f6caa074f97",
+      "name": "MV相机",
+      "operation": "camera_capture",
+      "params": {
+        "driver": "gentl",
+        "providerId": "8ae6d0c0a0009dd6b793",
+        "deviceId": "Hikrobot MV-CB013-A0UM-C (K13917662)",
+        "dataMode": "image",
+        "trigger": "freerun",
+        "timeoutMs": 5000
+      },
+      "reference": "",
+      "position": {
+        "x": 280,
+        "y": 160
+      },
+      "imageFrom": "source",
+      "variables": {}
+    },
+    {
+      "id": "4ad0807b361147aa",
+      "name": "字符识别 OCR",
+      "operation": "ocr",
+      "params": {
+        "minConfidence": 0.5
+      },
+      "reference": "",
+      "position": {
+        "x": 280,
+        "y": 300
+      },
+      "imageFrom": "f1c76f6caa074f97",
+      "variables": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "bc5111edcb07432c",
+      "from": "source",
+      "to": "f1c76f6caa074f97",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "90c6257774714237",
+      "from": "f1c76f6caa074f97",
+      "to": "4ad0807b361147aa",
+      "fromPort": "bottom",
+      "toPort": "top"
+    }
+  ],
+  "sourcePosition": {
+    "x": 280,
+    "y": 40
+  },
+  "variables": {},
+  "notes": "真实 MV-CB013 GenTL 采集 + RapidOCR。需插入相机且勿与 MVS/网页同时占用 USB。首次运行会建立持久会话。"
+}

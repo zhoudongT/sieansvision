@@ -39,7 +39,7 @@ class MainWindow(QMainWindow):
         self.pending={};self.closing=False;self.engine_stopped=not start_engine;self.engine_ready=False
         self.cloud=None;self.depth=None;self.dialogs={};self.last_result=None
         self.demo_backup=None;self.demo_loading=False;self.demo_request=None
-        self.setWindowTitle('SIEANS Vision · 原生桌面开发平台');self.resize(1600,950);self.setMinimumSize(1080,700)
+        self.setWindowTitle('SIEANS Vision · 视觉检测平台');self.resize(1600,950);self.setMinimumSize(1080,700)
         self.setStyleSheet(STYLE)
         self.backend=Backend(self)
         self.backend.ready.connect(self.engine_online);self.backend.result.connect(self.engine_result)
@@ -59,7 +59,15 @@ class MainWindow(QMainWindow):
         self.new_action=self.action('新建工程',self.new_project,'Ctrl+N');self.open_action=self.action('打开工程',self.open_project,'Ctrl+O')
         self.save_action=self.action('保存工程',self.save_project,'Ctrl+S')
         for a in [self.new_action,self.open_action,self.save_action]:files.addAction(a)
-        files.addAction(self.action('退出',self.close))
+        templates=files.addMenu('从模板新建检测工程')
+        for label, relative in [
+            ('空白检测工程', 'projects/templates/blank-inspection.sieans'),
+            ('采集 → 几何 → 尺寸', 'projects/templates/measure-chain.sieans'),
+            ('参考图缺陷检测', 'projects/templates/defect-inspection.sieans'),
+            ('MV GenTL → OCR（真实相机）', 'projects/templates/mv-gentl-ocr.sieans'),
+        ]:
+            templates.addAction(self.action(label, lambda r=relative: self.open_template(r)))
+        files.addSeparator();files.addAction(self.action('退出',self.close))
         self.workspace_actions=[]
         work=self.menuBar().addMenu('工程管理');devices=self.menuBar().addMenu('设备与模型');records=self.menuBar().addMenu('记录与账号')
         for menu,label,key in [(work,'本机工程库','projects'),(work,'三级变量','variables'),(work,'子流程管理','subflows'),(work,'运行画面编辑 / 运行','hmi'),(work,'算子插件管理','plugins'),
@@ -74,7 +82,8 @@ class MainWindow(QMainWindow):
         for a in [self.undo_action,self.redo_action]:edit.addAction(a)
         edit.addAction(self.action('复制模块',self.copy_nodes,'Ctrl+Shift+C'));edit.addAction(self.action('粘贴模块',lambda:self.document.paste() if not self.busy else None,'Ctrl+Shift+V'))
         toolbar=QToolBar('工程与运行');toolbar.setMovable(False);self.addToolBar(toolbar)
-        brand=QLabel('SIEANS  VISION');brand.setObjectName('brand');toolbar.addWidget(brand)
+        brand=QLabel('SIEANS VISION');brand.setObjectName('brand');toolbar.addWidget(brand)
+        tag=QLabel('视觉检测平台');tag.setStyleSheet('color:#5a7a90;font-size:12px;padding-right:10px;');toolbar.addWidget(tag)
         for a in [self.open_action,self.save_action]:toolbar.addAction(a)
         self.image_action=self.action('打开图像',self.open_image);toolbar.addAction(self.image_action)
         self.reference_action=self.action('设置参考图',lambda:self.open_image(True));toolbar.addAction(self.reference_action)
@@ -141,6 +150,9 @@ class MainWindow(QMainWindow):
         if self.pending_project:
             path=self.pending_project;self.pending_project=None
             self.guard(lambda:self.open_project_file(path))
+        else:
+            self.show_platform_welcome()
+        QTimer.singleShot(200, self.run_platform_health)
 
     def engine_result(self,request_id,result):
         callback=self.pending.pop(request_id,None)
@@ -209,6 +221,7 @@ class MainWindow(QMainWindow):
         self.document.load(empty_project());self.filename=None;self.image='';self.input_view.show_data('');self.output_view.show_data('');self.results.set_results([])
         self.clear_cloud()
         self.last_result=None
+        self.show_platform_welcome()
 
     def open_project(self):
         if self.busy or not self.engine_ready or not self.confirm_discard():return
@@ -227,6 +240,14 @@ class MainWindow(QMainWindow):
             self.clear_cloud();self.last_result=None
             ops=', '.join(s.get('name') or s.get('operation') for s in reply['project'].get('steps',[]))
             self.log('已打开工程：'+path.name+' · 模块：'+ops+'（含相机采集时无需预先打开图像，直接运行流程）')
+            notes=(reply['project'].get('notes') or '').strip()
+            if notes:
+                self.demo_notice.setText(notes);self.demo_notice.show()
+            elif not reply['project'].get('steps'):
+                self.show_platform_welcome()
+            else:
+                self.demo_notice.hide()
+            QTimer.singleShot(300, self.maybe_warm_camera)
         self.request('project/validate',{'project':value},loaded)
 
     def save_project(self):
@@ -404,8 +425,91 @@ class MainWindow(QMainWindow):
     def log(self,message):
         self.logs.appendPlainText(str(message));self.statusBar().showMessage(str(message))
 
+    def open_template(self, relative):
+        if self.busy or not self.engine_ready:return
+        if not self.confirm_discard():return
+        path=(self.root/relative).resolve()
+        if not path.is_file():raise ValueError('模板不存在：'+str(path))
+        # Copy into memory as a new unsaved project so templates stay pristine
+        value=json.loads(path.read_text(encoding='utf-8-sig'))
+        value['id']=__import__('uuid').uuid4().hex
+        value['name']=value.get('name') or path.stem
+        def loaded(reply):
+            self.document.load(reply['project']);self.filename=None;self.results.set_results([])
+            self.image='';self.input_view.show_data('');self.output_view.show_data('');self.flow.fit()
+            self.clear_cloud();self.last_result=None
+            notes=(reply['project'].get('notes') or '').strip()
+            if notes:self.demo_notice.setText(notes);self.demo_notice.show()
+            else:self.demo_notice.hide()
+            self.log('已从模板新建：'+reply['project']['name']+'（尚未保存，可用 Ctrl+S 存到本机工程）')
+            QTimer.singleShot(300, self.maybe_warm_camera)
+        self.request('project/validate',{'project':value},loaded)
+
+    def show_platform_welcome(self):
+        cats={}
+        for d in self.definitions.values():
+            cats[d.get('category','其他')]=cats.get(d.get('category','其他'),0)+1
+        summary='、'.join(f'{c} {n}' for c,n in sorted(cats.items(), key=lambda x:-x[1])[:6])
+        self.demo_notice.setText(
+            'SIEANS Vision 视觉检测平台已就绪。\n'
+            f'算子库 {len(self.definitions)} 个（{summary}…）。\n'
+            '开始：左侧拖入算子连线，或 文件→从模板新建检测工程 / 工具栏「演示工程」。\n'
+            '设备：设备与模型 → 相机与连续采集。运行：工具栏「▶ 运行流程」。'
+        )
+        self.demo_notice.show()
+
+    def run_platform_health(self):
+        try:
+            from desktop.startup_check import run_check
+            report=run_check(self.root)
+        except Exception as error:
+            self.log('启动自检未完成：'+str(error));return
+        self._health=report
+        self.statusBar().showMessage(report.get('short') or report.get('message','').split('\n')[0])
+        self.log(report.get('message',''))
+        if report.get('camera_ready'):
+            self.engine_label.setText('● 引擎就绪 · 相机在线')
+        elif report.get('ok'):
+            self.engine_label.setText('● 引擎就绪 · 等待相机')
+        else:
+            self.engine_label.setText('● 引擎就绪 · 依赖告警')
+
+    def maybe_warm_camera(self):
+        if self.busy or not self.engine_ready:return
+        step=next((s for s in self.document.project.get('steps',[])
+                   if s.get('operation')=='camera_capture'
+                   and (s.get('params') or {}).get('driver') in ('gentl','uvc')
+                   and (s.get('params') or {}).get('trigger','freerun')=='freerun'), None)
+        if not step:return
+        params=dict(step.get('params') or {})
+        if not params.get('deviceId') and params.get('driver')=='gentl':
+            self.log('相机预热跳过：尚未选择 GenTL 设备编号');return
+        def done(status):
+            state=status.get('state') if isinstance(status,dict) else None
+            if state=='running':
+                self.log('相机会话已预热，首次「运行流程」将直接取帧')
+                self.statusBar().showMessage('相机会话运行中 · 可直接运行流程')
+            else:
+                self.log('相机会话状态：'+str(state or status))
+        def failed_msg(msg):
+            # soft — do not block platform
+            self.log('相机预热未成功（可稍后在「设备与模型→相机」连接）：'+str(msg))
+        try:
+            rid=self.backend.request('camera/session/start', dict(
+                params=params, intervalMs=100, reconnectAttempts=2, reconnectMs=1000, autoStart=False))
+            self.pending[rid]=done
+        except Exception as error:
+            failed_msg(error)
+
     def about(self):
-        QMessageBox.information(self,'原生桌面迁移','Qt 原生开发工作台。\n通过“工程管理”“设备与模型”“记录与账号”访问迁移页面。\n\n硬件驱动、模型权重和算法依赖沿用原有配置，界面可用不代表所有现场设备已验收。')
+        QMessageBox.information(self,'SIEANS Vision 视觉检测平台',
+            '完整工业视觉检测工作台（流程编辑 · 算子库 · 设备与模型 · 运行画面 · 记录）。\n\n'
+            '· 左侧：分类算子库（采集 / 图像 / 定位测量 / 识别 / 3D / 通信 / 流程）\n'
+            '· 中间：流程图连线；右侧：选中算子属性（Halcon/VM 风格分区）\n'
+            '· 设备与模型 → 相机与连续采集 / 连续检测 / 模型训练\n'
+            '· 工程管理 → 本机工程库 / 变量 / 子流程 / 运行画面\n'
+            '· 文件 → 从模板新建检测工程；工具栏 → 演示工程\n\n'
+            '硬件与算法依赖沿用本机配置；界面可用不代表所有现场设备已验收。')
 
     def open_panel(self,key):
         if self.busy and key not in ('hmi','continuous'):return

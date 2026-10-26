@@ -1,0 +1,80 @@
+{
+  "version": 2,
+  "id": "d4e16e04-2a2b-4d9a-b3e3-cadcdc8eb5ed",
+  "name": "检测模板 · 采集→几何→尺寸",
+  "steps": [
+    {
+      "id": "2a505d03e5434a5d",
+      "name": "模拟相机",
+      "operation": "camera_capture",
+      "params": {
+        "driver": "simulator",
+        "dataMode": "image",
+        "trigger": "freerun",
+        "timeoutMs": 3000
+      },
+      "reference": "",
+      "position": {
+        "x": 280,
+        "y": 140
+      },
+      "imageFrom": "source",
+      "variables": {}
+    },
+    {
+      "id": "d102a6aba02441df",
+      "name": "几何特征",
+      "operation": "geometry",
+      "params": {},
+      "reference": "",
+      "position": {
+        "x": 280,
+        "y": 280
+      },
+      "imageFrom": "2a505d03e5434a5d",
+      "variables": {}
+    },
+    {
+      "id": "4530f4da39014d4c",
+      "name": "尺寸测量",
+      "operation": "measure",
+      "params": {},
+      "reference": "",
+      "position": {
+        "x": 280,
+        "y": 420
+      },
+      "imageFrom": "d102a6aba02441df",
+      "variables": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "96eba557e3574ece",
+      "from": "source",
+      "to": "2a505d03e5434a5d",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "713692d5fa1b407a",
+      "from": "2a505d03e5434a5d",
+      "to": "d102a6aba02441df",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "0c5d30d668384b3e",
+      "from": "d102a6aba02441df",
+      "to": "4530f4da39014d4c",
+      "fromPort": "bottom",
+      "toPort": "top"
+    }
+  ],
+  "sourcePosition": {
+    "x": 280,
+    "y": 40
+  },
+  "variables": {},
+  "notes": "可离线运行的检测模板（模拟相机）。换成真实 GenTL：选中相机算子 → 右侧属性改 driver=gentl 并选设备。"
+}
