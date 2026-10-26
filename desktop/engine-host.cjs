@@ -79,7 +79,7 @@ function trigger() {
   return mqttTrigger;
 }
 async function cameraRequest(operation, params, requestId) {
-  if (params.driver === 'session') session();
+  session(); // Wire CameraSession so freerun GenTL/UVC captures stay open across flow runs.
   const controller = new AbortController();
   cameraRequests.set(requestId, controller);
   try { return await cameras.run({operation, params}, {signal: controller.signal}); }

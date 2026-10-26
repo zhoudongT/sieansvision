@@ -136,6 +136,8 @@ cd /home/allen/文档/sieansvision
 
 默认打开 `projects/mv-camera-ocr.sieans`：`MV相机(camera_capture/GenTL)` → `字符识别 OCR`（`vision/engine.py` RapidOCR）。
 
+**持久采集**：自由采集（freerun）下 GenTL/UVC 会在首次流程运行时打开并保持 SDK 会话，再次运行只取缓存/下一帧（通常几十毫秒），不再每次 open+close。要释放 USB：设备与模型 → 相机与连续采集 → 停止并释放，或退出桌面 App。
+
 1. 关闭网页 :1880 / MVS / 其它 U3V 占用  
 2. 工具栏 **运行流程**（无需先打开图像）  
 3. 结果表看 OCR 文本；输出图有绿框叠加  
