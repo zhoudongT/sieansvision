@@ -1053,19 +1053,25 @@ sieans：`config_status.node_needs_bang` + `Node.needs_config` / `run_failed`（
 
 | 域 | 剩余细妆 |
 |----|----------|
-| chrome | 状态栏/品牌条 ToolTip 已接；算子纵栏 tip 已对齐；工具栏纯图标人工观感仍可确认 |
-| panels | 模板编辑子窗已接；匹配框/分数/搜索区/全画布描摹开关已接；几何卡尺叠层（拟合曲线/标签/标尺）已接；量测点线标签距离开关已接 |
-| harvest | 主流面板+wave3+脚本输入绑定已接；elapsed 结果显示开关已接 |
-| HMI | 表格/饼图/线图已可视化；固定栏相机会话缓存已接；模板市场+三行业示意已接；容器壳标签已标 |
-| filmstrip | 格式过滤 + sourceConfig 双向已接；缩略图尺寸（小/中/大）已接 |
-| float | 热更新字幕已接；底栏 Run/连续/确定 objectName + QSS 像素级已接 |
-| nest | 引擎循环已实执；进组红叹号 chip 已接；组内扫盲/循环 tip 已加深 |
-| labels | N4 ToolTip 已强化；状态栏/品牌条 ToolTip 已接；中英扫尾可继续 |
-| settings | 运行间隔/流程超时已挂；连续跑路径说明对话框已接 |
-| samples | 三行业运行界面示意模板 + examples/industry-ui-samples.json 已接（无厂商 SDK） |
-| Comm | 通信↔全局触发双向入口已接；变量联调指引已接；事件表「挑选变量」已接 |
-| Host SM | 信息栏→HMI 镜像已接；HMI→Host 已有；报警历史筛选已接 |
+| chrome | 工具栏纯图标人工观感确认（非阻塞） |
+| panels | **overlay→engine/canvas 实绘已接**（locate/geometry/measure_geom）；模板子窗已接 |
+| harvest | 主流面板已接；elapsed 无文本绑定字段（下拉选步，无需 harvest） |
+| HMI | **组合框/Tab页/子界面容器壳已加深**；表格/饼图/线图/模板市场已接 |
+| filmstrip | 格式+缩略尺寸已接 |
+| float | 热更新+底栏 QSS 已接 |
+| nest | 循环/chip/tip 已接 |
+| labels | **EN→CN 扫尾本轮已接**（开/关、趋势示意、编辑器创建、SDK取图、recv 占位） |
+| settings | 间隔/超时/连续路径说明已接 |
+| samples | 三行业示意已接 |
+| Comm | 双向触发/变量挑选已接；**RUN→连续 structural 已验**；真机 TCP 试收仍可加深 |
+| Host SM | 信息栏↔HMI/报警已接 |
 
+### 进度续⑥ · 2026-10-27 深夜
+- measure_geom：`annotate_geom` 引擎实绘 + runtime 调用 + ImageView/mainwindow 画布矢量叠层
+- geometry_find / locate：`show*` 开关门控 `vision/engine.py` / `template_matching.py` 真实绘制
+- labels：operator_hmi 开/关·趋势；locate（编辑器创建）；wave3 占位；SDK 取图分组
+- HMI：组合框 QComboBox 栈、Tab 三页签、子界面嵌套壳
+- smoke：`scripts/smoke-ux-polish-overlay-draw-comm-hmi-e2e.py` 11 PASS
 
 ### 进度续⑤ · 2026-10-27 深夜
 - Comm 事件表「挑选变量…」写入当前行变量列

@@ -8,6 +8,14 @@ MAX_VARIANTS=256
 MAX_CELLS=30_000_000
 MAX_CANDIDATES=4096
 
+def _show_flag(p, key, default=True):
+    """Overlay toggles from locate panel (truthy; string falsey → off)."""
+    v = p.get(key, default)
+    if isinstance(v, str):
+        return v.strip().lower() not in ('0', 'false', 'no', 'off', '')
+    return bool(v) if v is not None else bool(default)
+
+
 
 def number(p,key,default,low,high,integer=False):
     value=p.get(key,default)
@@ -90,7 +98,38 @@ def locate(image,canvas,p,offset,reference):
         points=candidate['points'];center=points.mean(axis=0);matrix=candidate['matrix'];inverse=cv2.invertAffineTransform(matrix)
         pose=dict(format='sieans-pose2d-v1',sourceWidth=width,sourceHeight=height,templateWidth=tw,templateHeight=th,sourcePixelSha256=source_hash,templatePixelSha256=template_hash,matrix=matrix.tolist(),inverse=inverse.tolist(),angleDeg=candidate['angleDeg'],scale=candidate['scale'])
         item=dict(index=index+1,score=candidate['score'],centerX=float(center[0]),centerY=float(center[1]),angleDeg=candidate['angleDeg'],scale=candidate['scale'],center=center.tolist(),polygon=points.tolist(),offsetPixels=(center-np.array(origin)).tolist(),pose=pose)
-        items.append(item);cv2.polylines(canvas,[np.round(points).astype(np.int32)],True,(0,210,80),2,cv2.LINE_AA);cv2.putText(canvas,str(index+1),(round(center[0]),round(center[1])),cv2.FONT_HERSHEY_SIMPLEX,.6,(0,210,80),2,cv2.LINE_AA)
+        items.append(item)
+        show_box = _show_flag(p, 'showMatchBox', True)
+        show_contour = _show_flag(p, 'showContour', True)
+        show_score = _show_flag(p, 'showScore', True)
+        show_cross = _show_flag(p, 'showCross', True)
+        show_origin = _show_flag(p, 'showOrigin', False)
+        show_feat = _show_flag(p, 'showFeaturePoints', False)
+        pts_i = np.round(points).astype(np.int32)
+        if show_box or show_contour:
+            cv2.polylines(canvas, [pts_i], True, (0, 210, 80), 2, cv2.LINE_AA)
+        cx, cy = float(center[0]), float(center[1])
+        if show_cross:
+            s = 12
+            cv2.line(canvas, (round(cx) - s, round(cy)), (round(cx) + s, round(cy)), (0, 200, 255), 1, cv2.LINE_AA)
+            cv2.line(canvas, (round(cx), round(cy) - s), (round(cx), round(cy) + s), (0, 200, 255), 1, cv2.LINE_AA)
+        if show_feat:
+            for pt in pts_i:
+                cv2.circle(canvas, (int(pt[0]), int(pt[1])), 3, (0, 165, 255), -1, cv2.LINE_AA)
+        if show_origin:
+            ox0, oy0 = float(origin[0]), float(origin[1])
+            # origin in template frame mapped via pose center offset
+            cv2.drawMarker(canvas, (round(cx - ox0), round(cy - oy0)), (255, 128, 0), cv2.MARKER_TILTED_CROSS, 14, 2, cv2.LINE_AA)
+        if show_score:
+            label = f"{index+1}:{candidate['score']:.2f}"
+            cv2.putText(canvas, label, (round(cx), round(cy)), cv2.FONT_HERSHEY_SIMPLEX, .55, (0, 210, 80), 2, cv2.LINE_AA)
+        elif show_box or show_contour or show_cross:
+            cv2.putText(canvas, str(index + 1), (round(cx), round(cy)), cv2.FONT_HERSHEY_SIMPLEX, .6, (0, 210, 80), 2, cv2.LINE_AA)
+    if _show_flag(p, 'showSearchRegion', True):
+        h_roi, w_roi = gray.shape[:2]
+        x0, y0 = int(offset[0]), int(offset[1])
+        cv2.rectangle(canvas, (x0, y0), (x0 + max(1, w_roi) - 1, y0 + max(1, h_roi) - 1), (255, 180, 0), 1, cv2.LINE_AA)
+        cv2.putText(canvas, '搜索区', (x0 + 4, max(14, y0 + 16)), cv2.FONT_HERSHEY_SIMPLEX, .45, (255, 180, 0), 1, cv2.LINE_AA)
     limited=more or candidate_limited
     result=dict(found=bool(items),count=len(items),items=items,bestScore=best_score,limitReached=limited,candidateLimitReached=candidate_limited,unique=bool(len(items)==1 and not limited),searchedVariants=len(variants),score=items[0]['score'] if items else best_score,note='OpenCV 正角为逆时针；结果按分数降序。对称模板不能可靠区分方向；位置和角度为离散搜索值。')
     if items:

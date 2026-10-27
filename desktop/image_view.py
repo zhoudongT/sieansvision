@@ -55,6 +55,7 @@ class ImageView(QGraphicsView):
             y += cell
 
     def show_data(self, data):
+        self.clear_geom_overlays()
         pixmap = QPixmap()
         if data and isinstance(data, str):
             try:
@@ -164,6 +165,56 @@ class ImageView(QGraphicsView):
                 self.scale(scale, scale)
         else:
             super().wheelEvent(event)
+
+    
+    def clear_geom_overlays(self):
+        """Remove measure/locate canvas overlays (product-visible draw path)."""
+        for item in getattr(self, '_geom_items', []) or []:
+            try:
+                self.scene().removeItem(item)
+            except Exception:
+                pass
+        self._geom_items = []
+
+    def set_geom_overlays(self, specs):
+        """Draw vector overlays on top of the current image.
+
+        specs: list of dicts:
+          {'type':'line','x1','y1','x2','y2','color'?}
+          {'type':'point','x','y','color'?}
+          {'type':'label','x','y','text','color'?}
+          {'type':'rect','x','y','w','h','color'?}
+        """
+        from PySide6.QtWidgets import QGraphicsLineItem, QGraphicsEllipseItem, QGraphicsSimpleTextItem, QGraphicsRectItem
+        from PySide6.QtGui import QFont
+        self.clear_geom_overlays()
+        items = []
+        for spec in specs or []:
+            if not isinstance(spec, dict):
+                continue
+            kind = spec.get('type')
+            color = QColor(spec.get('color') or '#00d250')
+            pen = QPen(color, 2)
+            pen.setCosmetic(True)
+            if kind == 'line':
+                item = QGraphicsLineItem(float(spec['x1']), float(spec['y1']), float(spec['x2']), float(spec['y2']))
+                item.setPen(pen); item.setZValue(20); items.append(item); self.scene().addItem(item)
+            elif kind == 'point':
+                r = float(spec.get('r') or 4)
+                x, y = float(spec['x']), float(spec['y'])
+                item = QGraphicsEllipseItem(x - r, y - r, r * 2, r * 2)
+                item.setPen(pen); item.setBrush(QBrush(color)); item.setZValue(21)
+                items.append(item); self.scene().addItem(item)
+            elif kind == 'label':
+                item = QGraphicsSimpleTextItem(str(spec.get('text') or ''))
+                item.setBrush(QBrush(color))
+                item.setFont(QFont('Sans', 10))
+                item.setPos(float(spec.get('x') or 0), float(spec.get('y') or 0))
+                item.setZValue(22); items.append(item); self.scene().addItem(item)
+            elif kind == 'rect':
+                item = QGraphicsRectItem(float(spec['x']), float(spec['y']), float(spec['w']), float(spec['h']))
+                item.setPen(pen); item.setZValue(19); items.append(item); self.scene().addItem(item)
+        self._geom_items = items
 
     def mousePressEvent(self, event):
         if self.select_roi and event.button() == Qt.MouseButton.LeftButton and not self.bounds.isEmpty():

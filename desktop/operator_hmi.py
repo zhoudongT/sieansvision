@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
     QPlainTextEdit, QGridLayout, QSizePolicy, QLineEdit, QListWidget,
     QTableWidget, QTableWidgetItem, QProgressBar, QHeaderView,
+    QComboBox, QTabWidget,
 )
 
 from desktop.image_view import ImageView
@@ -1175,11 +1176,11 @@ class OperatorHmiView(QWidget):
             cell = self._make_cell_frame('开关控制')
             row = QHBoxLayout()
             sw = OrangeSwitch(False)
-            lab = QLabel('OFF')
+            lab = QLabel('关')
             lab.setStyleSheet(f'color:{TEXT_MUTED};font-size:12px;')
 
             def _on_toggle(on, c=commands, l=lab):
-                l.setText('ON' if on else 'OFF')
+                l.setText('开' if on else '关')
                 if on and c:
                     self.triggerCommands.emit(deepcopy(c))
 
@@ -1316,21 +1317,77 @@ class OperatorHmiView(QWidget):
             tip = QLabel('曲线示意：周期耗时 / 判定序列（引擎时序后续加深）')
             tip.setWordWrap(True)
             tip.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
-            spark = QLabel('▁▂▃▅▄▆▇▅▄▃▂▁  ·  live sparkline shell')
+            spark = QLabel('▁▂▃▅▄▆▇▅▄▃▂▁  ·  实时趋势示意')
             spark.setAlignment(Qt.AlignmentFlag.AlignCenter)
             spark.setStyleSheet(f'color:{TEXT};font-size:16px;letter-spacing:1px;padding:12px;')
             cell.layout().addWidget(tip)
             cell.layout().addWidget(spark, 1)
             return cell
-        if name in ('组合框', '子界面', 'Tab页', '参数组合', '文本框组合'):
+        if name in ('组合框', '参数组合', '文本框组合'):
             cell = self._make_cell_frame(name)
-            body = QLabel(f'▣ {name}\n容器壳 · 子控件随布局配置展开')
+            tip = QLabel('容器组合：下拉切换子页内容（示意壳，绑定随布局配置）')
+            tip.setWordWrap(True)
+            tip.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
+            combo = QComboBox()
+            combo.setObjectName('hmiComboContainer')
+            for lab in ('方案 A · 外观', '方案 B · 尺寸', '方案 C · 综合'):
+                combo.addItem(lab)
+            stack = QLabel('当前子页：方案 A · 外观\n（可嵌套图像 / 表格 / 判定灯）')
+            stack.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            stack.setWordWrap(True)
+            stack.setStyleSheet(f'color:{TEXT};padding:10px;border:1px dashed {TEXT_MUTED};border-radius:6px;')
+            def _on_combo(i, s=stack, c=combo):
+                s.setText(f'当前子页：{c.itemText(i)}\n（可嵌套图像 / 表格 / 判定灯）')
+            combo.currentIndexChanged.connect(_on_combo)
+            cell.layout().addWidget(tip)
+            cell.layout().addWidget(combo)
+            cell.layout().addWidget(stack, 1)
+            return cell
+        if name == 'Tab页':
+            cell = self._make_cell_frame(name)
+            tip = QLabel('多页签容器：页内可再放控件（示意壳）')
+            tip.setWordWrap(True)
+            tip.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
+            tabs = QTabWidget()
+            tabs.setObjectName('hmiTabContainer')
+            for title, body_txt in (
+                ('检测', '页 1 · 图像 + OK/NG'),
+                ('统计', '页 2 · 产量 / 良率'),
+                ('通讯', '页 3 · 主机状态 / 日志'),
+            ):
+                page = QWidget()
+                lay = QVBoxLayout(page)
+                lay.setContentsMargins(8, 8, 8, 8)
+                lab = QLabel(body_txt)
+                lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                lab.setWordWrap(True)
+                lab.setStyleSheet(f'color:{TEXT};padding:12px;')
+                lay.addWidget(lab, 1)
+                tabs.addTab(page, title)
+            cell.layout().addWidget(tip)
+            cell.layout().addWidget(tabs, 1)
+            return cell
+        if name == '子界面':
+            cell = self._make_cell_frame(name)
+            tip = QLabel('嵌套子界面壳：外框 + 内嵌分区（示意）')
+            tip.setWordWrap(True)
+            tip.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
+            inner = QFrame()
+            inner.setObjectName('hmiSubUiShell')
+            inner.setStyleSheet(
+                f'QFrame#hmiSubUiShell{{border:1px solid {TEXT_MUTED};border-radius:8px;background:rgba(0,0,0,0.04);}}'
+            )
+            il = QVBoxLayout(inner)
+            head = QLabel('子界面 · 标题栏')
+            head.setStyleSheet(f'font-weight:600;color:{TEXT};padding:4px 8px;')
+            body = QLabel('内嵌区：可再挂载图像窗 / 表格 / 按钮行')
             body.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            body.setStyleSheet(f'color:{TEXT_MUTED};font-weight:600;font-size:12px;')
             body.setWordWrap(True)
-            cell.layout().addStretch(1)
-            cell.layout().addWidget(body)
-            cell.layout().addStretch(1)
+            body.setStyleSheet(f'color:{TEXT_MUTED};padding:16px;')
+            il.addWidget(head)
+            il.addWidget(body, 1)
+            cell.layout().addWidget(tip)
+            cell.layout().addWidget(inner, 1)
             return cell
 
         # Fallback stub for remaining chart / exotic controls

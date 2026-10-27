@@ -1088,6 +1088,62 @@ class MainWindow(QMainWindow):
         if dialog:dialog.set_runtime(value,self.image)
 
 
+
+    def _apply_measure_geom_overlays(self, records):
+        """Canvas draw path: vector overlays for measure_geom when annotatedImage already baked
+        or as fallback from result scalars + step show* params."""
+        view = getattr(self, 'output_view', None)
+        if view is None or not hasattr(view, 'set_geom_overlays'):
+            return
+        specs = []
+        steps = {s.get('id'): s for s in (self.document.project.get('steps') or [])}
+        for record in records or []:
+            sid = record.get('id')
+            step = steps.get(sid) or {}
+            op = step.get('operation') or ''
+            if op not in ('line_intersect', 'point_distance', 'point_line_distance'):
+                continue
+            params = step.get('params') or {}
+            if params.get('showOverlay') in (False, 0, 'false', 'False'):
+                continue
+            result = (record.get('output') or {}).get('result') or {}
+            show_pts = params.get('showPoints', True) not in (False, 0, 'false')
+            show_lines = params.get('showLines', True) not in (False, 0, 'false')
+            show_labels = params.get('showLabels', True) not in (False, 0, 'false')
+            show_dist = params.get('showDistanceText', True) not in (False, 0, 'false')
+            if op == 'line_intersect' and result.get('x1') is not None:
+                if show_lines:
+                    specs.append(dict(type='line', x1=result['x1'], y1=result['y1'], x2=result['x2'], y2=result['y2']))
+                    specs.append(dict(type='line', x1=result['x3'], y1=result['y3'], x2=result['x4'], y2=result['y4']))
+                if show_pts and result.get('intersectX') is not None:
+                    specs.append(dict(type='point', x=result['intersectX'], y=result['intersectY']))
+                if show_labels and result.get('intersectX') is not None:
+                    specs.append(dict(type='label', x=float(result['intersectX'])+6, y=float(result['intersectY'])-6, text='交点'))
+            elif op == 'point_distance' and result.get('x1') is not None:
+                if show_lines:
+                    specs.append(dict(type='line', x1=result['x1'], y1=result['y1'], x2=result['x2'], y2=result['y2']))
+                if show_pts:
+                    specs.append(dict(type='point', x=result['x1'], y=result['y1']))
+                    specs.append(dict(type='point', x=result['x2'], y=result['y2']))
+                if (show_dist or show_labels) and result.get('distance') is not None:
+                    mx = (float(result['x1'])+float(result['x2']))/2
+                    my = (float(result['y1'])+float(result['y2']))/2
+                    specs.append(dict(type='label', x=mx, y=my, text=f"{float(result['distance']):.3f}{result.get('unit') or 'px'}"))
+            elif op == 'point_line_distance' and result.get('x1') is not None:
+                if show_lines:
+                    specs.append(dict(type='line', x1=result['x1'], y1=result['y1'], x2=result['x2'], y2=result['y2']))
+                    if result.get('footX') is not None:
+                        specs.append(dict(type='line', x1=result.get('px'), y1=result.get('py'), x2=result['footX'], y2=result['footY'], color='#ffb400'))
+                if show_pts and result.get('px') is not None:
+                    specs.append(dict(type='point', x=result['px'], y=result['py']))
+                if (show_dist or show_labels) and result.get('distance') is not None and result.get('px') is not None:
+                    specs.append(dict(type='label', x=float(result['px'])+6, y=float(result['py'])-6,
+                                      text=f"{float(result['distance']):.3f}{result.get('unit') or 'px'}"))
+        try:
+            view.set_geom_overlays(specs)
+        except Exception:
+            pass
+
     def _pick_annotated_image(self, records):
         """Prefer 图像显示(display) engine annotatedImage, else last non-empty annotated.
 
@@ -1280,7 +1336,7 @@ class MainWindow(QMainWindow):
                 self._apply_display_to_result_pane(disp_step, image=annotated_live)
                 _disp_applied = True
             else:
-                self.output_view.show_data(annotated_live);self.images.setCurrentIndex(1)
+                self.output_view.show_data(annotated_live);self._apply_measure_geom_overlays(records);self.images.setCurrentIndex(1)
                 try:
                     if hasattr(self,'filmstrip') and hasattr(self.filmstrip,'set_live_result'):
                         self.filmstrip.set_live_result(annotated_live)

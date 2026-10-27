@@ -385,8 +385,8 @@ class LocateMatchPanel(QWidget):
             for k, v in dlg.result_params().items():
                 self._set_param(k, v)
             if not str(self.params.get('templatePath') or '').strip():
-                self._set_param('templatePath', '(editor-created)')
-                path_edit.setText('(editor-created)')
+                self._set_param('templatePath', '（编辑器创建）')
+                path_edit.setText('（编辑器创建）')
             status.setText('模板状态：已就绪（已创建/载入）')
             status.setStyleSheet('font-weight:600;color:#2e7d32;')
 

@@ -394,7 +394,7 @@ class ProtocolParsePanel(_ShellBase):
         self._name_row(form, '协议解析')
         self._ensure_incomplete_banner(form)
         src = QLineEdit(str(self.params.get('sourceVar') or ''))
-        src.setPlaceholderText('recvData')
+        src.setPlaceholderText('接收数据变量名，如 recvData')
         src.editingFinished.connect(lambda: self._set_param('sourceVar', src.text().strip()))
         def _live_src(text):
             self.params['sourceVar'] = (text or '').strip()

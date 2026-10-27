@@ -228,7 +228,7 @@ class ImageSourceForm(QWidget):
                lambda v: self._audit('gain', float(v)))
 
         # sdk — GenTL / 厂商 SDK 取图（对齐 VM 课「SDK取图」主路径：连接会话 → 全局图像）
-        self.sdk_box = QGroupBox('SDK')
+        self.sdk_box = QGroupBox('SDK 取图')
         self.sdk_box.setObjectName('propertySection')
         sdk_layout = QVBoxLayout(self.sdk_box)
         note = QLabel(

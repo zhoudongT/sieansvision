@@ -17,6 +17,15 @@ MODEL_DIR = Path(os.environ.get('VISION_MODEL_DIR') or Path(__file__).resolve().
 MAX_PIXELS = 16_000_000
 
 
+
+def _show_flag(p, key, default=True):
+    """Panel overlay toggles → real draw gate (truthy; string falsey → off)."""
+    v = p.get(key, default)
+    if isinstance(v, str):
+        return v.strip().lower() not in ('0', 'false', 'no', 'off', '')
+    return bool(v) if v is not None else bool(default)
+
+
 def number(p, key, default, low, high):
     value = float(p.get(key, default))
     if not math.isfinite(value) or not low <= value <= high:
@@ -90,6 +99,17 @@ def geometry(image, canvas, p, offset):
         k = filt * 2 + 1
         gray = cv2.GaussianBlur(gray, (k, k), 0)
 
+    show_ov = _show_flag(p, 'showOverlay', True)
+    show_lines = show_ov and (
+        _show_flag(p, 'showCalipers', True)
+        or _show_flag(p, 'showFitCurve', True)
+        or _show_flag(p, 'showLines', True)
+    )
+    show_pts = show_ov and _show_flag(p, 'showPoints', True)
+    show_labels = show_ov and _show_flag(p, 'showLabels', True)
+    show_ruler = show_ov and _show_flag(p, 'showRuler', False)
+    show_fit_err = show_ov and _show_flag(p, 'showFitError', False)
+
     if mode in ('lines', 'edges'):
         # Prefer explicit edgeThreshold as Canny low when set densely from UI
         low = number(p, 'cannyLow', 50, 0, 255)
@@ -105,20 +125,33 @@ def geometry(image, canvas, p, offset):
                 pass
         edges = cv2.Canny(gray, low, high)
         if mode == 'edges':
-            canvas[oy:oy+gray.shape[0], ox:ox+gray.shape[1]][edges > 0] = (0, 210, 80)
-            return {'feature': mode, 'edgePixels': int(np.count_nonzero(edges))}
+            if show_lines:
+                canvas[oy:oy+gray.shape[0], ox:ox+gray.shape[1]][edges > 0] = (0, 210, 80)
+            return {'feature': mode, 'edgePixels': int(np.count_nonzero(edges)),
+                    'overlay': {'showOverlay': show_ov, 'showFitCurve': show_lines}}
         lines = cv2.HoughLinesP(edges, 1, np.pi/180, int(number(p, 'votes', 40, 1, 10000)),
                                minLineLength=number(p, 'minLength', 40, 1, 10000), maxLineGap=number(p, 'maxGap', 10, 0, 1000))
         reverse = bool(p.get('reverseFind'))
         ang_norm = bool(p.get('angleNormalize'))
-        for x1, y1, x2, y2 in ([] if lines is None else lines.reshape(-1, 4)[:max_count]):
+        for idx, (x1, y1, x2, y2) in enumerate([] if lines is None else lines.reshape(-1, 4)[:max_count]):
             if reverse:
                 x1, y1, x2, y2 = x2, y2, x1, y1
             a, b = (int(x1)+ox, int(y1)+oy), (int(x2)+ox, int(y2)+oy)
             ang = math.degrees(math.atan2(y2-y1, x2-x1))
             if ang_norm:
                 ang = ang % 180.0
-            cv2.line(canvas, a, b, (0, 210, 80), 2)
+            if show_lines:
+                cv2.line(canvas, a, b, (0, 210, 80), 2)
+            if show_pts:
+                cv2.circle(canvas, a, 3, (0, 165, 255), -1, cv2.LINE_AA)
+                cv2.circle(canvas, b, 3, (0, 165, 255), -1, cv2.LINE_AA)
+            if show_labels:
+                mid = ((a[0]+b[0])//2, (a[1]+b[1])//2)
+                cv2.putText(canvas, str(idx+1), mid, cv2.FONT_HERSHEY_SIMPLEX, .45, (0, 210, 80), 1, cv2.LINE_AA)
+            if show_ruler:
+                # tick marks at ends
+                cv2.drawMarker(canvas, a, (255, 180, 0), cv2.MARKER_CROSS, 8, 1)
+                cv2.drawMarker(canvas, b, (255, 180, 0), cv2.MARKER_CROSS, 8, 1)
             result.append({'start': a, 'end': b, 'lengthPixels': math.hypot(x2-x1, y2-y1),
                            'angleDeg': ang})
     elif mode == 'circles':
@@ -137,9 +170,19 @@ def geometry(image, canvas, p, offset):
                                 number(p, 'minDistance', 30, 1, 10000),
                                 param1=number(p, 'cannyHigh', 150, 1, 255), param2=number(p, 'votes', 30, 1, 1000),
                                 minRadius=min_r, maxRadius=max_r)
-        for x, y, r in ([] if found is None else found.reshape(-1, 3)[:max_count]):
+        for idx, (x, y, r) in enumerate([] if found is None else found.reshape(-1, 3)[:max_count]):
             center = [float(x)+ox, float(y)+oy]
-            cv2.circle(canvas, tuple(map(round, center)), round(float(r)), (0, 210, 80), 2)
+            cxy = tuple(map(round, center))
+            if show_lines:
+                cv2.circle(canvas, cxy, round(float(r)), (0, 210, 80), 2)
+            if show_pts:
+                cv2.circle(canvas, cxy, 3, (0, 165, 255), -1, cv2.LINE_AA)
+            if show_labels:
+                cv2.putText(canvas, str(idx+1), (cxy[0]+4, cxy[1]-4), cv2.FONT_HERSHEY_SIMPLEX, .45, (0, 210, 80), 1, cv2.LINE_AA)
+            if show_fit_err:
+                cv2.putText(canvas, f'r={float(r):.1f}', (cxy[0]+4, cxy[1]+14), cv2.FONT_HERSHEY_SIMPLEX, .4, (255, 180, 0), 1, cv2.LINE_AA)
+            if show_ruler:
+                cv2.line(canvas, (cxy[0]-round(float(r)), cxy[1]), (cxy[0]+round(float(r)), cxy[1]), (255, 180, 0), 1)
             result.append({'center': center, 'radiusPixels': float(r), 'diameterPixels': float(2*r)})
     elif mode == 'rects':
         # minAreaRect on contours; filter by size / angle tolerance
@@ -164,7 +207,14 @@ def geometry(image, canvas, p, offset):
                 pass
             box = cv2.boxPoints(((cx, cy), (w, h), angle))
             box = box + np.array([ox, oy], dtype=np.float32)
-            polygon(canvas, box)
+            if show_lines:
+                polygon(canvas, box)
+            if show_pts:
+                for pt in np.round(box).astype(int):
+                    cv2.circle(canvas, (int(pt[0]), int(pt[1])), 3, (0, 165, 255), -1, cv2.LINE_AA)
+            if show_labels:
+                cv2.putText(canvas, str(len(result)+1), (round(float(cx)+ox), round(float(cy)+oy)),
+                            cv2.FONT_HERSHEY_SIMPLEX, .45, (0, 210, 80), 1, cv2.LINE_AA)
             result.append({
                 'center': [float(cx) + ox, float(cy) + oy],
                 'widthPixels': float(min(w, h)),
@@ -176,19 +226,30 @@ def geometry(image, canvas, p, offset):
             if len(result) >= max_count:
                 break
     elif mode == 'contours':
-        for c in contours(gray, p):
+        for idx, c in enumerate(contours(gray, p)):
             c = c + np.array([[[ox, oy]]])
             x, y, w, h = cv2.boundingRect(c)
-            cv2.drawContours(canvas, [c], -1, (0, 210, 80), 2)
+            if show_lines:
+                cv2.drawContours(canvas, [c], -1, (0, 210, 80), 2)
+            if show_pts and len(c):
+                pt0 = c[0, 0]
+                cv2.circle(canvas, (int(pt0[0]), int(pt0[1])), 3, (0, 165, 255), -1, cv2.LINE_AA)
+            if show_labels:
+                cv2.putText(canvas, str(idx+1), (x, max(12, y-4)), cv2.FONT_HERSHEY_SIMPLEX, .45, (0, 210, 80), 1, cv2.LINE_AA)
             result.append({'bbox': [x, y, w, h], 'areaPixels': cv2.contourArea(c),
                            'perimeterPixels': cv2.arcLength(c, True), 'points': c[:, 0].tolist()})
+            if len(result) >= max_count:
+                break
     else:
         raise ValueError('feature 必须是 lines、circles、rects、edges 或 contours')
-    out = {'feature': mode, 'count': len(result), 'items': result}
+    out = {'feature': mode, 'count': len(result), 'items': result,
+           'overlay': {'showOverlay': show_ov, 'showPoints': show_pts, 'showFitCurve': show_lines,
+                       'showLabels': show_labels, 'showRuler': show_ruler}}
     # aliases for measure bind fields: lines[0] / circles[0] / rects[0]
     if mode in ('lines', 'circles', 'rects', 'contours'):
         out[mode] = result
     return out
+
 
 
 def measure(image, canvas, p, offset):
@@ -215,7 +276,15 @@ def measure(image, canvas, p, offset):
         pts = np.array(selected, dtype=float)
         if pts.shape != (2, 2) or not np.isfinite(pts).all():
             raise ValueError('测量 points 必须为两个坐标点')
-        cv2.line(canvas, tuple(np.round(pts[0]).astype(int)), tuple(np.round(pts[1]).astype(int)), (0, 210, 80), 2)
+        if _show_flag(p, 'showOverlay', True) and _show_flag(p, 'showLines', True):
+            cv2.line(canvas, tuple(np.round(pts[0]).astype(int)), tuple(np.round(pts[1]).astype(int)), (0, 210, 80), 2)
+        if _show_flag(p, 'showOverlay', True) and _show_flag(p, 'showPoints', True):
+            for pt in pts:
+                cv2.circle(canvas, tuple(np.round(pt).astype(int)), 4, (0, 165, 255), -1, cv2.LINE_AA)
+        if _show_flag(p, 'showOverlay', True) and (_show_flag(p, 'showLabels', True) or _show_flag(p, 'showDistanceText', True)):
+            mid = tuple(np.round(pts.mean(axis=0)).astype(int))
+            dist_txt = f"{float(np.linalg.norm(pts[1]-pts[0])):.2f}"
+            cv2.putText(canvas, dist_txt, mid, cv2.FONT_HERSHEY_SIMPLEX, .5, (0, 210, 80), 1, cv2.LINE_AA)
         data = {'distance': float(np.linalg.norm(pts[1]-pts[0]))*ratio, 'points': selected}
     else:
         items = []
@@ -230,7 +299,12 @@ def measure(image, canvas, p, offset):
                 contour = contour+np.array([[[offset[0], offset[1]]]])
                 center, dimensions, angle = cv2.minAreaRect(contour)
                 points = cv2.boxPoints((center, dimensions, angle))
-                polygon(canvas, points)
+                if _show_flag(p, 'showOverlay', True) and (
+                        _show_flag(p, 'showFitCurve', True) or _show_flag(p, 'showLines', True) or _show_flag(p, 'showCalipers', True)):
+                    polygon(canvas, points)
+                if _show_flag(p, 'showOverlay', True) and _show_flag(p, 'showPoints', True):
+                    for pt in np.round(points).astype(int):
+                        cv2.circle(canvas, (int(pt[0]), int(pt[1])), 3, (0, 165, 255), -1, cv2.LINE_AA)
                 items.append({'centerPixels': center, 'width': min(dimensions)*ratio, 'height': max(dimensions)*ratio,
                               'area': cv2.contourArea(contour)*ratio*ratio,
                               'offset': ((np.array(center)-origin)*ratio).tolist()})
@@ -427,6 +501,87 @@ def distort_correct(image, canvas, p, offset):
         'note': note or 'undistort ok',
     }
 
+
+def annotate_geom(canvas, p):
+    """Draw measure_geom overlays (line_intersect / point_distance / point_line_distance) onto canvas.
+
+    Params carry both show* toggles and geometry scalars from flow-control results.
+    """
+    show_ov = _show_flag(p, 'showOverlay', True)
+    if not show_ov:
+        return {'annotated': False, 'reason': 'showOverlay=false'}
+    show_pts = _show_flag(p, 'showPoints', True)
+    show_lines = _show_flag(p, 'showLines', True)
+    show_labels = _show_flag(p, 'showLabels', True)
+    show_dist = _show_flag(p, 'showDistanceText', True)
+    kind = str(p.get('kind') or p.get('op') or 'auto')
+    color_line = (0, 210, 80)
+    color_pt = (0, 165, 255)
+    color_txt = (0, 200, 255)
+
+    def _pt(x, y):
+        return (int(round(float(x))), int(round(float(y))))
+
+    drawn = []
+    # line_intersect: two lines + intersection
+    if kind in ('line_intersect', 'auto') and p.get('intersectX') is not None and p.get('x1') is not None:
+        if show_lines:
+            cv2.line(canvas, _pt(p['x1'], p['y1']), _pt(p['x2'], p['y2']), color_line, 2, cv2.LINE_AA)
+            cv2.line(canvas, _pt(p['x3'], p['y3']), _pt(p['x4'], p['y4']), color_line, 2, cv2.LINE_AA)
+            drawn.append('lines')
+        ix, iy = p['intersectX'], p['intersectY']
+        if show_pts and ix is not None and iy is not None:
+            cv2.circle(canvas, _pt(ix, iy), 5, color_pt, -1, cv2.LINE_AA)
+            drawn.append('intersect')
+        if show_labels and ix is not None:
+            cv2.putText(canvas, '交点', _pt(float(ix) + 6, float(iy) - 6), cv2.FONT_HERSHEY_SIMPLEX, .5, color_txt, 1, cv2.LINE_AA)
+        return {'annotated': True, 'kind': 'line_intersect', 'drawn': drawn}
+
+    # point_distance
+    if kind in ('point_distance', 'auto') and p.get('x1') is not None and p.get('x2') is not None and p.get('distance') is not None:
+        a, b = _pt(p['x1'], p['y1']), _pt(p['x2'], p['y2'])
+        if show_lines:
+            cv2.line(canvas, a, b, color_line, 2, cv2.LINE_AA)
+            drawn.append('segment')
+        if show_pts:
+            cv2.circle(canvas, a, 4, color_pt, -1, cv2.LINE_AA)
+            cv2.circle(canvas, b, 4, color_pt, -1, cv2.LINE_AA)
+            drawn.append('points')
+        if show_dist or show_labels:
+            mid = ((a[0] + b[0]) // 2, (a[1] + b[1]) // 2)
+            unit = str(p.get('unit') or 'px')
+            cv2.putText(canvas, f"{float(p['distance']):.3f}{unit}", mid, cv2.FONT_HERSHEY_SIMPLEX, .5, color_txt, 1, cv2.LINE_AA)
+            drawn.append('distance')
+        return {'annotated': True, 'kind': 'point_distance', 'drawn': drawn}
+
+    # point_line_distance
+    if kind in ('point_line_distance', 'auto') and p.get('px') is not None and p.get('x1') is not None:
+        ln_a, ln_b = _pt(p['x1'], p['y1']), _pt(p['x2'], p['y2'])
+        pt = _pt(p['px'], p['py'])
+        if show_lines:
+            cv2.line(canvas, ln_a, ln_b, color_line, 2, cv2.LINE_AA)
+            drawn.append('line')
+        fx, fy = p.get('footX'), p.get('footY')
+        if fx is not None and fy is not None and show_lines:
+            foot = _pt(fx, fy)
+            cv2.line(canvas, pt, foot, (255, 180, 0), 1, cv2.LINE_AA)
+            drawn.append('perp')
+            if show_pts:
+                cv2.circle(canvas, foot, 3, (255, 180, 0), -1, cv2.LINE_AA)
+        if show_pts:
+            cv2.circle(canvas, pt, 4, color_pt, -1, cv2.LINE_AA)
+            drawn.append('point')
+        if (show_dist or show_labels) and p.get('distance') is not None:
+            unit = str(p.get('unit') or 'px')
+            cv2.putText(canvas, f"{float(p['distance']):.3f}{unit}", (pt[0] + 6, pt[1] - 6),
+                        cv2.FONT_HERSHEY_SIMPLEX, .5, color_txt, 1, cv2.LINE_AA)
+            drawn.append('distance')
+        return {'annotated': True, 'kind': 'point_line_distance', 'drawn': drawn}
+
+    return {'annotated': False, 'reason': 'no matching geometry fields'}
+
+
+
 def run(request):
     if request.get('operation') == 'depth_import':
         from depth_import import run as run_depth_import
@@ -502,9 +657,11 @@ def run(request):
                 cv2.putText(canvas, label, (12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 200, 255), 2, cv2.LINE_AA)
             except Exception:
                 pass
+    elif operation == 'annotate_geom':
+        data = annotate_geom(canvas, p)
     else:
         raise ValueError('未知视觉操作')
-    extension = '.png' if operation in ('preprocess', 'distort_correct', 'display') or (operation == 'yolo_segment' and p.get('output') == 'mask') else '.jpg'
+    extension = '.png' if operation in ('preprocess', 'distort_correct', 'display', 'annotate_geom') or (operation == 'yolo_segment' and p.get('output') == 'mask') else '.jpg'
     _, encoded = cv2.imencode(extension, canvas, [] if extension == '.png' else [cv2.IMWRITE_JPEG_QUALITY, 88])
     return {'operation': operation, 'result': data, 'elapsedMs': round((time.perf_counter()-started)*1000, 1),
             **({'maskImage':mask_image} if operation == 'yolo_segment' else {}),
