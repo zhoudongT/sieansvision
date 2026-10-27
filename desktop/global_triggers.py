@@ -45,18 +45,19 @@ def ensure_triggers(project):
 class _TriggerTable(QWidget):
     """Shared table for event / string trigger rows."""
 
-    COLS = ['序号', '触发事件', '触发命令类型', '触发配置', '操作']
+    COLS = ['序号', '触发事件', '部分匹配', '触发命令类型', '触发配置', '操作']
 
     def __init__(self, kind='event', parent=None):
         super().__init__(parent)
         self.kind = kind
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        self.table = QTableWidget(0, 5)
+        self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(self.COLS)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setAlternatingRowColors(True)
         lay.addWidget(self.table, 1)
@@ -87,21 +88,35 @@ class _TriggerTable(QWidget):
             idx = ev.findText(cur)
             ev.setCurrentIndex(idx if idx >= 0 else 0)
             self.table.setCellWidget(r, 1, ev)
+            # 部分匹配 N/A for events — disabled checkbox-like combo
+            partial = QComboBox()
+            partial.addItems(['—', '是', '否'])
+            partial.setCurrentIndex(0)
+            partial.setEnabled(False)
+            self.table.setCellWidget(r, 2, partial)
         else:
             edit = QLineEdit(str(row.get('event') or row.get('match') or ''))
-            edit.setPlaceholderText('匹配字符串…')
+            edit.setPlaceholderText('触发字符串…')
             self.table.setCellWidget(r, 1, edit)
+            partial = QComboBox()
+            partial.addItem('是（包含）', True)
+            partial.addItem('否（全等）', False)
+            want = row.get('partial')
+            if want is None:
+                want = True
+            partial.setCurrentIndex(0 if want else 1)
+            self.table.setCellWidget(r, 2, partial)
 
         cmd = QComboBox()
         cmd.addItems(COMMAND_TYPES)
         cur_cmd = row.get('commandType') or COMMAND_TYPES[0]
         i = cmd.findText(cur_cmd)
         cmd.setCurrentIndex(i if i >= 0 else 0)
-        self.table.setCellWidget(r, 2, cmd)
+        self.table.setCellWidget(r, 3, cmd)
 
         cfg = QLineEdit(str(row.get('config') or ''))
         cfg.setPlaceholderText('配置（流程名/模块/链接目标…）')
-        self.table.setCellWidget(r, 3, cfg)
+        self.table.setCellWidget(r, 4, cfg)
 
         ops = QWidget()
         ol = QHBoxLayout(ops)
@@ -118,7 +133,7 @@ class _TriggerTable(QWidget):
         ol.addWidget(up)
         ol.addWidget(down)
         ol.addWidget(rm)
-        self.table.setCellWidget(r, 4, ops)
+        self.table.setCellWidget(r, 5, ops)
         self._renumber()
 
     def add_row(self):
@@ -145,7 +160,7 @@ class _TriggerTable(QWidget):
                 self.table.setItem(r, 0, item)
             item.setText(str(r + 1))
             # rebind op buttons to current row indices
-            ops = self.table.cellWidget(r, 4)
+            ops = self.table.cellWidget(r, 5)
             if ops is None:
                 continue
             buttons = ops.findChildren(QPushButton)
@@ -170,13 +185,29 @@ class _TriggerTable(QWidget):
         out = []
         for r in range(self.table.rowCount()):
             w1 = self.table.cellWidget(r, 1)
-            w2 = self.table.cellWidget(r, 2)
-            w3 = self.table.cellWidget(r, 3)
+            w2 = self.table.cellWidget(r, 2)  # partial
+            w3 = self.table.cellWidget(r, 3)  # command
+            w4 = self.table.cellWidget(r, 4)  # config
             event = w1.currentText() if isinstance(w1, QComboBox) else (w1.text() if w1 else '')
-            cmd = w2.currentText() if w2 else ''
-            cfg = w3.text() if w3 else ''
-            out.append(dict(event=event, match=event, commandType=cmd, config=cfg))
+            if self.kind == 'string' and isinstance(w2, QComboBox):
+                partial = bool(w2.currentData()) if w2.currentData() is not None else (w2.currentIndex() == 0)
+            else:
+                partial = False
+            cmd = w3.currentText() if w3 else ''
+            cfg = w4.text() if w4 else ''
+            out.append(dict(event=event, match=event, partial=partial, commandType=cmd, config=cfg))
         return out
+
+    @staticmethod
+    def match_string(received, row):
+        """Runtime helper: full or partial string match (VM 部分匹配)."""
+        needle = str(row.get('match') or row.get('event') or '')
+        text = '' if received is None else str(received)
+        if not needle:
+            return False
+        if row.get('partial', True):
+            return needle in text
+        return needle == text
 
 
 class GlobalTriggersDialog(QDialog):
@@ -191,7 +222,7 @@ class GlobalTriggersDialog(QDialog):
         title = QLabel('全局触发')
         title.setObjectName('dialogTitle')
         root.addWidget(title)
-        hint = QLabel('事件 → 命令 / 字符串匹配 → 命令。列：序号、触发事件、触发命令类型、触发配置、操作。执行侧为壳层占位，配置随方案保存。')
+        hint = QLabel('事件 → 命令 / 字符串触发（支持部分匹配）→ 执行流程。列：序号、触发事件、部分匹配、命令类型、配置、操作。配置随方案保存。')
         hint.setObjectName('dialogHint')
         hint.setWordWrap(True)
         root.addWidget(hint)
