@@ -112,6 +112,7 @@ class FilmstripBar(QWidget):
         self._live_fit_mode = 'contain'
         self._actual_letterbox = True  # pad with theme CANVAS when src < thumb
         self._actual_pad_color = None  # None → theme CANVAS
+        self._live_src_pixmap = None  # last pre-fit src for pad-only refresh
 
     def paths(self):
         return list(self._paths)
@@ -362,16 +363,41 @@ class FilmstripBar(QWidget):
         y = max(0, (scaled.height() - th) // 2)
         return scaled.copy(x, y, tw, th)
 
-    def set_actual_pad_color(self, color):
-        """Override actual-mode letterbox pad (theme / Display channel). None → CANVAS."""
+    def set_actual_pad_color(self, color, *, refresh=True):
+        """Override actual-mode letterbox pad (theme / Display channel). None → CANVAS.
+
+        When refresh=True, re-fit current live thumb so channel-only Display edits
+        update pad without a new frame.
+        """
         from PySide6.QtGui import QColor
         if color is None or color == '':
             self._actual_pad_color = None
-            return
-        if isinstance(color, QColor):
+        elif isinstance(color, QColor):
             self._actual_pad_color = QColor(color)
         else:
             self._actual_pad_color = QColor(str(color))
+        if refresh:
+            try:
+                self.refresh_live_thumb_fit()
+            except Exception:
+                pass
+
+    def refresh_live_thumb_fit(self):
+        """Re-apply _fit_pixmap_to_thumb on last live src (pad/fit change, same frame)."""
+        src = getattr(self, '_live_src_pixmap', None)
+        if src is None or not hasattr(self, 'thumbs'):
+            return False
+        row = self.thumbs.currentRow()
+        if row < 0:
+            return False
+        item = self.thumbs.item(row)
+        if item is None:
+            return False
+        mode = getattr(self, '_live_fit_mode', 'contain')
+        from PySide6.QtGui import QIcon
+        pix = self._fit_pixmap_to_thumb(src, mode)
+        item.setIcon(QIcon(pix))
+        return True
 
     def set_live_display(self, data_url, fit_mode=None, pad_color=None):
         """Push Display result + honor fitMode crop on current thumb."""
@@ -379,6 +405,9 @@ class FilmstripBar(QWidget):
             self._live_fit_mode = fit_mode
         if pad_color is not None:
             try:
+                # Frame reload below will re-fit; pad-only refresh when no data_url
+                self.set_actual_pad_color(pad_color, refresh=not bool(data_url))
+            except TypeError:
                 self.set_actual_pad_color(pad_color)
             except Exception:
                 pass
@@ -412,7 +441,10 @@ class FilmstripBar(QWidget):
                 if img.isNull():
                     return
                 src_pix = QPixmap.fromImage(img)
+                self._live_src_pixmap = src_pix
                 mode = fit_mode if fit_mode in ('contain', 'cover', 'actual') else getattr(self, '_live_fit_mode', 'contain')
+                if fit_mode in ('contain', 'cover', 'actual'):
+                    self._live_fit_mode = mode
                 pix = self._fit_pixmap_to_thumb(src_pix, mode)
                 item = self.thumbs.item(row)
                 if item is not None:

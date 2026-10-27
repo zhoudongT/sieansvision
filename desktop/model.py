@@ -29,6 +29,7 @@ class Document(QObject):
         super().__init__()
         self.project = empty_project()
         self.history = [deepcopy(self.project)]
+        self.history_labels = ['']  # parallel to history; tip label for undo status
         self.index = 0
         self.saved = deepcopy(self.project)
         self.clipboard = None
@@ -50,6 +51,7 @@ class Document(QObject):
             pass
         self.project = project
         self.history, self.index = [deepcopy(project)], 0
+        self.history_labels = ['']
         self.saved, self.clipboard = deepcopy(project), None
         self.changed.emit()
 
@@ -77,16 +79,35 @@ class Document(QObject):
             remaining -= ready
             done |= ready
 
-    def commit(self, p):
+    def commit(self, p, label=None):
         self.validate(p)
         if p == self.project:
             return
         self.project = deepcopy(p)
+        labels = list(getattr(self, 'history_labels', None) or [])
+        # Keep labels aligned with truncated history prefix
+        labels = labels[: self.index + 1]
+        while len(labels) < self.index + 1:
+            labels.append('')
         self.history = self.history[:self.index + 1] + [deepcopy(p)]
+        labels = labels + [str(label) if label else '']
         if len(self.history) > 31:
             self.history.pop(0)
+            if labels:
+                labels.pop(0)
+        self.history_labels = labels
         self.index = len(self.history) - 1
         self.changed.emit()
+
+    def sync_history_labels(self):
+        """Pad/trim history_labels after manual history assign (nest enter/exit)."""
+        hist = list(getattr(self, 'history', None) or [])
+        labels = list(getattr(self, 'history_labels', None) or [])
+        while len(labels) < len(hist):
+            labels.append('')
+        if len(labels) > len(hist):
+            labels = labels[: len(hist)]
+        self.history_labels = labels
 
     def undo(self):
         if self.index:

@@ -41,7 +41,7 @@ class MainWindow(QMainWindow):
         self.backend.ready.connect(self.engine_online);self.backend.result.connect(self.engine_result)
         self.backend.error.connect(self.engine_error);self.backend.stopped.connect(self.engine_closed)
         if hasattr(self.backend,'progress'):self.backend.progress.connect(self.progress)
-        self.continuous=False;self._continuous_paused=False;self.run_all_filmstrip=False;self._run_target=None;self.rail_category='';self.property_float=None;self._group_stack=[];self._group_breadcrumb=None;self._pending_trigger_cmds=[];self._pending_after_continuous=[];self._comm_listener=None;self._nest_fold_marks=[];self._undo_index_before=None;self._canvas_chip_queue=[];self._jump_confirm_skip=set()
+        self.continuous=False;self._continuous_paused=False;self.run_all_filmstrip=False;self._run_target=None;self.rail_category='';self.property_float=None;self._group_stack=[];self._group_breadcrumb=None;self._pending_trigger_cmds=[];self._pending_after_continuous=[];self._comm_listener=None;self._nest_fold_marks=[];self._undo_index_before=None;self._canvas_chip_queue=[];self._jump_confirm_skip=set();self._canvas_chip_max_ms=6000
         self.app_mode='design'  # design | run
         self.showing_all_flows=False
         self._left_pane=None;self._center_stack=None;self.run_mode_pane=None
@@ -217,7 +217,7 @@ class MainWindow(QMainWindow):
         self._canvas_chip_timer.setSingleShot(True)
         self._canvas_chip_timer.timeout.connect(self._advance_canvas_status_chip)
         self._canvas_status_chip.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._canvas_status_chip.setToolTip('点击关闭 · 多条折叠提示排队显示')
+        self._canvas_status_chip.setToolTip('点击/Esc 关闭 · 多条折叠提示排队显示 · 单条最长 6s')
         self._canvas_status_chip.installEventFilter(self)
         self._canvas_chip_queue = []
         # A5: 全流程 panel in stack with canvas
@@ -512,7 +512,8 @@ class MainWindow(QMainWindow):
                 pass
         if step is not None and step.get('id'):
             p['steps'] = [step if s['id'] == step['id'] else s for s in p['steps']]
-        self.guard(lambda: self.document.commit(p))
+        # Single undo tip labelled 图像源+模块
+        self.guard(lambda: self.document.commit(p, label='图像源+模块'))
         try:
             self._sync_filmstrip_visibility()
             self._sync_filmstrip_interval_hint()
@@ -594,6 +595,15 @@ class MainWindow(QMainWindow):
 
     def new_project(self):
         if self.busy or not self.confirm_discard():return
+        try:
+            self._clear_jump_confirm_skip()
+        except Exception:
+            pass
+        try:
+            self._group_stack = []
+            self._nest_fold_marks = []
+        except Exception:
+            pass
         proj=empty_project();proj['name']='未命名方案';flow_scheme.ensure_scheme(proj)
         self.document.load(proj);self.filename=None;self.image='';self.input_view.show_data('');self.output_view.show_data('');self.results.set_results([])
         self.clear_cloud()
@@ -616,6 +626,15 @@ class MainWindow(QMainWindow):
         if path.stat().st_size>32*1024*1024:raise ValueError('工程文件不能超过 32 MB')
         value=json.loads(path.read_text(encoding='utf-8-sig'))
         def loaded(reply):
+            try:
+                self._clear_jump_confirm_skip()
+            except Exception:
+                pass
+            try:
+                self._group_stack = []
+                self._nest_fold_marks = []
+            except Exception:
+                pass
             project=reply['project']
             # Preserve multi-flow + native editor extension fields (normalize may drop/reshape them).
             # runUi.fixedBars.gateKey (判定门) and sourceConfig must survive save→reopen.
@@ -1048,15 +1067,16 @@ class MainWindow(QMainWindow):
             except Exception:
                 show = src
         # 模块结果 pane
-        if hasattr(self, 'output_view'):
-            if hasattr(self.output_view, 'set_fit_mode'):
-                self.output_view.set_fit_mode(fit)
+        ov = getattr(self, 'output_view', None)
+        if ov is not None:
+            if hasattr(ov, 'set_fit_mode'):
+                ov.set_fit_mode(fit)
             if show and (image or ch not in (None, '', 'auto')):
-                self.output_view.show_data(show)
+                ov.show_data(show)
                 if hasattr(self, 'images'):
                     self.images.setCurrentIndex(1)
-            elif not self.output_view.bounds.isEmpty():
-                self.output_view.fit()
+            elif hasattr(ov, 'bounds') and not ov.bounds.isEmpty():
+                ov.fit()
         # Filmstrip live thumb (channelled frame + fit tip + actual pad from theme/channel)
         try:
             pad = self._display_actual_pad_color(ch)
@@ -1389,7 +1409,7 @@ class MainWindow(QMainWindow):
                 self._place_canvas_status_chip()
             except Exception:
                 pass
-        # Chip click-to-dismiss (advances queue)
+        # Chip click-to-dismiss / Esc on chip (advances queue)
         if obj is getattr(self, '_canvas_status_chip', None):
             if event.type() in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease):
                 if event.type() == QEvent.Type.MouseButtonRelease:
@@ -1398,7 +1418,26 @@ class MainWindow(QMainWindow):
                     except Exception:
                         pass
                 return True
+            if event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
+                try:
+                    self._dismiss_canvas_status_chip()
+                except Exception:
+                    pass
+                return True
         return super().eventFilter(obj, event)
+
+    def keyPressEvent(self, event):
+        # Esc dismisses canvas status chip before other Esc handlers
+        if event.key() == Qt.Key.Key_Escape:
+            chip = getattr(self, '_canvas_status_chip', None)
+            if chip is not None and chip.isVisible():
+                try:
+                    self._dismiss_canvas_status_chip()
+                except Exception:
+                    pass
+                event.accept()
+                return
+        super().keyPressEvent(event)
 
     def _place_minimap(self):
         host=getattr(self,'_canvas_host',None);mm=getattr(self,'minimap',None)
@@ -1949,6 +1988,7 @@ class MainWindow(QMainWindow):
             'name': step.get('name') or '组合模块',
             'outer_project': deepcopy(self.document.project),
             'outer_history': deepcopy(getattr(self.document, 'history', None) or []),
+            'outer_history_labels': list(getattr(self.document, 'history_labels', None) or []),
             'outer_index': int(getattr(self.document, 'index', 0) or 0),
             'outer_saved': deepcopy(getattr(self.document, 'saved', None)),
         })
@@ -1961,6 +2001,7 @@ class MainWindow(QMainWindow):
         # Soft switch + fresh history branch for this nest (mid-nest undo/redo)
         self.document.project = view_project
         self.document.history = [deepcopy(view_project)]
+        self.document.history_labels = ['']
         self.document.index = 0
         self.document.saved = deepcopy(view_project)
         self.selected = None
@@ -2049,6 +2090,20 @@ class MainWindow(QMainWindow):
             self.document.project = deepcopy(hist[new_index])
             self.document.history = hist
             self.document.index = new_index
+            # Rebuild labels: outer prefix + empty tip slots (hybrid label only on explicit commits)
+            try:
+                olabels = list(frame.get('outer_history_labels') or [])
+                if 0 <= idx < len(olabels):
+                    olabels = olabels[: idx + 1]
+                while len(olabels) < len(base):
+                    olabels.append('')
+                tip_labels = [''] * max(0, len(hist) - len(base))
+                self.document.history_labels = (olabels + tip_labels)[: len(hist)]
+            except Exception:
+                try:
+                    self.document.sync_history_labels()
+                except Exception:
+                    pass
             if frame.get('outer_saved') is not None:
                 self.document.saved = frame['outer_saved']
             # Fold boundary: pre-enter tip index `idx` — undo/redo across logs a tip
@@ -2070,6 +2125,39 @@ class MainWindow(QMainWindow):
         self.scene.rebuild()
         self._refresh_group_breadcrumb()
         self.log(f'已退出组合模块「{frame["name"]}」· 剩余深度 {len(self._group_stack)}')
+        # Leave nest → drop session skip for this frame (or all if back to root)
+        try:
+            if not self._group_stack:
+                self._clear_jump_confirm_skip()
+            else:
+                self._clear_jump_confirm_skip(frame.get('node_id') or frame.get('name'))
+        except Exception:
+            pass
+        try:
+            if hasattr(self.document, 'sync_history_labels'):
+                self.document.sync_history_labels()
+        except Exception:
+            pass
+
+    def _clear_jump_confirm_skip(self, nest_key=None):
+        """Clear session jump-confirm skip on leave nest / project reload.
+
+        nest_key=None → clear all. Else drop keys equal to or containing that id.
+        """
+        skip = getattr(self, '_jump_confirm_skip', None)
+        if not skip:
+            return
+        if nest_key is None:
+            skip.clear()
+            return
+        key = str(nest_key)
+        drop = [
+            k for k in list(skip)
+            if k == key or key in str(k).split('/') or str(k).startswith(key + '/')
+            or str(k).endswith('/' + key)
+        ]
+        for k in drop:
+            skip.discard(k)
 
     def _confirm_jump_exit(self, reason, levels, nest_key, cancel_why=''):
         """Ask before breadcrumb jump; session-remember via checkbox → _jump_confirm_skip.
@@ -2162,8 +2250,6 @@ class MainWindow(QMainWindow):
                     return
         except Exception:
             pass
-        except Exception:
-            pass
         n = 0
         while len(self._group_stack or []) > target:
             before = len(self._group_stack)
@@ -2179,14 +2265,48 @@ class MainWindow(QMainWindow):
 
     def _undo_with_fold_tip(self):
         before = int(getattr(self.document, 'index', 0) or 0)
+        # Label of the tip being undone lives at `before`
+        label = ''
+        try:
+            labels = getattr(self.document, 'history_labels', None) or []
+            if 0 <= before < len(labels):
+                label = labels[before] or ''
+        except Exception:
+            label = ''
         self.document.undo()
         after = int(getattr(self.document, 'index', 0) or 0)
+        if before != after and label:
+            try:
+                self.log(f'已撤销：{label}')
+            except Exception:
+                pass
+            try:
+                self._show_canvas_status_chip(f'已撤销：{label}')
+            except Exception:
+                pass
         self._maybe_log_fold_cross(before, after, 'undo')
 
     def _redo_with_fold_tip(self):
         before = int(getattr(self.document, 'index', 0) or 0)
         self.document.redo()
         after = int(getattr(self.document, 'index', 0) or 0)
+        if before != after:
+            label = ''
+            try:
+                labels = getattr(self.document, 'history_labels', None) or []
+                if 0 <= after < len(labels):
+                    label = labels[after] or ''
+            except Exception:
+                label = ''
+            if label:
+                try:
+                    self.log(f'已重做：{label}')
+                except Exception:
+                    pass
+                try:
+                    self._show_canvas_status_chip(f'已重做：{label}')
+                except Exception:
+                    pass
         self._maybe_log_fold_cross(before, after, 'redo')
 
     def _maybe_log_fold_cross(self, before, after, direction):
@@ -2300,22 +2420,28 @@ class MainWindow(QMainWindow):
             if q is None:
                 self._canvas_chip_queue = []
                 q = self._canvas_chip_queue
-            q.append((text, int(ms) if ms else 3200))
+            max_ms = int(getattr(self, '_canvas_chip_max_ms', 6000) or 6000)
+            dur = int(ms) if ms else 3200
+            if dur < 400:
+                dur = 400
+            if dur > max_ms:
+                dur = max_ms
+            q.append((text, dur))
             # Cap queue; keep newest
             if len(q) > 8:
                 del q[:-8]
             # Hint remaining count on current chip tooltip
             try:
-                chip.setToolTip(f'点击关闭 · 另有 {len(q)} 条排队')
+                chip.setToolTip(f'点击/Esc 关闭 · 另有 {len(q)} 条排队')
             except Exception:
                 pass
             return
         chip.setText(text)
         qn = len(getattr(self, '_canvas_chip_queue', None) or [])
         try:
-            tip = '点击关闭 · 多条折叠提示排队显示'
+            tip = '点击/Esc 关闭 · 多条折叠提示排队显示 · 单条最长 6s'
             if qn:
-                tip = f'点击关闭 · 另有 {qn} 条排队'
+                tip = f'点击/Esc 关闭 · 另有 {qn} 条排队'
             chip.setToolTip(tip)
         except Exception:
             pass
@@ -2324,7 +2450,13 @@ class MainWindow(QMainWindow):
         timer = getattr(self, '_canvas_chip_timer', None)
         if timer is not None:
             timer.stop()
-            timer.start(int(ms) if ms else 3200)
+            max_ms = int(getattr(self, '_canvas_chip_max_ms', 6000) or 6000)
+            dur = int(ms) if ms else 3200
+            if dur < 400:
+                dur = 400
+            if dur > max_ms:
+                dur = max_ms
+            timer.start(dur)
 
     def reload_comm_listener(self):
         """Start/refresh live Comm recvEvents listeners (TCP Server/UDP/Serial)."""

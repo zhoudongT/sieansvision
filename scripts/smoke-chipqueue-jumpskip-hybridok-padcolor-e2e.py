@@ -129,8 +129,8 @@ def main():
             self.index = 0
             self.saved = deepcopy(self.project)
             self.changed = type('S', (), {'emit': lambda *a, **k: None})()
-        def commit(self, p):
-            commits.append(deepcopy(p))
+        def commit(self, p, label=None):
+            commits.append((deepcopy(p), label))
             self.project = deepcopy(p)
             self.history = self.history[: self.index + 1] + [deepcopy(p)]
             self.index = len(self.history) - 1
@@ -159,8 +159,10 @@ def main():
     })
     ok('hybrid commit once', len(commits) == 1, f'n={len(commits)}')
     ok('hybrid commit merged source+step',
-       commits and commits[0]['sourceConfig'].get('path') == '/y.png'
-       and commits[0]['steps'][0]['params']['ksize'] == 9)
+       commits and commits[0][0]['sourceConfig'].get('path') == '/y.png'
+       and commits[0][0]['steps'][0]['params']['ksize'] == 9)
+    ok('hybrid commit label 图像源+模块',
+       commits and commits[0][1] == '图像源+模块', commits)
     ok('hybrid log atomic', any('原子' in m for m in hh.logs), hh.logs)
 
     # ----- 2) Jump session skip -----
