@@ -1,5 +1,5 @@
 import base64
-from PySide6.QtCore import Qt, Signal, QRectF
+from PySide6.QtCore import Qt, Signal, QRectF, QTimer
 from PySide6.QtGui import QPixmap, QColor, QPen, QPainter, QBrush
 from PySide6.QtWidgets import QGraphicsView, QGraphicsScene
 
@@ -7,6 +7,12 @@ from desktop.theme import CANVAS, TEXT_MUTED
 
 
 class ImageView(QGraphicsView):
+    """Full-frame KeepAspectRatio image pane (全局图像 / 模块结果 / 深度图).
+
+    fitInView while the viewport is hidden or tiny is a Qt no-op — transform
+    stays ~1:1 and the user only sees a dark top strip of the frame
+    (「图像只有上面一条」). Defer fit until the view is visible with a real size.
+    """
     roi_changed = Signal(list)
 
     def __init__(self):
@@ -14,11 +20,18 @@ class ImageView(QGraphicsView):
         self.setScene(QGraphicsScene(self))
         self.setBackgroundBrush(QBrush(QColor(CANVAS)))
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
-        self.setMinimumSize(230, 150)
+        self.setMinimumSize(230, 180)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        # Scrollbars during fitInView shrink the viewport mid-fit and leave a
+        # letterboxed / top-strip look; zoom still works via Ctrl+wheel + hand drag.
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.select_roi = False
         self.origin = None
         self.overlay = None
         self.bounds = QRectF()
+        self._needs_fit = False
         self._empty_hint = self.scene().addText('打开图像，或载入演示')
         self._empty_hint.setDefaultTextColor(QColor(TEXT_MUTED))
 
@@ -64,8 +77,12 @@ class ImageView(QGraphicsView):
             self.scene().addPixmap(pixmap)
             self.bounds = QRectF(pixmap.rect())
             self.scene().setSceneRect(self.bounds)
+            self._needs_fit = True
             self.fit()
+            # Layout / tab show often finishes after this call — refit next tick.
+            QTimer.singleShot(0, self.fit)
         else:
+            self._needs_fit = False
             self._empty_hint = self.scene().addText('打开图像，或载入演示')
             self._empty_hint.setDefaultTextColor(QColor(TEXT_MUTED))
             self.scene().setSceneRect(QRectF(0, 0, 400, 300))
@@ -88,14 +105,31 @@ class ImageView(QGraphicsView):
             self.overlay.setZValue(10)
 
     def fit(self):
-        if not self.bounds.isEmpty() and self.viewport().width() >= 2 and self.viewport().height() >= 2:
-            self.fitInView(self.bounds, Qt.AspectRatioMode.KeepAspectRatio)
-            self.viewport().update()
+        """KeepAspectRatio full frame. Defer when hidden / viewport still tiny."""
+        if self.bounds.isEmpty():
+            self._needs_fit = False
+            return
+        if (
+            not self.isVisible()
+            or self.viewport().width() < 8
+            or self.viewport().height() < 8
+        ):
+            self._needs_fit = True
+            return
+        # Temporarily hide scrollbars so fitInView uses the full viewport.
+        h_policy = self.horizontalScrollBarPolicy()
+        v_policy = self.verticalScrollBarPolicy()
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.fitInView(self.bounds, Qt.AspectRatioMode.KeepAspectRatio)
+        self.setHorizontalScrollBarPolicy(h_policy)
+        self.setVerticalScrollBarPolicy(v_policy)
+        self._needs_fit = False
+        self.viewport().update()
 
     def showEvent(self, event):
         super().showEvent(event)
         if not self.bounds.isEmpty():
-            from PySide6.QtCore import QTimer
             QTimer.singleShot(0, self.fit)
 
     def resizeEvent(self, event):

@@ -210,6 +210,7 @@ class MainWindow(QMainWindow):
         self.cloud_view=CloudView();self.images.addTab(self.cloud_view,'3D 点云');self.input_view.roi_changed.connect(self.update_roi)
         depth_page=QWidget();depth_layout=QVBoxLayout(depth_page);self.depth_view=ImageView();self.depth_caption=QLabel('尚无深度数据')
         self.depth_caption.setWordWrap(True);depth_layout.addWidget(self.depth_view,1);depth_layout.addWidget(self.depth_caption);self.images.addTab(depth_page,'深度图')
+        self.images.currentChanged.connect(self._on_images_tab)
         rl.addWidget(self.images,1)
         self.filmstrip=FilmstripBar()
         self.filmstrip.pathSelected.connect(self.load_filmstrip_path)
@@ -1593,11 +1594,33 @@ class MainWindow(QMainWindow):
         if self.busy:return
         self.image=frame.get('image') or frame.get('annotatedImage') or '';self.cloud=frame.get('cloud');self.depth=frame.get('depth')
         self.last_result=None
+        # Prefer 全局图像 so KeepAspectRatio fit runs on a visible viewport (not a hidden tab).
+        self.images.setCurrentIndex(0)
         self.input_view.show_data(self.image);self.output_view.show_data('');self.cloud_view.set_cloud(self.cloud);self.results.set_results([])
         self.show_depth(self.depth)
-        self.images.setCurrentIndex(2 if self.cloud else 0)
+        if self.cloud and not self.image:
+            self.images.setCurrentIndex(2)
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, self.input_view.fit)
         if self.dialogs.get('hmi'):self.dialogs['hmi'].set_source_image(self.image)
         self.log('已接收相机数据，可运行检测流程')
+
+    def _on_images_tab(self, index):
+        # Refit when user switches back to an image tab after frames arrived hidden.
+        try:
+            from PySide6.QtCore import QTimer
+            from desktop.image_view import ImageView
+            w = self.images.widget(index)
+            targets = []
+            if isinstance(w, ImageView):
+                targets = [w]
+            elif w is not None:
+                targets = list(w.findChildren(ImageView))
+            for iv in targets:
+                if not iv.bounds.isEmpty():
+                    QTimer.singleShot(0, iv.fit)
+        except Exception:
+            pass
 
     def camera_selected(self,params,apply_selected):
         if self.busy:return
