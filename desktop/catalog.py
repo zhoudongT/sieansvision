@@ -39,7 +39,7 @@ def builtin_definitions():
     metadata=json.loads(Path(__file__).with_name('builtin-catalog.json').read_text(encoding='utf-8'))
     definitions={}
     groups={'group':'流程控制','subflow':'流程控制','loop':'流程控制','condition':'流程控制','branch_merge':'流程控制','branch':'流程控制','delay':'流程控制','variables':'变量与数据','var_calc':'变量与数据','format_data':'变量与数据','text_save':'变量与数据','elapsed_stats':'流程控制','receive_data':'工业通信','send_data':'工业通信','protocol_parse':'工业通信','output_image':'图像处理',
-            'preprocess':'图像处理','locate':'定位与测量','pose_correct':'定位与测量','distort_correct':'标定与校正','nine_point':'标定与校正','geometry':'定位与测量','measure':'定位与测量','line_intersect':'定位与测量','point_distance':'定位与测量','point_line_distance':'定位与测量','csharp_script':'变量与数据','barcode':'识别','ocr':'识别','defects':'识别','yolo':'识别','yolo_segment':'识别'}
+            'preprocess':'图像处理','locate':'定位与测量','pose_correct':'定位与测量','distort_correct':'标定与校正','nine_point':'标定与校正','geometry':'定位与测量','measure':'定位与测量','line_intersect':'定位与测量','point_distance':'定位与测量','point_line_distance':'定位与测量','csharp_script':'变量与数据','production_task':'流程控制','barcode':'识别','ocr':'识别','defects':'识别','yolo':'识别','yolo_segment':'识别'}
     for operation,meta in metadata.items():
         if operation=='plugin':continue
         defaults=deepcopy(meta.get('defaults',{}));parameters=[]
@@ -268,6 +268,21 @@ def builtin_definitions():
             field('entry', '入口', 'string', 'Script.Run'),
         ],
         description='C# 脚本（VM p=12）：设计态编辑器；本机 C# 标记 unsupported，真实执行请用 script。',
+    )
+
+    # Wrap: 生产任务薄壳（VM p=40 行业案例可复用入口；非机器人 SDK）
+    definitions['production_task'] = dict(
+        operation='production_task', name='生产任务', category='流程控制',
+        defaults=dict(taskName='', recipe='', autoStart=False, statusVar='taskStatus', scope='global',
+                      note='占位：配方名/任务名写入变量；深度产线逻辑后续扩展'),
+        parameters=[
+            field('taskName', '任务名称', 'string', ''),
+            field('recipe', '配方/方案', 'string', ''),
+            field('autoStart', '自动启动', 'boolean', False),
+            field('statusVar', '状态变量', 'string', 'taskStatus'),
+            field('scope', '变量作用域', 'string', 'global', choices=choices(('global', '全局'), ('flow', '流程'))),
+        ],
+        description='生产任务（VM p=40 示意）：任务名/配方写入变量的薄壳；不接机械手 SDK。',
     )
 
     if 'locate' in definitions:

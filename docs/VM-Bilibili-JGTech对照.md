@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |----|------|
 | 来源 | Bilibili [BV19vUfBVEpp](https://www.bilibili.com/video/BV19vUfBVEpp/) · 65 分页 |
-| 本批已看 | **p=4–17,18–30**（至 Wave4；含 p12 C# / p14–17 几何测量 / p15 矩形；约 27 集素材） |
+| 本批已看 | **p=1–30**（Wrap：含轻看 p1–3 安装/卸载；Wave1–4 功能集齐；约 30 集素材） |
 | 素材路径 | `docs/vm-bilibili-jgtech/videos/` · `docs/vm-bilibili-jgtech/frames/` |
 | 关键帧策略 | ~1 帧 / 9s（OpenCV；PC 无 ffmpeg/yt-dlp，用 `bin/bili_fetch.py`） |
 | 目标 | 先看视频再改 sieansvision；本文记录 **UI 步骤 / 中文标签 / 已有 vs 缺口** |
@@ -13,10 +13,106 @@
 
 ---
 
+## 全系列 1–65 状态总表（Wrap / 2026-10-27）
+
+图例：**Watched**=已下帧/笔记 · **Implemented**=设计态+可跑（含实用运行） · **Shell**=设计态/目录薄壳或透传 · **Skip(industry)**=行业/机器人深度刻意不做 SDK · **Unwatched**=未下帧。
+
+一集可兼有 Watched + Implemented/Shell。Skip 行通常 Unwatched。
+
+| p | 标题（episodes.txt） | Watched | 落地 | sieans 映射 / 备注 |
+|---|----------------------|---------|------|-------------------|
+| 1 | VisionMaster4.2试用一月安装 | ✓ | Skip(installer) | 网盘/试用包分发；**不克隆海康安装器**。sieans：自带 App/工程即可 |
+| 2 | MVS和VisionMaster的卸载 | ✓ | Skip(installer) | 官方 uninstall.exe；sieans 无对标卸载向导 |
+| 3 | MVS和VisionMaster的安装 | ✓ | Skip(installer) | MVS+VM 安装包；**首启相关**：设备树/虚拟相机概念 → 已有相机管理+图像源本地/SDK |
+| 4 | 图像源 | ✓ | Implemented | `ImageSourceForm` + 相机管理 + N4 叹号 |
+| 5 | 直线查找 | ✓ | Implemented | `GeometryFindPanel` feature=lines |
+| 6 | 圆查找 | ✓ | Implemented | `GeometryFindPanel` feature=circles |
+| 7 | 快速模板匹配 | ✓ | Implemented | `LocateMatchPanel` 四 Tab |
+| 8 | 灰度模板匹配 | ✓ | Implemented | locate `matchMode=gray` |
+| 9 | 位置修正 | ✓ | Implemented | `pose_correct` |
+| 10 | 通信管理 | ✓ | Shell | `CommManagerDialog` 五 Tab（真实后端仍可加深） |
+| 11 | 收发数据 / 全局变量 | ✓ | Implemented | `receive_data`/`send_data` + 变量表 UX |
+| 12 | C#脚本 | ✓ | Shell | `csharp_script` 编辑器；CLR unsupported |
+| 13 | 畸变矫正 | ✓ | Shell | `distort_correct` 透传 |
+| 14 | 线与线的交点 | ✓ | Implemented | `line_intersect` |
+| 15 | 矩形查找 | ✓ | Implemented | `rect_find` → geometry.rects |
+| 16 | 点与点距离 | ✓ | Implemented | `point_distance` |
+| 17 | 点与线距离 | ✓ | Implemented | `point_line_distance` |
+| 18 | 条件分支 | ✓ | Implemented | condition 规则表 |
+| 19 | 分支模块 | ✓ | Implemented | `branch` |
+| 20 | 平移九点标定 | ✓ | Shell | `nine_point` 仿射估（非 SVD） |
+| 21 | 格式化（发出数据） | ✓ | Shell | `format_data` |
+| 22 | 输出(保存)图像 | ✓ | Shell | `output_image` |
+| 23 | 变量计算 | ✓ | Implemented | `var_calc` |
+| 24 | 协议解析 | ✓ | Shell | `protocol_parse` |
+| 25 | 文本保存 | ✓ | Shell | `text_save` |
+| 26 | 组合模块 | ✓ | Implemented | Group + N4 |
+| 27 | 耗时统计 | ✓ | Implemented | `elapsed_stats` |
+| 28 | 运行界面设计1 | ✓ | Shell | 运行界面设计器 + VM默认壳 |
+| 29 | 运行界面设计2 | ✓ | Shell | 控件库/触发（深度可再贴） |
+| 30 | 全局触发 | ✓ | Implemented | 部分匹配列 |
+| 31 | 远程通信连接其他电脑如何设置ip | — | Shell* | *复用 CommManager；未下帧。网络/IP 教程式，非新算子 |
+| 32 | 定位引导·自动化九点标定_（副本） | — | Skip(industry) | 机器人引导；复用 `nine_point` 即可 |
+| 33 | 定位引导·文件夹模拟_（副本） | — | Skip(industry) | 同上 |
+| 34 | 定位引导·自动化九点标定 | — | Skip(industry) | 机械手链路；不做厂商 SDK |
+| 35 | 定位引导·文件夹模拟 | — | Skip(industry) | 图像文件夹模拟；可用图像源胶片条近似 |
+| 36 | 验证九点标定 | — | Skip(industry) | 验证流程；可后补对照壳 |
+| 37 | 相对移动定位纠偏法 | — | Skip(industry) | 机械手纠偏 |
+| 38 | 设置图像基准位置 | — | Skip(industry) | 引导项目子步 |
+| 39 | 设置机械手基准位置 | — | Skip(industry) | 机械手基准；Skip SDK |
+| 40 | 生产任务设计 | — | Shell | **`production_task` 薄壳**（任务名/配方→变量）；无产线 SDK |
+| 41 | 上位机状态机·UI设计1 | — | Shell* | *对齐运行界面/HMI；未深做状态机引擎 |
+| 42 | 上位机状态机·UI设计2 | — | Shell* | 同上 |
+| 43 | 上位机状态机·UI设计3 | — | Shell* | 同上 |
+| 44 | 为什么用旋转中心标定 | — | Skip(industry) | 理论课 |
+| 45 | 旋转中心·原理公式 | — | Skip(industry) | 理论课 |
+| 46 | 旋转中心·公式基础 | — | Skip(industry) | 理论课 |
+| 47 | 旋转中心·原点为旋转中心 | — | Skip(industry) | 理论课 |
+| 48 | 旋转中心·旋转点表示公式 | — | Skip(industry) | 理论课 |
+| 49 | 旋转中心·任意点为旋转中心 | — | Skip(industry) | 理论课 |
+| 50 | 完整课程（短宣） | — | Skip | 宣发短片 |
+| 51 | 上下相机对位贴合 | — | Skip(industry) | 多相机对位；无专有 SDK 计划 |
+| 52 | 平移旋转标定（十二点）-介绍 | — | Skip(industry) | 可远期挂 `nine_point` 扩展，现 Skip |
+| 53 | 实现十二点标定 | — | Skip(industry) | 同上 |
+| 54 | 九点平移标定（行业复述） | — | Shell* | *已有 `nine_point`；本集未下帧 |
+| 55 | 十二点标定完整课程（短） | — | Skip | 宣发 |
+| 56 | 单点抓取 | — | Skip(industry) | 机器人抓取 |
+| 57 | 对位贴合·角度验证-1 | — | Skip(industry) | 理论/验证 |
+| 58 | 对位贴合·角度验证-2 | — | Skip(industry) | 理论/验证 |
+| 59 | 十二点标定与单点抓取（短） | — | Skip | 宣发 |
+| 60 | 旋转标定数学公式几何本质 | — | Skip(industry) | 理论课 |
+| 61 | 旋转标定优化圆心 | — | Skip(industry) | 理论课 |
+| 62 | C#脚本使用 OpenCV-1 | — | Shell* | *`csharp_script`/`script`；OpenCV 走 Python script |
+| 63 | C#脚本使用 OpenCV-2 | — | Shell* | 同上 |
+| 64 | 旋转标定模块使用注意 | — | Skip(industry) | VM 专有模块注意项 |
+| 65 | 官网精品免费课程 | — | Skip | 外链宣发 |
+
+### 统计（约）
+| 类别 | 数量 |
+|------|------|
+| Watched（有帧） | 30（p1–30） |
+| Implemented | ~18 |
+| Shell / Shell* | ~14（含 p40 新壳、Comm/HMI/标定透传等） |
+| Skip(industry) / Skip | ~21 |
+| 纯 Unwatched 且待定 | 0（31–65 均已归类） |
+
+### p1–3 首启笔记（轻看；不装海康）
+- **p1**：试用包/网盘链接与测试图 zip（平移标定图、测试图像）— sieans 可维护 `projects/` 示例工程 + `data/` 样图，**不要**接入海康安装包分发。
+- **p2**：`Program Files/VisionMaster*/uninstall.exe` — sieans 用系统包管理/直接删目录即可，无需卸载向导。
+- **p3**：先装 **MVS**（设备树、虚拟相机）再装 **VisionMaster** — sieans 对应：**相机管理（GenTL）+ 图像源本地/SDK**；首启检查「能枚举设备 / 能开默认工程」即可，勿复刻安装向导 UI。
+
+### 行业案例策略（p31–65）重申
+1. **不做**机械手/旋转中心/十二点/单点抓取等厂商 SDK 深实现。
+2. **可复用已有**：`nine_point`、`pose_correct`、CommManager、运行 HMI、`csharp_script`/`script`、`production_task`。
+3. 若 Allen 点名某集要「可跑 demo」，再对该集下帧 + 最小壳，仍避免机器人运行时。
+
+---
+
 ## 已看分集速览
 
 | p | 标题 | 关键帧目录 | sieans 现状 | 缺口（本批优先级） |
 |---|------|----------|-------------|-------------------|
+| 1–3 | 试用/卸载/安装 | `frames/p01…p03` | **Skip 安装器**；首启→相机管理+默认工程 | 勿克隆 HIK 安装/卸载向导 |
 | 4 | 图像源 | `frames/p04_…` | `ImageSourceForm` 本地/相机/SDK + 相机管理入口 | 胶片条/自动切换细节、状态栏「未配置完整」文案可再贴 |
 | 5 | 直线查找 | `frames/p05_…` | **GeometryFindPanel** feature=lines | **Wave4**：三 Tab + ROI/极性/长度间隙/结果显示 |
 | 6 | 圆查找 | `frames/p06_…` | **GeometryFindPanel** feature=circles | **Wave4**：半径范围/分数等同壳 |
@@ -194,9 +290,9 @@
 3. 点测表更新 Wave2–Wave4 项为 PASS（壳级）。
 
 ### 行业案例策略（p=31–65）
-- **建议：深机器人/机械臂/多机联动案例只做目录壳与流程示意，不深接厂商 SDK**（除非 Allen 点名某集要可跑 demo）。
-- 优先壳化：检测/测量/定位类行业流程复用既有 locate/geometry/measure；通信+全局触发串流程。
-- 跳过或极薄：深度 3D 点云拼接、机器人手眼标定全链路、专有 PLC 协议（除非已有 CommManager 设备可挂）。
+- 详见上方 **「全系列 1–65 状态总表」**。
+- Wrap 已加 **`production_task`（生产任务）** 薄壳；其余机器人/旋转/十二点/抓取保持 Skip(industry)。
+- 深机器人/机械臂/多机联动：只做目录壳与流程示意，不深接厂商 SDK（除非 Allen 点名某集要可跑 demo）。
 
 ---
 
