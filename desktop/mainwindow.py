@@ -423,14 +423,28 @@ class MainWindow(QMainWindow):
         self.filmstrip.set_paths(paths, int(p['sourceConfig'].get('currentIndex') or 0), root=self.root)
         self.filmstrip.set_auto_switch(bool(p['sourceConfig'].get('autoSwitch')))
         self.filmstrip.set_stop_at_last(bool(p['sourceConfig'].get('stopAtLast')))
+        # Commit BEFORE visibility sync — _sync_* reads document.project.sourceConfig.mode
+        # (stale pre-commit mode left camera↔local soft-disable / interval hint wrong).
+        self.guard(lambda:self.document.commit(p))
         self._sync_filmstrip_visibility()
         self._sync_filmstrip_interval_hint()
-        self.guard(lambda:self.document.commit(p))
 
     def on_param_audited(self,module,param,old,new):
-        flow=self.document.project.get('name') or '流程1'
-        msg=self.wb_status.log_param_change(flow, module, param, old, new)
-        self.logs.appendPlainText(msg)
+        try:
+            flow=self.document.project.get('name') or '流程1'
+            msg=self.wb_status.log_param_change(flow, module, param, old, new)
+            if hasattr(self, 'logs') and self.logs is not None:
+                self.logs.appendPlainText(msg)
+        except Exception:
+            pass
+        # sourceConfig.mode (and sibling source fields) → keep filmstrip visibility/run-all soft-disable in sync
+        # even if the float panel is closed as a "dialog OK" without another changed emit.
+        if param == 'mode' or (isinstance(module, str) and module.startswith('图像源')):
+            try:
+                self._sync_filmstrip_visibility()
+                self._sync_filmstrip_interval_hint()
+            except Exception:
+                pass
 
     def refresh_parameters(self):
         step=next((s for s in self.document.project['steps'] if s['id']==self.selected),None)
@@ -536,8 +550,9 @@ class MainWindow(QMainWindow):
         value=json.loads(path.read_text(encoding='utf-8-sig'))
         def loaded(reply):
             project=reply['project']
-            # Preserve multi-flow scheme fields stripped by engine normalize
-            for key in ('flows','activeFlowId','flowEdges'):
+            # Preserve multi-flow + native editor extension fields (normalize may drop/reshape them).
+            # runUi.fixedBars.gateKey (判定门) and sourceConfig must survive save→reopen.
+            for key in ('flows','activeFlowId','flowEdges','runUi','commManager','globalTriggers','notes','sourceConfig'):
                 if key in value:project[key]=value[key]
             flow_scheme.ensure_scheme(project)
             # Prefer active flow payload on top-level
@@ -590,6 +605,10 @@ class MainWindow(QMainWindow):
             for key in ('steps','edges','sourcePosition','sourceConfig','variables','variableTypes','subflows','hmi','outputNode','name','id','version'):
                 if key in reply.get('project',{}):
                     out[key]=reply['project'][key]
+            # Prefer client snapshot for HMI / Comm / triggers (判定门 gateKey lives in runUi.fixedBars)
+            for key in ('runUi','commManager','globalTriggers','notes'):
+                if key in snapshot:
+                    out[key]=deepcopy(snapshot[key])
             # Re-sync active into flows after any normalize of top-level
             try:
                 flow_scheme.ensure_scheme(out)

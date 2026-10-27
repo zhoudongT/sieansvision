@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Extended offscreen smoke: measure/nine/condition/data_io pickers + harvest;
-camera↔local filmstrip soft-disable; HMI gateKey project JSON round-trip.
+"""Extended offscreen smoke: measure/nine/condition/data_io + pose/distort/production_task
+pickers; camera↔local filmstrip soft-disable; HMI gateKey project JSON round-trip;
+harvest audit for clicked.connect(fn) default-arg traps.
 Exit 0 on PASS. No robot SDK.
 """
 from __future__ import annotations
@@ -69,6 +70,9 @@ def main() -> int:
     cond_id = "cndDDDD77778888"
     recv_id = "rcvEEEE99990000"
     send_id = "sndFFFF11112222"
+    pose_id = "posGGGG22223333"
+    dist_id = "dstHHHH33334444"
+    task_id = "tskIIII44445555"
 
     project = {
         "version": 2,
@@ -81,6 +85,9 @@ def main() -> int:
             {"id": cond_id, "operation": "condition", "name": "条件", "params": {"rules": [{"enabled": True, "left": "", "comparison": "eq", "right": ""}]}, "position": {"x": 0, "y": 240}, "variables": {}},
             {"id": recv_id, "operation": "receive_data", "name": "接收", "params": {"device": "LocalLoop", "targetVar": "recvData"}, "position": {"x": 0, "y": 320}, "variables": {}},
             {"id": send_id, "operation": "send_data", "name": "发送", "params": {"device": "LocalLoop", "sourceMode": "variable", "sourceVar": ""}, "position": {"x": 0, "y": 400}, "variables": {}},
+            {"id": pose_id, "operation": "pose_correct", "name": "位姿修正", "params": {}, "position": {"x": 0, "y": 480}, "variables": {}},
+            {"id": dist_id, "operation": "distort_correct", "name": "畸变矫正", "params": {}, "position": {"x": 0, "y": 560}, "variables": {}},
+            {"id": task_id, "operation": "production_task", "name": "生产任务", "params": {"statusVar": "taskStatus"}, "position": {"x": 0, "y": 640}, "variables": {}},
         ],
         "edges": [],
         "variables": {},
@@ -197,6 +204,90 @@ def main() -> int:
                 ok("DataIoPanel(send) picker -> %s" % (sv if "results." in sv else lines[0],))
             else:
                 bad("DataIoPanel(send) no token sv=%r" % sv)
+
+        # --- pose_correct ---
+        from desktop.pose_correct_panel import PoseCorrectPanel
+        pstep = deepcopy(next(s for s in project["steps"] if s["id"] == pose_id))
+        pp = PoseCorrectPanel(pstep, {}, project, parent=host)
+        pp.show(); app.processEvents()
+        pbtns = _find_buttons(pp, "插入上游字段")
+        if not pbtns:
+            bad("PoseCorrectPanel missing insert")
+        else:
+            QInputDialog.getItem = staticmethod(_patch_getitem(["1 定位", "x"]))
+            pbtns[0].click(); app.processEvents()
+            bid = (pp.params.get("bindStepId") or "")
+            bfield = (pp.params.get("bindField") or "")
+            if bid == loc_id and bfield == "x":
+                ok("PoseCorrectPanel picker -> bind %s.%s" % (bid[:8], bfield))
+            else:
+                bad("PoseCorrectPanel bindStepId=%r bindField=%r" % (bid, bfield))
+
+        # --- distort_correct ---
+        from desktop.distort_correct_panel import DistortCorrectPanel
+        dstep = deepcopy(next(s for s in project["steps"] if s["id"] == dist_id))
+        dp = DistortCorrectPanel(dstep, {}, project, parent=host)
+        dp.show(); app.processEvents()
+        dbtns = _find_buttons(dp, "插入上游字段")
+        if not dbtns:
+            bad("DistortCorrectPanel missing insert")
+        else:
+            QInputDialog.getItem = staticmethod(_patch_getitem(["1 定位", "score"]))
+            dbtns[0].click(); app.processEvents()
+            uref = (dp.params.get("upstreamRef") or "")
+            if "results." in uref and "score" in uref:
+                ok("DistortCorrectPanel picker -> %s" % uref)
+            else:
+                bad("DistortCorrectPanel upstreamRef=%r" % uref)
+
+        # --- production_task ---
+        from desktop.production_task_panel import ProductionTaskPanel
+        tstep = deepcopy(next(s for s in project["steps"] if s["id"] == task_id))
+        tp = ProductionTaskPanel(tstep, {}, project, parent=host)
+        tp.show(); app.processEvents()
+        tbtns = _find_buttons(tp, "插入上游字段")
+        if not tbtns:
+            bad("ProductionTaskPanel missing insert")
+        else:
+            QInputDialog.getItem = staticmethod(_patch_getitem(["1 定位", "ok"]))
+            tbtns[0].click(); app.processEvents()
+            sv = tp.params.get("statusVar") or ""
+            lines = [e.text() for e in tp.findChildren(QLineEdit) if "results." in (e.text() or "")]
+            if "results." in sv or lines:
+                ok("ProductionTaskPanel picker -> %s" % (sv if "results." in sv else lines[0],))
+            else:
+                bad("ProductionTaskPanel statusVar=%r" % sv)
+
+        # --- harvest audit: clicked.connect(fn) default-arg traps ---
+        import re
+        traps = []
+        safe_notes = []
+        for py in Path(__file__).resolve().parents[1].joinpath("desktop").rglob("*.py"):
+            lines = py.read_text(encoding="utf-8", errors="replace").splitlines()
+            for i, line in enumerate(lines):
+                m = re.match(r"\s*def (\w+)\(([^)]*=[^)]*)\):", line)
+                if not m:
+                    continue
+                name, args = m.group(1), m.group(2)
+                if re.search(r"\*\w*", args) or re.match(r"(_\s*[,=]|checked\s*=|_\s*=)", args.strip()):
+                    continue
+                # first param is a defaulted widget/edit — dangerous if connected bare to clicked
+                if not re.search(r"\b(ed|edit|line|btn|widget|field|table|row)\s*=", args):
+                    continue
+                window = "\n".join(lines[i : i + 40])
+                if re.search(rf"\.clicked\.connect\(\s*{name}\s*\)", window):
+                    traps.append("%s:%d def %s(%s)" % (py.name, i + 1, name, args[:60]))
+        # known-safe patterns we still want to confirm exist
+        cond = (Path(__file__).resolve().parents[1] / "desktop" / "condition_branch_panel.py").read_text(encoding="utf-8")
+        if "lambda *_: _pick_left(" in cond and "lambda *_: _pick_right(" in cond:
+            safe_notes.append("condition ↑ uses lambda *_ wrapper")
+        up = (Path(__file__).resolve().parents[1] / "desktop" / "upstream_field_picker.py").read_text(encoding="utf-8")
+        if "def _pick(*_):" in up or "clicked.connect(lambda" in up:
+            safe_notes.append("upstream_field_picker _pick absorbs *args")
+        if traps:
+            bad("clicked.connect default-arg traps: %s" % traps)
+        else:
+            ok("clicked.connect harvest: 0 default-arg traps (%s)" % ", ".join(safe_notes or ["clean"]))
 
         # --- camera ↔ local filmstrip ---
         class FakeDoc:

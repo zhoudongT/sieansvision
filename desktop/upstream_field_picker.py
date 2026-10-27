@@ -88,7 +88,8 @@ def make_upstream_ref_row(owner, project, step_id, params, set_param, key='upstr
     edit.setPlaceholderText(placeholder or 'results.<模块>.字段 — 点击挑选')
     edit.editingFinished.connect(lambda: set_param(key, edit.text().strip()))
 
-    def _pick():
+    def _pick(*_):
+        # Absorb clicked(bool); never bind default-arg widgets into the slot signature.
         picked = pick_upstream_field(
             owner, project, step_id=step_id,
             last_result=host_last_result(owner),

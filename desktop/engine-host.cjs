@@ -152,6 +152,10 @@ async function dispatch(method, params, requestId) {
       // Validation still uses the canonical schema, while native editors retain
       // extension fields on HMI pages/components for round-trip compatibility.
       if (Object.hasOwn(params.project, 'hmi')) project.hmi = structuredClone(params.project.hmi);
+      // Desktop open-and-run / operator HMI: keep runUi (判定门 gateKey), sourceConfig, Comm, triggers.
+      for (const key of ['runUi', 'sourceConfig', 'commManager', 'globalTriggers', 'notes']) {
+        if (Object.hasOwn(params.project, key)) project[key] = structuredClone(params.project[key]);
+      }
       return {valid: true, project, plan: plan.map(step => step.id)};
     }
     case 'run': {
