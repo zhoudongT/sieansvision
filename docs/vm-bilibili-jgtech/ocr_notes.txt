@@ -1,0 +1,56 @@
+==== frames/p04_3_VisionMaster之图像源/frame_008_t0079s.jpg ====
+(no ocr)
+
+==== frames/p04_3_VisionMaster之图像源/frame_016_t0159s.jpg ====
+(no ocr)
+
+==== frames/p07_6_VisionMaster之快速模板匹配/frame_013_t0129s.jpg ====
+(no ocr)
+
+==== frames/p07_6_VisionMaster之快速模板匹配/frame_027_t0268s.jpg ====
+(no ocr)
+
+==== frames/p07_6_VisionMaster之快速模板匹配/frame_040_t0398s.jpg ====
+(no ocr)
+
+==== frames/p08_7_VisionMaster之灰度模板匹配/frame_008_t0079s.jpg ====
+(no ocr)
+
+==== frames/p09_8_VisionMaster之位置修正/frame_011_t0109s.jpg ====
+(no ocr)
+
+==== frames/p10_9_VisionMaster之通信管理/frame_003_t0029s.jpg ====
+(no ocr)
+
+==== frames/p11_10_VisionMaster之接受数据和发送数据_全局变量模块/frame_005_t0049s.jpg ====
+(no ocr)
+
+==== frames/p18_17_VisionMaster之条件分支/frame_005_t0049s.jpg ====
+(no ocr)
+
+==== frames/p19_18_VisionMaster之分支模块/frame_003_t0029s.jpg ====
+(no ocr)
+
+==== frames/p26_25_VisionMaster之组合模块/frame_013_t0129s.jpg ====
+(no ocr)
+
+==== frames/p28_27_VisionMaster之运行界面设计1/frame_012_t0119s.jpg ====
+(no ocr)
+
+==== frames/p28_27_VisionMaster之运行界面设计1/frame_018_t0179s.jpg ====
+(no ocr)
+
+==== frames/p29_28_VisionMaster之运行界面设计2/frame_003_t0029s.jpg ====
+(no ocr)
+
+==== frames/p30_29_VisionMaster之全局触发/frame_009_t0089s.jpg ====
+(no ocr)
+
+==== frames/p30_29_VisionMaster之全局触发/frame_018_t0179s.jpg ====
+(no ocr)
+
+==== frames/p05_4_VisionMaster之直线查找/frame_032_t0319s.jpg ====
+(no ocr)
+
+==== frames/p06_5_VisionMaster之圆查找/frame_018_t0179s.jpg ====
+(no ocr)

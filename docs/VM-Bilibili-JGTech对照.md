@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |----|------|
 | 来源 | Bilibili [BV19vUfBVEpp](https://www.bilibili.com/video/BV19vUfBVEpp/) · 65 分页 |
-| 本批已看 | **p=4,5,6,7,8,9,10,11,18,19,26,28,29,30**（14 集，优先平台 UX） |
+| 本批已看 | **p=4–11,13,18–20,23,26–30**（Wave1 14 + Wave2 新看 p13/20/23/27，共 18 集素材） |
 | 素材路径 | `docs/vm-bilibili-jgtech/videos/` · `docs/vm-bilibili-jgtech/frames/` |
 | 关键帧策略 | ~1 帧 / 9s（OpenCV；PC 无 ffmpeg/yt-dlp，用 `bin/bili_fetch.py`） |
 | 目标 | 先看视频再改 sieansvision；本文记录 **UI 步骤 / 中文标签 / 已有 vs 缺口** |
@@ -21,16 +21,20 @@
 | 5 | 直线查找 | `frames/p05_…` | `geometry` feature=lines | 属性分区/ROI 继承 vs 绘制可增强 |
 | 6 | 圆查找 | `frames/p06_…` | `geometry` feature=circles | 同直线 |
 | 7 | **快速模板匹配** | `frames/p07_…` | `locate` 扁平参数 | **四 Tab 壳已落地**（基本参数/特征模板/运行参数/结果显示） |
-| 8 | 灰度模板匹配 | `frames/p08_…` | 无独立 op（可归 locate 模式） | 灰度/形状模式切换未做 |
-| 9 | 位置修正 | `frames/p09_…` | 无独立「位置修正」算子 | P2：坐标系/跟随 ROI |
-| 10 | 通信管理 | `frames/p10_…` | tcp/udp/serial/mqtt/modbus… | 统一「通讯管理」窗 vs 分散算子 |
+| 8 | 灰度模板匹配 | `frames/p08_…` | locate + matchMode | **Wave2**：matchMode gray/fast + 灰度模板 Tab/参数 |
+| 9 | 位置修正 | `frames/p09_…` | **pose_correct** 算子+三 Tab | Wave2 设计态+运行透传 |
+| 10 | 通信管理 | `frames/p10_…` | **通信管理**五 Tab 窗 | Wave2：设备/收发/心跳/响应 |
 | 11 | 收发数据 / 全局变量 | `frames/p11_…` | 变量面板部分 | 收/发数据节点 + 全局变量表 UX |
-| 18 | 条件分支 | `frames/p18_…` | `condition` + when | 条件表可视化（多行规则） |
-| 19 | 分支模块 | `frames/p19_…` | 边 when=true/false | 分支模块壳 |
+| 13 | 畸变矫正 | `frames/p13_…` | 无独立 op | 相机标定/畸变壳（后续） |
+| 20 | 平移九点标定 | `frames/p20_…` | measure.calibration 弱 | 九点表+坐标系壳（后续） |
+| 23 | 变量计算 | `frames/p23_…` | variables 单值 | 表达式表 var0…（后续小项） |
+| 27 | 耗时统计 | `frames/p27_…` | 运行 elapsedMs | 起止模块下拉壳（后续小项） |
+| 18 | 条件分支 | `frames/p18_…` | condition 规则表 + AND/OR | Wave2 表格式 UX；引擎多规则 |
+| 19 | 分支模块 | `frames/p19_…` | **branch** 路径表 | Wave2；出边 when=路径名 |
 | 26 | **组合模块** | `frames/p26_…` | Group 四 Tab + 进组 | 组内未配置节点 **红叹号**（本批 N4 覆盖） |
-| 28 | 运行界面设计1 | `frames/p28_…` | 运行态锁画布雏形 | HMI 设计器（大项，不本批） |
-| 29 | 运行界面设计2 | `frames/p29_…` | 同上 | 控件库 / 触发命令 |
-| 30 | **全局触发** | `frames/p30_…` | 弱 | 字符串表 + 部分匹配 + 执行流程；发送数据红叹号证据 |
+| 28 | 运行界面设计1 | `frames/p28_…` | 运行界面设计器 + 操作员 HMI | Wave2：VM默认运行壳一键 |
+| 29 | 运行界面设计2 | `frames/p29_…` | 控件库+触发命令已有 | Wave2 补默认壳 |
+| 30 | **全局触发** | `frames/p30_…` | 事件/字符串表 | Wave2：**部分匹配**列 |
 
 ---
 
@@ -78,13 +82,13 @@
 ## p=8 灰度模板匹配
 
 - 与快速匹配同壳，算法模式不同（灰度相关）。
-- sieans：暂不拆 op；后续在 locate 加「匹配模式」枚举即可。
+- sieans：**Wave2** `locate.matchMode` = `fast` | `gray`；Tab 标题切「特征模板/灰度模板」；灰度运行参数含级数/评分/亚像素/超时。
 
 ## p=9 位置修正
 
 - 典型链：`快速匹配 → 位置修正 → 后续检测`。
 - 用匹配位姿校正后续 ROI/坐标系。
-- sieans：**无独立算子** → 记入 P2。
+- sieans：**Wave2** 算子 `pose_correct` + 三 Tab（基本/基准位姿/输出）；运行透传图像并输出 fixture 字段。
 
 ## p=5 / p=6 直线 · 圆查找
 
@@ -96,13 +100,13 @@
 - **通信管理**集中配设备；流程里放 **接收数据 / 发送数据**。
 - 全局变量表：名/类型/值；模块可绑定。
 - 帧证：发送数据未配通道时 **红叹号**（支撑 N4）。
-- sieans：通讯算子分散；收发数据专用节点弱 → P1 后续。
+- sieans：**Wave2** `CommManagerDialog`（设备管理/接收事件/发送事件/心跳/响应）→ `project.commManager`；菜单「通信管理…」/工具栏「通信」。收发专用节点仍弱 → 后续。
 
 ## p=18 / p=19 条件分支 · 分支模块
 
 - 条件分支：规则表（变量、比较、常量）→ 真/假出边。
 - 分支模块：多路分支壳。
-- sieans：`condition` + edge `when` 已有；表格式编辑器待补。
+- sieans：**Wave2** `ConditionBranchPanel`；condition 多规则 AND/OR（引擎 `flow-control.condition`）；branch 路径表 + 出边 `when=路径名`。
 
 ## p=26 组合模块
 
@@ -114,28 +118,62 @@
 - 设计态 ≠ 运行态；**运行界面设计器**：分栏、固定栏、控件库（按钮/信号灯/文本/统计…）。
 - 按钮 **触发命令**：执行/停止/模块动作/界面链接…
 - 帧见 Play/Stop/NG 运行壳。
-- sieans：仅设计/运行锁画布雏形 → **大项，不本批实现**。
+- sieans：设计器+操作员 HMI 已有；**Wave2** 一键「VM默认运行壳」（图像/OK·NG/运行控制/运行状态）。
 
 ## p=30 全局触发
 
 - 表：触发字符串 / 部分匹配 / 执行流程（或模块）。
 - 与通讯收数联动：收到串 → 匹配 → 跑流程。
-- sieans：弱；小缺口可后续加表壳。本批仅记笔记。
+- sieans：**Wave2** 字符串触发表增加 **部分匹配** 列 + `match_string` 助手。
 
 ---
 
-## 本批落地（Phase B）
+## 本批落地（Phase B / Wave1）
 
-1. **N4 未配置红叹号** — `desktop/config_status.py` + `Node` 右上角红三角叹号；source / locate / group / 通讯 / condition 启发式；运行失败亦亮。
-2. **locate 四 Tab** — `desktop/locate_match_panel.py`，浮窗对 `operation=='locate'` 走专用面板。
+1. **N4 未配置红叹号** — `desktop/config_status.py` + `Node` 右上角红三角叹号。
+2. **locate 四 Tab** — `desktop/locate_match_panel.py`。
 3. 文档：本文 + `VM-UX对照要点.md` JGTech 增补。
+
+## Wave2 落地（2026-10-27）
+
+1. **灰度模板匹配** — `locate.matchMode` fast|gray；灰度模板 Tab + 运行参数。
+2. **位置修正** — `pose_correct` 目录项 + `PoseCorrectPanel` + 运行透传。
+3. **通信管理** — `CommManagerDialog` 五 Tab + 菜单/工具栏。
+4. **条件分支 / 分支模块** — `ConditionBranchPanel`；引擎多规则 / branch 路径。
+5. **全局触发** — 字符串表 **部分匹配** 列。
+6. **运行界面** — 设计器「VM默认运行壳」一键布局。
 
 ## 65 集下一步建议顺序
 
-1. 未下未看优先：p=1–3 入门壳、p=12–17 测量/BLOB/缺陷、p=20–25 脚本/循环/变量进阶、p=27 流程操作、p=31–65 余下行业案例。  
-2. 功能：灰度模式、位置修正、通讯管理窗、全局触发表、HMI 设计器骨架。  
-3. 点测表更新 N4 / P1-9 为 PASS（壳级）。
+1. 未下未看优先：p=1–3 入门、p=12–17（C#/畸变/几何测量）、p=20–25（九点/变量/协议）、p=27 耗时、p=31–65 行业案例。  
+2. 功能：收发数据专用节点、畸变矫正/标定算子壳、变量计算、耗时统计面板、HMI 控件深度。  
+3. 点测表更新 Wave2 项为 PASS（壳级）。
 
 ---
 
 *帧证据均在 `docs/vm-bilibili-jgtech/frames/pXX_*`；对照时打开同名片关键帧即可。*
+
+
+---
+
+## Wave2 新看分集笔记（p=13 / 20 / 23 / 27）
+
+> 用户点名「p=12 畸变 / p=20 九点 / p=22 变量 / p=27 耗时」；Bilibili 分页实际为 **p=13 畸变矫正、p=20 九点、p=23 变量计算、p=27 耗时**（p=12=C#脚本、p=22=输出图像）。本波已下帧，**未实现算子**（非小改）。
+
+### p=13 畸变矫正
+- 工具箱可见标定类算子；流程常与图像源串联。
+- sieans：无畸变矫正独立 op → 记入后续（可挂 camera / measure.calibration）。
+
+### p=20 平移九点标定
+- 长课时；标定表 + 坐标系；工具箱有「九点标定」。
+- sieans：`measure.calibration` 字段已有但无九点表 UX → 后续。
+
+### p=23 变量计算
+- 浮窗 Tab：**基本参数 / 结果显示**。
+- 表列：名称（var0…）/ 表达式（公式编辑）/ 初始值 / 输出类型 / 初始化开关。
+- sieans：`variables` 仅 set/increment → 后续可加 `var_calc` 表达式表壳。
+
+### p=27 耗时统计
+- 浮窗：**基本参数** 里 **开始 / 结束** 下拉选上游模块；**结果显示** Tab。
+- sieans：节点已有 `elapsedMs`；缺「起止模块」统计壳 → 后续小项。
+
