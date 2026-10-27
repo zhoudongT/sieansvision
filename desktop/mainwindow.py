@@ -644,8 +644,11 @@ class MainWindow(QMainWindow):
         if hasattr(self,'filmstrip'):self.filmstrip.setEnabled(not busy and design)
         for action in self.workspace_actions:action.setEnabled(self.engine_ready and (not busy or action.data() in ('continuous','hmi')))
         for key,dialog in list(self.dialogs.items()):
-            if hasattr(dialog,'set_busy'):dialog.set_busy(busy)
-            elif key!='login':dialog.setEnabled(not busy)
+            if hasattr(dialog,'set_busy'):
+                dialog.set_busy(busy)
+            elif key not in ('login','camera','training'):
+                # Never setEnabled(False) on camera/training — that freezes Close/Esc/X.
+                dialog.setEnabled(not busy)
 
     def run_once(self):
         self.continuous=False;self.run_all_filmstrip=False;self._run_target=None;self.run()
@@ -994,7 +997,12 @@ class MainWindow(QMainWindow):
             return
         from desktop.camera_manager import CameraManagerDialog
         dlg=CameraManagerDialog(self.backend, self)
-        dlg.openFullWorkbench.connect(lambda:self.open_panel('camera'))
+        def _open_full_camera_workbench():
+            # CameraManager is ApplicationModal via exec(); leaving it open makes
+            # CameraDialog appear on top but receive no clicks (Close/X dead).
+            dlg.reject()
+            QTimer.singleShot(0, lambda: self.open_panel('camera'))
+        dlg.openFullWorkbench.connect(_open_full_camera_workbench)
         def accepted(name):
             p=deepcopy(self.document.project)
             cfg=normalize_source(p.get('sourceConfig'))

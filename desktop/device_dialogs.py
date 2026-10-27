@@ -415,9 +415,13 @@ class CameraDialog(_RpcDialog):
         session_layout.addWidget(hint)
         self.tabs.addTab(session_page, '连续连接与缓存')
         outer.addWidget(self.message)
-        close = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        close.rejected.connect(self.reject)
-        outer.addWidget(close)
+        # Close / Esc / window X must always work — even while GenTL enumerate hangs.
+        self.setModal(False)
+        self.setWindowModality(Qt.WindowModality.NonModal)
+        self.close_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        self.close_box.rejected.connect(self.reject)
+        outer.addWidget(self.close_box)
+        self.external_busy = False
         self.driver.currentIndexChanged.connect(self._driver_changed)
         self.device_id.textChanged.connect(self._buttons)
         self.device_table.itemSelectionChanged.connect(self._select_device)
@@ -430,6 +434,9 @@ class CameraDialog(_RpcDialog):
         self.live_timer.setInterval(50)  # ~20 Hz; PNG session cache still caps real rate
         self.live_timer.timeout.connect(self._live_tick)
         self._live_pending = False
+        self._action_watchdog = QTimer(self)
+        self._action_watchdog.setSingleShot(True)
+        self._action_watchdog.timeout.connect(self._action_timeout)
         self._buttons()
 
     def showEvent(self, event):
@@ -564,10 +571,18 @@ class CameraDialog(_RpcDialog):
                 index = self.provider.count()-1
             self.provider.setCurrentIndex(index)
 
+    def set_busy(self, busy):
+        """MainWindow run/continuous busy must not freeze Close/Esc/X."""
+        self.external_busy = bool(busy)
+        # Recover if an older path called dialog.setEnabled(False).
+        if not self.isEnabled():
+            self.setEnabled(True)
+        self._buttons()
+
     def _buttons(self, *_):
         if not hasattr(self, 'connect_button'):
             return
-        busy = self._busy() or not self.backend.is_ready
+        busy = self._busy() or self.external_busy or not self.backend.is_ready
         selected = bool(self.device_id.text().strip())
         active = self.state.get('active', False)
         running = self.state.get('state') == 'running'
@@ -577,7 +592,8 @@ class CameraDialog(_RpcDialog):
         self.network.setEnabled(not busy and self.driver.currentData() == 'orbbec')
         for button in (self.inspect_button, self.capture_button, self.add_button, self.apply_button):
             button.setEnabled(not busy and selected)
-        self.cancel_button.setEnabled(any(method in ('camera/list', 'camera/inspect', 'camera/capture') for method, _, _ in self.pending.values()))
+        pending_ops = any(method in ('camera/list', 'camera/inspect', 'camera/capture') for method, _, _ in self.pending.values())
+        self.cancel_button.setEnabled(pending_ops)
         self.use_frame_button.setEnabled(not busy and self.frame is not None)
         self.connect_button.setEnabled(not busy and selected and not active)
         self.reopen_button.setEnabled(not busy and not active and bool(self.state.get('config')))
@@ -586,6 +602,11 @@ class CameraDialog(_RpcDialog):
             button.setEnabled(not busy and running)
         for field in (self.interval, self.retries, self.reconnect):
             field.setEnabled(not busy and not active)
+        # Close / Esc / window X always clickable — empty device list or hung enum must not trap Allen.
+        if hasattr(self, 'close_box'):
+            self.close_box.setEnabled(True)
+            for btn in self.close_box.buttons():
+                btn.setEnabled(True)
 
     def scan(self):
         params = {'driver': self.driver.currentData()}
@@ -593,12 +614,16 @@ class CameraDialog(_RpcDialog):
             params['providerId'] = self.provider.currentData() or ''
         if params['driver'] == 'orbbec':
             params['discoverNetwork'] = self.network.isChecked()
+        self.message.setText('正在枚举设备…（长时间无响应可点「取消」或关闭窗口）')
         self._request('camera/list', params, self._devices)
+        self._arm_action_watchdog()
 
     def _devices(self, value):
+        if hasattr(self, '_action_watchdog'):
+            self._action_watchdog.stop()
         self.devices = value.get('result', {}).get('items', [])
         _rows(self.device_table, [[d.get(k) for k in ('name', 'deviceId', 'model', 'serial', 'transport')] for d in self.devices])
-        self.message.setText(f'枚举完成：{len(self.devices)} 台。选择设备后可读取参数或采集。')
+        self.message.setText(f'枚举完成：{len(self.devices)} 台。选择设备后可读取参数或采集。' if self.devices else '枚举完成：0 台（仍可关闭窗口；检查驱动/GenTL 后重试）。')
         if self.devices:
             self.device_table.selectRow(0)
 
@@ -608,10 +633,14 @@ class CameraDialog(_RpcDialog):
             self.device_id.setText(str(self.devices[row]['deviceId']))
 
     def inspect(self):
+        self.message.setText('正在读取设备参数…')
         self._request('camera/inspect', self.params(), lambda value: _tree_data(self.details, {'设备参数': value.get('result', {}).get('items', [])}))
+        self._arm_action_watchdog()
 
     def capture(self):
+        self.message.setText('正在采集单帧…')
         self._request('camera/capture', self.params(), self._captured)
+        self._arm_action_watchdog()
 
     def _captured(self, value):
         self.frame = deepcopy(value)
@@ -620,10 +649,51 @@ class CameraDialog(_RpcDialog):
         self.message.setText('采集完成。预览帧可作为流程输入，设备配置可添加到流程。')
         self.tabs.setCurrentIndex(0)
 
-    def cancel_request(self):
+    def _arm_action_watchdog(self):
+        # UI-side safety net: engine already times out; clear local busy if reply never arrives.
+        if hasattr(self, '_action_watchdog'):
+            self._action_watchdog.start(35000)
+
+    def _action_timeout(self):
+        hung = [m for m, _, k in self.pending.values() if m in ('camera/list', 'camera/inspect', 'camera/capture') or k == 'action']
+        if not hung:
+            return
+        self._abort_camera_actions('枚举/采集超时未返回；已解除界面锁定，可关闭或重试。')
+
+    def _abort_camera_actions(self, message=None):
         for request_id, (method, _, _) in list(self.pending.items()):
-            if method in ('camera/list', 'camera/inspect', 'camera/capture') and self.backend.is_ready:
-                self._request('camera/cancel', {'requestId': request_id}, kind='cancel')
+            if method in ('camera/list', 'camera/inspect', 'camera/capture', 'camera/cancel'):
+                if method != 'camera/cancel' and self.backend.is_ready:
+                    try:
+                        self.backend.request('camera/cancel', {'requestId': request_id})
+                    except Exception:
+                        pass
+                self.pending.pop(request_id, None)
+        if hasattr(self, '_action_watchdog'):
+            self._action_watchdog.stop()
+        if message:
+            self.message.setText(message)
+        self._buttons()
+
+    def cancel_request(self):
+        # Clear local pending immediately so Close / buttons unlock even if GenTL child ignores abort.
+        self._abort_camera_actions('已取消本次枚举/采集请求。可关闭窗口或重试。')
+
+    def reject(self):
+        self._abort_camera_actions()
+        if hasattr(self, 'timer'):
+            self.timer.stop()
+        if hasattr(self, 'live_timer'):
+            self.live_timer.stop()
+        super().reject()
+
+    def closeEvent(self, event):
+        self._abort_camera_actions()
+        if hasattr(self, 'timer'):
+            self.timer.stop()
+        if hasattr(self, 'live_timer'):
+            self.live_timer.stop()
+        super().closeEvent(event)
 
     def use_frame(self):
         if self.frame:
@@ -713,6 +783,7 @@ class TrainingDialog(_RpcDialog):
         self.setWindowTitle('数据集与模型训练')
         self.resize(1080, 800)
         self.state = {}
+        self.external_busy = False
         self.annotation_dialog = None
         self.selected_dataset = None
         outer = QVBoxLayout(self)
@@ -839,10 +910,16 @@ class TrainingDialog(_RpcDialog):
         if self.backend.is_ready and not self._has('training/status'):
             self._request('training/status', callback=self._status, kind='status')
 
+    def set_busy(self, busy):
+        self.external_busy = bool(busy)
+        if not self.isEnabled():
+            self.setEnabled(True)
+        self._buttons()
+
     def _buttons(self):
         if not hasattr(self, 'start_button'):
             return
-        busy = self._busy() or self.state.get('busy', False) or not self.backend.is_ready
+        busy = self._busy() or self.state.get('busy', False) or self.external_busy or not self.backend.is_ready
         selected = bool(self.dataset.currentData())
         for button in (self.create_button, self.demo_button):
             button.setEnabled(not busy)
