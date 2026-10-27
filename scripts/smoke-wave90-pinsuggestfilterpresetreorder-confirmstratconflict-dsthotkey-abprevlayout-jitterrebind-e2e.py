@@ -147,11 +147,13 @@ def main():
         tip_r = host.format_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflicts(cf_r)
         assert 'Ctrl+S' in tip_r and tip_r, tip_r
         # collide with jitter default Ctrl+Alt+J
-        cf_j = host.detect_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflicts('Ctrl+Alt+J')
-        assert any('jitter' in str(c.get('reason', '')) for c in cf_j), cf_j
-        # collide with DST undo default
-        cf_d = host.detect_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflicts('Ctrl+Alt+U')
-        assert any('DST' in str(c.get('reason', '')) for c in cf_d), cf_d
+        # live peer keys (may be rebound/persisted across waves)
+        j_key = host.merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_redo_shortcut()
+        cf_j = host.detect_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflicts(j_key)
+        assert any('jitter' in str(c.get('reason', '')) for c in cf_j), (j_key, cf_j)
+        d_key = host.toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_undo_shortcut()
+        cf_d = host.detect_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflicts(d_key)
+        assert any('DST' in str(c.get('reason', '')) for c in cf_d), (d_key, cf_d)
         # set_ should stamp conflict property via refresh
         host.set_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut(
             'Ctrl+S', persist=False, rebind=True)
