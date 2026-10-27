@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊩ · 导引带α连续滑条 · 撤销条色阶对齐 · PNG模板编辑对话框 · 热同步色阶预览条 · 脉冲预览小窗 · 2026-10-28】
+
+- **导引带 α 连续滑条**：透明度 4–40% 连续可调；8/12/20 仍为快捷；菜单内嵌 `QSlider`。
+- **撤销条色阶对齐**：仅选删色撤销条 chunk 走 `_stale_prune_undo_bar_chunk_color`（绿→黄→红 / 当前色阶预设）。
+- **PNG 模板编辑对话框**：`show_toast_curve_png_name_template_dialog`；实时预览 + 默认/日期/简名快捷；最近导出菜单入口。
+- **热同步色阶预览条**：菜单顶栏渐变预览条；`refresh` 随预设重绘。
+- **脉冲预览小窗**：`show_merge_diff_fail_hist_drop_pulse_preview` 演示当前时长/缓动/强度；导引带菜单入口。
+- **冒烟**：`smoke-wave60-guidealphaslider-undoscale-pngtmpldlg-hotsyncpreview-pulseprev-e2e`（另回归 wave59/58/57）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊨ · 导引带自定义色拾取 · 撤销条可拖时长 · PNG命名模板 · 热同步α滑条 · 脉冲强度 · 2026-10-28】
 
 - **导引带自定义色拾取**：`custom` 预设 + `mergeDiffFailHistDropSnapGuideCustomHex`；`prompt_merge_diff_fail_hist_drop_snap_guide_custom_color`（QColorDialog）；菜单「自定义色拾取…」。

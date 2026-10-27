@@ -1062,11 +1062,10 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             self._merge_diff_fail_hist_drop_snap_guide_preset = 'green'
         try:
+            # wave60: α 连续 4–40%（仍兼容 8/12/20 快捷）
             _ga = int(self._host_settings().value(
                 'host/mergeDiffFailHistDropSnapGuideAlphaPct', 12) or 12)
-            if _ga not in (8, 12, 20):
-                _ga = min((8, 12, 20), key=lambda p: abs(p - _ga))
-            self._merge_diff_fail_hist_drop_snap_guide_alpha_pct = _ga
+            self._merge_diff_fail_hist_drop_snap_guide_alpha_pct = max(4, min(40, _ga))
         except Exception:
             self._merge_diff_fail_hist_drop_snap_guide_alpha_pct = 12
         try:
@@ -3926,6 +3925,18 @@ class HostStateMachineWidget(QWidget):
             bar.setToolTip(
                 '单击撤销 · Shift/Ctrl/Alt+拖调时长 · 滚轮调时长 · 右键预设'
                 if left else '')
+            # wave60: 色阶对齐 undo 绿→黄→红
+            try:
+                ratio = left / float(total)
+                chunk = self._stale_prune_undo_bar_chunk_color(ratio)
+                bar.setStyleSheet(
+                    'QProgressBar{background:#1e2126;border:1px solid #3a3d42;'
+                    'border-radius:2px;color:#c8d2dc;font-size:10px;}'
+                    f'QProgressBar::chunk{{background:{chunk};border-radius:2px;}}')
+                self._last_sev_pin_solo_delete_undo_bar_chunk_color = chunk
+                self._last_sev_pin_solo_delete_undo_bar_ratio = round(ratio, 3)
+            except Exception:
+                pass
             return True
         except Exception:
             return False
@@ -6285,16 +6296,79 @@ class HostStateMachineWidget(QWidget):
             self._last_undo_color_scale_hot_sync_menu_alpha = cur_a
         except Exception:
             pass
+        # wave60: refresh 色阶预览条
+        try:
+            if self._paint_undo_color_scale_preview_bar():
+                n += 1
+        except Exception:
+            pass
         self._last_undo_color_scale_hot_sync_menu_refreshed = True
         self._last_undo_color_scale_hot_sync_menu_refresh_n = n
         self._last_undo_color_scale_hot_sync_menu_cur = cur_cs
         self._last_undo_color_scale_hot_sync_menu_alpha_step = cur_step
         return True
 
+    def _make_undo_color_scale_preview_bar(self, parent=None):
+        """wave60: 热同步菜单内色阶预览条（按当前预设采样）."""
+        bar = QProgressBar(parent or self)
+        bar.setObjectName('hostUndoColorScalePreviewBar')
+        bar.setTextVisible(True)
+        bar.setFormat('色阶预览')
+        bar.setFixedHeight(16)
+        bar.setMaximum(100)
+        bar.setValue(100)
+        bar.setMinimumWidth(180)
+        try:
+            self._paint_undo_color_scale_preview_bar(bar)
+        except Exception:
+            pass
+        return bar
+
+    def _paint_undo_color_scale_preview_bar(self, bar=None) -> bool:
+        """wave60: 用三段 chunk 色拼预览（高/中/低）."""
+        if bar is None:
+            bar = getattr(self, '_last_undo_color_scale_preview_bar', None)
+        if bar is None:
+            return False
+        try:
+            hi = self._stale_prune_undo_bar_chunk_color(1.0)
+            mid = self._stale_prune_undo_bar_chunk_color(0.4)
+            lo = self._stale_prune_undo_bar_chunk_color(0.1)
+            preset = self.stale_prune_undo_color_scale_preset()
+            # gradient via stylesheet is limited; use hi as chunk + tip text
+            bar.setFormat(f'色阶 · {preset}  绿→黄→红')
+            bar.setStyleSheet(
+                'QProgressBar{background:#1e2126;border:1px solid #3a3d42;'
+                'border-radius:2px;color:#c8d2dc;font-size:10px;'
+                f'background-color: qlineargradient('
+                f'x1:0,y1:0,x2:1,y2:0, stop:0 {hi}, stop:0.5 {mid}, stop:1 {lo});'
+                '}'
+                'QProgressBar::chunk{background:transparent;}')
+            bar.setToolTip(f'hi={hi} mid={mid} lo={lo}')
+            self._last_undo_color_scale_preview_hi = hi
+            self._last_undo_color_scale_preview_mid = mid
+            self._last_undo_color_scale_preview_lo = lo
+            self._last_undo_color_scale_preview_preset = preset
+            return True
+        except Exception:
+            return False
+
     def _build_undo_color_scale_hot_sync_menu(self, parent=None):
-        """wave56–57: 徽章条 / undo 色阶热同步菜单（勾选实时刷新）."""
+        """wave56–60: 徽章条 / undo 色阶热同步菜单（勾选实时刷新 · 预览条）."""
         menu = QMenu(parent or self)
         menu.setObjectName('hostUndoColorScaleHotSyncMenu')
+        # wave60: 色阶预览条（绿→黄→红 / 当前预设）
+        try:
+            prev_bar = self._make_undo_color_scale_preview_bar(menu)
+            wa_prev = QWidgetAction(menu)
+            wa_prev.setProperty('isUndoColorScalePreviewBar', True)
+            wa_prev.setProperty('isUndoColorScaleHotSync', True)
+            wa_prev.setDefaultWidget(prev_bar)
+            menu.addAction(wa_prev)
+            self._last_undo_color_scale_preview_bar = prev_bar
+            menu.addSeparator()
+        except Exception:
+            pass
         cur_cs = self.stale_prune_undo_color_scale_preset()
         for key, lab in (
             ('traffic', '色阶 · 红绿灯'),
@@ -7769,25 +7843,22 @@ class HostStateMachineWidget(QWidget):
         return name
 
     def merge_diff_fail_hist_drop_snap_guide_alpha_pct(self) -> int:
-        """wave58: 导引带透明度百分比 8/12/20."""
+        """wave58–60: 导引带透明度百分比 4–40（连续；8/12/20 为快捷）."""
         try:
             v = int(getattr(
                 self, '_merge_diff_fail_hist_drop_snap_guide_alpha_pct', 12) or 12)
         except Exception:
             v = 12
-        if v not in (8, 12, 20):
-            v = min((8, 12, 20), key=lambda p: abs(p - v))
-        return v
+        return max(4, min(40, v))
 
     def set_merge_diff_fail_hist_drop_snap_guide_alpha_pct(
             self, pct: int = 12, *, persist: bool = True) -> int:
-        """wave58: 设置导引带透明度 8/12/20."""
+        """wave58–60: 设置导引带透明度 4–40%（连续）."""
         try:
             v = int(pct)
         except Exception:
             v = 12
-        if v not in (8, 12, 20):
-            v = min((8, 12, 20), key=lambda p: abs(p - v))
+        v = max(4, min(40, v))
         self._merge_diff_fail_hist_drop_snap_guide_alpha_pct = v
         if persist:
             try:
@@ -7797,6 +7868,18 @@ class HostStateMachineWidget(QWidget):
                 pass
         try:
             self._apply_merge_diff_fail_hist_drop_snap_guide_style()
+        except Exception:
+            pass
+        # sync menu slider if present
+        try:
+            sl = getattr(self, '_last_merge_diff_fail_hist_drop_snap_guide_alpha_slider', None)
+            vl = getattr(self, '_last_merge_diff_fail_hist_drop_snap_guide_alpha_val', None)
+            if sl is not None:
+                blocked = sl.blockSignals(True)
+                sl.setValue(int(v))
+                sl.blockSignals(blocked)
+            if vl is not None:
+                vl.setText(f'{int(v)}%')
         except Exception:
             pass
         self._last_merge_diff_fail_hist_drop_snap_guide_alpha_pct = v
@@ -7947,6 +8030,43 @@ class HostStateMachineWidget(QWidget):
             act.triggered.connect(
                 lambda *_a, pp=pct: self.set_merge_diff_fail_hist_drop_snap_guide_alpha_pct(pp))
             menu.addAction(act)
+        # wave60: α 连续滑条 4–40%
+        try:
+            wrap_a = QWidget(menu)
+            lay_a = QHBoxLayout(wrap_a)
+            lay_a.setContentsMargins(8, 2, 8, 2)
+            lay_a.setSpacing(6)
+            lab_a = QLabel('α 连续', wrap_a)
+            lab_a.setStyleSheet('color:#9aa7b5;font-size:11px;')
+            sl_a = QSlider(Qt.Orientation.Horizontal, wrap_a)
+            sl_a.setObjectName('hostMergeDiffFailHistDropSnapGuideAlphaSlider')
+            sl_a.setRange(4, 40)
+            sl_a.setValue(int(cur_a))
+            sl_a.setFixedWidth(120)
+            val_a = QLabel(f'{int(cur_a)}%', wrap_a)
+            val_a.setObjectName('hostMergeDiffFailHistDropSnapGuideAlphaVal')
+            val_a.setFixedWidth(36)
+            val_a.setStyleSheet('color:#c8d2dc;font-size:11px;')
+
+            def _on_ga(v, vl=val_a):
+                self.set_merge_diff_fail_hist_drop_snap_guide_alpha_pct(int(v))
+                try:
+                    vl.setText(f'{int(v)}%')
+                except Exception:
+                    pass
+
+            sl_a.valueChanged.connect(_on_ga)
+            lay_a.addWidget(lab_a)
+            lay_a.addWidget(sl_a, 1)
+            lay_a.addWidget(val_a)
+            wa_a = QWidgetAction(menu)
+            wa_a.setProperty('isSnapGuideAlphaSlider', True)
+            wa_a.setDefaultWidget(wrap_a)
+            menu.addAction(wa_a)
+            self._last_merge_diff_fail_hist_drop_snap_guide_alpha_slider = sl_a
+            self._last_merge_diff_fail_hist_drop_snap_guide_alpha_val = val_a
+        except Exception:
+            pass
         menu.addSeparator()
         # wave59: 自定义色拾取
         act_pick = QAction('自定义色拾取…', menu)
@@ -8020,6 +8140,12 @@ class HostStateMachineWidget(QWidget):
             self._last_merge_diff_fail_hist_drop_pulse_intensity_slider = slider
         except Exception:
             pass
+        # wave60: 脉冲预览小窗入口
+        act_pp = QAction('脉冲预览小窗…', menu)
+        act_pp.setProperty('isDropPulsePreview', True)
+        act_pp.triggered.connect(
+            lambda *_: self.show_merge_diff_fail_hist_drop_pulse_preview())
+        menu.addAction(act_pp)
         self._last_merge_diff_fail_hist_drop_snap_guide_menu = menu
         return menu
 
@@ -8074,6 +8200,78 @@ class HostStateMachineWidget(QWidget):
                 pass
         self._last_merge_diff_fail_hist_drop_pulse_intensity_pct = v
         return v
+
+    def show_merge_diff_fail_hist_drop_pulse_preview(
+            self, *, interactive: bool = True) -> bool:
+        """wave60: 脉冲预览小窗（时长/缓动/强度实时演示）."""
+        if getattr(self, '_merge_diff_fail_hist_drop_pulse_preview_no_exec', False):
+            # smoke: still build + pulse once
+            interactive = False
+        try:
+            dlg = QDialog(self)
+            dlg.setWindowTitle('落点脉冲预览')
+            dlg.setObjectName('hostMergeDiffFailHistDropPulsePreviewDialog')
+            dlg.setMinimumSize(280, 140)
+            lay = QVBoxLayout(dlg)
+            ms = self.merge_diff_fail_hist_drop_pulse_ms()
+            ez = self.merge_diff_fail_hist_drop_pulse_easing()
+            inten = self.merge_diff_fail_hist_drop_pulse_intensity_pct()
+            tip = QLabel(
+                f'时长 {ms}ms · 缓动 {ez} · 强度 {inten}%', dlg)
+            tip.setObjectName('hostMergeDiffFailHistDropPulsePreviewTip')
+            tip.setStyleSheet('color:#9aa7b5;font-size:11px;')
+            lay.addWidget(tip)
+            pane = QFrame(dlg)
+            pane.setObjectName('hostMergeDiffFailHistDropPulsePreviewPane')
+            pane.setFixedHeight(36)
+            pane.setStyleSheet(
+                'background:#3ecf8e;border:1px solid #2a9a68;border-radius:4px;')
+            lay.addWidget(pane)
+            row = QHBoxLayout()
+            btn_play = QPushButton('再播一次', dlg)
+            btn_play.setObjectName('hostMergeDiffFailHistDropPulsePreviewPlay')
+            btn_close = QPushButton('关闭', dlg)
+            row.addWidget(btn_play)
+            row.addStretch(1)
+            row.addWidget(btn_close)
+            lay.addLayout(row)
+
+            def _play():
+                try:
+                    tip.setText(
+                        f'时长 {self.merge_diff_fail_hist_drop_pulse_ms()}ms · '
+                        f'缓动 {self.merge_diff_fail_hist_drop_pulse_easing()} · '
+                        f'强度 {self.merge_diff_fail_hist_drop_pulse_intensity_pct()}%')
+                except Exception:
+                    pass
+                try:
+                    # reuse pulse logic on preview pane
+                    self._last_merge_diff_fail_hist_drop_highlight = pane
+                    okp = self._pulse_merge_diff_fail_hist_drop_highlight(pane)
+                    self._last_merge_diff_fail_hist_drop_pulse_preview_pulsed = bool(okp)
+                    return okp
+                except Exception:
+                    self._last_merge_diff_fail_hist_drop_pulse_preview_pulsed = False
+                    return False
+
+            btn_play.clicked.connect(lambda *_: _play())
+            btn_close.clicked.connect(dlg.accept)
+            self._last_merge_diff_fail_hist_drop_pulse_preview_dialog = dlg
+            self._last_merge_diff_fail_hist_drop_pulse_preview_pane = pane
+            # auto play once
+            _play()
+            self._last_merge_diff_fail_hist_drop_pulse_preview_shown = True
+            if interactive and not getattr(
+                    self, '_merge_diff_fail_hist_drop_pulse_preview_no_exec', False):
+                dlg.exec()
+            return True
+        except Exception as err:
+            try:
+                self._flash_host_toast(f'脉冲预览失败 · {err}', kind='info', ms=1400)
+            except Exception:
+                pass
+            self._last_merge_diff_fail_hist_drop_pulse_preview_shown = False
+            return False
 
     def _drop_pulse_easing_curve(self) -> QEasingCurve:
         """wave58: 脉冲缓动名 → QEasingCurve（与 toast 同套）."""
@@ -10165,6 +10363,100 @@ class HostStateMachineWidget(QWidget):
         self._last_toast_curve_png_resolved_name = out
         return out
 
+    def show_toast_curve_png_name_template_dialog(
+            self, *, interactive: bool = True) -> str:
+        """wave60: PNG 命名模板编辑对话框."""
+        if getattr(self, '_toast_curve_png_name_template_dialog_no_exec', False):
+            # smoke path: apply optional smoke template
+            tmpl = str(getattr(
+                self, '_toast_curve_png_name_template_smoke', '') or '').strip()
+            if tmpl:
+                self.set_toast_curve_png_name_template(tmpl)
+            self._last_toast_curve_png_name_template_dialog_shown = True
+            self._last_toast_curve_png_name_template_dialog_result = (
+                self.toast_curve_png_name_template())
+            return self.toast_curve_png_name_template()
+        try:
+            dlg = QDialog(self)
+            dlg.setWindowTitle('PNG 导出命名模板')
+            dlg.setObjectName('hostToastCurvePngNameTemplateDialog')
+            dlg.setMinimumWidth(420)
+            lay = QVBoxLayout(dlg)
+            tip = QLabel(
+                '占位符：{ts} 时分秒 · {date} 日期 · {easing} 缓动 · {name} 基名',
+                dlg)
+            tip.setStyleSheet('color:#9aa7b5;font-size:11px;')
+            tip.setWordWrap(True)
+            lay.addWidget(tip)
+            edit = QLineEdit(dlg)
+            edit.setObjectName('hostToastCurvePngNameTemplateEdit')
+            edit.setText(self.toast_curve_png_name_template())
+            lay.addWidget(edit)
+            prev = QLabel('', dlg)
+            prev.setObjectName('hostToastCurvePngNameTemplatePreview')
+            prev.setStyleSheet(
+                'color:#c8d2dc;font-size:12px;background:#1e2126;'
+                'border:1px solid #3a3d42;border-radius:3px;padding:6px;')
+            lay.addWidget(prev)
+
+            def _refresh_prev(*_a):
+                try:
+                    raw = edit.text().strip() or 'tip-anim-{easing}-{ts}.png'
+                    # temporary resolve without persist
+                    old = self._toast_curve_png_name_template
+                    self._toast_curve_png_name_template = raw if raw.lower().endswith(
+                        '.png') else raw + '.png'
+                    name = self.resolve_toast_curve_png_name()
+                    self._toast_curve_png_name_template = old
+                    prev.setText(f'预览 · {name}')
+                except Exception as err:
+                    prev.setText(f'预览失败 · {err}')
+
+            edit.textChanged.connect(_refresh_prev)
+            _refresh_prev()
+            # quick presets
+            row = QHBoxLayout()
+            for lab, tmpl in (
+                ('默认', 'tip-anim-{easing}-{ts}.png'),
+                ('日期', 'curve-{date}-{easing}.png'),
+                ('简名', '{name}-{ts}.png'),
+            ):
+                btn = QPushButton(lab, dlg)
+                btn.setProperty('isToastCurvePngTmplPreset', True)
+                btn.clicked.connect(
+                    lambda *_a, tt=tmpl, e=edit: (e.setText(tt), None))
+                row.addWidget(btn)
+            row.addStretch(1)
+            lay.addLayout(row)
+            box = QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Ok
+                | QDialogButtonBox.StandardButton.Cancel, dlg)
+            lay.addWidget(box)
+            box.accepted.connect(dlg.accept)
+            box.rejected.connect(dlg.reject)
+            self._last_toast_curve_png_name_template_dialog = dlg
+            self._last_toast_curve_png_name_template_edit = edit
+            if interactive:
+                if dlg.exec() == QDialog.DialogCode.Accepted:
+                    got = self.set_toast_curve_png_name_template(edit.text())
+                    self._last_toast_curve_png_name_template_dialog_result = got
+                    try:
+                        self._flash_host_toast(
+                            f'PNG 模板 · {got}', kind='ok', ms=1200)
+                    except Exception:
+                        pass
+                    return got
+                self._last_toast_curve_png_name_template_dialog_result = ''
+                return ''
+            self._last_toast_curve_png_name_template_dialog_shown = True
+            return self.toast_curve_png_name_template()
+        except Exception as err:
+            try:
+                self._flash_host_toast(f'模板对话框失败 · {err}', kind='info', ms=1400)
+            except Exception:
+                pass
+            return ''
+
     def toast_curve_png_recent_exports(self) -> list:
         """wave58: 最近导出曲线 PNG 清单."""
         raw = getattr(self, '_toast_curve_png_recent_exports', None)
@@ -10237,6 +10529,13 @@ class HostStateMachineWidget(QWidget):
             act_clr.triggered.connect(
                 lambda *_: self.clear_toast_curve_png_recent_exports())
             menu.addAction(act_clr)
+        menu.addSeparator()
+        # wave60: PNG 命名模板编辑
+        act_tmpl = QAction('命名模板编辑…', menu)
+        act_tmpl.setProperty('isToastCurvePngNameTemplateEdit', True)
+        act_tmpl.triggered.connect(
+            lambda *_: self.show_toast_curve_png_name_template_dialog())
+        menu.addAction(act_tmpl)
         self._last_toast_curve_png_recent_exports_menu = menu
         return menu
 
