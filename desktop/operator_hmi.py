@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
     QPlainTextEdit, QGridLayout, QSizePolicy, QLineEdit, QListWidget,
     QTableWidget, QTableWidgetItem, QProgressBar, QHeaderView,
-    QComboBox, QTabWidget,
+    QComboBox, QTabWidget, QStackedWidget,
 )
 
 from desktop.image_view import ImageView
@@ -1362,56 +1362,67 @@ class OperatorHmiView(QWidget):
             return cell
         if name in ('组合框', '参数组合', '文本框组合'):
             cell = self._make_cell_frame(name)
-            tip = QLabel('容器组合：下拉切换子页；页内嵌判定灯 + 摘要（绑定随布局配置）')
+            tip = QLabel('容器组合：下拉切换嵌套页（QStackedWidget）；页内可挂判定灯/表格/约束提示')
             tip.setWordWrap(True)
             tip.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
             combo = QComboBox()
             combo.setObjectName('hmiComboContainer')
-            pages = (
-                ('方案 A · 外观', '外观检测摘要 · 边缘/色差'),
-                ('方案 B · 尺寸', '尺寸检测摘要 · 宽高/公差'),
-                ('方案 C · 综合', '综合判定 · OK/NG 汇总'),
-            )
-            for lab, _ in pages:
+            stack = QStackedWidget()
+            stack.setObjectName('hmiComboStack')
+            # Page A · 外观
+            pa = QWidget(); la = QVBoxLayout(pa); la.setContentsMargins(4, 4, 4, 4)
+            lamp_a = StatusLamp('外观'); lamp_a.set_state(True); lamp_a.setObjectName('hmiComboLamp')
+            sum_a = QLabel('外观检测 · 边缘/色差\n约束：方案页互斥，切页不丢控件状态')
+            sum_a.setWordWrap(True); sum_a.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            sum_a.setObjectName('hmiComboSummary')
+            la.addWidget(lamp_a); la.addWidget(sum_a, 1)
+            # Page B · 尺寸
+            pb = QWidget(); lb = QVBoxLayout(pb); lb.setContentsMargins(4, 4, 4, 4)
+            tbl = QTableWidget(3, 2); tbl.setObjectName('hmiComboTable')
+            tbl.setHorizontalHeaderLabels(['项', '值'])
+            tbl.horizontalHeader().setStretchLastSection(True)
+            tbl.verticalHeader().setVisible(False)
+            for r, (k, v) in enumerate([('宽', '—'), ('高', '—'), ('公差', '±0.1')]):
+                tbl.setItem(r, 0, QTableWidgetItem(k)); tbl.setItem(r, 1, QTableWidgetItem(v))
+            tbl.setMaximumHeight(110)
+            lamp_b = StatusLamp('尺寸'); lamp_b.set_state(False)
+            lb.addWidget(lamp_b); lb.addWidget(tbl, 1)
+            # Page C · 综合
+            pc = QWidget(); lc = QVBoxLayout(pc); lc.setContentsMargins(4, 4, 4, 4)
+            lamp_c = StatusLamp('综合'); lamp_c.set_state(None)
+            drop_tip = QLabel('拖放约束：容器页只接受同布局控件；跨页绑定走 ⛓ 变量')
+            drop_tip.setWordWrap(True)
+            drop_tip.setObjectName('hmiComboDropHint')
+            drop_tip.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;padding:6px;border:1px dashed {TEXT_MUTED};border-radius:4px;')
+            lc.addWidget(lamp_c); lc.addWidget(drop_tip, 1)
+            for lab, page in (('方案 A · 外观', pa), ('方案 B · 尺寸', pb), ('方案 C · 综合', pc)):
                 combo.addItem(lab)
-            body = QWidget()
-            body.setObjectName('hmiComboStack')
-            bl = QVBoxLayout(body)
-            bl.setContentsMargins(4, 4, 4, 4)
-            lamp = StatusLamp('方案判定')
-            lamp.set_state(None)
-            lamp.setObjectName('hmiComboLamp')
-            summary = QLabel(pages[0][1])
-            summary.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            summary.setWordWrap(True)
-            summary.setStyleSheet(f'color:{TEXT};padding:8px;border:1px dashed {TEXT_MUTED};border-radius:6px;')
-            summary.setObjectName('hmiComboSummary')
-            bl.addWidget(lamp)
-            bl.addWidget(summary, 1)
-            def _on_combo(i, s=summary, c=combo, lp=lamp, pg=pages):
-                lab, txt = pg[i] if 0 <= i < len(pg) else (c.itemText(i), '')
-                s.setText(txt or lab)
-                try:
-                    lp.set_state(True if i == 0 else (False if i == 1 else None))
-                except Exception:
-                    pass
-            combo.currentIndexChanged.connect(_on_combo)
+                stack.addWidget(page)
+            combo.currentIndexChanged.connect(stack.setCurrentIndex)
             cell.layout().addWidget(tip)
             cell.layout().addWidget(combo)
-            cell.layout().addWidget(body, 1)
+            cell.layout().addWidget(stack, 1)
             return cell
         if name == 'Tab页':
             cell = self._make_cell_frame(name)
-            tip = QLabel('多页签容器：页内嵌判定灯 / 产量条 / 连接灯（可再挂控件）')
+            tip = QLabel('多页签容器：页内可再嵌套组合框；拖放约束=同页栅格，跨页用变量绑定')
             tip.setWordWrap(True)
             tip.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
             tabs = QTabWidget()
             tabs.setObjectName('hmiTabContainer')
-            # 检测页
+            # 检测页 · 嵌套小组合
             p1 = QWidget(); l1 = QVBoxLayout(p1); l1.setContentsMargins(8, 8, 8, 8)
             lamp1 = StatusLamp('检测判定'); lamp1.set_state(True); lamp1.setObjectName('hmiTabDetectLamp')
-            l1.addWidget(QLabel('页 · 检测（图像区由布局另挂）'))
-            l1.addWidget(lamp1, 1)
+            nest = QComboBox(); nest.setObjectName('hmiTabNestedCombo')
+            nest.addItems(['相机 A', '相机 B', '本地图'])
+            nest_lab = QLabel('嵌套下拉 · 当前源：相机 A')
+            nest_lab.setObjectName('hmiTabNestedLab')
+            nest.currentTextChanged.connect(lambda s, lab=nest_lab: lab.setText(f'嵌套下拉 · 当前源：{s}'))
+            l1.addWidget(QLabel('页 · 检测'))
+            l1.addWidget(lamp1)
+            l1.addWidget(nest)
+            l1.addWidget(nest_lab)
+            l1.addStretch(1)
             tabs.addTab(p1, '检测')
             # 统计页
             p2 = QWidget(); l2 = QVBoxLayout(p2); l2.setContentsMargins(8, 8, 8, 8)
@@ -1419,6 +1430,7 @@ class OperatorHmiView(QWidget):
             bar.setFormat('良率 %p%'); bar.setObjectName('hmiTabYieldBar')
             l2.addWidget(QLabel('页 · 统计'))
             l2.addWidget(bar)
+            l2.addWidget(QLabel('约束：统计页只读产量，不接受运行按钮拖入'))
             l2.addStretch(1)
             tabs.addTab(p2, '统计')
             # 通讯页
@@ -1429,6 +1441,7 @@ class OperatorHmiView(QWidget):
             row.addWidget(dot); row.addWidget(QLabel('主机已连接（示意）')); row.addStretch(1)
             l3.addLayout(row)
             l3.addWidget(QLabel('页 · 通讯 / 日志入口'))
+            l3.addWidget(QLabel('跨页绑定示例：flow.commState → 连接状态'))
             l3.addStretch(1)
             tabs.addTab(p3, '通讯')
             cell.layout().addWidget(tip)

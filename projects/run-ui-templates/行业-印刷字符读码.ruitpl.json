@@ -1,0 +1,60 @@
+{
+  "meta": {
+    "name": "印刷字符读码",
+    "author": "SIEANS",
+    "scenario": "包装/标签 OCR · 字符比对",
+    "description": "图像 + OCR结果表 + OK/NG + 运行控制 + 信息栏（UI-only 行业壳）"
+  },
+  "version": 1,
+  "split": 4,
+  "placements": [
+    {
+      "name": "图像",
+      "page": 0,
+      "cell": 0,
+      "category": "显示"
+    },
+    {
+      "name": "表格",
+      "page": 0,
+      "cell": 1,
+      "category": "显示"
+    },
+    {
+      "name": "OK/NG",
+      "page": 0,
+      "cell": 2,
+      "category": "控制"
+    },
+    {
+      "name": "运行控制",
+      "page": 0,
+      "cell": 3,
+      "category": "控制"
+    },
+    {
+      "name": "信息提示栏",
+      "page": 0,
+      "cell": 0,
+      "category": "显示"
+    },
+    {
+      "name": "文本框",
+      "page": 0,
+      "cell": 1,
+      "category": "显示"
+    }
+  ],
+  "controls": {
+    "文本框": {
+      "binding": "flow.ocrText",
+      "commands": []
+    },
+    "表格": {
+      "binding": "flow.ocrRows"
+    },
+    "OK/NG": {
+      "binding": "flow.ocrPass"
+    }
+  }
+}

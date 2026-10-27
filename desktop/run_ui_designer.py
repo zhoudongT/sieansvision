@@ -867,6 +867,24 @@ class RunUiDesignerDialog(QDialog):
                     {'name': '信息提示栏', 'category': '显示'},
                 ],
             },
+            '行业-印刷字符读码.ruitpl.json': {
+                'meta': {
+                    'name': '印刷字符读码',
+                    'author': 'SIEANS',
+                    'scenario': '包装/标签 OCR · 字符比对',
+                    'description': '图像 + OCR结果表 + OK/NG + 运行控制 + 信息栏（UI-only）',
+                },
+                'version': 1,
+                'split': 4,
+                'placements': [
+                    {'name': '图像', 'category': '显示'},
+                    {'name': '表格', 'category': '显示'},
+                    {'name': 'OK/NG', 'category': '控制'},
+                    {'name': '运行控制', 'category': '控制'},
+                    {'name': '信息提示栏', 'category': '显示'},
+                    {'name': '文本框', 'category': '显示'},
+                ],
+            },
         }
         for fname, payload in samples.items():
             path = folder / fname

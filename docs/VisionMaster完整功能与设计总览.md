@@ -382,27 +382,52 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 已闭合：模板**编辑子窗**（对比度阈值 / 画笔 / 特征尺度 / 灰度级数）；固定栏相机会话缓存 `_note_camera_session` 非阻塞实况。
 
+## 【代码细妆已收口 · 外依赖未做 · 2026-10-27 22:10】
+
+> Allen t194：每一处细妆完成。下列为收口声明（无 robot SDK / 无 push）。
+
+### 代码细妆已收口（本机可验）
+- 主工具栏 `mainToolBar`：18px **单色矢量图标**（无 emoji）、CN ToolTip、品牌条 `brandStrip` 与分隔线分区
+- overlay→engine/canvas 实绘（locate / geometry / measure_geom）
+- HMI：连接灯、变量/参数格、组合框 QStackedWidget 嵌套页、Tab 嵌套下拉 + 拖放约束文案、子界面壳
+- harvest 全覆盖；全流程 I/O 回写；Comm 试收→`fire_string_trigger(RUN/CONT)` 活路
+- 行业运行壳模板 ×4（电子点检 / 尺寸测量 / 包装缺陷 / **印刷字符读码**）
+- labels EN→CN 扫尾；Group/连续路径 tip；卡尺σ/投影角 UI
+
+### 外依赖未做（明确不宣称完成）
+- **真机 TCP / 现场设备** 联调（代码路径已接，硬件未验）
+- **云同步 / 远程模板市场后端**
+- **Halcon 卡尺核**（现为 OpenCV 启发式；文档已声明）
+- **robot / 机械手 SDK**（按 Allen 指示跳过）
+- chrome **人工观感签字**（截图已留档时可人工复核）
+
 ## 【细妆剩余清单 · 持续更新 · 2026-10-27 深夜】
 
 > Allen t194：每一处细妆完成；下列为仍未闭合项（无 robot SDK / 无 push）。
 
 | 域 | 剩余细妆 |
 |----|----------|
-| chrome | 工具栏纯图标**人工观感确认**（非阻塞 / 非代码缺口） |
+| chrome | **单色图标已接** + 截图留档（artifacts/toolbar-chrome-mono.png）；人工观感签字仍外置 |
 | panels | overlay→engine/canvas 实绘已接；geometry 卡尺σ/投影角 UI 已补 |
 | harvest | 全覆盖（elapsed 下拉选步，无需 harvest） |
-| HMI | 连接状态灯·变量/参数格·组合框/Tab/子界面**嵌套判定灯**已接 |
+| HMI | 组合框 QStackedWidget + Tab 嵌套下拉/拖放约束文案已接 |
 | filmstrip / 全流程 | 已接；**流程参数 I/O 可回写**；卡片间顺序 → 已示意 |
 | float | 已接 |
 | nest/Group | 引擎展开 tip 已接 |
 | labels | EN→CN 扫尾已接 |
 | settings | 已接 |
-| samples | 已接 |
+| samples | 四行业 UI 壳已接（含印刷字符读码） |
 | Comm | **试收→fire_string_trigger(RUN/CONT) 活路已验**；真机 TCP 需现场设备（非代码缺口） |
 | Host SM | 已接 |
 | 云/市场 | 模板市场本地已接；**云同步**需后端（非本机 UI 缺口） |
 | 算法核 | 卡尺为 OpenCV 启发式（非 Halcon 核）— 文档已声明，非 UI 缺口 |
 | 扩展插件 | 第三方 plugin 无专用属性页时走通用保留（catalog 回退文案） |
+
+### 进度续⑧ · 2026-10-27 深夜
+- chrome：`desktop/toolbar_icons.py` 单色图标；`brandStrip` 分区；ToolTip 全中文
+- HMI：组合框真·栈页（外观灯/尺寸表/拖放约束）；Tab 嵌套源下拉
+- samples：`行业-印刷字符读码.ruitpl.json`
+- 总览：明确「代码细妆已收口」vs「外依赖未做」
 
 ### 进度续⑦ · 2026-10-27 深夜
 - HMI：连接状态 ●灯；设置变量/参数设置 tip+Enter 派发；组合框/Tab/子界面嵌套 StatusLamp·良率条·连接灯

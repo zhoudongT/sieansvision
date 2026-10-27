@@ -89,11 +89,61 @@ QMenu::item:selected {{ background: {SELECTED}; color: {ACCENT}; }}
 QToolBar {{
   background: {HEADER};
   border-bottom: 1px solid {LINE};
-  spacing: 2px;
+  spacing: 1px;
   padding: 1px 4px;
 }}
 QToolBar#mainToolBar {{
-  min-height: 28px;
+  min-height: 30px;
+  spacing: 1px;
+  padding: 2px 4px 2px 0;
+}}
+QToolBar#mainToolBar QToolButton {{
+  padding: 3px;
+  margin: 0 1px;
+  border-radius: 2px;
+  min-width: 24px;
+  min-height: 24px;
+  color: {TEXT_MUTED};
+  background: transparent;
+}}
+QToolBar#mainToolBar QToolButton:hover {{
+  background: {HOVER};
+  color: {TEXT};
+}}
+QToolBar#mainToolBar QToolButton:pressed {{
+  background: {SELECTED};
+}}
+QToolBar#mainToolBar::separator {{
+  background: {LINE};
+  width: 1px;
+  margin: 4px 5px;
+}}
+QWidget#brandStrip {{
+  background: transparent;
+  border-right: 1px solid {LINE};
+  padding-right: 4px;
+  margin-right: 2px;
+  min-height: 24px;
+}}
+QLabel#brand {{
+  color: {ACCENT};
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  padding: 0 8px 0 6px;
+}}
+QLabel#modeLab {{
+  color: {TEXT_MUTED};
+  padding-left: 6px;
+  padding-right: 4px;
+  font-size: 11px;
+}}
+QToolTip {{
+  background: {CARD};
+  color: {TEXT};
+  border: 1px solid {LINE};
+  padding: 4px 8px;
+  font-size: 11px;
 }}
 QToolButton {{
   padding: 3px 7px;
@@ -204,13 +254,6 @@ QLabel#statusConfig, QLabel#statusTiming, QLabel#statusLog, QLabel#statusVersion
   font-size: 11px;
 }}
 QLabel#statusConfig[error="true"] {{ color: #e05555; }}
-QLabel#brand {{
-  color: {ACCENT};
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.3px;
-  padding: 0 6px 0 2px;
-}}
 QScrollBar:vertical {{
   background: transparent; width: 8px; margin: 1px;
 }}
