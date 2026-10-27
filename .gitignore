@@ -25,5 +25,7 @@ docs/vm-bilibili-jgtech/frames/
 docs/vm-bilibili-jgtech/*.log
 docs/vm-bilibili-jgtech/review/
 
-# local smoke scratch
+# local smoke scratch (all variants)
+native-data-smoke*/
 native-data-smoke-today/
+

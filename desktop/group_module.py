@@ -101,24 +101,34 @@ class GroupParamPanel(QWidget):
         root.addWidget(tip)
 
     def _pick_binding(self, key):
-        # Build simple upstream options: source + steps as VM labels
-        options = ['']
-        options.append('0 图像源1.图像')
-        options.append('0 图像源1.ImageData')
-        for i, s in enumerate(self.project.get('steps') or [], start=1):
-            name = s.get('name') or s.get('operation') or s['id']
-            options.append(f'{i} {name}.图像')
-            options.append(f'{i} {name}.ROI')
-            options.append(f'{i} {name}.Output')
-        # Prefer combo dialog via QComboBox popup
-        from PySide6.QtWidgets import QInputDialog
-        choice, ok = QInputDialog.getItem(self, '订阅绑定', f'选择 {key} 订阅源', options, 0, True)
-        if ok:
-            if key == 'imageData':
-                self.image_data.setText(choice)
+        """Open BindSourceDialog (⛓) — clearer operator IO / property binding UX."""
+        try:
+            from desktop.bind_dialog import BindSourceDialog
+            current = self.image_data.text() if key == 'imageData' else self.input_roi.text()
+            dlg = BindSourceDialog(self.project, current=current, group_step=self.step, parent=self)
+            # Also offer VM-style image/ROI labels as quick picks in the dialog list
+            if dlg.exec():
+                choice = dlg.selected or ''
             else:
-                self.input_roi.setText(choice)
-            self._emit()
+                return
+        except Exception:
+            from PySide6.QtWidgets import QInputDialog
+            options = ['', '0 图像源1.图像', '0 图像源1.ImageData', '0 图像源1.ROI']
+            for i, s in enumerate(self.project.get('steps') or [], start=1):
+                name = s.get('name') or s.get('operation') or s['id']
+                options.extend([f'{i} {name}.图像', f'{i} {name}.ROI', f'{i} {name}.Output'])
+            choice, ok = QInputDialog.getItem(self, '订阅绑定', f'选择 {key} 订阅源', options, 0, True)
+            if not ok:
+                return
+        # Map variable path → ImageData/ROI label when user picked a flow var
+        if choice and not any(x in choice for x in ('图像', 'Image', 'ROI', ' ')):
+            # keep raw path (flow.xxx) — engine resolves image from graph input anyway
+            pass
+        if key == 'imageData':
+            self.image_data.setText(choice or '0 图像源1.图像')
+        else:
+            self.input_roi.setText(choice or '0 图像源1.ROI')
+        self._emit()
 
     def _io_tab(self, kind):
         w = QWidget()
@@ -145,7 +155,7 @@ class GroupParamPanel(QWidget):
             for c, val in enumerate(vals):
                 table.setItem(r, c, QTableWidgetItem(str(val)))
         v.addWidget(table)
-        note = QLabel('I/O 表为壳层；完整订阅接线与引擎侧 Group 展开见后续。')
+        note = QLabel('I/O：输入/输出订阅关系随 ⛓ 绑定写入；运行时引擎会展开组内算子并回写 flow 变量（circleCount/passGate 等）。')
         note.setWordWrap(True)
         v.addWidget(note)
         setattr(self, f'_{kind}_table', table)

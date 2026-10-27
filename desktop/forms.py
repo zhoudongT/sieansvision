@@ -201,7 +201,11 @@ class ValueEditor(QWidget):
         self.mode.addItem('固定值', 'literal')
         self.mode.addItem('绑定上游', 'reference')
         self.mode.setMaximumWidth(96)
-        self.mode.setToolTip('固定值 = 直接填写；绑定上游 = 引用变量或上游模块结果（类似 VisionMaster 订阅）')
+        self.binding_hint = QLabel('绑定：scope.path 或 results.模块.字段')
+        self.binding_hint.setObjectName('bindingHint')
+        self.binding_hint.setStyleSheet('color:#6a7a8a;font-size:10px;')
+        self.binding_hint.setVisible(False)
+        self.mode.setToolTip('固定值 = 直接填写；绑定上游 = 订阅变量 / 上游模块结果（VisionMaster ⛓ 同款）。切换后在右侧选范围与字段路径。')
         self.stack = QStackedWidget()
         self.literal = self._make_literal(self._literal, nodes)
         self.reference = ReferenceEditor(value if is_ref else {}, nodes)
@@ -226,6 +230,8 @@ class ValueEditor(QWidget):
         row.addWidget(self.stack, 1)
         row.addWidget(self.mode)
         layout.addLayout(row)
+        layout.addWidget(self.binding_hint)
+        self.binding_hint.setVisible(bool(is_ref))
         self.mode.currentIndexChanged.connect(self._mode_changed)
         self.reference.changed.connect(self._reference_changed)
         if schema.get('description'):
@@ -299,6 +305,12 @@ class ValueEditor(QWidget):
 
     def _mode_changed(self, index):
         self.stack.setCurrentIndex(index)
+        if hasattr(self, 'binding_hint'):
+            self.binding_hint.setVisible(index == 1)
+            if index == 1:
+                ref = self.reference.reference() if hasattr(self.reference, 'reference') else None
+                path = (ref or {}).get('$ref', '') if isinstance(ref, dict) else ''
+                self.binding_hint.setText('订阅路径：' + (path or '选择范围与字段（例 flow.count / results.<模块>.count）'))
         if index == 0:
             self._publish(self._literal)
         else:

@@ -436,6 +436,17 @@ class OperatorHmiView(QWidget):
             if state == 'failed':
                 detail = str(result.get('error') or 'failed')
             else:
+                # Prefer explicit gate variables (passGate / commOk / passed)
+                vars_bag = (result.get('variables') or {})
+                flow_vars = vars_bag.get('flow') if isinstance(vars_bag, dict) else {}
+                if isinstance(flow_vars, dict):
+                    for gate_key in ('passGate', 'commOk', 'passed', 'ok', 'ResultOK'):
+                        if gate_key in flow_vars:
+                            val = flow_vars.get(gate_key)
+                            truthy = val not in (0, 0.0, False, None, '', '0', 'false', 'False')
+                            ok = bool(truthy)
+                            detail = f'{gate_key}={val}'
+                            break
                 # Prefer last step status if present
                 for record in reversed(result.get('results') or []):
                     out = (record.get('output') or {}).get('result') or {}
@@ -444,6 +455,11 @@ class OperatorHmiView(QWidget):
                         detail = f"{record.get('name') or record.get('id')}:{st}"
                         ok = False
                         break
+                    # Nested group/comm gate
+                    if 'commOk' in out and out.get('commOk') in (0, False, '0'):
+                        ok = False; detail = 'commOk=0'; break
+                    if 'passGate' in out and out.get('passGate') in (0, False, '0'):
+                        ok = False; detail = 'passGate=0'; break
             for panel in getattr(self, '_stats_panels', []) or []:
                 try:
                     panel.record(ok if state == 'completed' else False,

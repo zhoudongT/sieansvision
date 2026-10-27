@@ -1,0 +1,417 @@
+{
+  "version": 2,
+  "id": "open-and-run-group-comm",
+  "name": "打开即跑 · 组合模块+通信+变量",
+  "steps": [
+    {
+      "id": "be97a8ee6f6d44c6",
+      "operation": "group",
+      "name": "检测组合",
+      "params": {
+        "imageData": "0 图像源1.图像",
+        "inputRoi": "0 图像源1.ROI",
+        "loopEnabled": false,
+        "loopCount": 1,
+        "loopIntervalMs": 0,
+        "inner": {
+          "steps": [
+            {
+              "id": "11c0a0ee7dd84c94",
+              "operation": "geometry",
+              "name": "组内圆查找",
+              "params": {
+                "feature": "circles",
+                "minRadius": 20,
+                "maxRadius": 200,
+                "minDist": 10
+              },
+              "position": {
+                "x": 70,
+                "y": 160
+              },
+              "variables": {},
+              "imageFrom": "source"
+            },
+            {
+              "id": "1202c07b198f401e",
+              "operation": "var_calc",
+              "name": "组内计数",
+              "params": {
+                "scope": "flow",
+                "expressions": [
+                  {
+                    "name": "circleCount",
+                    "expression": "geometry_count",
+                    "initial": 0,
+                    "outType": "number",
+                    "initOnRun": true
+                  },
+                  {
+                    "name": "passGate",
+                    "expression": "circleCount > 0",
+                    "initial": 0,
+                    "outType": "number",
+                    "initOnRun": true
+                  },
+                  {
+                    "name": "commPayload",
+                    "expression": "'OK count=' + circleCount",
+                    "initial": "",
+                    "outType": "string",
+                    "initOnRun": true
+                  }
+                ]
+              },
+              "position": {
+                "x": 70,
+                "y": 300
+              },
+              "variables": {},
+              "imageFrom": "11c0a0ee7dd84c94"
+            }
+          ],
+          "edges": [
+            {
+              "id": "ge1",
+              "from": "source",
+              "to": "11c0a0ee7dd84c94",
+              "fromPort": "bottom",
+              "toPort": "top"
+            },
+            {
+              "id": "ge2",
+              "from": "11c0a0ee7dd84c94",
+              "to": "1202c07b198f401e",
+              "fromPort": "bottom",
+              "toPort": "top"
+            }
+          ],
+          "sourcePosition": {
+            "x": 300,
+            "y": 40
+          },
+          "localVariables": {},
+          "outputNode": "1202c07b198f401e"
+        },
+        "io": {
+          "inputs": [
+            {
+              "name": "ImageData",
+              "type": "IMAGE",
+              "binding": "0 图像源1.图像"
+            },
+            {
+              "name": "InputROI",
+              "type": "ROI",
+              "binding": "0 图像源1.ROI"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "circleCount",
+              "type": "NUMBER",
+              "binding": "flow.circleCount"
+            },
+            {
+              "name": "passGate",
+              "type": "NUMBER",
+              "binding": "flow.passGate"
+            }
+          ],
+          "display": {}
+        }
+      },
+      "position": {
+        "x": 70,
+        "y": 160
+      },
+      "variables": {},
+      "imageFrom": "source"
+    },
+    {
+      "id": "dd5661b7c41c41d2",
+      "operation": "send_data",
+      "name": "发送结果",
+      "params": {
+        "device": "LocalLoop",
+        "channel": "default",
+        "sourceMode": "variable",
+        "sourceScope": "flow",
+        "sourceVar": "commPayload",
+        "message": "",
+        "encoding": "utf-8",
+        "appendCrLf": false
+      },
+      "position": {
+        "x": 70,
+        "y": 300
+      },
+      "variables": {},
+      "imageFrom": "be97a8ee6f6d44c6"
+    },
+    {
+      "id": "269d367a686a4441",
+      "operation": "receive_data",
+      "name": "回读总线",
+      "params": {
+        "device": "LocalLoop",
+        "channel": "default",
+        "timeoutMs": 500,
+        "encoding": "utf-8",
+        "targetScope": "flow",
+        "targetVar": "recvData",
+        "triggerOnReceive": true
+      },
+      "position": {
+        "x": 70,
+        "y": 440
+      },
+      "variables": {},
+      "imageFrom": "dd5661b7c41c41d2"
+    },
+    {
+      "id": "094b2818a246498e",
+      "operation": "var_calc",
+      "name": "通信校验",
+      "params": {
+        "scope": "flow",
+        "expressions": [
+          {
+            "name": "recvLen",
+            "expression": "recvData.length",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "commOk",
+            "expression": "recvLen > 0 && passGate > 0",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          }
+        ]
+      },
+      "position": {
+        "x": 70,
+        "y": 580
+      },
+      "variables": {},
+      "imageFrom": "269d367a686a4441"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e0",
+      "from": "source",
+      "to": "be97a8ee6f6d44c6",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "e1",
+      "from": "be97a8ee6f6d44c6",
+      "to": "dd5661b7c41c41d2",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "e2",
+      "from": "dd5661b7c41c41d2",
+      "to": "269d367a686a4441",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "e3",
+      "from": "269d367a686a4441",
+      "to": "094b2818a246498e",
+      "fromPort": "bottom",
+      "toPort": "top"
+    }
+  ],
+  "sourcePosition": {
+    "x": 300,
+    "y": 40
+  },
+  "variables": {
+    "circleCount": 0,
+    "passGate": 0,
+    "commPayload": "",
+    "recvData": "",
+    "recvLen": 0,
+    "commOk": 0
+  },
+  "sourceConfig": {
+    "mode": "local",
+    "pixelFormat": "Mono8",
+    "intervalMs": 200,
+    "saveInSolution": false,
+    "showImageName": true,
+    "snStart": 0,
+    "imageCache": true,
+    "outputMono8": false,
+    "stitchEnable": false,
+    "stitchStartY": 0,
+    "stitchHeight": 0,
+    "stitchClearOnTrigger": false,
+    "autoSwitch": false,
+    "stopAtLast": true,
+    "charFilterEnable": false,
+    "inputChar": "",
+    "triggerChar": "",
+    "cameraId": "",
+    "cameraParams": {},
+    "exposure": 0,
+    "gain": 0,
+    "images": [
+      "/home/allen/文档/sieansvision/public/vision/samples/circle-ring.png",
+      "/home/allen/文档/sieansvision/public/vision/samples/circle-hole.png"
+    ],
+    "currentIndex": 0
+  },
+  "commManager": {
+    "devices": [
+      {
+        "id": "local-loop",
+        "name": "LocalLoop",
+        "protocol": "Local Bus",
+        "enabled": true,
+        "host": "",
+        "port": 0
+      }
+    ],
+    "sendEvents": [
+      {
+        "device": "LocalLoop",
+        "variable": "flow.commPayload",
+        "message": ""
+      }
+    ],
+    "recvEvents": [
+      {
+        "device": "LocalLoop",
+        "variable": "flow.recvData",
+        "demoPayload": ""
+      }
+    ]
+  },
+  "globalTriggers": {
+    "events": [
+      {
+        "enabled": true,
+        "event": "流程开始",
+        "commands": [
+          {
+            "action": "log",
+            "text": "trigger:flow-start"
+          }
+        ]
+      },
+      {
+        "enabled": true,
+        "event": "流程结束",
+        "commands": [
+          {
+            "action": "log",
+            "text": "trigger:flow-end"
+          }
+        ]
+      }
+    ],
+    "strings": [
+      {
+        "enabled": true,
+        "match": "equals",
+        "pattern": "RUN",
+        "commands": [
+          {
+            "action": "run",
+            "target": ""
+          }
+        ]
+      }
+    ]
+  },
+  "runUi": {
+    "split": "4",
+    "placements": [
+      {
+        "name": "图像",
+        "page": 3,
+        "cell": 0,
+        "category": "基础"
+      },
+      {
+        "name": "OK/NG",
+        "page": 3,
+        "cell": 1,
+        "category": "基础"
+      },
+      {
+        "name": "运行控制",
+        "page": 3,
+        "cell": 2,
+        "category": "基础"
+      },
+      {
+        "name": "生产统计",
+        "page": 3,
+        "cell": 3,
+        "category": "图表"
+      }
+    ],
+    "controls": {
+      "图像": {
+        "commands": [],
+        "binding": "source"
+      },
+      "OK/NG": {
+        "commands": [],
+        "binding": ""
+      },
+      "运行控制": {
+        "commands": [
+          {
+            "action": "run"
+          },
+          {
+            "action": "stop"
+          },
+          {
+            "action": "reset"
+          }
+        ],
+        "binding": ""
+      },
+      "生产统计": {
+        "commands": [],
+        "binding": "stats"
+      }
+    },
+    "fixedBars": {
+      "top": false,
+      "bottom": true,
+      "left": false,
+      "right": false,
+      "cameraBind": "未绑定",
+      "commBind": "LocalLoop",
+      "showRunStatus": true,
+      "showOkNg": true,
+      "showCounters": true,
+      "showHistory": true
+    },
+    "meta": {
+      "template": "open_and_run",
+      "version": 1,
+      "openAndRun": true,
+      "features": [
+        "group",
+        "comm",
+        "vars",
+        "triggers"
+      ]
+    }
+  },
+  "notes": "【打开即跑 · Group/Comm/Vars】组合模块内：圆查找→变量；外层：send_data(LocalLoop)→receive_data→通信校验。通信管理已挂 LocalLoop；全局触发含 RUN 字符串与流程开始/结束事件。无需机械手 SDK。"
+}

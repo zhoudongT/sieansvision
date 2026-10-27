@@ -39,13 +39,24 @@ def collect_local_variables(project, group_step=None):
                 name=name,
                 value=value,
             ))
+    # Operator IO labels (VM-style) — always listed for ImageData / ROI binding
+    items.insert(0, dict(scope='图像源', path='0 图像源1.图像', name='图像', value=''))
+    items.insert(1, dict(scope='图像源', path='0 图像源1.ROI', name='ROI', value=''))
+    items.insert(2, dict(scope='图像源', path='0 图像源1.ImageData', name='ImageData', value=''))
+    for i, s in enumerate(project.get('steps') or [], start=1):
+        if group_step and s.get('id') == group_step.get('id'):
+            continue
+        label = s.get('name') or s.get('operation') or s.get('id')
+        items.append(dict(scope='模块输出', path=f'{i} {label}.图像', name='图像', value=''))
+        items.append(dict(scope='模块输出', path=f'{i} {label}.ROI', name='ROI', value=''))
+        items.append(dict(scope='模块输出', path=f'{i} {label}.Output', name='Output', value=''))
     # Demo placeholders when empty so UX is discoverable
-    if not items:
-        items = [
+    if len(items) <= 3:
+        items.extend([
             dict(scope='流程局部', path='local.ResultOK', name='ResultOK', value=True),
             dict(scope='流程局部', path='local.Count', name='Count', value=0),
             dict(scope='流程局部', path='local.StatusText', name='StatusText', value=''),
-        ]
+        ])
     return items
 
 

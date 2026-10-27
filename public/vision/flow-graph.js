@@ -126,6 +126,9 @@
     const result=[],library=p.subflows||[],visited=new Set();
     const visit=(steps,stack=[])=>{for(const step of steps){result.push(step);if(['subflow','loop'].includes(step.operation)){
       const def=library.find(d=>d.id===step.params.subflowId);if(!def)throw Error('请为调用节点选择子流程');if(stack.includes(def.id)||stack.length>=4)throw Error('子流程递归或嵌套层数超限');if(!def.steps.length||!def.outputNode)throw Error('子流程需要算子及明确的输出节点');if(!visited.has(def.id)){visited.add(def.id);visit(plan(def),[...stack,def.id]);}
+    }else if(step.operation==='group'){
+      const inner=step.params&&step.params.inner;const kids=inner&&Array.isArray(inner.steps)?inner.steps:[];
+      if(kids.length){if(stack.length>=4)throw Error('组合模块嵌套层数超限');visit(kids,[...stack,'group:'+step.id]);}
     }}};visit(plan(p,target));return result;
   }
   // Dependencies determine order; only the chosen image parent supplies pixels.

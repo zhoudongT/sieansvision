@@ -84,6 +84,7 @@ class MainWindow(QMainWindow):
             ('打开即跑 · 九点标定', 'projects/open-and-run-ninepoint.sieans'),
             ('打开即跑 · 参考图缺陷', 'projects/open-and-run-defects.sieans'),
             ('打开即跑 · 条码识别', 'projects/open-and-run-barcode.sieans'),
+            ('打开即跑 · 组合+通信', 'projects/open-and-run-group-comm.sieans'),
             ('空白检测工程', 'projects/templates/blank-inspection.sieans'),
             ('采集 → 几何 → 尺寸', 'projects/templates/measure-chain.sieans'),
             ('参考图缺陷检测', 'projects/templates/defect-inspection.sieans'),
