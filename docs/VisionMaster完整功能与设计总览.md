@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊼ · pin预览锁定态色标角标/快捷改键 · 吸史试键确认可撤销 · DST撤销栈深度旁标 · A/B流程切换自动载源 · jitter快照单项恢复/TTL预设档 · 2026-10-28】
+
+- **pin 预览锁定态色标角标/快捷改键**：`…_lock_badge`「🔒」；`prompt_…_cycle_key`；菜单「改轮换键」；锁定时角标亮橙。
+- **吸史试键确认可撤销**：`confirm_trial` 推 before；`undo_confirm_trial_…`；菜单「撤销试键确认(N)」。
+- **DST 撤销栈深度旁标**：`…_apply_all_undo_depth` + `_refresh_…_depth_ui`；近旁数字；点击撤销。
+- **A/B 流程切换自动载源**：`autoload_…_for_flow` / `switch_ab_trial_flow`；`set_toast_curve_png_project_name` 切名时自动载。
+- **jitter 快照单项恢复/TTL 预设档**：`restore_…_snapshot(index)`；`list/apply_…_ttl_preset`（0/3/8/15/30/60s）；菜单可点单项+TTL子菜单。
+- **冒烟**：`smoke-wave79-pinlockbadge-histundoconfirm-dstdepth-abautoload-jitterrestore-e2e`（另回归 wave78/77/76）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊻ · pin冲突色预览快捷键/右键锁定 · 吸史悬停tip进试键确认 · DST全应用撤销栈 · A/B试算源按流程记忆 · jitter TTL可配/旁标快照列表 · 2026-10-28】
 
 - **pin 冲突色预览快捷键/右键锁定**：`…_conflict_preview_cycle_key`（默认 Ctrl+Shift+P）+ `_ensure_…_shortcut`；`lock/toggle_…_lock`；右键菜单模式+锁定；锁定时点击不轮换（force/快捷键可）。
