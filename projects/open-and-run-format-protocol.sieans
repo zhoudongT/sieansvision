@@ -56,28 +56,70 @@
       },
       "position": {
         "x": 300,
-        "y": 120
+        "y": 90
       },
       "imageFrom": "source"
     },
     {
+      "id": "df63d7dd68bf4891",
+      "operation": "send_data",
+      "name": "LocalBus写出样例",
+      "params": {
+        "device": "LocalLoop",
+        "channel": "default",
+        "sourceMode": "variable",
+        "sourceScope": "flow",
+        "sourceVar": "samplePayload",
+        "message": "",
+        "encoding": "utf-8",
+        "appendCrLf": false
+      },
+      "position": {
+        "x": 300,
+        "y": 200
+      },
+      "variables": {},
+      "imageFrom": "4ea5c66337814545"
+    },
+    {
+      "id": "a999c3edd3a4478a",
+      "operation": "receive_data",
+      "name": "LocalBus读回",
+      "params": {
+        "device": "LocalLoop",
+        "channel": "default",
+        "timeoutMs": 500,
+        "encoding": "utf-8",
+        "targetScope": "flow",
+        "targetVar": "recvData",
+        "triggerOnReceive": true
+      },
+      "position": {
+        "x": 300,
+        "y": 310
+      },
+      "variables": {},
+      "imageFrom": "df63d7dd68bf4891"
+    },
+    {
       "id": "0892fe9c919548aa",
       "operation": "protocol_parse",
-      "name": "协议解析",
+      "name": "协议解析(recvData)",
       "params": {
-        "sourceVar": "samplePayload",
+        "sourceVar": "recvData",
         "protocol": "delimited",
         "delimiter": ",",
         "fields": "status,value,judge",
         "pattern": "",
         "fixedWidths": "8,8,16",
-        "targetPrefix": "parsed_"
+        "targetPrefix": "parsed_",
+        "sourceScope": "flow"
       },
       "position": {
         "x": 300,
-        "y": 220
+        "y": 420
       },
-      "imageFrom": "4ea5c66337814545"
+      "imageFrom": "a999c3edd3a4478a"
     },
     {
       "id": "eb366fbcb9cb43b6",
@@ -92,7 +134,7 @@
       },
       "position": {
         "x": 300,
-        "y": 320
+        "y": 530
       },
       "imageFrom": "0892fe9c919548aa"
     },
@@ -121,35 +163,49 @@
       },
       "position": {
         "x": 300,
-        "y": 420
+        "y": 640
       },
       "imageFrom": "eb366fbcb9cb43b6"
     }
   ],
   "edges": [
     {
-      "id": "ae296d7d22f34a16",
+      "id": "0d1a2fd34d58440c",
       "from": "source",
       "to": "4ea5c66337814545",
       "fromPort": "bottom",
       "toPort": "top"
     },
     {
-      "id": "68cc9cb105e84283",
+      "id": "ac8e5e75c29c4089",
       "from": "4ea5c66337814545",
+      "to": "df63d7dd68bf4891",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "7f3e58f9833a4627",
+      "from": "df63d7dd68bf4891",
+      "to": "a999c3edd3a4478a",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "883fefff195046ee",
+      "from": "a999c3edd3a4478a",
       "to": "0892fe9c919548aa",
       "fromPort": "bottom",
       "toPort": "top"
     },
     {
-      "id": "9dbe927b1807418b",
+      "id": "891f5ae4bcc44e9f",
       "from": "0892fe9c919548aa",
       "to": "eb366fbcb9cb43b6",
       "fromPort": "bottom",
       "toPort": "top"
     },
     {
-      "id": "54480283a9844088",
+      "id": "3c36bcd70f9f4495",
       "from": "eb366fbcb9cb43b6",
       "to": "010e4c6014c6443b",
       "fromPort": "bottom",
@@ -324,5 +380,5 @@
       }
     ]
   },
-  "notes": "双击打开即可跑：样例报文 → protocol_parse → format_data → passGate。\n属性面板可对源变量/参数/目标变量点「插入上游字段」。\n无需外设；若要联调通信，可在通信管理中绑定 LocalBus/TCP 后再加 receive/send 模块。"
+  "notes": "双击打开即可跑（Comm E2E）：样例报文 → LocalBus send → receive_data → protocol_parse(recvData) → format_data → passGate。\n属性面板可对源变量/参数/目标变量点「插入上游字段」。\nLocalLoop 为进程内总线，无需外设；TriggerListen :19777 仍可发 RUN 触发单次。"
 }

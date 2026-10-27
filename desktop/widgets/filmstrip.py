@@ -215,6 +215,16 @@ class FilmstripBar(QWidget):
         if self._paths:
             self.pathSelected.emit(self.current_path())
 
+    def set_run_all_enabled(self, enabled, reason=''):
+        """Soft-disable 运行全部 (e.g. camera/SDK mode) without hiding the bar."""
+        on = bool(enabled)
+        if hasattr(self, 'run_all'):
+            self.run_all.setEnabled(on)
+            tip = (reason or '').strip() or (
+                '' if on else '当前图像源非本地 — 运行全部仅用于胶片条图集'
+            )
+            self.run_all.setToolTip(tip)
+
     def set_interval_hint(self, ms):
         """Show 取图间隔 from sourceConfig (0 → hide)."""
         try:

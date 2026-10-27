@@ -221,6 +221,8 @@ class MainWindow(QMainWindow):
         self.operator_hmi.triggerCommands.connect(lambda cmds:self.guard(lambda:self._run_hmi_commands(cmds)))
         self.operator_hmi.designRequested.connect(lambda:self.guard(self.open_run_ui_designer))
         self.operator_hmi.backToDesign.connect(lambda:self.set_app_mode('design'))
+        if hasattr(self.operator_hmi,'runUiChanged'):
+            self.operator_hmi.runUiChanged.connect(lambda patch:self.guard(lambda:self._on_hmi_run_ui_changed(patch)))
         self._run_pane=self.operator_hmi
         self.run_mode_image=None  # image panes live inside operator_hmi
         horizontal.addWidget(self.operator_hmi)
@@ -2031,18 +2033,71 @@ class MainWindow(QMainWindow):
             pass
         return max(50, self._active_run_interval_ms())
 
+
+    def _on_hmi_run_ui_changed(self, patch):
+        """Persist OperatorHmiView patches (e.g. 判定门 → runUi.fixedBars.gateKey)."""
+        if self.busy or not isinstance(patch, dict):
+            return
+        p = deepcopy(self.document.project)
+        runUi = dict(p.get('runUi') or {})
+        if 'fixedBars' in patch and isinstance(patch.get('fixedBars'), dict):
+            runUi['fixedBars'] = dict(patch['fixedBars'])
+            p['runUi'] = runUi
+            self.document.commit(p)
+            # Keep live HMI tip in sync without full rebuild
+            try:
+                if hasattr(self, 'operator_hmi'):
+                    self.operator_hmi._apply_fixed_bars(runUi['fixedBars'])
+            except Exception:
+                pass
+
     def _sync_filmstrip_visibility(self):
-        """Show filmstrip only for local image source in design mode."""
+        """Local+design: show filmstrip. Camera/SDK: hide bar but still wire interval/auto-switch;
+        soft-disable 运行全部 so a later mode flip does not leave a stale enabled button."""
         if not hasattr(self, 'filmstrip'):
             return
         try:
             from desktop.image_source import normalize_source
             cfg = normalize_source(self.document.project.get('sourceConfig'))
             mode = cfg.get('mode') or 'local'
-            show = mode == 'local' and getattr(self, 'app_mode', 'design') == 'design'
+            local = mode == 'local'
+            show = local and getattr(self, 'app_mode', 'design') == 'design'
             self.filmstrip.setVisible(show)
+            # Always keep interval hint + auto-switch / stop-at-last synced from sourceConfig
+            # (even while hidden) so camera→local flip restores correct controls.
+            try:
+                self.filmstrip.set_interval_hint(cfg.get('intervalMs') or 0)
+            except Exception:
+                pass
+            try:
+                self.filmstrip.auto_switch.blockSignals(True)
+                self.filmstrip.set_auto_switch(bool(cfg.get('autoSwitch')))
+                self.filmstrip.auto_switch.blockSignals(False)
+            except Exception:
+                pass
+            try:
+                if hasattr(self.filmstrip, 'stop_at_last'):
+                    self.filmstrip.stop_at_last.blockSignals(True)
+                    self.filmstrip.set_stop_at_last(bool(cfg.get('stopAtLast')))
+                    self.filmstrip.stop_at_last.blockSignals(False)
+            except Exception:
+                pass
+            # Soft-disable run-all outside local mode (camera/SDK take-frame path).
+            try:
+                if hasattr(self.filmstrip, 'set_run_all_enabled'):
+                    self.filmstrip.set_run_all_enabled(
+                        local,
+                        '' if local else '图像源为相机/SDK — 运行全部已软禁用（仅本地图集可用）',
+                    )
+                elif hasattr(self.filmstrip, 'run_all'):
+                    self.filmstrip.run_all.setEnabled(local)
+            except Exception:
+                pass
             if mode in ('camera', 'sdk'):
-                self.filmstrip.setToolTip('图像源为相机/SDK — 胶片条已隐藏；切回本地模式可导入图集')
+                self.filmstrip.setToolTip(
+                    '图像源为相机/SDK — 胶片条已隐藏；间隔/自动切换仍随 sourceConfig 同步；'
+                    '切回本地可导入图集并启用「运行全部」'
+                )
             else:
                 self.filmstrip.setToolTip('')
         except Exception:
@@ -2052,8 +2107,17 @@ class MainWindow(QMainWindow):
         if not hasattr(self, 'filmstrip'):
             return
         try:
+            from desktop.image_source import normalize_source
             cfg = normalize_source(self.document.project.get('sourceConfig'))
             self.filmstrip.set_interval_hint(cfg.get('intervalMs') or 0)
+            # Keep soft-disable in sync when only interval is refreshed.
+            mode = cfg.get('mode') or 'local'
+            local = mode == 'local'
+            if hasattr(self.filmstrip, 'set_run_all_enabled'):
+                self.filmstrip.set_run_all_enabled(
+                    local,
+                    '' if local else '图像源为相机/SDK — 运行全部已软禁用（仅本地图集可用）',
+                )
         except Exception:
             pass
 

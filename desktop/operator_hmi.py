@@ -82,6 +82,7 @@ class ProductionStatsPanel(QWidget):
     """OK/NG counters + yield + recent history + pause/alarm (今日 HMI 交付)."""
 
     pauseToggled = Signal(bool)
+    gateKeyChanged = Signal(object)  # str|None — user picked 「判定门」
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -164,13 +165,19 @@ class ProductionStatsPanel(QWidget):
         lines = list(self._history) if self._history else ['(暂无结果)']
         QApplication.clipboard().setText('\n'.join(lines))
 
-    def set_gate_key(self, key: str | None):
+    def set_gate_key(self, key: str | None, *, notify: bool = True):
         key = (key or '').strip() or None
+        prev = self._gate_key
         self._gate_key = key
         if hasattr(self, '_gate_lab'):
             self._gate_lab.setText(f'判定门：{key}' if key else '判定门：自动')
         if hasattr(self, '_gate_btn'):
             self._gate_btn.setText(f'门:{key}' if key else '判定门')
+        if notify and key != prev:
+            try:
+                self.gateKeyChanged.emit(self._gate_key)
+            except Exception:
+                pass
 
     def gate_key(self):
         return self._gate_key
@@ -257,6 +264,7 @@ class OperatorHmiView(QWidget):
     triggerCommands = Signal(object)  # list[dict]
     designRequested = Signal()
     backToDesign = Signal()
+    runUiChanged = Signal(object)  # dict patch, e.g. {'fixedBars': {...}}
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -584,6 +592,32 @@ class OperatorHmiView(QWidget):
                 w.setParent(None)
                 w.deleteLater()
 
+
+    def _wire_stats_panel(self, panel: ProductionStatsPanel):
+        """Connect 「判定门」 picks → persist into runUi.fixedBars.gateKey."""
+        try:
+            panel.gateKeyChanged.connect(self._on_stats_gate_key)
+        except Exception:
+            pass
+
+    def _on_stats_gate_key(self, key):
+        fb = dict(getattr(self, '_fixed_bars_cache', {}) or {})
+        key = (key or '').strip() if key else ''
+        if key:
+            fb['gateKey'] = key
+        else:
+            fb.pop('gateKey', None)
+        self._fixed_bars_cache = fb
+        # Keep tip labels in sync
+        try:
+            self._apply_fixed_bars(fb)
+        except Exception:
+            pass
+        try:
+            self.runUiChanged.emit({'fixedBars': dict(fb)})
+        except Exception:
+            pass
+
     def _apply_fixed_bars(self, fb: dict):
         self._fixed_bars_cache = dict(fb or {})
         cam = fb.get('cameraBind') or CAMERA_BIND_OPTIONS[0]
@@ -593,7 +627,7 @@ class OperatorHmiView(QWidget):
         for panel in getattr(self, '_stats_panels', []) or []:
             try:
                 if gate and not panel.gate_key():
-                    panel.set_gate_key(gate)
+                    panel.set_gate_key(gate, notify=False)
             except Exception:
                 pass
         if fb.get('top'):
@@ -656,6 +690,7 @@ class OperatorHmiView(QWidget):
         stats_cell = self._make_cell_frame('生产统计')
         stats = ProductionStatsPanel()
         self._stats_panels.append(stats)
+        self._wire_stats_panel(stats)
         stats_cell.layout().addWidget(stats, 1)
         left.addWidget(stats_cell, 1)
 
@@ -874,6 +909,7 @@ class OperatorHmiView(QWidget):
             cell = self._make_cell_frame(name)
             panel = ProductionStatsPanel()
             self._stats_panels.append(panel)
+            self._wire_stats_panel(panel)
             cell.layout().addWidget(panel, 1)
             return cell
 
