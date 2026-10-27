@@ -223,6 +223,149 @@ def apply_recipe(project: dict, recipe_id: str, *,
     }
 
 
+def diff_recipe(project: dict, recipe_id: str, *,
+                var_keys=None, step_ops=None, steps_only: bool = False,
+                vars_only: bool = False) -> dict:
+    """Preview params/vars delta vs live project without mutating.
+
+    Returns {
+      stepDeltas:[{id,name,op,changedKeys,from,to,sample}],
+      varDeltas:[{scope,key,from,to}],
+      summary:{stepsChanged,stepsSame,stepsMissing,varsChanged,chip},
+      name, variant, id,
+    }
+    """
+    recipes = ensure_recipes(project)
+    entry = next((r for r in recipes if isinstance(r, dict) and r.get('id') == recipe_id), None)
+    if not entry:
+        raise ValueError('配方不存在')
+    snap = entry.get('snapshot') or {}
+    snap_steps = snap.get('steps') or []
+    live = [s for s in (project.get('steps') or []) if isinstance(s, dict)]
+    want_ops = {str(x).strip() for x in (step_ops or []) if str(x).strip()} or None
+    if want_ops is None and entry.get('stepOps'):
+        want_ops = {str(x).strip() for x in entry.get('stepOps') if str(x).strip()} or None
+    want_vars = {str(x).strip() for x in (var_keys or []) if str(x).strip()} or None
+    if want_vars is None and entry.get('varKeys'):
+        want_vars = {str(x).strip() for x in entry.get('varKeys') if str(x).strip()} or None
+
+    step_deltas = []
+    same = 0
+    missing = 0
+    if not vars_only:
+        for row in snap_steps:
+            if not isinstance(row, dict):
+                continue
+            if want_ops and (row.get('operation') or '') not in want_ops:
+                continue
+            target = _match_step(live, row)
+            if target is None:
+                missing += 1
+                step_deltas.append({
+                    'id': row.get('id'), 'name': row.get('name'),
+                    'op': row.get('operation'), 'changedKeys': ['(无匹配模块)'],
+                    'from': None, 'to': row.get('params'), 'sample': '缺失',
+                })
+                continue
+            live_p = target.get('params') if isinstance(target.get('params'), dict) else {}
+            snap_p = row.get('params') if isinstance(row.get('params'), dict) else {}
+            changed = []
+            samples = []
+            keys = sorted(set(live_p) | set(snap_p))
+            for k in keys:
+                lv, sv = live_p.get(k), snap_p.get(k)
+                if lv != sv:
+                    changed.append(k)
+                    if len(samples) < 3:
+                        samples.append(f'{k}:{lv!r}→{sv!r}')
+            # also imageFrom
+            if row.get('imageFrom') is not None and row.get('imageFrom') != target.get('imageFrom'):
+                changed.append('imageFrom')
+                samples.append(f"imageFrom:{target.get('imageFrom')!r}→{row.get('imageFrom')!r}")
+            if changed:
+                step_deltas.append({
+                    'id': target.get('id') or row.get('id'),
+                    'name': target.get('name') or row.get('name'),
+                    'op': target.get('operation') or row.get('operation'),
+                    'changedKeys': changed,
+                    'from': {k: live_p.get(k) for k in changed if k != 'imageFrom'},
+                    'to': {k: snap_p.get(k) for k in changed if k != 'imageFrom'},
+                    'sample': '；'.join(samples),
+                })
+            else:
+                same += 1
+
+    var_deltas = []
+    if not steps_only:
+        vars_in = snap.get('variables')
+        live_vars = project.get('variables') if isinstance(project.get('variables'), dict) else {}
+        if isinstance(vars_in, dict):
+            for scope, bucket in vars_in.items():
+                if not isinstance(bucket, dict):
+                    continue
+                live_bucket = live_vars.get(scope) if isinstance(live_vars.get(scope), dict) else {}
+                for k, v in bucket.items():
+                    if want_vars and k not in want_vars:
+                        continue
+                    lv = live_bucket.get(k)
+                    if lv != v:
+                        var_deltas.append({
+                            'scope': scope, 'key': k, 'from': lv, 'to': v,
+                        })
+
+    n_step = len([d for d in step_deltas if d.get('sample') != '缺失'])
+    n_miss = missing
+    n_var = len(var_deltas)
+    # params delta chip text
+    chip_bits = []
+    if n_step:
+        chip_bits.append(f'模块Δ{n_step}')
+    if n_miss:
+        chip_bits.append(f'缺{n_miss}')
+    if same:
+        chip_bits.append(f'同{same}')
+    if n_var:
+        chip_bits.append(f'变量Δ{n_var}')
+    if not chip_bits:
+        chip_bits.append('无变化')
+    # sample keys for chip
+    key_samples = []
+    for d in step_deltas[:4]:
+        keys = d.get('changedKeys') or []
+        if keys and keys[0] != '(无匹配模块)':
+            key_samples.append(f"{d.get('name') or d.get('op')}:{','.join(keys[:2])}")
+    for vd in var_deltas[:3]:
+        key_samples.append(f"{vd['scope']}.{vd['key']}")
+    chip = ' · '.join(chip_bits)
+    if key_samples:
+        chip += ' · ' + '；'.join(key_samples[:4])
+        if (n_step + n_var) > 4:
+            chip += '…'
+
+    return {
+        'stepDeltas': step_deltas,
+        'varDeltas': var_deltas,
+        'summary': {
+            'stepsChanged': n_step,
+            'stepsSame': same,
+            'stepsMissing': n_miss,
+            'varsChanged': n_var,
+            'chip': chip,
+        },
+        'name': str(entry.get('name') or ''),
+        'variant': entry.get('variant') or '',
+        'id': entry['id'],
+    }
+
+
+def format_diff_chip(diff: dict | None) -> str:
+    """Short Chinese chip for dialogs / tooltips."""
+    if not isinstance(diff, dict):
+        return '无差分'
+    s = (diff.get('summary') or {}).get('chip')
+    return s or '无变化'
+
+
 def list_variants(project: dict) -> list:
     """Unique product variant labels present on recipes (stable order)."""
     seen = []

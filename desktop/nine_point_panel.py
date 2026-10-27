@@ -199,7 +199,67 @@ class NinePointPanel(QWidget):
         tip2.setWordWrap(True)
         tip2.setStyleSheet('color:#888;')
         form.addRow(tip2)
+        # 细妆⑯：live bind 实况（跟 last_result）
+        self._live_lab = QLabel('实况：尚未运行')
+        self._live_lab.setObjectName('ninePointLiveBind')
+        self._live_lab.setWordWrap(True)
+        self._live_lab.setStyleSheet('color:#9ad;font-size:11px;padding:4px;background:#1e2228;border-radius:4px;')
+        form.addRow(self._live_lab)
+        brow = QHBoxLayout()
+        b_ref = QPushButton('刷新实况')
+        b_ref.setObjectName('ninePointLiveRefreshBtn')
+        b_ref.setToolTip('从最近一次运行结果读取 rms / usedPoints / transform')
+        b_ref.clicked.connect(self._refresh_live_bind)
+        brow.addWidget(b_ref)
+        brow.addStretch(1)
+        form.addRow(brow)
+        try:
+            self._refresh_live_bind()
+        except Exception:
+            pass
         return w
+
+    def _refresh_live_bind(self):
+        """细妆⑯：九点 last_result live bind."""
+        lab = getattr(self, '_live_lab', None)
+        if lab is None:
+            return
+        try:
+            from desktop.upstream_field_picker import host_last_result
+            lr = host_last_result(self) or {}
+        except Exception:
+            lr = {}
+        sid = self.step.get('id')
+        hit = None
+        for rec in (lr.get('results') or []):
+            if isinstance(rec, dict) and rec.get('id') == sid:
+                hit = rec
+                break
+        if not hit:
+            lab.setText('实况：尚无本模块运行结果（先 ▶ 单次运行）')
+            return
+        res = (hit.get('output') or {}).get('result') or {}
+        rms = res.get('rms')
+        used = res.get('usedPoints')
+        ok = res.get('ok', res.get('status'))
+        tf = res.get('transform')
+        bits = []
+        if rms is not None:
+            bits.append(f'rms={rms}')
+        if used is not None:
+            bits.append(f'used={used}')
+        if ok is not None:
+            bits.append(f'ok={ok}')
+        if isinstance(tf, (list, tuple)) and tf:
+            bits.append(f'transform[{len(tf)}]')
+        elif isinstance(tf, dict):
+            bits.append('transform=dict')
+        # also flow vars often mirrored
+        flow = ((lr.get('variables') or {}).get('flow') or {})
+        for k in ('nine_point_rms', 'nine_point_count', 'nine_point_ok'):
+            if k in flow:
+                bits.append(f'{k}={flow[k]}')
+        lab.setText('实况：' + (' · '.join(bits) if bits else str(list(res.keys())[:8])))
 
     def _reload_table(self):
         self._syncing = True

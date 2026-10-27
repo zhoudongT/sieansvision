@@ -301,4 +301,121 @@ def collect_pickables(last_result: dict | None, project: dict | None = None,
 
     return out
 
+def _dist_point_to_segment(px, py, x1, y1, x2, y2) -> float:
+    dx, dy = x2 - x1, y2 - y1
+    len2 = dx * dx + dy * dy
+    if len2 < 1e-9:
+        return math.hypot(px - x1, py - y1)
+    t = max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / len2))
+    qx, qy = x1 + t * dx, y1 + t * dy
+    return math.hypot(px - qx, py - qy)
 
+
+def hit_test(pickables: list[dict], x: float, y: float, kind: str = 'line',
+             tol: float = 14.0) -> dict | None:
+    """Nearest pickable within tol (pixels). Prefer kind match."""
+    kind = (kind or 'any').lower()
+    best = None
+    best_d = tol
+    for p in pickables or []:
+        if kind not in ('any',) and p.get('kind') != kind:
+            continue
+        if p.get('kind') == 'line':
+            d = _dist_point_to_segment(x, y, p['x1'], p['y1'], p['x2'], p['y2'])
+        else:
+            d = math.hypot(x - float(p.get('x', 0)), y - float(p.get('y', 0)))
+        if d <= best_d:
+            best_d = d
+            best = dict(p)
+            best['hitDist'] = d
+    return best
+
+
+def overlay_specs_for_pickables(pickables: list[dict], highlight_id: str | None = None) -> list[dict]:
+    """Orange dashed-style preview specs for ImageView.set_geom_overlays."""
+    specs = []
+    for p in pickables or []:
+        hot = highlight_id and p.get('field') == highlight_id and False  # reserved
+        color = '#e87722' if p.get('kind') == 'line' else '#ffcc66'
+        if p.get('kind') == 'line':
+            specs.append(dict(type='line', x1=p['x1'], y1=p['y1'], x2=p['x2'], y2=p['y2'], color=color))
+            mx = (p['x1'] + p['x2']) / 2
+            my = (p['y1'] + p['y2']) / 2
+            specs.append(dict(type='label', x=mx + 4, y=my - 4, text=p.get('field') or '', color=color))
+        else:
+            specs.append(dict(type='point', x=p['x'], y=p['y'], r=6, color=color))
+            specs.append(dict(type='label', x=float(p['x']) + 6, y=float(p['y']) - 8,
+                              text=p.get('field') or '', color=color))
+    return specs
+
+
+def overlay_specs_for_multiframe(frames: list[dict], *,
+                                 highlight_path: str | None = None) -> list[dict]:
+    """Build colored overlay specs for multi-frame compare.
+
+    frames: [{path, pickables, label?}, ...]
+    Current / highlight frame uses accent; others use muted cycling colors.
+    """
+    COLORS = [
+        '#e87722',  # accent current
+        '#6eb6ff',
+        '#3ecf8e',
+        '#c9a0ff',
+        '#e35d6a',
+        '#f0c674',
+    ]
+    out = []
+    for i, fr in enumerate(frames or []):
+        if not isinstance(fr, dict):
+            continue
+        path = fr.get('path') or fr.get('_filmPath') or ''
+        pks = fr.get('pickables') or []
+        label = fr.get('label') or ''
+        try:
+            from pathlib import Path as _P
+            leaf = _P(str(path)).name if path else (label or f'#{i}')
+        except Exception:
+            leaf = str(path)[-24:] if path else (label or f'#{i}')
+        is_hi = bool(highlight_path) and path and str(path) == str(highlight_path)
+        color = COLORS[0] if (is_hi or (not highlight_path and i == 0)) else COLORS[(i % (len(COLORS) - 1)) + 1]
+        width = 2.5 if is_hi or i == 0 else 1.5
+        for spec in overlay_specs_for_pickables(pks):
+            s = dict(spec)
+            s['color'] = color
+            s['width'] = width
+            s['frame'] = leaf
+            s['framePath'] = path
+            s['_compare'] = True
+            # tag text (ImageView reads 'text')
+            lab = s.get('text') or s.get('label') or ''
+            if leaf and leaf not in str(lab):
+                s['text'] = f'{lab} · {leaf}' if lab else leaf
+            out.append(s)
+    return out
+
+
+def pickables_from_cached_result(result: dict | None, project: dict | None = None,
+                                 kind: str = 'any') -> list[dict]:
+    """Convenience: collect pickables from one filmstrip-cached last_result."""
+    if not isinstance(result, dict):
+        return []
+    return collect_pickables(result, project, kind=kind, include_nested=True)
+
+
+def summarize_pickables(pickables: list[dict], limit: int = 6) -> str:
+    """Short Chinese tip for hover tooltip."""
+    if not pickables:
+        return '无几何缓存'
+    lines = sum(1 for p in pickables if p.get('kind') == 'line')
+    pts = sum(1 for p in pickables if p.get('kind') == 'point')
+    bits = []
+    if lines:
+        bits.append(f'线 {lines}')
+    if pts:
+        bits.append(f'点 {pts}')
+    head = ' · '.join(bits) or f'{len(pickables)} 项'
+    samples = []
+    for p in pickables[:limit]:
+        samples.append(str(p.get('label') or p.get('field') or p.get('stepId') or '?'))
+    more = f' …+{len(pickables) - limit}' if len(pickables) > limit else ''
+    return f'{head}：' + '；'.join(samples) + more

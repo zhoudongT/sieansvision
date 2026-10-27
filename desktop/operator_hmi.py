@@ -392,7 +392,7 @@ class OperatorHmiView(QWidget):
         self._trend_sparks = []  # QLabel live elapsed spark
         self._trend_ok_sparks = []  # QLabel OK/NG sequence
         self._yield_bars = []  # (bar_ok, bar_ng) tuples
-        self._result_history=[]; self._result_tables = []; self._gate_hist=[]; self._gate_spark_labs=[]
+        self._result_history=[]; self._result_tables = []; self._gate_hist=[]; self._gate_spark_labs=[]; self._gate_filter_mode='all'  # all|pass|fail
         self._last_module_name = '流程'  # 结果表「模块」列跟末次步骤名
         self._layout_fp = None
         self._clock_timer = QTimer(self)
@@ -1145,6 +1145,12 @@ class OperatorHmiView(QWidget):
                     'ng': str(ng_n),
                     'gate': gate or '—',
                     'note': note or '—',
+                    # 细妆⑯：供门限 spark 筛选（通/拒窗口）
+                    'gatePass': (
+                        True if str(judge or '').upper() in ('OK', 'PASS', '通')
+                        else False if str(judge or '').upper() in ('NG', 'FAIL', '拒')
+                        else None
+                    ),
                 }
                 # de-dupe identical consecutive (same module+elapsed+judge within same second)
                 if not hist or (hist[-1].get('module'), hist[-1].get('elapsedMs'), hist[-1].get('judge'), hist[-1].get('ts')) != (
@@ -1264,12 +1270,45 @@ class OperatorHmiView(QWidget):
         passed = sum(1 for v in gh if v)
         return f'{s}  ·  门限 {passed}/{len(gh)} 通 (高=通)'
 
+
+    def _make_gate_spark_click_handler(self, lab):
+        def _handler(event):
+            try:
+                self._cycle_gate_filter()
+            except Exception:
+                pass
+            # still accept
+            try:
+                QLabel.mousePressEvent(lab, event)
+            except Exception:
+                pass
+        return _handler
+
+    def _cycle_gate_filter(self):
+        """细妆⑯：门限 spark 点击 → 结果表按通/拒窗口筛选."""
+        order = ['all', 'pass', 'fail']
+        cur = getattr(self, '_gate_filter_mode', 'all') or 'all'
+        try:
+            nxt = order[(order.index(cur) + 1) % len(order)]
+        except ValueError:
+            nxt = 'all'
+        self._gate_filter_mode = nxt
+        self._refresh_gate_spark()
+        self._refresh_result_tables_ui()
+
     def _refresh_gate_spark(self):
         text = self.gate_spark_text()
+        mode = getattr(self, '_gate_filter_mode', 'all') or 'all'
+        mode_lab = {'all': '全部', 'pass': '仅通', 'fail': '仅拒'}.get(mode, mode)
         for lab in getattr(self, '_gate_spark_labs', []) or []:
             try:
-                lab.setText(f'门限序列  {text}')
-                lab.setToolTip('最近 passGate / 判定门 真值序列（高=通 · 低=拒）')
+                lab.setText(f'门限序列  {text}  ·  筛选:{mode_lab}')
+                lab.setToolTip(
+                    f'点击切换筛选（当前={mode_lab}）：全部 → 仅通 → 仅拒\n'
+                    '最近 passGate / 判定门 真值序列（高=通 · 低=拒）'
+                )
+                color = {'all': TEXT_MUTED, 'pass': '#3ecf8e', 'fail': '#e35d6a'}.get(mode, TEXT_MUTED)
+                lab.setStyleSheet(f'color:{color};font-size:11px;font-family:monospace;padding:2px 4px;')
             except Exception:
                 pass
 
@@ -1290,8 +1329,22 @@ class OperatorHmiView(QWidget):
                     for c, val in enumerate(placeholders):
                         table.setItem(0, c, QTableWidgetItem(val))
                     continue
-                # show newest first
+                # show newest first; 细妆⑯：gate filter window
                 rows = list(reversed(hist[-50:]))
+                mode = getattr(self, '_gate_filter_mode', 'all') or 'all'
+                if mode == 'pass':
+                    rows = [e for e in rows if e.get('gatePass') is True
+                            or str(e.get('judge') or '').upper() in ('OK', 'PASS', '通')]
+                elif mode == 'fail':
+                    rows = [e for e in rows if e.get('gatePass') is False
+                            or str(e.get('judge') or '').upper() in ('NG', 'FAIL', '拒')]
+                if not rows:
+                    table.setRowCount(1)
+                    tip = {'all': '无记录', 'pass': '无通窗口', 'fail': '无拒窗口'}.get(mode, '无记录')
+                    placeholders = ['—', '0', tip, '—', '—', '0', '0', '—', '—']
+                    for c, val in enumerate(placeholders):
+                        table.setItem(0, c, QTableWidgetItem(val))
+                    continue
                 table.setRowCount(len(rows))
                 for r, e in enumerate(rows):
                     vals = [
@@ -1711,7 +1764,13 @@ class OperatorHmiView(QWidget):
             spark_lab = QLabel('门限序列  · · ·  ·  门限序列等待')
             spark_lab.setObjectName('hmiGateSpark')
             spark_lab.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;font-family:monospace;padding:2px 4px;')
-            spark_lab.setToolTip('最近 passGate / 判定门 真值序列（高=通 · 低=拒）')
+            spark_lab.setToolTip('点击切换筛选：全部 → 仅通 → 仅拒 · 最近 passGate 真值序列（高=通 · 低=拒）')
+            try:
+                from PySide6.QtCore import Qt as _Qt
+                spark_lab.setCursor(_Qt.CursorShape.PointingHandCursor)
+            except Exception:
+                pass
+            spark_lab.mousePressEvent = self._make_gate_spark_click_handler(spark_lab)
             self._gate_spark_labs = getattr(self, '_gate_spark_labs', [])
             self._gate_spark_labs.append(spark_lab)
             cell.layout().addWidget(spark_lab)

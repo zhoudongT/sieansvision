@@ -145,7 +145,61 @@ class VarCalcPanel(QWidget):
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
+        # 细妆⑯：live bind 实况
+        self._live_lab = QLabel('实况：尚未运行')
+        self._live_lab.setObjectName('varCalcLiveBind')
+        self._live_lab.setWordWrap(True)
+        self._live_lab.setStyleSheet('color:#9ad;font-size:11px;padding:4px;background:#1e2228;border-radius:4px;')
+        form.addRow(self._live_lab)
+        brow = QHBoxLayout()
+        b_ref = QPushButton('刷新实况')
+        b_ref.setObjectName('varCalcLiveRefreshBtn')
+        b_ref.setToolTip('从最近一次运行读取本模块 values / errors')
+        b_ref.clicked.connect(self._refresh_live_bind)
+        brow.addWidget(b_ref)
+        brow.addStretch(1)
+        form.addRow(brow)
+        try:
+            self._refresh_live_bind()
+        except Exception:
+            pass
         return w
+
+    def _refresh_live_bind(self):
+        """细妆⑯：var_calc last_result live bind."""
+        lab = getattr(self, '_live_lab', None)
+        if lab is None:
+            return
+        try:
+            from desktop.upstream_field_picker import host_last_result
+            lr = host_last_result(self) or {}
+        except Exception:
+            lr = {}
+        sid = self.step.get('id')
+        hit = None
+        for rec in (lr.get('results') or []):
+            if isinstance(rec, dict) and rec.get('id') == sid:
+                hit = rec
+                break
+        if not hit:
+            lab.setText('实况：尚无本模块运行结果（先 ▶ 单次运行）')
+            return
+        res = (hit.get('output') or {}).get('result') or {}
+        vals = res.get('values') if isinstance(res.get('values'), dict) else {}
+        errs = res.get('errors') if isinstance(res.get('errors'), dict) else {}
+        bits = []
+        for k, v in list(vals.items())[:8]:
+            bits.append(f'{k}={v}')
+        if errs:
+            bits.append('errors=' + ','.join(f'{k}:{errs[k]}' for k in list(errs)[:3]))
+        # also show mirrored flow vars for expression names
+        scope = self.params.get('scope') or 'flow'
+        flow = ((lr.get('variables') or {}).get(scope) or {})
+        for row in (self.params.get('expressions') or [])[:6]:
+            nm = row.get('name')
+            if nm and nm in flow and nm not in vals:
+                bits.append(f'{scope}.{nm}={flow[nm]}')
+        lab.setText('实况：' + (' · '.join(bits) if bits else (str(list(res.keys())[:8]) or '空')))
 
     def _reload(self):
         self._syncing = True

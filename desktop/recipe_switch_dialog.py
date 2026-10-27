@@ -70,6 +70,7 @@ class RecipeSwitchDialog(QDialog):
         self._recipe_list.setObjectName('recipeList')
         self._recipe_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._recipe_list.currentItemChanged.connect(self._on_sel)
+        self._recipe_list.currentItemChanged.connect(self._refresh_diff_chip)
         left.addWidget(self._recipe_list, 1)
 
         btns = QHBoxLayout()
@@ -89,6 +90,13 @@ class RecipeSwitchDialog(QDialog):
         b_del.clicked.connect(self._delete_selected)
         btns.addWidget(b_del)
         left.addLayout(btns)
+        # 细妆⑯：套用前 params delta chip
+        self._diff_chip = QLabel('参数差分：选中配方后预览')
+        self._diff_chip.setObjectName('recipeDiffChip')
+        self._diff_chip.setWordWrap(True)
+        self._diff_chip.setStyleSheet('color:#9ad;font-size:11px;padding:2px 4px;')
+        self._diff_chip.setToolTip('套用前的参数/变量差分预览（不改工程）')
+        left.addWidget(self._diff_chip)
         lay.addLayout(left, 2)
 
         right = QVBoxLayout()
@@ -206,6 +214,10 @@ class RecipeSwitchDialog(QDialog):
         extra = f' · 变体 {var_active}' if var_active else ''
         self._active_lab.setText(f'当前配方：{name}{extra}')
         self._refresh_library()
+        try:
+            self._refresh_diff_chip()
+        except Exception:
+            pass
 
     def _refresh_library(self):
         self._lib_list.clear()
@@ -274,14 +286,54 @@ class RecipeSwitchDialog(QDialog):
         QMessageBox.information(self, '配方已保存',
                                 f"已保存「{entry['name']}」· {entry.get('stepCount', 0)} 个模块参数快照")
 
+
+    def _refresh_diff_chip(self, *_):
+        """细妆⑯：选中配方 → 参数差分 chip 预览."""
+        chip = getattr(self, '_diff_chip', None)
+        if chip is None:
+            return
+        rid = self._selected_id()
+        if not rid:
+            chip.setText('参数差分：选中配方后预览')
+            chip.setStyleSheet('color:#9ad;font-size:11px;padding:2px 4px;')
+            return
+        try:
+            diff = rl.diff_recipe(self.document.project, rid)
+            chip_txt = rl.format_diff_chip(diff)
+            n = ((diff.get('summary') or {}).get('stepsChanged', 0)
+                 + (diff.get('summary') or {}).get('varsChanged', 0))
+            color = '#e87722' if n else '#3ecf8e'
+            chip.setStyleSheet(f'color:{color};font-size:11px;padding:2px 4px;')
+            chip.setText(f'参数差分：{chip_txt}')
+            tip_lines = [chip_txt]
+            for d in (diff.get('stepDeltas') or [])[:8]:
+                tip_lines.append(
+                    f"· {d.get('name') or d.get('op')}: "
+                    f"{d.get('sample') or ','.join(d.get('changedKeys') or [])}"
+                )
+            for vd in (diff.get('varDeltas') or [])[:6]:
+                tip_lines.append(
+                    f"· {vd['scope']}.{vd['key']}: {vd.get('from')!r}→{vd.get('to')!r}"
+                )
+            chip.setToolTip('\n'.join(tip_lines))
+        except Exception as err:
+            chip.setText(f'参数差分：{err}')
+            chip.setStyleSheet('color:#e35d6a;font-size:11px;padding:2px 4px;')
+
     def _apply_selected(self):
         rid = self._selected_id()
         if not rid:
             QMessageBox.warning(self, '换型', '请先选择一个配方')
             return
+        try:
+            diff = rl.diff_recipe(self.document.project, rid)
+            chip = rl.format_diff_chip(diff)
+        except Exception as err:
+            chip = str(err)
         ans = QMessageBox.question(
             self, '一键换型',
-            '将把所选配方的模块参数套用到当前流程（按算子+名称匹配）。\n继续？',
+            '将把所选配方的模块参数套用到当前流程（按算子+名称匹配）。\n'
+            f'差分预览：{chip}\n继续？',
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )
@@ -330,9 +382,19 @@ class RecipeSwitchDialog(QDialog):
             hint.append('仅变量')
         if not hint:
             hint.append('（使用配方自带子集；若无子集则等同全量）')
+        try:
+            diff = rl.diff_recipe(
+                self.document.project, rid,
+                var_keys=var_keys, step_ops=step_ops,
+                steps_only=steps_only, vars_only=vars_only,
+            )
+            chip = rl.format_diff_chip(diff)
+        except Exception as err:
+            chip = str(err)
         ans = QMessageBox.question(
             self, '部分套用',
-            '按局部规则套用所选配方：\n' + ' · '.join(hint) + '\n继续？',
+            '按局部规则套用所选配方：\n' + ' · '.join(hint)
+            + '\n差分预览：' + chip + '\n继续？',
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )

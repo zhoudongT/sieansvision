@@ -164,7 +164,14 @@ class CommAcceptanceDialog(QDialog):
         self.schedule_status.setObjectName('commAcceptScheduleStatus')
         self.schedule_status.setStyleSheet('color:#9ad;font-size:11px;')
         sform.addWidget(self.schedule_status, 1)
+        # 细妆⑯：定时历史 spark + FAIL toast
+        self._schedule_hist = []  # newest-first bool pass?
+        self.schedule_spark = QLabel('复测序列  · · ·  ·  等待定时')
+        self.schedule_spark.setObjectName('commAcceptScheduleSpark')
+        self.schedule_spark.setStyleSheet('color:#9ad;font-size:11px;font-family:monospace;padding:2px 4px;')
+        self.schedule_spark.setToolTip('定时复测 PASS/FAIL 序列（高=整次 PASS · 低=有 FAIL）')
         lay.addWidget(sched_box)
+        lay.addWidget(self.schedule_spark)
         self._schedule_timer = QTimer(self)
         self._schedule_timer.setSingleShot(False)
         self._schedule_timer.timeout.connect(self._on_schedule_fire)
@@ -341,6 +348,17 @@ class CommAcceptanceDialog(QDialog):
         if path:
             self._log(f'报告已落盘 {path}')
         self._update_last_banner(report)
+        # 细妆⑯：schedule hist spark + FAIL alert toast
+        try:
+            self._record_schedule_hist(report)
+        except Exception as err:
+            self._log(f'复测序列记录失败：{err}')
+        try:
+            fail_n = int((report.get('summary') or {}).get('fail') or 0)
+            if fail_n > 0:
+                self._fail_alert_toast(report)
+        except Exception as err:
+            self._log(f'FAIL toast 失败：{err}')
         # Keep schedule ticking if enabled
         if getattr(self, 'chk_schedule', None) and self.chk_schedule.isChecked():
             self._refresh_schedule_status()
@@ -462,6 +480,65 @@ class CommAcceptanceDialog(QDialog):
             return
         self._log('定时触发 → 开始验收干跑')
         self._start()
+
+
+    def schedule_spark_text(self, width=24):
+        gh = getattr(self, '_schedule_hist', None) or []
+        if not gh:
+            return '· · ·  ·  等待定时'
+        seq = list(reversed(gh[:width]))
+        s = ''.join('▇' if v else '▁' for v in seq)
+        passed = sum(1 for v in gh if v)
+        return f'{s}  ·  复测 {passed}/{len(gh)} 通 (高=整次PASS)'
+
+    def _refresh_schedule_spark(self):
+        lab = getattr(self, 'schedule_spark', None)
+        if lab is None:
+            return
+        text = self.schedule_spark_text()
+        lab.setText(f'复测序列  {text}')
+        fail_recent = any(not v for v in (getattr(self, '_schedule_hist', None) or [])[:3])
+        color = '#e35d6a' if fail_recent else '#9ad'
+        lab.setStyleSheet(f'color:{color};font-size:11px;font-family:monospace;padding:2px 4px;')
+
+    def _record_schedule_hist(self, report: dict):
+        s = (report or {}).get('summary') or {}
+        fail_n = int(s.get('fail') or 0)
+        ok = fail_n == 0
+        gh = getattr(self, '_schedule_hist', None)
+        if gh is None:
+            self._schedule_hist = []
+            gh = self._schedule_hist
+        gh.insert(0, bool(ok))
+        del gh[48:]
+        self._refresh_schedule_spark()
+
+    def _fail_alert_toast(self, report: dict):
+        """Non-modal FAIL alert: banner + status + optional parent statusBar."""
+        s = (report or {}).get('summary') or {}
+        fail_n = int(s.get('fail') or 0)
+        msg = (
+            f"⚠ Comm 验收 FAIL ×{fail_n}  @ {report.get('host')}:{report.get('port')}  "
+            f"{report.get('finishedAt') or ''}"
+        )
+        # paint diff banner red
+        if hasattr(self, 'diff_banner'):
+            self.diff_banner.setStyleSheet('color:#e35d6a;font-size:12px;padding:4px 2px;font-weight:600;')
+            prev = self.diff_banner.text() or ''
+            self.diff_banner.setText(f'FAIL 告警：{msg}' + (f' · {prev}' if prev and not prev.startswith('FAIL') else ''))
+        self._log(msg)
+        # toast via parent statusBar if available
+        parent = self.parent()
+        try:
+            if parent is not None and hasattr(parent, 'statusBar'):
+                parent.statusBar().showMessage(msg, 8000)
+        except Exception:
+            pass
+        # brief non-blocking message box alternative: QToolTip / flash summary
+        if hasattr(self, 'summary_lab'):
+            self.summary_lab.setStyleSheet('color:#e35d6a;font-weight:600;')
+            # restore color later
+            QTimer.singleShot(6000, lambda: self.summary_lab.setStyleSheet(''))
 
     @staticmethod
     def diff_reports(prev: dict | None, now: dict | None) -> dict:

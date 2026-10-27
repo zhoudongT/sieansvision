@@ -200,7 +200,11 @@ class ImageView(QGraphicsView):
                 continue
             kind = spec.get('type')
             color = QColor(spec.get('color') or '#00d250')
-            pen = QPen(color, 2)
+            try:
+                w = float(spec.get('width') or 2)
+            except Exception:
+                w = 2.0
+            pen = QPen(color, max(1.0, w))
             pen.setCosmetic(True)
             if kind == 'line':
                 item = QGraphicsLineItem(float(spec['x1']), float(spec['y1']), float(spec['x2']), float(spec['y2']))

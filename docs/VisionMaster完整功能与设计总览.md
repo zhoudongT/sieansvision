@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆⑯ · 胶片悬停对比 · 配方差分预览 · Comm复测spark/FAIL · 门限筛选 · 2026-10-28】
+
+- **measure_geom 胶片悬停 / 多帧对比叠层**：`FilmstripBar.thumbHovered`（viewport hover）；`MainWindow._show_filmstrip_compare_overlays` 用 `_filmstrip_results` + `overlay_specs_for_multiframe` 色环叠层（当前帧高亮）；离开恢复 `_apply_measure_geom_overlays`。画布点选中不抢叠层。
+- **配方变体差分预览**：`recipe_library.diff_recipe` / `format_diff_chip`（模块Δ/变量Δ/缺/同）；换型对话框 `recipeDiffChip` 选中即预览；一键换型/部分套用确认框带差分；工具栏变体快切写 statusBar/日志差分。
+- **Comm 定时历史 spark + FAIL toast**：`_schedule_hist` unicode 复测序列；FAIL 次刷红差分横幅 + summary + parent statusBar 8s 告警。
+- **HMI 门限 spark 点击筛选**：点击循环 全部→仅通→仅拒，过滤结果表（`gatePass` / 判定列）；spark 文案带「筛选:」。
+- **九点 / 变量计算 live bind**：结果显示「刷新实况」跟 `host_last_result` 读 rms/usedPoints / values·errors。
+- **Smokes**：`smoke-geom-filmstrip-hover-compare-e2e` / `smoke-recipe-diff-preview-e2e` / `smoke-comm-schedule-hist-toast-e2e` / `smoke-hmi-gate-filter-e2e`（全部 PASS）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆⑮ · 多源嵌套点选 · 变体快切 · Comm定时差分 · 门限序列spark · 2026-10-28】
 
 - **measure_geom 多源/嵌套绑定**：`geom_canvas_pick` 展开 `group/subflow` 的 `result.trace` 为子级候选；`merge_last_results` 合并胶片多帧缓存；`MainWindow._filmstrip_results`（≤32）在 finished 按路径落盘，画布点选合并当前结果+胶片缓存+组合内层。

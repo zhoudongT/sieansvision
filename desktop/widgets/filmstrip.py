@@ -28,6 +28,7 @@ class FilmstripBar(QWidget):
     continuousPauseToggled = Signal(bool)  # True=paused
     listChanged = Signal(list)           # paths
     formatFilterChanged = Signal(str)    # 全部|.bmp|.jpg|.png|.tif
+    thumbHovered = Signal(str)           # 细妆⑯：悬停缩略路径（空=离开）
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -127,6 +128,16 @@ class FilmstripBar(QWidget):
         self.thumbs.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.thumbs.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.thumbs.currentRowChanged.connect(self._row_changed)
+        # 细妆⑯：缩略悬停 → 几何预览 / 多帧对比
+        self.thumbs.setMouseTracking(True)
+        self.thumbs.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        try:
+            self.thumbs.itemEntered.connect(self._on_thumb_entered)
+        except Exception:
+            pass
+        self.thumbs.viewport().setMouseTracking(True)
+        self._hover_path = ''
+        self.thumbs.viewport().installEventFilter(self)
         root.addWidget(self.thumbs)
         self.empty_hint = QLabel('未添加图像 — 点 + 或 📁 导入；本地模式下节点会显示红叹号直至添加。')
         self.empty_hint.setObjectName('filmstripEmpty')
@@ -138,6 +149,46 @@ class FilmstripBar(QWidget):
         self._actual_letterbox = True  # pad with theme CANVAS when src < thumb
         self._actual_pad_color = None  # None → theme CANVAS
         self._live_src_pixmap = None  # last pre-fit src for pad-only refresh
+
+
+    def _on_thumb_entered(self, item):
+        if item is None:
+            return
+        path = item.data(Qt.ItemDataRole.UserRole) or ''
+        if not path:
+            # fallback: match by row
+            row = self.thumbs.row(item)
+            if 0 <= row < len(self._paths):
+                path = self._paths[row]
+        self._emit_hover(path)
+
+    def _emit_hover(self, path: str):
+        path = path or ''
+        if path == getattr(self, '_hover_path', None):
+            return
+        self._hover_path = path
+        try:
+            self.thumbHovered.emit(path)
+        except Exception:
+            pass
+
+    def eventFilter(self, obj, event):
+        try:
+            from PySide6.QtCore import QEvent
+            if obj is self.thumbs.viewport():
+                et = event.type()
+                if et == QEvent.Type.MouseMove:
+                    pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
+                    item = self.thumbs.itemAt(pos)
+                    if item is None:
+                        self._emit_hover('')
+                    else:
+                        self._on_thumb_entered(item)
+                elif et in (QEvent.Type.Leave, QEvent.Type.HoverLeave):
+                    self._emit_hover('')
+        except Exception:
+            pass
+        return super().eventFilter(obj, event)
 
     def paths(self):
         return list(self._paths)

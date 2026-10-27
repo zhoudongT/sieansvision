@@ -350,6 +350,9 @@ class MainWindow(QMainWindow):
         if hasattr(self.filmstrip, 'continuousPauseToggled'):
             self.filmstrip.continuousPauseToggled.connect(self._on_filmstrip_continuous_pause)
         self.filmstrip.runAllRequested.connect(self.run_all_images)
+        # 细妆⑯：缩略悬停 → 多帧几何对比叠层
+        if hasattr(self.filmstrip, 'thumbHovered'):
+            self.filmstrip.thumbHovered.connect(self._on_filmstrip_thumb_hover)
         rl.addWidget(self.filmstrip)
         # Keep ParameterPanel as hidden fallback for programmatic refresh; property float is primary
         self.parameters=ParameterPanel();self.parameters.hide();self.parameters.changed.connect(self.update_step)
@@ -1248,6 +1251,88 @@ class MainWindow(QMainWindow):
         view.geom_picked.connect(_on_picked)
         view.set_geom_pick_mode(True, kind=kind, pickables=pickables)
         view._geom_pick_cancel = lambda: _finish(None)
+
+
+    def _on_filmstrip_thumb_hover(self, path: str):
+        """细妆⑯：胶片缩略悬停 → 多帧几何对比叠层预览（离开恢复）."""
+        path = path or ''
+        # Don't clobber active canvas-pick mode
+        view = getattr(self, 'output_view', None)
+        if view is not None and hasattr(view, 'geom_pick_active') and view.geom_pick_active():
+            return
+        if not path:
+            self._clear_filmstrip_compare_overlays()
+            return
+        self._show_filmstrip_compare_overlays(highlight_path=path)
+
+    def _clear_filmstrip_compare_overlays(self):
+        if getattr(self, '_filmstrip_compare_active', False):
+            self._filmstrip_compare_active = False
+            try:
+                self._apply_measure_geom_overlays(
+                    (getattr(self, 'last_result', None) or {}).get('results') or [])
+            except Exception:
+                pass
+            try:
+                self.statusBar().clearMessage()
+            except Exception:
+                pass
+
+    def _show_filmstrip_compare_overlays(self, highlight_path: str = ''):
+        """Build color-cycled overlays from _filmstrip_results (+ current)."""
+        view = getattr(self, 'output_view', None)
+        if view is None or not hasattr(view, 'set_geom_overlays'):
+            return
+        cache = getattr(self, '_filmstrip_results', None) or {}
+        if not cache:
+            return
+        try:
+            from desktop.geom_canvas_pick import (
+                pickables_from_cached_result, overlay_specs_for_multiframe,
+                summarize_pickables,
+            )
+        except Exception:
+            return
+        frames = []
+        # Prefer hovered first, then current, then rest (cap 6)
+        order = []
+        if highlight_path and highlight_path in cache:
+            order.append(highlight_path)
+        try:
+            cur = self.filmstrip.current_path() if hasattr(self, 'filmstrip') else ''
+        except Exception:
+            cur = ''
+        if cur and cur in cache and cur not in order:
+            order.append(cur)
+        for k in cache:
+            if k not in order:
+                order.append(k)
+            if len(order) >= 6:
+                break
+        project = self.document.project if hasattr(self, 'document') else None
+        tip_bits = []
+        for fp in order:
+            bag = cache.get(fp) or {}
+            pks = pickables_from_cached_result(bag, project, kind='any')
+            if not pks:
+                continue
+            frames.append({'path': fp, 'pickables': pks})
+            tip_bits.append(summarize_pickables(pks, limit=3))
+        if not frames:
+            return
+        specs = overlay_specs_for_multiframe(frames, highlight_path=highlight_path or None)
+        try:
+            view.set_geom_overlays(specs)
+            self._filmstrip_compare_active = True
+        except Exception:
+            return
+        try:
+            from pathlib import Path as _P
+            leaf = _P(highlight_path).name if highlight_path else '多帧'
+            msg = f'胶片对比预览 · {leaf} · {len(frames)} 帧 · ' + (' | '.join(tip_bits[:3]))
+            self.statusBar().showMessage(msg)
+        except Exception:
+            pass
 
     def _apply_measure_geom_overlays(self, records):
         """Canvas draw path: vector overlays for measure_geom when annotatedImage already baked
@@ -3537,6 +3622,16 @@ class MainWindow(QMainWindow):
                 return
             entry = recs[0]
             rid = entry.get('id')
+            try:
+                diff = rl.diff_recipe(p, rid)
+                chip = rl.format_diff_chip(diff)
+                self.log(f'变体差分预览「{variant}」：{chip}')
+                try:
+                    self.statusBar().showMessage(f'变体差分：{chip}', 4000)
+                except Exception:
+                    pass
+            except Exception:
+                chip = ''
             stats = rl.apply_recipe(p, rid)
             self.document.mark_dirty()
             try:
