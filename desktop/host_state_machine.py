@@ -1257,6 +1257,44 @@ class HostStateMachineWidget(QWidget):
                 self._stale_prune_undo_color_scale_ab_lock = bool(_abl)
         except Exception:
             self._stale_prune_undo_color_scale_ab_lock = False
+        # wave66: A/B mirror + eyedrop history + PNG TZ
+        try:
+            _abm = self._host_settings().value(
+                'host/stalePruneUndoColorScaleAbMirror', False)
+            if isinstance(_abm, str):
+                self._stale_prune_undo_color_scale_ab_mirror = _abm.strip().lower() in (
+                    '1', 'true', 'yes', 'on')
+            else:
+                self._stale_prune_undo_color_scale_ab_mirror = bool(_abm)
+        except Exception:
+            self._stale_prune_undo_color_scale_ab_mirror = False
+        try:
+            _eh = self._host_settings().value(
+                'host/stalePruneUndoEyedropperHistory', [])
+            if not isinstance(_eh, list):
+                _eh = []
+            cleaned_eh = []
+            for x in _eh:
+                hx = str(x or '').strip()
+                if not hx:
+                    continue
+                if not hx.startswith('#'):
+                    hx = '#' + hx
+                try:
+                    c = QColor(hx)
+                    if c.isValid():
+                        cleaned_eh.append(c.name())
+                except Exception:
+                    pass
+            self._stale_prune_undo_eyedropper_history = cleaned_eh[:12]
+        except Exception:
+            self._stale_prune_undo_eyedropper_history = []
+        try:
+            _tz = int(self._host_settings().value(
+                'host/toastCurvePngDatetimeTzOffsetHours', 0) or 0)
+            self._toast_curve_png_datetime_tz_offset_hours = max(-12, min(14, _tz))
+        except Exception:
+            self._toast_curve_png_datetime_tz_offset_hours = 0
         # wave63: 热同步色阶 A/B 对比
         try:
             _cmp = str(self._host_settings().value(
@@ -6403,6 +6441,19 @@ class HostStateMachineWidget(QWidget):
             pass
         self._last_stale_prune_undo_color_scale = name
         self._last_stale_prune_undo_color_scale_hotsync = name
+        # wave66: 锁定+镜像 → B 跟随 A
+        if (self.stale_prune_undo_color_scale_ab_lock()
+                and self.stale_prune_undo_color_scale_ab_mirror()
+                and not getattr(self, '_ab_mirror_applying', False)):
+            try:
+                self._ab_mirror_applying = True
+                self.set_stale_prune_undo_color_scale_compare_preset(
+                    name, persist=persist)
+                self._last_stale_prune_undo_color_scale_ab_mirrored = name
+            except Exception:
+                pass
+            finally:
+                self._ab_mirror_applying = False
         try:
             self.refresh_undo_color_scale_hot_sync_menu()
         except Exception:
@@ -6498,6 +6549,46 @@ class HostStateMachineWidget(QWidget):
         """wave65: 切换 A/B 锁定."""
         return self.set_stale_prune_undo_color_scale_ab_lock(
             not self.stale_prune_undo_color_scale_ab_lock(), persist=persist)
+
+    def stale_prune_undo_color_scale_ab_mirror(self) -> bool:
+        """wave66: 锁定时 A→B 镜像同步."""
+        v = getattr(self, '_stale_prune_undo_color_scale_ab_mirror', False)
+        if isinstance(v, str):
+            return v.strip().lower() in ('1', 'true', 'yes', 'on')
+        return bool(v)
+
+    def set_stale_prune_undo_color_scale_ab_mirror(
+            self, on: bool = False, *, persist: bool = True) -> bool:
+        """wave66: 开关锁定镜像."""
+        on = bool(on)
+        self._stale_prune_undo_color_scale_ab_mirror = on
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/stalePruneUndoColorScaleAbMirror', bool(on))
+            except Exception:
+                pass
+        self._last_stale_prune_undo_color_scale_ab_mirror = on
+        if on and self.stale_prune_undo_color_scale_ab_lock():
+            # sync B = A once
+            try:
+                a = self.stale_prune_undo_color_scale_preset()
+                self._ab_mirror_applying = True
+                self.set_stale_prune_undo_color_scale_compare_preset(a, persist=persist)
+            except Exception:
+                pass
+            finally:
+                self._ab_mirror_applying = False
+        try:
+            self.refresh_undo_color_scale_hot_sync_menu()
+        except Exception:
+            pass
+        return on
+
+    def toggle_stale_prune_undo_color_scale_ab_mirror(self, *, persist: bool = True) -> bool:
+        """wave66: 切换锁定镜像."""
+        return self.set_stale_prune_undo_color_scale_ab_mirror(
+            not self.stale_prune_undo_color_scale_ab_mirror(), persist=persist)
 
     def _chunk_color_for_preset(self, preset: str, ratio: float = 1.0) -> str:
         """wave63: 按指定预设采样 chunk 色（不改当前预设）."""
@@ -6855,6 +6946,19 @@ class HostStateMachineWidget(QWidget):
                 lambda *_: self.toggle_stale_prune_undo_color_scale_ab_lock())
             menu.addAction(act_lock)
             self._last_undo_color_scale_ab_lock_action = act_lock
+            mirrored = self.stale_prune_undo_color_scale_ab_mirror()
+            act_mir = QAction(
+                ('✓ 🪞 锁定镜像 A→B' if mirrored else '🪞 锁定镜像 A→B'), menu)
+            act_mir.setCheckable(True)
+            act_mir.setChecked(mirrored)
+            act_mir.setEnabled(locked)
+            act_mir.setProperty('isUndoColorScaleAbMirror', True)
+            act_mir.setProperty('isUndoColorScaleHotSync', True)
+            act_mir.setToolTip('锁定时：改 A 同步 B')
+            act_mir.triggered.connect(
+                lambda *_: self.toggle_stale_prune_undo_color_scale_ab_mirror())
+            menu.addAction(act_mir)
+            self._last_undo_color_scale_ab_mirror_action = act_mir
             menu.addSeparator()
         except Exception:
             pass
@@ -7205,6 +7309,10 @@ class HostStateMachineWidget(QWidget):
         self._last_stale_prune_undo_color_eyedropper = picked
         self._last_stale_prune_undo_color_eyedropper_which = which
         try:
+            self.remember_stale_prune_undo_eyedropper_history(picked)
+        except Exception:
+            pass
+        try:
             edit = getattr(self, '_last_undo_color_scale_custom_hex_edit', None)
             if edit is not None:
                 edit.setText(picked)
@@ -7220,6 +7328,132 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             pass
         return picked
+
+    def stale_prune_undo_eyedropper_history(self) -> list:
+        """wave66: 吸管历史色（最多 12）."""
+        raw = getattr(self, '_stale_prune_undo_eyedropper_history', None)
+        if not isinstance(raw, list):
+            raw = []
+            self._stale_prune_undo_eyedropper_history = raw
+        out = []
+        for x in raw:
+            hx = str(x or '').strip()
+            if not hx:
+                continue
+            if not hx.startswith('#'):
+                hx = '#' + hx
+            try:
+                c = QColor(hx)
+                if c.isValid():
+                    out.append(c.name())
+            except Exception:
+                pass
+        return out[:12]
+
+    def remember_stale_prune_undo_eyedropper_history(
+            self, hexv: str = '', *, persist: bool = True) -> list:
+        """wave66: 记一笔吸管历史（去重置顶）."""
+        hexv = str(hexv or '').strip()
+        if not hexv:
+            return self.stale_prune_undo_eyedropper_history()
+        if not hexv.startswith('#'):
+            hexv = '#' + hexv
+        try:
+            c = QColor(hexv)
+            if not c.isValid():
+                return self.stale_prune_undo_eyedropper_history()
+            hexv = c.name()
+        except Exception:
+            return self.stale_prune_undo_eyedropper_history()
+        cur = [x for x in self.stale_prune_undo_eyedropper_history() if x != hexv]
+        cur.insert(0, hexv)
+        cur = cur[:12]
+        self._stale_prune_undo_eyedropper_history = cur
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/stalePruneUndoEyedropperHistory', list(cur))
+            except Exception:
+                pass
+        self._last_stale_prune_undo_eyedropper_history = list(cur)
+        return list(cur)
+
+    def clear_stale_prune_undo_eyedropper_history(self, *, persist: bool = True) -> list:
+        """wave66: 清空吸管历史."""
+        self._stale_prune_undo_eyedropper_history = []
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/stalePruneUndoEyedropperHistory', [])
+            except Exception:
+                pass
+        self._last_stale_prune_undo_eyedropper_history_cleared = True
+        return []
+
+    def apply_stale_prune_undo_eyedropper_history(
+            self, hexv: str = '', which: str = 'hi', *, persist: bool = True) -> str:
+        """wave66: 从历史色应用到 which."""
+        hexv = str(hexv or '').strip()
+        which = str(which or 'hi').strip().lower()
+        if which not in ('hi', 'mid', 'lo'):
+            which = 'hi'
+        if not hexv:
+            return ''
+        if not hexv.startswith('#'):
+            hexv = '#' + hexv
+        try:
+            c = QColor(hexv)
+            if not c.isValid():
+                return ''
+            hexv = c.name()
+        except Exception:
+            return ''
+        self.set_stale_prune_undo_color_custom_hex(hexv, which=which, persist=persist)
+        self.remember_stale_prune_undo_eyedropper_history(hexv, persist=persist)
+        self._last_stale_prune_undo_eyedropper_history_applied = hexv
+        self._last_stale_prune_undo_eyedropper_history_applied_which = which
+        try:
+            self._paint_undo_color_scale_preview_bar()
+        except Exception:
+            pass
+        return hexv
+
+    def _make_undo_color_scale_eyedropper_history_row(self, parent=None, which: str = 'hi'):
+        """wave66: 吸管历史色条."""
+        wrap = QWidget(parent or self)
+        wrap.setObjectName('hostUndoColorScaleEyedropperHistory')
+        lay = QHBoxLayout(wrap)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(3)
+        lab = QLabel('吸史', wrap)
+        lab.setStyleSheet('color:#9aa7b5;font-size:10px;')
+        lay.addWidget(lab)
+        btns = []
+        for hx in self.stale_prune_undo_eyedropper_history()[:8]:
+            b = QPushButton('', wrap)
+            b.setFixedSize(14, 14)
+            b.setProperty('isUndoEyedropperHistorySwatch', True)
+            b.setProperty('undoEyedropperHistoryHex', hx)
+            b.setToolTip(f'历史 · {hx} → {which}')
+            b.setStyleSheet(
+                f'background:{hx};border:1px solid #3a3d42;border-radius:2px;')
+            b.clicked.connect(
+                lambda *_a, hh=hx, wh=which: (
+                    self.apply_stale_prune_undo_eyedropper_history(hh, which=wh)))
+            lay.addWidget(b)
+            btns.append(b)
+        btn_clr = QPushButton('清', wrap)
+        btn_clr.setObjectName('hostUndoColorScaleEyedropperHistoryClear')
+        btn_clr.setProperty('isUndoEyedropperHistoryClear', True)
+        btn_clr.setFixedHeight(16)
+        btn_clr.setStyleSheet('font-size:9px;padding:0 4px;')
+        btn_clr.clicked.connect(
+            lambda *_: self.clear_stale_prune_undo_eyedropper_history())
+        lay.addWidget(btn_clr)
+        lay.addStretch(1)
+        self._last_undo_color_scale_eyedropper_history_btns = btns
+        self._last_undo_color_scale_eyedropper_history_row = wrap
+        return wrap
 
     def _make_undo_color_scale_custom_hex_entry(self, parent=None):
         """wave63: 菜单内嵌自定义 hex 行（hi 快捷 / 逗号 all）."""
@@ -7315,8 +7549,19 @@ class HostStateMachineWidget(QWidget):
         self._last_undo_color_scale_custom_hex_eyedropper = btn_eye
         self._last_undo_color_scale_custom_hex_eyedropper_mid = btn_eye_mid
         self._last_undo_color_scale_custom_hex_eyedropper_lo = btn_eye_lo
+        # wave66: outer column = hex row + history
+        outer = QWidget(parent or self)
+        outer.setObjectName('hostUndoColorScaleCustomHexEntryOuter')
+        olay = QVBoxLayout(outer)
+        olay.setContentsMargins(0, 0, 0, 0)
+        olay.setSpacing(2)
+        olay.addWidget(wrap)
+        hist = self._make_undo_color_scale_eyedropper_history_row(outer, which='hi')
+        olay.addWidget(hist)
+        # wave63+ 兼容：_last_*_entry 仍为 hostUndoColorScaleCustomHexEntry wrap
         self._last_undo_color_scale_custom_hex_entry = wrap
-        return wrap
+        self._last_undo_color_scale_custom_hex_entry_outer = outer
+        return outer
 
     def stale_prune_undo_color_custom_alpha_default(self) -> int:
         """wave55: 自定义 α UI 旋钮默认（读持久化）."""
@@ -9423,8 +9668,73 @@ class HostStateMachineWidget(QWidget):
                 wa_r.setDefaultWidget(wrap_r)
                 menu.addAction(wa_r)
                 self._last_merge_diff_fail_hist_drop_snap_guide_recent_palette = wrap_r
+                # wave66: pin 上限菜单旋钮
+                wrap_mp = QWidget(menu)
+                wrap_mp.setObjectName('hostSnapGuideRecentMaxPinSpinRow')
+                lay_mp = QHBoxLayout(wrap_mp)
+                lay_mp.setContentsMargins(8, 2, 8, 2)
+                lay_mp.setSpacing(6)
+                lab_mp = QLabel('钉上限', wrap_mp)
+                lab_mp.setStyleSheet('color:#9aa7b5;font-size:11px;')
+                sp_mp = QSpinBox(wrap_mp)
+                sp_mp.setObjectName('hostSnapGuideRecentMaxPinSpin')
+                sp_mp.setProperty('isSnapGuideRecentMaxPinSpin', True)
+                sp_mp.setRange(1, 6)
+                sp_mp.setValue(self.merge_diff_fail_hist_drop_snap_guide_recent_max_pin())
+                sp_mp.setFixedWidth(56)
+                sp_mp.setToolTip('导引带 pin 上限 1–6')
+
+                def _on_max_pin(v, badge=lab_r):
+                    got = self.set_merge_diff_fail_hist_drop_snap_guide_recent_max_pin(
+                        int(v), persist=True)
+                    try:
+                        pc = self.merge_diff_fail_hist_drop_snap_guide_recent_pin_count()
+                        badge.setText(
+                            f'最近 · 📌{pc}/{got}' if pc else '最近')
+                        badge.setProperty('snapGuideRecentPinCount', int(pc))
+                        badge.setProperty('snapGuideRecentMaxPin', int(got))
+                    except Exception:
+                        pass
+
+                sp_mp.valueChanged.connect(_on_max_pin)
+                lay_mp.addWidget(lab_mp)
+                lay_mp.addWidget(sp_mp)
+                lay_mp.addStretch(1)
+                wa_mp = QWidgetAction(menu)
+                wa_mp.setProperty('isSnapGuideRecentMaxPinSpin', True)
+                wa_mp.setDefaultWidget(wrap_mp)
+                menu.addAction(wa_mp)
+                self._last_snap_guide_recent_max_pin_spin = sp_mp
+                self._last_snap_guide_recent_max_pin_row = wrap_mp
         except Exception:
             pass
+        if getattr(self, '_last_snap_guide_recent_max_pin_spin', None) is None:
+            try:
+                wrap_mp2 = QWidget(menu)
+                wrap_mp2.setObjectName('hostSnapGuideRecentMaxPinSpinRow')
+                lay_mp2 = QHBoxLayout(wrap_mp2)
+                lay_mp2.setContentsMargins(8, 2, 8, 2)
+                lab_mp2 = QLabel('钉上限', wrap_mp2)
+                lab_mp2.setStyleSheet('color:#9aa7b5;font-size:11px;')
+                sp_mp2 = QSpinBox(wrap_mp2)
+                sp_mp2.setObjectName('hostSnapGuideRecentMaxPinSpin')
+                sp_mp2.setProperty('isSnapGuideRecentMaxPinSpin', True)
+                sp_mp2.setRange(1, 6)
+                sp_mp2.setValue(
+                    self.merge_diff_fail_hist_drop_snap_guide_recent_max_pin())
+                sp_mp2.valueChanged.connect(
+                    lambda v: self.set_merge_diff_fail_hist_drop_snap_guide_recent_max_pin(
+                        int(v), persist=True))
+                lay_mp2.addWidget(lab_mp2)
+                lay_mp2.addWidget(sp_mp2)
+                lay_mp2.addStretch(1)
+                wa_mp2 = QWidgetAction(menu)
+                wa_mp2.setProperty('isSnapGuideRecentMaxPinSpin', True)
+                wa_mp2.setDefaultWidget(wrap_mp2)
+                menu.addAction(wa_mp2)
+                self._last_snap_guide_recent_max_pin_spin = sp_mp2
+            except Exception:
+                pass
         menu.addSeparator()
         # pulse easing shortcuts
         cur_ez = self.merge_diff_fail_hist_drop_pulse_easing()
@@ -9694,6 +10004,82 @@ class HostStateMachineWidget(QWidget):
         self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_used = seed
         return extra
 
+    def sample_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter(
+            self, n: int = 64) -> list:
+        """wave66: 采样 n 次抖动用于直方图."""
+        try:
+            n = max(8, min(256, int(n)))
+        except Exception:
+            n = 64
+        # temporarily force seed path for stable hist when seed>0
+        out = []
+        import random as _rnd
+        jit = int(self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_ms())
+        if jit <= 0:
+            self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_samples = []
+            return []
+        seed = self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed()
+        dist = self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_dist()
+        rng = _rnd.Random(seed) if seed > 0 else _rnd.Random()
+        for _ in range(n):
+            if dist == 'triangular':
+                extra = int(round(rng.triangular(0, jit, jit / 2.0)))
+            elif dist == 'gauss':
+                mu = jit / 2.0
+                sigma = max(1.0, jit / 4.0)
+                extra = int(round(rng.gauss(mu, sigma)))
+                extra = max(0, min(jit, extra))
+            else:
+                extra = rng.randint(0, jit)
+            out.append(extra)
+        self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_samples = list(out)
+        return list(out)
+
+    def render_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_hist(
+            self, samples=None, bins: int = 8) -> str:
+        """wave66: 文本直方图（█▁）."""
+        if int(self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_ms()) <= 0:
+            txt = '（无抖动）'
+            self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_hist = txt
+            self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_samples = []
+            self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_hist_bins = []
+            return txt
+        samples = list(samples if samples is not None else getattr(
+            self, '_last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_samples',
+            []) or [])
+        if not samples:
+            samples = self.sample_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter()
+        if not samples:
+            txt = '（无抖动）'
+            self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_hist = txt
+            return txt
+        try:
+            bins = max(4, min(16, int(bins)))
+        except Exception:
+            bins = 8
+        lo, hi = min(samples), max(samples)
+        if hi <= lo:
+            hi = lo + 1
+        width = (hi - lo) / float(bins)
+        counts = [0] * bins
+        for v in samples:
+            idx = int((v - lo) / width)
+            if idx >= bins:
+                idx = bins - 1
+            if idx < 0:
+                idx = 0
+            counts[idx] += 1
+        peak = max(counts) or 1
+        blocks = '▁▂▃▄▅▆▇█'
+        chars = []
+        for c in counts:
+            bi = int(round((c / peak) * (len(blocks) - 1)))
+            chars.append(blocks[bi])
+        txt = ''.join(chars) + f'  n={len(samples)} [{lo}–{hi}]ms'
+        self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_hist = txt
+        self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_hist_bins = list(counts)
+        return txt
+
     def merge_diff_fail_hist_drop_pulse_preview_loop(self) -> bool:
         """wave61: 脉冲预览是否循环播放."""
         return bool(getattr(
@@ -9944,6 +10330,17 @@ class HostStateMachineWidget(QWidget):
                                 str(b2.property('pulseLoopGapJitterDist') or '') == kk)
                         except Exception:
                             pass
+                    try:
+                        hl = getattr(
+                            self,
+                            '_last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_hist_label',
+                            None)
+                        if hl is not None:
+                            self.sample_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter(64)
+                            hl.setText(
+                                self.render_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_hist())
+                    except Exception:
+                        pass
 
                 db.clicked.connect(lambda *_a, fn=_pick_d: fn())
                 lay_jd.addWidget(db)
@@ -9971,6 +10368,42 @@ class HostStateMachineWidget(QWidget):
             lay.addWidget(wrap_jd)
             self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_dist_chips = dist_btns
             self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_spin = sp_seed
+            # wave66: histogram preview
+            wrap_jh = QWidget(dlg)
+            wrap_jh.setObjectName(
+                'hostMergeDiffFailHistDropPulsePreviewLoopGapJitterHist')
+            lay_jh = QHBoxLayout(wrap_jh)
+            lay_jh.setContentsMargins(0, 0, 0, 0)
+            lay_jh.setSpacing(6)
+            lab_jh = QLabel('抖动直方图', wrap_jh)
+            lab_jh.setStyleSheet('color:#9aa7b5;font-size:11px;')
+            hist_lab = QLabel('', wrap_jh)
+            hist_lab.setObjectName(
+                'hostMergeDiffFailHistDropPulsePreviewLoopGapJitterHistVal')
+            hist_lab.setStyleSheet(
+                'color:#c8d2dc;font-size:12px;font-family:monospace;')
+            btn_jh = QPushButton('刷新', wrap_jh)
+            btn_jh.setObjectName(
+                'hostMergeDiffFailHistDropPulsePreviewLoopGapJitterHistRefresh')
+            btn_jh.setFixedHeight(20)
+            btn_jh.setStyleSheet('font-size:10px;padding:0 6px;')
+
+            def _refresh_hist(hl=hist_lab):
+                try:
+                    self.sample_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter(64)
+                    txt = self.render_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_hist()
+                    hl.setText(txt)
+                except Exception as err:
+                    hl.setText(f'hist err · {err}')
+
+            btn_jh.clicked.connect(lambda *_: _refresh_hist())
+            lay_jh.addWidget(lab_jh)
+            lay_jh.addWidget(hist_lab, 1)
+            lay_jh.addWidget(btn_jh)
+            lay.addWidget(wrap_jh)
+            self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_hist_label = hist_lab
+            self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_hist_refresh = btn_jh
+            _refresh_hist()
 
             def _on_gap2(v, vl=val_gap, chips=gap_chip_btns):
                 self.set_merge_diff_fail_hist_drop_pulse_preview_loop_gap_ms(
@@ -12315,13 +12748,56 @@ class HostStateMachineWidget(QWidget):
             pass
         return got
 
+    def toast_curve_png_datetime_tz_offset_hours(self) -> int:
+        """wave66: PNG {datetime} 时区偏移小时 -12..+14（相对本机）."""
+        try:
+            v = int(getattr(
+                self, '_toast_curve_png_datetime_tz_offset_hours', 0) or 0)
+        except Exception:
+            v = 0
+        return max(-12, min(14, v))
+
+    def set_toast_curve_png_datetime_tz_offset_hours(
+            self, hours: int = 0, *, persist: bool = True) -> int:
+        """wave66: 设置时区偏移."""
+        try:
+            v = int(hours)
+        except Exception:
+            v = 0
+        v = max(-12, min(14, v))
+        self._toast_curve_png_datetime_tz_offset_hours = v
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/toastCurvePngDatetimeTzOffsetHours', int(v))
+            except Exception:
+                pass
+        self._last_toast_curve_png_datetime_tz_offset_hours = v
+        try:
+            self.refresh_toast_curve_png_datetime_live_strip()
+        except Exception:
+            pass
+        return v
+
+    def _toast_curve_png_datetime_when(self, when=None):
+        """wave66: 应用时区偏移后的 datetime."""
+        from datetime import datetime as _dt, timedelta as _td
+        when = when or _dt.now()
+        try:
+            off = self.toast_curve_png_datetime_tz_offset_hours()
+            if off:
+                when = when + _td(hours=off)
+        except Exception:
+            pass
+        return when
+
     def resolve_toast_curve_png_name(
             self, *, easing: str = None, name: str = 'tip-anim',
             when=None) -> str:
         """wave59: 按模板展开导出文件名."""
         from datetime import datetime as _dt
         tmpl = self.toast_curve_png_name_template()
-        when = when or _dt.now()
+        when = self._toast_curve_png_datetime_when(when)
         ez = str(easing or getattr(
             self, '_last_toast_hist_cap_tip_anim_curve_easing_a', None)
             or self.toast_hist_cap_tip_anim_easing()
@@ -12499,6 +12975,35 @@ class HostStateMachineWidget(QWidget):
             lay.addWidget(wrap_fmt)
             self._last_toast_curve_png_datetime_format_chips = fmt_btns
             self._last_toast_curve_png_datetime_format_picker = wrap_fmt
+            # wave66: TZ offset
+            wrap_tz = QWidget(dlg)
+            wrap_tz.setObjectName('hostToastCurvePngDatetimeTzOffset')
+            lay_tz = QHBoxLayout(wrap_tz)
+            lay_tz.setContentsMargins(0, 0, 0, 0)
+            lay_tz.setSpacing(6)
+            lab_tz = QLabel('时区偏移', wrap_tz)
+            lab_tz.setStyleSheet('color:#9aa7b5;font-size:11px;')
+            sp_tz = QSpinBox(wrap_tz)
+            sp_tz.setObjectName('hostToastCurvePngDatetimeTzOffsetSpin')
+            sp_tz.setProperty('isToastCurvePngDatetimeTzOffset', True)
+            sp_tz.setRange(-12, 14)
+            sp_tz.setSuffix(' h')
+            sp_tz.setValue(self.toast_curve_png_datetime_tz_offset_hours())
+            sp_tz.setToolTip('相对本机小时偏移，写入 {datetime}')
+
+            def _on_tz(v):
+                self.set_toast_curve_png_datetime_tz_offset_hours(int(v), persist=True)
+                try:
+                    _refresh_prev()
+                except Exception:
+                    pass
+
+            sp_tz.valueChanged.connect(_on_tz)
+            lay_tz.addWidget(lab_tz)
+            lay_tz.addWidget(sp_tz)
+            lay_tz.addStretch(1)
+            lay.addWidget(wrap_tz)
+            self._last_toast_curve_png_datetime_tz_offset_spin = sp_tz
 
             def _refresh_prev(*_a):
                 try:

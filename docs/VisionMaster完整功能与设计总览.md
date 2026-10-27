@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊯ · pin上限菜单旋钮 · 吸管历史色 · PNG时区偏移 · A/B锁定镜像 · jitter直方图 · 2026-10-28】
+
+- **pin 上限菜单旋钮**：导引带最近色板菜单内嵌 `QSpinBox`（1–6）；空色板亦显示旋钮；改值即时挤出超额钉并刷新角标。
+- **eyedropper 历史色**：≤12 持久化；hex 行下历史色块可点应用 / 清空；吸色自动入史（去重置顶）。
+- **PNG 时区偏移**：`{datetime}` 相对本机 −12..+14h；命名对话框旋钮；`resolve`/`live strip` 走 `_toast_curve_png_datetime_when`。
+- **A/B 锁定时同步镜像可选**：🪞 开关；锁定+镜像时改 A 同步 B；对调仍禁用；`_ab_mirror_applying` 防环。
+- **jitter 直方图预览**：脉冲预览窗文本直方图（▁…█）+ 刷新；分布芯片切换即时重采样；jitter=0 显示「无抖动」。
+- **冒烟**：`smoke-wave66-maxpinspin-eyehist-pngtz-abmirror-jitterhist-e2e`（另回归 wave65/64/63）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊮ · pin拖序+计数角标 · eyedropper mid/lo · PNG自定义strftime · A/B锁定 · 脉冲jitter分布/种子 · 2026-10-28】
 
 - **pin 列表内拖序 + 计数角标**：`reorder_…_pinned`；钉住色块显示 `📌{序}`；「最近 · 📌n/cap」角标；钉内拖放同步 pinned 序。
