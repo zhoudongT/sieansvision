@@ -41,7 +41,7 @@ class MainWindow(QMainWindow):
         self.backend.ready.connect(self.engine_online);self.backend.result.connect(self.engine_result)
         self.backend.error.connect(self.engine_error);self.backend.stopped.connect(self.engine_closed)
         if hasattr(self.backend,'progress'):self.backend.progress.connect(self.progress)
-        self.continuous=False;self.run_all_filmstrip=False;self._run_target=None;self.rail_category='';self.property_float=None;self._group_stack=[];self._group_breadcrumb=None;self._pending_trigger_cmds=[];self._pending_after_continuous=[];self._comm_listener=None
+        self.continuous=False;self._continuous_paused=False;self.run_all_filmstrip=False;self._run_target=None;self.rail_category='';self.property_float=None;self._group_stack=[];self._group_breadcrumb=None;self._pending_trigger_cmds=[];self._pending_after_continuous=[];self._comm_listener=None
         self.app_mode='design'  # design | run
         self.showing_all_flows=False
         self._left_pane=None;self._center_stack=None;self.run_mode_pane=None
@@ -242,6 +242,8 @@ class MainWindow(QMainWindow):
         self.filmstrip.listChanged.connect(self.filmstrip_list_changed)
         self.filmstrip.autoSwitchChanged.connect(self.filmstrip_auto_changed)
         self.filmstrip.stopAtLastChanged.connect(self.filmstrip_stop_at_last_changed)
+        if hasattr(self.filmstrip, 'continuousPauseToggled'):
+            self.filmstrip.continuousPauseToggled.connect(self._on_filmstrip_continuous_pause)
         self.filmstrip.runAllRequested.connect(self.run_all_images)
         rl.addWidget(self.filmstrip)
         # Keep ParameterPanel as hidden fallback for programmatic refresh; property float is primary
@@ -774,15 +776,62 @@ class MainWindow(QMainWindow):
 
     def run_continuous(self):
         if self.busy or not self.engine_ready:return
-        self.continuous=True;self.run_all_filmstrip=False;self._run_target=None;self.log('连续运行已启动');self.run()
+        self.continuous=True;self._continuous_paused=False;self.run_all_filmstrip=False;self._run_target=None
+        try:
+            if hasattr(self, 'filmstrip'):
+                if hasattr(self.filmstrip, 'set_continuous_controls_enabled'):
+                    self.filmstrip.set_continuous_controls_enabled(True)
+                if hasattr(self.filmstrip, 'set_continuous_paused'):
+                    self.filmstrip.set_continuous_paused(False)
+        except Exception:
+            pass
+        self.log('连续运行已启动');self.run()
 
     def stop_run(self):
         was_continuous = bool(self.continuous)
-        self.continuous=False;self.run_all_filmstrip=False;self._run_target=None
+        self.continuous=False;self._continuous_paused=False;self.run_all_filmstrip=False;self._run_target=None
+        try:
+            if hasattr(self, 'filmstrip'):
+                if hasattr(self.filmstrip, 'set_continuous_paused'):
+                    self.filmstrip.set_continuous_paused(False)
+                if hasattr(self.filmstrip, 'set_continuous_controls_enabled'):
+                    self.filmstrip.set_continuous_controls_enabled(False)
+        except Exception:
+            pass
         self.request('stop',{},lambda _:None)
         self.wb_status.push_log('已请求停止')
         if was_continuous:
             self._flush_after_continuous()
+
+
+    def pause_continuous(self):
+        """Soft-pause ContinuousRun: keep continuous=True but skip next QTimer schedule."""
+        if not self.continuous:
+            return
+        self._continuous_paused = True
+        try:
+            if hasattr(self, 'filmstrip') and hasattr(self.filmstrip, 'set_continuous_paused'):
+                self.filmstrip.set_continuous_paused(True)
+        except Exception:
+            pass
+        self.log('连续运行已暂停（可改间隔后继续）')
+
+    def resume_continuous(self):
+        """Resume paused ContinuousRun; schedule next tick if not busy."""
+        if not self.continuous:
+            return
+        was = bool(getattr(self, '_continuous_paused', False))
+        self._continuous_paused = False
+        try:
+            if hasattr(self, 'filmstrip') and hasattr(self.filmstrip, 'set_continuous_paused'):
+                self.filmstrip.set_continuous_paused(False)
+        except Exception:
+            pass
+        self.log('连续运行已继续')
+        if was and not self.busy:
+            from PySide6.QtCore import QTimer
+            delay = self._filmstrip_advance_delay_ms()
+            QTimer.singleShot(delay, lambda: self.guard(lambda: self.run(self._run_target) if self.continuous and not getattr(self, '_continuous_paused', False) else None))
 
     def _flush_after_continuous(self):
         """Chain non-run commands that followed 执行·连续 once continuous ends."""
@@ -941,16 +990,24 @@ class MainWindow(QMainWindow):
                 QTimer.singleShot(0, lambda p=pending: self.guard(
                     lambda: self._dispatch_global_triggers(p, reason='链式触发')))
         if self.continuous and state=='completed':
+            if getattr(self, '_continuous_paused', False):
+                self.log('连续运行暂停中 — 跳过下次调度')
+                return
             cfg=normalize_source(self.document.project.get('sourceConfig'))
             target=self._run_target
             if cfg.get('mode')=='local' and self.filmstrip.auto_switch.isChecked() and not target:
                 if self.filmstrip.advance():
-                    QTimer.singleShot(self._filmstrip_advance_delay_ms(), lambda:self.guard(lambda:self.run(None)));return
+                    QTimer.singleShot(self._filmstrip_advance_delay_ms(), lambda:self.guard(lambda:self.run(None) if self.continuous and not getattr(self,'_continuous_paused',False) else None));return
                 if cfg.get('stopAtLast'):
-                    self.continuous=False;self._run_target=None;self.log('已到最后一张，连续运行停止')
+                    self.continuous=False;self._continuous_paused=False;self._run_target=None;self.log('已到最后一张，连续运行停止')
+                    try:
+                        if hasattr(self,'filmstrip') and hasattr(self.filmstrip,'set_continuous_paused'):
+                            self.filmstrip.set_continuous_paused(False)
+                    except Exception:
+                        pass
                     self._flush_after_continuous();return
             delay=self._active_run_interval_ms()
-            QTimer.singleShot(delay, lambda t=target: self.guard(lambda:self.run(t)) if self.continuous else None)
+            QTimer.singleShot(delay, lambda t=target: self.guard(lambda:self.run(t) if self.continuous and not getattr(self,'_continuous_paused',False) else None))
 
     def log(self,message):
         self.logs.appendPlainText(str(message))
@@ -1118,6 +1175,12 @@ class MainWindow(QMainWindow):
         self.guard(lambda:self.document.commit(p))
         self._sync_filmstrip_interval_hint()
         self.log(f'添加模块: 流程1.图像源1 · 本地图 {len(paths)} 张' if paths else '图像源本地列表已清空')
+
+    def _on_filmstrip_continuous_pause(self, paused):
+        if paused:
+            self.pause_continuous()
+        else:
+            self.resume_continuous()
 
     def filmstrip_stop_at_last_changed(self, enabled):
         if self.busy:return
@@ -1512,7 +1575,8 @@ class MainWindow(QMainWindow):
         params = normalize_group_params(step.get('params'))
         step['params'] = params
         if not group_bindings_ready(params):
-            self.log('提示：进组前建议绑定 ImageData / InputROI（属性浮窗 · 输入设置）')
+            self.log('进组被拒绝：须绑定 ImageData / InputROI（属性浮窗 · 输入设置）')
+            return
         inner = params.get('inner') or default_group_inner()
         params['inner'] = inner
         # 先把当前外层写入 history，再切换视图

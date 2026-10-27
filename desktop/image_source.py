@@ -135,6 +135,8 @@ class ImageSourceForm(QWidget):
         self.paramAudited.emit(key, old, new)
         if not self._building:
             self.changed.emit(self.config())
+            if key in ('mode', 'cameraId', 'images'):
+                self._refresh_cfg_warn()
 
     def _build(self):
         self._building = True
@@ -146,26 +148,11 @@ class ImageSourceForm(QWidget):
                 pass
         cfg = self._cfg
 
-        from desktop.config_status import source_incomplete
         self._cfg_warn = QLabel()
         self._cfg_warn.setObjectName('incompleteBanner')
         self._cfg_warn.setWordWrap(True)
-        if source_incomplete(cfg):
-            mode = cfg.get('mode') or 'local'
-            if mode == 'local':
-                tip = '⚠ 组件参数未配置完整：请在下方胶片条添加本地图像（或点 + / 📁）。'
-            elif mode == 'camera':
-                tip = '⚠ 组件参数未配置完整：请选择关联相机（📷 打开相机管理）。'
-            else:
-                tip = '⚠ 组件参数未配置完整：请在相机管理中连接 SDK 设备。'
-            self._cfg_warn.setText(tip)
-            self._cfg_warn.setStyleSheet('color:#c62828;background:#ffebee;padding:6px 8px;border-radius:3px;')
-            self._cfg_warn.setVisible(True)
-        else:
-            self._cfg_warn.setText('组件配置完成')
-            self._cfg_warn.setStyleSheet('color:#2e7d32;padding:4px 8px;')
-            self._cfg_warn.setVisible(True)
         self.root.addWidget(self._cfg_warn)
+        self._refresh_cfg_warn()
 
         basic = QGroupBox('基本参数')
         basic.setObjectName('propertySection')
@@ -302,9 +289,31 @@ class ImageSourceForm(QWidget):
         self._apply_mode_visibility()
         self._building = False
 
+    def _refresh_cfg_warn(self):
+        """Update incomplete banner without rebuilding the form (mode RT while float open)."""
+        if not hasattr(self, '_cfg_warn') or self._cfg_warn is None:
+            return
+        from desktop.config_status import source_incomplete
+        cfg = self._cfg or {}
+        if source_incomplete(cfg):
+            mode = cfg.get('mode') or 'local'
+            if mode == 'local':
+                tip = '⚠ 组件参数未配置完整：请在下方胶片条添加本地图像（或点 + / 📁）。'
+            elif mode == 'camera':
+                tip = '⚠ 组件参数未配置完整：请选择关联相机（📷 打开相机管理）。'
+            else:
+                tip = '⚠ 组件参数未配置完整：请在相机管理中连接 SDK 设备。'
+            self._cfg_warn.setText(tip)
+            self._cfg_warn.setStyleSheet('color:#c62828;background:#ffebee;padding:6px 8px;border-radius:3px;')
+        else:
+            self._cfg_warn.setText('组件配置完成')
+            self._cfg_warn.setStyleSheet('color:#2e7d32;padding:4px 8px;')
+        self._cfg_warn.setVisible(True)
+
     def _on_mode(self):
         self._audit('mode', self.mode.currentData())
         self._apply_mode_visibility()
+        self._refresh_cfg_warn()
 
     def _on_stitch(self, enabled):
         self._audit('stitchEnable', enabled)

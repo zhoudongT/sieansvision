@@ -21,6 +21,7 @@ class FilmstripBar(QWidget):
     autoSwitchChanged = Signal(bool)
     stopAtLastChanged = Signal(bool)
     runAllRequested = Signal()
+    continuousPauseToggled = Signal(bool)  # True=paused
     listChanged = Signal(list)           # paths
 
     def __init__(self, parent=None):
@@ -48,6 +49,13 @@ class FilmstripBar(QWidget):
         self.run_all.setObjectName('filmstripRun')
         self.run_all.clicked.connect(self.runAllRequested.emit)
         bar.addWidget(self.run_all)
+        self.pause_btn = QPushButton('⏸ 暂停')
+        self.pause_btn.setObjectName('filmstripPause')
+        self.pause_btn.setCheckable(True)
+        self.pause_btn.setToolTip('连续运行中：暂停/继续切图调度（可中途改间隔）')
+        self.pause_btn.setEnabled(False)
+        self.pause_btn.toggled.connect(self._on_pause_toggled)
+        bar.addWidget(self.pause_btn)
         bar.addStretch(1)
         self.add_btn = QPushButton('+')
         self.add_btn.setToolTip('添加图像')
@@ -224,6 +232,32 @@ class FilmstripBar(QWidget):
                 '' if on else '当前图像源非本地 — 运行全部仅用于胶片条图集'
             )
             self.run_all.setToolTip(tip)
+
+
+    def _on_pause_toggled(self, on):
+        self.pause_btn.setText('▶ 继续' if on else '⏸ 暂停')
+        self.continuousPauseToggled.emit(bool(on))
+
+    def set_continuous_paused(self, paused):
+        """Sync UI from MainWindow pause/resume/stop without re-emitting."""
+        if not hasattr(self, 'pause_btn'):
+            return
+        paused = bool(paused)
+        self.pause_btn.blockSignals(True)
+        self.pause_btn.setChecked(paused)
+        self.pause_btn.setText('▶ 继续' if paused else '⏸ 暂停')
+        self.pause_btn.blockSignals(False)
+        # Enable pause control whenever continuous UI is relevant (caller enables)
+        self.pause_btn.setEnabled(True)
+
+    def set_continuous_controls_enabled(self, enabled):
+        if hasattr(self, 'pause_btn'):
+            self.pause_btn.setEnabled(bool(enabled))
+            if not enabled:
+                self.pause_btn.blockSignals(True)
+                self.pause_btn.setChecked(False)
+                self.pause_btn.setText('⏸ 暂停')
+                self.pause_btn.blockSignals(False)
 
     def set_interval_hint(self, ms):
         """Show 取图间隔 from sourceConfig (0 → hide)."""

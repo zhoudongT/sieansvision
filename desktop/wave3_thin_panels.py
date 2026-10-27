@@ -106,6 +106,37 @@ class _ShellBase(QWidget):
             self.step[key] = deepcopy(value)
             self._emit()
 
+
+    # ---- incomplete banner (parity with OutputImage / config_status) ----
+    def _missing_fields(self):
+        """Override in subclasses: list of Chinese labels for incomplete fields."""
+        return []
+
+    def _ensure_incomplete_banner(self, form):
+        self._incomplete_banner = QLabel()
+        self._incomplete_banner.setWordWrap(True)
+        form.addRow(self._incomplete_banner)
+        self._refresh_incomplete_banner()
+
+    def _refresh_incomplete_banner(self):
+        if not hasattr(self, '_incomplete_banner') or self._incomplete_banner is None:
+            return
+        from desktop.config_status import step_incomplete
+        bang = step_incomplete(self.step, self.project)
+        if bang:
+            missing = self._missing_fields()
+            self._incomplete_banner.setText(
+                '⚠ 组件参数未配置完整：' + ('、'.join(missing) or '请检查必填项')
+            )
+            self._incomplete_banner.setStyleSheet(
+                'color:#c62828;background:#ffebee;padding:6px 8px;border-radius:3px;'
+            )
+        else:
+            self._incomplete_banner.setText('组件配置完成')
+            self._incomplete_banner.setStyleSheet('color:#2e7d32;padding:4px 8px;')
+        self._incomplete_banner.setObjectName('incompleteBanner')
+        self._incomplete_banner.setVisible(True)
+
     def _name_row(self, form, default):
         name = QLineEdit(self.step.get('name') or default)
         name.setMaxLength(80)
@@ -139,12 +170,29 @@ class FormatDataPanel(_ShellBase):
             normalize_format_data_params, parent,
         )
 
+    def _missing_fields(self):
+        missing = []
+        if not str(self.params.get('template') or '').strip():
+            missing.append('模板')
+        return missing
+
+    def _set_param(self, key, value):
+        super()._set_param(key, value)
+        if key == 'template':
+            self._refresh_incomplete_banner()
+
     def _basic_tab(self):
         w = QWidget(); form = QFormLayout(w); form.setContentsMargins(10, 10, 10, 10)
         self._name_row(form, '格式化')
+        self._ensure_incomplete_banner(form)
         tpl = QPlainTextEdit(); tpl.setPlainText(str(self.params.get('template') or '{0}'))
         tpl.setMaximumHeight(80)
-        tpl.textChanged.connect(lambda: self._set_param('template', tpl.toPlainText()))
+        def _live_tpl():
+            self.params['template'] = tpl.toPlainText()
+            self.step['params'] = self.params
+            self._refresh_incomplete_banner()
+            self._emit()
+        tpl.textChanged.connect(_live_tpl)
         form.addRow('模板', tpl)
         args = QLineEdit(str(self.params.get('args') or ''))
         args.setPlaceholderText('参数列表，逗号分隔或变量名')
@@ -228,28 +276,13 @@ class OutputImagePanel(_ShellBase):
             normalize_output_image_params, parent,
         )
 
-    def _refresh_incomplete_banner(self):
-        if not hasattr(self, '_incomplete_banner') or self._incomplete_banner is None:
-            return
-        from desktop.config_status import step_incomplete
-        bang = step_incomplete(self.step, self.project)
-        if bang:
-            missing = []
-            if not self.step.get('imageFrom'):
-                missing.append('输入源(imageFrom)')
-            if not str(self.params.get('path') or '').strip():
-                missing.append('保存路径')
-            self._incomplete_banner.setText(
-                '⚠ 组件参数未配置完整：' + ('、'.join(missing) or '请检查输入源与路径')
-            )
-            self._incomplete_banner.setStyleSheet(
-                'color:#c62828;background:#ffebee;padding:6px 8px;border-radius:3px;'
-            )
-        else:
-            self._incomplete_banner.setText('组件配置完成')
-            self._incomplete_banner.setStyleSheet('color:#2e7d32;padding:4px 8px;')
-        self._incomplete_banner.setObjectName('incompleteBanner')
-        self._incomplete_banner.setVisible(True)
+    def _missing_fields(self):
+        missing = []
+        if not self.step.get('imageFrom'):
+            missing.append('输入源(imageFrom)')
+        if not str(self.params.get('path') or '').strip():
+            missing.append('保存路径')
+        return missing
 
     def _set_param(self, key, value):
         super()._set_param(key, value)
@@ -264,9 +297,7 @@ class OutputImagePanel(_ShellBase):
     def _basic_tab(self):
         w = QWidget(); form = QFormLayout(w); form.setContentsMargins(10, 10, 10, 10)
         self._name_row(form, '输出图像')
-        self._incomplete_banner = QLabel()
-        self._incomplete_banner.setWordWrap(True)
-        form.addRow(self._incomplete_banner)
+        self._ensure_incomplete_banner(form)
         image_from = QComboBox()
         image_from.addItem('（无图像输入）', None)
         incoming = {e['from'] for e in self.project.get('edges', []) if e.get('to') == self.step.get('id')}
@@ -347,11 +378,30 @@ class ProtocolParsePanel(_ShellBase):
             normalize_protocol_parse_params, parent,
         )
 
+    def _missing_fields(self):
+        missing = []
+        if not str(self.params.get('sourceVar') or '').strip():
+            missing.append('源变量')
+        return missing
+
+    def _set_param(self, key, value):
+        super()._set_param(key, value)
+        if key == 'sourceVar':
+            self._refresh_incomplete_banner()
+
     def _basic_tab(self):
         w = QWidget(); form = QFormLayout(w); form.setContentsMargins(10, 10, 10, 10)
         self._name_row(form, '协议解析')
-        src = QLineEdit(str(self.params.get('sourceVar') or 'recvData'))
+        self._ensure_incomplete_banner(form)
+        src = QLineEdit(str(self.params.get('sourceVar') or ''))
+        src.setPlaceholderText('recvData')
         src.editingFinished.connect(lambda: self._set_param('sourceVar', src.text().strip()))
+        def _live_src(text):
+            self.params['sourceVar'] = (text or '').strip()
+            self.step['params'] = self.params
+            self._refresh_incomplete_banner()
+        src.textChanged.connect(_live_src)
+        self._source_var_edit = src
         from desktop.upstream_field_picker import fill_line_from_picker
         _src_row = QHBoxLayout()
         _src_pick = QPushButton('插入上游字段')
@@ -409,13 +459,30 @@ class TextSavePanel(_ShellBase):
             normalize_text_save_params, parent,
         )
 
+    def _missing_fields(self):
+        missing = []
+        if not str(self.params.get('path') or '').strip():
+            missing.append('文件路径')
+        return missing
+
+    def _set_param(self, key, value):
+        super()._set_param(key, value)
+        if key == 'path':
+            self._refresh_incomplete_banner()
+
     def _basic_tab(self):
         w = QWidget(); form = QFormLayout(w); form.setContentsMargins(10, 10, 10, 10)
         self._name_row(form, '文本保存')
+        self._ensure_incomplete_banner(form)
         row = QHBoxLayout()
         path = QLineEdit(str(self.params.get('path') or ''))
         path.setPlaceholderText('文件路径')
         path.editingFinished.connect(lambda: self._set_param('path', path.text().strip()))
+        def _live_path(text):
+            self.params['path'] = (text or '').strip()
+            self.step['params'] = self.params
+            self._refresh_incomplete_banner()
+        path.textChanged.connect(_live_path)
         browse = QPushButton('浏览…')
         def _b():
             f, _ = QFileDialog.getSaveFileName(self, '文本文件', '', '文本 (*.txt *.csv *.log);;全部 (*)')
