@@ -2,13 +2,13 @@
 import math
 
 from PySide6.QtCore import Qt, QSize, QRectF, QPointF, QMimeData, Signal
-from PySide6.QtGui import QColor, QDrag, QIcon, QPainter, QPen, QPixmap, QPolygonF, QFont
+from PySide6.QtGui import QColor, QDrag, QIcon, QPainter, QPen, QPixmap, QPolygonF, QFont, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView, QListWidget, QListWidgetItem, QScrollArea, QToolButton,
     QVBoxLayout, QHBoxLayout, QWidget, QLabel, QStyledItemDelegate, QStyle, QFrame,
 )
 
-from desktop.theme import ACCENT, category_color, TOOLBOX_QSS
+from desktop.theme import ACCENT, PANEL, category_color, TOOLBOX_QSS
 
 
 def operator_icon(key, definition, size=28):
@@ -150,6 +150,17 @@ class OperatorTiles(QListWidget):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setFrameShape(QListWidget.Shape.NoFrame)
         self.setCursor(Qt.CursorShape.OpenHandCursor)
+        self.setAutoFillBackground(True)
+        tpal = self.palette()
+        tpal.setColor(QPalette.ColorRole.Base, QColor(PANEL))
+        tpal.setColor(QPalette.ColorRole.Window, QColor(PANEL))
+        self.setPalette(tpal)
+        self.viewport().setAutoFillBackground(True)
+        self.viewport().setPalette(tpal)
+        self.setStyleSheet(
+            f'QListWidget#operatorTiles {{ background: {PANEL}; border: 0; outline: 0; }}'
+            f'QListWidget#operatorTiles::item {{ background: transparent; border: 0; }}'
+        )
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -187,7 +198,16 @@ class Toolbox(QScrollArea):
         self.setMinimumWidth(200)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.setObjectName('operatorToolbox')
         self.setStyleSheet(TOOLBOX_QSS)
+        self.setAutoFillBackground(True)
+        pal = self.palette()
+        pal.setColor(QPalette.ColorRole.Window, QColor(PANEL))
+        pal.setColor(QPalette.ColorRole.Base, QColor(PANEL))
+        self.setPalette(pal)
+        self.viewport().setAutoFillBackground(True)
+        self.viewport().setPalette(pal)
+        self.viewport().setStyleSheet(f'background: {PANEL};')
 
     def populate(self, definitions, query=''):
         query = query.strip().lower()
@@ -201,6 +221,14 @@ class Toolbox(QScrollArea):
         if old:
             old.deleteLater()
         content = QWidget()
+        content.setObjectName('toolboxContent')
+        content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        content.setAutoFillBackground(True)
+        cpal = content.palette()
+        cpal.setColor(QPalette.ColorRole.Window, QColor(PANEL))
+        cpal.setColor(QPalette.ColorRole.Base, QColor(PANEL))
+        content.setPalette(cpal)
+        content.setStyleSheet(f'QWidget#toolboxContent {{ background: {PANEL}; }}')
         layout = QVBoxLayout(content)
         layout.setContentsMargins(2, 2, 2, 6)
         layout.setSpacing(4)

@@ -139,6 +139,12 @@ QComboBox QAbstractItemView {{
   selection-background-color: {SELECTED};
   color: {TEXT};
 }}
+QTreeWidget#resultTree {{
+  background: {CARD};
+  border: 0;
+  alternate-background-color: {PANEL};
+  color: {TEXT};
+}}
 QTreeWidget, QTableWidget, QListWidget {{
   background: {CARD};
   border: 1px solid {LINE_SOFT};
@@ -510,7 +516,20 @@ QFrame#groupBreadcrumb {{
 TOOLBOX_QSS = f"""
 Toolbox {{
   border: 0;
-  background: transparent;
+  background: {PANEL};
+}}
+Toolbox > QWidget {{
+  background: {PANEL};
+}}
+QWidget#toolboxContent {{
+  background: {PANEL};
+}}
+QScrollArea {{
+  background: {PANEL};
+  border: 0;
+}}
+QAbstractScrollArea::viewport {{
+  background: {PANEL};
 }}
 QToolButton#categoryHeader {{
   text-align: left;
@@ -533,7 +552,7 @@ QToolButton#categoryHeader:checked {{
   color: {ACCENT};
 }}
 QListWidget#operatorTiles {{
-  background: transparent;
+  background: {PANEL};
   border: 0;
   outline: 0;
   padding: 2px 0 6px 0;
@@ -544,8 +563,12 @@ QListWidget#operatorTiles::item {{
   padding: 0;
   margin: 0;
 }}
+QListWidget#operatorTiles QWidget {{
+  background: {PANEL};
+}}
 QLabel#emptyOps {{
   color: {TEXT_DIM};
+  background: {PANEL};
   padding: 20px 8px;
   font-size: 11px;
 }}

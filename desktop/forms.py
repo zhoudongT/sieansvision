@@ -736,6 +736,7 @@ class ResultPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName('resultPanel')
         layout = QVBoxLayout(self)
         self.summary = QLabel('尚未运行')
         layout.addWidget(self.summary)
