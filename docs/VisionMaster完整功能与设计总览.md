@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆61 · pin筛选预设角标右键清零/频率 · 冲突忽略名单菜单管理/导入导出 · DST冲突旁标橙/跳过 · A/B槽位对话框UI/快捷切换 · jitter撤栈深度长按清/冲突检测 · 2026-10-28】
+
+- **pin 筛选预设角标右键清零/频率**：`clear_…_reorder_badge` / `…_badge_freq_ms` / `set_…_badge_freq_ms` / `show_…_reorder_badge_context_menu`；flash 用 freq_ms；预设菜单「排序角标…」。
+- **冲突忽略名单菜单管理/导入导出**：`export/import_…_conflict_ignore`（JSON）；`show_…_conflict_ignore_menu`（移除/清空/导入导出）；ICS 旁标菜单「忽略名单…」。
+- **DST 冲突旁标橙/跳过**：`…_shortcut_conflicts_acked` / `clear/resume_…_conflicts_badge`；撤栈旁标橙 tip + 菜单跳过/恢复。
+- **A/B 槽位对话框 UI/快捷切换**：`show_…_layout_slots_dialog`；`cycle_…_layout_slot`；默认 `Ctrl+Alt+L`；预览「槽位…」。
+- **jitter 撤栈深度长按清/冲突检测**：长按清撤栈（QTimer）；`detect/format_…_reorder_shortcut_conflicts`；旁标 tip「长按清栈」+ 冲突橙。
+- **冒烟**：`smoke-wave93-pinsuggestfilterpresetbadgefreq-confirmstratignoreio-dstconflictskip-abprevslotsdlg-jitterundolongpress-e2e`（另回归 wave92/91）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆60 · pin筛选预设拖拽排序持久动画/角标 · 冲突检测历史/忽略名单 · DST快捷冲突检测 · A/B布局多槽位/命名 · jitter撤栈旁标右键清栈/可改绑 · 2026-10-28】
 
 - **pin 筛选预设拖拽排序持久动画/角标**：`…_reorder_badge` / `note_…_reorder` / `flash_…_reorder_badge`（QSettings 计数·时刻·长度）；reorder 后 toast「筛选预设排序 · ×N」；对话框 tip / 菜单「拖拽排序… · ×N」角标。
