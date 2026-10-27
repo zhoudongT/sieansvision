@@ -426,6 +426,16 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆67 · 频率合并撤销栈多级/对比预览 · 重叠跳转高亮名单行 · DST diff导出/一键清新增 · A/B回滚确认+冲突再检 · jitter wav试听/音量 · 2026-10-28】
+
+- **频率合并撤销栈多级/对比预览**：合并前压栈（最多16）；`list_…_import_merge_undo_stack`；`preview_/show_…_undo_compare_preview`（当前 vs 栈项 +/~/-/~）；角标菜单「撤销上次合并 · 栈N / 撤销栈对比预览」。
+- **重叠跳转高亮名单行**：`highlight_…_overlap_row`；跳转写入高亮键；忽略菜单角色行前缀「跳」并勾选；菜单「高亮重叠行」。
+- **DST diff 导出/一键清新增**：`export_…_batch_diff`（JSON）；`clear_…_batch_diff_added`（按 last diff.added 剔除历史）；历史菜单「导出差异… / 一键清新增」。
+- **A/B 回滚确认+冲突再检**：回滚 UI 确认框；回滚后 `detect_…_default_slot_shortcut_conflicts` 再检写入 out/史；toast 带冲突数。
+- **jitter wav 试听/音量**：`…_flash_done_sound_volume` / `prompt_…`；`preview_…_flash_done_sound`（force 绕静音）；`_play_…` 读音量；旁标菜单「试听闪完音 / 闪完音量…」。
+- **验证**：`scripts/smoke-wave99-…-e2e.py` 6/6；regress wave98 6/6。非硬件约 **~94.5%**。
+
+
 ## 【细妆66 · 频率预设导入合并策略记忆/撤销 · 忽略策略旁标点击跳重叠项 · DST批量复检差异diff toast · A/B快捷史回滚一键 · jitter闪完音效自定义wav/关声旁标 · 2026-10-28】
 
 - **频率预设导入合并策略记忆/撤销**：`…_badge_freq_import_merge_strategy`；合并默认读记忆；合并前快照；`undo_…_badge_freq_import_merge`；角标菜单「合并策略记忆 · … / 撤销上次合并」。
