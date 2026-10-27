@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊴ · pin避让预览色标 · 吸史撤序重做 · DST日历点选跳月 · A/B预设自定义存档 · jitter种子一键重抽 · 2026-10-28】
+
+- **pin 避让预览色标**：`preview/render_…_key_avoid`；当前橙(#e6a23c)/建议绿(#3ecf8e) 色标；「避」旁 ●→● swatch + tip。
+- **吸史撤序重做**：撤销压重做栈（≤16）；`redo_…_reorder` +「重序」；新落序清空重做。
+- **DST 日历点选跳月**：`jump_…_dst_calendar_month`；月芯片点击聚焦+描边；刷新日详情 tip。
+- **A/B 预设自定义存档**：`save/list/delete_…_channel_preset_custom`；★ 菜单存/删；`u_` id；应用优先上次。
+- **jitter 种子一键重抽**：`reshuffle_…_jitter_seed`（1–999999）；「重抽」同步旋钮+直方图。
+- **冒烟**：`smoke-wave71-pinpreview-histredo-dstjump-abcustom-jitterreshuf-e2e`（另回归 wave70/69/68）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊳ · pin冲突一键避让 · 吸史拖影半透明/撤序 · DST日历hover日详情 · A/B通道预设快切 · jitter粘贴分布种子回写 · 2026-10-28】
 
 - **pin 冲突一键避让**：`suggest/avoid_…_key_conflicts`；候选键对扫无冲突；菜单「避」+「一键避让」；无冲突则保持。
