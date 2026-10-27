@@ -426,6 +426,12 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆92 · 夹紧预览 tip_prop_ok · 右键菜单 status_prop_ok 镜像 · 2026-10-28】
+
+- **夹紧预览**：再预览 / 档差 / 步进 clamp out 同步 `*HoverTip`，含 `tip` / `tip_prop` / `tip_prop_ok`（保留既有 `status_prop_ok`）。
+- **右键菜单**：再预览 / 短史 / 档差 / 步进 quiet/shown out 镜像 `*BadgeStatus`（`闪标档：Nms`），含 `status` / `status_prop` / `status_prop_ok`。
+- **验证**：`scripts/smoke-wave124-…-e2e.py`；regress wave123。非硬件约 **~99.98%**。
+
 ## 【细妆91 · 策略菜单 tip_prop 同步 · 档差菜单 tip_prop_ok · 再预览/短史/步进菜单 tip_prop 镜像 · 2026-10-28】
 
 - **DST 策略徽章右键菜单**：同步 `dstImportStrategyBadgeHoverTip`，out/`_menu_sync` 含 `tip` / `tip_prop` / `tip_prop_ok`。

@@ -9006,16 +9006,30 @@ class HostStateMachineWidget(QWidget):
         status = '夹紧预览'
         status_prop = None
         status_prop_ok = False
+        tip = ''
+        tip_prop = None
+        tip_prop_ok = False
+        try:
+            tip = self.tip_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_layout_default_slot_shortcut_history_rollback_conflicts_repreview_count_badge_hover()
+        except Exception:
+            tip = ''
         try:
             badge = getattr(self, '_ab_trial_fallback_import_conflict_preview_layout_default_slot_shortcut_rollback_repreview_count_badge', None)
             if badge is not None:
                 badge.setProperty('repreviewCountBadgeStatus', status)
+                if tip:
+                    badge.setToolTip(tip)
+                    badge.setProperty('repreviewCountBadgeHoverTip', tip)
                 status_prop = badge.property('repreviewCountBadgeStatus')
+                tip_prop = badge.property('repreviewCountBadgeHoverTip')
                 status_prop_ok = (str(status_prop) == status)
+                tip_prop_ok = (str(tip_prop) == tip) if tip else False
         except Exception:
             status_prop = None
             status_prop_ok = False
-        out = {'ok': True, 'preview': True, 'flashed': flashed, 'max_x': max_x, 'max_y': max_y, 'x': cx, 'y': cy, 'clamped_x': nx, 'clamped_y': ny, 'toast': msg, 'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok)}
+            tip_prop = None
+            tip_prop_ok = False
+        out = {'ok': True, 'preview': True, 'flashed': flashed, 'max_x': max_x, 'max_y': max_y, 'x': cx, 'y': cy, 'clamped_x': nx, 'clamped_y': ny, 'toast': msg, 'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok), 'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok)}
         self._last_ab_trial_fallback_import_conflict_preview_layout_default_slot_shortcut_rollback_repreview_clamp_preview = dict(out)
         return out
 
@@ -9240,6 +9254,9 @@ class HostStateMachineWidget(QWidget):
         tip = ''
         tip_prop = None
         tip_prop_ok = False
+        status = f'闪标档：{int(cur_fm)}ms'
+        status_prop = None
+        status_prop_ok = False
         try:
             tip = self.tip_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_layout_default_slot_shortcut_history_rollback_conflicts_repreview_count_badge_hover()
         except Exception:
@@ -9248,23 +9265,28 @@ class HostStateMachineWidget(QWidget):
             badge = getattr(self, '_ab_trial_fallback_import_conflict_preview_layout_default_slot_shortcut_rollback_repreview_count_badge', None)
             if badge is not None:
                 badge.setProperty('repreviewCountBadgeFlashMs', int(cur_fm))
+                badge.setProperty('repreviewCountBadgeStatus', status)
                 if tip:
                     badge.setToolTip(tip)
                     badge.setProperty('repreviewCountBadgeHoverTip', tip)
                 flash_ms_prop = badge.property('repreviewCountBadgeFlashMs')
                 tip_prop = badge.property('repreviewCountBadgeHoverTip')
+                status_prop = badge.property('repreviewCountBadgeStatus')
                 try:
                     flash_ms_prop_ok = (int(flash_ms_prop) == int(cur_fm))
                 except Exception:
                     flash_ms_prop_ok = False
                 tip_prop_ok = (str(tip_prop) == tip) if tip else False
+                status_prop_ok = (str(status_prop) == status)
         except Exception:
             flash_ms_prop = None
             flash_ms_prop_ok = False
             tip_prop = None
             tip_prop_ok = False
+            status_prop = None
+            status_prop_ok = False
         if getattr(self, '_ab_trial_fallback_import_conflict_preview_layout_slots_dialog_no_exec', False) or getattr(self, '_ab_trial_fallback_import_conflict_preview_layout_quiet', False):
-            out = {'ok': True, 'shown': False, 'actions': actions, 'flash_ms': int(cur_fm), 'flash_ms_presets': flash_ms_presets, 'flash_ms_prop': flash_ms_prop, 'flash_ms_prop_ok': bool(flash_ms_prop_ok), 'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok)}
+            out = {'ok': True, 'shown': False, 'actions': actions, 'flash_ms': int(cur_fm), 'flash_ms_presets': flash_ms_presets, 'flash_ms_prop': flash_ms_prop, 'flash_ms_prop_ok': bool(flash_ms_prop_ok), 'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok), 'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok)}
             self._last_ab_trial_fallback_import_conflict_preview_layout_default_slot_shortcut_rollback_repreview_menu = dict(out)
             return out
         try:
@@ -9274,7 +9296,7 @@ class HostStateMachineWidget(QWidget):
             out = {'ok': False, 'reason': str(e)}
             self._last_ab_trial_fallback_import_conflict_preview_layout_default_slot_shortcut_rollback_repreview_menu = dict(out)
             return out
-        out = {'ok': True, 'shown': True, 'actions': actions, 'flash_ms': int(cur_fm), 'flash_ms_presets': flash_ms_presets, 'flash_ms_prop': flash_ms_prop, 'flash_ms_prop_ok': bool(flash_ms_prop_ok), 'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok)}
+        out = {'ok': True, 'shown': True, 'actions': actions, 'flash_ms': int(cur_fm), 'flash_ms_presets': flash_ms_presets, 'flash_ms_prop': flash_ms_prop, 'flash_ms_prop_ok': bool(flash_ms_prop_ok), 'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok), 'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok)}
         self._last_ab_trial_fallback_import_conflict_preview_layout_default_slot_shortcut_rollback_repreview_menu = dict(out)
         return out
 
@@ -14340,6 +14362,9 @@ class HostStateMachineWidget(QWidget):
         tip = ''
         tip_prop = None
         tip_prop_ok = False
+        status = f'闪标档：{int(cur_fm)}ms'
+        status_prop = None
+        status_prop_ok = False
         try:
             tip = self.tip_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_history_badge_hover()
         except Exception:
@@ -14348,23 +14373,28 @@ class HostStateMachineWidget(QWidget):
             badge = getattr(self, '_ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_hist_badge', None)
             if badge is not None:
                 badge.setProperty('batchRemoveUndoToastHistoryBadgeFlashMs', int(cur_fm))
+                badge.setProperty('batchRemoveUndoToastHistoryBadgeStatus', status)
                 if tip:
                     badge.setToolTip(tip)
                     badge.setProperty('batchRemoveUndoToastHistoryBadgeHoverTip', tip)
                 flash_ms_prop = badge.property('batchRemoveUndoToastHistoryBadgeFlashMs')
                 tip_prop = badge.property('batchRemoveUndoToastHistoryBadgeHoverTip')
+                status_prop = badge.property('batchRemoveUndoToastHistoryBadgeStatus')
                 try:
                     flash_ms_prop_ok = (int(flash_ms_prop) == int(cur_fm))
                 except Exception:
                     flash_ms_prop_ok = False
                 tip_prop_ok = (str(tip_prop) == tip) if tip else False
+                status_prop_ok = (str(status_prop) == status)
         except Exception:
             flash_ms_prop = None
             flash_ms_prop_ok = False
             tip_prop = None
             tip_prop_ok = False
+            status_prop = None
+            status_prop_ok = False
         if getattr(self, '_ics_strategy_shortcut_conflict_ignore_menu_no_exec', False) or getattr(self, '_ics_strategy_shortcut_conflict_quiet', False):
-            out = {'ok': True, 'shown': False, 'actions': actions, 'flash_ms': int(cur_fm), 'flash_ms_presets': flash_ms_presets, 'flash_ms_prop': flash_ms_prop, 'flash_ms_prop_ok': bool(flash_ms_prop_ok), 'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok)}
+            out = {'ok': True, 'shown': False, 'actions': actions, 'flash_ms': int(cur_fm), 'flash_ms_presets': flash_ms_presets, 'flash_ms_prop': flash_ms_prop, 'flash_ms_prop_ok': bool(flash_ms_prop_ok), 'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok), 'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok)}
             self._last_ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_hist_badge_menu = dict(out)
             return out
         try:
@@ -14374,7 +14404,7 @@ class HostStateMachineWidget(QWidget):
             out = {'ok': False, 'reason': str(e), 'actions': actions}
             self._last_ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_hist_badge_menu = dict(out)
             return out
-        out = {'ok': True, 'shown': True, 'actions': actions, 'flash_ms': int(cur_fm), 'flash_ms_presets': flash_ms_presets, 'flash_ms_prop': flash_ms_prop, 'flash_ms_prop_ok': bool(flash_ms_prop_ok), 'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok)}
+        out = {'ok': True, 'shown': True, 'actions': actions, 'flash_ms': int(cur_fm), 'flash_ms_presets': flash_ms_presets, 'flash_ms_prop': flash_ms_prop, 'flash_ms_prop_ok': bool(flash_ms_prop_ok), 'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok), 'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok)}
         self._last_ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_hist_badge_menu = dict(out)
         return out
 
@@ -22140,16 +22170,30 @@ class HostStateMachineWidget(QWidget):
         status = '夹紧预览'
         status_prop = None
         status_prop_ok = False
+        tip = ''
+        tip_prop = None
+        tip_prop_ok = False
+        try:
+            tip = self.tip_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_hover()
+        except Exception:
+            tip = ''
         try:
             badge = getattr(self, '_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge', None)
             if badge is not None:
                 badge.setProperty('jumpDeltaBadgeStatus', status)
+                if tip:
+                    badge.setToolTip(tip)
+                    badge.setProperty('jumpDeltaBadgeHoverTip', tip)
                 status_prop = badge.property('jumpDeltaBadgeStatus')
+                tip_prop = badge.property('jumpDeltaBadgeHoverTip')
                 status_prop_ok = (str(status_prop) == status)
+                tip_prop_ok = (str(tip_prop) == tip) if tip else False
         except Exception:
             status_prop = None
             status_prop_ok = False
-        out = {'ok': True, 'preview': True, 'flashed': flashed, 'max_x': max_x, 'max_y': max_y, 'x': cx, 'y': cy, 'clamped_x': nx, 'clamped_y': ny, 'toast': msg, 'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok)}
+            tip_prop = None
+            tip_prop_ok = False
+        out = {'ok': True, 'preview': True, 'flashed': flashed, 'max_x': max_x, 'max_y': max_y, 'x': cx, 'y': cy, 'clamped_x': nx, 'clamped_y': ny, 'toast': msg, 'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok), 'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok)}
         self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_clamp_preview = dict(out)
         return out
 
@@ -22350,6 +22394,9 @@ class HostStateMachineWidget(QWidget):
         tip = ''
         tip_prop = None
         tip_prop_ok = False
+        status = f'闪标档：{int(cur_fm)}ms'
+        status_prop = None
+        status_prop_ok = False
         try:
             tip = self.tip_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_hover()
         except Exception:
@@ -22358,23 +22405,28 @@ class HostStateMachineWidget(QWidget):
             badge = getattr(self, '_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge', None)
             if badge is not None:
                 badge.setProperty('jumpDeltaBadgeFlashMs', int(cur_fm))
+                badge.setProperty('jumpDeltaBadgeStatus', status)
                 if tip:
                     badge.setToolTip(tip)
                     badge.setProperty('jumpDeltaBadgeHoverTip', tip)
                 flash_ms_prop = badge.property('jumpDeltaBadgeFlashMs')
                 tip_prop = badge.property('jumpDeltaBadgeHoverTip')
+                status_prop = badge.property('jumpDeltaBadgeStatus')
                 try:
                     flash_ms_prop_ok = (int(flash_ms_prop) == int(cur_fm))
                 except Exception:
                     flash_ms_prop_ok = False
                 tip_prop_ok = (str(tip_prop) == tip) if tip else False
+                status_prop_ok = (str(status_prop) == status)
         except Exception:
             flash_ms_prop = None
             flash_ms_prop_ok = False
             tip_prop = None
             tip_prop_ok = False
+            status_prop = None
+            status_prop_ok = False
         if getattr(self, '_cycle_key_suggest_history_filter_presets_reorder_badge_menu_no_exec', False) or getattr(self, '_cycle_key_suggest_history_filter_presets_reorder_badge_quiet', False):
-            out = {'ok': True, 'shown': False, 'actions': actions, 'flash_ms': int(cur_fm), 'flash_ms_presets': flash_ms_presets, 'flash_ms_prop': flash_ms_prop, 'flash_ms_prop_ok': bool(flash_ms_prop_ok), 'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok)}
+            out = {'ok': True, 'shown': False, 'actions': actions, 'flash_ms': int(cur_fm), 'flash_ms_presets': flash_ms_presets, 'flash_ms_prop': flash_ms_prop, 'flash_ms_prop_ok': bool(flash_ms_prop_ok), 'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok), 'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok)}
             self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_menu = dict(out)
             return out
         try:
@@ -22384,7 +22436,7 @@ class HostStateMachineWidget(QWidget):
             out = {'ok': False, 'reason': str(e)}
             self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_menu = dict(out)
             return out
-        out = {'ok': True, 'shown': True, 'actions': actions, 'flash_ms': int(cur_fm), 'flash_ms_presets': flash_ms_presets, 'flash_ms_prop': flash_ms_prop, 'flash_ms_prop_ok': bool(flash_ms_prop_ok), 'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok)}
+        out = {'ok': True, 'shown': True, 'actions': actions, 'flash_ms': int(cur_fm), 'flash_ms_presets': flash_ms_presets, 'flash_ms_prop': flash_ms_prop, 'flash_ms_prop_ok': bool(flash_ms_prop_ok), 'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok), 'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok)}
         self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_menu = dict(out)
         return out
 
@@ -26158,6 +26210,9 @@ class HostStateMachineWidget(QWidget):
         tip = ''
         tip_prop = None
         tip_prop_ok = False
+        status = f'闪标档：{int(cur_fm)}ms'
+        status_prop = None
+        status_prop_ok = False
         try:
             tip = self.tip_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_volume_mute_badge_bar_wheel_step_badge_hover()
         except Exception:
@@ -26166,23 +26221,28 @@ class HostStateMachineWidget(QWidget):
             badge = getattr(self, '_jitter_flash_done_sound_volume_mute_badge_bar_wheel_step_badge', None)
             if badge is not None:
                 badge.setProperty('wheelStepBadgeFlashMs', int(cur_fm))
+                badge.setProperty('wheelStepBadgeStatus', status)
                 if tip:
                     badge.setToolTip(tip)
                     badge.setProperty('wheelStepBadgeHoverTip', tip)
                 flash_ms_prop = badge.property('wheelStepBadgeFlashMs')
                 tip_prop = badge.property('wheelStepBadgeHoverTip')
+                status_prop = badge.property('wheelStepBadgeStatus')
                 try:
                     flash_ms_prop_ok = (int(flash_ms_prop) == int(cur_fm))
                 except Exception:
                     flash_ms_prop_ok = False
                 tip_prop_ok = (str(tip_prop) == tip) if tip else False
+                status_prop_ok = (str(status_prop) == status)
         except Exception:
             flash_ms_prop = None
             flash_ms_prop_ok = False
             tip_prop = None
             tip_prop_ok = False
+            status_prop = None
+            status_prop_ok = False
         if getattr(self, '_jitter_reorder_undo_lab_menu_no_exec', False) or getattr(self, '_jitter_reorder_undo_depth_lab_flash_done_quiet', False):
-            out = {'ok': True, 'shown': False, 'step': int(cur), 'actions': actions, 'flash_ms': int(cur_fm), 'flash_ms_presets': flash_ms_presets, 'flash_ms_prop': flash_ms_prop, 'flash_ms_prop_ok': bool(flash_ms_prop_ok), 'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok)}
+            out = {'ok': True, 'shown': False, 'step': int(cur), 'actions': actions, 'flash_ms': int(cur_fm), 'flash_ms_presets': flash_ms_presets, 'flash_ms_prop': flash_ms_prop, 'flash_ms_prop_ok': bool(flash_ms_prop_ok), 'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok), 'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok)}
             self._last_jitter_flash_done_sound_volume_mute_badge_bar_wheel_step_badge_menu = dict(out)
             return out
         try:
@@ -26192,7 +26252,7 @@ class HostStateMachineWidget(QWidget):
             out = {'ok': False, 'reason': str(e), 'step': int(cur)}
             self._last_jitter_flash_done_sound_volume_mute_badge_bar_wheel_step_badge_menu = dict(out)
             return out
-        out = {'ok': True, 'shown': True, 'step': int(cur), 'actions': actions, 'flash_ms': int(cur_fm), 'flash_ms_presets': flash_ms_presets, 'flash_ms_prop': flash_ms_prop, 'flash_ms_prop_ok': bool(flash_ms_prop_ok), 'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok)}
+        out = {'ok': True, 'shown': True, 'step': int(cur), 'actions': actions, 'flash_ms': int(cur_fm), 'flash_ms_presets': flash_ms_presets, 'flash_ms_prop': flash_ms_prop, 'flash_ms_prop_ok': bool(flash_ms_prop_ok), 'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok), 'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok)}
         self._last_jitter_flash_done_sound_volume_mute_badge_bar_wheel_step_badge_menu = dict(out)
         return out
 
@@ -26499,16 +26559,30 @@ class HostStateMachineWidget(QWidget):
         status = '夹紧预览'
         status_prop = None
         status_prop_ok = False
+        tip = ''
+        tip_prop = None
+        tip_prop_ok = False
+        try:
+            tip = self.tip_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_volume_mute_badge_bar_wheel_step_badge_hover()
+        except Exception:
+            tip = ''
         try:
             badge = getattr(self, '_jitter_flash_done_sound_volume_mute_badge_bar_wheel_step_badge', None)
             if badge is not None:
                 badge.setProperty('wheelStepBadgeStatus', status)
+                if tip:
+                    badge.setToolTip(tip)
+                    badge.setProperty('wheelStepBadgeHoverTip', tip)
                 status_prop = badge.property('wheelStepBadgeStatus')
+                tip_prop = badge.property('wheelStepBadgeHoverTip')
                 status_prop_ok = (str(status_prop) == status)
+                tip_prop_ok = (str(tip_prop) == tip) if tip else False
         except Exception:
             status_prop = None
             status_prop_ok = False
-        out = {'ok': True, 'preview': True, 'flashed': flashed, 'max_x': max_x, 'max_y': max_y, 'x': cx, 'y': cy, 'clamped_x': nx, 'clamped_y': ny, 'toast': msg, 'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok)}
+            tip_prop = None
+            tip_prop_ok = False
+        out = {'ok': True, 'preview': True, 'flashed': flashed, 'max_x': max_x, 'max_y': max_y, 'x': cx, 'y': cy, 'clamped_x': nx, 'clamped_y': ny, 'toast': msg, 'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok), 'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok)}
         self._last_jitter_flash_done_sound_volume_mute_badge_bar_wheel_step_badge_clamp_preview = dict(out)
         return out
 
