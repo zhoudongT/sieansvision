@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊲ · 多档上限可配 · Alt+H焦点键选 · 长按落钉进度弧 · 开目录成功tip · 最近另存清档 · 2026-10-28】
+
+- **多档记忆上限可配**：`host/alarmFilmCsvDirsMax`（3/5/8）；`set`/`cycle`/`_apply`；超限裁剪；子菜单「记忆上限」。
+- **Alt+H 菜单焦点键选**：`_focus_toast_hist_cap_menu` 将焦点落在当前容量项；右键同样；toast 提示焦点。
+- **长按落钉进度弧**：`hostSevChipPinArc` + tick 40ms；按下推进、松开/离开收弧、满弧落钉。
+- **开目录成功 tip 区分**：成功「已打开目录」；软成功「目录已就绪（系统未打开）」；失败仍「打开目录失败」。
+- **最近另存清档**：`clear_alarm_film_csv_dirs`；子菜单「清空最近另存」。
+- **冒烟**：`smoke-wave37-dirsmax-hfocus-pinarc-oktip-clearslots-e2e`（另回归 wave36/35）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆㊱ · 容量Alt+H · Shift+Alt+P回退 · 预览钉长按落钉 · 开目录失败tip · CSV多档记忆 · 2026-10-28】
 
 - **容量菜单快捷键**：`Alt+H` 弹出容量菜单；菜单项标 `[1]–[4]`；tip 含 Alt+H。
