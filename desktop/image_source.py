@@ -29,6 +29,7 @@ DEFAULT_SOURCE = dict(
     inputChar='',
     triggerChar='',
     cameraId='',
+    cameraParams={},
     exposure=0.0,
     gain=0.0,
     images=[],
@@ -216,13 +217,35 @@ class ImageSourceForm(QWidget):
         _dspin(cam_form, '控制增益', cfg.get('gain', 0.0), 0, 1e6,
                lambda v: self._audit('gain', float(v)))
 
-        # sdk note
+        # sdk — GenTL / 厂商 SDK 取图（对齐 VM 课「SDK取图」主路径：连接会话 → 全局图像）
         self.sdk_box = QGroupBox('SDK')
         self.sdk_box.setObjectName('propertySection')
         sdk_layout = QVBoxLayout(self.sdk_box)
-        note = QLabel('通过外部程序 / SDK 注入图像路径并 SyncRun（P2 嵌入模式预留）。')
+        note = QLabel(
+            '通过本机 GenTL / 海康 MVS SDK 连接工业相机并取图。'
+            '请点下方按钮打开「相机管理」：枚举 → 选择相机 → 打开「连接相机」；'
+            '预览帧进入「全局图像」后即可运行流程。'
+        )
         note.setWordWrap(True)
         sdk_layout.addWidget(note)
+        sdk_row = QHBoxLayout()
+        self.sdk_camera = QComboBox()
+        self.sdk_camera.addItem('请先在相机管理中连接', '')
+        if cfg.get('cameraId'):
+            self.sdk_camera.addItem(str(cfg['cameraId']), cfg['cameraId'])
+            self.sdk_camera.setCurrentIndex(self.sdk_camera.count() - 1)
+        sdk_row.addWidget(self.sdk_camera, 1)
+        sdk_btn = QPushButton('📷 相机管理 / SDK 连接…')
+        sdk_btn.setObjectName('primaryButton')
+        sdk_btn.clicked.connect(self.openCameraManager.emit)
+        sdk_row.addWidget(sdk_btn)
+        sdk_wrap = QWidget()
+        sdk_wrap.setLayout(sdk_row)
+        sdk_layout.addWidget(sdk_wrap)
+        tip = QLabel('外部进程 SyncRun 注入仍为后续扩展；当前主路径为 GenTL 会话取图。')
+        tip.setWordWrap(True)
+        tip.setObjectName('dialogHint')
+        sdk_layout.addWidget(tip)
 
         trigger = QGroupBox('触发设置')
         trigger.setObjectName('propertySection')

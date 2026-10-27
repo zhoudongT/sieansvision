@@ -676,6 +676,12 @@ class MainWindow(QMainWindow):
         elif not self.continuous:
             self._run_target=None
         effective=target if target is not None else (self._run_target if self.continuous else None)
+        # 图像源 · 相机/SDK：运行前从持久会话取最新帧填入全局图像（无会话则给明确错误）
+        cfg=normalize_source(self.document.project.get('sourceConfig'))
+        if cfg.get('mode') in ('camera', 'sdk') and not any(
+            s.get('operation')=='camera_capture' for s in self.document.project.get('steps') or []
+        ):
+            self._ensure_camera_frame_for_run(cfg)
         params=dict(project=deepcopy(self.document.project),image=self.image,allowScripts=self.script_action.isChecked())
         self.script_action.setChecked(False)
         if self.cloud:params['cloud']=self.cloud
@@ -918,19 +924,102 @@ class MainWindow(QMainWindow):
         self.filmstrip.thumbs.setCurrentRow(0)
         self.guard(self.run)
 
+
+    def _ensure_camera_frame_for_run(self, cfg):
+        """Pull latest session frame into self.image; raise clear Chinese errors if not connected."""
+        if not self.backend.is_ready:
+            raise ValueError('原生引擎未就绪，无法从相机 SDK 取图')
+        # Synchronous-ish: use a tiny nested event loop for one capture; keep UI responsive.
+        from PySide6.QtCore import QEventLoop, QTimer
+        status_box = {'value': None, 'error': None}
+        loop = QEventLoop(self)
+        rid = self.backend.request('camera/session/status', {})
+        def on_result(request_id, value):
+            if request_id != rid and status_box.get('cap_rid') != request_id:
+                return
+            if request_id == rid:
+                status_box['value'] = value
+                st = (value or {}).get('state') if isinstance(value, dict) else None
+                if st != 'running':
+                    loop.quit()
+                    return
+                # capture latest
+                sid = value.get('id')
+                cap = self.backend.request('camera/capture', {
+                    'driver': 'session', 'sessionId': sid,
+                    'framePolicy': 'latest', 'maxAgeMs': 5000, 'timeoutMs': 5000,
+                })
+                status_box['cap_rid'] = cap
+                return
+            if request_id == status_box.get('cap_rid'):
+                status_box['frame'] = value
+                loop.quit()
+        def on_error(request_id, message):
+            if request_id in (rid, status_box.get('cap_rid')):
+                status_box['error'] = message
+                loop.quit()
+        self.backend.result.connect(on_result)
+        self.backend.error.connect(on_error)
+        QTimer.singleShot(12000, loop.quit)
+        loop.exec()
+        try:
+            self.backend.result.disconnect(on_result)
+            self.backend.error.disconnect(on_error)
+        except Exception:
+            pass
+        if status_box.get('error'):
+            raise ValueError('相机 SDK 取图失败：'+str(status_box['error']))
+        st = (status_box.get('value') or {}).get('state')
+        if st != 'running':
+            cam = cfg.get('cameraId') or (cfg.get('cameraParams') or {}).get('deviceId') or '未选择'
+            raise ValueError(
+                f'图像源为相机/SDK，但相机会话未连接（状态：{st or "未知"}，设备：{cam}）。'
+                '请打开「相机管理」→ 选择相机 → 打开「连接相机」。'
+            )
+        frame = status_box.get('frame') or {}
+        image = frame.get('annotatedImage') or frame.get('image') or ''
+        if not image:
+            raise ValueError('相机会话已连接但尚无有效帧，请稍候再「运行」或在相机管理中点「取最新缓存帧」。')
+        self.image = image
+        self.cloud = frame.get('cloud')
+        self.depth = frame.get('depth')
+        self.input_view.show_data(self.image)
+        self.images.setCurrentIndex(0)
+        self._mirror_preview_to_operator()
+
     def open_camera_manager(self):
         if self.busy:return
+        if not self.engine_ready or not self.backend.is_ready:
+            self.log('引擎未就绪，无法打开相机管理（请等待原生引擎启动）')
+            return
         from desktop.camera_manager import CameraManagerDialog
-        dlg=CameraManagerDialog(self)
+        dlg=CameraManagerDialog(self.backend, self)
         dlg.openFullWorkbench.connect(lambda:self.open_panel('camera'))
         def accepted(name):
             p=deepcopy(self.document.project)
             cfg=normalize_source(p.get('sourceConfig'))
-            cfg['mode']='camera';cfg['cameraId']=name
+            if cfg.get('mode') not in ('camera', 'sdk'):
+                cfg['mode']='camera'
+            cfg['cameraId']=name
             p['sourceConfig']=cfg
             self.guard(lambda:self.document.commit(p))
             self.log(f'图像源已关联相机：{name}')
+        def on_params(params):
+            p=deepcopy(self.document.project)
+            cfg=normalize_source(p.get('sourceConfig'))
+            if cfg.get('mode') not in ('camera', 'sdk'):
+                cfg['mode']='camera'
+            cfg['cameraId']=params.get('deviceId') or cfg.get('cameraId') or ''
+            cfg['cameraParams']=deepcopy(params)
+            p['sourceConfig']=cfg
+            # soft+commit so run path can warm session
+            self.guard(lambda:self.document.commit(p))
+            self.log('已保存相机 SDK 参数：'+str(params.get('driver'))+' · '+str(params.get('deviceId') or ''))
+        def on_frame(frame):
+            self.accept_frame(frame)
         dlg.acceptedDevice.connect(accepted)
+        dlg.deviceParams.connect(on_params)
+        dlg.frame_ready.connect(on_frame)
         dlg.exec()
 
 
