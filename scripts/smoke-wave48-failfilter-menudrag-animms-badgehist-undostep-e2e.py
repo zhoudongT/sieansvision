@@ -132,7 +132,7 @@ def main():
     menu = host._build_path_copy_badge_menu()
     hist_acts = [a for a in menu.actions() if a.property('isPathCopyBadgeFailHistory')]
     assert len(hist_acts) == 1
-    assert hist_acts[0].text() == '打开历史失败'
+    assert hist_acts[0].text().startswith('打开历史失败'), hist_acts[0].text()
     assert not hist_acts[0].icon().isNull()
     assert getattr(host, '_last_path_copy_badge_menu_shortcuts', ()) == ('C', 'F', 'H')
     host._merge_diff_fail_hist_no_exec = True

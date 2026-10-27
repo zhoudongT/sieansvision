@@ -975,6 +975,23 @@ class HostStateMachineWidget(QWidget):
                 80, min(2000, int(self._toast_hist_cap_tip_anim_ms)))
         except Exception:
             self._toast_hist_cap_tip_anim_ms = 320
+        # wave49: tip 动画 easing 可配
+        try:
+            _ez = str(self._host_settings().value(
+                'host/toastHistCapTipAnimEasing', 'OutCubic') or 'OutCubic').strip()
+            if _ez not in ('OutCubic', 'InOutQuad', 'OutBounce', 'Linear'):
+                _ez = 'OutCubic'
+            self._toast_hist_cap_tip_anim_easing = _ez
+        except Exception:
+            self._toast_hist_cap_tip_anim_easing = 'OutCubic'
+        # wave49: 失败历史排序 time|path
+        try:
+            _sm = str(self._host_settings().value(
+                'host/mergeDiffBatchFailHistorySort', 'time') or 'time').strip().lower()
+            self._merge_diff_batch_fail_history_sort = (
+                _sm if _sm in ('time', 'path') else 'time')
+        except Exception:
+            self._merge_diff_batch_fail_history_sort = 'time'
         # wave48: undo 延长步进（0=重置为全长，兼容㊼）
         try:
             self._stale_prune_undo_extend_step_ms = int(
@@ -1068,7 +1085,8 @@ class HostStateMachineWidget(QWidget):
         self._stale_prune_undo_bar.setRange(0, 1000)
         self._stale_prune_undo_bar.setValue(0)
         self._stale_prune_undo_bar.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._stale_prune_undo_bar.setToolTip('左键撤销 · 中/右键延长倒计时')
+        self._stale_prune_undo_bar.setToolTip(
+            '左键撤销 · 中键延长 · 右键步进预设（±1s/±3s）')
         self._stale_prune_undo_bar.setStyleSheet(
             'QProgressBar{background:#2a2d32;border:1px solid #3a3d42;'
             'border-radius:2px;}'
@@ -1619,7 +1637,7 @@ class HostStateMachineWidget(QWidget):
             anim.setStartValue(0.22)
             anim.setKeyValueAt(0.45, 1.0)
             anim.setEndValue(1.0)
-            anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+            anim.setEasingCurve(self._toast_tip_anim_easing_curve())
             # keep ref so GC won't kill mid-run
             self._host_toast_pulse_anim = anim
             anim.start()
@@ -1857,8 +1875,18 @@ class HostStateMachineWidget(QWidget):
         )
         menu.addAction(act_fb)
         menu.addSeparator()
-        act_hist = QAction('打开历史失败', menu)
+        fail_n = 0
+        try:
+            fail_n = len(self.merge_diff_batch_fail_history() or [])
+        except Exception:
+            fail_n = 0
+        hist_lab = (
+            f'打开历史失败 · {fail_n}' if fail_n > 0 else '打开历史失败')
+        act_hist = QAction(hist_lab, menu)
         act_hist.setProperty('isPathCopyBadgeFailHistory', True)
+        act_hist.setProperty('failHistoryCount', int(fail_n))
+        act_hist.setProperty(
+            'isPathCopyBadgeFailHistoryBadge', bool(fail_n > 0))
         act_hist.setObjectName('hostPathCopyBadgeFailHistoryAct')
         try:
             act_hist.setIcon(self._path_copy_badge_menu_icon('history'))
@@ -1870,12 +1898,14 @@ class HostStateMachineWidget(QWidget):
             act_hist.setShortcutVisibleInContextMenu(True)
         except Exception:
             pass
-        act_hist.setToolTip('快捷键 H · 打开失败清单历史')
+        act_hist.setToolTip(
+            f'快捷键 H · 打开失败清单历史（{fail_n}）')
         act_hist.triggered.connect(
             lambda *_: self.show_merge_diff_batch_fail_history())
         menu.addAction(act_hist)
         self._last_path_copy_badge_menu_shortcuts = ('C', 'F', 'H')
         self._last_path_copy_badge_menu_icons = True
+        self._last_path_copy_badge_fail_history_count = int(fail_n)
         self._last_path_copy_badge_menu = menu
         return menu
 
@@ -3305,7 +3335,7 @@ class HostStateMachineWidget(QWidget):
             mark = '✓ ' if color == cur else ''
             it = QListWidgetItem(f'{mark}最近  {color}')
             it.setData(Qt.ItemDataRole.UserRole, color)
-            it.setToolTip(f'{color}\n拖拽调序 · 单击应用 · 右键清除')
+            it.setToolTip(f'{color}\n拖拽调序 · 单击应用 · 右键置顶/删除')
             lst.addItem(it)
 
         def _apply_order():
@@ -3338,6 +3368,14 @@ class HostStateMachineWidget(QWidget):
 
         lst.itemClicked.connect(_on_click)
 
+        def _rebuild_parent_menu():
+            menu = getattr(self, '_last_sev_pin_arc_seize_color_menu', None)
+            if menu is not None:
+                try:
+                    self._rebuild_sev_pin_arc_seize_recent_section(menu)
+                except Exception:
+                    pass
+
         def _on_list_context(pos):
             it = lst.itemAt(pos)
             if it is None:
@@ -3345,13 +3383,27 @@ class HostStateMachineWidget(QWidget):
             c = str(it.data(Qt.ItemDataRole.UserRole) or '').strip()
             if not c:
                 return
-            self.clear_sev_pin_arc_seize_recent_color(c)
-            menu = getattr(self, '_last_sev_pin_arc_seize_color_menu', None)
-            if menu is not None:
-                try:
-                    self._rebuild_sev_pin_arc_seize_recent_section(menu)
-                except Exception:
-                    pass
+            cm = QMenu(lst)
+            cm.setObjectName('hostSevPinArcSeizeRecentDragCtx')
+            act_top = cm.addAction('置顶')
+            act_top.setProperty('isSeizeRecentPinTop', True)
+            act_top.setData(c)
+            act_del = cm.addAction('删除单项')
+            act_del.setProperty('isSeizeRecentDeleteOne', True)
+            act_del.setData(c)
+            self._last_sev_pin_arc_seize_recent_drag_ctx = cm
+            self._last_sev_pin_arc_seize_recent_drag_ctx_color = c
+            if getattr(self, '_sev_pin_arc_seize_recent_drag_ctx_no_exec', False):
+                return
+            chosen = cm.exec(lst.mapToGlobal(pos))
+            if chosen is act_top:
+                self.move_sev_pin_arc_seize_recent_color(c, 0)
+                self._last_sev_pin_arc_seize_recent_pinned = c
+                _rebuild_parent_menu()
+            elif chosen is act_del:
+                self.clear_sev_pin_arc_seize_recent_color(c)
+                self._last_sev_pin_arc_seize_recent_deleted = c
+                _rebuild_parent_menu()
 
         lst.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         lst.customContextMenuRequested.connect(_on_list_context)
@@ -4436,6 +4488,78 @@ class HostStateMachineWidget(QWidget):
         self._last_stale_prune_undo_extend_step_ms = ms
         return ms
 
+    def adjust_stale_prune_undo_extend_step_ms(
+            self, delta_ms: int = 1000, *, persist: bool = True) -> int:
+        """wave49: 步进 ±delta（钳制 0..30000）."""
+        try:
+            delta_ms = int(delta_ms)
+        except Exception:
+            delta_ms = 1000
+        cur = self.stale_prune_undo_extend_step_ms()
+        return self.set_stale_prune_undo_extend_step_ms(
+            cur + delta_ms, persist=persist)
+
+    def extend_stale_prune_undo_by(self, delta_ms: int = 1000) -> int:
+        """wave49: 按相对量延长/缩短 undo 剩余（±1s/±3s 预设）."""
+        if not self.can_undo_prune_stale_alarm_film_csv_dirs():
+            self._last_stale_prune_undo_extended_by = 0
+            try:
+                self._flash_host_toast('无可延长的清理倒计时', kind='info', ms=1200)
+            except Exception:
+                pass
+            return 0
+        try:
+            delta_ms = int(delta_ms)
+        except Exception:
+            delta_ms = 1000
+        left = max(0, int(getattr(self, '_stale_prune_undo_left_ms', 0) or 0))
+        total = max(1500, min(30000, left + delta_ms))
+        self._last_stale_prune_undo_extended_by = int(delta_ms)
+        return self.extend_stale_prune_undo(total)
+
+    def _build_stale_prune_undo_step_menu(self, parent=None):
+        """wave49: undo 步进/延长快捷预设（±1s/±3s）."""
+        menu = QMenu(parent or self)
+        menu.setObjectName('hostStalePruneUndoStepMenu')
+        for delta, lab in (
+            (1000, '延长 +1s'),
+            (3000, '延长 +3s'),
+            (-1000, '缩短 −1s'),
+            (-3000, '缩短 −3s'),
+        ):
+            act = QAction(lab, menu)
+            act.setProperty('isUndoExtendBy', True)
+            act.setData(int(delta))
+            act.triggered.connect(
+                lambda *_a, d=delta: self.extend_stale_prune_undo_by(d))
+            menu.addAction(act)
+        menu.addSeparator()
+        cur = self.stale_prune_undo_extend_step_ms()
+        for ms, lab in (
+            (1000, '步进设为 1s'),
+            (3000, '步进设为 3s'),
+            (0, '步进 0（重置全长）'),
+        ):
+            mark = '✓ ' if int(ms) == int(cur) else ''
+            act = QAction(f'{mark}{lab}', menu)
+            act.setCheckable(True)
+            act.setChecked(int(ms) == int(cur))
+            act.setProperty('isUndoStepPreset', True)
+            act.setData(int(ms))
+            act.triggered.connect(
+                lambda *_a, nn=ms: self.set_stale_prune_undo_extend_step_ms(nn))
+            menu.addAction(act)
+        menu.addSeparator()
+        for delta, lab in ((1000, '步进 +1s'), (-1000, '步进 −1s')):
+            act = QAction(lab, menu)
+            act.setProperty('isUndoStepAdjust', True)
+            act.setData(int(delta))
+            act.triggered.connect(
+                lambda *_a, d=delta: self.adjust_stale_prune_undo_extend_step_ms(d))
+            menu.addAction(act)
+        self._last_stale_prune_undo_step_menu = menu
+        return menu
+
     def extend_stale_prune_undo(self, ms: int = None) -> int:
         """wave47–48: 延长 undo；ms 优先；否则步进可配（0=重置全长）."""
         if not self.can_undo_prune_stale_alarm_film_csv_dirs():
@@ -4483,12 +4607,37 @@ class HostStateMachineWidget(QWidget):
         return total
 
     def _on_stale_prune_undo_bar_clicked(self, event=None):
-        """wave44–47: 左键撤销；中/右键延长倒计时."""
+        """wave44–49: 左键撤销；中键延长；右键步进/延长预设菜单."""
         try:
             btn = event.button() if event is not None else Qt.MouseButton.LeftButton
         except Exception:
             btn = Qt.MouseButton.LeftButton
-        if btn in (Qt.MouseButton.MiddleButton, Qt.MouseButton.RightButton):
+        if btn == Qt.MouseButton.RightButton:
+            try:
+                menu = self._build_stale_prune_undo_step_menu()
+                self._last_stale_prune_undo_step_menu = menu
+                if getattr(self, '_stale_prune_undo_step_menu_no_exec', False):
+                    self._last_stale_prune_undo_bar_step_menu = True
+                    return True
+                gp = None
+                try:
+                    gp = event.globalPosition().toPoint()
+                except Exception:
+                    try:
+                        gp = event.globalPos()
+                    except Exception:
+                        gp = None
+                if gp is not None:
+                    menu.exec(gp)
+                else:
+                    menu.exec()
+                self._last_stale_prune_undo_bar_step_menu = True
+                return True
+            except Exception:
+                got = self.extend_stale_prune_undo()
+                self._last_stale_prune_undo_bar_extend_clicked = bool(got)
+                return bool(got)
+        if btn == Qt.MouseButton.MiddleButton:
             got = self.extend_stale_prune_undo()
             self._last_stale_prune_undo_bar_extend_clicked = bool(got)
             return bool(got)
@@ -5092,10 +5241,56 @@ class HostStateMachineWidget(QWidget):
         """wave47: 失败清单历史（新→旧）."""
         return list(getattr(self, '_merge_diff_batch_fail_history', None) or [])
 
+    def merge_diff_batch_fail_history_sort_mode(self) -> str:
+        """wave49: 失败历史排序 time|path."""
+        v = getattr(self, '_merge_diff_batch_fail_history_sort', None)
+        if v not in ('time', 'path'):
+            try:
+                v = str(self._host_settings().value(
+                    'host/mergeDiffBatchFailHistorySort', 'time') or 'time'
+                ).strip().lower()
+            except Exception:
+                v = 'time'
+            v = v if v in ('time', 'path') else 'time'
+            self._merge_diff_batch_fail_history_sort = v
+        return str(self._merge_diff_batch_fail_history_sort)
+
+    def set_merge_diff_batch_fail_history_sort_mode(
+            self, mode: str = 'time', *, persist: bool = True) -> str:
+        """wave49: 设置失败历史排序 time|path."""
+        mode = str(mode or 'time').strip().lower()
+        if mode not in ('time', 'path'):
+            mode = 'time'
+        self._merge_diff_batch_fail_history_sort = mode
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/mergeDiffBatchFailHistorySort', mode)
+            except Exception:
+                pass
+        self._last_merge_diff_batch_fail_history_sort = mode
+        return mode
+
+    def sorted_merge_diff_batch_fail_history(self, mode: str = None) -> list:
+        """wave49: 按 time（新→旧）或 path（首路径）排序失败历史."""
+        hist = list(self.merge_diff_batch_fail_history())
+        mode = str(mode or self.merge_diff_batch_fail_history_sort_mode()
+                   or 'time').strip().lower()
+        if mode == 'path':
+            hist.sort(key=lambda e: (
+                (list(e.get('paths') or []) or [''])[0].lower(),
+                str(e.get('ts') or ''),
+            ))
+        else:
+            hist.sort(key=lambda e: str(e.get('ts') or ''), reverse=True)
+        self._last_merge_diff_batch_fail_history_sorted = list(hist)
+        self._last_merge_diff_batch_fail_history_sort_applied = mode
+        return list(hist)
+
     def filter_merge_diff_batch_fail_history(self, query: str = '') -> list:
-        """wave48: 按路径/时间子串过滤失败历史."""
+        """wave48–49: 按路径/时间子串过滤失败历史（尊重排序）."""
         q = str(query or '').strip().lower()
-        hist = self.merge_diff_batch_fail_history()
+        hist = self.sorted_merge_diff_batch_fail_history()
         if not q:
             self._last_merge_diff_batch_fail_history_filtered = list(hist)
             return list(hist)
@@ -5193,14 +5388,23 @@ class HostStateMachineWidget(QWidget):
             dlg.setMinimumWidth(440)
             lay = QVBoxLayout(dlg)
             tip = QLabel(
-                '搜索过滤路径/时间 · 双击载入 · 「重开该批」/「清空历史」', dlg)
+                '搜索/排序 · 双击载入 · 「重开该批」/「清空历史」', dlg)
             tip.setStyleSheet('color:#9aa0a6;font-size:11px;')
             lay.addWidget(tip)
+            row = QHBoxLayout()
             filt = QLineEdit(dlg)
             filt.setObjectName('hostMergeDiffBatchFailHistoryFilter')
             filt.setPlaceholderText('搜索/过滤失败历史…')
             filt.setClearButtonEnabled(True)
-            lay.addWidget(filt)
+            row.addWidget(filt, 1)
+            sort_box = QComboBox(dlg)
+            sort_box.setObjectName('hostMergeDiffBatchFailHistorySort')
+            sort_box.addItem('按时间', 'time')
+            sort_box.addItem('按路径', 'path')
+            cur_sort = self.merge_diff_batch_fail_history_sort_mode()
+            sort_box.setCurrentIndex(1 if cur_sort == 'path' else 0)
+            row.addWidget(sort_box)
+            lay.addLayout(row)
             lst = QListWidget(dlg)
             lst.setObjectName('hostMergeDiffBatchFailHistoryList')
 
@@ -5209,11 +5413,16 @@ class HostStateMachineWidget(QWidget):
                 ts = str(ent.get('ts') or '')
                 return (ts + ' ' + ' '.join(paths)).lower()
 
-            def _refill(query: str = ''):
+            def _refill(query: str = None):
+                if query is None:
+                    query = filt.text()
                 q = str(query or '').strip().lower()
+                mode = str(sort_box.currentData() or 'time')
+                self.set_merge_diff_batch_fail_history_sort_mode(mode)
+                ordered = self.sorted_merge_diff_batch_fail_history(mode)
                 lst.clear()
                 shown = 0
-                for ent in hist:
+                for ent in ordered:
                     if q and q not in _ent_blob(ent):
                         continue
                     paths = list(ent.get('paths') or [])
@@ -5228,15 +5437,19 @@ class HostStateMachineWidget(QWidget):
                     shown += 1
                 self._last_merge_diff_batch_fail_history_filter = q
                 self._last_merge_diff_batch_fail_history_filter_n = shown
+                self._last_merge_diff_batch_fail_history_sort = mode
+                zh = '路径' if mode == 'path' else '时间'
                 dlg.setWindowTitle(
-                    f'失败清单历史 · {shown}/{len(hist)}'
+                    f'失败清单历史 · {shown}/{len(hist)} · {zh}'
                     + (f' · 过滤「{q}」' if q else ''))
                 return shown
 
             _refill('')
             filt.textChanged.connect(lambda t: _refill(t))
+            sort_box.currentIndexChanged.connect(lambda *_: _refill())
             lay.addWidget(lst)
             self._last_merge_diff_batch_fail_history_filter_edit = filt
+            self._last_merge_diff_batch_fail_history_sort_box = sort_box
 
             def _load_current(item=None):
                 it = item or lst.currentItem()
@@ -5719,6 +5932,23 @@ class HostStateMachineWidget(QWidget):
             act_ms.triggered.connect(
                 lambda *_a, nn=ms: self.set_toast_hist_cap_tip_anim_ms(nn))
             menu.addAction(act_ms)
+        cur_ez = self.toast_hist_cap_tip_anim_easing()
+        for ez, lab in (
+            ('OutCubic', '缓动 OutCubic（默认）'),
+            ('InOutQuad', '缓动 InOutQuad'),
+            ('OutBounce', '缓动 OutBounce'),
+            ('Linear', '缓动 Linear'),
+        ):
+            mark = '✓ ' if ez == cur_ez else ''
+            act_ez = QAction(f'{mark}{lab}', menu)
+            act_ez.setCheckable(True)
+            act_ez.setChecked(ez == cur_ez)
+            act_ez.setData(ez)
+            act_ez.setProperty('isTipAnimEasing', True)
+            act_ez.setProperty('tipAnimEasingLabel', lab)
+            act_ez.triggered.connect(
+                lambda *_a, nn=ez: self.set_toast_hist_cap_tip_anim_easing(nn))
+            menu.addAction(act_ez)
         act_clear = QAction('清空切窗史', self)
         act_clear.triggered.connect(self.clear_liaison_toast_history)
         menu.addAction(act_clear)
@@ -6078,6 +6308,79 @@ class HostStateMachineWidget(QWidget):
             pass
         self._last_toast_hist_cap_tip_anim_ms = ms
         return ms
+
+    def toast_hist_cap_tip_anim_easing(self) -> str:
+        """wave49: tip 动画 easing 名（OutCubic/InOutQuad/OutBounce/Linear）."""
+        v = getattr(self, '_toast_hist_cap_tip_anim_easing', None)
+        if v not in ('OutCubic', 'InOutQuad', 'OutBounce', 'Linear'):
+            try:
+                v = str(self._host_settings().value(
+                    'host/toastHistCapTipAnimEasing', 'OutCubic') or 'OutCubic'
+                ).strip()
+            except Exception:
+                v = 'OutCubic'
+            if v not in ('OutCubic', 'InOutQuad', 'OutBounce', 'Linear'):
+                v = 'OutCubic'
+            self._toast_hist_cap_tip_anim_easing = v
+        return str(self._toast_hist_cap_tip_anim_easing)
+
+    def set_toast_hist_cap_tip_anim_easing(
+            self, name: str = 'OutCubic', *, persist: bool = True) -> str:
+        """wave49: 配置 tip 动画 easing；热更菜单勾选."""
+        name = str(name or 'OutCubic').strip()
+        if name not in ('OutCubic', 'InOutQuad', 'OutBounce', 'Linear'):
+            name = 'OutCubic'
+        self._toast_hist_cap_tip_anim_easing = name
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/toastHistCapTipAnimEasing', name)
+            except Exception:
+                pass
+        try:
+            self._refresh_toast_hist_cap_tip_anim_easing_action()
+        except Exception:
+            pass
+        self._last_toast_hist_cap_tip_anim_easing = name
+        return name
+
+    def _toast_tip_anim_easing_curve(self) -> QEasingCurve:
+        """wave49: 名 → QEasingCurve."""
+        name = self.toast_hist_cap_tip_anim_easing()
+        mapping = {
+            'OutCubic': QEasingCurve.Type.OutCubic,
+            'InOutQuad': QEasingCurve.Type.InOutQuad,
+            'OutBounce': QEasingCurve.Type.OutBounce,
+            'Linear': QEasingCurve.Type.Linear,
+        }
+        return QEasingCurve(mapping.get(name, QEasingCurve.Type.OutCubic))
+
+    def _refresh_toast_hist_cap_tip_anim_easing_action(self) -> bool:
+        """wave49: 热更容量菜单 tip easing 勾选."""
+        cur = self.toast_hist_cap_tip_anim_easing()
+        updated = False
+        for menu in (
+            getattr(self, '_last_toast_hist_cap_menu', None),
+            getattr(self, '_toast_hist_cap_nav_menu', None),
+        ):
+            if menu is None:
+                continue
+            for act in menu.actions():
+                try:
+                    if not act.property('isTipAnimEasing'):
+                        continue
+                    name = str(act.data() or '')
+                    on = name == cur
+                    act.setChecked(on)
+                    base = str(act.property('tipAnimEasingLabel') or act.text())
+                    lab = base.lstrip('✓ ').strip()
+                    act.setProperty('tipAnimEasingLabel', lab)
+                    act.setText(('✓ ' if on else '') + lab)
+                    updated = True
+                except Exception:
+                    continue
+        self._last_toast_hist_cap_tip_anim_easing_refreshed = updated
+        return updated
 
     def _refresh_toast_hist_cap_tip_anim_ms_action(self) -> bool:
         """wave48: 热更容量菜单 tip 动画时长勾选."""
