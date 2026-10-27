@@ -52,7 +52,10 @@ class FilmstripBar(QWidget):
         self.pause_btn = QPushButton('⏸ 暂停')
         self.pause_btn.setObjectName('filmstripPause')
         self.pause_btn.setCheckable(True)
-        self.pause_btn.setToolTip('连续运行中：暂停/继续切图调度（可中途改间隔）')
+        self._pause_owner = None  # 'continuous' | 'run_all' | None — single control owns both
+        self.pause_btn.setToolTip(
+            '连续运行 / 运行全部共用：暂停/继续切图调度（可中途改间隔）'
+        )
         self.pause_btn.setEnabled(False)
         self.pause_btn.toggled.connect(self._on_pause_toggled)
         bar.addWidget(self.pause_btn)
@@ -258,6 +261,9 @@ class FilmstripBar(QWidget):
                 self.pause_btn.setChecked(False)
                 self.pause_btn.setText('⏸ 暂停')
                 self.pause_btn.blockSignals(False)
+                if getattr(self, '_pause_owner', None) is not None and not enabled:
+                    # leave owner until set_pause_owner(None) from host stop; tip stays dual-mode
+                    pass
 
     def set_interval_hint(self, ms):
         """Show 取图间隔 from sourceConfig (0 → hide)."""
@@ -273,6 +279,49 @@ class FilmstripBar(QWidget):
         else:
             self.interval_label.setText('')
             self.interval_label.setVisible(False)
+
+
+    def set_pause_owner(self, mode):
+        """Single pause control owns ContinuousRun and 运行全部 (mutual exclusive modes)."""
+        mode = mode if mode in ('continuous', 'run_all') else None
+        self._pause_owner = mode
+        if not hasattr(self, 'pause_btn'):
+            return
+        if mode == 'run_all':
+            tip = '运行全部（与连续运行共用同一暂停控件）：暂停/继续切图调度'
+        elif mode == 'continuous':
+            tip = '连续运行（与运行全部共用同一暂停控件）：暂停/继续调度（可改间隔）'
+        else:
+            tip = '连续运行 / 运行全部共用：暂停/继续切图调度（可中途改间隔）'
+        self.pause_btn.setToolTip(tip)
+
+    def set_live_result(self, data_url):
+        """Push display/engine annotatedImage onto current filmstrip thumb (live preview)."""
+        if not data_url or not hasattr(self, 'thumbs'):
+            return
+        row = self.thumbs.currentRow()
+        if row < 0 or row >= len(self._paths):
+            return
+        try:
+            raw = data_url
+            if isinstance(raw, str) and raw.startswith('data:image'):
+                import base64
+                # data:image/png;base64,....
+                b64 = raw.split(',', 1)[-1]
+                ba = base64.b64decode(b64)
+                img = QImage.fromData(ba)
+                if img.isNull():
+                    return
+                pix = QPixmap.fromImage(img).scaled(
+                    self.thumbs.iconSize(), Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                item = self.thumbs.item(row)
+                if item is not None:
+                    item.setIcon(QIcon(pix))
+                    item.setToolTip((item.toolTip() or self._paths[row]) + '\n· 模块结果预览')
+        except Exception:
+            pass
 
     def clear_all(self):
         if not self._paths:

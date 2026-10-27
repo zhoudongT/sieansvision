@@ -56,7 +56,7 @@ class PropertyFloat(QDialog):
         close = QPushButton('✕')
         close.setObjectName('propertyFloatClose')
         close.setFixedSize(26, 26)
-        close.clicked.connect(self.close)
+        close.clicked.connect(self._on_cancel_close)
         title_layout.addWidget(close)
         root.addWidget(self.title_bar)
         self.body = QVBoxLayout()
@@ -76,7 +76,7 @@ class PropertyFloat(QDialog):
         self.ok_btn = QPushButton('确定')
         self.cont_btn.clicked.connect(lambda: self.runModuleContinuous.emit(self._node_id))
         self.exec_btn.clicked.connect(lambda: self.runModule.emit(self._node_id))
-        self.cancel_btn.clicked.connect(self._on_footer_close)
+        self.cancel_btn.clicked.connect(self._on_cancel_close)
         self.ok_btn.clicked.connect(self._on_ok_close)
         foot.addWidget(self.cont_btn)
         foot.addStretch(1)
@@ -86,6 +86,8 @@ class PropertyFloat(QDialog):
         root.addWidget(self.footer)
         self._panel = None
         self._source_form = None
+        self._source_baseline = None  # snapshot at show_source for Esc/✕/取消 discard
+        self._source_dirty = False
         self.setStyleSheet(PROPERTY_FLOAT_QSS)
 
     def mousePressEvent(self, event):
@@ -137,8 +139,13 @@ class PropertyFloat(QDialog):
         except Exception:
             pass
 
+    def _on_source_draft(self, cfg):
+        """Live commit-on-change while open (filmstrip soft-disable RT); mark dirty for cancel."""
+        self._source_dirty = True
+        self.sourceChanged.emit(cfg)
+
     def _on_ok_close(self):
-        # Flush any pending source form edits (editingFinished may not have fired)
+        # Commit current form (flush pending edits) — explicit 确定 path
         form = getattr(self, '_source_form', None)
         if form is not None:
             try:
@@ -146,15 +153,32 @@ class PropertyFloat(QDialog):
                     self.sourceChanged.emit(form.config())
             except Exception:
                 pass
+        self._source_dirty = False
+        self._source_baseline = None
+        self._sync_host_filmstrip()
+        self.close()
+
+    def _on_cancel_close(self):
+        """取消 / Esc / ✕：discard unsaved sourceConfig draft → restore baseline."""
+        if self._source_form is not None and self._source_dirty and self._source_baseline is not None:
+            try:
+                self.sourceChanged.emit(deepcopy(self._source_baseline))
+            except Exception:
+                pass
+        self._source_dirty = False
+        self._source_baseline = None
         self._sync_host_filmstrip()
         self.close()
 
     def _on_footer_close(self):
-        self._sync_host_filmstrip()
-        self.close()
+        self._on_cancel_close()
+
+    def reject(self):
+        # Esc → discard path (QDialog default)
+        self._on_cancel_close()
 
     def hideEvent(self, event):
-        # Closing via ✕ / Esc still keeps soft-disable without reopening float
+        # Soft-disable stays applied (OK committed or cancel restored) without re-show_source
         try:
             self._sync_host_filmstrip()
         except Exception:
@@ -162,16 +186,22 @@ class PropertyFloat(QDialog):
         super().hideEvent(event)
 
     def show_source(self, config, title='0 图像源'):
+        from desktop.image_source import normalize_source
         self._node_id = 'source'
         self._clear_body()
+        self._source_baseline = deepcopy(normalize_source(config))
+        self._source_dirty = False
         try:
             from desktop.config_status import source_incomplete
             bang = source_incomplete(config)
         except Exception:
             bang = False
-        self._set_chrome(('⚠ ' if bang else '') + title, '图像采集 · 本地 / 相机 / SDK')
+        self._set_chrome(
+            ('⚠ ' if bang else '') + title,
+            '图像采集 · 本地 / 相机 / SDK · 确定提交 / Esc·✕·取消放弃',
+        )
         form = ImageSourceForm(config)
-        form.changed.connect(self.sourceChanged.emit)
+        form.changed.connect(self._on_source_draft)
         form.openCameraManager.connect(self.openCameraManager.emit)
         form.paramAudited.connect(lambda p, o, n: self.paramAudited.emit('图像源1', p, o, n))
         self.body.addWidget(form)

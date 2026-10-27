@@ -786,6 +786,8 @@ class MainWindow(QMainWindow):
         self.continuous=True;self._continuous_paused=False;self.run_all_filmstrip=False;self._run_target=None
         try:
             if hasattr(self, 'filmstrip'):
+                if hasattr(self.filmstrip, 'set_pause_owner'):
+                    self.filmstrip.set_pause_owner('continuous')
                 if hasattr(self.filmstrip, 'set_continuous_controls_enabled'):
                     self.filmstrip.set_continuous_controls_enabled(True)
                 if hasattr(self.filmstrip, 'set_continuous_paused'):
@@ -803,6 +805,8 @@ class MainWindow(QMainWindow):
                     self.filmstrip.set_continuous_paused(False)
                 if hasattr(self.filmstrip, 'set_continuous_controls_enabled'):
                     self.filmstrip.set_continuous_controls_enabled(False)
+                if hasattr(self.filmstrip, 'set_pause_owner'):
+                    self.filmstrip.set_pause_owner(None)
         except Exception:
             pass
         self.request('stop',{},lambda _:None)
@@ -917,15 +921,38 @@ class MainWindow(QMainWindow):
         dialog=self.dialogs.get('hmi')
         if dialog:dialog.set_runtime(value,self.image)
 
+
+    def _pick_annotated_image(self, records):
+        """Prefer 图像显示(display) engine annotatedImage, else last non-empty annotated."""
+        records = list(records or [])
+        names = {s['id']: s.get('operation') for s in (self.document.project.get('steps') or [])}
+        preferred = None
+        fallback = None
+        for record in reversed(records):
+            image = (record.get('output') or {}).get('annotatedImage') or ''
+            if not image:
+                continue
+            op = names.get(record.get('id')) or (record.get('output') or {}).get('operation')
+            if op == 'display' and preferred is None:
+                preferred = image
+            if fallback is None:
+                fallback = image
+        return preferred or fallback or ''
+
     def finished(self,result,release=True):
         self.last_result=result
         if release:self.set_busy(False)
         records=result.get('results',[])
         names={s['id']:s.get('name',s['operation']) for s in self.document.project['steps']}
         self.results.set_results([{**r,'name':names.get(r['id'],r['id'])} for r in records]);self.scene.show_results(records)
-        for record in reversed(records):
-            image=record.get('output',{}).get('annotatedImage')
-            if image:self.output_view.show_data(image);self.images.setCurrentIndex(1);break
+        annotated_live=self._pick_annotated_image(records)
+        if annotated_live:
+            self.output_view.show_data(annotated_live);self.images.setCurrentIndex(1)
+            try:
+                if hasattr(self,'filmstrip') and hasattr(self.filmstrip,'set_live_result'):
+                    self.filmstrip.set_live_result(annotated_live)
+            except Exception:
+                pass
         for record in reversed(records):
             cloud=record.get('output',{}).get('cloud')
             if cloud:self.cloud_view.set_cloud(cloud);self.images.setCurrentIndex(2);break
@@ -962,10 +989,7 @@ class MainWindow(QMainWindow):
         # Mirror result into run-mode operator HMI
         if hasattr(self,'operator_hmi') and self.operator_hmi is not None:
             try:
-                annotated=''
-                for record in reversed(records):
-                    annotated=record.get('output',{}).get('annotatedImage') or ''
-                    if annotated:break
+                annotated=self._pick_annotated_image(records) or ''
                 self.operator_hmi.set_runtime(result, image=self.image, annotated=annotated)
             except Exception:
                 pass
@@ -1009,6 +1033,8 @@ class MainWindow(QMainWindow):
                         self.filmstrip.set_continuous_paused(False)
                     if hasattr(self,'filmstrip') and hasattr(self.filmstrip,'set_continuous_controls_enabled'):
                         self.filmstrip.set_continuous_controls_enabled(False)
+                    if hasattr(self,'filmstrip') and hasattr(self.filmstrip,'set_pause_owner'):
+                        self.filmstrip.set_pause_owner(None)
                 except Exception:
                     pass
                 self.log('运行全部完成')
@@ -1264,6 +1290,8 @@ class MainWindow(QMainWindow):
         if not self.filmstrip.paths():raise ValueError('请先在胶片条添加本地图像')
         self.continuous=False;self.run_all_filmstrip=True;self._continuous_paused=False
         try:
+            if hasattr(self.filmstrip, 'set_pause_owner'):
+                self.filmstrip.set_pause_owner('run_all')
             if hasattr(self.filmstrip, 'set_continuous_controls_enabled'):
                 self.filmstrip.set_continuous_controls_enabled(True)
             if hasattr(self.filmstrip, 'set_continuous_paused'):
@@ -1713,16 +1741,16 @@ class MainWindow(QMainWindow):
                 }
                 s['params'] = params
                 break
-        # Restore outer history branch; tip with merged outer as current tip
+        # Restore outer history: keep pre-enter tip at idx, append merged as new tip
+        # so one Undo restores exactly the pre-enter project (depth≥1..N).
         hist = list(frame.get('outer_history') or [])
         idx = int(frame.get('outer_index') or 0)
         if hist:
-            # Replace tip at idx with merged outer so undo still reaches pre-enter
             if 0 <= idx < len(hist):
-                hist = hist[:idx] + [deepcopy(outer)]
+                hist = hist[:idx + 1] + [deepcopy(outer)]
             else:
                 hist = hist + [deepcopy(outer)]
-                idx = len(hist) - 1
+            idx = len(hist) - 1
             self.document.project = deepcopy(outer)
             self.document.history = hist
             self.document.index = min(idx, len(hist) - 1)
