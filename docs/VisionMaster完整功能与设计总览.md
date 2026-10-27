@@ -426,6 +426,17 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊼ · 失败清单持久化/历史 · 最近色Alt↑↓ · tip动画可关 · 徽章菜单图标 · undo点击延长 · 2026-10-28】
+
+- **失败清单持久化/历史**：`remember_merge_diff_batch_fails` → QSettings；`merge_diff_batch_fail_history` / `show_merge_diff_batch_fail_history`；失败对话框「失败历史」。
+- **最近色菜单 Alt↑↓**：色板 eventFilter Alt+Up/Down → `move_sev_pin_arc_seize_recent_color` 热更最近区。
+- **tip 动画可关**：`toast_hist_cap_tip_anim_enabled`（`host/toastHistCapTipAnim`）；容量菜单「tip 热更动画」；关则 `_pulse_host_toast` 跳过。
+- **徽章菜单图标**：`_path_copy_badge_menu_icon`（SP_FileDialogContentsView / SP_ArrowBack）。
+- **undo 点击延长倒计时**：中/右键 → `extend_stale_prune_undo`；左键仍撤销。
+- **冒烟**：`smoke-wave47-failhist-altmove-tipanimoff-badgeicon-undoextend-e2e`（另回归 wave46/45/41）。
+
+---
+
 ## 【细妆㊻ · 失败项可点重开 · 最近色拖拽排序 · tip热更动画 · 徽章菜单快捷键 · undo悬停剩余秒 · 2026-10-28】
 
 - **失败项可点重开**：批量 tip「点此重开失败」→ `show_merge_diff_batch_fails`（双击/重开选中/重开全部）；`retry_merge_diff_batch_fails`。

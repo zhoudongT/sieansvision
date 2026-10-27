@@ -15,7 +15,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QAction, QKeySequence, QShortcut, QDesktopServices,
-    QPainter, QPen, QColor,
+    QPainter, QPen, QColor, QIcon,
 )
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
@@ -956,6 +956,54 @@ class HostStateMachineWidget(QWidget):
                 self._path_copy_badge_parent_fallback = bool(raw_pf)
         except Exception:
             self._path_copy_badge_parent_fallback = True
+        # wave47: tip 热更动画可关（默认开）
+        try:
+            raw_ta = self._host_settings().value('host/toastHistCapTipAnim', True)
+            if isinstance(raw_ta, str):
+                self._toast_hist_cap_tip_anim = raw_ta.strip().lower() not in (
+                    '0', 'false', 'no', 'off')
+            else:
+                self._toast_hist_cap_tip_anim = bool(raw_ta)
+        except Exception:
+            self._toast_hist_cap_tip_anim = True
+        # wave47: 失败清单持久化 / 历史
+        self._merge_diff_batch_fail_history = []
+        self._last_merge_diff_batch_fail = []
+        try:
+            raw_fh = self._host_settings().value('host/mergeDiffBatchFailHistory', [])
+            hist = []
+            if isinstance(raw_fh, str):
+                import json as _json
+                try:
+                    raw_fh = _json.loads(raw_fh) if raw_fh.strip() else []
+                except Exception:
+                    raw_fh = []
+            for ent in list(raw_fh or [])[:24]:
+                if isinstance(ent, dict):
+                    paths = [str(x).strip() for x in (ent.get('paths') or []) if str(x).strip()]
+                    if paths:
+                        hist.append({
+                            'ts': str(ent.get('ts') or ''),
+                            'paths': paths[:48],
+                        })
+                elif isinstance(ent, (list, tuple)):
+                    paths = [str(x).strip() for x in ent if str(x).strip()]
+                    if paths:
+                        hist.append({'ts': '', 'paths': paths[:48]})
+            self._merge_diff_batch_fail_history = hist[:20]
+            if hist:
+                self._last_merge_diff_batch_fail = list(hist[0].get('paths') or [])
+        except Exception:
+            self._merge_diff_batch_fail_history = []
+        try:
+            raw_lf = self._host_settings().value('host/mergeDiffBatchFailLast', [])
+            if isinstance(raw_lf, str):
+                raw_lf = [x for x in raw_lf.split('\n') if x.strip()] if raw_lf else []
+            last = [str(x).strip() for x in (raw_lf or []) if str(x).strip()]
+            if last:
+                self._last_merge_diff_batch_fail = last[:48]
+        except Exception:
+            pass
         self._stale_prune_can_undo = False
         self._stale_prune_undo_dirs = []
         self._stale_prune_undo_ms = 8000
@@ -1003,7 +1051,7 @@ class HostStateMachineWidget(QWidget):
         self._stale_prune_undo_bar.setRange(0, 1000)
         self._stale_prune_undo_bar.setValue(0)
         self._stale_prune_undo_bar.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._stale_prune_undo_bar.setToolTip('点击撤销 · 失效清理剩余时间')
+        self._stale_prune_undo_bar.setToolTip('左键撤销 · 中/右键延长倒计时')
         self._stale_prune_undo_bar.setStyleSheet(
             'QProgressBar{background:#2a2d32;border:1px solid #3a3d42;'
             'border-radius:2px;}'
@@ -1532,10 +1580,15 @@ class HostStateMachineWidget(QWidget):
         return True
 
     def _pulse_host_toast(self, duration_ms: int = 320) -> bool:
-        """wave46: tip 热更 / 强调 — toast 透明度脉冲淡入."""
+        """wave46–47: tip 热更 / 强调 — toast 透明度脉冲淡入；可关."""
+        if not self.toast_hist_cap_tip_anim_enabled():
+            self._last_host_toast_pulsed = False
+            self._last_host_toast_pulse_skipped = True
+            return False
         toast = getattr(self, '_liaison_hotkey_toast', None)
         if toast is None or toast.isHidden():
             return False
+        self._last_host_toast_pulse_skipped = False
         try:
             eff = getattr(self, '_host_toast_opacity_eff', None)
             if eff is None or eff.parent() is not toast:
@@ -1727,13 +1780,31 @@ class HostStateMachineWidget(QWidget):
             pass
         return True
 
+    def _path_copy_badge_menu_icon(self, kind: str = 'copy') -> QIcon:
+        """wave47: 徽章菜单标准图标."""
+        try:
+            style = self.style()
+            sp = style.StandardPixmap
+            if kind == 'fallback':
+                return style.standardIcon(sp.SP_ArrowBack)
+            if kind == 'history':
+                return style.standardIcon(sp.SP_FileDialogDetailedView)
+            return style.standardIcon(sp.SP_FileDialogContentsView)
+        except Exception:
+            return QIcon()
+
     def _build_path_copy_badge_menu(self, parent=None):
-        """wave45: 徽章菜单 · 再复制 + 中键回退开关."""
+        """wave45–47: 徽章菜单 · 再复制 + 中键回退开关 + 图标."""
         menu = QMenu(parent or self)
         menu.setObjectName('hostPathCopyBadgeMenu')
         act_copy = QAction('再复制路径', menu)
         act_copy.setProperty('isPathCopyBadgeCopy', True)
         act_copy.setObjectName('hostPathCopyBadgeCopyAct')
+        try:
+            act_copy.setIcon(self._path_copy_badge_menu_icon('copy'))
+            act_copy.setIconVisibleInMenu(True)
+        except Exception:
+            pass
         try:
             act_copy.setShortcut(QKeySequence('C'))
             act_copy.setShortcutVisibleInContextMenu(True)
@@ -1751,6 +1822,11 @@ class HostStateMachineWidget(QWidget):
         act_fb.setProperty('isPathCopyBadgeFallbackToggle', True)
         act_fb.setObjectName('hostPathCopyBadgeFallbackToggle')
         try:
+            act_fb.setIcon(self._path_copy_badge_menu_icon('fallback'))
+            act_fb.setIconVisibleInMenu(True)
+        except Exception:
+            pass
+        try:
             act_fb.setShortcut(QKeySequence('F'))
             act_fb.setShortcutVisibleInContextMenu(True)
         except Exception:
@@ -1762,6 +1838,7 @@ class HostStateMachineWidget(QWidget):
         )
         menu.addAction(act_fb)
         self._last_path_copy_badge_menu_shortcuts = ('C', 'F')
+        self._last_path_copy_badge_menu_icons = True
         self._last_path_copy_badge_menu = menu
         return menu
 
@@ -3065,15 +3142,67 @@ class HostStateMachineWidget(QWidget):
         return c
 
     def _on_sev_pin_arc_seize_color_menu_event(self, obj, event):
-        """wave45: 最近色右键 → 清除该色."""
+        """wave45–47: 最近色右键清除；Alt+↑/↓ 微调顺序."""
         try:
             from PySide6.QtCore import QEvent
-            if event.type() != QEvent.Type.MouseButtonPress:
-                return False
-            if event.button() != Qt.MouseButton.RightButton:
-                return False
             menu = getattr(self, '_last_sev_pin_arc_seize_color_menu', None)
             if menu is None or obj is not menu:
+                return False
+            et = event.type()
+            # wave47: Alt+Up/Down reorder active/recent under cursor
+            if et == QEvent.Type.KeyPress:
+                mods = event.modifiers()
+                alt = bool(mods & Qt.KeyboardModifier.AltModifier)
+                if not alt:
+                    return False
+                key = event.key()
+                delta = 0
+                if key in (Qt.Key.Key_Up, getattr(Qt, 'Key_Up', 16777235)):
+                    delta = -1
+                elif key in (Qt.Key.Key_Down, getattr(Qt, 'Key_Down', 16777237)):
+                    delta = 1
+                else:
+                    return False
+                act = None
+                try:
+                    act = menu.activeAction()
+                except Exception:
+                    act = None
+                if act is None or not act.property('isSeizeColorRecent'):
+                    return False
+                color = str(act.data() or '').strip()
+                if not color:
+                    return False
+                recent = self.sev_pin_arc_seize_recent_colors()
+                try:
+                    idx = recent.index(color if color.startswith('#') else '#' + color.lower())
+                except ValueError:
+                    c = color.lower() if color.startswith('#') else ('#' + color.lower())
+                    try:
+                        idx = recent.index(c)
+                        color = c
+                    except ValueError:
+                        return False
+                new_idx = max(0, min(len(recent) - 1, idx + delta))
+                if new_idx == idx:
+                    self._last_sev_pin_arc_seize_recent_alt_moved = color
+                    return True
+                self.move_sev_pin_arc_seize_recent_color(color, new_idx)
+                try:
+                    self._rebuild_sev_pin_arc_seize_recent_section(menu)
+                    # re-activate moved action
+                    for a in menu.actions():
+                        if a.property('isSeizeColorRecent') and str(a.data() or '').lower() == color.lower():
+                            menu.setActiveAction(a)
+                            break
+                except Exception:
+                    pass
+                self._last_sev_pin_arc_seize_recent_alt_moved = color
+                self._last_sev_pin_arc_seize_recent_alt_delta = delta
+                return True
+            if et != QEvent.Type.MouseButtonPress:
+                return False
+            if event.button() != Qt.MouseButton.RightButton:
                 return False
             try:
                 act = menu.actionAt(event.pos())
@@ -3133,7 +3262,7 @@ class HostStateMachineWidget(QWidget):
                 sep.setProperty('isSeizeRecentSep', True)
             except Exception:
                 pass
-            act_hdr = QAction('最近（右键清除 · 可拖拽排序）', menu)
+            act_hdr = QAction('最近（右键清除 · Alt↑↓ · 拖拽排序）', menu)
             act_hdr.setEnabled(False)
             act_hdr.setProperty('isSeizeRecentHeader', True)
             _ins(act_hdr)
@@ -3144,7 +3273,7 @@ class HostStateMachineWidget(QWidget):
                 act.setProperty('isSeizeColorRecent', True)
                 act.setCheckable(True)
                 act.setChecked(color == cur)
-                act.setToolTip('左键应用 · 右键清除此色')
+                act.setToolTip('左键应用 · 右键清除 · Alt↑↓调序')
                 act.triggered.connect(
                     lambda *_a, c=color: self._apply_sev_pin_arc_seize_color_preset(c)
                 )
@@ -3185,7 +3314,7 @@ class HostStateMachineWidget(QWidget):
                 sep.setProperty('isSeizeRecentSep', True)
             except Exception:
                 pass
-            act_hdr = QAction('最近（右键清除 · 可拖拽排序）', menu)
+            act_hdr = QAction('最近（右键清除 · Alt↑↓ · 拖拽排序）', menu)
             act_hdr.setEnabled(False)
             act_hdr.setProperty('isSeizeRecentHeader', True)
             menu.addAction(act_hdr)
@@ -3196,7 +3325,7 @@ class HostStateMachineWidget(QWidget):
                 act.setProperty('isSeizeColorRecent', True)
                 act.setCheckable(True)
                 act.setChecked(color == cur)
-                act.setToolTip('左键应用 · 右键清除此色')
+                act.setToolTip('左键应用 · 右键清除 · Alt↑↓调序')
                 act.triggered.connect(
                     lambda *_a, c=color: self._apply_sev_pin_arc_seize_color_preset(c)
                 )
@@ -4056,12 +4185,12 @@ class HostStateMachineWidget(QWidget):
             return sec
         try:
             if getattr(self, '_stale_prune_undo_bar_hovered', False) and left > 0:
-                tip = f'点击撤销 · 剩余 {sec}s'
+                tip = f'左键撤销 · 中/右键延长 · 剩余 {sec}s'
                 bar.setToolTip(tip)
                 bar.setFormat(f'剩余 {sec}s')
                 bar.setTextVisible(True)
             else:
-                bar.setToolTip('点击撤销 · 失效清理剩余时间')
+                bar.setToolTip('左键撤销 · 中/右键延长倒计时')
                 bar.setTextVisible(False)
                 bar.setFormat('%p%')
         except Exception:
@@ -4105,13 +4234,57 @@ class HostStateMachineWidget(QWidget):
             pass
         self._last_stale_prune_undo_bar_hovered = False
 
+    def extend_stale_prune_undo(self, ms: int = None) -> int:
+        """wave47: 延长失效清理 undo 倒计时（重置为 ms 或全长）."""
+        if not self.can_undo_prune_stale_alarm_film_csv_dirs():
+            self._last_stale_prune_undo_extended = 0
+            try:
+                self._flash_host_toast('无可延长的清理倒计时', kind='info', ms=1200)
+            except Exception:
+                pass
+            return 0
+        total = ms
+        if total is None:
+            total = int(getattr(self, '_stale_prune_undo_ms', 8000) or 8000)
+        try:
+            total = max(1500, min(30000, int(total)))
+        except Exception:
+            total = 8000
+        self._stale_prune_undo_left_ms = total
+        timer = getattr(self, '_stale_prune_undo_timer', None)
+        if timer is not None and not timer.isActive():
+            timer.start()
+        try:
+            self._show_stale_prune_undo_bar()
+            self._update_stale_prune_undo_bar()
+        except Exception:
+            pass
+        sec = max(1, (total + 999) // 1000)
+        try:
+            self._flash_host_toast(
+                f'已延长撤销 · {sec}s', kind='ok', ms=1000)
+            self._log_line(f'undo 延长倒计时 · {total}ms')
+        except Exception:
+            pass
+        if getattr(self, '_stale_prune_undo_bar_hovered', False):
+            try:
+                self._refresh_stale_prune_undo_bar_hover_sec()
+            except Exception:
+                pass
+        self._last_stale_prune_undo_extended = total
+        return total
+
     def _on_stale_prune_undo_bar_clicked(self, event=None):
-        """wave44: 点击 undo 进度条 → 撤销清理."""
+        """wave44–47: 左键撤销；中/右键延长倒计时."""
         try:
             btn = event.button() if event is not None else Qt.MouseButton.LeftButton
         except Exception:
             btn = Qt.MouseButton.LeftButton
-        if btn not in (Qt.MouseButton.LeftButton, Qt.MouseButton.MiddleButton):
+        if btn in (Qt.MouseButton.MiddleButton, Qt.MouseButton.RightButton):
+            got = self.extend_stale_prune_undo()
+            self._last_stale_prune_undo_bar_extend_clicked = bool(got)
+            return bool(got)
+        if btn not in (Qt.MouseButton.LeftButton,):
             return False
         if not self.can_undo_prune_stale_alarm_film_csv_dirs():
             try:
@@ -4658,6 +4831,11 @@ class HostStateMachineWidget(QWidget):
         self._last_merge_diff_batch_fail = list(fails)
         self._last_merge_diff_batch_ok_n = len(out)
         self._last_merge_diff_batch_fail_n = len(fails)
+        if fails:
+            try:
+                self.remember_merge_diff_batch_fails(fails)
+            except Exception:
+                pass
         try:
             n_ok, n_fail = len(out), len(fails)
             if n_ok == 0 and n_fail == 0:
@@ -4702,6 +4880,151 @@ class HostStateMachineWidget(QWidget):
             pass
         return list(out)
 
+    def merge_diff_batch_fail_history(self) -> list:
+        """wave47: 失败清单历史（新→旧）."""
+        return list(getattr(self, '_merge_diff_batch_fail_history', None) or [])
+
+    def remember_merge_diff_batch_fails(
+            self, paths=None, *, persist: bool = True) -> list:
+        """wave47: 记入失败清单历史并持久化最近一次."""
+        paths = [str(p).strip() for p in list(paths or []) if str(p).strip()]
+        if not paths:
+            return self.merge_diff_batch_fail_history()
+        import time as _time
+        ts = _time.strftime('%Y-%m-%d %H:%M:%S')
+        ent = {'ts': ts, 'paths': paths[:48]}
+        hist = [ent] + [
+            h for h in self.merge_diff_batch_fail_history()
+            if list(h.get('paths') or []) != paths
+        ]
+        hist = hist[:20]
+        self._merge_diff_batch_fail_history = hist
+        self._last_merge_diff_batch_fail = list(paths)
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/mergeDiffBatchFailLast', list(paths))
+                # store as list of dicts
+                self._host_settings().setValue(
+                    'host/mergeDiffBatchFailHistory', hist)
+            except Exception:
+                pass
+        self._last_merge_diff_batch_fail_remembered = list(paths)
+        return list(hist)
+
+    def clear_merge_diff_batch_fail_history(self, *, persist: bool = True) -> list:
+        """wave47: 清空失败清单历史."""
+        self._merge_diff_batch_fail_history = []
+        self._last_merge_diff_batch_fail = []
+        if persist:
+            try:
+                self._host_settings().setValue('host/mergeDiffBatchFailHistory', [])
+                self._host_settings().setValue('host/mergeDiffBatchFailLast', [])
+            except Exception:
+                pass
+        try:
+            self._flash_host_toast('已清空失败清单历史', kind='info', ms=1200)
+        except Exception:
+            pass
+        self._last_merge_diff_batch_fail_history_cleared = True
+        return []
+
+    def show_merge_diff_batch_fail_history(self, *, interactive: bool = True) -> bool:
+        """wave47: 失败清单历史对话框 · 可选批次重开."""
+        hist = self.merge_diff_batch_fail_history()
+        if not hist:
+            try:
+                self._flash_host_toast('无失败清单历史', kind='info', ms=1200)
+            except Exception:
+                pass
+            self._last_merge_diff_batch_fail_history_shown = False
+            return False
+
+        def _lab(d):
+            try:
+                from pathlib import Path as _P
+                return _P(d).name or d
+            except Exception:
+                return d
+
+        if not interactive:
+            lines = []
+            for i, ent in enumerate(hist[:12], 1):
+                paths = list(ent.get('paths') or [])
+                ts = ent.get('ts') or ''
+                lines.append(f'#{i} {ts} · {len(paths)}')
+                for p in paths[:6]:
+                    lines.append(f'  · {_lab(p)}')
+            try:
+                QMessageBox.information(
+                    self, f'失败清单历史 · {len(hist)}', '\n'.join(lines) or '（空）')
+            except Exception:
+                pass
+            self._last_merge_diff_batch_fail_history_shown = True
+            return True
+        try:
+            dlg = QDialog(self)
+            dlg.setWindowTitle(f'失败清单历史 · {len(hist)}')
+            dlg.setObjectName('hostMergeDiffBatchFailHistoryDialog')
+            dlg.setMinimumWidth(440)
+            lay = QVBoxLayout(dlg)
+            tip = QLabel('双击批次载入为当前失败项 · 「重开该批」/「清空历史」', dlg)
+            tip.setStyleSheet('color:#9aa0a6;font-size:11px;')
+            lay.addWidget(tip)
+            lst = QListWidget(dlg)
+            lst.setObjectName('hostMergeDiffBatchFailHistoryList')
+            for ent in hist:
+                paths = list(ent.get('paths') or [])
+                ts = ent.get('ts') or ''
+                lab0 = _lab(paths[0]) if paths else ''
+                it = QListWidgetItem(
+                    f'{ts} · {len(paths)} · {lab0}')
+                it.setData(Qt.ItemDataRole.UserRole, paths)
+                it.setToolTip('\n'.join(paths))
+                lst.addItem(it)
+            lay.addWidget(lst)
+
+            def _load_current(item=None):
+                it = item or lst.currentItem()
+                if it is None:
+                    return []
+                paths = list(it.data(Qt.ItemDataRole.UserRole) or [])
+                self._last_merge_diff_batch_fail = list(paths)
+                self._last_merge_diff_batch_fail_n = len(paths)
+                return paths
+
+            def _retry_batch():
+                paths = _load_current()
+                return self.open_merge_diff_paths(paths) if paths else []
+
+            lst.itemDoubleClicked.connect(lambda it: _load_current(it))
+            btns = QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Close, parent=dlg)
+            btn_retry = btns.addButton(
+                '重开该批', QDialogButtonBox.ButtonRole.ActionRole)
+            btn_retry.setObjectName('hostMergeDiffBatchFailHistoryRetry')
+            btn_retry.clicked.connect(lambda *_: _retry_batch())
+            btn_clear = btns.addButton(
+                '清空历史', QDialogButtonBox.ButtonRole.ActionRole)
+            btn_clear.setObjectName('hostMergeDiffBatchFailHistoryClear')
+            btn_clear.clicked.connect(
+                lambda *_: (self.clear_merge_diff_batch_fail_history(), lst.clear()))
+            btns.rejected.connect(dlg.reject)
+            lay.addWidget(btns)
+            self._last_merge_diff_batch_fail_history_dialog = dlg
+            self._last_merge_diff_batch_fail_history_list = lst
+            self._last_merge_diff_batch_fail_history_shown = True
+            if getattr(self, '_merge_diff_fail_hist_no_exec', False):
+                return True
+            dlg.exec()
+        except Exception as err:
+            try:
+                self._flash_host_toast(f'失败历史失败 · {err}', kind='info')
+            except Exception:
+                pass
+            return self.show_merge_diff_batch_fail_history(interactive=False)
+        return True
+
     def retry_merge_diff_batch_fails(self) -> list:
         """wave46: 重开上次批量失败项."""
         fails = list(getattr(self, '_last_merge_diff_batch_fail', None) or [])
@@ -4720,12 +5043,17 @@ class HostStateMachineWidget(QWidget):
         """wave46: 失败项清单 · 可点/多选重开."""
         fails = list(getattr(self, '_last_merge_diff_batch_fail', None) or [])
         if not fails:
-            try:
-                self._flash_host_toast('无失败项可重开', kind='info', ms=1200)
-            except Exception:
-                pass
-            self._last_merge_diff_batch_fails_shown = False
-            return False
+            hist = self.merge_diff_batch_fail_history()
+            if hist:
+                fails = list(hist[0].get('paths') or [])
+                self._last_merge_diff_batch_fail = list(fails)
+            if not fails:
+                try:
+                    self._flash_host_toast('无失败项可重开', kind='info', ms=1200)
+                except Exception:
+                    pass
+                self._last_merge_diff_batch_fails_shown = False
+                return False
 
         def _lab(d):
             try:
@@ -4797,6 +5125,11 @@ class HostStateMachineWidget(QWidget):
                 '重开全部', QDialogButtonBox.ButtonRole.ActionRole)
             btn_all.setObjectName('hostMergeDiffBatchFailsRetryAll')
             btn_all.clicked.connect(lambda *_: self.retry_merge_diff_batch_fails())
+            btn_hist = btns.addButton(
+                '失败历史', QDialogButtonBox.ButtonRole.ActionRole)
+            btn_hist.setObjectName('hostMergeDiffBatchFailsHistory')
+            btn_hist.clicked.connect(
+                lambda *_: self.show_merge_diff_batch_fail_history())
             btns.rejected.connect(dlg.reject)
             lay.addWidget(btns)
             self._last_merge_diff_batch_fails_dialog = dlg
@@ -5106,6 +5439,19 @@ class HostStateMachineWidget(QWidget):
                 not self.toast_hist_cap_keep_exit_tip_enabled())
         )
         menu.addAction(act_tip)
+        anim_on = self.toast_hist_cap_tip_anim_enabled()
+        act_anim = QAction(
+            ('✓ ' if anim_on else '') + 'tip 热更动画', menu)
+        act_anim.setCheckable(True)
+        act_anim.setChecked(anim_on)
+        act_anim.setProperty('isTipAnimToggle', True)
+        act_anim.setObjectName('hostToastHistCapTipAnimToggle')
+        act_anim.setToolTip('关闭后 tip 热更不再脉冲淡入')
+        act_anim.triggered.connect(
+            lambda *_: self.set_toast_hist_cap_tip_anim_enabled(
+                not self.toast_hist_cap_tip_anim_enabled())
+        )
+        menu.addAction(act_anim)
         act_clear = QAction('清空切窗史', self)
         act_clear.triggered.connect(self.clear_liaison_toast_history)
         menu.addAction(act_clear)
@@ -5401,6 +5747,59 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             pass
         return self._toast_hist_cap_keep_exit_tip
+
+    def toast_hist_cap_tip_anim_enabled(self) -> bool:
+        """wave47: tip 热更脉冲动画开关（默认开）."""
+        v = getattr(self, '_toast_hist_cap_tip_anim', None)
+        if v is None:
+            try:
+                raw = self._host_settings().value('host/toastHistCapTipAnim', True)
+                if isinstance(raw, str):
+                    v = raw.strip().lower() not in ('0', 'false', 'no', 'off')
+                else:
+                    v = bool(raw)
+            except Exception:
+                v = True
+            self._toast_hist_cap_tip_anim = bool(v)
+        return bool(self._toast_hist_cap_tip_anim)
+
+    def set_toast_hist_cap_tip_anim_enabled(
+            self, enabled: bool = True, *, persist: bool = True) -> bool:
+        """wave47: 配置 tip 热更动画；热更菜单勾."""
+        self._toast_hist_cap_tip_anim = bool(enabled)
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/toastHistCapTipAnim', bool(enabled))
+            except Exception:
+                pass
+        try:
+            self._refresh_toast_hist_cap_tip_anim_action()
+        except Exception:
+            pass
+        return self._toast_hist_cap_tip_anim
+
+    def _refresh_toast_hist_cap_tip_anim_action(self) -> bool:
+        """wave47: 热更容量菜单「tip 动画」勾选/文案."""
+        on = self.toast_hist_cap_tip_anim_enabled()
+        updated = False
+        for menu in (
+            getattr(self, '_last_toast_hist_cap_menu', None),
+            getattr(self, '_toast_hist_cap_nav_menu', None),
+        ):
+            if menu is None:
+                continue
+            for act in menu.actions():
+                try:
+                    if not act.property('isTipAnimToggle'):
+                        continue
+                    act.setChecked(on)
+                    act.setText(('✓ ' if on else '') + 'tip 热更动画')
+                    updated = True
+                except Exception:
+                    continue
+        self._last_toast_hist_cap_tip_anim_refreshed = updated
+        return updated
 
     def _refresh_toast_hist_cap_keep_exit_tip_action(self) -> bool:
         """wave45–46: 热更容量菜单「退出保持提示」勾选/文案 + 脉冲动画."""
