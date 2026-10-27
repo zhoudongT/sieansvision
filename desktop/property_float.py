@@ -156,6 +156,89 @@ class PropertyFloat(QDialog):
             self._last_step = deepcopy(step)
             self.show(); self.raise_(); self.activateWindow()
             return
+        # Wave3: 畸变矫正 / 九点 / 变量计算 / 耗时 / 收发 / 薄壳
+        if step and step.get('operation') == 'distort_correct':
+            from desktop.distort_correct_panel import DistortCorrectPanel, normalize_distort_params
+            step = deepcopy(step)
+            step['params'] = normalize_distort_params(step.get('params'))
+            panel = DistortCorrectPanel(step, definition, project)
+            panel.changed.connect(self._on_step_changed)
+            self.body.addWidget(panel)
+            self._panel = panel
+            self._last_step = deepcopy(step)
+            self.show(); self.raise_(); self.activateWindow()
+            return
+        if step and step.get('operation') == 'nine_point':
+            from desktop.nine_point_panel import NinePointPanel, normalize_nine_point_params
+            step = deepcopy(step)
+            step['params'] = normalize_nine_point_params(step.get('params'))
+            panel = NinePointPanel(step, definition, project)
+            panel.changed.connect(self._on_step_changed)
+            self.body.addWidget(panel)
+            self._panel = panel
+            self._last_step = deepcopy(step)
+            self.show(); self.raise_(); self.activateWindow()
+            return
+        if step and step.get('operation') == 'var_calc':
+            from desktop.var_calc_panel import VarCalcPanel, normalize_var_calc_params
+            step = deepcopy(step)
+            step['params'] = normalize_var_calc_params(step.get('params'))
+            panel = VarCalcPanel(step, definition, project)
+            panel.changed.connect(self._on_step_changed)
+            self.body.addWidget(panel)
+            self._panel = panel
+            self._last_step = deepcopy(step)
+            self.show(); self.raise_(); self.activateWindow()
+            return
+        if step and step.get('operation') == 'elapsed_stats':
+            from desktop.elapsed_stats_panel import ElapsedStatsPanel, normalize_elapsed_stats_params
+            step = deepcopy(step)
+            step['params'] = normalize_elapsed_stats_params(step.get('params'))
+            panel = ElapsedStatsPanel(step, definition, project)
+            panel.changed.connect(self._on_step_changed)
+            self.body.addWidget(panel)
+            self._panel = panel
+            self._last_step = deepcopy(step)
+            self.show(); self.raise_(); self.activateWindow()
+            return
+        if step and step.get('operation') in ('receive_data', 'send_data'):
+            from desktop.data_io_panel import DataIoPanel, normalize_receive_params, normalize_send_params
+            step = deepcopy(step)
+            if step.get('operation') == 'send_data':
+                step['params'] = normalize_send_params(step.get('params'))
+            else:
+                step['params'] = normalize_receive_params(step.get('params'))
+            panel = DataIoPanel(step, definition, project)
+            panel.changed.connect(self._on_step_changed)
+            self.body.addWidget(panel)
+            self._panel = panel
+            self._last_step = deepcopy(step)
+            self.show(); self.raise_(); self.activateWindow()
+            return
+        if step and step.get('operation') in ('format_data', 'output_image', 'protocol_parse', 'text_save'):
+            from desktop.wave3_thin_panels import (
+                FormatDataPanel, OutputImagePanel, ProtocolParsePanel, TextSavePanel,
+                normalize_format_data_params, normalize_output_image_params,
+                normalize_protocol_parse_params, normalize_text_save_params,
+            )
+            step = deepcopy(step)
+            op = step.get('operation')
+            panel_map = {
+                'format_data': (FormatDataPanel, normalize_format_data_params),
+                'output_image': (OutputImagePanel, normalize_output_image_params),
+                'protocol_parse': (ProtocolParsePanel, normalize_protocol_parse_params),
+                'text_save': (TextSavePanel, normalize_text_save_params),
+            }
+            Panel, norm = panel_map[op]
+            step['params'] = norm(step.get('params'))
+            panel = Panel(step, definition, project)
+            panel.changed.connect(self._on_step_changed)
+            self.body.addWidget(panel)
+            self._panel = panel
+            self._last_step = deepcopy(step)
+            self.show(); self.raise_(); self.activateWindow()
+            return
+
         # Wave2: 条件分支 / 分支模块 表
         if step and step.get('operation') in ('condition', 'branch'):
             from desktop.condition_branch_panel import (

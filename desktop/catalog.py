@@ -38,8 +38,8 @@ for definition in CORE:
 def builtin_definitions():
     metadata=json.loads(Path(__file__).with_name('builtin-catalog.json').read_text(encoding='utf-8'))
     definitions={}
-    groups={'group':'流程控制','subflow':'流程控制','loop':'流程控制','condition':'流程控制','branch_merge':'流程控制','branch':'流程控制','delay':'流程控制','variables':'变量与数据',
-            'preprocess':'图像处理','locate':'定位与测量','pose_correct':'定位与测量','geometry':'定位与测量','measure':'定位与测量','barcode':'识别','ocr':'识别','defects':'识别','yolo':'识别','yolo_segment':'识别'}
+    groups={'group':'流程控制','subflow':'流程控制','loop':'流程控制','condition':'流程控制','branch_merge':'流程控制','branch':'流程控制','delay':'流程控制','variables':'变量与数据','var_calc':'变量与数据','format_data':'变量与数据','text_save':'变量与数据','elapsed_stats':'流程控制','receive_data':'工业通信','send_data':'工业通信','protocol_parse':'工业通信','output_image':'图像处理',
+            'preprocess':'图像处理','locate':'定位与测量','pose_correct':'定位与测量','distort_correct':'标定与校正','nine_point':'标定与校正','geometry':'定位与测量','measure':'定位与测量','barcode':'识别','ocr':'识别','defects':'识别','yolo':'识别','yolo_segment':'识别'}
     for operation,meta in metadata.items():
         if operation=='plugin':continue
         defaults=deepcopy(meta.get('defaults',{}));parameters=[]
@@ -119,6 +119,93 @@ def builtin_definitions():
         parameters=[],
         description='分支模块：多路径条件表；出边 when=路径名（VM p=19）。',
     )
+
+    # Wave3: 畸变/九点/变量计算/耗时/收发/薄壳
+    definitions['distort_correct'] = dict(
+        operation='distort_correct', name='畸变矫正', category='标定与校正',
+        defaults=dict(mode='file', calibPath='', enabled=True, fx=1000.0, fy=1000.0, cx=0.0, cy=0.0,
+                      k1=0.0, k2=0.0, p1=0.0, p2=0.0, k3=0.0, boardCols=9, boardRows=6, squareSize=10.0, alpha=0.0),
+        parameters=[
+            field('mode', '矫正模式', 'string', 'file',
+                  choices=choices(('file', '标定文件'), ('coeffs', '手动系数'), ('chessboard', '棋盘格'))),
+            field('calibPath', '标定文件', 'string', ''),
+            field('enabled', '启用矫正', 'boolean', True),
+        ],
+        description='畸变矫正（VM p=13）：标定文件或内参系数；运行透传并回显。',
+    )
+    definitions['nine_point'] = dict(
+        operation='nine_point', name='九点标定', category='标定与校正',
+        defaults=dict(coordSystem='机械坐标系', unit='mm', method='affine', points=[]),
+        parameters=[
+            field('coordSystem', '坐标系', 'string', '机械坐标系'),
+            field('unit', '单位', 'string', 'mm'),
+            field('method', '求解方法', 'string', 'affine',
+                  choices=choices(('affine', '仿射'), ('perspective', '透视'))),
+        ],
+        description='平移九点标定（VM p=20）：像素↔世界对照表。',
+    )
+    definitions['var_calc'] = dict(
+        operation='var_calc', name='变量计算', category='变量与数据',
+        defaults=dict(scope='flow', expressions=[]),
+        parameters=[field('scope', '作用域', 'string', 'flow')],
+        description='变量计算（VM p=23）：表达式表写入变量。',
+    )
+    definitions['elapsed_stats'] = dict(
+        operation='elapsed_stats', name='耗时统计', category='流程控制',
+        defaults=dict(startStepId='', endStepId='', includeEnds=True, unit='ms'),
+        parameters=[
+            field('startStepId', '开始模块', 'string', ''),
+            field('endStepId', '结束模块', 'string', ''),
+        ],
+        description='耗时统计（VM p=27）：起止模块区间累计。',
+    )
+    definitions['receive_data'] = dict(
+        operation='receive_data', name='接收数据', category='工业通信',
+        defaults=dict(device='', channel='', timeoutMs=1000, encoding='utf-8',
+                      targetScope='flow', targetVar='recvData', triggerOnReceive=True),
+        parameters=[
+            field('device', '通信设备', 'string', ''),
+            field('targetVar', '目标变量', 'string', 'recvData'),
+            field('timeoutMs', '超时ms', 'integer', 1000, minimum=0, maximum=600000),
+        ],
+        description='接收数据（VM p=11）：绑定通信设备写入变量。',
+    )
+    definitions['send_data'] = dict(
+        operation='send_data', name='发送数据', category='工业通信',
+        defaults=dict(device='', channel='', message='', sourceMode='text',
+                      sourceScope='flow', sourceVar='', encoding='utf-8', appendCrLf=False),
+        parameters=[
+            field('device', '通信设备', 'string', ''),
+            field('message', '发送内容', 'string', ''),
+        ],
+        description='发送数据（VM p=11）：绑定通信设备发送文本/变量。',
+    )
+    definitions['format_data'] = dict(
+        operation='format_data', name='格式化', category='变量与数据',
+        defaults=dict(template='{0}', args='', targetVar='formatted', scope='flow'),
+        parameters=[field('template', '模板', 'string', '{0}'), field('targetVar', '目标变量', 'string', 'formatted')],
+        description='格式化发出数据（VM p=21）。',
+    )
+    definitions['output_image'] = dict(
+        operation='output_image', name='输出图像', category='图像处理',
+        defaults=dict(path='', format='png', quality=95, useTimestamp=True, onlyOnOk=False),
+        parameters=[field('path', '保存路径', 'string', ''), field('format', '格式', 'string', 'png')],
+        description='输出(保存)图像（VM p=22）。',
+    )
+    definitions['protocol_parse'] = dict(
+        operation='protocol_parse', name='协议解析', category='工业通信',
+        defaults=dict(sourceVar='recvData', sourceScope='flow', protocol='delimited',
+                      delimiter=',', pattern='', fields='f0,f1,f2'),
+        parameters=[field('sourceVar', '源变量', 'string', 'recvData'), field('protocol', '协议类型', 'string', 'delimited')],
+        description='协议解析（VM p=24）。',
+    )
+    definitions['text_save'] = dict(
+        operation='text_save', name='文本保存', category='变量与数据',
+        defaults=dict(path='', content='', sourceVar='', append=True, encoding='utf-8', newline=True),
+        parameters=[field('path', '文件路径', 'string', ''), field('append', '追加', 'boolean', True)],
+        description='文本保存（VM p=25）。',
+    )
+
     if 'locate' in definitions:
         extra('locate', 'matchMode', '匹配模式', 'string', 'fast',
               choices=choices(('fast', '快速匹配'), ('gray', '灰度模板匹配')))

@@ -3,7 +3,7 @@
   const SOURCE='source';
   const operations=new Set(['preprocess','locate','geometry','measure','barcode','ocr','defects','yolo','yolo_segment','script','variables','cloud_filter','cloud_plane','cloud_cluster','cloud_measure','cloud_height','cloud_register','modbus_read','modbus_write','modbus_wait','s7_read','s7_write','mqtt_publish','mqtt_receive','tcp_exchange','udp_exchange','serial_exchange','opcua_read','opcua_write','opcua_browse','opcua_wait','camera_capture']);
   const copy=value=>JSON.parse(JSON.stringify(value));
-  for(const operation of ['condition','branch_merge','branch','delay','plugin','subflow','loop','pose_correct','group'])operations.add(operation);
+  for(const operation of ['condition','branch_merge','branch','delay','plugin','subflow','loop','pose_correct','group','distort_correct','nine_point','var_calc','elapsed_stats','receive_data','send_data','format_data','output_image','protocol_parse','text_save'])operations.add(operation);
   function normalize(value,nested=false){
     if(!value||![1,2].includes(value.version)||typeof value.name!=='string'||!Array.isArray(value.steps)||value.steps.length>50)throw Error('工程格式无效，最多 50 个算子');
     const p=copy(value),legacy=p.version===1;

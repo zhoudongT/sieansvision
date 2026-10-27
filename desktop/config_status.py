@@ -71,6 +71,37 @@ def step_incomplete(step, project=None) -> bool:
         return not bool(step.get('imageFrom'))
     if op in ('comm_send', 'comm_recv', 'send_data', 'receive_data'):
         return not bool(params.get('device') or params.get('channel') or params.get('message'))
+
+    if op == 'distort_correct':
+        mode = params.get('mode') or 'file'
+        if mode == 'file':
+            return not bool(str(params.get('calibPath') or '').strip())
+        if mode == 'coeffs':
+            return False  # coeffs always considered filled (defaults)
+        return not bool(step.get('imageFrom'))
+    if op == 'nine_point':
+        pts = params.get('points') or []
+        enabled = [p for p in pts if isinstance(p, dict) and p.get('enabled', True)]
+        # need at least one non-zero world or pixel to count as started; else bang if no image
+        filled = any(
+            abs(float(p.get('pixelX') or 0)) + abs(float(p.get('pixelY') or 0))
+            + abs(float(p.get('worldX') or 0)) + abs(float(p.get('worldY') or 0)) > 0
+            for p in enabled
+        )
+        return not filled
+    if op == 'var_calc':
+        rows = params.get('expressions') or []
+        return not any(isinstance(r, dict) and str(r.get('name') or '').strip() for r in rows)
+    if op == 'elapsed_stats':
+        return not (str(params.get('startStepId') or '').strip() and str(params.get('endStepId') or '').strip())
+    if op == 'format_data':
+        return not str(params.get('template') or '').strip()
+    if op == 'output_image':
+        return not (step.get('imageFrom') and str(params.get('path') or '').strip())
+    if op == 'protocol_parse':
+        return not str(params.get('sourceVar') or '').strip()
+    if op == 'text_save':
+        return not str(params.get('path') or '').strip()
     return False
 
 
