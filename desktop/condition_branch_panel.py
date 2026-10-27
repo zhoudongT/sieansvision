@@ -74,6 +74,18 @@ def sync_condition_flat(params):
     return params
 
 
+
+def _line_text(widget):
+    """Read text from a QLineEdit cell or a wrap QWidget that contains one."""
+    if widget is None:
+        return ''
+    from PySide6.QtWidgets import QLineEdit
+    if isinstance(widget, QLineEdit):
+        return widget.text()
+    line = widget.findChild(QLineEdit) if hasattr(widget, 'findChild') else None
+    return line.text() if line is not None else ''
+
+
 class ConditionBranchPanel(QWidget):
     """Shared shell for condition (规则表) and branch (路径表)."""
     changed = Signal(dict)
@@ -331,13 +343,13 @@ class ConditionBranchPanel(QWidget):
             left_w = self.rules_table.cellWidget(r, 1)
             cmp_w = self.rules_table.cellWidget(r, 2)
             right_w = self.rules_table.cellWidget(r, 3)
-            left = left_w.text().strip() if left_w else ''
+            left = _line_text(left_w).strip()
             try:
                 if left and left.replace('.', '', 1).replace('-', '', 1).isdigit():
                     left = float(left) if '.' in left else int(left)
             except Exception:
                 pass
-            right = right_w.text().strip() if right_w else ''
+            right = _line_text(right_w).strip()
             try:
                 if right and right.replace('.', '', 1).replace('-', '', 1).isdigit():
                     right = float(right) if '.' in right else int(right)

@@ -152,7 +152,15 @@ class ProductionTaskPanel(QWidget):
 
         sv = QLineEdit(str(self.params.get('statusVar') or 'taskStatus'))
         sv.textChanged.connect(lambda t: self._set('statusVar', t.strip() or 'taskStatus'))
-        form.addRow('状态变量', sv)
+        from desktop.upstream_field_picker import fill_line_from_picker
+        svrow = QHBoxLayout()
+        svpick = QPushButton('插入上游字段')
+        svpick.setToolTip('也可挑选上游字段；状态变量名仍可手填')
+        svpick.clicked.connect(lambda *_: fill_line_from_picker(
+            self, self.project, self.step.get('id'), sv, self._set, 'statusVar'))
+        svrow.addWidget(sv, 1)
+        svrow.addWidget(svpick)
+        form.addRow('状态变量', svrow)
 
         auto = OrangeSwitch(bool(self.params.get('autoStart')))
         auto.toggled.connect(lambda on: self._set('autoStart', bool(on)))

@@ -112,19 +112,38 @@ class FilmstripBar(QWidget):
     def set_stop_at_last(self, enabled):
         self.stop_at_last.setChecked(bool(enabled), animate=False)
 
-    def set_paths(self, paths, index=0):
-        self._paths = [str(p) for p in paths]
+    def set_paths(self, paths, index=0, root=None):
+        resolved = []
+        for p in paths:
+            s = str(p)
+            pp = Path(s)
+            if not pp.is_file() and not pp.is_absolute() and root:
+                cand = Path(root) / s
+                if cand.is_file():
+                    s = str(cand.resolve())
+                    pp = Path(s)
+            elif pp.is_file():
+                try:
+                    s = str(pp.resolve())
+                except Exception:
+                    pass
+            resolved.append(s)
+        self._paths = resolved
         self._index = max(0, min(index, max(0, len(self._paths) - 1)))
         self.thumbs.blockSignals(True)
         self.thumbs.clear()
         for path in self._paths:
-            item = QListWidgetItem(Path(path).name)
-            pix = QPixmap(path)
+            pp = Path(path)
+            missing = not pp.is_file()
+            item = QListWidgetItem(pp.name + (' ⚠' if missing else ''))
+            pix = QPixmap(path) if not missing else QPixmap()
             if not pix.isNull():
                 item.setIcon(QIcon(pix.scaled(72, 54, Qt.AspectRatioMode.KeepAspectRatio,
                                               Qt.TransformationMode.SmoothTransformation)))
             item.setData(Qt.ItemDataRole.UserRole, path)
-            item.setToolTip(path)
+            item.setToolTip(('缺失文件：' if missing else '') + path)
+            if missing:
+                item.setForeground(Qt.GlobalColor.red)
             self.thumbs.addItem(item)
         if self._paths:
             self.thumbs.setCurrentRow(self._index)

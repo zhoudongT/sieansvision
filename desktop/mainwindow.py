@@ -418,7 +418,7 @@ class MainWindow(QMainWindow):
         p['sourceConfig']=normalize_source(config)
         # mirror filmstrip paths / autoSwitch
         paths=list(p['sourceConfig'].get('images') or [])
-        self.filmstrip.set_paths(paths, int(p['sourceConfig'].get('currentIndex') or 0))
+        self.filmstrip.set_paths(paths, int(p['sourceConfig'].get('currentIndex') or 0), root=self.root)
         self.filmstrip.set_auto_switch(bool(p['sourceConfig'].get('autoSwitch')))
         self.filmstrip.set_stop_at_last(bool(p['sourceConfig'].get('stopAtLast')))
         self.filmstrip.setVisible(p['sourceConfig'].get('mode','local')=='local')
@@ -486,7 +486,7 @@ class MainWindow(QMainWindow):
             self.filmstrip.auto_switch.blockSignals(True)
             if hasattr(self.filmstrip,'stop_at_last'):
                 self.filmstrip.stop_at_last.blockSignals(True)
-            self.filmstrip.set_paths(list(cfg.get('images') or []), int(cfg.get('currentIndex') or 0))
+            self.filmstrip.set_paths(list(cfg.get('images') or []), int(cfg.get('currentIndex') or 0), root=self.root)
             self.filmstrip.set_auto_switch(bool(cfg.get('autoSwitch')))
             self.filmstrip.set_stop_at_last(bool(cfg.get('stopAtLast')))
             self.filmstrip.thumbs.blockSignals(False)
@@ -1063,7 +1063,11 @@ class MainWindow(QMainWindow):
         if self.busy or not path:return
         from pathlib import Path as P
         p=P(path)
-        if not p.is_file():return
+        if not p.is_file() and not p.is_absolute():
+            cand=self.root/path
+            if cand.is_file():p=cand
+        if not p.is_file():
+            self.log(f'胶片条路径不存在：{path}');return
         if p.stat().st_size>12*1024*1024:raise ValueError('图像不能超过 12 MB')
         raw=p.read_bytes();image=QImage.fromData(raw)
         if image.isNull() or image.width()*image.height()>16000000:raise ValueError('无效图像，或超过 1600 万像素')
