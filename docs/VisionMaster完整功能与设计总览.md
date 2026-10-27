@@ -361,3 +361,8 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 - **冒烟**：`node scripts/smoke-ninepoint-comm-alarmexport-e2e.cjs` → 18 PASS。
 - **不做**：无 push、无机械手 SDK、无 HIK logo。
 
+### 细妆续 · 工具栏/算子库密度 + 固定栏通讯实况
+
+- 主工具栏 `ToolButtonIconOnly` + 18px 图标 + 紧间距（对标 VM 纯图标观感；文案走 ToolTip）。
+- 算子库 IconSize 24 / Grid 64×52。
+- 固定栏 `_refresh_fixed_bar_device_status` 读通讯徽章；HMI IP/端口/连接状态可 `set_device_chrome` 实况刷新。

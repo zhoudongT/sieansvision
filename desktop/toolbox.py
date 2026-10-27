@@ -140,8 +140,8 @@ class OperatorTiles(QListWidget):
         self.setMovement(QListWidget.Movement.Static)
         self.setWrapping(True)
         self.setWordWrap(True)
-        self.setIconSize(QSize(28, 28))
-        self.setGridSize(QSize(72, 58))
+        self.setIconSize(QSize(24, 24))
+        self.setGridSize(QSize(64, 52))  # 细妆：贴 VM 算子库密度
         self.setSpacing(0)
         self.setDragEnabled(True)
         self.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)

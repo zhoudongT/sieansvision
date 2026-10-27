@@ -309,7 +309,8 @@ class OperatorHmiView(QWidget):
         super().__init__(parent)
         self.setObjectName('runModePane')
         self._image_views = []  # ImageView instances to mirror results into
-        self._status_lamps = []  # StatusLamp needing runtime OK/NG
+        self._status_lamps = []
+        self._device_chrome_labels = []  # StatusLamp needing runtime OK/NG
         self._run_status_labels = []
         self._log_panes = []
         self._clock_labels = []
@@ -911,6 +912,21 @@ class OperatorHmiView(QWidget):
         except Exception:
             pass
 
+    def set_device_chrome(self, *, ip=None, port=None, conn=None):
+        """细妆：刷新 HMI「IP地址/端口/连接状态」控件文案。"""
+        for lab in getattr(self, '_device_chrome_labels', []) or []:
+            kind = lab.property('sieansChrome') or ''
+            try:
+                if kind == 'ip' and ip is not None:
+                    lab.setText(str(ip))
+                elif kind == 'port' and port is not None:
+                    lab.setText(str(port))
+                elif kind == 'conn' and conn is not None:
+                    lab.setText(str(conn))
+            except Exception:
+                pass
+
+
     def update_fixed_bar_live(self, *, run_status=None, okng=None, counters=None, camera=None, comm=None):
         """Refresh fixed-bar chrome with live run/OKNG/counters (细妆 · 固定栏实况)."""
         if run_status is not None:
@@ -1203,6 +1219,9 @@ class OperatorHmiView(QWidget):
             cell = self._make_cell_frame(name)
             edit = QLineEdit(str(state.get('value') or ('192.168.1.109' if name == 'IP地址' else '5001')))
             edit.setPlaceholderText(name)
+            edit.setProperty('sieansChrome', 'ip' if name == 'IP地址' else 'port')
+            self._device_chrome_labels = getattr(self, '_device_chrome_labels', [])
+            self._device_chrome_labels.append(edit)
             cell.layout().addWidget(edit)
             cell.layout().addStretch(1)
             return cell
@@ -1211,6 +1230,9 @@ class OperatorHmiView(QWidget):
             lab = QLabel(str(state.get('value') or '未连接'))
             lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lab.setStyleSheet(f'color:{TEXT_MUTED};padding:8px;font-weight:600;')
+            lab.setProperty('sieansChrome', 'conn')
+            self._device_chrome_labels = getattr(self, '_device_chrome_labels', [])
+            self._device_chrome_labels.append(lab)
             cell.layout().addWidget(lab, 1)
             return cell
         if name == '信息提示栏':

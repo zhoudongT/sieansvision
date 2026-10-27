@@ -127,7 +127,7 @@ class MainWindow(QMainWindow):
         self.redo_action.setMenu(self._redo_history_menu)
         for a in [self.undo_action,self.redo_action]:edit.addAction(a)
         edit.addAction(self.action('复制模块',self.copy_nodes,'Ctrl+Shift+C'));edit.addAction(self.action('粘贴模块',lambda:self.document.paste() if not self.busy else None,'Ctrl+Shift+V'))
-        toolbar=QToolBar('工程与运行');toolbar.setObjectName('mainToolBar');toolbar.setMovable(False);toolbar.setIconSize(QSize(16,16));toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon);self.addToolBar(toolbar)
+        toolbar=QToolBar('工程与运行');toolbar.setObjectName('mainToolBar');toolbar.setMovable(False);toolbar.setIconSize(QSize(18,18));toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly);toolbar.setStyleSheet('QToolBar#mainToolBar{spacing:2px;padding:2px;}');self.addToolBar(toolbar)
         brand=QLabel('SIEANS');brand.setObjectName('brand');brand.setToolTip('SIEANS Vision');toolbar.addWidget(brand)
         for a in [self.open_action,self.save_action]:toolbar.addAction(a)
         self.image_action=self.action('打开图像',self.open_image);toolbar.addAction(self.image_action)
@@ -2663,6 +2663,33 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+    def _refresh_fixed_bar_device_status(self):
+        """细妆：固定栏通讯徽章实况（相机异步不阻塞；仅读已有徽章文案）。"""
+        try:
+            hmi = getattr(self, 'operator_hmi', None)
+            if hmi is None or not hasattr(hmi, 'update_fixed_bar_live'):
+                return
+            comm_txt = None
+            badge = getattr(self, 'comm_listen_badge', None)
+            if badge is not None:
+                raw = (badge.text() or '').strip() or (badge.toolTip() or '').split('—')[0].strip()
+                if raw:
+                    comm_txt = raw[:20]
+            # Prefer last known camera hint from status chrome / log, else keep bind label
+            cam_hint = getattr(self, '_last_camera_status_hint', None)
+            kw = {}
+            fb = dict(getattr(hmi, '_fixed_bars_cache', None) or {})
+            if cam_hint:
+                base = fb.get('cameraBind') or '未绑定'
+                kw['camera'] = f'{base}({cam_hint})' if base and base != '未绑定' else str(cam_hint)
+            if comm_txt:
+                base = fb.get('commBind') or 'TCP.连接状态'
+                kw['comm'] = f'{base}({comm_txt})'
+            if kw:
+                hmi.update_fixed_bar_live(**kw)
+        except Exception:
+            pass
+
     def _sync_host_sm_state(self, state, reason=''):
         """Push Idle/Running/Paused/Alarm/Stopped into OperatorHmiView / HostStateMachine."""
         try:
@@ -2683,6 +2710,11 @@ class MainWindow(QMainWindow):
             if hmi is not None and hasattr(hmi, 'update_fixed_bar_live'):
                 zh = {'Idle': '空闲', 'Running': '运行', 'Paused': '暂停', 'Alarm': '报警', 'Stopped': '停止'}.get(state, state)
                 hmi.update_fixed_bar_live(run_status=zh)
+        except Exception:
+            pass
+
+        try:
+            self._refresh_fixed_bar_device_status()
         except Exception:
             pass
 
