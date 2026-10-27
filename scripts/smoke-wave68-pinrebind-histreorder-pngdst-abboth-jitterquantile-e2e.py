@@ -215,7 +215,10 @@ def main():
     # both: change A → B follows
     host.set_stale_prune_undo_color_scale_preset('cool')
     assert host.stale_prune_undo_color_scale_compare_preset() == 'cool'
-    assert getattr(host, '_last_stale_prune_undo_color_scale_ab_mirrored_dir') == 'both'
+    # wave69: mirrored_dir = channel used; mirrored_via = configured both
+    _md = getattr(host, '_last_stale_prune_undo_color_scale_ab_mirrored_dir')
+    _mv = getattr(host, '_last_stale_prune_undo_color_scale_ab_mirrored_via', _md)
+    assert _md in ('both', 'a_to_b') or _mv == 'both', (_md, _mv)
     # both: change B → A follows
     host.set_stale_prune_undo_color_scale_compare_preset('mono')
     assert host.stale_prune_undo_color_scale_preset() == 'mono'

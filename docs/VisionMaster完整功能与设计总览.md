@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊲ · pin快捷冲突提示 · 吸史拖影/落点高亮 · PNG城市DST日历条 · A/B both分通道 · jitter分位剪贴板 · 2026-10-28】
+
+- **pin 快捷冲突提示**：`detect/format_…_max_pin_key_conflicts`；同键 / 保留 Ctrl+C/V/Z… / 其他 QShortcut；改键 toast 警告；「键」按钮 tip+橙字。
+- **吸史拖影/落点高亮**：拖拽中 ToolTip 色块幽灵跟随；落点 swatch 金边高亮；松手仍 `reorder`。
+- **PNG 城市 DST 日历条**：`…_dst_calendar` / `render_…` 一年 ☀/· 月条 + 区间；模板对话框 DST 行+刷新；切城市联动。
+- **A/B both 分通道**：`channels=['a_to_b','b_to_a']`；`effective_dirs` 门控 A/B setter；菜单「通道 A→B / B→A」仅 both 可勾。
+- **jitter 分位剪贴板/粘贴回放**：`copy_…tsv|csv|text` → 剪贴板；`paste_…` 解析回放至预览；预览窗「复制分位 / 粘贴回放」。
+- **冒烟**：`smoke-wave69-pinconflict-histghost-pngdstcal-abchannels-jitterclip-e2e`（另回归 wave68/67/66）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊱ · pin快捷可改键 · 历史色拖序 · PNG城市夏令时 · A/B镜像双向 · jitter分位表导出 · 2026-10-28】
 
 - **pin 快捷可改键**：`set/reset/prompt_…_max_pin_keys`；默认 `Ctrl+[` / `Ctrl+]` 可改；菜单「键」；force 重建 `QShortcut`。
