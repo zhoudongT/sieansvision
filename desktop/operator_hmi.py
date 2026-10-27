@@ -160,6 +160,11 @@ class ProductionStatsPanel(QWidget):
         copy_btn.setToolTip('复制最近结果到剪贴板（便于产线交接/对账）')
         copy_btn.clicked.connect(self._copy_history)
         btn_row.addWidget(copy_btn)
+        csv_btn = QPushButton('导出CSV')
+        csv_btn.setObjectName('prodStatsExportCsv')
+        csv_btn.setToolTip('导出生产统计历史 CSV')
+        csv_btn.clicked.connect(self.export_history_file)
+        btn_row.addWidget(csv_btn)
         self._gate_btn = QPushButton('判定门')
         self._gate_btn.setToolTip('选择 flow 变量作为 OK/NG 判定门（默认自动探测 passGate/commOk/…）')
         self._gate_btn.clicked.connect(self._pick_gate_key)
@@ -169,6 +174,25 @@ class ProductionStatsPanel(QWidget):
         self._gate_lab = QLabel('判定门：自动')
         self._gate_lab.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
         root.addWidget(self._gate_lab)
+
+        # 细妆⑰：VM run-mode strip — host state + OK序列 + UPH
+        self._host_state_lab = QLabel('上位机 · 空闲')
+        self._host_state_lab.setObjectName('prodHostStateLab')
+        self._host_state_lab.setStyleSheet(
+            f'background:{CARD};color:{TEXT_MUTED};border:1px solid {LINE};'
+            f'border-radius:2px;padding:3px 6px;font-size:11px;font-weight:600;'
+        )
+        root.addWidget(self._host_state_lab)
+        self._ok_spark_lab = QLabel('判定序列 · · ·')
+        self._ok_spark_lab.setObjectName('prodOkSpark')
+        self._ok_spark_lab.setStyleSheet(f'color:{TEXT_MUTED};font-size:12px;font-family:monospace;')
+        self._ok_spark_lab.setToolTip('OK/NG 序列（高=OK）；与趋势图同源')
+        root.addWidget(self._ok_spark_lab)
+        self._uph_lab = QLabel('节拍 · —  ·  UPH —')
+        self._uph_lab.setObjectName('prodUphLab')
+        self._uph_lab.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
+        self._uph_lab.setToolTip('末次/均耗时 → 估算 UPH（件/小时，按均耗时）')
+        root.addWidget(self._uph_lab)
 
         cap = QLabel('最近结果')
         cap.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;font-weight:600;')
@@ -207,6 +231,52 @@ class ProductionStatsPanel(QWidget):
         from PySide6.QtWidgets import QApplication
         lines = list(self._history) if self._history else ['(暂无结果)']
         QApplication.clipboard().setText('\n'.join(lines))
+
+    def history_csv(self) -> str:
+        lines = ['timestamp,tag,elapsed_ms,detail']
+        for line in self._history:
+            # lines look like: HH:MM:SS  OK · 12 ms  detail
+            safe = str(line).replace('"', "'")
+            lines.append(f'"{safe}"')
+        return '\n'.join(lines) + ('\n' if lines else '')
+
+    def export_history_file(self):
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(
+            self, '导出生产统计', 'production-stats.csv', 'CSV (*.csv);;All (*)')
+        if not path:
+            return
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(self.history_csv())
+        except Exception:
+            pass
+
+    def set_host_state_mirror(self, state: str, zh: str | None = None):
+        """Mirror Host SM state into production panel (VM run-mode feel)."""
+        lab = getattr(self, '_host_state_lab', None)
+        if lab is None:
+            return
+        st = state or 'Idle'
+        label = zh or st
+        colors = {
+            'Idle': ('#2a3340', '#8a9bb0'),
+            'Running': ('#1c3a2a', '#3ecf8e'),
+            'Paused': ('#3a3420', '#e0b84a'),
+            'Alarm': ('#3a1c1c', '#e35d6a'),
+            'Stopped': ('#2a3340', '#8a9bb0'),
+        }
+        bg, fg = colors.get(st, colors['Idle'])
+        lab.setText(f'上位机 · {label}')
+        lab.setStyleSheet(
+            f'background:{bg};color:{fg};border:1px solid {fg};'
+            f'border-radius:2px;padding:3px 6px;font-size:11px;font-weight:700;'
+        )
+        if st == 'Alarm':
+            self.set_alarm(f'上位机报警 · {label}')
+        elif st in ('Idle', 'Running', 'Paused', 'Stopped'):
+            # don't clear NG sticky alarm unless transitioning out of Alarm via clear
+            pass
 
     def set_gate_key(self, key: str | None, *, notify: bool = True):
         key = (key or '').strip() or None
@@ -312,6 +382,19 @@ class ProductionStatsPanel(QWidget):
         else:
             self._yield_lab.setText('良率 —\n0/0')
             self._yield_lab.setToolTip('尚无计数。运行完成后按判定门 (gate) 累计 OK/NG。')
+        # 细妆⑰：inline OK spark + UPH
+        spark = getattr(self, '_ok_spark_lab', None)
+        if spark is not None:
+            spark.setText(self.trend_ok_text())
+        uph = getattr(self, '_uph_lab', None)
+        if uph is not None:
+            if self._elapsed_hist:
+                last = self._elapsed_hist[0]
+                avg = sum(self._elapsed_hist) / len(self._elapsed_hist)
+                uph_v = (3600000.0 / avg) if avg > 0 else 0.0
+                uph.setText(f'节拍 · 末次 {last:.0f} ms · 均 {avg:.0f} ms  ·  UPH {uph_v:.0f}')
+            else:
+                uph.setText('节拍 · —  ·  UPH —')
 
     def ok_count(self):
         return self._ok
@@ -1012,6 +1095,40 @@ class OperatorHmiView(QWidget):
                 )
             except Exception:
                 pass
+        # 细妆⑰：生产统计面板镜像上位机状态 + Host SM 生产条
+        ok_n = ng_n = None
+        for panel in getattr(self, '_stats_panels', None) or []:
+            try:
+                if hasattr(panel, 'set_host_state_mirror'):
+                    panel.set_host_state_mirror(st, zh)
+                if ok_n is None and hasattr(panel, 'ok_count'):
+                    ok_n = panel.ok_count()
+                    ng_n = panel.ng_count()
+            except Exception:
+                pass
+        host = getattr(self, '_host_sm', None)
+        if host is not None and hasattr(host, 'set_production_snapshot'):
+            try:
+                host.set_production_snapshot(ok_n, ng_n, host_state=st)
+            except Exception:
+                pass
+
+    def push_production_snapshot(self):
+        """Call after stats.record so Host SM strip tracks OK/NG live."""
+        ok_n = ng_n = None
+        for panel in getattr(self, '_stats_panels', None) or []:
+            try:
+                ok_n = panel.ok_count()
+                ng_n = panel.ng_count()
+                break
+            except Exception:
+                pass
+        host = getattr(self, '_host_sm', None)
+        if host is not None and hasattr(host, 'set_production_snapshot'):
+            try:
+                host.set_production_snapshot(ok_n, ng_n, host_state=getattr(self, '_host_state', None))
+            except Exception:
+                pass
 
     # ----- internals -----
     def _clear_grid(self):
@@ -1047,6 +1164,10 @@ class OperatorHmiView(QWidget):
 
     def _refresh_trend_charts(self):
         """Push ProductionStatsPanel elapsed/OK history into spark + yield bars."""
+        try:
+            self.push_production_snapshot()
+        except Exception:
+            pass
         panel = None
         for p in getattr(self, '_stats_panels', []) or []:
             panel = p

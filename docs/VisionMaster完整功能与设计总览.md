@@ -426,6 +426,16 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆⑰ · 生产链路/报警加深 · Comm写回 · 绑定制导 · 2026-10-28】
+
+- **生产链路 / 报警历史 UX**：Host SM 报警页生产条（OK/NG/良率/状态）、报警序列 spark（▇未清/▁已清）、状态筛选（全部/未清除/已清除）、severity（错/警/讯）+ 清除历时；CSV 增 `cleared_at/severity`。`ProductionStatsPanel` 上位机状态镜像、判定序列、节拍/UPH、导出CSV；HMI chrome ↔ Host SM `set_production_snapshot` 双向跟。
+- **Comm 变量写回 deepen**：`parse_protocol_writeback_extras` 升模块级；VALUE 多键、MEAS 扩展字段（angle/dist/pass…）+ leftover `meas_*`；live `comm_listener` 与「模拟写回」均写 sibling 字段到同 scope。
+- **measure_geom 绑定制导**：基本参数「绑定制导…」逐步走完槽位（画布点选 / 插入字段 / 跳过 / 下一步）；覆盖 line_intersect / point_distance / point_line_distance。
+- **Smokes**：`smoke-prodchain-alarm-deepen-e2e` / `smoke-comm-writeback-extras-live-e2e` / `smoke-measure-geom-bind-wizard-e2e`（全部 PASS）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆⑯ · 胶片悬停对比 · 配方差分预览 · Comm复测spark/FAIL · 门限筛选 · 2026-10-28】
 
 - **measure_geom 胶片悬停 / 多帧对比叠层**：`FilmstripBar.thumbHovered`（viewport hover）；`MainWindow._show_filmstrip_compare_overlays` 用 `_filmstrip_results` + `overlay_specs_for_multiframe` 色环叠层（当前帧高亮）；离开恢复 `_apply_measure_geom_overlays`。画布点选中不抢叠层。

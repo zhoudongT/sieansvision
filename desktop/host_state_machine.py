@@ -166,6 +166,11 @@ class HostStateMachineWidget(QWidget):
             if reason:
                 msg += f' · {reason}'
             self._log_line(msg)
+            # Keep production strip state label in sync
+            try:
+                self.set_production_snapshot(host_state=state)
+            except Exception:
+                pass
 
     def sync_from_runtime(self, result: dict | None, *, keep_running: bool = False):
         """Map engine job state → host state (without fighting Pause/Alarm).
@@ -592,13 +597,14 @@ class HostStateMachineWidget(QWidget):
         tip = reason or '自动清除'
         if self._alarm_history:
             self._alarm_history[-1]['cleared'] = True
+            self._alarm_history[-1]['cleared_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             self._refresh_alarm_history_ui()
         self.set_state('Idle', tip)
         self.triggerCommands.emit([dict(type='状态·清除报警', config=tip)])
         self._log_line(f'报警已自动清除 · {tip}')
 
     def _build_alarm_history(self):
-        """Thin but usable alarm history (timestamp + reason + clear list)."""
+        """Alarm history toward VM run-mode: filter / severity / spark / duration."""
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(8, 8, 8, 8)
@@ -606,6 +612,19 @@ class HostStateMachineWidget(QWidget):
         tip.setWordWrap(True)
         tip.setStyleSheet(f'color:{TEXT_DIM};font-size:11px;')
         lay.addWidget(tip)
+        # Production snapshot strip (fed by OperatorHmiView / MainWindow)
+        self._prod_strip = QLabel('生产 · OK —  NG —  良率 —  ·  状态 空闲')
+        self._prod_strip.setObjectName('hostProdStrip')
+        self._prod_strip.setStyleSheet(
+            f'background:{PANEL};color:{TEXT};border:1px solid {LINE};'
+            f'border-radius:2px;padding:4px 8px;font-size:11px;font-weight:600;'
+        )
+        lay.addWidget(self._prod_strip)
+        self._alarm_spark = QLabel('报警序列 · · ·')
+        self._alarm_spark.setObjectName('hostAlarmSpark')
+        self._alarm_spark.setStyleSheet(f'color:{TEXT_MUTED};font-size:12px;font-family:monospace;')
+        self._alarm_spark.setToolTip('最近报警：▇=未清除 ▁=已清除（左旧右新）')
+        lay.addWidget(self._alarm_spark)
         filt_row = QHBoxLayout()
         filt_row.addWidget(QLabel('筛选'))
         self._alarm_filter = QLineEdit()
@@ -614,6 +633,13 @@ class HostStateMachineWidget(QWidget):
         self._alarm_filter.setClearButtonEnabled(True)
         self._alarm_filter.textChanged.connect(lambda *_: self._refresh_alarm_history_ui())
         filt_row.addWidget(self._alarm_filter, 1)
+        self._alarm_status_filter = QComboBox()
+        self._alarm_status_filter.setObjectName('hostAlarmStatusFilter')
+        self._alarm_status_filter.addItem('全部', 'all')
+        self._alarm_status_filter.addItem('未清除', 'open')
+        self._alarm_status_filter.addItem('已清除', 'cleared')
+        self._alarm_status_filter.currentIndexChanged.connect(lambda *_: self._refresh_alarm_history_ui())
+        filt_row.addWidget(self._alarm_status_filter)
         lay.addLayout(filt_row)
         self._alarm_list = QListWidget()
         self._alarm_list.setObjectName('hostAlarmHistoryList')
@@ -647,12 +673,14 @@ class HostStateMachineWidget(QWidget):
 
     def alarm_history_csv(self) -> str:
         """CSV text for clipboard / file export."""
-        lines = ['timestamp,cleared,reason']
+        lines = ['timestamp,cleared,cleared_at,severity,reason']
         for e in self._alarm_history:
             ts = str(e.get('ts') or '').replace(',', ' ')
             cleared = '1' if e.get('cleared') else '0'
+            cleared_at = str(e.get('cleared_at') or '').replace(',', ' ')
+            sev = str(e.get('severity') or 'info')
             reason = str(e.get('reason') or '').replace('"', "'").replace('\n', ' ')
-            lines.append(f'{ts},{cleared},"{reason}"')
+            lines.append(f'{ts},{cleared},{cleared_at},{sev},"{reason}"')
         return '\n'.join(lines) + ('\n' if lines else '')
 
     def export_alarm_history_clipboard(self):
@@ -681,11 +709,24 @@ class HostStateMachineWidget(QWidget):
         self._refresh_alarm_history_ui()
         self._log_line('报警历史已清空')
 
+    @staticmethod
+    def _classify_alarm_severity(reason: str) -> str:
+        r = (reason or '').lower()
+        if any(k in r for k in ('fail', '失败', 'error', '错误', '急停', 'e-stop', 'estop')):
+            return 'error'
+        if any(k in r for k in ('ng', '超时', 'timeout', 'warn', '警告')):
+            return 'warning'
+        return 'info'
+
     def _record_alarm(self, reason: str = ''):
+        reason_s = str(reason or '报警')
         entry = {
             'ts': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'reason': str(reason or '报警'),
+            'reason': reason_s,
             'cleared': False,
+            'cleared_at': '',
+            'severity': self._classify_alarm_severity(reason_s),
+            'state_at': self._state,
         }
         self._alarm_history.append(entry)
         if len(self._alarm_history) > self._alarm_history_max:
@@ -700,19 +741,72 @@ class HostStateMachineWidget(QWidget):
         filt = getattr(self, '_alarm_filter', None)
         if filt is not None:
             needle = (filt.text() or '').strip().lower()
+        status = 'all'
+        sf = getattr(self, '_alarm_status_filter', None)
+        if sf is not None:
+            status = sf.currentData() or 'all'
         lst.clear()
         shown = 0
         for e in reversed(self._alarm_history):
             reason = str(e.get('reason', '') or '')
+            cleared = bool(e.get('cleared'))
+            if status == 'open' and cleared:
+                continue
+            if status == 'cleared' and not cleared:
+                continue
             if needle and needle not in reason.lower() and needle not in str(e.get('ts') or '').lower():
                 continue
-            mark = '·' if not e.get('cleared') else '✓'
-            lst.addItem(f"{e.get('ts', '')}  {mark}  {reason}")
+            sev = e.get('severity') or 'info'
+            sev_zh = {'error': '错', 'warning': '警', 'info': '讯'}.get(sev, '讯')
+            mark = '·' if not cleared else '✓'
+            dur = ''
+            if cleared and e.get('cleared_at') and e.get('ts'):
+                try:
+                    t0 = datetime.strptime(e['ts'], '%Y-%m-%d %H:%M:%S')
+                    t1 = datetime.strptime(e['cleared_at'], '%Y-%m-%d %H:%M:%S')
+                    secs = max(0, int((t1 - t0).total_seconds()))
+                    dur = f' · {secs}s'
+                except Exception:
+                    dur = ''
+            lst.addItem(f"{e.get('ts', '')}  [{sev_zh}] {mark}  {reason}{dur}")
             shown += 1
         lab = getattr(self, '_alarm_hist_count', None)
         if lab is not None:
             total = len(self._alarm_history)
-            lab.setText(f'{shown}/{total} 条' if needle else f'{total} 条')
+            open_n = sum(1 for e in self._alarm_history if not e.get('cleared'))
+            lab.setText(f'{shown}/{total} 条 · 未清 {open_n}' if (needle or status != 'all') else f'{total} 条 · 未清 {open_n}')
+        spark = getattr(self, '_alarm_spark', None)
+        if spark is not None:
+            seq = self._alarm_history[-24:]
+            if not seq:
+                spark.setText('报警序列 · · ·')
+            else:
+                bars = ''.join('▁' if e.get('cleared') else '▇' for e in seq)
+                open_n = sum(1 for e in self._alarm_history if not e.get('cleared'))
+                spark.setText(f'报警序列 {bars}  ·  未清 {open_n}/{len(self._alarm_history)}')
+
+    def set_production_snapshot(self, ok_n=None, ng_n=None, *, host_state: str | None = None):
+        """Feed OK/NG/yield into alarm-tab production strip (VM run-mode feel)."""
+        strip = getattr(self, '_prod_strip', None)
+        if strip is None:
+            return
+        try:
+            ok_i = int(ok_n) if ok_n is not None else None
+            ng_i = int(ng_n) if ng_n is not None else None
+        except (TypeError, ValueError):
+            ok_i = ng_i = None
+        st = host_state or self._state
+        st_zh = STATE_ZH.get(st, st)
+        if ok_i is None or ng_i is None:
+            strip.setText(f'生产 · OK —  NG —  良率 —  ·  状态 {st_zh}')
+            return
+        total = ok_i + ng_i
+        if total:
+            y = 100.0 * ok_i / total
+            ytxt = f'{y:.1f}%'
+        else:
+            ytxt = '—'
+        strip.setText(f'生产 · OK {ok_i}  NG {ng_i}  良率 {ytxt}  ·  状态 {st_zh}')
 
 
     def _raise_alarm(self):
@@ -727,6 +821,7 @@ class HostStateMachineWidget(QWidget):
             return
         if self._alarm_history:
             self._alarm_history[-1]['cleared'] = True
+            self._alarm_history[-1]['cleared_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             self._refresh_alarm_history_ui()
         self.set_state('Idle', '清除报警')
         self.triggerCommands.emit([dict(type='状态·清除报警', config='清除报警')])

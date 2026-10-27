@@ -79,6 +79,83 @@ def read_project_variable(project, raw_ref, default=''):
     return default
 
 
+def parse_protocol_writeback_extras(text):
+    """Parse sim/live protocol replies into extra var writes (no field-HW claim).
+
+    VALUE score=0.91 → [('score','0.91')]
+    VALUE a=1 b=2 / VALUE a=1,b=2 → multiple pairs
+    MEAS {"ok":1,"x":..} → [('measOk',1),('measX',..),...]
+    bare JSON object → flatten top-level scalars as json_<key>
+    """
+    import json as _json
+    import re as _re
+    raw = (text or '').strip()
+    if not raw:
+        return []
+    out = []
+    up = raw.upper()
+    if up.startswith('VALUE ') or up.startswith('VALUE\t'):
+        body = raw.split(None, 1)[1].strip()
+        # pairs: k=v separated by whitespace or commas; also allow k:v
+        parts = [p for p in _re.split(r'[\s,;]+', body) if p]
+        if len(parts) == 1 and ('=' in body or ':' in body) and ' ' not in body.strip():
+            # single pair may contain spaces in value — prefer first =/:
+            sep = '=' if '=' in body else ':'
+            k, v = body.split(sep, 1)
+            k = k.strip()
+            if k:
+                out.append((k, v))
+            return out
+        for part in parts:
+            if '=' in part:
+                k, v = part.split('=', 1)
+            elif ':' in part:
+                k, v = part.split(':', 1)
+            else:
+                continue
+            k = k.strip()
+            if k:
+                out.append((k, v))
+        return out
+    if up.startswith('MEAS ') or (up.startswith('MEAS{')):
+        body = raw[4:].strip() if up.startswith('MEAS') else ''
+        if up.startswith('MEAS '):
+            body = raw.split(None, 1)[1].strip()
+        try:
+            obj = _json.loads(body)
+        except Exception:
+            return out
+        if isinstance(obj, dict):
+            mapping = {
+                'ok': 'measOk', 'x': 'measX', 'y': 'measY', 'z': 'measZ',
+                'score': 'measScore', 'seq': 'measSeq', 'ts': 'measTs',
+                'angle': 'measAngle', 'dist': 'measDist', 'distance': 'measDist',
+                'status': 'measStatus', 'pass': 'measPass', 'passed': 'measPass',
+            }
+            for src, dst in mapping.items():
+                if src in obj:
+                    out.append((dst, obj[src]))
+            # also stamp any leftover scalar under meas_<key>
+            known = set(mapping)
+            for k, v in obj.items():
+                if k in known:
+                    continue
+                if isinstance(v, (str, int, float, bool)) or v is None:
+                    out.append((f'meas_{k}', v if v is not None else ''))
+        return out
+    if raw.startswith('{') and raw.endswith('}'):
+        try:
+            obj = _json.loads(raw)
+        except Exception:
+            return out
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if isinstance(v, (str, int, float, bool)) or v is None:
+                    out.append((f'json_{k}', v if v is not None else ''))
+        return out
+    return out
+
+
 PROTOCOLS = [
     'Local Bus', 'TCP Client', 'TCP Server', 'UDP', 'Serial', 'MQTT', 'Modbus TCP', 'Modbus RTU', 'OPC UA', 'S7',
 ]
@@ -190,6 +267,15 @@ class _EventTable(QWidget):
             scope, name = write_project_variable(p, var, msg)
             if name:
                 written.append(f'{scope}.{name}')
+                # 细妆⑰：VALUE/MEAS/JSON → sibling 字段一并写回
+                try:
+                    extras = parse_protocol_writeback_extras(msg)
+                except Exception:
+                    extras = []
+                for ek, ev in extras:
+                    s2, n2 = write_project_variable(p, f'{scope}.{ek}', ev)
+                    if n2:
+                        written.append(f'{s2}.{n2}')
         if written:
             doc.commit(p)
             QMessageBox.information(self, '接收事件', '已写回：\n' + '\n'.join(written))
@@ -854,51 +940,8 @@ class CommManagerDialog(QDialog):
 
     @staticmethod
     def _parse_protocol_writeback_extras(text):
-        """Parse sim protocol replies into extra var writes (no field-HW claim).
-
-        VALUE score=0.91 → [('score','0.91')]
-        MEAS {"ok":1,"x":..} → [('measOk',1),('measX',..),...]
-        bare JSON object → flatten top-level scalars as json_<key>
-        """
-        import json as _json
-        raw = (text or '').strip()
-        if not raw:
-            return []
-        out = []
-        if raw.upper().startswith('VALUE '):
-            body = raw.split(None, 1)[1]
-            if '=' in body:
-                k, v = body.split('=', 1)
-                k = k.strip()
-                if k:
-                    out.append((k, v))
-            return out
-        if raw.upper().startswith('MEAS '):
-            body = raw.split(None, 1)[1].strip()
-            try:
-                obj = _json.loads(body)
-            except Exception:
-                return out
-            if isinstance(obj, dict):
-                mapping = {
-                    'ok': 'measOk', 'x': 'measX', 'y': 'measY',
-                    'score': 'measScore', 'seq': 'measSeq', 'ts': 'measTs',
-                }
-                for src, dst in mapping.items():
-                    if src in obj:
-                        out.append((dst, obj[src]))
-            return out
-        if raw.startswith('{') and raw.endswith('}'):
-            try:
-                obj = _json.loads(raw)
-            except Exception:
-                return out
-            if isinstance(obj, dict):
-                for k, v in obj.items():
-                    if isinstance(v, (str, int, float, bool)) or v is None:
-                        out.append((f'json_{k}', v if v is not None else ''))
-            return out
-        return out
+        """Thin wrapper → module-level parse_protocol_writeback_extras."""
+        return parse_protocol_writeback_extras(text)
 
     def _tcp_test_send(self):
         import socket

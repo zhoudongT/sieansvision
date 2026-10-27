@@ -8,7 +8,7 @@ from copy import deepcopy
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QTabWidget, QFormLayout, QLineEdit,
-    QComboBox, QDoubleSpinBox, QScrollArea, QFrame,
+    QComboBox, QDoubleSpinBox, QScrollArea, QFrame, QPushButton, QHBoxLayout,
 )
 
 from desktop.widgets.switch import OrangeSwitch
@@ -242,7 +242,12 @@ class MeasureGeomPanel(QWidget):
         scale.setValue(float(self.params.get('scale') or 1))
         scale.valueChanged.connect(lambda v: self._set_param('scale', float(v)))
         form.addRow('像素比例', scale)
-        tip = QLabel('绑定字段示例：lines[0]、matches[0]、circles[0]。「画布点选」：先运行几何/定位，再在图像上点击目标线/点写入绑定。叠层随「结果显示」开关。')
+        wiz = QPushButton('绑定制导…')
+        wiz.setObjectName('measureGeomBindWizardBtn')
+        wiz.setToolTip('按步骤引导操作员完成上游绑定（画布点选 / 插入字段 / 跳过）')
+        wiz.clicked.connect(self._run_bind_wizard)
+        form.addRow('操作员', wiz)
+        tip = QLabel('绑定字段示例：lines[0]、matches[0]、circles[0]。「画布点选」：先运行几何/定位，再在图像上点击目标线/点写入绑定。「绑定制导」逐步走完所有槽位。叠层随「结果显示」开关。')
         tip.setWordWrap(True); tip.setStyleSheet('color:#888;'); form.addRow(tip)
         return w
 
@@ -281,3 +286,194 @@ class MeasureGeomPanel(QWidget):
         }.get(self.op, '结果字段见引擎')
         lab = QLabel((tip or '') + ' · 叠层开关已接入引擎 annotate_geom + 画布矢量层（关则不画）。'); lab.setWordWrap(True); lab.setStyleSheet('color:#888;'); form.addRow(lab)
         return w
+
+
+    def _bind_slots(self):
+        """Ordered bind slots for guided wizard: (label, id_key, field_key, default_field)."""
+        if self.op == 'line_intersect':
+            return [
+                ('直线1', 'line1From', 'line1Field', 'lines[0]'),
+                ('直线2', 'line2From', 'line2Field', 'lines[0]'),
+            ]
+        if self.op == 'point_distance':
+            return [
+                ('点1', 'point1From', 'point1Field', 'matches[0]'),
+                ('点2', 'point2From', 'point2Field', 'matches[0]'),
+            ]
+        return [
+            ('点', 'pointFrom', 'pointField', 'matches[0]'),
+            ('直线', 'lineFrom', 'lineField', 'lines[0]'),
+        ]
+
+    def _run_bind_wizard(self):
+        """Short guided bind flow for operators (VM-like 绑定向导)."""
+        from PySide6.QtWidgets import (
+            QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+            QComboBox, QLineEdit, QMessageBox, QProgressBar,
+        )
+        slots = self._bind_slots()
+        if not slots:
+            QMessageBox.information(self, '绑定制导', '当前算子无需绑定槽位。')
+            return
+        # Force bind mode
+        if (self.params.get('mode') or 'bind') != 'bind':
+            self._set_param('mode', 'bind')
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle('几何测量 · 绑定制导')
+        dlg.setMinimumWidth(460)
+        lay = QVBoxLayout(dlg)
+        head = QLabel('按步骤完成上游绑定。可「画布点选」或「插入字段」；「跳过」保留现值。')
+        head.setWordWrap(True)
+        head.setStyleSheet('color:#888;')
+        lay.addWidget(head)
+        prog = QProgressBar()
+        prog.setRange(0, len(slots))
+        prog.setValue(0)
+        prog.setFormat('%v / %m')
+        lay.addWidget(prog)
+        step_lab = QLabel('')
+        step_lab.setStyleSheet('font-weight:700;font-size:13px;')
+        lay.addWidget(step_lab)
+        status = QLabel('')
+        status.setWordWrap(True)
+        status.setStyleSheet('color:#6eb6ff;font-size:11px;')
+        lay.addWidget(status)
+
+        src_box = QComboBox()
+        for data, lab in self._step_items():
+            src_box.addItem(lab, data)
+        lay.addWidget(QLabel('来源模块'))
+        lay.addWidget(src_box)
+        field_edit = QLineEdit()
+        lay.addWidget(QLabel('字段路径'))
+        lay.addWidget(field_edit)
+
+        state = {'i': 0, 'done': []}
+
+        def _load_slot():
+            i = state['i']
+            if i >= len(slots):
+                return
+            label, id_key, field_key, default_field = slots[i]
+            step_lab.setText(f'步骤 {i+1}/{len(slots)} · 绑定「{label}」')
+            prog.setValue(i)
+            cur_id = self.params.get(id_key) or ''
+            idx = src_box.findData(cur_id)
+            if idx < 0 and cur_id:
+                src_box.addItem('已丢失：' + cur_id, cur_id)
+                idx = src_box.findData(cur_id)
+            src_box.setCurrentIndex(max(0, idx))
+            field_edit.setText(str(self.params.get(field_key) or default_field))
+            kind = self._bind_kind(default_field)
+            status.setText(f'当前：{label}（{kind}） · 来源={cur_id or "（未绑定）"} · 字段={field_edit.text()}')
+
+        def _apply_current():
+            i = state['i']
+            if i >= len(slots):
+                return
+            label, id_key, field_key, default_field = slots[i]
+            nid = src_box.currentData() or ''
+            fp = field_edit.text().strip() or default_field
+            self._set_param(id_key, nid)
+            self._set_param(field_key, fp)
+            state['done'].append(label)
+            status.setText(f'已写入 {label} → {nid or "（空）"}.{fp}')
+
+        def _next():
+            _apply_current()
+            state['i'] += 1
+            if state['i'] >= len(slots):
+                prog.setValue(len(slots))
+                QMessageBox.information(
+                    dlg, '绑定制导',
+                    '已完成：' + '、'.join(state['done']) + '\n可在基本参数中复查或再跑制导。',
+                )
+                dlg.accept()
+                return
+            _load_slot()
+
+        def _skip():
+            i = state['i']
+            if i < len(slots):
+                state['done'].append(slots[i][0] + '(跳过)')
+            state['i'] += 1
+            if state['i'] >= len(slots):
+                prog.setValue(len(slots))
+                dlg.accept()
+                return
+            _load_slot()
+
+        def _pick_field():
+            i = state['i']
+            if i >= len(slots):
+                return
+            label, id_key, field_key, default_field = slots[i]
+            from desktop.upstream_field_picker import fill_line_from_picker
+            picked = fill_line_from_picker(
+                self, self.project, self.step.get('id'), field_edit, self._set_param, field_key, field_only=True,
+            )
+            if not picked:
+                return
+            nid, _field, _token = picked
+            if nid:
+                idx = src_box.findData(nid)
+                if idx < 0:
+                    src_box.addItem(nid, nid)
+                    idx = src_box.findData(nid)
+                if idx >= 0:
+                    src_box.setCurrentIndex(idx)
+                self._set_param(id_key, nid)
+            status.setText(f'已挑选字段 → {field_edit.text()}')
+
+        def _canvas():
+            i = state['i']
+            if i >= len(slots):
+                return
+            label, id_key, field_key, default_field = slots[i]
+            host = self.window()
+            begin = getattr(host, 'begin_geom_canvas_pick', None) if host is not None else None
+            if not callable(begin):
+                QMessageBox.information(dlg, '画布点选', '当前窗口不支持画布点选（需主工作台）。')
+                return
+            kind = self._bind_kind(default_field)
+
+            def _on_hit(hit):
+                if not hit:
+                    return
+                nid = hit.get('stepId') or ''
+                field_path = hit.get('field') or default_field
+                if nid:
+                    idx = src_box.findData(nid)
+                    if idx < 0:
+                        src_box.addItem(hit.get('stepName') or nid, nid)
+                        idx = src_box.findData(nid)
+                    if idx >= 0:
+                        src_box.setCurrentIndex(idx)
+                    self._set_param(id_key, nid)
+                field_edit.setText(field_path)
+                self._set_param(field_key, field_path)
+                status.setText(f'画布点选 → {nid}.{field_path} · 点「下一步」确认')
+
+            # Keep wizard visible; canvas pick is modal-ish via host status
+            begin(kind, _on_hit, status=f'制导点选{label}（{kind}）')
+
+        row = QHBoxLayout()
+        b_field = QPushButton('插入上游字段')
+        b_field.clicked.connect(_pick_field)
+        b_canvas = QPushButton('画布点选')
+        b_canvas.setObjectName('measureGeomWizardCanvasBtn')
+        b_canvas.clicked.connect(_canvas)
+        b_skip = QPushButton('跳过')
+        b_skip.clicked.connect(_skip)
+        b_next = QPushButton('下一步')
+        b_next.setObjectName('primaryButton')
+        b_next.clicked.connect(_next)
+        b_cancel = QPushButton('取消')
+        b_cancel.clicked.connect(dlg.reject)
+        for b in (b_field, b_canvas, b_skip, b_next, b_cancel):
+            row.addWidget(b)
+        lay.addLayout(row)
+        _load_slot()
+        dlg.exec()
+

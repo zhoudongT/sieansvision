@@ -14,7 +14,7 @@ from copy import deepcopy
 from PySide6.QtCore import QObject, Signal, Slot, QTimer
 from PySide6.QtNetwork import QTcpServer, QTcpSocket, QUdpSocket, QHostAddress
 
-from desktop.comm_manager import ensure_comm_manager, write_project_variable
+from desktop.comm_manager import ensure_comm_manager, write_project_variable, parse_protocol_writeback_extras
 
 
 class CommRecvListener(QObject):
@@ -372,13 +372,27 @@ class CommRecvListener(QObject):
             if matched:
                 p = deepcopy(host.document.project)
                 written = []
+                written_vals = {}  # ref → value (for live patch)
+                try:
+                    extras = parse_protocol_writeback_extras(text)
+                except Exception:
+                    extras = []
                 for e in matched:
                     var = (e.get('variable') or e.get('var') or '').strip()
                     if not var:
                         continue
                     scope, name = write_project_variable(p, var, text)
                     if name:
-                        written.append(f'{scope}.{name}')
+                        ref = f'{scope}.{name}'
+                        written.append(ref)
+                        written_vals[ref] = text
+                        # 细妆⑰：VALUE/MEAS/JSON → sibling globals/flow 字段
+                        for ek, ev in extras:
+                            s2, n2 = write_project_variable(p, f'{scope}.{ek}', ev)
+                            if n2:
+                                r2 = f'{s2}.{n2}'
+                                written.append(r2)
+                                written_vals[r2] = ev
                 if written:
                     host.document.commit(p)
                     if hasattr(host, 'log'):
@@ -388,15 +402,15 @@ class CommRecvListener(QObject):
                         dlg = (getattr(host, 'dialogs', None) or {}).get('variables')
                         if dlg is not None and dlg.isVisible() and hasattr(dlg, 'live_patch_flow_var'):
                             for ref in written:
-                                # written as scope.name
                                 parts = ref.split('.', 1)
                                 vname = parts[-1]
+                                val = written_vals.get(ref, text)
                                 if parts[0] == 'flow' or len(parts) == 1:
-                                    dlg.live_patch_flow_var(vname, text)
+                                    dlg.live_patch_flow_var(vname, val)
                                 elif parts[0] == 'global' and hasattr(dlg, 'live_patch_global_var'):
-                                    dlg.live_patch_global_var(vname, text)
+                                    dlg.live_patch_global_var(vname, val)
                                 else:
-                                    dlg.live_patch_flow_var(vname, text)
+                                    dlg.live_patch_flow_var(vname, val)
                     except Exception:
                         pass
             elif hasattr(host, 'log'):
