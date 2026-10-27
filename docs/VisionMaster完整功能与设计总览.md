@@ -426,6 +426,14 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆89 · 策略 tip/set/refresh tip 文本属性 · 再预览/短史/步进 tip_prop 镜像 · 档差菜单 flash 同步 · 夹紧预览 status_prop_ok · 2026-10-28】
+
+- **策略**：`tip` / `set_strategy_badge_hover_tip_max_len` / `refresh` 同步 `dstImportStrategyBadgeHoverTip`，out 含 `tip_prop` / `tip_prop_ok`。
+- **再预览 / 撤销短史 / 滚轮步进**：tip 与 refresh 镜像 `*HoverTip` 属性（同档差 `jumpDeltaBadgeHoverTip`），`tip_prop_ok` 入 `_last_*` 与 refresh out。
+- **档差菜单**：quiet/shown out 增加 `flash_ms_prop` / `flash_ms_prop_ok`（写回 `jumpDeltaBadgeFlashMs` 往返）。
+- **夹紧预览**：再预览 / 档差 / 步进 clamp out 增加 `status` / `status_prop` / `status_prop_ok`（写「夹紧预览」读回）。
+- **验证**：`scripts/smoke-wave121-…-e2e.py` 7/7；regress wave120 6/6。非硬件约 **~99.98%**。
+
 ## 【细妆88 · 策略 refresh out 属性同步 · 再预览/短史/步进 tip flash_ms_prop_ok · 档差 refresh tip_prop_ok · FlashMs refresh 往返 · 2026-10-28】
 
 - **DST 策略徽章**：refresh out 同步 `strategy_prop_ok` / `tip_max_len_prop_ok` / `last_toast_brief_prop_ok`。
