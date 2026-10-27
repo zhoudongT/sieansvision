@@ -292,9 +292,13 @@ class RunUiDesignerDialog(QDialog):
         export_btn.clicked.connect(self._export)
         save_tpl_btn = QPushButton('保存模板')
         save_tpl_btn.clicked.connect(self._save_template)
+        vm_btn = QPushButton('VM默认运行壳')
+        vm_btn.setToolTip('一键放入：图像 + 运行控制 + OK/NG + 运行状态（对标课内 Play/Stop/判定灯）')
+        vm_btn.clicked.connect(self._apply_vm_default_shell)
         bar.addWidget(preview_btn)
         bar.addWidget(export_btn)
         bar.addWidget(save_tpl_btn)
+        bar.addWidget(vm_btn)
         close_btn = QPushButton('关闭')
         close_btn.clicked.connect(self.close)
         bar.addWidget(close_btn)
@@ -477,6 +481,30 @@ class RunUiDesignerDialog(QDialog):
             self._refresh_fixed_chrome()
         else:
             self._template_meta = {}
+
+    def _apply_vm_default_shell(self):
+        """Highest-impact HMI gap fill from VM p=28–29: Play/Stop + OK/NG layout."""
+        if '4' in SPLIT_PRESETS:
+            self.split_combo.setCurrentIndex(SPLIT_PRESETS.index('4'))
+        else:
+            self.split_combo.setCurrentIndex(3)
+        self._placements = [
+            dict(name='图像', page=0, cell=0, category='基础'),
+            dict(name='OK/NG', page=0, cell=1, category='基础'),
+            dict(name='运行控制', page=0, cell=2, category='基础'),
+            dict(name='运行状态', page=0, cell=3, category='基础'),
+        ]
+        for name in ('图像', 'OK/NG', '运行控制', '运行状态'):
+            st = self._control_state.setdefault(name, dict(binding='', commands=[], placed=False))
+            st['placed'] = True
+            if name == '运行控制' and not st.get('commands'):
+                st['commands'] = [dict(type='执行·单次', config='')]
+        self.fix_top.setChecked(True)
+        self.fix_bottom.setChecked(True)
+        self._apply_placements_to_cells()
+        self._refresh_fixed_chrome()
+        self._persist()
+        QMessageBox.information(self, '运行界面', '已应用 VM 默认运行壳：图像 / OK·NG / 运行控制 / 运行状态。')
 
     def _templates_path(self):
         if self.templates_root is not None:
