@@ -295,11 +295,47 @@ class FilmstripBar(QWidget):
             tip = '连续运行 / 运行全部共用：暂停/继续切图调度（可中途改间隔）'
         self.pause_btn.setToolTip(tip)
 
+    def _fit_pixmap_to_thumb(self, pix, fit_mode=None):
+        """Scale/crop pixmap to iconSize honoring Display fitMode: contain|cover|actual."""
+        from PySide6.QtGui import QPainter
+        from PySide6.QtCore import QRect, QPoint
+        size = self.thumbs.iconSize() if hasattr(self, 'thumbs') else QSize(72, 54)
+        tw, th = size.width(), size.height()
+        if tw < 1 or th < 1 or pix is None or pix.isNull():
+            return pix
+        mode = fit_mode if fit_mode in ('contain', 'cover', 'actual') else getattr(self, '_live_fit_mode', 'contain')
+        mode = mode if mode in ('contain', 'cover', 'actual') else 'contain'
+        if mode == 'contain':
+            return pix.scaled(size, Qt.AspectRatioMode.KeepAspectRatio,
+                              Qt.TransformationMode.SmoothTransformation)
+        if mode == 'actual':
+            # 1:1 center-crop (or pad) into thumb rect
+            src = pix
+            if src.width() < tw or src.height() < th:
+                # pad onto transparent/black canvas centered
+                out = QPixmap(size)
+                out.fill(Qt.GlobalColor.transparent)
+                p = QPainter(out)
+                x = max(0, (tw - src.width()) // 2)
+                y = max(0, (th - src.height()) // 2)
+                p.drawPixmap(x, y, src)
+                p.end()
+                return out
+            x = max(0, (src.width() - tw) // 2)
+            y = max(0, (src.height() - th) // 2)
+            return src.copy(x, y, tw, th)
+        # cover: expand then center-crop
+        scaled = pix.scaled(size, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                            Qt.TransformationMode.SmoothTransformation)
+        x = max(0, (scaled.width() - tw) // 2)
+        y = max(0, (scaled.height() - th) // 2)
+        return scaled.copy(x, y, tw, th)
+
     def set_live_display(self, data_url, fit_mode=None):
-        """Push Display result + remember fitMode tip on current thumb."""
+        """Push Display result + honor fitMode crop on current thumb."""
         if fit_mode in ('contain', 'cover', 'actual'):
             self._live_fit_mode = fit_mode
-        self.set_live_result(data_url)
+        self.set_live_result(data_url, fit_mode=fit_mode or getattr(self, '_live_fit_mode', None))
         try:
             row = self.thumbs.currentRow() if hasattr(self, 'thumbs') else -1
             item = self.thumbs.item(row) if row >= 0 else None
@@ -311,7 +347,7 @@ class FilmstripBar(QWidget):
         except Exception:
             pass
 
-    def set_live_result(self, data_url):
+    def set_live_result(self, data_url, fit_mode=None):
         """Push display/engine annotatedImage onto current filmstrip thumb (live preview)."""
         if not data_url or not hasattr(self, 'thumbs'):
             return
@@ -328,14 +364,18 @@ class FilmstripBar(QWidget):
                 img = QImage.fromData(ba)
                 if img.isNull():
                     return
-                pix = QPixmap.fromImage(img).scaled(
-                    self.thumbs.iconSize(), Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
+                src_pix = QPixmap.fromImage(img)
+                mode = fit_mode if fit_mode in ('contain', 'cover', 'actual') else getattr(self, '_live_fit_mode', 'contain')
+                pix = self._fit_pixmap_to_thumb(src_pix, mode)
                 item = self.thumbs.item(row)
                 if item is not None:
                     item.setIcon(QIcon(pix))
-                    item.setToolTip((item.toolTip() or self._paths[row]) + '\n· 模块结果预览')
+                    base_tip = item.toolTip() or self._paths[row]
+                    extra = '· 模块结果预览'
+                    if mode:
+                        extra = f'{extra} · fitMode={mode}'
+                    if extra not in base_tip:
+                        item.setToolTip((base_tip + '\n' + extra).strip())
         except Exception:
             pass
 

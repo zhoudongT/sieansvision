@@ -174,17 +174,18 @@ class PropertyFloat(QDialog):
         self.close()
 
     def _discard_draft_if_dirty(self):
-        """Shared Esc / ✕ / 取消 / reject / closeEvent discard."""
-        if self._source_form is not None and self._source_dirty and self._source_baseline is not None:
+        """Shared Esc / ✕ / 取消 / reject / closeEvent discard.
+
+        Hybrid panels (source + step baselines both set) discard BOTH independently.
+        """
+        # Source baseline (even if a step panel is also open / hybrid)
+        if self._source_dirty and self._source_baseline is not None:
             try:
                 self.sourceChanged.emit(deepcopy(self._source_baseline))
             except Exception:
                 pass
-        elif (
-            self._source_form is None
-            and self._step_dirty
-            and self._step_baseline is not None
-        ):
+        # Step baseline — independent of source (hybrid: both fire)
+        if self._step_dirty and self._step_baseline is not None:
             try:
                 self.changed.emit(deepcopy(self._step_baseline))
             except Exception:

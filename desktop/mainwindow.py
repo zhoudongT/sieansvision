@@ -203,6 +203,19 @@ class MainWindow(QMainWindow):
         self.minimap=MiniMap(self.scene,self.flow,canvas_host)
         self._canvas_host=canvas_host
         canvas_host.installEventFilter(self)
+        # Transient canvas status chip (fold-boundary / nest tips) — overlays flow area
+        self._canvas_status_chip = QLabel('', canvas_host)
+        self._canvas_status_chip.setObjectName('canvasStatusChip')
+        self._canvas_status_chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._canvas_status_chip.setWordWrap(True)
+        self._canvas_status_chip.setVisible(False)
+        self._canvas_status_chip.setStyleSheet(
+            'QLabel#canvasStatusChip{background:rgba(32,32,36,0.92);color:#f0f0f0;'
+            'border:1px solid #e67a2e;border-radius:4px;padding:6px 12px;font-size:12px;}'
+        )
+        self._canvas_chip_timer = QTimer(self)
+        self._canvas_chip_timer.setSingleShot(True)
+        self._canvas_chip_timer.timeout.connect(lambda: self._canvas_status_chip.setVisible(False))
         # A5: 全流程 panel in stack with canvas
         self.all_flows_panel=AllFlowsPanel()
         self.all_flows_panel.runOnce.connect(self.run_flow_once)
@@ -1966,6 +1979,30 @@ class MainWindow(QMainWindow):
             target = max(0, int(target_depth))
         except Exception:
             target = 0
+        depth = len(self._group_stack or [])
+        if depth <= target:
+            return
+        # Confirm when mid-redo on nest tip: jump would fold unused redo side into outer
+        try:
+            hist = list(getattr(self.document, 'history', None) or [])
+            idx = int(getattr(self.document, 'index', 0) or 0)
+            mid_redo = bool(hist) and idx + 1 < len(hist)
+            levels = depth - target
+            if mid_redo and levels >= 1:
+                redo_n = len(hist) - 1 - idx
+                ans = QMessageBox.question(
+                    self,
+                    '跳层退出确认',
+                    f'当前嵌套编辑不在最新点（尚有 {redo_n} 步可重做）。\n'
+                    f'跳层退出 {levels} 层会折叠整段撤销/重做链到上层。\n\n仍要跳层？',
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if ans != QMessageBox.StandardButton.Yes:
+                    self.log('已取消面包屑跳层（保留嵌套中段重做）')
+                    return
+        except Exception:
+            pass
         n = 0
         while len(self._group_stack or []) > target:
             before = len(self._group_stack)
@@ -2035,6 +2072,42 @@ class MainWindow(QMainWindow):
                     self.wb_status.set_config(msg, ok=True)
             except Exception:
                 pass
+            try:
+                self._show_canvas_status_chip(msg)
+            except Exception:
+                pass
+
+    def _show_canvas_status_chip(self, message, ms=3200):
+        """Transient chip over canvas (fold-boundary / nest tips), not only log/wb_status."""
+        chip = getattr(self, '_canvas_status_chip', None)
+        host = getattr(self, '_canvas_host', None)
+        if chip is None or host is None:
+            return
+        text = str(message or '').strip()
+        if not text:
+            chip.setVisible(False)
+            return
+        chip.setText(text)
+        chip.adjustSize()
+        # Place below breadcrumb, centered
+        hw = max(120, host.width() - 24)
+        chip.setFixedWidth(min(hw, max(280, chip.sizeHint().width() + 8)))
+        chip.adjustSize()
+        x = max(8, (host.width() - chip.width()) // 2)
+        y = 8
+        try:
+            bc = getattr(self, '_group_breadcrumb', None)
+            if bc is not None and bc.isVisible():
+                y = bc.geometry().bottom() + 6
+        except Exception:
+            y = 8
+        chip.move(x, y)
+        chip.raise_()
+        chip.setVisible(True)
+        timer = getattr(self, '_canvas_chip_timer', None)
+        if timer is not None:
+            timer.stop()
+            timer.start(int(ms) if ms else 3200)
 
     def reload_comm_listener(self):
         """Start/refresh live Comm recvEvents listeners (TCP Server/UDP/Serial)."""
