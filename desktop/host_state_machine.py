@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QGridLayout, QSizePolicy, QComboBox, QDoubleSpinBox, QSpinBox, QListWidget, QListWidgetItem, QFileDialog, QApplication,
     QMenu,
     QToolTip,
+    QMessageBox,
 )
 
 from desktop.theme import TEXT, TEXT_MUTED, TEXT_DIM, OK, PANEL, LINE
@@ -796,8 +797,8 @@ class HostStateMachineWidget(QWidget):
         self._sev_bubble_pin_tick = QTimer(self)
         self._sev_bubble_pin_tick.setInterval(40)
         self._sev_bubble_pin_tick.timeout.connect(self._on_sev_bubble_pin_tick)
-        self._sev_bubble_pin_arc = _SevChipPinProgressArc(self)
-        self._sev_bubble_pin_arc.setObjectName('hostSevBubblePinArc')
+        # wave40: bubble arc alias set after chip arc singleton created
+        self._sev_bubble_pin_arc = None
         try:
             raw_pin = str(self._host_settings().value('host/alarmSevPinned', '') or '').strip().lower()
             if raw_pin in ('all', 'error', 'warning', 'info'):
@@ -889,18 +890,22 @@ class HostStateMachineWidget(QWidget):
         self._sev_chip_pin_tick = QTimer(self)
         self._sev_chip_pin_tick.setInterval(40)
         self._sev_chip_pin_tick.timeout.connect(self._on_sev_chip_pin_tick)
-        self._sev_chip_pin_arc = _SevChipPinProgressArc(self)
+        # wave40: 芯片/气泡共享进度弧单例
+        self._sev_pin_arc = _SevChipPinProgressArc(self)
+        self._sev_pin_arc.setObjectName('hostSevPinArc')
+        self._sev_chip_pin_arc = self._sev_pin_arc  # alias
+        self._sev_bubble_pin_arc = self._sev_pin_arc  # alias — 减双实例
+        self._sev_pin_arc_owner = ''  # 'chip' | 'bubble'
         try:
             raw_c = str(self._host_settings().value('host/sevChipPinArcColor', '#f0c040') or '#f0c040').strip()
             if raw_c and not raw_c.startswith('#'):
                 raw_c = '#' + raw_c
-            self._sev_chip_pin_arc.set_color(raw_c or '#f0c040')
+            self._sev_pin_arc.set_color(raw_c or '#f0c040')
         except Exception:
             pass
-        # wave39: 气泡长按与芯片同色/时长
+        # wave39–40: 气泡长按与芯片同色/时长（共享弧）
         try:
             self._sev_bubble_pin_ms = int(self._sev_chip_pin_ms)
-            self._sev_bubble_pin_arc.set_color(self._sev_chip_pin_arc.color())
         except Exception:
             pass
         self._host_toast_click_action = 'open'  # wave38: open | review
@@ -910,14 +915,27 @@ class HostStateMachineWidget(QWidget):
         self._path_copy_badge.setObjectName('hostPathCopyBadge')
         self._path_copy_badge.setFixedHeight(20)
         self._path_copy_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._path_copy_badge.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._path_copy_badge.setToolTip('已复制 · 再点打开目录')
         self._path_copy_badge.setStyleSheet(
             'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
             'border-radius:3px;padding:1px 8px;font-size:10px;font-weight:700;'
         )
         self._path_copy_badge.hide()
+        self._path_copy_badge_path = ''
+        self._path_copy_badge.mousePressEvent = (
+            lambda e: self._on_path_copy_badge_clicked(e)
+        )
         self._path_copy_badge_timer = QTimer(self)
         self._path_copy_badge_timer.setSingleShot(True)
         self._path_copy_badge_timer.timeout.connect(self._hide_path_copy_badge)
+        # wave40: Alt+H 长按 H 保持菜单不关
+        self._toast_hist_cap_keep_open = False
+        self._toast_hist_cap_hold_timer = QTimer(self)
+        self._toast_hist_cap_hold_timer.setSingleShot(True)
+        self._toast_hist_cap_hold_timer.setInterval(450)
+        self._toast_hist_cap_hold_timer.timeout.connect(self._on_toast_hist_cap_hold_fire)
+        self._toast_hist_cap_h_down = False
         # wave37: 多档另存上限可配
         self._alarm_film_csv_dirs_max = 5
         try:
@@ -1532,12 +1550,15 @@ class HostStateMachineWidget(QWidget):
         return path
 
     def flash_path_copy_badge(self, path: str = '', *, ms: int = 1800) -> bool:
-        """wave39: 路径回看复制确认徽章「✓ 已复制」."""
+        """wave39–40: 路径回看复制确认徽章「✓ 已复制」；再点打开目录."""
         badge = getattr(self, '_path_copy_badge', None)
+        path = str(path or '').strip()
+        self._path_copy_badge_path = path
+        if path:
+            self._host_toast_open_path = path
         if badge is None:
-            # fallback toast
             try:
-                self._flash_host_toast('✓ 已复制路径', kind='ok', ms=ms)
+                self._flash_host_toast('✓ 已复制路径', kind='ok', ms=ms, open_path=path)
             except Exception:
                 pass
             return False
@@ -1547,13 +1568,13 @@ class HostStateMachineWidget(QWidget):
             short = _P(path).name if path else ''
         except Exception:
             short = ''
-        text = '✓ 已复制' + (f' · {short}' if short else '路径')
+        text = '✓ 已复制' + (f' · {short}' if short else '路径') + ' · 再点打开'
         try:
             badge.setText(text)
+            badge.setToolTip(f'{path}\n再点打开目录' if path else '再点打开目录')
             badge.adjustSize()
-            bw = max(badge.sizeHint().width() + 10, 72)
+            bw = max(badge.sizeHint().width() + 10, 88)
             bh = max(badge.sizeHint().height() + 2, 20)
-            # park near host toast if visible
             toast = getattr(self, '_liaison_hotkey_toast', None)
             if toast is not None and toast.isVisible():
                 gx = toast.x() + max(0, (toast.width() - bw) // 2)
@@ -1568,13 +1589,29 @@ class HostStateMachineWidget(QWidget):
             return False
         timer = getattr(self, '_path_copy_badge_timer', None)
         if timer is not None:
-            timer.start(int(ms or 1800))
+            # longer stay so user can click
+            timer.start(max(int(ms or 1800), 3200))
         self._last_path_copy_badge_text = text
         try:
             self._log_line(text)
         except Exception:
             pass
         return True
+
+    def _on_path_copy_badge_clicked(self, event=None):
+        """wave40: 复制徽章再点 → 打开目录."""
+        try:
+            if event is not None and hasattr(event, 'button'):
+                if event.button() not in (Qt.MouseButton.LeftButton,):
+                    return
+        except Exception:
+            pass
+        path = str(getattr(self, '_path_copy_badge_path', '') or '').strip()
+        if path:
+            self._host_toast_open_path = path
+        got = self.open_host_toast_path()
+        self._last_path_copy_badge_opened = got
+        return got
 
     def _hide_path_copy_badge(self):
         badge = getattr(self, '_path_copy_badge', None)
@@ -2169,11 +2206,12 @@ class HostStateMachineWidget(QWidget):
             )
             sub.addAction(act_m)
         sub.addSeparator()
-        act_prune = QAction(f'清理失效目录（{len(stale)}）', sub)
+        act_prune = QAction(f'清理失效目录（{len(stale)}）…', sub)
         act_prune.setEnabled(bool(stale))
         act_prune.setObjectName('hostAlarmFilmCsvDirsPrune')
         act_prune.setProperty('isPruneStale', True)
-        act_prune.triggered.connect(self.prune_stale_alarm_film_csv_dirs)
+        act_prune.setToolTip('预览清单确认后清理')
+        act_prune.triggered.connect(lambda *_: self.prune_stale_alarm_film_csv_dirs(confirm=True))
         sub.addAction(act_prune)
         act_export = QAction('导出记忆 JSON…', sub)
         act_export.setProperty('isDirsExport', True)
@@ -2185,6 +2223,11 @@ class HostStateMachineWidget(QWidget):
         act_import.setObjectName('hostAlarmFilmCsvDirsImport')
         act_import.triggered.connect(lambda *_: self.import_alarm_film_csv_dirs_json())
         sub.addAction(act_import)
+        act_merge = QAction('合并导入 JSON…', sub)
+        act_merge.setProperty('isDirsMergeImport', True)
+        act_merge.setObjectName('hostAlarmFilmCsvDirsMergeImport')
+        act_merge.triggered.connect(lambda *_: self.merge_import_alarm_film_csv_dirs_json())
+        sub.addAction(act_merge)
         sub.addSeparator()
         act_clear = QAction('清空最近另存', sub)
         act_clear.setEnabled(bool(recent))
@@ -2305,13 +2348,15 @@ class HostStateMachineWidget(QWidget):
         self._show_sev_bubble_pin_arc(p)
 
     def _show_sev_bubble_pin_arc(self, p: float):
-        arc = getattr(self, '_sev_bubble_pin_arc', None)
+        """wave39–40: 气泡弧（共享单例 overlay）."""
+        arc = getattr(self, '_sev_pin_arc', None) or getattr(self, '_sev_bubble_pin_arc', None)
         key = str(getattr(self, '_sev_bubble_pin_key', '') or '')
         bubbles = getattr(self, '_alarm_sev_count_bubbles', None) or {}
         bubble = bubbles.get(key)
         if arc is None or bubble is None:
             return
         try:
+            self._sev_pin_arc_owner = 'bubble'
             gp = bubble.mapTo(self, QPoint(0, 0))
             ax = gp.x() + max(0, (bubble.width() - arc.width()) // 2)
             ay = gp.y() + max(0, (bubble.height() - arc.height()) // 2)
@@ -2326,13 +2371,16 @@ class HostStateMachineWidget(QWidget):
         tick = getattr(self, '_sev_bubble_pin_tick', None)
         if tick is not None and tick.isActive():
             tick.stop()
-        arc = getattr(self, '_sev_bubble_pin_arc', None)
-        if arc is not None:
-            try:
-                arc.set_progress(0.0)
-                arc.hide()
-            except Exception:
-                pass
+        # only hide if we own the shared arc
+        if str(getattr(self, '_sev_pin_arc_owner', '') or '') in ('bubble', ''):
+            arc = getattr(self, '_sev_pin_arc', None) or getattr(self, '_sev_bubble_pin_arc', None)
+            if arc is not None:
+                try:
+                    arc.set_progress(0.0)
+                    arc.hide()
+                except Exception:
+                    pass
+            self._sev_pin_arc_owner = ''
         self._sev_bubble_pin_press_ms = 0
 
     def pin_alarm_severity_filter(self, pinned: bool = True, key: str = '', *, persist: bool = True) -> bool:
@@ -2453,14 +2501,15 @@ class HostStateMachineWidget(QWidget):
         self._show_sev_chip_pin_arc(p)
 
     def _show_sev_chip_pin_arc(self, p: float):
-        arc = getattr(self, '_sev_chip_pin_arc', None)
+        """wave37–40: 芯片弧（共享单例 overlay）."""
+        arc = getattr(self, '_sev_pin_arc', None) or getattr(self, '_sev_chip_pin_arc', None)
         key = str(getattr(self, '_sev_chip_pin_key', '') or '')
         chips = getattr(self, '_alarm_sev_chips', None) or {}
         chip = chips.get(key)
         if arc is None or chip is None:
             return
         try:
-            # position arc over chip (parent is host widget)
+            self._sev_pin_arc_owner = 'chip'
             gp = chip.mapTo(self, QPoint(0, 0))
             ax = gp.x() + max(0, (chip.width() - arc.width()) // 2)
             ay = gp.y() + max(0, (chip.height() - arc.height()) // 2)
@@ -2475,13 +2524,15 @@ class HostStateMachineWidget(QWidget):
         tick = getattr(self, '_sev_chip_pin_tick', None)
         if tick is not None and tick.isActive():
             tick.stop()
-        arc = getattr(self, '_sev_chip_pin_arc', None)
-        if arc is not None:
-            try:
-                arc.set_progress(0.0)
-                arc.hide()
-            except Exception:
-                pass
+        if str(getattr(self, '_sev_pin_arc_owner', '') or '') in ('chip', ''):
+            arc = getattr(self, '_sev_pin_arc', None) or getattr(self, '_sev_chip_pin_arc', None)
+            if arc is not None:
+                try:
+                    arc.set_progress(0.0)
+                    arc.hide()
+                except Exception:
+                    pass
+            self._sev_pin_arc_owner = ''
         self._sev_chip_pin_press_ms = 0
 
     def _on_sev_chip_release(self, event=None, key: str = 'all'):
@@ -2937,10 +2988,58 @@ class HostStateMachineWidget(QWidget):
         """wave39: 失效（不存在）的最近另存目录."""
         return [d for d in self.alarm_film_csv_dirs() if not self.alarm_film_csv_dir_exists(d)]
 
-    def prune_stale_alarm_film_csv_dirs(self) -> list:
-        """wave39: 一键清理失效另存目录；返回保留列表."""
-        kept = [d for d in self.alarm_film_csv_dirs() if self.alarm_film_csv_dir_exists(d)]
-        removed_n = len(self.alarm_film_csv_dirs()) - len(kept)
+    def preview_stale_alarm_film_csv_dirs(self) -> list:
+        """wave40: 失效清理预览清单（不改动）."""
+        return list(self.stale_alarm_film_csv_dirs())
+
+    def prune_stale_alarm_film_csv_dirs(self, *, confirm: bool = True) -> list:
+        """wave39–40: 清理失效另存；confirm 时先预览清单确认."""
+        stale = self.preview_stale_alarm_film_csv_dirs()
+        if not stale:
+            try:
+                self._flash_host_toast('无失效目录', kind='info')
+            except Exception:
+                pass
+            return list(self.alarm_film_csv_dirs())
+        self._last_stale_prune_preview = list(stale)
+        do_it = True
+        if confirm and not getattr(self, '_prune_stale_no_confirm', False):
+            # preview list in message box
+            lines = []
+            for i, d in enumerate(stale[:12], 1):
+                try:
+                    from pathlib import Path as _P
+                    lab = _P(d).name or d
+                except Exception:
+                    lab = d
+                lines.append(f'{i}. {lab}\n   {d}')
+            extra = '' if len(stale) <= 12 else f'\n…另有 {len(stale)-12} 项'
+            body = '将删除以下失效目录记忆：\n\n' + '\n'.join(lines) + extra
+            try:
+                ret = QMessageBox.question(
+                    self,
+                    '清理失效目录',
+                    body,
+                    QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+                    QMessageBox.StandardButton.Ok,
+                )
+                do_it = ret == QMessageBox.StandardButton.Ok
+            except Exception:
+                do_it = True
+            self._last_stale_prune_confirmed = do_it
+        else:
+            self._last_stale_prune_confirmed = True
+        if not do_it:
+            try:
+                self._flash_host_toast('已取消清理失效', kind='info')
+                self._log_line('清理失效另存 · 已取消')
+            except Exception:
+                pass
+            return list(self.alarm_film_csv_dirs())
+        kept = [d for d in self.alarm_film_csv_dirs() if d not in set(stale)]
+        # also drop any still-missing
+        kept = [d for d in kept if self.alarm_film_csv_dir_exists(d)]
+        removed_n = len(stale)
         try:
             self._host_settings().setValue('host/alarmFilmCsvDirs', kept)
             self._host_settings().setValue('host/alarmFilmCsvDir', kept[0] if kept else '')
@@ -2991,15 +3090,15 @@ class HostStateMachineWidget(QWidget):
         self._last_alarm_film_csv_dirs_export = path
         return path
 
-    def import_alarm_film_csv_dirs_json(self, path_or_text: str = '') -> list:
-        """wave39: 导入多档另存记忆 JSON（path 或 JSON 文本）."""
+    def import_alarm_film_csv_dirs_json(self, path_or_text: str = '', *, merge: bool = False) -> list:
+        """wave39–40: 导入多档另存记忆 JSON；merge=True 去重并集（非覆盖）."""
         import json
         raw = str(path_or_text or '').strip()
         text = ''
         if not raw:
             path, _ = QFileDialog.getOpenFileName(
                 self,
-                '导入另存记忆 JSON',
+                '合并导入另存记忆 JSON' if merge else '导入另存记忆 JSON',
                 str(__import__('pathlib').Path.home()),
                 'JSON (*.json);;All (*)',
             )
@@ -3007,7 +3106,6 @@ class HostStateMachineWidget(QWidget):
             if not path:
                 return self.alarm_film_csv_dirs()
             raw = path
-        # file path vs json text
         try:
             from pathlib import Path as _P
             p = _P(raw)
@@ -3021,7 +3119,7 @@ class HostStateMachineWidget(QWidget):
             data = json.loads(text)
         except Exception as err:
             try:
-                self._flash_host_toast(f'导入失败 · JSON 无效', kind='info')
+                self._flash_host_toast('导入失败 · JSON 无效', kind='info')
                 self._log_line(f'另存记忆导入失败 · {err}')
             except Exception:
                 pass
@@ -3041,18 +3139,79 @@ class HostStateMachineWidget(QWidget):
             except Exception:
                 pass
             return self.alarm_film_csv_dirs()
-        # apply max then dirs
+        if merge:
+            # 去重并集：导入项置前，再接现有，裁剪上限
+            existing = self.alarm_film_csv_dirs()
+            # max takes the larger of current and imported (capped 8)
+            try:
+                max_n = max(int(max_n), int(self.alarm_film_csv_dirs_max()))
+            except Exception:
+                pass
+            max_n = max(3, min(8, int(max_n or 5)))
+            try:
+                self.set_alarm_film_csv_dirs_max(max_n, persist=True)
+            except Exception:
+                pass
+            out = self.merge_alarm_film_csv_dirs(dirs)
+            try:
+                self._log_line(f'另存记忆已合并导入 · {len(out)} 档')
+                self._flash_host_toast(f'已合并导入 · {len(out)} 档', kind='ok')
+            except Exception:
+                pass
+            self._last_alarm_film_csv_dirs_import_mode = 'merge'
+            return out
+        # overwrite mode (wave39–40): 覆盖写入（非并集）
         try:
             self.set_alarm_film_csv_dirs_max(max_n, persist=True)
         except Exception:
             pass
-        out = self.reorder_alarm_film_csv_dirs(dirs)
+        max_n = self.alarm_film_csv_dirs_max()
+        seen = []
+        for d in list(dirs or []):
+            s = str(d or '').strip()
+            if s and s not in seen:
+                seen.append(s)
+            if len(seen) >= max_n:
+                break
+        try:
+            self._host_settings().setValue('host/alarmFilmCsvDirs', seen)
+            self._host_settings().setValue('host/alarmFilmCsvDir', seen[0] if seen else '')
+        except Exception:
+            pass
+        out = list(seen)
         try:
             self._log_line(f'另存记忆已导入 · {len(out)} 档')
             self._flash_host_toast(f'已导入记忆 · {len(out)} 档', kind='ok')
         except Exception:
             pass
+        self._last_alarm_film_csv_dirs_import_mode = 'replace'
         return out
+
+    def merge_alarm_film_csv_dirs(self, dirs) -> list:
+        """wave40: 多档记忆去重并集（新项置前 + 保留旧项，裁剪上限）."""
+        max_n = self.alarm_film_csv_dirs_max()
+        seen = []
+        for d in list(dirs or []):
+            s = str(d or '').strip()
+            if s and s not in seen:
+                seen.append(s)
+        for d in self.alarm_film_csv_dirs(max_n=max_n):
+            if d not in seen:
+                seen.append(d)
+            if len(seen) >= max_n:
+                break
+        seen = seen[:max_n]
+        try:
+            self._host_settings().setValue('host/alarmFilmCsvDirs', seen)
+            self._host_settings().setValue('host/alarmFilmCsvDir', seen[0] if seen else '')
+        except Exception:
+            pass
+        return list(seen)
+
+    def merge_import_alarm_film_csv_dirs_json(self, path_or_text: str = '') -> list:
+        """wave40: 合并导入 JSON（去重并集）."""
+        return self.import_alarm_film_csv_dirs_json(path_or_text, merge=True)
+
 
     def sev_chip_pin_ms(self) -> int:
         """wave38: 长按落钉时长 ms."""
@@ -3092,17 +3251,16 @@ class HostStateMachineWidget(QWidget):
         return '#f0c040'
 
     def set_sev_chip_pin_arc_color(self, color: str, *, persist: bool = True) -> str:
-        """wave38–39: 配置进度弧颜色；气泡弧同步."""
+        """wave38–40: 配置进度弧颜色（共享单例）."""
         c = str(color or '').strip() or '#f0c040'
         if not c.startswith('#'):
             c = '#' + c
-        for attr in ('_sev_chip_pin_arc', '_sev_bubble_pin_arc'):
-            arc = getattr(self, attr, None)
-            if arc is not None and hasattr(arc, 'set_color'):
-                try:
-                    arc.set_color(c)
-                except Exception:
-                    pass
+        arc = getattr(self, '_sev_pin_arc', None) or getattr(self, '_sev_chip_pin_arc', None)
+        if arc is not None and hasattr(arc, 'set_color'):
+            try:
+                arc.set_color(c)
+            except Exception:
+                pass
         if persist:
             try:
                 self._host_settings().setValue('host/sevChipPinArcColor', c)
@@ -3376,8 +3534,13 @@ class HostStateMachineWidget(QWidget):
                 menu.close()
             except Exception:
                 pass
+            self._toast_hist_cap_keep_open = False
             self._last_toast_hist_cap_closed_by = 'esc'
             return 'esc'
+        # wave40: H 键 — 开始/标记长按保持（smoke 可直接 set_toast_hist_cap_keep_open）
+        if k in (_Qt.Key.Key_H, getattr(_Qt, 'Key_H', 72)):
+            self.begin_toast_hist_cap_hold()
+            return 'hold-begin'
         if k in (_Qt.Key.Key_Up, getattr(_Qt, 'Key_Up', 16777235)):
             act = self.navigate_toast_hist_cap_menu(menu, -1)
             return act
@@ -3393,7 +3556,6 @@ class HostStateMachineWidget(QWidget):
         }
         if k in digit_map:
             n = digit_map[k]
-            # focus matching action if present
             focus = None
             for act in menu.actions():
                 try:
@@ -3409,13 +3571,23 @@ class HostStateMachineWidget(QWidget):
                     menu.setActiveAction(focus)
                 except Exception:
                     pass
+            # wave40: 长按 H 保持菜单不关 — 仍应用容量
+            keep = bool(getattr(self, '_toast_hist_cap_keep_open', False))
             self._apply_toast_hist_capacity(n)
+            self._last_toast_hist_cap_digit = n
+            if keep:
+                self._last_toast_hist_cap_closed_by = 'digit-hold'
+                try:
+                    self._flash_host_toast(
+                        f'容量 → {n} · 长按H保持菜单', kind='info', ms=1000)
+                except Exception:
+                    pass
+                return ('digit-hold', n)
             try:
                 menu.close()
             except Exception:
                 pass
             self._last_toast_hist_cap_closed_by = 'digit'
-            self._last_toast_hist_cap_digit = n
             return ('digit', n)
         if k in (
             _Qt.Key.Key_Return, _Qt.Key.Key_Enter,
@@ -3473,14 +3645,25 @@ class HostStateMachineWidget(QWidget):
             pass
 
     def eventFilter(self, obj, event):  # noqa: N802
-        """wave38: 容量菜单 Esc/方向键；其它交给基类."""
+        """wave38–40: 容量菜单 Esc/方向/数字；H 长按保持."""
         try:
-            from PySide6.QtCore import QEvent
+            from PySide6.QtCore import QEvent, Qt as _Qt
             nav_menu = getattr(self, '_toast_hist_cap_nav_menu', None)
             if nav_menu is not None and obj is nav_menu:
-                if event.type() == QEvent.Type.KeyPress:
-                    result = self.toast_hist_cap_menu_key(event.key(), nav_menu)
+                et = event.type()
+                if et == QEvent.Type.KeyPress:
+                    key = event.key()
+                    if key in (_Qt.Key.Key_H, getattr(_Qt, 'Key_H', 72)):
+                        if not getattr(self, '_toast_hist_cap_h_down', False):
+                            self.begin_toast_hist_cap_hold()
+                        return True
+                    result = self.toast_hist_cap_menu_key(key, nav_menu)
                     if result is not None:
+                        return True
+                elif et == QEvent.Type.KeyRelease:
+                    key = event.key()
+                    if key in (_Qt.Key.Key_H, getattr(_Qt, 'Key_H', 72)):
+                        self.end_toast_hist_cap_hold()
                         return True
         except Exception:
             pass
@@ -3489,8 +3672,46 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             return False
 
+    def set_toast_hist_cap_keep_open(self, keep: bool = True) -> bool:
+        """wave40: 长按 H 对照 — 保持容量菜单不因数字键关闭."""
+        self._toast_hist_cap_keep_open = bool(keep)
+        return self._toast_hist_cap_keep_open
+
+    def begin_toast_hist_cap_hold(self) -> bool:
+        """wave40: 开始长按 H（启动 hold 计时）."""
+        self._toast_hist_cap_h_down = True
+        timer = getattr(self, '_toast_hist_cap_hold_timer', None)
+        if timer is not None:
+            timer.start()
+        return True
+
+    def end_toast_hist_cap_hold(self) -> bool:
+        """wave40: 松开 H；若尚未触发长按则取消计时."""
+        self._toast_hist_cap_h_down = False
+        timer = getattr(self, '_toast_hist_cap_hold_timer', None)
+        if timer is not None and timer.isActive():
+            timer.stop()
+        # release clears keep_open only if we want momentary; keep until Esc
+        return True
+
+    def _on_toast_hist_cap_hold_fire(self):
+        """wave40: 长按 H 满时 → 保持菜单不关."""
+        if not getattr(self, '_toast_hist_cap_h_down', False):
+            return
+        self._toast_hist_cap_keep_open = True
+        try:
+            self._flash_host_toast('长按H · 菜单保持不关', kind='info', ms=1200)
+            self._log_line('长按H · 容量菜单保持')
+        except Exception:
+            pass
+        self._last_toast_hist_cap_hold = True
+
     def _on_toast_hist_cap_hotkey(self):
         """wave36–37: Alt+H → 容量菜单（焦点键选当前项）."""
+        # wave40: 新开菜单时默认不保持（除非已在长按 H）
+        if not getattr(self, '_toast_hist_cap_h_down', False):
+            self._toast_hist_cap_keep_open = False
+            self._last_toast_hist_cap_hold = False
         menu = self._build_liaison_toast_capacity_menu()
         focus = self._focus_toast_hist_cap_menu(menu)
         if getattr(self, '_toast_hist_cap_menu_no_exec', False):
@@ -3521,14 +3742,15 @@ class HostStateMachineWidget(QWidget):
         return menu
 
     def _apply_toast_hist_capacity(self, n: int):
-        """wave35–39: 应用容量；数字/菜单触发后尽量关菜单."""
+        """wave35–40: 应用容量；数字触发后关菜单（长按H保持则不关）."""
         nn = self.set_liaison_toast_history_max(int(n))
         try:
             self._flash_host_toast(f'切窗史容量 → {nn}', kind='info')
             self._log_line(f'切窗史容量 → {nn}')
         except Exception:
             pass
-        # wave39: 直达后自动关（若菜单仍开）
+        if bool(getattr(self, '_toast_hist_cap_keep_open', False)):
+            return nn
         menu = getattr(self, '_last_toast_hist_cap_menu', None) or getattr(
             self, '_toast_hist_cap_nav_menu', None)
         if menu is not None and not getattr(self, '_toast_hist_cap_menu_no_exec', False):

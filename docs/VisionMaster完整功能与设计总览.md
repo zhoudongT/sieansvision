@@ -426,6 +426,17 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊵ · 多档JSON合并导入 · 共享进度弧 · Alt+H长按H保持 · 徽章再点开目录 · 失效清理预览 · 2026-10-28】
+
+- **多档 JSON 合并导入**：右键「最近另存」→「合并导入 JSON…」；去重并集（导入项置前 + 保留旧项，裁剪上限）；「导入记忆 JSON…」仍为覆盖写入。API：`merge_import_alarm_film_csv_dirs_json` / `merge_alarm_film_csv_dirs`；`import_…(merge=True|False)`。
+- **气泡/芯片进度弧共享 overlay 单例**：`_sev_pin_arc`（`hostSevPinArc`）一实例，`_sev_chip_pin_arc` / `_sev_bubble_pin_arc` 为别名；`_sev_pin_arc_owner` 区分 chip|bubble，减双实例。
+- **Alt+H 长按 H 保持菜单不关**：450ms 长按置 `_toast_hist_cap_keep_open`；数字键仍应用容量但不 `menu.close()`（`digit-hold`）；Esc 清除保持。对照：短按/未保持时数字键仍自动关。
+- **复制徽章再点打开目录**：`hostPathCopyBadge` 文案「✓ 已复制 · … · 再点打开」；点击 → `open_host_toast_path`。
+- **失效清理预览清单确认**：`preview_stale_alarm_film_csv_dirs`；`prune_stale_…(confirm=True)` 先 QMessageBox 清单再删；取消保留；菜单「清理失效目录（N）…」。
+- **冒烟**：`smoke-wave40-mergejson-sharearc-holdh-badgeopen-prunepreview-e2e`（另回归 wave39/38）。
+
+---
+
 ## 【细妆㊴ · 多档JSON导入导出 · 气泡弧同步 · Alt+H数字关 · 复制确认徽章 · 失效清理 · 2026-10-28】
 
 - **多档记忆导出/导入 JSON**：`export`/`import_alarm_film_csv_dirs_json`（file 或文本）；子菜单「导出/导入记忆 JSON…」。

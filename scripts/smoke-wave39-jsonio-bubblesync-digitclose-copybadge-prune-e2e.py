@@ -19,6 +19,7 @@ def main():
     from PySide6.QtCore import QSettings, Qt
     app = QApplication.instance() or QApplication([])
     QMessageBox.information = staticmethod(lambda *a, **k: QMessageBox.StandardButton.Ok)
+    QMessageBox.question = staticmethod(lambda *a, **k: QMessageBox.StandardButton.Ok)
     QFileDialog.getSaveFileName = staticmethod(lambda *a, **k: ('', ''))
     QFileDialog.getOpenFileName = staticmethod(lambda *a, **k: ('', ''))
 
@@ -32,7 +33,7 @@ def main():
         '_on_sev_bubble_pin_tick',
     ):
         assert hasattr(HostStateMachineWidget, name), name
-    assert 'hostSevBubblePinArc' in src and 'hostPathCopyBadge' in src
+    assert ('hostSevPinArc' in src or 'hostSevBubblePinArc' in src) and 'hostPathCopyBadge' in src
     assert 'isPruneStale' in src and 'isDirsExport' in src
     ok('wave39 APIs present')
 
@@ -105,7 +106,9 @@ def main():
     barc = host._sev_bubble_pin_arc
     assert isinstance(barc, _SevChipPinProgressArc)
     assert barc.color().lower() == '#3ecf8e'
-    assert barc.objectName() == 'hostSevBubblePinArc'
+    # wave40: shared singleton hostSevPinArc (alias still works)
+    assert barc.objectName() in ('hostSevPinArc', 'hostSevBubblePinArc')
+    assert barc is host._sev_chip_pin_arc
     host.sync_sev_bubble_pin_from_chip()
     assert host._sev_bubble_pin_ms == host.sev_chip_pin_ms()
     host.pin_alarm_severity_filter(False)
@@ -181,7 +184,7 @@ def main():
                     if y.property('isRecentSave'):
                         assert not y.isEnabled()
     assert found_stale_title and found_prune
-    kept = host.prune_stale_alarm_film_csv_dirs()
+    kept = host.prune_stale_alarm_film_csv_dirs(confirm=True)  # Ok stubbed
     assert str(stale) not in kept
     assert str(d0) in kept and str(d1) in kept
     assert '清理' in (host._liaison_hotkey_toast.text() or '') or '失效' in (host._liaison_hotkey_toast.text() or '')
