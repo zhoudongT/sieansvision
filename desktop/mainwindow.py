@@ -3,11 +3,11 @@ import base64
 import json
 from copy import deepcopy
 from pathlib import Path
-from PySide6.QtCore import Qt, QMimeData, QByteArray, QBuffer, QIODevice, QTimer
+from PySide6.QtCore import Qt, QMimeData, QByteArray, QBuffer, QIODevice, QTimer, QSettings
 from PySide6.QtGui import QAction, QKeySequence, QDrag, QPixmap, QImage, QPainter, QColor, QFont
 from PySide6.QtWidgets import (QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QSplitter,QTreeWidget,QTreeWidgetItem,
     QLineEdit,QToolBar,QLabel,QPushButton,QFileDialog,QMessageBox,QTabWidget,QPlainTextEdit,QGraphicsView,QGraphicsScene,
-    QStackedWidget,QInputDialog,QSpinBox,QDialog,QDialogButtonBox,QFormLayout,QComboBox)
+    QStackedWidget,QInputDialog,QSpinBox,QDialog,QDialogButtonBox,QFormLayout,QComboBox,QMenu)
 from desktop.model import Document,empty_project
 from desktop.graph import FlowScene,FlowView,Node
 from desktop.catalog import all_definitions,definition_for
@@ -62,6 +62,9 @@ class MainWindow(QMainWindow):
         self.save_action=self.action('保存方案',self.save_project,'Ctrl+S')
         self.save_as_action=self.action('方案另存为…',self.save_project_as)
         for a in [self.new_action,self.open_action,self.save_action,self.save_as_action]:files.addAction(a)
+        self.recent_menu=files.addMenu('最近打开')
+        self._rebuild_recent_menu()
+        files.addAction(self.action('打开示例…',self.open_example_scheme))
         files.addSeparator()
         files.addAction(self.action('导出流程…',self.export_process_prc))
         files.addAction(self.action('导入流程…',self.import_process_prc))
@@ -464,6 +467,7 @@ class MainWindow(QMainWindow):
             else:
                 self.demo_notice.hide()
             self.refresh_flow_tabs()
+            self._remember_recent(path)
             QTimer.singleShot(300, self.maybe_warm_camera)
         self.request('project/validate',{'project':value},loaded)
 
@@ -505,6 +509,7 @@ class MainWindow(QMainWindow):
             self.document.project['activeFlowId']=out.get('activeFlowId')
             self.document.project['flowEdges']=deepcopy(out.get('flowEdges',[]))
             self.document_changed();self.log('方案已保存：'+str(destination)+f'（{len(out.get("flows") or [])} 个流程）')
+            self._remember_recent(destination)
         self.request('project/validate',{'project':snapshot},saved)
 
     def open_image(self,reference=False):
@@ -760,7 +765,8 @@ class MainWindow(QMainWindow):
                     QTimer.singleShot(50, lambda:self.guard(lambda:self.run(None)));return
                 if cfg.get('stopAtLast'):
                     self.continuous=False;self._run_target=None;self.log('已到最后一张，连续运行停止');return
-            QTimer.singleShot(120, lambda t=target: self.guard(lambda:self.run(t)) if self.continuous else None)
+            delay=self._active_run_interval_ms()
+            QTimer.singleShot(delay, lambda t=target: self.guard(lambda:self.run(t)) if self.continuous else None)
 
     def log(self,message):
         self.logs.appendPlainText(str(message))
@@ -1044,10 +1050,10 @@ class MainWindow(QMainWindow):
             self.document.commit(p);self.refresh_flow_tabs();return
         if action=='interval':
             cur=int(flow.get('runIntervalMs') or 0)
-            val,ok=QInputDialog.getInt(self,'设置运行间隔','运行间隔时间(ms)',cur,0,100000,1)
-            if not ok:return
+            val=self._ask_run_interval(cur)
+            if val is None:return
             flow_scheme.update_flow_meta(p, flow_id, runIntervalMs=val)
-            self.document.commit(p);self.log(f'运行间隔：{val} ms');return
+            self.document.commit(p);self.refresh_flow_tabs();self.log(f'运行间隔：{val} ms（上限 100000）');return
         if action=='stop_on_ng':
             flow_scheme.update_flow_meta(p, flow_id, stopOnNg=not bool(flow.get('stopOnNg')))
             self.document.commit(p);self.refresh_flow_tabs()
@@ -1207,11 +1213,143 @@ class MainWindow(QMainWindow):
         if self.dialogs.get('run_ui'):
             self.dialogs['run_ui'].show();self.dialogs['run_ui'].raise_();return
         from desktop.run_ui_designer import RunUiDesignerDialog
-        dlg=RunUiDesignerDialog(self.document,self)
+        dlg=RunUiDesignerDialog(self.document,self,templates_root=self.root)
         dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         dlg.destroyed.connect(lambda *_:self.dialogs.pop('run_ui',None))
         self.dialogs['run_ui']=dlg
         dlg.show()
+
+    # ----- P2 C4/C5 helpers -----
+    def _settings(self):
+        return QSettings('SIEANS', 'VisionDesktop')
+
+    def _recent_paths(self):
+        raw = self._settings().value('recentSchemes', [])
+        if isinstance(raw, str):
+            raw = [raw] if raw else []
+        paths = []
+        for item in list(raw or []):
+            s = str(item).strip()
+            if s and s not in paths:
+                paths.append(s)
+        return paths[:12]
+
+    def _remember_recent(self, path):
+        try:
+            path = str(Path(path).resolve())
+        except Exception:
+            path = str(path)
+        if not path:
+            return
+        items = [path] + [p for p in self._recent_paths() if p != path]
+        self._settings().setValue('recentSchemes', items[:12])
+        if hasattr(self, 'recent_menu'):
+            self._rebuild_recent_menu()
+
+    def _rebuild_recent_menu(self):
+        menu = getattr(self, 'recent_menu', None)
+        if menu is None:
+            return
+        menu.clear()
+        paths = self._recent_paths()
+        if not paths:
+            empty = menu.addAction('（无最近方案）')
+            empty.setEnabled(False)
+        else:
+            for path in paths:
+                label = Path(path).name
+                act = menu.addAction(label)
+                act.setToolTip(path)
+                act.triggered.connect(lambda _=False, p=path: self.guard(lambda: self._open_recent(p)))
+            menu.addSeparator()
+            menu.addAction(self.action('清除最近打开列表', self._clear_recent))
+
+    def _open_recent(self, path):
+        if self.busy or not self.engine_ready or not self.confirm_discard():
+            return
+        path = Path(path)
+        if not path.is_file():
+            # drop missing entry
+            items = [p for p in self._recent_paths() if p != str(path)]
+            self._settings().setValue('recentSchemes', items)
+            self._rebuild_recent_menu()
+            raise ValueError('最近方案不存在：' + str(path))
+        self.open_project_file(path)
+
+    def _clear_recent(self):
+        self._settings().setValue('recentSchemes', [])
+        self._rebuild_recent_menu()
+        self.log('已清除最近打开列表')
+
+    def open_example_scheme(self):
+        """文件→打开示例：快捷打开演示/模板工程（VM「打开示例」对齐）。"""
+        if self.busy or not self.engine_ready or not self.confirm_discard():
+            return
+        examples = []
+        for rel in (
+            'projects/templates/blank-inspection.sieans',
+            'projects/templates/measure-chain.sieans',
+            'projects/templates/defect-inspection.sieans',
+            'projects/templates/mv-gentl-ocr.sieans',
+            'projects/default-platform.sieans',
+            'projects/mv-camera-ocr.sieans',
+        ):
+            path = (self.root / rel).resolve()
+            if path.is_file():
+                examples.append((path.name + '  ·  ' + rel, path))
+        if not examples:
+            raise ValueError('未找到示例方案')
+        names = [e[0] for e in examples]
+        choice, ok = QInputDialog.getItem(self, '打开示例', '选择示例方案', names, 0, False)
+        if not ok:
+            return
+        path = next(p for n, p in examples if n == choice)
+        # templates stay pristine via open_template for template paths
+        if 'templates/' in str(path).replace('\\', '/'):
+            rel = str(path.relative_to(self.root)).replace('\\', '/')
+            self.open_template(rel)
+        else:
+            self.open_project_file(path)
+
+    def _ask_run_interval(self, current=0):
+        """C4: 「设置运行间隔」对话框，单位 ms，上限 100000。"""
+        dlg = QDialog(self)
+        dlg.setWindowTitle('设置运行间隔')
+        dlg.setMinimumWidth(360)
+        lay = QVBoxLayout(dlg)
+        form = QFormLayout()
+        spin = QSpinBox()
+        spin.setRange(0, 100000)
+        spin.setSingleStep(10)
+        spin.setValue(max(0, min(100000, int(current or 0))))
+        spin.setSuffix(' ms')
+        form.addRow('运行间隔时间(ms)', spin)
+        hint = QLabel('连续执行时，两次运行之间的等待时间。上限 100000 ms。')
+        hint.setObjectName('dialogHint')
+        hint.setWordWrap(True)
+        lay.addLayout(form)
+        lay.addWidget(hint)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        lay.addWidget(buttons)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return flow_scheme.clamp_run_interval_ms(spin.value())
+
+    def _active_run_interval_ms(self):
+        """连续运行延迟：读活动流程 runIntervalMs，缺省 120，钳制 ≤100000。"""
+        try:
+            p = self.document.project
+            flow_scheme.ensure_scheme(p)
+            fid = p.get('activeFlowId')
+            flow = next((f for f in (p.get('flows') or []) if f.get('id') == fid), None)
+            raw = (flow or {}).get('runIntervalMs')
+            if raw is None or int(raw) <= 0:
+                return 120
+            return flow_scheme.clamp_run_interval_ms(raw)
+        except Exception:
+            return 120
 
     def about(self):
         QMessageBox.information(self,'SIEANS Vision 视觉检测平台',

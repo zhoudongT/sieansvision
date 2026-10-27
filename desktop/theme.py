@@ -392,6 +392,22 @@ QWidget#allFlowsPanel {{
 QWidget#runModePane {{
   background: {PANEL};
 }}
+QLabel#runFixedBar {{
+  background: #2a3340;
+  color: #c5d0dc;
+  border: 1px solid {LINE};
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+}}
+QLabel#runFixedBarSide {{
+  background: #2a3340;
+  color: #c5d0dc;
+  border: 1px solid {LINE};
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 4px 2px;
+}}
 QFrame#runPreviewCell {{
   background: {CARD};
   border: 1px dashed {LINE};

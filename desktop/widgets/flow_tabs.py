@@ -91,7 +91,13 @@ class FlowTabBar(QWidget):
         name_btn.setObjectName('flowTabName')
         name_btn.setCheckable(True)
         name_btn.setChecked(fid == self._active and not self._showing_all)
-        name_btn.setToolTip(f'切换到「{name}」')
+        interval = int(flow.get('runIntervalMs') or 0)
+        tip = f'切换到「{name}」'
+        if interval:
+            tip += f'\n运行间隔 {interval} ms'
+        if flow.get('stopOnNg'):
+            tip += '\n执行NG时停止'
+        name_btn.setToolTip(tip)
         name_btn.clicked.connect(lambda _=False, i=fid: self._select(i))
         name_btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         name_btn.customContextMenuRequested.connect(

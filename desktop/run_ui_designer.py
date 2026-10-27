@@ -1,5 +1,8 @@
-"""运行界面设计器 — 对标 VM4.4；P1 含按钮多触发命令 + 数据源订阅 stub。"""
+"""运行界面设计器 — 对标 VM4.4；P2 C1–C3：控件库 stub / 固定栏绑定 / 界面模板元数据。"""
 from copy import deepcopy
+from pathlib import Path
+import json
+from datetime import datetime
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -7,10 +10,12 @@ from PySide6.QtWidgets import (
     QListWidgetItem, QSplitter, QWidget, QComboBox, QFrame, QTabWidget,
     QMessageBox, QCheckBox, QGroupBox, QFormLayout, QToolBar, QStackedWidget,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QLineEdit,
+    QTextEdit, QDialogButtonBox, QFileDialog,
 )
 
 from desktop.widgets.switch import OrangeSwitch
 
+# C1: 四分类控件库（中文原文标签）— 列表项即带标签 stub
 CONTROL_LIBRARY = {
     '基础': [
         '图像', '多图像', '运行控制', '运行状态', 'OK/NG', '文本框', '按钮',
@@ -19,6 +24,35 @@ CONTROL_LIBRARY = {
     '布局': ['组合框', '子界面', 'Tab页'],
     '图表': ['表格', '线图阵列', '多数据线图', '生产统计', '饼图', '参数组合', '文本框组合'],
     '其他': ['图片', '世界时钟', '界面日志'],
+}
+
+CONTROL_STUB_HINTS = {
+    '图像': '显示流程图像 / 历史图',
+    '多图像': '多路图像窗格',
+    '运行控制': '单次·连续·停止',
+    '运行状态': '流程运行态指示',
+    'OK/NG': '判定结果灯',
+    '文本框': '只读/可编文本',
+    '按钮': '多触发命令',
+    '开关控制': 'Toggle 开关',
+    '参数设置': '参数编辑入口',
+    '设置变量': '写变量',
+    '字符设置': '字符参数',
+    '信号灯': '状态灯',
+    '条件信号灯': '条件着色灯',
+    '组合框': '容器组合',
+    '子界面': '嵌套界面',
+    'Tab页': '多页签容器',
+    '表格': '结果表',
+    '线图阵列': '多曲线阵列',
+    '多数据线图': '多数据曲线',
+    '生产统计': '产量/良率',
+    '饼图': '占比图',
+    '参数组合': '参数组展示',
+    '文本框组合': '多文本组合',
+    '图片': '静态图',
+    '世界时钟': '时钟控件',
+    '界面日志': '运行日志',
 }
 
 SPLIT_PRESETS = ['1', '2', '3', '4', '6', '8', '9', '自定义']
@@ -36,6 +70,77 @@ TRIGGER_COMMAND_TYPES = [
 ]
 
 UI_LINK_TARGETS = ['全局相机', '通讯', '变量', '日志', '综合配置']
+
+# C2: 固定栏绑定占位选项
+CAMERA_BIND_OPTIONS = [
+    '未绑定',
+    '相机状态·占位',
+    '全局相机.连接状态',
+    '全局相机.取流状态',
+    '全局相机.触发状态',
+]
+COMM_BIND_OPTIONS = [
+    '未绑定',
+    '通讯状态·占位',
+    'TCP.连接状态',
+    '串口.连接状态',
+    'PLC.通讯状态',
+    'MQTT.连接状态',
+]
+
+MAX_RUN_INTERVAL_MS = 100000
+
+
+def templates_dir(document=None, root=None):
+    """Resolve run-UI templates folder under data or project root."""
+    if root is not None:
+        base = Path(root)
+    elif document is not None and getattr(document, 'project', None):
+        # Prefer sibling of common data layout; caller may override
+        base = Path('.')
+    else:
+        base = Path('.')
+    d = base / 'projects' / 'run-ui-templates'
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+class SaveUiTemplateDialog(QDialog):
+    """C3: 保存模板字段 — 名称 / 创建人 / 推荐使用场景 / 描述。"""
+
+    def __init__(self, meta=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('保存模板')
+        self.resize(420, 320)
+        meta = meta or {}
+        lay = QVBoxLayout(self)
+        form = QFormLayout()
+        self.name_edit = QLineEdit(meta.get('name') or '运行界面模板')
+        self.author_edit = QLineEdit(meta.get('author') or '')
+        self.scenario_edit = QLineEdit(meta.get('scenario') or '')
+        self.scenario_edit.setPlaceholderText('例：产线操作员 / 调试 / 复检')
+        self.desc_edit = QTextEdit()
+        self.desc_edit.setPlainText(meta.get('description') or '')
+        self.desc_edit.setPlaceholderText('模板描述…')
+        self.desc_edit.setMaximumHeight(100)
+        form.addRow('名称', self.name_edit)
+        form.addRow('创建人', self.author_edit)
+        form.addRow('推荐使用场景', self.scenario_edit)
+        form.addRow('描述', self.desc_edit)
+        lay.addLayout(form)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        lay.addWidget(buttons)
+
+    def meta(self):
+        return dict(
+            name=(self.name_edit.text() or '').strip() or '未命名模板',
+            author=(self.author_edit.text() or '').strip(),
+            scenario=(self.scenario_edit.text() or '').strip(),
+            description=(self.desc_edit.toPlainText() or '').strip(),
+        )
 
 
 class TriggerCommandsEditor(QWidget):
@@ -142,15 +247,18 @@ class TriggerCommandsEditor(QWidget):
 
 
 class RunUiDesignerDialog(QDialog):
-    """独立「运行界面设计」窗口：控件库 / 分割 / 固定栏 / 触发命令 / 订阅。"""
+    """独立「运行界面设计」窗口：控件库 / 分割 / 固定栏绑定 / 模板元数据。"""
     previewRequested = Signal()
     exportRequested = Signal()
 
-    def __init__(self, document=None, parent=None):
+    def __init__(self, document=None, parent=None, templates_root=None):
         super().__init__(parent)
         self.document = document
-        self._control_state = {}  # name -> {binding, commands}
+        self.templates_root = Path(templates_root) if templates_root else None
+        self._control_state = {}  # name -> {binding, commands, placed}
+        self._placements = []  # list of {name, cell, category}
         self._current_control = None
+        self._cell_labels = []  # per-page list of QLabel hosts
         self.setWindowTitle('运行界面设计')
         self.resize(1280, 820)
         self.setMinimumSize(960, 640)
@@ -169,17 +277,23 @@ class RunUiDesignerDialog(QDialog):
         bar.addWidget(QLabel(' 分割 '))
         bar.addWidget(self.split_combo)
         self.template_combo = QComboBox()
-        self.template_combo.addItems([f'分割模板 {i}' for i in range(1, 8)] + ['保存模板…'])
+        self.template_combo.addItems([f'分割模板 {i}' for i in range(1, 8)])
+        self.template_combo.addItem('保存模板…')
+        self.template_combo.addItem('载入模板…')
         bar.addWidget(QLabel(' 模板 '))
         bar.addWidget(self.template_combo)
+        self.template_combo.activated.connect(self._on_template_action)
         bar.addSeparator()
         preview_btn = QPushButton('预览')
         preview_btn.setObjectName('primaryButton')
         preview_btn.clicked.connect(self._preview)
         export_btn = QPushButton('导出')
         export_btn.clicked.connect(self._export)
+        save_tpl_btn = QPushButton('保存模板')
+        save_tpl_btn.clicked.connect(self._save_template)
         bar.addWidget(preview_btn)
         bar.addWidget(export_btn)
+        bar.addWidget(save_tpl_btn)
         close_btn = QPushButton('关闭')
         close_btn.clicked.connect(self.close)
         bar.addWidget(close_btn)
@@ -196,17 +310,26 @@ class RunUiDesignerDialog(QDialog):
         lib_title = QLabel('控件库')
         lib_title.setObjectName('libraryTitle')
         ll.addWidget(lib_title)
-        lib_hint = QLabel('基础 / 布局 / 图表 / 其他')
+        total = sum(len(v) for v in CONTROL_LIBRARY.values())
+        lib_hint = QLabel(f'基础 / 布局 / 图表 / 其他 · {total} 个带标签 stub')
         lib_hint.setObjectName('libraryHint')
         ll.addWidget(lib_hint)
         self.lib_tabs = QTabWidget()
+        self._lib_lists = {}
         for cat, items in CONTROL_LIBRARY.items():
             lst = QListWidget()
             for name in items:
-                QListWidgetItem(name, lst)
-            self.lib_tabs.addTab(lst, cat)
+                item = QListWidgetItem(f'▣ {name}')
+                item.setData(Qt.ItemDataRole.UserRole, name)
+                hint = CONTROL_STUB_HINTS.get(name, '')
+                item.setToolTip(f'[{cat}] {name}' + (f' — {hint}' if hint else '')
+                                + '\n单击编辑属性 · 双击放入预览窗格')
+                lst.addItem(item)
+            lst.itemDoubleClicked.connect(lambda it, c=cat: self._place_stub(it, c))
+            self.lib_tabs.addTab(lst, f'{cat} ({len(items)})')
+            self._lib_lists[cat] = lst
         ll.addWidget(self.lib_tabs, 1)
-        tip = QLabel('点选控件编辑属性；按钮可配多条触发命令；⛓ 绑定局部变量。')
+        tip = QLabel('点选控件编辑属性；双击放入预览窗格；按钮可配多条触发命令；⛓ 绑定局部变量。')
         tip.setObjectName('dialogHint')
         tip.setWordWrap(True)
         ll.addWidget(tip)
@@ -219,9 +342,40 @@ class RunUiDesignerDialog(QDialog):
         self.preview_label = QLabel('运行界面预览')
         self.preview_label.setObjectName('dialogTitle')
         cl.addWidget(self.preview_label)
+
+        # Fixed-bar chrome strips (C2 visual)
+        self.fix_top_bar = QLabel('')
+        self.fix_top_bar.setObjectName('runFixedBar')
+        self.fix_top_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.fix_top_bar.hide()
+        cl.addWidget(self.fix_top_bar)
+
+        mid_row = QHBoxLayout()
+        self.fix_left_bar = QLabel('')
+        self.fix_left_bar.setObjectName('runFixedBarSide')
+        self.fix_left_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.fix_left_bar.setFixedWidth(28)
+        self.fix_left_bar.hide()
+        mid_row.addWidget(self.fix_left_bar)
+
         self.preview_stack = QStackedWidget()
         self._build_split_pages()
-        cl.addWidget(self.preview_stack, 1)
+        mid_row.addWidget(self.preview_stack, 1)
+
+        self.fix_right_bar = QLabel('')
+        self.fix_right_bar.setObjectName('runFixedBarSide')
+        self.fix_right_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.fix_right_bar.setFixedWidth(28)
+        self.fix_right_bar.hide()
+        mid_row.addWidget(self.fix_right_bar)
+        cl.addLayout(mid_row, 1)
+
+        self.fix_bottom_bar = QLabel('')
+        self.fix_bottom_bar.setObjectName('runFixedBar')
+        self.fix_bottom_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.fix_bottom_bar.hide()
+        cl.addWidget(self.fix_bottom_bar)
+
         self.split_combo.currentIndexChanged.connect(self._on_split)
         body.addWidget(center)
 
@@ -244,12 +398,20 @@ class RunUiDesignerDialog(QDialog):
             rl.addWidget(cb)
             cb.toggled.connect(self._refresh_fixed_chrome)
 
-        grp = QGroupBox('运行控制绑定（占位）')
+        grp = QGroupBox('固定栏绑定')
         gf = QFormLayout(grp)
+        self.cam_bind = QComboBox()
+        self.cam_bind.addItems(CAMERA_BIND_OPTIONS)
+        self.cam_bind.setToolTip('绑定相机状态占位（引擎接线后续）')
+        self.comm_bind = QComboBox()
+        self.comm_bind.addItems(COMM_BIND_OPTIONS)
+        self.comm_bind.setToolTip('绑定通讯状态占位（引擎接线后续）')
+        self.cam_bind.currentIndexChanged.connect(self._on_bind_changed)
+        self.comm_bind.currentIndexChanged.connect(self._on_bind_changed)
+        gf.addRow(QLabel('相机状态'), self.cam_bind)
+        gf.addRow(QLabel('通讯状态'), self.comm_bind)
         sw = OrangeSwitch(False)
         gf.addRow(QLabel('使能预览开关'), sw)
-        gf.addRow(QLabel('相机状态'), QLabel('未绑定'))
-        gf.addRow(QLabel('通讯状态'), QLabel('未绑定'))
         rl.addWidget(grp)
 
         props = QGroupBox('选中控件属性')
@@ -282,9 +444,9 @@ class RunUiDesignerDialog(QDialog):
 
         for i in range(self.lib_tabs.count()):
             lst = self.lib_tabs.widget(i)
-            lst.currentTextChanged.connect(self._pick_control)
+            lst.currentItemChanged.connect(self._pick_control_item)
 
-        foot = QLabel('  B5 按钮多触发命令 / B6 ⛓ 局部变量订阅已接入；预览·导出仍为骨架。完整 HMI 亦可走「工程管理 → 运行画面编辑」。')
+        foot = QLabel('  C1 四类控件库 stub · C2 固定栏绑相机/通讯 · C3 模板元数据保存/载入；按钮触发命令与 ⛓ 订阅已接入。')
         foot.setObjectName('dialogHint')
         foot.setWordWrap(True)
         root.addWidget(foot)
@@ -293,18 +455,57 @@ class RunUiDesignerDialog(QDialog):
         if document is not None:
             ui = (document.project or {}).get('runUi') or {}
             self._control_state = deepcopy(ui.get('controls') or {})
+            self._placements = deepcopy(ui.get('placements') or [])
+            fb = ui.get('fixedBars') or {}
+            self.fix_top.setChecked(bool(fb.get('top')))
+            self.fix_bottom.setChecked(bool(fb.get('bottom')))
+            self.fix_left.setChecked(bool(fb.get('left')))
+            self.fix_right.setChecked(bool(fb.get('right')))
+            cam = fb.get('cameraBind') or CAMERA_BIND_OPTIONS[0]
+            comm = fb.get('commBind') or COMM_BIND_OPTIONS[0]
+            ci = self.cam_bind.findText(cam)
+            self.cam_bind.setCurrentIndex(ci if ci >= 0 else 0)
+            cj = self.comm_bind.findText(comm)
+            self.comm_bind.setCurrentIndex(cj if cj >= 0 else 0)
+            split = ui.get('split') or '1'
+            if split in SPLIT_PRESETS:
+                self.split_combo.setCurrentIndex(SPLIT_PRESETS.index(split))
+            meta = ui.get('templateMeta') or {}
+            self._template_meta = dict(meta)
+            self._apply_placements_to_cells()
+            self._refresh_fixed_chrome()
+        else:
+            self._template_meta = {}
+
+    def _templates_path(self):
+        if self.templates_root is not None:
+            d = Path(self.templates_root) / 'projects' / 'run-ui-templates'
+            d.mkdir(parents=True, exist_ok=True)
+            return d
+        # Fall back: sibling of common repo via parent MainWindow.root
+        parent = self.parent()
+        root = getattr(parent, 'root', None)
+        if root:
+            d = Path(root) / 'projects' / 'run-ui-templates'
+            d.mkdir(parents=True, exist_ok=True)
+            return d
+        d = Path('projects') / 'run-ui-templates'
+        d.mkdir(parents=True, exist_ok=True)
+        return d
 
     def _build_split_pages(self):
         layouts = {
             0: [(1, 1)], 1: [(1, 2)], 2: [(1, 3)], 3: [(2, 2)],
             4: [(2, 3)], 5: [(2, 4)], 6: [(3, 3)], 7: [(2, 2)],
         }
+        self._cell_labels = []
         for idx, cells in layouts.items():
             page = QWidget()
             page.setObjectName('runPreviewPage')
             rows, cols = cells[0]
             grid_host = QVBoxLayout(page)
             grid_host.setSpacing(4)
+            page_labels = []
             cell_i = 0
             for r in range(rows):
                 row = QHBoxLayout()
@@ -318,23 +519,36 @@ class RunUiDesignerDialog(QDialog):
                     lab = QLabel(f'窗格 {cell_i + 1}')
                     lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     lab.setStyleSheet('color:#9aa7b5;')
+                    lab.setWordWrap(True)
+                    lab.setProperty('cellIndex', cell_i)
                     cv.addStretch(1)
                     cv.addWidget(lab)
                     cv.addStretch(1)
                     row.addWidget(cell, 1)
+                    page_labels.append(lab)
                     cell_i += 1
                 grid_host.addLayout(row, 1)
             self.preview_stack.addWidget(page)
+            self._cell_labels.append(page_labels)
 
     def _on_split(self, index):
         self.preview_stack.setCurrentIndex(max(0, min(index, self.preview_stack.count() - 1)))
-        self.preview_label.setText(f'运行界面预览 · {SPLIT_PRESETS[index]} 分屏')
+        self._apply_placements_to_cells()
+        self._refresh_fixed_chrome()
+        self._persist()
 
     def _ensure_state(self, name):
-        st = self._control_state.setdefault(name, dict(binding='', commands=[]))
+        st = self._control_state.setdefault(name, dict(binding='', commands=[], placed=False))
         st.setdefault('binding', '')
         st.setdefault('commands', [])
+        st.setdefault('placed', False)
         return st
+
+    def _pick_control_item(self, current, _previous=None):
+        if current is None:
+            return
+        name = current.data(Qt.ItemDataRole.UserRole) or current.text().lstrip('▣ ').strip()
+        self._pick_control(name)
 
     def _pick_control(self, name):
         if not name:
@@ -357,6 +571,47 @@ class RunUiDesignerDialog(QDialog):
         else:
             self.trigger_editor.set_commands([])
 
+    def _place_stub(self, item, category):
+        name = item.data(Qt.ItemDataRole.UserRole) or item.text().lstrip('▣ ').strip()
+        if not name:
+            return
+        self._pick_control(name)
+        page_idx = self.preview_stack.currentIndex()
+        labels = self._cell_labels[page_idx] if page_idx < len(self._cell_labels) else []
+        # Find next empty cell or wrap
+        used = {p.get('cell') for p in self._placements if p.get('page') == page_idx}
+        cell = 0
+        for i in range(len(labels)):
+            if i not in used:
+                cell = i
+                break
+        else:
+            cell = len(self._placements) % max(1, len(labels))
+        # Replace existing at same cell
+        self._placements = [p for p in self._placements
+                            if not (p.get('page') == page_idx and p.get('cell') == cell)]
+        self._placements.append(dict(name=name, category=category, page=page_idx, cell=cell))
+        self._ensure_state(name)['placed'] = True
+        self._apply_placements_to_cells()
+        self._persist()
+
+    def _apply_placements_to_cells(self):
+        page_idx = self.preview_stack.currentIndex()
+        labels = self._cell_labels[page_idx] if page_idx < len(self._cell_labels) else []
+        for i, lab in enumerate(labels):
+            lab.setText(f'窗格 {i + 1}')
+            lab.setStyleSheet('color:#9aa7b5;')
+        for p in self._placements:
+            if p.get('page') != page_idx:
+                continue
+            cell = int(p.get('cell') or 0)
+            if 0 <= cell < len(labels):
+                cat = p.get('category') or ''
+                name = p.get('name') or ''
+                hint = CONTROL_STUB_HINTS.get(name, '')
+                labels[cell].setText(f'▣ {name}\n[{cat}]' + (f'\n{hint}' if hint else ''))
+                labels[cell].setStyleSheet('color:#e8eef5;font-weight:600;')
+
     def _on_commands_changed(self, commands):
         if not self._current_control:
             return
@@ -378,40 +633,177 @@ class RunUiDesignerDialog(QDialog):
                 dlg.apply_to_project(self.document)
             self._persist()
 
+    def _on_bind_changed(self, *_):
+        self._refresh_fixed_chrome()
+
     def _persist(self):
         if self.document is None:
             return
         p = deepcopy(self.document.project)
         ui = p.setdefault('runUi', {})
         ui['controls'] = deepcopy(self._control_state)
+        ui['placements'] = deepcopy(self._placements)
         ui['split'] = SPLIT_PRESETS[self.split_combo.currentIndex()]
         ui['fixedBars'] = dict(
             top=self.fix_top.isChecked(),
             bottom=self.fix_bottom.isChecked(),
             left=self.fix_left.isChecked(),
             right=self.fix_right.isChecked(),
+            cameraBind=self.cam_bind.currentText(),
+            commBind=self.comm_bind.currentText(),
         )
+        if getattr(self, '_template_meta', None):
+            ui['templateMeta'] = deepcopy(self._template_meta)
         try:
             self.document.commit(p)
         except Exception:
-            # avoid blocking designer on validate edge cases
             self.document.project = p
             self.document.changed.emit()
 
     def _refresh_fixed_chrome(self, *_):
+        cam = self.cam_bind.currentText()
+        comm = self.comm_bind.currentText()
         parts = []
         if self.fix_top.isChecked():
             parts.append('顶')
+            self.fix_top_bar.setText(f'顶部固定栏 · 相机:{cam} · 通讯:{comm}')
+            self.fix_top_bar.show()
+        else:
+            self.fix_top_bar.hide()
         if self.fix_bottom.isChecked():
             parts.append('底')
+            self.fix_bottom_bar.setText(f'底部固定栏 · 相机:{cam} · 通讯:{comm}')
+            self.fix_bottom_bar.show()
+        else:
+            self.fix_bottom_bar.hide()
         if self.fix_left.isChecked():
             parts.append('左')
+            self.fix_left_bar.setText('左\n固\n定\n栏')
+            self.fix_left_bar.setToolTip(f'相机:{cam} · 通讯:{comm}')
+            self.fix_left_bar.show()
+        else:
+            self.fix_left_bar.hide()
         if self.fix_right.isChecked():
             parts.append('右')
+            self.fix_right_bar.setText('右\n固\n定\n栏')
+            self.fix_right_bar.setToolTip(f'相机:{cam} · 通讯:{comm}')
+            self.fix_right_bar.show()
+        else:
+            self.fix_right_bar.hide()
         chrome = '、'.join(parts) if parts else '无'
         self.preview_label.setText(
             f'运行界面预览 · {SPLIT_PRESETS[self.split_combo.currentIndex()]} 分屏 · 固定栏：{chrome}')
         self._persist()
+
+    def _snapshot(self):
+        return dict(
+            format='sieans.runUiTemplate',
+            version=1,
+            meta=deepcopy(getattr(self, '_template_meta', {}) or {}),
+            split=SPLIT_PRESETS[self.split_combo.currentIndex()],
+            controls=deepcopy(self._control_state),
+            placements=deepcopy(self._placements),
+            fixedBars=dict(
+                top=self.fix_top.isChecked(),
+                bottom=self.fix_bottom.isChecked(),
+                left=self.fix_left.isChecked(),
+                right=self.fix_right.isChecked(),
+                cameraBind=self.cam_bind.currentText(),
+                commBind=self.comm_bind.currentText(),
+            ),
+            savedAt=datetime.now().isoformat(timespec='seconds'),
+        )
+
+    def _apply_snapshot(self, data):
+        if not isinstance(data, dict):
+            return
+        self._control_state = deepcopy(data.get('controls') or {})
+        self._placements = deepcopy(data.get('placements') or [])
+        self._template_meta = deepcopy(data.get('meta') or {})
+        split = data.get('split') or '1'
+        if split in SPLIT_PRESETS:
+            self.split_combo.blockSignals(True)
+            self.split_combo.setCurrentIndex(SPLIT_PRESETS.index(split))
+            self.split_combo.blockSignals(False)
+            self.preview_stack.setCurrentIndex(SPLIT_PRESETS.index(split))
+        fb = data.get('fixedBars') or {}
+        for cb, key in ((self.fix_top, 'top'), (self.fix_bottom, 'bottom'),
+                        (self.fix_left, 'left'), (self.fix_right, 'right')):
+            cb.blockSignals(True)
+            cb.setChecked(bool(fb.get(key)))
+            cb.blockSignals(False)
+        cam = fb.get('cameraBind') or CAMERA_BIND_OPTIONS[0]
+        comm = fb.get('commBind') or COMM_BIND_OPTIONS[0]
+        ci = self.cam_bind.findText(cam)
+        self.cam_bind.blockSignals(True)
+        self.cam_bind.setCurrentIndex(ci if ci >= 0 else 0)
+        self.cam_bind.blockSignals(False)
+        cj = self.comm_bind.findText(comm)
+        self.comm_bind.blockSignals(True)
+        self.comm_bind.setCurrentIndex(cj if cj >= 0 else 0)
+        self.comm_bind.blockSignals(False)
+        self._apply_placements_to_cells()
+        self._refresh_fixed_chrome()
+
+    def _on_template_action(self, index):
+        # 0..6 = 分割模板 1-7；7=保存；8=载入
+        if index < 7:
+            # Apply split preset skeleton matching template index (1→1, 2→2, … map to SPLIT)
+            map_idx = min(index, len(SPLIT_PRESETS) - 2)  # keep 自定义 last
+            self.split_combo.setCurrentIndex(map_idx)
+            return
+        if index == 7:
+            self._save_template()
+            self.template_combo.setCurrentIndex(0)
+            return
+        if index == 8:
+            self._load_template()
+            self.template_combo.setCurrentIndex(0)
+
+    def _save_template(self):
+        dlg = SaveUiTemplateDialog(self._template_meta, self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._template_meta = dlg.meta()
+        snap = self._snapshot()
+        folder = self._templates_path()
+        safe = ''.join(c if c.isalnum() or c in '-_' else '_' for c in self._template_meta['name'])[:40]
+        path = folder / f'{safe or "run_ui"}.ruitpl.json'
+        # Allow choose path
+        chosen, _ = QFileDialog.getSaveFileName(
+            self, '保存运行界面模板', str(path),
+            '运行界面模板 (*.ruitpl.json *.json)')
+        if not chosen:
+            return
+        Path(chosen).write_text(json.dumps(snap, ensure_ascii=False, indent=2), encoding='utf-8')
+        self._persist()
+        QMessageBox.information(
+            self, '保存模板',
+            f'已保存模板「{self._template_meta["name"]}」\n'
+            f'创建人：{self._template_meta.get("author") or "—"}\n'
+            f'场景：{self._template_meta.get("scenario") or "—"}\n{chosen}')
+
+    def _load_template(self):
+        folder = self._templates_path()
+        chosen, _ = QFileDialog.getOpenFileName(
+            self, '载入运行界面模板', str(folder),
+            '运行界面模板 (*.ruitpl.json *.json);;全部 (*.*)')
+        if not chosen:
+            return
+        try:
+            data = json.loads(Path(chosen).read_text(encoding='utf-8-sig'))
+        except Exception as err:
+            QMessageBox.warning(self, '载入模板', f'无法读取：{err}')
+            return
+        if data.get('format') not in ('sieans.runUiTemplate', None) and 'controls' not in data and 'fixedBars' not in data:
+            # still try if it looks like a snapshot
+            if 'split' not in data and 'meta' not in data:
+                QMessageBox.warning(self, '载入模板', '不是有效的运行界面模板。')
+                return
+        self._apply_snapshot(data)
+        self._persist()
+        name = (self._template_meta or {}).get('name') or Path(chosen).stem
+        QMessageBox.information(self, '载入模板', f'已载入模板「{name}」。')
 
     def _preview(self):
         self.previewRequested.emit()
@@ -419,9 +811,14 @@ class RunUiDesignerDialog(QDialog):
                     if k in ('按钮', '运行控制', '开关控制') and v.get('commands'))
         QMessageBox.information(
             self, '预览',
-            f'运行界面预览：已配置控件 {len(self._control_state)} 个，含触发命令的按钮类 {n_btn} 个。\n'
+            f'运行界面预览：已配置控件 {len(self._control_state)} 个，'
+            f'窗格放置 {len(self._placements)} 个，含触发命令的按钮类 {n_btn} 个。\n'
+            f'固定栏相机：{self.cam_bind.currentText()} · 通讯：{self.comm_bind.currentText()}\n'
             '操作员态将按布局与命令自上而下执行（引擎侧接线后续批次）。')
 
     def _export(self):
         self.exportRequested.emit()
-        QMessageBox.information(self, '导出', '导出占位：后续将写出运行界面模板（名称/创建人/推荐使用场景/描述）。')
+        # Export = save template skeleton shortcut
+        if not self._template_meta:
+            self._template_meta = dict(name='导出模板', author='', scenario='', description='')
+        self._save_template()

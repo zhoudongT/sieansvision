@@ -187,6 +187,18 @@ def rename_flow(project, flow_id, name):
     raise ValueError('流程不存在')
 
 
+MAX_RUN_INTERVAL_MS = 100000
+
+
+def clamp_run_interval_ms(value):
+    """C4: 运行间隔 ms，下限 0，上限 100000。"""
+    try:
+        v = int(value)
+    except (TypeError, ValueError):
+        v = 0
+    return max(0, min(MAX_RUN_INTERVAL_MS, v))
+
+
 def update_flow_meta(project, flow_id, **meta):
     ensure_scheme(project)
     sync_active_into_flows(project)
@@ -195,6 +207,8 @@ def update_flow_meta(project, flow_id, **meta):
             for key, value in meta.items():
                 if key in ('runIntervalMs', 'stopOnNg', 'timeoutMs', 'enabled',
                            'runCount', 'lastElapsedMs', 'cardPosition', 'io', 'name'):
+                    if key == 'runIntervalMs':
+                        value = clamp_run_interval_ms(value)
                     flow[key] = value
             return flow
     raise ValueError('流程不存在')
