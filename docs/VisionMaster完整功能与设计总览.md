@@ -426,6 +426,15 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆84 · 再预览/短史/步进旁标属性同步 status/flash_ms · 策略截断档改后刷新 tip · 档差 tip status 属性读回校验 · 2026-10-28】
+
+- **A/B 回滚**：再预览角标 `repreviewCountBadgeStatus` / `repreviewCountBadgeFlashMs` 属性同步（set + refresh）。
+- **忽略名单**：短史徽章 `batchRemoveUndoToastHistoryBadgeStatus` / `…FlashMs` 属性同步（set + refresh）。
+- **jitter 旁标音量**：步进旁标 `wheelStepBadgeStatus` / `wheelStepBadgeFlashMs` 属性同步（set + refresh）。
+- **DST 策略徽章**：`set_strategy_badge_hover_tip_max_len` 改截断档后刷新 tip/ToolTip（`tip_refreshed`）。
+- **栈预览跳档**：tip 写入 `jumpDeltaBadgeStatus` 后读回校验（`_…_status_prop_ok`）。
+- **验证**：`scripts/smoke-wave116-…-e2e.py` 6/6；regress wave115 6/6。非硬件约 **~99.9%**。
+
 ## 【细妆83 · 再预览/短史改闪标档后刷新 tip · 步进 tip/status 同步闪标档 · 策略截断后仍见上次 toast · 档差 status 旁标属性同步 · 2026-10-28】
 
 - **A/B 回滚**：再预览角标 `set_repreview_count_badge_flash_ms` 改档后刷新 tip/ToolTip/status（`tip_refreshed`）。
