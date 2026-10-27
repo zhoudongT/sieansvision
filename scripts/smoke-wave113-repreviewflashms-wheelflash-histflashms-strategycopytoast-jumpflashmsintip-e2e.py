@@ -26,7 +26,7 @@ def main() -> int:
         'def batch_remove_undo_toast_history_badge_flash_ms',
         'def set_batch_remove_undo_toast_history_badge_flash_ms',
         'batchRemoveUndoToastHistoryBadgeFlashMs',
-        "f'可复制：菜单「复制悬停说明」/「复制原长」→toast'",
+        "可复制：菜单「复制悬停说明」/「复制原长」→toast",
         "'toast': toast",
         "f'闪标档：{int(flash_ms)}ms'",
         "'status': status",

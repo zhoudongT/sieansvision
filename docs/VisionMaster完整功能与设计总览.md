@@ -426,6 +426,15 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆82 · 步进闪标时长可配 · 再预览 tip 闪标档 · 短史 tip/status 闪标档 · 策略 tip 显示上次 toast · 档差改闪标档后刷新 tip · 2026-10-28】
+
+- **jitter 旁标音量**：步进旁标闪标时长可配（QSettings `host/wheelStepBadgeFlashMs`；右键子菜单「闪标时长 · Nms」档 300/600/1200/1800；tip 写入「闪标档：Nms」）。
+- **A/B 回滚**：再预览悬停 tip/status 写入「闪标档：Nms」。
+- **忽略名单**：短史徽章 tip API + refresh tip/status 写入「闪标档：Nms」。
+- **DST 策略徽章**：悬停 tip 显示「上次 toast：…」（无 / 已复制原长：N字）。
+- **栈预览跳档**：右键改闪标档后刷新 tip/ToolTip/status（`tip_refreshed`）。
+- **验证**：`scripts/smoke-wave114-…-e2e.py` 6/6；regress wave113 6/6。非硬件约 **~99.7%**。
+
 ## 【细妆81 · 再预览闪标时长可配 · 步进夹紧预览后闪标 · 短史闪标时长可配 · 策略复制原长写入悬停 toast · 档差闪标档写入 tip/status · 2026-10-28】
 
 - **A/B 回滚**：再预览角标闪标时长可配（QSettings `host/repreviewCountBadgeFlashMs`；右键子菜单「闪标时长 · Nms」档 300/600/1200/1800；夹紧预览后闪标沿用配置）。
