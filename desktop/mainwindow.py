@@ -373,6 +373,7 @@ class MainWindow(QMainWindow):
         self.compare_strip = CompareThumbStrip()
         self.compare_strip.pathActivated.connect(self._on_compare_strip_path)
         self.compare_strip.clearRequested.connect(self._clear_filmstrip_compare_overlays)
+        self.compare_strip.pathsReordered.connect(self._on_compare_strip_reordered)
         img_row.addWidget(self.compare_strip)
         rl.addLayout(img_row, 1)
         self.filmstrip=FilmstripBar()
@@ -1302,6 +1303,34 @@ class MainWindow(QMainWindow):
             self._clear_filmstrip_compare_overlays()
             return
         self._show_filmstrip_compare_overlays(highlight_path=path)
+
+    def _on_compare_strip_reordered(self, paths):
+        """wave25: 侧栏拖拽重排 → 更新对比序并刷新叠层."""
+        paths = [str(x) for x in (paths or []) if str(x).strip()][:6]
+        if not paths:
+            return
+        self._filmstrip_compare_paths = list(paths)
+        active = str(getattr(self, '_filmstrip_compare_path', '') or '')
+        if active not in paths:
+            active = paths[0]
+            self._filmstrip_compare_path = active
+        try:
+            self._show_filmstrip_compare_overlays(
+                highlight_path=active,
+                highlight_paths=paths,
+            )
+        except Exception:
+            pass
+        try:
+            from pathlib import Path as _P
+            self.statusBar().showMessage(
+                '对比序已重排 · ' + ' → '.join(_P(x).name for x in paths[:4]), 3000)
+        except Exception:
+            pass
+        try:
+            self.log('对比序重排 · ' + ', '.join(Path(x).name for x in paths))
+        except Exception:
+            pass
 
     def _on_compare_strip_path(self, path: str):
         """wave24: 侧栏缩略点击 → 定位胶片 + 保持多选对比高亮."""

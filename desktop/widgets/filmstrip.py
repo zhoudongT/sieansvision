@@ -733,9 +733,10 @@ class FilmstripBar(QWidget):
 
 
 class CompareThumbStrip(QWidget):
-    """wave24: 多选对比侧栏缩略条（竖向 ≤6 帧）."""
+    """wave24/25: 多选对比侧栏缩略条（竖向 ≤6 帧；可拖拽重排对比序）."""
     pathActivated = Signal(str)   # click a thumb → focus that path
     clearRequested = Signal()     # clear compare
+    pathsReordered = Signal(list)  # wave25: drag reorder → new path order
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -762,16 +763,23 @@ class CompareThumbStrip(QWidget):
         self._list.setViewMode(QListWidget.ViewMode.IconMode)
         self._list.setFlow(QListWidget.Flow.TopToBottom)
         self._list.setWrapping(False)
-        self._list.setMovement(QListWidget.Movement.Static)
+        self._list.setMovement(QListWidget.Movement.Snap)
+        self._list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self._list.setDefaultDropAction(Qt.DropAction.MoveAction)
         self._list.setResizeMode(QListWidget.ResizeMode.Adjust)
         self._list.setIconSize(QSize(72, 72))
         self._list.setSpacing(4)
+        self._list.setToolTip('拖拽缩略可重排对比叠层顺序（上→下 = 优先色）')
         self._list.setStyleSheet(
             'QListWidget{background:#1c1e22;border:1px solid #3a5a7a;border-radius:2px;}'
             'QListWidget::item{border:1px solid #3a5a7a;border-radius:2px;padding:2px;}'
             'QListWidget::item:selected{border:2px solid #6eb6ff;background:#1c2a3a;}'
         )
         self._list.itemClicked.connect(self._on_item)
+        self._list.model().rowsMoved.connect(self._on_rows_moved)
+        # also catch drop via event filter when InternalMove finishes
+        self._list.installEventFilter(self)
+        self._suppress_reorder = False
         lay.addWidget(self._list, 1)
         self.hide()
 
@@ -781,6 +789,7 @@ class CompareThumbStrip(QWidget):
     def set_paths(self, paths, *, active: str = ''):
         paths = [str(x) for x in (paths or []) if str(x).strip()][:6]
         self._paths = paths
+        self._suppress_reorder = True
         self._list.clear()
         if not paths:
             self.hide()
@@ -805,10 +814,50 @@ class CompareThumbStrip(QWidget):
                 active_row = i
         if active_row >= 0:
             self._list.setCurrentRow(active_row)
+        self._suppress_reorder = False
         self.show()
 
     def clear(self):
         self.set_paths([])
+
+    def _read_list_paths(self):
+        out = []
+        for i in range(self._list.count()):
+            it = self._list.item(i)
+            if it is None:
+                continue
+            fp = it.data(Qt.ItemDataRole.UserRole) or ''
+            if fp:
+                out.append(str(fp))
+        return out
+
+    def _emit_reorder_if_changed(self):
+        if getattr(self, '_suppress_reorder', False):
+            return
+        new_paths = self._read_list_paths()
+        if new_paths and new_paths != list(self._paths):
+            self._paths = list(new_paths)
+            self._title.setText(f'对比·{len(self._paths)}')
+            try:
+                self.pathsReordered.emit(list(self._paths))
+            except Exception:
+                pass
+
+    def _on_rows_moved(self, *args):
+        self._emit_reorder_if_changed()
+
+    def eventFilter(self, obj, event):
+        # wave25: InternalMove drop → sync order
+        try:
+            if obj is self._list and event is not None:
+                et = event.type()
+                if et in (QEvent.Type.Drop, QEvent.Type.ChildRemoved):
+                    # defer so model settles
+                    from PySide6.QtCore import QTimer
+                    QTimer.singleShot(0, self._emit_reorder_if_changed)
+        except Exception:
+            pass
+        return super().eventFilter(obj, event)
 
     def _on_item(self, item):
         if item is None:

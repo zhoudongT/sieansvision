@@ -9,7 +9,7 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timedelta
 
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, QSettings
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
     QTabWidget, QFormLayout, QLineEdit, QGroupBox, QPlainTextEdit,
@@ -680,13 +680,24 @@ class HostStateMachineWidget(QWidget):
         row.addWidget(QLabel('联调时段'))
         self._liaison_window = QComboBox()
         self._liaison_window.setObjectName('hostLiaisonWindow')
-        self._liaison_window.setToolTip('导出/复制联调 CSV 的时段窗口')
+        self._liaison_window.setToolTip('导出/复制联调 CSV 的时段窗口（持久）')
         for lab, sec in (
             ('全部', 0), ('近5分', 300), ('近15分', 900), ('近1时', 3600), ('近24时', 86400),
         ):
             self._liaison_window.addItem(lab, sec)
-        self._liaison_window.setCurrentIndex(0)
         self._liaison_window.setMaximumWidth(88)
+        # wave25: 联调时段持久
+        try:
+            saved = int(self._host_settings().value('host/liaisonWindowSec', 0) or 0)
+        except (TypeError, ValueError):
+            saved = 0
+        idx = 0
+        for i in range(self._liaison_window.count()):
+            if int(self._liaison_window.itemData(i) or 0) == saved:
+                idx = i
+                break
+        self._liaison_window.setCurrentIndex(idx)
+        self._liaison_window.currentIndexChanged.connect(self._on_liaison_window_changed)
         row.addWidget(self._liaison_window)
         b_lia_copy = QPushButton('复制联调CSV')
         b_lia_copy.setObjectName('hostLiaisonCopyBtn')
@@ -767,14 +778,37 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             return 0
 
-    def set_liaison_window_sec(self, sec: int):
+    @staticmethod
+    def _host_settings():
+        return QSettings('SIEANS', 'VisionDesktop')
+
+    def _save_liaison_window_pref(self, sec: int):
+        try:
+            self._host_settings().setValue('host/liaisonWindowSec', int(sec or 0))
+        except Exception:
+            pass
+
+    def _on_liaison_window_changed(self, *_):
+        try:
+            self._save_liaison_window_pref(self.liaison_window_sec())
+        except Exception:
+            pass
+
+    def set_liaison_window_sec(self, sec: int, *, persist: bool = True):
         combo = getattr(self, '_liaison_window', None)
         if combo is None:
             return
         sec = int(sec or 0)
         for i in range(combo.count()):
             if int(combo.itemData(i) or 0) == sec:
-                combo.setCurrentIndex(i)
+                try:
+                    combo.blockSignals(True)
+                    combo.setCurrentIndex(i)
+                    combo.blockSignals(False)
+                except Exception:
+                    combo.setCurrentIndex(i)
+                if persist:
+                    self._save_liaison_window_pref(sec)
                 return
 
     def filtered_liaison_events(self, window_sec: int | None = None):
@@ -875,8 +909,51 @@ class HostStateMachineWidget(QWidget):
             self._refresh_alarm_history_ui()
         except Exception:
             pass
+        # wave25: 跳后列表高亮首条
+        try:
+            self._highlight_alarm_list_first(keyword=keyword)
+        except Exception:
+            pass
         try:
             self._log_line(f'已跳转报警历史 · 筛选 {keyword or "联调"}')
+        except Exception:
+            pass
+        return True
+
+    def _highlight_alarm_list_first(self, *, keyword: str = ''):
+        """wave25: select + flash-style first visible alarm row after jump."""
+        lst = getattr(self, '_alarm_list', None)
+        if lst is None or lst.count() <= 0:
+            return False
+        lst.setCurrentRow(0)
+        item = lst.item(0)
+        if item is None:
+            return False
+        try:
+            item.setSelected(True)
+            lst.scrollToItem(item)
+        except Exception:
+            pass
+        # brief accent via stylesheet on list
+        try:
+            base = lst.styleSheet() or ''
+            flash = (
+                'QListWidget::item:selected{'
+                'background:#3a1c1c;color:#ffb4b4;border:1px solid #e35d6a;}'
+            )
+            lst.setStyleSheet(base + flash)
+            from PySide6.QtCore import QTimer
+            def _settle(prev=base):
+                try:
+                    lst.setStyleSheet(prev)
+                except Exception:
+                    pass
+            QTimer.singleShot(1800, _settle)
+        except Exception:
+            pass
+        try:
+            tip = item.text()
+            self._log_line(f'高亮首条 · {(tip or "")[:60]}')
         except Exception:
             pass
         return True
@@ -946,10 +1023,15 @@ class HostStateMachineWidget(QWidget):
     @staticmethod
     def _classify_alarm_severity(reason: str) -> str:
         r = (reason or '').lower()
+        ru = (reason or '').upper()
         if any(k in r for k in ('fail', '失败', 'error', '错误', '急停', 'e-stop', 'estop')):
             return 'error'
-        if any(k in r for k in ('ng', '超时', 'timeout', 'warn', '警告')):
+        if any(k in ru for k in ('VARIANT_', 'APPLY_', 'ENTER_', 'TRIAL_FIRE', 'RECIPE_MISSING')):
+            return 'error'
+        if any(k in r for k in ('ng', '超时', 'timeout', 'warn', '警告', '换型')):
             return 'warning'
+        if any(k in r for k in ('清除', 'clear', '试跑')):
+            return 'info'
         return 'info'
 
     def _record_alarm(self, reason: str = ''):
@@ -1019,10 +1101,45 @@ class HostStateMachineWidget(QWidget):
             seq = self._alarm_history[-24:]
             if not seq:
                 spark.setText('报警序列 · · ·')
+                spark.setToolTip('最近报警：▇=未清除 ▁=已清除（左旧右新）；颜色=严重度')
             else:
-                bars = ''.join('▁' if e.get('cleared') else '▇' for e in seq)
+                # wave25: 严重度染色（富文本）
+                sev_color = {
+                    'error': '#e35d6a',
+                    'warning': '#e0b84a',
+                    'warn': '#e0b84a',
+                    'info': '#6eb6ff',
+                    'ok': '#3ecf8e',
+                }
+                bits = []
+                for e in seq:
+                    cleared = bool(e.get('cleared'))
+                    sev = str(e.get('severity') or 'info').lower()
+                    # also map liaison events that may have been recorded with reason codes
+                    if sev not in sev_color:
+                        sev = 'info'
+                    ch = '▁' if cleared else '▇'
+                    if cleared:
+                        color = '#5a6068'
+                    else:
+                        color = sev_color.get(sev, '#6eb6ff')
+                    bits.append(f'<span style="color:{color}">{ch}</span>')
                 open_n = sum(1 for e in self._alarm_history if not e.get('cleared'))
-                spark.setText(f'报警序列 {bars}  ·  未清 {open_n}/{len(self._alarm_history)}')
+                err_n = sum(1 for e in self._alarm_history
+                            if not e.get('cleared') and e.get('severity') == 'error')
+                html = (
+                    f'<span style="color:#9aa0a6">报警序列</span> '
+                    + ''.join(bits)
+                    + f'  ·  <span style="color:#9aa0a6">未清 {open_n}/{len(self._alarm_history)}'
+                    + (f' · 错 {err_n}' if err_n else '')
+                    + '</span>'
+                )
+                spark.setTextFormat(Qt.TextFormat.RichText)
+                spark.setText(html)
+                spark.setToolTip(
+                    '最近报警：▇=未清除 ▁=已清除（左旧右新）；'
+                    '红=error · 琥珀=warning · 蓝=info · 灰=已清除'
+                )
 
     def set_production_snapshot(self, ok_n=None, ng_n=None, *, host_state: str | None = None):
         """Feed OK/NG/yield into alarm-tab production strip (VM run-mode feel)."""

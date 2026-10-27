@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㉕ · 侧栏拖拽重排 · 联调时段持久 · 跳后高亮首条 · UPH快捷记忆 · Alarm spark染色 · 2026-10-28】
+
+- **侧栏缩略拖拽重排对比序**：`CompareThumbStrip` InternalMove；`pathsReordered` → MW 更新 `_filmstrip_compare_paths` 并刷新叠层色序。
+- **联调时段持久**：`QSettings host/liaisonWindowSec`；打开恢复；切换即时写回。
+- **失败码跳后列表高亮首条**：`jump_to_alarm_for_code` → `_highlight_alarm_list_first`（选中/滚入/1.8s 红选闪）。
+- **UPH 预设 QSettings 快捷记忆**：`prod/uphPresetRecent` + `prod/uphPresetLast`；常用钮青边 tip「常用」。
+- **严重度 → Alarm spark 染色**：富文本 ▇/▁ 按 error 红 / warning 琥珀 / info 蓝 / 已清除灰。
+- **冒烟**：`smoke-wave25-reorder-liaisonpersist-failhighlight-uphrecent-sparkssev-e2e`（另回归 wave24）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆㉔ · 多选对比侧栏 · 联调CSV时段 · 失败码跳Alarm · UPH预设 · 联闪严重度 · 2026-10-28】
 
 - **胶片多选对比侧栏缩略条**：`CompareThumbStrip` 贴图像右侧；多选≥2 帧时竖向展示 ≤6 缩略；点击聚焦胶片+保持对比；× / ESC 清除。

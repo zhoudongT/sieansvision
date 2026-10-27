@@ -586,28 +586,46 @@ class ProductionStatsPanel(QWidget):
                 self._save_uph_window_pref(n)
             except Exception:
                 pass
+            try:
+                self._remember_uph_preset(n)
+            except Exception:
+                pass
         self._refresh_labels()
         self._notify_trend()
         self._sync_uph_preset_chrome()
 
     def _sync_uph_preset_chrome(self):
-        """wave24: highlight active UPH preset button."""
+        """wave24/25: highlight active UPH preset; mark recent shortcuts."""
         cur = self.uph_window()
+        recent = self._load_uph_preset_recent()
         for b in getattr(self, '_uph_preset_btns', None) or []:
             try:
                 n = int(b.text() or 0)
             except Exception:
                 n = 0
+            is_recent = n in recent
             if n == cur:
                 b.setStyleSheet(
                     'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
                     'border-radius:2px;font-size:10px;font-weight:700;padding:1px;'
                 )
+                tip = f'UPH 窗口快捷 → {n}（当前）'
+            elif is_recent:
+                b.setStyleSheet(
+                    'background:#2a3340;color:#9ec9f0;border:1px solid #6eb6ff;'
+                    'border-radius:2px;font-size:10px;font-weight:600;padding:1px;'
+                )
+                tip = f'UPH 窗口快捷 → {n}（常用）'
             else:
                 b.setStyleSheet(
                     'background:#2a2c30;color:#9aa0a6;border:1px solid #3a3d42;'
                     'border-radius:2px;font-size:10px;padding:1px;'
                 )
+                tip = f'UPH 窗口快捷 → {n}'
+            try:
+                b.setToolTip(tip)
+            except Exception:
+                pass
 
     @staticmethod
     def _uph_settings():
@@ -628,6 +646,47 @@ class ProductionStatsPanel(QWidget):
             self._uph_settings().setValue('prod/uphWindow', int(n))
         except Exception:
             pass
+
+    def _load_uph_preset_recent(self) -> list:
+        """wave25: QSettings 快捷记忆 — 最近用过的 UPH 预设."""
+        try:
+            raw = str(self._uph_settings().value('prod/uphPresetRecent', '') or '')
+        except Exception:
+            raw = ''
+        out = []
+        for part in raw.replace(';', ',').split(','):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                v = int(part)
+            except ValueError:
+                continue
+            if v in (8, 16, 24, 32, 48) and v not in out:
+                out.append(v)
+        return out[:5]
+
+    def _remember_uph_preset(self, n: int):
+        """wave25: 把本次窗口值写入预设快捷记忆（最近优先）."""
+        try:
+            n = int(n)
+        except (TypeError, ValueError):
+            return
+        if n not in (8, 16, 24, 32, 48):
+            return
+        recent = [x for x in self._load_uph_preset_recent() if x != n]
+        recent.insert(0, n)
+        recent = recent[:5]
+        try:
+            self._uph_settings().setValue(
+                'prod/uphPresetRecent', ','.join(str(x) for x in recent))
+            self._uph_settings().setValue('prod/uphPresetLast', int(n))
+        except Exception:
+            pass
+
+    def uph_preset_recent(self) -> list:
+        """Public snapshot for smoke / HMI."""
+        return self._load_uph_preset_recent()
 
     def _on_uph_window_changed(self, value: int):
         self.set_uph_window(value)
