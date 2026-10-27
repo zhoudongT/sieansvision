@@ -426,6 +426,17 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊤ · 组头落点高亮/折叠态保留 · Shift色块可点跳 · 曲线剪贴板toast · 徽章色阶对齐 · α旋钮默认 · 2026-10-28】
+
+- **组头拖拽落点高亮 / 折叠态保留**：拖拽中组头绿框高亮；`persist_merge_diff_batch_fail_history_collapsed` 写入 QSettings；重排后折叠态不丢。
+- **Shift 区间条可点跳 / 色块**：条宽 10px，按选区色块分段；单击跳到对应行并 scrollTo。
+- **曲线剪贴板后 toast**：复制后 `✓ 曲线 PNG 已入剪贴板 · W×H`；quiet 旗可关。
+- **徽章倒计时条色阶对齐 undo**：复用 `_stale_prune_undo_bar_chunk_color`。
+- **custom α 持久化 UI 旋钮默认**：`stale_prune_undo_color_custom_alpha_default`；预览旋钮读持久化 α。
+- **冒烟**：`smoke-wave55-drophl-foldpersist-chipjump-cliptoast-badgealign-alphadef-e2e`（另回归 wave54/53/52）。
+
+---
+
 ## 【细妆㊣ · 组头拖拽重排 · Shift区间视觉条 · 曲线PNG剪贴板 · 徽章撤销倒计时条 · undo α/渐变预览 · 2026-10-28】
 
 - **失败历史组头拖拽重排**：列表 InternalMove；组头可拖、子项不可拖；`reorder_merge_diff_batch_fail_history_groups` 持久化顺序。

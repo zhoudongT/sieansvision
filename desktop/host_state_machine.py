@@ -1045,6 +1045,20 @@ class HostStateMachineWidget(QWidget):
                 str(x) for x in (raw_ord or []) if str(x).strip()]
         except Exception:
             self._merge_diff_fail_hist_group_order = []
+        # wave55: 失败历史折叠态持久化
+        try:
+            raw_col = self._host_settings().value(
+                'host/mergeDiffFailHistCollapsed', [])
+            if isinstance(raw_col, str):
+                import json as _json
+                try:
+                    raw_col = _json.loads(raw_col) if raw_col.strip() else []
+                except Exception:
+                    raw_col = []
+            self._merge_diff_fail_hist_collapsed = set(
+                str(x) for x in (raw_col or []) if str(x).strip())
+        except Exception:
+            self._merge_diff_fail_hist_collapsed = set()
         # wave53–54: 徽章清历史撤销倒计时 + 进度条
         self._path_copy_badge_fail_history_undo_left_ms = 0
         self._path_copy_badge_fail_history_undo_ms = 8000
@@ -2175,7 +2189,7 @@ class HostStateMachineWidget(QWidget):
         return True
 
     def _update_path_copy_badge_fail_hist_undo_bar(self):
-        """wave54: 刷新徽章撤销倒计时条."""
+        """wave54–55: 刷新徽章撤销倒计时条（色阶对齐 undo）."""
         bar = getattr(self, '_path_copy_badge_fail_hist_undo_bar', None)
         if bar is None or bar.isHidden():
             return
@@ -2186,17 +2200,21 @@ class HostStateMachineWidget(QWidget):
         try:
             bar.setValue(int(1000 * left / total))
             ratio = left / total
-            if ratio >= 0.55:
-                color = '#5b9cff'
-            elif ratio >= 0.25:
-                color = '#f0c040'
-            else:
-                color = '#e35d6a'
+            try:
+                color = self._stale_prune_undo_bar_chunk_color(ratio)
+            except Exception:
+                if ratio >= 0.55:
+                    color = '#5b9cff'
+                elif ratio >= 0.25:
+                    color = '#f0c040'
+                else:
+                    color = '#e35d6a'
             bar.setStyleSheet(
                 'QProgressBar{background:#2a2d32;border:1px solid #3a3d42;'
                 'border-radius:2px;}'
                 f'QProgressBar::chunk{{background:{color};border-radius:2px;}}'
             )
+            self._last_path_copy_badge_fail_hist_undo_bar_chunk_color = color
             bar.setToolTip(
                 f'左键撤销 · 剩 {max(1, int(round(left / 1000.0)))}s'
                 if left > 0 else '撤销已过期')
@@ -3968,7 +3986,7 @@ class HostStateMachineWidget(QWidget):
         return msg
 
     def _ensure_sev_pin_arc_seize_recent_shift_range_bar(self, lst):
-        """wave54: 确保 Shift 连选区间视觉条存在."""
+        """wave54–55: 确保 Shift 连选区间视觉条存在（可点跳 · 色块）."""
         if lst is None:
             return None
         bar = getattr(lst, '_sieans_shift_range_bar', None)
@@ -3977,16 +3995,155 @@ class HostStateMachineWidget(QWidget):
         bar = QFrame(lst.viewport() if hasattr(lst, 'viewport') else lst)
         bar.setObjectName('hostSevPinArcSeizeRecentShiftRangeBar')
         bar.setStyleSheet(
-            'background:rgba(91,156,255,0.55);border:1px solid #5b9cff;'
+            'background:rgba(91,156,255,0.18);border:1px solid #5b9cff;'
             'border-radius:2px;')
-        bar.setFixedWidth(4)
+        bar.setFixedWidth(10)
+        bar.setCursor(Qt.CursorShape.PointingHandCursor)
+        bar.setToolTip('单击色块跳到对应项')
         bar.hide()
+        # wave55: 色块层
+        chips = QWidget(bar)
+        chips.setObjectName('hostSevPinArcSeizeRecentShiftRangeChips')
+        chips.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        chips.setGeometry(0, 0, 10, 10)
+        bar._sieans_chips = chips
+        bar._sieans_chip_meta = []  # [(y0,y1,row,color)]
+        bar.mousePressEvent = (
+            lambda e, _lst=lst: self._on_sev_pin_arc_seize_recent_shift_range_bar_clicked(
+                e, _lst))
         lst._sieans_shift_range_bar = bar
         self._last_sev_pin_arc_seize_recent_shift_range_bar = bar
         return bar
 
+    def _paint_sev_pin_arc_seize_recent_shift_range_chips(
+            self, bar, lst, lo: int, hi: int):
+        """wave55: 按选区绘制区间色块."""
+        if bar is None or lst is None:
+            return []
+        chips = getattr(bar, '_sieans_chips', None)
+        meta = []
+        try:
+            h = max(4, bar.height())
+            w = max(6, bar.width())
+            if chips is None:
+                chips = QWidget(bar)
+                chips.setObjectName('hostSevPinArcSeizeRecentShiftRangeChips')
+                chips.setAttribute(
+                    Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+                bar._sieans_chips = chips
+            chips.setGeometry(0, 0, w, h)
+            # clear old children
+            for ch in list(chips.findChildren(QFrame)):
+                try:
+                    ch.setParent(None)
+                    ch.deleteLater()
+                except Exception:
+                    pass
+            colors = []
+            try:
+                colors = list(self.sev_pin_arc_seize_recent_colors() or [])
+            except Exception:
+                colors = []
+            for row in range(lo, hi + 1):
+                it = lst.item(row)
+                if it is None:
+                    continue
+                rect = lst.visualItemRect(it)
+                # relative to bar
+                y0 = rect.top() - bar.y()
+                y1 = rect.bottom() - bar.y()
+                y0 = max(0, y0)
+                y1 = min(h, y1 + 1)
+                if y1 <= y0:
+                    continue
+                # color from item data or recent list
+                col = None
+                try:
+                    col = it.data(Qt.ItemDataRole.UserRole)
+                except Exception:
+                    col = None
+                if not col:
+                    try:
+                        col = colors[row] if row < len(colors) else None
+                    except Exception:
+                        col = None
+                col = str(col or '#5b9cff')
+                if not col.startswith('#'):
+                    col = '#5b9cff'
+                frag = QFrame(chips)
+                frag.setStyleSheet(
+                    f'background:{col};border:none;border-radius:1px;')
+                frag.setGeometry(1, y0, max(4, w - 2), max(2, y1 - y0))
+                frag.show()
+                meta.append((y0, y1, row, col))
+            chips.show()
+            chips.raise_()
+        except Exception:
+            meta = []
+        bar._sieans_chip_meta = meta
+        self._last_sev_pin_arc_seize_recent_shift_range_chips = list(meta)
+        return meta
+
+    def _on_sev_pin_arc_seize_recent_shift_range_bar_clicked(
+            self, event=None, lst=None):
+        """wave55: 点击区间色块跳到对应项."""
+        try:
+            btn = event.button() if event is not None else Qt.MouseButton.LeftButton
+        except Exception:
+            btn = Qt.MouseButton.LeftButton
+        if btn != Qt.MouseButton.LeftButton:
+            return False
+        if lst is None:
+            lst = getattr(self, '_last_sev_pin_arc_seize_recent_drag_list', None)
+        bar = getattr(lst, '_sieans_shift_range_bar', None) if lst else None
+        if bar is None:
+            bar = getattr(self, '_last_sev_pin_arc_seize_recent_shift_range_bar', None)
+        if lst is None or bar is None:
+            self._last_sev_pin_arc_seize_recent_shift_range_jump = None
+            return False
+        try:
+            y = int(event.position().y() if hasattr(event, 'position') else event.pos().y())
+        except Exception:
+            y = 0
+        meta = list(getattr(bar, '_sieans_chip_meta', None) or [])
+        target_row = None
+        for y0, y1, row, _col in meta:
+            if y0 <= y <= y1:
+                target_row = int(row)
+                break
+        if target_row is None:
+            # fallback: map by visual fraction
+            rng = getattr(self, '_last_sev_pin_arc_seize_recent_shift_range', None)
+            if rng and bar.height() > 0:
+                lo, hi = rng
+                frac = max(0.0, min(1.0, y / float(bar.height())))
+                target_row = int(round(lo + frac * (hi - lo)))
+        if target_row is None:
+            self._last_sev_pin_arc_seize_recent_shift_range_jump = None
+            return False
+        try:
+            it = lst.item(target_row)
+            if it is None:
+                self._last_sev_pin_arc_seize_recent_shift_range_jump = None
+                return False
+            lst.scrollToItem(it)
+            lst.setCurrentItem(it)
+            # keep range selection: ensure this item selected
+            it.setSelected(True)
+            self._last_sev_pin_arc_seize_recent_shift_range_jump = int(target_row)
+            self._last_sev_pin_arc_seize_recent_shift_range_jump_color = str(
+                it.data(Qt.ItemDataRole.UserRole) or '')
+            try:
+                self._show_sev_pin_arc_seize_recent_shift_hint(lst)
+            except Exception:
+                pass
+            return True
+        except Exception:
+            self._last_sev_pin_arc_seize_recent_shift_range_jump = None
+            return False
+
     def _update_sev_pin_arc_seize_recent_shift_range_bar(self, lst=None):
-        """wave54: 按选区刷新 Shift 连选区间视觉条."""
+        """wave54–55: 按选区刷新 Shift 连选区间视觉条（色块）."""
         if lst is None:
             lst = getattr(self, '_last_sev_pin_arc_seize_recent_drag_list', None)
         bar = self._ensure_sev_pin_arc_seize_recent_shift_range_bar(lst)
@@ -4007,6 +4164,7 @@ class HostStateMachineWidget(QWidget):
                 pass
             self._last_sev_pin_arc_seize_recent_shift_range_bar_visible = False
             self._last_sev_pin_arc_seize_recent_shift_range = None
+            self._last_sev_pin_arc_seize_recent_shift_range_chips = []
             return False
         lo, hi = min(rows), max(rows)
         try:
@@ -4014,7 +4172,9 @@ class HostStateMachineWidget(QWidget):
             r1 = lst.visualItemRect(lst.item(hi))
             top = min(r0.top(), r1.top())
             bot = max(r0.bottom(), r1.bottom())
-            bar.setGeometry(2, top, 4, max(4, bot - top + 1))
+            bar.setGeometry(2, top, 10, max(4, bot - top + 1))
+            self._paint_sev_pin_arc_seize_recent_shift_range_chips(
+                bar, lst, lo, hi)
             bar.show()
             bar.raise_()
         except Exception:
@@ -5494,7 +5654,24 @@ class HostStateMachineWidget(QWidget):
         """wave54: 单独设置自定义色阶 α."""
         got = self.set_stale_prune_undo_color_custom_rgb(
             alpha=alpha, persist=persist, apply=apply)
+        try:
+            self._last_stale_prune_undo_color_custom_alpha_spin_default = int(
+                got.get('alpha', 255))
+        except Exception:
+            pass
         return int(got.get('alpha', 255))
+
+    def stale_prune_undo_color_custom_alpha_default(self) -> int:
+        """wave55: 自定义 α UI 旋钮默认（读持久化）."""
+        try:
+            a = int(self._host_settings().value(
+                'host/stalePruneUndoColorCustomAlpha', 255) or 255)
+        except Exception:
+            a = int((self.stale_prune_undo_color_custom_rgb() or {}).get(
+                'alpha', 255) or 255)
+        a = max(40, min(255, a))
+        self._last_stale_prune_undo_color_custom_alpha_spin_default = a
+        return a
 
     def prompt_stale_prune_undo_color_custom_rgb(
             self, hi: str = None, mid: str = None, lo: str = None,
@@ -5609,8 +5786,16 @@ class HostStateMachineWidget(QWidget):
             spin = QSpinBox(dlg)
             spin.setObjectName('hostStalePruneUndoColorCustomAlphaSpin')
             spin.setRange(40, 255)
-            spin.setValue(alpha)
+            try:
+                alpha_def = self.stale_prune_undo_color_custom_alpha_default()
+            except Exception:
+                alpha_def = alpha
+            spin.setValue(int(alpha_def))
+            pane._alpha = int(alpha_def)
             spin.setPrefix('α ')
+            spin.setToolTip(f'默认 α（已持久化）· {int(alpha_def)}')
+            self._last_stale_prune_undo_color_custom_alpha_spin_default = int(
+                alpha_def)
             row.addWidget(QLabel('透明度:', dlg))
             row.addWidget(spin, 1)
             lay.addLayout(row)
@@ -6391,6 +6576,10 @@ class HostStateMachineWidget(QWidget):
         self._merge_diff_fail_hist_collapsed = set(keys)
         self._last_merge_diff_batch_fail_history_all_collapsed = True
         self._last_merge_diff_batch_fail_history_collapsed = set(keys)
+        try:
+            self.persist_merge_diff_batch_fail_history_collapsed(keys)
+        except Exception:
+            pass
         return set(keys)
 
     def expand_merge_diff_batch_fail_history_groups(self) -> set:
@@ -6398,6 +6587,10 @@ class HostStateMachineWidget(QWidget):
         self._merge_diff_fail_hist_collapsed = set()
         self._last_merge_diff_batch_fail_history_all_expanded = True
         self._last_merge_diff_batch_fail_history_collapsed = set()
+        try:
+            self.persist_merge_diff_batch_fail_history_collapsed(set())
+        except Exception:
+            pass
         return set()
 
     def _merge_diff_fail_hist_group_count_badge_icon(
@@ -6432,6 +6625,107 @@ class HostStateMachineWidget(QWidget):
     def merge_diff_batch_fail_history_group_order(self) -> list:
         """wave54: 失败历史组头顺序."""
         return list(getattr(self, '_merge_diff_fail_hist_group_order', None) or [])
+
+    def persist_merge_diff_batch_fail_history_collapsed(
+            self, keys=None) -> set:
+        """wave55: 持久化失败历史折叠组."""
+        if keys is None:
+            keys = getattr(self, '_merge_diff_fail_hist_collapsed', None) or set()
+        cleaned = set(str(k).strip() for k in (keys or set()) if str(k).strip())
+        self._merge_diff_fail_hist_collapsed = set(cleaned)
+        try:
+            self._host_settings().setValue(
+                'host/mergeDiffFailHistCollapsed', sorted(cleaned))
+        except Exception:
+            pass
+        self._last_merge_diff_batch_fail_history_collapsed = set(cleaned)
+        return set(cleaned)
+
+    def _ensure_merge_diff_fail_hist_drop_highlight(self, lst):
+        """wave55: 组头拖拽落点高亮条."""
+        if lst is None:
+            return None
+        bar = getattr(lst, '_sieans_fail_hist_drop_hl', None)
+        if bar is not None:
+            return bar
+        bar = QFrame(lst.viewport() if hasattr(lst, 'viewport') else lst)
+        bar.setObjectName('hostMergeDiffFailHistDropHighlight')
+        bar.setStyleSheet(
+            'background:rgba(62,207,142,0.35);border:2px solid #3ecf8e;'
+            'border-radius:3px;')
+        bar.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        bar.hide()
+        lst._sieans_fail_hist_drop_hl = bar
+        self._last_merge_diff_fail_hist_drop_highlight = bar
+        return bar
+
+    def _update_merge_diff_fail_hist_drop_highlight(self, lst, pos=None):
+        """wave55: 按拖拽落点刷新组头高亮."""
+        bar = self._ensure_merge_diff_fail_hist_drop_highlight(lst)
+        if bar is None or lst is None:
+            return False
+        try:
+            if pos is None:
+                bar.hide()
+                self._last_merge_diff_fail_hist_drop_highlight_gk = None
+                self._last_merge_diff_fail_hist_drop_highlight_visible = False
+                return False
+            from PySide6.QtCore import QPoint
+            if not isinstance(pos, QPoint):
+                pos = QPoint(int(pos.x()), int(pos.y()))
+            it = lst.itemAt(pos)
+            # climb to nearest group header
+            gk = None
+            target = None
+            if it is not None:
+                if it.data(Qt.ItemDataRole.UserRole + 3):
+                    target = it
+                    gk = str(it.data(Qt.ItemDataRole.UserRole + 2) or '')
+                else:
+                    row = lst.row(it)
+                    for r in range(row, -1, -1):
+                        h = lst.item(r)
+                        if h and h.data(Qt.ItemDataRole.UserRole + 3):
+                            target = h
+                            gk = str(h.data(Qt.ItemDataRole.UserRole + 2) or '')
+                            break
+            if target is None or not gk:
+                bar.hide()
+                self._last_merge_diff_fail_hist_drop_highlight_gk = None
+                self._last_merge_diff_fail_hist_drop_highlight_visible = False
+                return False
+            rect = lst.visualItemRect(target)
+            bar.setGeometry(
+                1, rect.top(), max(8, lst.viewport().width() - 2),
+                max(18, rect.height()))
+            bar.show()
+            bar.raise_()
+            self._last_merge_diff_fail_hist_drop_highlight_gk = gk
+            self._last_merge_diff_fail_hist_drop_highlight_visible = True
+            return True
+        except Exception:
+            try:
+                bar.hide()
+            except Exception:
+                pass
+            return False
+
+    def _hide_merge_diff_fail_hist_drop_highlight(self, lst=None):
+        """wave55: 隐藏组头落点高亮."""
+        if lst is None:
+            lst = getattr(self, '_last_merge_diff_batch_fail_history_list', None)
+        bar = None
+        if lst is not None:
+            bar = getattr(lst, '_sieans_fail_hist_drop_hl', None)
+        if bar is None:
+            bar = getattr(self, '_last_merge_diff_fail_hist_drop_highlight', None)
+        if bar is not None:
+            try:
+                bar.hide()
+            except Exception:
+                pass
+        self._last_merge_diff_fail_hist_drop_highlight_visible = False
+        self._last_merge_diff_fail_hist_drop_highlight_gk = None
 
     def reorder_merge_diff_batch_fail_history_groups(
             self, order=None, *, persist: bool = True) -> list:
@@ -6493,7 +6787,7 @@ class HostStateMachineWidget(QWidget):
             dlg.setMinimumWidth(440)
             lay = QVBoxLayout(dlg)
             tip = QLabel(
-                '全展/全折 · 组头拖拽重排 · 分组折叠 · 搜索/排序 · 多选重开/导出 · 清空', dlg)
+                '全展/全折 · 组头拖拽落点高亮 · 折叠态保留 · 搜索/排序 · 多选重开/导出 · 清空', dlg)
             tip.setStyleSheet('color:#9aa0a6;font-size:11px;')
             lay.addWidget(tip)
             if not hasattr(self, '_merge_diff_fail_hist_collapsed'):
@@ -6669,6 +6963,11 @@ class HostStateMachineWidget(QWidget):
                     collapsed.add(gk)
                     self._last_merge_diff_batch_fail_history_group_toggled = (
                         gk, True)
+                try:
+                    self.persist_merge_diff_batch_fail_history_collapsed(
+                        collapsed)
+                except Exception:
+                    pass
                 _refill()
 
             def _expand_all():
@@ -6684,6 +6983,10 @@ class HostStateMachineWidget(QWidget):
             btn_col.clicked.connect(lambda *_: _collapse_all())
 
             def _on_groups_moved(*_a):
+                # wave55: 折叠态在 _refill 前保留
+                saved_col = set(
+                    getattr(self, '_merge_diff_fail_hist_collapsed', None)
+                    or set())
                 order = []
                 for i in range(lst.count()):
                     it = lst.item(i)
@@ -6696,13 +6999,73 @@ class HostStateMachineWidget(QWidget):
                         order.append(gk)
                 if order:
                     self.reorder_merge_diff_batch_fail_history_groups(order)
+                    self._merge_diff_fail_hist_collapsed = set(saved_col)
+                    try:
+                        self.persist_merge_diff_batch_fail_history_collapsed(
+                            saved_col)
+                    except Exception:
+                        pass
                     try:
                         _refill()
                     except Exception:
                         pass
+                try:
+                    self._hide_merge_diff_fail_hist_drop_highlight(lst)
+                except Exception:
+                    pass
+
+            def _on_fail_hist_drag_move(event):
+                try:
+                    QListWidget.dragMoveEvent(lst, event)
+                except Exception:
+                    try:
+                        event.accept()
+                    except Exception:
+                        pass
+                try:
+                    self._update_merge_diff_fail_hist_drop_highlight(
+                        lst, event.position().toPoint()
+                        if hasattr(event, 'position') else event.pos())
+                except Exception:
+                    pass
+
+            def _on_fail_hist_drag_leave(event):
+                try:
+                    QListWidget.dragLeaveEvent(lst, event)
+                except Exception:
+                    pass
+                try:
+                    self._hide_merge_diff_fail_hist_drop_highlight(lst)
+                except Exception:
+                    pass
+
+            def _on_fail_hist_drop(event):
+                try:
+                    QListWidget.dropEvent(lst, event)
+                except Exception:
+                    try:
+                        event.accept()
+                    except Exception:
+                        pass
+                try:
+                    self._hide_merge_diff_fail_hist_drop_highlight(lst)
+                except Exception:
+                    pass
+                try:
+                    _on_groups_moved()
+                except Exception:
+                    pass
 
             try:
                 lst.model().rowsMoved.connect(lambda *_: _on_groups_moved())
+            except Exception:
+                pass
+            try:
+                self._ensure_merge_diff_fail_hist_drop_highlight(lst)
+                lst.dragMoveEvent = _on_fail_hist_drag_move
+                lst.dragLeaveEvent = _on_fail_hist_drag_leave
+                lst.dropEvent = _on_fail_hist_drop
+                lst.setDropIndicatorShown(True)
             except Exception:
                 pass
 
@@ -8104,9 +8467,23 @@ class HostStateMachineWidget(QWidget):
         self._last_toast_hist_cap_tip_anim_curve_clipboard = True
         self._last_toast_hist_cap_tip_anim_curve_clipboard_pm = pm
         try:
-            self._flash_host_toast('曲线 PNG 已复制到剪贴板', kind='ok', ms=1400)
+            ww = int(pm.width()) if pm is not None else 0
+            hh = int(pm.height()) if pm is not None else 0
         except Exception:
-            pass
+            ww = hh = 0
+        msg = (
+            f'✓ 曲线 PNG 已入剪贴板 · {ww}×{hh}'
+            if ww and hh else '✓ 曲线 PNG 已入剪贴板')
+        self._last_toast_hist_cap_tip_anim_curve_clipboard_toast = msg
+        if not getattr(
+                self, '_toast_hist_cap_tip_anim_curve_clipboard_toast_quiet', False):
+            try:
+                self._flash_host_toast(msg, kind='ok', ms=1600)
+                self._last_toast_hist_cap_tip_anim_curve_clipboard_toast_shown = True
+            except Exception:
+                self._last_toast_hist_cap_tip_anim_curve_clipboard_toast_shown = False
+        else:
+            self._last_toast_hist_cap_tip_anim_curve_clipboard_toast_shown = False
         return True
 
     def show_toast_hist_cap_tip_anim_easing_curve_compare(
