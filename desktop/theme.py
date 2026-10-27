@@ -597,6 +597,50 @@ QLabel#propertyFloatTitleLabel {{
   font-weight: 700;
   font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
 }}
+QLabel#propertyFloatSubtitle {{
+  color: #b0b0b0;
+  font-size: 10px;
+  font-weight: 400;
+  padding-top: 1px;
+}}
+QWidget#propertyFloatBody QTabWidget::pane {{
+  border: 1px solid {FLOAT_LINE};
+  background: {FLOAT_BG};
+  top: -1px;
+}}
+QWidget#propertyFloatBody QTabBar::tab {{
+  background: {FLOAT_CARD};
+  color: {FLOAT_TEXT};
+  border: 1px solid {FLOAT_LINE};
+  border-bottom: none;
+  padding: 5px 12px;
+  margin-right: 2px;
+  font-size: 12px;
+}}
+QWidget#propertyFloatBody QTabBar::tab:selected {{
+  background: {FLOAT_BG};
+  color: {ACCENT};
+  font-weight: 600;
+  border-bottom: 2px solid {ACCENT};
+}}
+QWidget#propertyFloatBody QTabBar::tab:hover {{
+  color: {ACCENT};
+}}
+QWidget#propertyFloatBody QTableWidget {{
+  background: {FLOAT_INPUT_BG};
+  border: 1px solid {FLOAT_LINE};
+  gridline-color: {FLOAT_LINE};
+  font-size: 12px;
+}}
+QWidget#propertyFloatBody QHeaderView::section {{
+  background: {FLOAT_CARD};
+  color: {FLOAT_TEXT};
+  padding: 4px 6px;
+  border: 0;
+  border-right: 1px solid {FLOAT_LINE};
+  border-bottom: 1px solid {FLOAT_LINE};
+  font-weight: 600;
+}}
 QPushButton#propertyFloatClose {{
   background: transparent;
   color: #c8c8c8;

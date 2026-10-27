@@ -39,6 +39,8 @@ def normalize_nine_point_params(params=None):
         row['enabled'] = bool(row.get('enabled', True))
     p['points'] = points
     p.setdefault('method', 'affine')  # affine | perspective
+    p.setdefault('resultVar', 'calibTransform')
+    p.setdefault('showPoints', True)
     p.setdefault('rms', None)
     return p
 
@@ -152,9 +154,13 @@ class NinePointPanel(QWidget):
         rem.clicked.connect(self._remove_rows)
         reset = QPushButton('重置 9 点')
         reset.clicked.connect(self._reset9)
+        fill = QPushButton('填充 3×3 示意')
+        fill.setToolTip('按像素间距生成示意点（世界坐标需现场改）')
+        fill.clicked.connect(self._fill_grid)
         bar.addWidget(add)
         bar.addWidget(rem)
         bar.addWidget(reset)
+        bar.addWidget(fill)
         bar.addStretch(1)
         lay.addLayout(bar)
         self._reload_table()
@@ -168,6 +174,13 @@ class NinePointPanel(QWidget):
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
+        out_var = QLineEdit(str(self.params.get('resultVar') or 'calibTransform'))
+        out_var.editingFinished.connect(lambda: self._set_param('resultVar', out_var.text().strip() or 'calibTransform'))
+        form.addRow('结果变量', out_var)
+        tip2 = QLabel('至少填入一组非零像素/世界坐标，否则节点红叹号。无机械手 SDK。')
+        tip2.setWordWrap(True)
+        tip2.setStyleSheet('color:#888;')
+        form.addRow(tip2)
         return w
 
     def _reload_table(self):
@@ -228,5 +241,22 @@ class NinePointPanel(QWidget):
 
     def _reset9(self):
         self.params['points'] = [_empty_row(i) for i in range(9)]
+        self._reload_table()
+        self._emit()
+
+    def _fill_grid(self):
+        # 3x3 pixel grid demo at 100px spacing centered around 0
+        pts = []
+        i = 0
+        for gy in range(3):
+            for gx in range(3):
+                row = _empty_row(i)
+                row['pixelX'] = float(gx * 100)
+                row['pixelY'] = float(gy * 100)
+                row['worldX'] = float(gx * 10)  # mm demo
+                row['worldY'] = float(gy * 10)
+                pts.append(row)
+                i += 1
+        self.params['points'] = pts
         self._reload_table()
         self._emit()

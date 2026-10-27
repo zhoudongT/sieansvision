@@ -17,6 +17,10 @@ def normalize_format_data_params(params=None):
     p.setdefault('args', '')
     p.setdefault('targetVar', 'formatted')
     p.setdefault('scope', 'flow')
+    p.setdefault('encoding', 'utf-8')
+    p.setdefault('trim', False)
+    p.setdefault('onEmpty', 'keep')  # keep | skip | default
+    p.setdefault('emptyDefault', '')
     return p
 
 
@@ -27,6 +31,9 @@ def normalize_output_image_params(params=None):
     p.setdefault('quality', 95)
     p.setdefault('useTimestamp', True)
     p.setdefault('onlyOnOk', False)
+    p.setdefault('filePrefix', 'img')
+    p.setdefault('createDir', True)
+    p.setdefault('overwrite', True)
     return p
 
 
@@ -38,6 +45,9 @@ def normalize_protocol_parse_params(params=None):
     p.setdefault('delimiter', ',')
     p.setdefault('pattern', '')
     p.setdefault('fields', 'f0,f1,f2')
+    p.setdefault('fixedWidths', '8,8,16')
+    p.setdefault('targetPrefix', 'parsed_')
+    p.setdefault('sample', '')
     return p
 
 
@@ -49,6 +59,8 @@ def normalize_text_save_params(params=None):
     p.setdefault('append', True)
     p.setdefault('encoding', 'utf-8')
     p.setdefault('newline', True)
+    p.setdefault('bom', False)
+    p.setdefault('timestampPrefix', False)
     return p
 
 
@@ -107,9 +119,15 @@ class _ShellBase(QWidget):
         w = QWidget()
         form = QFormLayout(w)
         form.setContentsMargins(10, 10, 10, 10)
-        tip = QLabel('设计态配置已保存；运行结果见引擎字段。')
+        tip = QLabel('设计态配置已保存；运行结果见引擎字段 / 模块结果图。')
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
+        keys = QLabel(
+            'format_data → targetVar；output_image → savedPath；'
+            'protocol_parse → fields；text_save → bytesWritten。'
+        )
+        keys.setWordWrap(True)
+        form.addRow('输出字段', keys)
         return w
 
 
@@ -135,6 +153,56 @@ class FormatDataPanel(_ShellBase):
         var = QLineEdit(str(self.params.get('targetVar') or 'formatted'))
         var.editingFinished.connect(lambda: self._set_param('targetVar', var.text().strip() or 'formatted'))
         form.addRow('目标变量', var)
+        scope = QComboBox()
+        for v, lab in (('flow', '流程'), ('global', '全局'), ('module', '模块')):
+            scope.addItem(lab, v)
+        scope.setCurrentIndex(max(0, scope.findData(self.params.get('scope') or 'flow')))
+        scope.currentIndexChanged.connect(lambda _: self._set_param('scope', scope.currentData()))
+        form.addRow('变量作用域', scope)
+        enc = QComboBox()
+        for e in ('utf-8', 'gbk', 'ascii'):
+            enc.addItem(e, e)
+        enc.setCurrentIndex(max(0, enc.findData(self.params.get('encoding') or 'utf-8')))
+        enc.currentIndexChanged.connect(lambda _: self._set_param('encoding', enc.currentData()))
+        form.addRow('编码', enc)
+        trim = OrangeSwitch(bool(self.params.get('trim', False)))
+        trim.toggled.connect(lambda c: self._set_param('trim', bool(c)))
+        form.addRow('去空白', trim)
+        empty = QComboBox()
+        for v, lab in (('keep', '保留空'), ('skip', '跳过写入'), ('default', '用默认值')):
+            empty.addItem(lab, v)
+        empty.setCurrentIndex(max(0, empty.findData(self.params.get('onEmpty') or 'keep')))
+        empty.currentIndexChanged.connect(lambda _: self._set_param('onEmpty', empty.currentData()))
+        form.addRow('空结果', empty)
+        ed = QLineEdit(str(self.params.get('emptyDefault') or ''))
+        ed.editingFinished.connect(lambda: self._set_param('emptyDefault', ed.text()))
+        form.addRow('空默认值', ed)
+        prev = QLabel()
+        prev.setWordWrap(True)
+        prev.setStyleSheet('color:#555;background:#f5f5f5;padding:6px;border-radius:2px;')
+        def _preview():
+            tpl = str(self.params.get('template') or '')
+            args = [a.strip() for a in str(self.params.get('args') or '').split(',') if a.strip()]
+            try:
+                if args:
+                    try:
+                        text = tpl.format(*args)
+                    except Exception:
+                        text = tpl.format(**{f'{i}': a for i, a in enumerate(args)})
+                else:
+                    text = tpl
+            except Exception as exc:
+                text = f'(预览失败: {exc})'
+            prev.setText('预览：' + text)
+        _preview()
+        # refresh when template/args change — hook via existing edits already emit; button for force
+        btn = QPushButton('刷新预览')
+        btn.clicked.connect(_preview)
+        form.addRow(prev)
+        form.addRow(btn)
+        tip = QLabel('模板支持 {0}/{name}；未填模板时节点红叹号。')
+        tip.setStyleSheet('color:#888;')
+        form.addRow(tip)
         return w
 
 
@@ -188,6 +256,21 @@ class OutputImagePanel(_ShellBase):
         ts = OrangeSwitch(bool(self.params.get('useTimestamp', True)))
         ts.toggled.connect(lambda c: self._set_param('useTimestamp', bool(c)))
         form.addRow('文件名加时间戳', ts)
+        prefix = QLineEdit(str(self.params.get('filePrefix') or 'img'))
+        prefix.editingFinished.connect(lambda: self._set_param('filePrefix', prefix.text().strip() or 'img'))
+        form.addRow('文件名前缀', prefix)
+        ok_only = OrangeSwitch(bool(self.params.get('onlyOnOk', False)))
+        ok_only.toggled.connect(lambda c: self._set_param('onlyOnOk', bool(c)))
+        form.addRow('仅 OK 时保存', ok_only)
+        mkdir = OrangeSwitch(bool(self.params.get('createDir', True)))
+        mkdir.toggled.connect(lambda c: self._set_param('createDir', bool(c)))
+        form.addRow('自动建目录', mkdir)
+        ow = OrangeSwitch(bool(self.params.get('overwrite', True)))
+        ow.toggled.connect(lambda c: self._set_param('overwrite', bool(c)))
+        form.addRow('允许覆盖', ow)
+        tip = QLabel('未选输入源或路径为空时节点红叹号。')
+        tip.setStyleSheet('color:#888;')
+        form.addRow(tip)
         return w
 
 
@@ -218,9 +301,31 @@ class ProtocolParsePanel(_ShellBase):
         fields.editingFinished.connect(lambda: self._set_param('fields', fields.text().strip()))
         form.addRow('字段名', fields)
         pat = QLineEdit(str(self.params.get('pattern') or ''))
-        pat.setPlaceholderText('正则或定长规格（可选）')
+        pat.setPlaceholderText('正则模式（protocol=regex）')
         pat.editingFinished.connect(lambda: self._set_param('pattern', pat.text()))
-        form.addRow('模式', pat)
+        form.addRow('正则', pat)
+        widths = QLineEdit(str(self.params.get('fixedWidths') or '8,8,16'))
+        widths.setPlaceholderText('定长宽度，逗号分隔')
+        widths.editingFinished.connect(lambda: self._set_param('fixedWidths', widths.text().strip()))
+        form.addRow('定长宽度', widths)
+        prefix = QLineEdit(str(self.params.get('targetPrefix') or 'parsed_'))
+        prefix.editingFinished.connect(lambda: self._set_param('targetPrefix', prefix.text()))
+        form.addRow('字段前缀', prefix)
+        scope = QComboBox()
+        for v, lab in (('flow', '流程'), ('global', '全局')):
+            scope.addItem(lab, v)
+        scope.setCurrentIndex(max(0, scope.findData(self.params.get('sourceScope') or 'flow')))
+        scope.currentIndexChanged.connect(lambda _: self._set_param('sourceScope', scope.currentData()))
+        form.addRow('源作用域', scope)
+        sample = QPlainTextEdit()
+        sample.setPlainText(str(self.params.get('sample') or ''))
+        sample.setMaximumHeight(70)
+        sample.setPlaceholderText('样例报文（仅设计态预览）')
+        sample.textChanged.connect(lambda: self._set_param('sample', sample.toPlainText()))
+        form.addRow('样例', sample)
+        tip = QLabel('源变量为空时节点红叹号。运行写回 parsed_* 字段。')
+        tip.setStyleSheet('color:#888;')
+        form.addRow(tip)
         return w
 
 
@@ -264,4 +369,16 @@ class TextSavePanel(_ShellBase):
         enc.setCurrentIndex(max(0, enc.findData(self.params.get('encoding') or 'utf-8')))
         enc.currentIndexChanged.connect(lambda _: self._set_param('encoding', enc.currentData()))
         form.addRow('编码', enc)
+        nl = OrangeSwitch(bool(self.params.get('newline', True)))
+        nl.toggled.connect(lambda c: self._set_param('newline', bool(c)))
+        form.addRow('末尾换行', nl)
+        bom = OrangeSwitch(bool(self.params.get('bom', False)))
+        bom.toggled.connect(lambda c: self._set_param('bom', bool(c)))
+        form.addRow('写 BOM', bom)
+        tsp = OrangeSwitch(bool(self.params.get('timestampPrefix', False)))
+        tsp.toggled.connect(lambda c: self._set_param('timestampPrefix', bool(c)))
+        form.addRow('行首时间戳', tsp)
+        tip = QLabel('路径为空时节点红叹号。')
+        tip.setStyleSheet('color:#888;')
+        form.addRow(tip)
         return w

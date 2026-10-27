@@ -32,6 +32,9 @@ def normalize_distort_params(params=None):
     p.setdefault('squareSize', 10.0)
     p.setdefault('alpha', 0.0)
     p.setdefault('enabled', True)
+    p.setdefault('keepSize', True)
+    p.setdefault('showGrid', False)
+    p.setdefault('interp', 'linear')
     return p
 
 
@@ -62,6 +65,7 @@ class DistortCorrectPanel(QWidget):
         root.addWidget(self.tabs, 1)
         self.tabs.addTab(self._wrap(self._basic_tab()), '基本参数')
         self.tabs.addTab(self._wrap(self._intrinsics_tab()), '相机内参')
+        self.tabs.addTab(self._wrap(self._run_tab()), '运行参数')
         self.tabs.addTab(self._wrap(self._result_tab()), '结果显示')
 
     def _wrap(self, inner):
@@ -191,6 +195,37 @@ class DistortCorrectPanel(QWidget):
         sq.valueChanged.connect(lambda v: self._set_param('squareSize', float(v)))
         form.addRow('方格边长', sq)
         return w
+
+    def _run_tab(self):
+        w = QWidget()
+        form = QFormLayout(w)
+        form.setContentsMargins(10, 10, 10, 10)
+        self._run_extra_rows(form)
+        tip = QLabel('未配标定文件且非手动系数时画布红叹号。')
+        tip.setStyleSheet('color:#888;')
+        form.addRow(tip)
+        return w
+
+    def _run_extra_rows(self, form):
+        en = OrangeSwitch(bool(self.params.get('enabled', True)))
+        en.toggled.connect(lambda c: self._set_param('enabled', bool(c)))
+        form.addRow('使能矫正', en)
+        ks = OrangeSwitch(bool(self.params.get('keepSize', True)))
+        ks.toggled.connect(lambda c: self._set_param('keepSize', bool(c)))
+        form.addRow('保持尺寸', ks)
+        sg = OrangeSwitch(bool(self.params.get('showGrid', False)))
+        sg.toggled.connect(lambda c: self._set_param('showGrid', bool(c)))
+        form.addRow('叠加网格', sg)
+        interp = QComboBox()
+        for v, lab in (('nearest', '最近邻'), ('linear', '双线性'), ('cubic', '双三次')):
+            interp.addItem(lab, v)
+        interp.setCurrentIndex(max(0, interp.findData(self.params.get('interp') or 'linear')))
+        interp.currentIndexChanged.connect(lambda _: self._set_param('interp', interp.currentData()))
+        form.addRow('插值', interp)
+        alpha = QDoubleSpinBox(); alpha.setRange(0, 1); alpha.setDecimals(3); alpha.setSingleStep(0.05)
+        alpha.setValue(float(self.params.get('alpha') or 0))
+        alpha.valueChanged.connect(lambda v: self._set_param('alpha', float(v)))
+        form.addRow('有效区域 α', alpha)
 
     def _result_tab(self):
         w = QWidget()

@@ -32,7 +32,7 @@ class PropertyFloat(QDialog):
             | Qt.WindowType.WindowStaysOnTopHint
         )
         self.setModal(False)
-        self.resize(420, 560)
+        self.resize(460, 600)
         self._node_id = None
         self._drag = None
         root = QVBoxLayout(self)
@@ -44,7 +44,15 @@ class PropertyFloat(QDialog):
         title_layout.setContentsMargins(12, 6, 6, 6)
         self.title = QLabel('属性')
         self.title.setObjectName('propertyFloatTitleLabel')
-        title_layout.addWidget(self.title, 1)
+        title_col = QVBoxLayout()
+        title_col.setContentsMargins(0, 0, 0, 0)
+        title_col.setSpacing(0)
+        title_col.addWidget(self.title)
+        self.subtitle = QLabel('')
+        self.subtitle.setObjectName('propertyFloatSubtitle')
+        self.subtitle.setVisible(False)
+        title_col.addWidget(self.subtitle)
+        title_layout.addLayout(title_col, 1)
         close = QPushButton('✕')
         close.setObjectName('propertyFloatClose')
         close.setFixedSize(26, 26)
@@ -64,13 +72,16 @@ class PropertyFloat(QDialog):
         self.cont_btn = QPushButton('连续执行')
         self.exec_btn = QPushButton('执行')
         self.exec_btn.setObjectName('primaryButton')
+        self.cancel_btn = QPushButton('取消')
         self.ok_btn = QPushButton('确定')
         self.cont_btn.clicked.connect(lambda: self.runModuleContinuous.emit(self._node_id))
         self.exec_btn.clicked.connect(lambda: self.runModule.emit(self._node_id))
+        self.cancel_btn.clicked.connect(self.close)
         self.ok_btn.clicked.connect(self.close)
         foot.addWidget(self.cont_btn)
         foot.addStretch(1)
         foot.addWidget(self.exec_btn)
+        foot.addWidget(self.cancel_btn)
         foot.addWidget(self.ok_btn)
         root.addWidget(self.footer)
         self._panel = None
@@ -95,6 +106,16 @@ class PropertyFloat(QDialog):
         self._drag = None
         super().mouseReleaseEvent(event)
 
+
+    def _set_chrome(self, title, subtitle=''):
+        self.title.setText(title)
+        if subtitle:
+            self.subtitle.setText(subtitle)
+            self.subtitle.setVisible(True)
+        else:
+            self.subtitle.clear()
+            self.subtitle.setVisible(False)
+
     def _clear_body(self):
         while self.body.count():
             item = self.body.takeAt(0)
@@ -111,7 +132,7 @@ class PropertyFloat(QDialog):
             bang = source_incomplete(config)
         except Exception:
             bang = False
-        self.title.setText(('⚠ ' if bang else '') + title)
+        self._set_chrome(('⚠ ' if bang else '') + title, '图像采集 · 本地 / 相机 / SDK')
         form = ImageSourceForm(config)
         form.changed.connect(self.sourceChanged.emit)
         form.openCameraManager.connect(self.openCameraManager.emit)
@@ -130,7 +151,10 @@ class PropertyFloat(QDialog):
             bang = step_incomplete(step, project)
         except Exception:
             bang = False
-        self.title.setText(('⚠ ' if bang else '') + f'{index} {name}')
+        op = (step or {}).get('operation') or ''
+        cat = (definition or {}).get('category') or ''
+        sub = (cat + ' · ' + op) if op else cat
+        self._set_chrome(('⚠ ' if bang else '') + f'{index} {name}', sub)
         # B3: 组合模块专用四 Tab 面板
         if step and step.get('operation') == 'group':
             from desktop.group_module import GroupParamPanel, normalize_group_params

@@ -20,6 +20,11 @@ COMPARISONS = [
     ('lt', '小于'),
     ('lte', '小于等于'),
     ('contains', '包含'),
+    ('starts_with', '开头是'),
+    ('ends_with', '结尾是'),
+    ('regex', '正则'),
+    ('empty', '为空'),
+    ('not_empty', '非空'),
     ('is_true', '为真'),
     ('is_false', '为假'),
 ]
@@ -38,6 +43,7 @@ def normalize_condition_params(params=None):
             left=p.get('left', 0),
             comparison=p.get('comparison') or 'eq',
             right=p.get('right', 0),
+            enabled=True,
         )]
     p['rules'] = rules
     return p
@@ -48,9 +54,9 @@ def normalize_branch_params(params=None):
     paths = p.get('paths')
     if not isinstance(paths, list) or not paths:
         paths = [
-            dict(id='path1', name='分支1', left='', comparison='eq', right=''),
-            dict(id='path2', name='分支2', left='', comparison='eq', right=''),
-            dict(id='default', name='默认', left='', comparison='is_true', right=''),
+            dict(id='path1', name='分支1', left='', comparison='eq', right='', enabled=True),
+            dict(id='path2', name='分支2', left='', comparison='eq', right='', enabled=True),
+            dict(id='default', name='默认', left='', comparison='is_true', right='', enabled=True),
         ]
     p['paths'] = paths
     p.setdefault('defaultPathId', 'default')
@@ -110,6 +116,7 @@ class ConditionBranchPanel(QWidget):
             tabs.addTab(self._wrap(self._paths_tab()), '分支路径')
         else:
             tabs.addTab(self._wrap(self._rules_tab()), '条件规则')
+        tabs.addTab(self._wrap(self._result_tab()), '结果显示')
 
     def _wrap(self, inner):
         scroll = QScrollArea()
@@ -148,9 +155,24 @@ class ConditionBranchPanel(QWidget):
             logic.setCurrentIndex(li)
             logic.currentIndexChanged.connect(lambda _: self._set_logic(logic.currentData()))
             form.addRow('规则逻辑', logic)
-            tip = QLabel('画布出边：真分支 when=true，假分支 when=false。')
+            tip = QLabel('画布出边：真分支 when=true，假分支 when=false。未填左侧值时节点红叹号。')
         else:
-            tip = QLabel('画布出边 when 填路径名（如「分支1」）；默认路径兜底。')
+            dp = QComboBox()
+            dp.setEditable(True)
+            for path in self.params.get('paths') or []:
+                dp.addItem(path.get('name') or path.get('id') or '', path.get('id') or '')
+            cur = self.params.get('defaultPathId') or 'default'
+            ix = dp.findData(cur)
+            if ix < 0:
+                dp.addItem(cur, cur); ix = dp.count() - 1
+            dp.setCurrentIndex(max(0, ix))
+            def _dp():
+                self.params['defaultPathId'] = dp.currentData() or dp.currentText()
+                self._emit()
+            dp.currentIndexChanged.connect(lambda *_: _dp())
+            dp.editTextChanged.connect(lambda *_: _dp())
+            form.addRow('默认路径', dp)
+            tip = QLabel('画布出边 when 填路径名；无命中走默认路径。禁用路径不参与匹配。')
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
@@ -164,18 +186,31 @@ class ConditionBranchPanel(QWidget):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(10, 10, 10, 10)
-        self.rules_table = QTableWidget(0, 4)
-        self.rules_table.setHorizontalHeaderLabels(['左侧值', '比较', '右侧值', '操作'])
+        self.rules_table = QTableWidget(0, 5)
+        self.rules_table.setHorizontalHeaderLabels(['启用', '左侧值', '比较', '右侧值', '操作'])
         self.rules_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.rules_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.rules_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.rules_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         self.rules_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.rules_table.setAlternatingRowColors(True)
+        self.rules_table.verticalHeader().setDefaultSectionSize(28)
         lay.addWidget(self.rules_table, 1)
         bar = QHBoxLayout()
         add = QPushButton('添加规则')
         add.clicked.connect(lambda: self._append_rule({}))
+        up = QPushButton('↑')
+        down = QPushButton('↓')
+        up.setFixedWidth(28); down.setFixedWidth(28)
+        up.clicked.connect(lambda: self._move_rule(-1))
+        down.clicked.connect(lambda: self._move_rule(1))
         bar.addWidget(add)
+        bar.addWidget(up)
+        bar.addWidget(down)
         bar.addStretch(1)
         lay.addLayout(bar)
+        tip = QLabel('左侧可填变量名（如 matchCount）或常量；比较「为空/非空/为真」时右侧可留空。')
+        tip.setWordWrap(True); tip.setStyleSheet('color:#888;')
+        lay.addWidget(tip)
         for rule in self.params.get('rules') or []:
             self._append_rule(rule, emit=False)
         return w
@@ -184,10 +219,17 @@ class ConditionBranchPanel(QWidget):
         rule = rule or {}
         r = self.rules_table.rowCount()
         self.rules_table.insertRow(r)
+        en = QComboBox()
+        en.addItem('是', True)
+        en.addItem('否', False)
+        en.setCurrentIndex(0 if rule.get('enabled', True) else 1)
+        en.currentIndexChanged.connect(lambda *_: self._harvest_rules())
+        self.rules_table.setCellWidget(r, 0, en)
+
         left = QLineEdit(str(rule.get('left', '') if rule.get('left') is not None else ''))
-        left.setPlaceholderText('变量 / 常量 / $ref')
+        left.setPlaceholderText('变量 / 常量')
         left.editingFinished.connect(self._harvest_rules)
-        self.rules_table.setCellWidget(r, 0, left)
+        self.rules_table.setCellWidget(r, 1, left)
 
         cmp = QComboBox()
         for val, lab in COMPARISONS:
@@ -196,17 +238,19 @@ class ConditionBranchPanel(QWidget):
         ci = max(0, cmp.findData(cur))
         cmp.setCurrentIndex(ci)
         cmp.currentIndexChanged.connect(lambda *_: self._harvest_rules())
-        self.rules_table.setCellWidget(r, 1, cmp)
+        self.rules_table.setCellWidget(r, 2, cmp)
 
         right = QLineEdit(str(rule.get('right', '') if rule.get('right') is not None else ''))
         right.setPlaceholderText('常量 / 变量')
         right.editingFinished.connect(self._harvest_rules)
-        self.rules_table.setCellWidget(r, 2, right)
+        self.rules_table.setCellWidget(r, 3, right)
 
-        rm = QPushButton('删')
-        rm.setFixedWidth(36)
+        ops = QWidget()
+        ol = QHBoxLayout(ops); ol.setContentsMargins(0, 0, 0, 0); ol.setSpacing(2)
+        rm = QPushButton('删'); rm.setFixedWidth(32)
         rm.clicked.connect(lambda *_ , rr=r: self._remove_rule(rr))
-        self.rules_table.setCellWidget(r, 3, rm)
+        ol.addWidget(rm)
+        self.rules_table.setCellWidget(r, 4, ops)
         if emit:
             self._harvest_rules()
 
@@ -220,7 +264,10 @@ class ConditionBranchPanel(QWidget):
 
     def _rebind_rule_buttons(self):
         for r in range(self.rules_table.rowCount()):
-            btn = self.rules_table.cellWidget(r, 3)
+            ops = self.rules_table.cellWidget(r, 4)
+            if ops is None:
+                continue
+            btn = ops.findChild(QPushButton) if hasattr(ops, 'findChild') else None
             if isinstance(btn, QPushButton):
                 try:
                     btn.clicked.disconnect()
@@ -228,14 +275,31 @@ class ConditionBranchPanel(QWidget):
                     pass
                 btn.clicked.connect(lambda *_ , rr=r: self._remove_rule(rr))
 
+    def _move_rule(self, delta):
+        row = self.rules_table.currentRow()
+        if row < 0:
+            return
+        target = row + delta
+        if target < 0 or target >= self.rules_table.rowCount():
+            return
+        self._harvest_rules()
+        rules = list(self.params.get('rules') or [])
+        rules[row], rules[target] = rules[target], rules[row]
+        self.params['rules'] = rules
+        self.rules_table.setRowCount(0)
+        for rule in rules:
+            self._append_rule(rule, emit=False)
+        self.rules_table.setCurrentCell(target, 1)
+        self._emit()
+
     def _harvest_rules(self):
         rules = []
         for r in range(self.rules_table.rowCount()):
-            left_w = self.rules_table.cellWidget(r, 0)
-            cmp_w = self.rules_table.cellWidget(r, 1)
-            right_w = self.rules_table.cellWidget(r, 2)
+            en_w = self.rules_table.cellWidget(r, 0)
+            left_w = self.rules_table.cellWidget(r, 1)
+            cmp_w = self.rules_table.cellWidget(r, 2)
+            right_w = self.rules_table.cellWidget(r, 3)
             left = left_w.text().strip() if left_w else ''
-            # Try numeric coerce for engine comfort
             try:
                 if left and left.replace('.', '', 1).replace('-', '', 1).isdigit():
                     left = float(left) if '.' in left else int(left)
@@ -248,7 +312,10 @@ class ConditionBranchPanel(QWidget):
             except Exception:
                 pass
             comparison = cmp_w.currentData() if cmp_w else 'eq'
-            rules.append(dict(left=left, comparison=comparison, right=right))
+            enabled = True
+            if isinstance(en_w, QComboBox):
+                enabled = bool(en_w.currentData()) if en_w.currentData() is not None else en_w.currentIndex() == 0
+            rules.append(dict(left=left, comparison=comparison, right=right, enabled=enabled))
         self.params['rules'] = rules
         self._emit()
 
@@ -256,17 +323,24 @@ class ConditionBranchPanel(QWidget):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(10, 10, 10, 10)
-        self.paths_table = QTableWidget(0, 6)
+        self.paths_table = QTableWidget(0, 7)
         self.paths_table.setHorizontalHeaderLabels(
-            ['路径ID', '路径名', '左侧值', '比较', '右侧值', '操作']
+            ['启用', '路径ID', '路径名', '左侧值', '比较', '右侧值', '操作']
         )
         self.paths_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.paths_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        self.paths_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.paths_table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        self.paths_table.setAlternatingRowColors(True)
+        self.paths_table.verticalHeader().setDefaultSectionSize(28)
         lay.addWidget(self.paths_table, 1)
         bar = QHBoxLayout()
         add = QPushButton('添加路径')
         add.clicked.connect(lambda: self._append_path({}))
-        bar.addWidget(add)
+        up = QPushButton('↑'); down = QPushButton('↓')
+        up.setFixedWidth(28); down.setFixedWidth(28)
+        up.clicked.connect(lambda: self._move_path(-1))
+        down.clicked.connect(lambda: self._move_path(1))
+        bar.addWidget(add); bar.addWidget(up); bar.addWidget(down)
         bar.addStretch(1)
         lay.addLayout(bar)
         tip = QLabel('出边 when 建议填「路径名」。路径ID 供脚本/绑定引用。')
@@ -277,10 +351,14 @@ class ConditionBranchPanel(QWidget):
             self._append_path(path, emit=False)
         return w
 
+
     def _append_path(self, path, emit=True):
         path = path or {}
         r = self.paths_table.rowCount()
         self.paths_table.insertRow(r)
+        en = QComboBox(); en.addItem('是', True); en.addItem('否', False)
+        en.setCurrentIndex(0 if path.get('enabled', True) else 1)
+        en.currentIndexChanged.connect(lambda *_: self._harvest_paths())
         pid = QLineEdit(str(path.get('id') or f'path{r + 1}'))
         pname = QLineEdit(str(path.get('name') or f'分支{r + 1}'))
         left = QLineEdit(str(path.get('left', '') if path.get('left') is not None else ''))
@@ -290,16 +368,15 @@ class ConditionBranchPanel(QWidget):
         ci = max(0, cmp.findData(path.get('comparison') or 'eq'))
         cmp.setCurrentIndex(ci)
         right = QLineEdit(str(path.get('right', '') if path.get('right') is not None else ''))
-        for col, widget in enumerate((pid, pname, left, cmp, right)):
+        for col, widget in enumerate((en, pid, pname, left, cmp, right)):
             if isinstance(widget, QLineEdit):
                 widget.editingFinished.connect(self._harvest_paths)
             else:
                 widget.currentIndexChanged.connect(lambda *_: self._harvest_paths())
             self.paths_table.setCellWidget(r, col, widget)
-        rm = QPushButton('删')
-        rm.setFixedWidth(36)
+        rm = QPushButton('删'); rm.setFixedWidth(32)
         rm.clicked.connect(lambda *_ , rr=r: self._remove_path(rr))
-        self.paths_table.setCellWidget(r, 5, rm)
+        self.paths_table.setCellWidget(r, 6, rm)
         if emit:
             self._harvest_paths()
 
@@ -310,20 +387,79 @@ class ConditionBranchPanel(QWidget):
             self.paths_table.removeRow(row)
             self._harvest_paths()
 
+    def _move_path(self, delta):
+        row = self.paths_table.currentRow()
+        if row < 0:
+            return
+        target = row + delta
+        if target < 0 or target >= self.paths_table.rowCount():
+            return
+        self._harvest_paths()
+        paths = list(self.params.get('paths') or [])
+        paths[row], paths[target] = paths[target], paths[row]
+        self.params['paths'] = paths
+        self.paths_table.setRowCount(0)
+        for path in paths:
+            self._append_path(path, emit=False)
+        self.paths_table.setCurrentCell(target, 1)
+        self._emit()
+
     def _harvest_paths(self):
         paths = []
         for r in range(self.paths_table.rowCount()):
-            pid = self.paths_table.cellWidget(r, 0)
-            pname = self.paths_table.cellWidget(r, 1)
-            left_w = self.paths_table.cellWidget(r, 2)
-            cmp_w = self.paths_table.cellWidget(r, 3)
-            right_w = self.paths_table.cellWidget(r, 4)
+            en_w = self.paths_table.cellWidget(r, 0)
+            pid = self.paths_table.cellWidget(r, 1)
+            pname = self.paths_table.cellWidget(r, 2)
+            left_w = self.paths_table.cellWidget(r, 3)
+            cmp_w = self.paths_table.cellWidget(r, 4)
+            right_w = self.paths_table.cellWidget(r, 5)
+            enabled = True
+            if isinstance(en_w, QComboBox):
+                enabled = bool(en_w.currentData()) if en_w.currentData() is not None else en_w.currentIndex() == 0
             paths.append(dict(
                 id=(pid.text().strip() if pid else f'path{r + 1}') or f'path{r + 1}',
                 name=(pname.text().strip() if pname else f'分支{r + 1}') or f'分支{r + 1}',
                 left=left_w.text().strip() if left_w else '',
                 comparison=cmp_w.currentData() if cmp_w else 'eq',
                 right=right_w.text().strip() if right_w else '',
+                enabled=enabled,
             ))
         self.params['paths'] = paths
         self._emit()
+
+    def _result_tab(self):
+        w = QWidget()
+        form = QFormLayout(w)
+        form.setContentsMargins(10, 10, 10, 10)
+        if self.op == 'branch':
+            tip = QLabel(
+                '运行输出：matchedPath / matchedPathId / passed。\n'
+                '画布连线 when=路径名；禁用路径跳过。默认路径兜底。'
+            )
+        else:
+            tip = QLabel(
+                '运行输出：passed / matchedRuleCount。\n'
+                '真出边 when=true，假出边 when=false。禁用规则不参与 AND/OR。'
+            )
+        tip.setWordWrap(True)
+        tip.setStyleSheet('color:#555;')
+        form.addRow(tip)
+        # Quick preview labels from current harvest
+        summary = QLabel(self._summary_text())
+        summary.setObjectName('conditionSummary')
+        summary.setWordWrap(True)
+        form.addRow('当前配置', summary)
+        self._result_summary = summary
+        refresh = QPushButton('刷新摘要')
+        refresh.clicked.connect(lambda: summary.setText(self._summary_text()))
+        form.addRow(refresh)
+        return w
+
+    def _summary_text(self):
+        if self.op == 'branch':
+            paths = self.params.get('paths') or []
+            on = [p for p in paths if p.get('enabled', True)]
+            return f'路径 {len(paths)} 条（启用 {len(on)}）；默认={self.params.get("defaultPathId") or "default"}'
+        rules = self.params.get('rules') or []
+        on = [r for r in rules if r.get('enabled', True)]
+        return f'规则 {len(rules)} 条（启用 {len(on)}）；逻辑={self.params.get("logic") or "and"}'
