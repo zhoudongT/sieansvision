@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㉜ · 气泡长按钉住 · 进度弧可配时长 · CSV另存/cleared · toast史右键清空 · 锁双击可撤销 · 2026-10-28】
+
+- **气泡长按钉住 sev 筛**：左键短按筛；长按钉住（`host/alarmSevPinned`）；钉住后非 force 拒切换；再长按同键或中键取消钉。
+- **进度弧可配置时长 tip**：`film/undoClearLongMs`（300–3000）；⊘ tip 显示 ms；右键循环 400/650/1000/1500。
+- **CSV 另存文件 / 含已清除列**：`ts,cleared,cleared_at,severity,path,reason`；菜单「另存 paths CSV…」→ `save_all_alarm_film_paths_csv`。
+- **toast 史右键清空史**：`clear_liaison_toast_history`；左键仍回切时段。
+- **锁徽章双击可撤销**：双击先压入 undo，复位并解锁；↶ 恢复序并可 `_undo_should_relock` 回锁。
+- **冒烟**：`smoke-wave32-bubblepin-arcdur-csvsave-histclear-lockundo-e2e`（另回归 wave31）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆㉛ · 气泡右/中键 · 长按进度弧 · paths CSV · toast史回切 · 锁徽章双击复位 · 2026-10-28】
 
 - **气泡右键仅看该 sev / 中键清筛**：左键筛；右键强制仅看该档；中键 → `all`。

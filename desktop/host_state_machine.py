@@ -716,23 +716,47 @@ class HostStateMachineWidget(QWidget):
             chip_row.addWidget(b)
             self._alarm_sev_chips[key] = b
             self._alarm_sev_chip_labels[key] = lab
-            # wave29: 计数气泡 · wave30: 单击筛
+            # wave29–32: 计数气泡 · 单击筛 · 长按钉住
             bubble = QLabel('0')
             bubble.setObjectName(f'hostAlarmSevCount_{key}')
             bubble.setFixedHeight(16)
             bubble.setMinimumWidth(14)
             bubble.setAlignment(Qt.AlignmentFlag.AlignCenter)
             bubble.setCursor(Qt.CursorShape.PointingHandCursor)
-            bubble.setToolTip(f'左键筛 · 右键仅看{lab} · 中键清筛')
+            bubble.setToolTip(f'左键筛 · 长按钉住 · 右键仅看{lab} · 中键清筛/取消钉')
             bubble.setStyleSheet(
                 'background:#2a2c30;color:#6a7078;border:1px solid #3a3d42;'
                 'border-radius:7px;padding:0 3px;font-size:9px;font-weight:700;'
             )
             bubble.mousePressEvent = (
-                lambda e, k=key: self._on_sev_bubble_clicked(e, k)
+                lambda e, k=key: self._on_sev_bubble_press(e, k)
+            )
+            bubble.mouseReleaseEvent = (
+                lambda e, k=key: self._on_sev_bubble_release(e, k)
             )
             chip_row.addWidget(bubble)
             self._alarm_sev_count_bubbles[key] = bubble
+        # wave32: sev 筛钉住
+        self._alarm_sev_pinned = False
+        self._alarm_sev_pinned_key = ''
+        self._sev_bubble_pin_timer = QTimer(self)
+        self._sev_bubble_pin_timer.setSingleShot(True)
+        self._sev_bubble_pin_timer.timeout.connect(self._on_sev_bubble_long_press)
+        self._sev_bubble_pin_key = None
+        self._sev_bubble_long_fired = False
+        self._sev_bubble_pin_ms = 550
+        try:
+            raw_pin = str(self._host_settings().value('host/alarmSevPinned', '') or '').strip().lower()
+            if raw_pin in ('all', 'error', 'warning', 'info'):
+                self._alarm_sev_pinned = True
+                self._alarm_sev_pinned_key = raw_pin
+                # align combo to pinned key (force)
+                for i in range(self._alarm_sev_filter.count()):
+                    if str(self._alarm_sev_filter.itemData(i) or '') == raw_pin:
+                        self._alarm_sev_filter.setCurrentIndex(i)
+                        break
+        except Exception:
+            pass
         chip_row.addStretch(1)
         chip_hint = QLabel('芯片')
         chip_hint.setStyleSheet(f'color:{TEXT_MUTED};font-size:10px;')
@@ -818,7 +842,7 @@ class HostStateMachineWidget(QWidget):
         )
         self._liaison_toast_history_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._liaison_toast_history_bar.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._liaison_toast_history_bar.setToolTip('单击某档回切联调时段')
+        self._liaison_toast_history_bar.setToolTip('单击某档回切联调时段 · 右键清空史')
         self._liaison_toast_history_bar.mousePressEvent = (
             lambda e: self._on_liaison_toast_history_clicked(e)
         )
@@ -1286,14 +1310,22 @@ class HostStateMachineWidget(QWidget):
             pass
         return True
 
-    def set_alarm_severity_filter(self, key: str = 'all', *, persist: bool = True) -> bool:
-        """wave26/27: 设严重度筛（spark / 外部）；可持久."""
+    def set_alarm_severity_filter(self, key: str = 'all', *, persist: bool = True, force: bool = False) -> bool:
+        """wave26/27/32: 设严重度筛；钉住时非 force 拒绝切换."""
         combo = getattr(self, '_alarm_sev_filter', None)
         if combo is None:
             return False
         key = str(key or 'all').strip().lower()
         if key in ('warn',):
             key = 'warning'
+        if (not force) and getattr(self, '_alarm_sev_pinned', False):
+            pinned = str(getattr(self, '_alarm_sev_pinned_key', '') or '')
+            if pinned and key != pinned:
+                try:
+                    self._log_line(f'严重度已钉住 · {pinned}（长按气泡解锁）')
+                except Exception:
+                    pass
+                return False
         for i in range(combo.count()):
             if str(combo.itemData(i) or '') == key:
                 if combo.currentIndex() != i:
@@ -1382,8 +1414,21 @@ class HostStateMachineWidget(QWidget):
             bubble = bubbles.get(key)
             if bubble is not None:
                 bubble.setText(str(n))
-                bubble.setToolTip(f'{base} · {n} 条')
-                if n > 0:
+                pinned = bool(getattr(self, '_alarm_sev_pinned', False))
+                pinned_key = str(getattr(self, '_alarm_sev_pinned_key', '') or '')
+                pin_here = pinned and pinned_key == key
+                tip = f'{base} · {n} 条'
+                if pin_here:
+                    tip += ' · 钉住（长按/中键取消）'
+                else:
+                    tip += ' · 左键筛 · 长按钉住 · 右键仅看 · 中键清筛'
+                bubble.setToolTip(tip)
+                if pin_here:
+                    bubble.setStyleSheet(
+                        f'background:{bg};color:{fg};border:2px solid #f0c040;'
+                        f'border-radius:7px;padding:0 3px;font-size:9px;font-weight:700;'
+                    )
+                elif n > 0:
                     bubble.setStyleSheet(
                         f'background:{bg};color:{fg};border:1px solid {bd};'
                         f'border-radius:7px;padding:0 3px;font-size:9px;font-weight:700;'
@@ -1496,17 +1541,125 @@ class HostStateMachineWidget(QWidget):
         all_rows = self._collect_alarm_film_rows()
         act_all.setEnabled(bool(all_rows))
         if all_rows:
-            act_all.setToolTip(f'{len(all_rows)} 条 · ts,severity,path,reason')
+            act_all.setToolTip(f'{len(all_rows)} 条 · ts,cleared,cleared_at,severity,path,reason')
             act_all.setText(f'复制全部 paths CSV（{len(all_rows)}）')
         else:
             act_all.setText('复制全部 paths CSV（无）')
         act_all.triggered.connect(lambda *_: self.copy_all_alarm_film_paths(as_csv=True))
         menu.addAction(act_all)
+        # wave32: 另存 CSV 文件（含 cleared）
+        act_save = QAction('另存 paths CSV…', self)
+        act_save.setEnabled(bool(all_rows))
+        if all_rows:
+            act_save.setToolTip(f'{len(all_rows)} 条 · 含 cleared/cleared_at')
+            act_save.setText(f'另存 paths CSV…（{len(all_rows)}）')
+        else:
+            act_save.setText('另存 paths CSV…（无）')
+        act_save.triggered.connect(lambda *_: self.save_all_alarm_film_paths_csv())
+        menu.addAction(act_save)
         self._last_alarm_ctx_item = item
         return menu
 
+    def _on_sev_bubble_press(self, event=None, key: str = 'all'):
+        """wave32: 左键按下启动长按钉住计时；右/中立即处理."""
+        btn = None
+        try:
+            if event is not None and hasattr(event, 'button'):
+                btn = event.button()
+        except Exception:
+            btn = None
+        if btn == Qt.MouseButton.RightButton:
+            self.set_alarm_severity_filter(key if key else 'all', force=True)
+            try:
+                self._log_line(f'气泡右键仅看 · {key}')
+            except Exception:
+                pass
+            return
+        if btn == Qt.MouseButton.MiddleButton:
+            # 中键：若钉住则取消钉；否则清筛
+            if getattr(self, '_alarm_sev_pinned', False):
+                self.pin_alarm_severity_filter(False)
+            else:
+                self.set_alarm_severity_filter('all', force=True)
+                try:
+                    self._log_line('气泡中键清筛 · all')
+                except Exception:
+                    pass
+            return
+        # left: arm long-press pin
+        self._sev_bubble_pin_key = key
+        self._sev_bubble_long_fired = False
+        timer = getattr(self, '_sev_bubble_pin_timer', None)
+        if timer is not None:
+            ms = int(getattr(self, '_sev_bubble_pin_ms', 550) or 550)
+            timer.start(ms)
+
+    def _on_sev_bubble_release(self, event=None, key: str = 'all'):
+        """wave32: 短按筛；长按已钉则跳过."""
+        btn = None
+        try:
+            if event is not None and hasattr(event, 'button'):
+                btn = event.button()
+        except Exception:
+            btn = None
+        if btn is not None and btn != Qt.MouseButton.LeftButton:
+            return
+        timer = getattr(self, '_sev_bubble_pin_timer', None)
+        if timer is not None and timer.isActive():
+            timer.stop()
+        if getattr(self, '_sev_bubble_long_fired', False):
+            return
+        self.set_alarm_severity_filter(key)
+
+    def _on_sev_bubble_long_press(self):
+        """wave32: 长按钉住当前气泡 sev（再长按同键取消）."""
+        self._sev_bubble_long_fired = True
+        key = str(getattr(self, '_sev_bubble_pin_key', '') or 'all')
+        if getattr(self, '_alarm_sev_pinned', False) and str(
+            getattr(self, '_alarm_sev_pinned_key', '') or ''
+        ) == key:
+            self.pin_alarm_severity_filter(False)
+        else:
+            self.pin_alarm_severity_filter(True, key=key)
+
+    def pin_alarm_severity_filter(self, pinned: bool = True, key: str = '', *, persist: bool = True) -> bool:
+        """wave32: 钉住/取消严重度筛."""
+        pinned = bool(pinned)
+        if pinned:
+            k = str(key or getattr(self, '_sev_bubble_pin_key', '') or self.alarm_severity_filter() or 'all').strip().lower()
+            if k in ('warn',):
+                k = 'warning'
+            if k not in ('all', 'error', 'warning', 'info'):
+                k = 'all'
+            self._alarm_sev_pinned = True
+            self._alarm_sev_pinned_key = k
+            self.set_alarm_severity_filter(k, persist=True, force=True)
+            try:
+                self._log_line(f'严重度已钉住 · {k}')
+            except Exception:
+                pass
+        else:
+            self._alarm_sev_pinned = False
+            self._alarm_sev_pinned_key = ''
+            try:
+                self._log_line('严重度钉住已取消')
+            except Exception:
+                pass
+        if persist:
+            try:
+                val = self._alarm_sev_pinned_key if self._alarm_sev_pinned else ''
+                self._host_settings().setValue('host/alarmSevPinned', val)
+            except Exception:
+                pass
+        try:
+            self._sync_alarm_sev_chips()
+        except Exception:
+            pass
+        return True
+
     def _on_sev_bubble_clicked(self, event=None, key: str = 'all'):
-        """wave30–31: 左键筛 / 右键仅看该 sev / 中键清筛."""
+        """兼容冒烟/旧 API：按键路由到 press（无 release）."""
+        self._on_sev_bubble_press(event, key)
         btn = None
         try:
             if event is not None and hasattr(event, 'button'):
@@ -1514,23 +1667,12 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             btn = None
         if btn is None or btn == Qt.MouseButton.LeftButton:
-            self.set_alarm_severity_filter(key)
-            return
-        if btn == Qt.MouseButton.RightButton:
-            # 仅看该 sev（all 右键仍看全部）
-            self.set_alarm_severity_filter(key if key else 'all')
-            try:
-                self._log_line(f'气泡右键仅看 · {key}')
-            except Exception:
-                pass
-            return
-        if btn == Qt.MouseButton.MiddleButton:
-            self.set_alarm_severity_filter('all')
-            try:
-                self._log_line('气泡中键清筛 · all')
-            except Exception:
-                pass
-            return
+            # emulate short click if long-press not fired
+            if not getattr(self, '_sev_bubble_long_fired', False):
+                timer = getattr(self, '_sev_bubble_pin_timer', None)
+                if timer is not None and timer.isActive():
+                    timer.stop()
+                self.set_alarm_severity_filter(key)
 
     def _collect_alarm_film_paths(self) -> list:
         """wave30: 报警历史中去重 filmPath（保序）."""
@@ -1559,6 +1701,8 @@ class HostStateMachineWidget(QWidget):
             seen.add(fp)
             rows.append({
                 'ts': str(entry.get('ts') or ''),
+                'cleared': '1' if entry.get('cleared') else '0',
+                'cleared_at': str(entry.get('cleared_at') or ''),
                 'severity': str(entry.get('severity') or ''),
                 'path': fp,
                 'reason': str(entry.get('reason') or ''),
@@ -1575,7 +1719,7 @@ class HostStateMachineWidget(QWidget):
                 pass
             return False
         if as_csv:
-            lines = ['ts,severity,path,reason']
+            lines = ['ts,cleared,cleared_at,severity,path,reason']
             for r in rows:
                 # minimal CSV escape
                 def esc(v):
@@ -1583,7 +1727,7 @@ class HostStateMachineWidget(QWidget):
                     if any(c in s for c in ',"\n'):
                         return '"' + s.replace('"', '""') + '"'
                     return s
-                lines.append(','.join(esc(r[k]) for k in ('ts', 'severity', 'path', 'reason')))
+                lines.append(','.join(esc(r[k]) for k in ('ts', 'cleared', 'cleared_at', 'severity', 'path', 'reason')))
             text = chr(10).join(lines)
         else:
             text = chr(10).join(r['path'] for r in rows)
@@ -1594,10 +1738,82 @@ class HostStateMachineWidget(QWidget):
             return False
         return True
 
+
+    def _format_alarm_film_csv(self, rows=None) -> str:
+        """wave32: filmPath CSV text（含 cleared）."""
+        if rows is None:
+            rows = self._collect_alarm_film_rows()
+        lines = ['ts,cleared,cleared_at,severity,path,reason']
+
+        def esc(v):
+            s = str(v or '')
+            if any(c in s for c in (',', '"', chr(10))):
+                return '"' + s.replace('"', '""') + '"'
+            return s
+
+        for r in rows:
+            lines.append(','.join(esc(r.get(k, '')) for k in (
+                'ts', 'cleared', 'cleared_at', 'severity', 'path', 'reason')))
+        return chr(10).join(lines)
+
+    def save_all_alarm_film_paths_csv(self, path: str = '') -> str:
+        """wave32: 另存全部 filmPath CSV 文件；空 path 则弹对话框."""
+        rows = self._collect_alarm_film_rows()
+        if not rows:
+            try:
+                self._log_line('另存 paths CSV · 无胶片 path')
+            except Exception:
+                pass
+            return ''
+        if not path:
+            path, _ = QFileDialog.getSaveFileName(
+                self, '另存胶片 paths CSV', 'alarm-film-paths.csv',
+                'CSV (*.csv);;All (*)')
+        if not path:
+            return ''
+        try:
+            text = self._format_alarm_film_csv(rows)
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(text)
+                if not text.endswith(chr(10)):
+                    f.write(chr(10))
+            self._log_line(f'已另存胶片 path CSV · {len(rows)} · {path}')
+        except Exception as err:
+            try:
+                self._log_line(f'另存失败：{err}')
+            except Exception:
+                pass
+            return ''
+        return path
+
+    def clear_liaison_toast_history(self) -> bool:
+        """wave32: 清空联调 toast 切窗史."""
+        hist = getattr(self, '_liaison_toast_history', None)
+        secs = getattr(self, '_liaison_toast_history_secs', None)
+        if hist is not None:
+            hist.clear()
+        if secs is not None:
+            secs.clear()
+        hbar = getattr(self, '_liaison_toast_history_bar', None)
+        if hbar is not None:
+            try:
+                hbar.setText('')
+                hbar.hide()
+            except Exception:
+                pass
+        try:
+            self._log_line('切窗史已清空')
+        except Exception:
+            pass
+        return True
+
     def _on_liaison_toast_history_clicked(self, event=None):
-        """wave31: 单击历史条某档 → 回切联调时段."""
+        """wave31–32: 左键回切时段 · 右键清空史."""
         try:
             if event is not None and hasattr(event, 'button'):
+                if event.button() == Qt.MouseButton.RightButton:
+                    self.clear_liaison_toast_history()
+                    return
                 if event.button() not in (Qt.MouseButton.LeftButton,):
                     return
         except Exception:

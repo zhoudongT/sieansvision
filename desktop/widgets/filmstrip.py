@@ -843,8 +843,18 @@ class CompareThumbStrip(QWidget):
         self._undo_clear_btn.setToolTip('短按提示 · 长按清空撤销栈')
         self._undo_clear_btn.setEnabled(False)
         self._undo_clear_long_ms = 650
+        try:
+            raw_ms = self._compare_settings().value('film/undoClearLongMs', 650)
+            self._undo_clear_long_ms = max(300, min(3000, int(raw_ms or 650)))
+        except Exception:
+            self._undo_clear_long_ms = 650
         self._undo_clear_long_fired = False
         self._undo_clear_press_ms = 0
+        self._undo_clear_btn.setToolTip(
+            f'短按提示 · 长按清空（{self._undo_clear_long_ms}ms）· 右键调时长'
+        )
+        self._undo_clear_btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._undo_clear_btn.customContextMenuRequested.connect(self._on_undo_clear_ctx)
         self._undo_clear_timer = QTimer(self)
         self._undo_clear_timer.setSingleShot(True)
         self._undo_clear_timer.timeout.connect(self._on_undo_clear_long_press)
@@ -1012,7 +1022,7 @@ class CompareThumbStrip(QWidget):
         self._on_lock_badge_single_click()
 
     def _on_lock_badge_double(self, event=None):
-        """wave31: 双击 → 复位对比序并解锁."""
+        """wave31–32: 双击 → 复位并解锁；先压入 undo（可 ↶ 撤销序，并可恢复锁）."""
         try:
             if event is not None and hasattr(event, 'button'):
                 if event.button() not in (Qt.MouseButton.LeftButton,):
@@ -1022,15 +1032,32 @@ class CompareThumbStrip(QWidget):
         timer = getattr(self, '_lock_badge_click_timer', None)
         if timer is not None and timer.isActive():
             timer.stop()
-        try:
-            self.reset_order()
-        except Exception:
-            pass
+        was_locked = bool(getattr(self, '_order_locked', False))
+        cur = list(getattr(self, '_paths', None) or [])
+        # wave32: always push current order so double-click is undoable
+        if cur:
+            self._push_order_undo(cur)
+        base = list(getattr(self, '_baseline_paths', None) or [])
+        if base and base != list(self._paths):
+            active = ''
+            try:
+                row = self._list.currentRow()
+                if 0 <= row < len(self._paths):
+                    active = self._paths[row]
+            except Exception:
+                active = ''
+            self.set_paths(base, active=active or (base[0] if base else ''), as_baseline=False)
+            try:
+                self.pathsReordered.emit(list(self._paths))
+            except Exception:
+                pass
+        self._undo_should_relock = was_locked
         self.set_order_locked(False, persist=True)
         lb = getattr(self, '_lock_badge', None)
         try:
             if lb is not None:
-                QToolTip.showText(lb.mapToGlobal(QPoint(0, lb.height())), '已复位并解锁', lb)
+                tip = '已复位并解锁（↶ 可撤销）' if was_locked or cur else '已解锁'
+                QToolTip.showText(lb.mapToGlobal(QPoint(0, lb.height())), tip, lb)
         except Exception:
             pass
 
@@ -1089,12 +1116,13 @@ class CompareThumbStrip(QWidget):
         if getattr(self, '_undo_clear_long_fired', False):
             return
         n = len(getattr(self, '_order_undo_stack', None) or [])
-        tip = f'长按 ⊘ 清空撤销栈（当前 {n}）' if n else '撤销栈为空'
+        ms = int(getattr(self, '_undo_clear_long_ms', 650) or 650)
+        tip = f'长按 ⊘ 清空（{ms}ms · 栈 {n}）' if n else f'撤销栈为空 · 长按时长 {ms}ms'
         btn = getattr(self, '_undo_clear_btn', None)
         try:
             if btn is not None:
                 QToolTip.showText(btn.mapToGlobal(QPoint(0, btn.height())), tip, btn)
-                btn.setToolTip(tip + ' · 短按提示 / 长按清空')
+                btn.setToolTip(tip + ' · 右键调时长')
         except Exception:
             pass
 
@@ -1233,8 +1261,10 @@ class CompareThumbStrip(QWidget):
         cbtn = getattr(self, '_undo_clear_btn', None)
         if cbtn is not None:
             cbtn.setEnabled(n > 0)
+            ms = int(getattr(self, '_undo_clear_long_ms', 650) or 650)
             cbtn.setToolTip(
-                f'短按提示 · 长按清空撤销栈（{n}）' if n else '短按提示 · 长按清空撤销栈（空）'
+                f'短按提示 · 长按清空（{ms}ms · 栈{n}）· 右键调时长'
+                if n else f'短按提示 · 长按清空（{ms}ms · 空）· 右键调时长'
             )
 
     def clear_order_undo(self) -> bool:
@@ -1247,6 +1277,45 @@ class CompareThumbStrip(QWidget):
         self._sync_undo_btn()
         return True
 
+    def set_undo_clear_long_ms(self, ms: int, *, persist: bool = True) -> int:
+        """wave32: 配置长按清空时长（300–3000ms）."""
+        ms = max(300, min(3000, int(ms or 650)))
+        self._undo_clear_long_ms = ms
+        btn = getattr(self, '_undo_clear_btn', None)
+        if btn is not None:
+            n = len(getattr(self, '_order_undo_stack', None) or [])
+            btn.setToolTip(f'短按提示 · 长按清空（{ms}ms）· 右键调时长' + (f' · 栈{n}' if n else ''))
+        if persist:
+            try:
+                self._compare_settings().setValue('film/undoClearLongMs', ms)
+            except Exception:
+                pass
+        return ms
+
+    def undo_clear_long_ms(self) -> int:
+        return int(getattr(self, '_undo_clear_long_ms', 650) or 650)
+
+    def _on_undo_clear_ctx(self, pos=None):
+        """wave32: 右键循环长按时长 400/650/1000/1500."""
+        presets = (400, 650, 1000, 1500)
+        cur = self.undo_clear_long_ms()
+        try:
+            idx = presets.index(cur)
+            nxt = presets[(idx + 1) % len(presets)]
+        except ValueError:
+            nxt = 650
+        self.set_undo_clear_long_ms(nxt)
+        btn = getattr(self, '_undo_clear_btn', None)
+        try:
+            if btn is not None:
+                QToolTip.showText(
+                    btn.mapToGlobal(QPoint(0, btn.height())),
+                    f'长按时长 → {nxt}ms',
+                    btn,
+                )
+        except Exception:
+            pass
+
     def undo_order(self) -> bool:
         """wave27: 弹出撤销栈恢复上一对比序."""
         stack = getattr(self, '_order_undo_stack', None) or []
@@ -1254,21 +1323,30 @@ class CompareThumbStrip(QWidget):
             return False
         prev = stack.pop()
         self._sync_undo_btn()
-        if not prev or prev == list(self._paths):
-            return False
-        active = ''
-        try:
-            row = self._list.currentRow()
-            if 0 <= row < len(self._paths):
-                active = self._paths[row]
-        except Exception:
+        changed = bool(prev) and prev != list(self._paths)
+        if changed:
             active = ''
-        self.set_paths(prev, active=active or (prev[0] if prev else ''), as_baseline=False)
-        try:
-            self.pathsReordered.emit(list(self._paths))
-        except Exception:
-            pass
-        return True
+            try:
+                row = self._list.currentRow()
+                if 0 <= row < len(self._paths):
+                    active = self._paths[row]
+            except Exception:
+                active = ''
+            self.set_paths(prev, active=active or (prev[0] if prev else ''), as_baseline=False)
+            try:
+                self.pathsReordered.emit(list(self._paths))
+            except Exception:
+                pass
+        # wave32: 双击解锁后的 ↶ 可恢复锁态（即使序未变）
+        relocked = False
+        if getattr(self, '_undo_should_relock', False):
+            self._undo_should_relock = False
+            try:
+                self.set_order_locked(True, persist=True)
+                relocked = True
+            except Exception:
+                pass
+        return bool(changed or relocked)
 
     def order_undo_depth(self) -> int:
         return len(getattr(self, '_order_undo_stack', None) or [])

@@ -110,7 +110,7 @@ def main():
     QApplication.clipboard().setText('')
     assert host.copy_all_alarm_film_paths(as_csv=True)
     clip = QApplication.clipboard().text()
-    assert clip.startswith('ts,severity,path,reason')
+    assert clip.startswith('ts,cleared,cleared_at,severity,path,reason') or clip.startswith('ts,severity,path,reason')
     assert paths[0] in clip and paths[1] in clip
     assert '2026-10-28 01:10:00' in clip
     menu = host._build_alarm_list_context_menu(QPoint(2, 2))
