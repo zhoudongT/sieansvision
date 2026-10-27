@@ -98,6 +98,7 @@ class MainWindow(QMainWindow):
         devices.addAction(self.action('相机管理…',self.open_camera_manager))
         devices.addAction(self.action('通信管理…',self.open_comm_manager))
         tools_menu.addAction(self.action('运行界面设计',self.open_run_ui_designer))
+        tools_menu.addAction(self.action('应用上位机状态机模板',self.apply_host_run_ui_template))
         tools_menu.addAction(self.action('运行画面编辑（经典）',lambda:self.open_panel('hmi')))
         settings_menu.addAction(self.action('设计态 / 运行模式…',self.toggle_app_mode))
         settings_menu.addAction(self.action('全局触发…',self.open_global_triggers))
@@ -302,6 +303,39 @@ class MainWindow(QMainWindow):
         self.rail_category=category or ''
         self.populate_toolbox()
 
+
+    def apply_production_chain(self, ops):
+        """Insert production_task suggested chain as real flow nodes (p40 demo)."""
+        ops = list(ops or [])
+        if not ops:
+            self.log('建议链为空'); return
+        if self.busy:
+            raise ValueError('运行中不可改流程')
+        parent = self.selected or 'source'
+        added = []
+        for item in ops:
+            key = item.get('operation')
+            if not key or key not in self.definitions:
+                self.log(f'跳过未知算子：{key}'); continue
+            nid = self.document.add(self.definitions[key], parent=parent)
+            # rename to step label
+            name = item.get('name') or self.definitions[key].get('name')
+            proj = __import__('copy').deepcopy(self.document.project)
+            for s in proj['steps']:
+                if s['id'] == nid:
+                    s['name'] = name
+                    break
+            self.document.commit(proj)
+            added.append(nid)
+            parent = nid
+            self.selected = nid
+        self.scene.clearSelection()
+        if added and added[-1] in self.scene.nodes:
+            self.scene.nodes[added[-1]].setSelected(True)
+        self.scene.rebuild()
+        self.refresh_parameters()
+        self.log(f'已应用生产任务链：{len(added)} 个模块（可▶运行；无机械手 SDK）')
+
     def add_node(self,key,position=None):
         if self.busy or not key:return
         self.selected=self.document.add(self.definitions[key],position,parent=self.selected or 'source')
@@ -335,6 +369,7 @@ class MainWindow(QMainWindow):
             self.property_float.runModuleContinuous.connect(self.run_module_continuous)
             self.property_float.openCameraManager.connect(self.open_camera_manager)
             self.property_float.enterGroup.connect(self.enter_group_module)
+            self.property_float.applyProductionChain.connect(lambda ops: self.guard(lambda: self.apply_production_chain(ops)))
         return self.property_float
 
     def open_property_float(self,node_id):
@@ -1348,6 +1383,21 @@ class MainWindow(QMainWindow):
                 self.run_continuous(); return
             if ctype == '执行·停止':
                 self.stop_run(); continue
+            if ctype == '执行·暂停':
+                self.stop_run()
+                if hasattr(self, 'operator_hmi') and getattr(self.operator_hmi, '_host_sm', None):
+                    self.operator_hmi._host_sm.set_state('Paused', '触发·暂停')
+                continue
+            if ctype == '执行·继续':
+                self.run_continuous(); return
+            if ctype == '状态·报警':
+                if hasattr(self, 'operator_hmi') and getattr(self.operator_hmi, '_host_sm', None):
+                    self.operator_hmi._host_sm.set_state('Alarm', cfg or '触发')
+                self.log('状态·报警'); continue
+            if ctype == '状态·清除报警':
+                if hasattr(self, 'operator_hmi') and getattr(self.operator_hmi, '_host_sm', None):
+                    self.operator_hmi._host_sm.set_state('Idle', '清除报警')
+                continue
             if ctype == '方案保存':
                 self.save_project(); continue
             if ctype == '方案另存':
@@ -1391,6 +1441,17 @@ class MainWindow(QMainWindow):
                     self.run_once()
                 return
             self.log(f'未接线触发命令：{ctype}' + (f' · {cfg}' if cfg else ''))
+
+    def apply_host_run_ui_template(self):
+        """Install p41–43 上位机 layout into project.runUi (local)."""
+        from desktop.run_ui_designer import default_host_run_ui
+        from copy import deepcopy
+        p = deepcopy(self.document.project)
+        p['runUi'] = default_host_run_ui()
+        self.document.commit(p)
+        if hasattr(self, 'operator_hmi'):
+            self.operator_hmi.reload_layout(self.document.project)
+        self.log('已应用上位机状态机运行界面模板（图像+状态机）')
 
     def open_run_ui_designer(self):
         if self.dialogs.get('run_ui'):

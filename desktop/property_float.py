@@ -20,6 +20,7 @@ class PropertyFloat(QDialog):
     runModuleContinuous = Signal(object)
     paramAudited = Signal(str, str, object, object)
     openCameraManager = Signal()
+    applyProductionChain = Signal(list)
     enterGroup = Signal(object)  # node_id
 
     def __init__(self, parent=None):
@@ -280,6 +281,7 @@ class PropertyFloat(QDialog):
             step = deepcopy(step)
             step['params'] = normalize_production_task_params(step.get('params'))
             panel = ProductionTaskPanel(step, definition, project)
+            panel.applyFlow.connect(self.applyProductionChain.emit)
             panel.changed.connect(self._on_step_changed)
             self.body.addWidget(panel)
             self._panel = panel

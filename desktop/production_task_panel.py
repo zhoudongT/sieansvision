@@ -15,6 +15,38 @@ from PySide6.QtWidgets import (
 from desktop.widgets.switch import OrangeSwitch
 
 # Align with p40 mind-map (UI/流程 only; no robot SDK)
+
+# op hint → catalog key (best-effort)
+CHAIN_OP_MAP = [
+    ('图像源', None),  # source — skip node
+    ('camera_capture', 'camera_capture'),
+    ('locate', 'locate'),
+    ('pose_correct', 'pose_correct'),
+    ('geometry', 'geometry'),
+    ('nine_point', 'nine_point'),
+    ('var_calc', 'var_calc'),
+    ('format_data', 'format_data'),
+    ('send_data', 'send_data'),
+    ('receive_data', 'receive_data'),
+]
+
+
+def chain_to_operations(chain):
+    """Turn DEFAULT_CHAIN rows into addable operations (skip source)."""
+    out = []
+    for row in chain or []:
+        op_hint = str(row.get('op') or '').lower()
+        step_name = str(row.get('step') or '') or '步骤'
+        key = None
+        for needle, catalog_key in CHAIN_OP_MAP:
+            if needle and needle.lower() in op_hint:
+                key = catalog_key
+                break
+        if key is None:
+            continue
+        out.append({'operation': key, 'name': step_name, 'vars': str(row.get('vars') or '')})
+    return out
+
 DEFAULT_CHAIN = [
     {'step': '读取图像', 'op': '图像源 / camera_capture', 'vars': ''},
     {'step': '模板匹配', 'op': 'locate', 'vars': ''},
@@ -56,6 +88,7 @@ def normalize_production_task_params(params=None):
 
 class ProductionTaskPanel(QWidget):
     changed = Signal(dict)
+    applyFlow = Signal(list)  # list of {operation,name,params hint}
 
     def __init__(self, step, definition, project, parent=None):
         super().__init__(parent)
@@ -136,7 +169,7 @@ class ProductionTaskPanel(QWidget):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(12, 12, 12, 12)
-        tip = QLabel('p40 典型链（可编辑示意；运行不自动执行这些步骤）：')
+        tip = QLabel('p40 典型链（可编辑；点「应用到当前流程」会按序添加算子并串线，可直接▶运行）：')
         tip.setStyleSheet('color:#666;')
         lay.addWidget(tip)
         self.table = QTableWidget(0, 3)
@@ -150,8 +183,13 @@ class ProductionTaskPanel(QWidget):
         reset.clicked.connect(self._reset_chain)
         add = QPushButton('添加行')
         add.clicked.connect(self._add_row)
+        apply = QPushButton('应用到当前流程')
+        apply.setObjectName('primaryButton')
+        apply.setToolTip('按建议链依次添加算子并串线（可演示运行；无机械手 SDK）')
+        apply.clicked.connect(self._apply_chain)
         bar.addWidget(reset)
         bar.addWidget(add)
+        bar.addWidget(apply)
         bar.addStretch(1)
         lay.addLayout(bar)
         self._reload_chain()
@@ -191,6 +229,12 @@ class ProductionTaskPanel(QWidget):
             self.table.setItem(r, c, QTableWidgetItem(''))
         self.table.blockSignals(False)
         self._on_chain_edit()
+
+    def _apply_chain(self):
+        ops = chain_to_operations(self.params.get('chain') or DEFAULT_CHAIN)
+        if not ops:
+            return
+        self.applyFlow.emit(ops)
 
     def _result_tab(self):
         w = QWidget()

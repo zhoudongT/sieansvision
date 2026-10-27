@@ -46,17 +46,32 @@ def ensure_comm_manager(project):
 
 
 class _EventTable(QWidget):
-    COLS = ['序号', '事件名', '绑定设备', '报文/主题', '操作']
+    """收发事件表：设备 + 报文 + 流程变量绑定（p10/11）。"""
+    COLS = ['序号', '事件名', '绑定设备', '报文/主题', '流程变量', '操作']
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, var_role='write'):
         super().__init__(parent)
+        self._var_role = var_role  # write=接收写变量；read=发送读变量
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(self.COLS)
+        tip = QLabel(
+            '接收：报文写入「流程变量」；发送：从「流程变量」取文本（空则用报文列）。'
+            if var_role == 'write' else
+            '发送事件可绑定流程变量；运行时 send_data 优先读该变量。'
+        )
+        tip.setWordWrap(True)
+        tip.setStyleSheet('color:#888;font-size:11px;')
+        lay.addWidget(tip)
+        self.table = QTableWidget(0, 6)
+        labels = list(self.COLS)
+        if var_role == 'write':
+            labels[4] = '写变量'
+        else:
+            labels[4] = '读变量'
+        self.table.setHorizontalHeaderLabels(labels)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         lay.addWidget(self.table, 1)
         bar = QHBoxLayout()
@@ -98,10 +113,13 @@ class _EventTable(QWidget):
         msg = QLineEdit(str(row.get('message') or row.get('topic') or ''))
         msg.setPlaceholderText('报文 / Topic / 寄存器…')
         self.table.setCellWidget(r, 3, msg)
+        var = QLineEdit(str(row.get('variable') or row.get('var') or ''))
+        var.setPlaceholderText('flow.xxx' if self._var_role == 'write' else 'flow.payload')
+        self.table.setCellWidget(r, 4, var)
         rm = QPushButton('删')
         rm.setFixedWidth(36)
         rm.clicked.connect(lambda *_ , rr=r: self._remove(rr))
-        self.table.setCellWidget(r, 4, rm)
+        self.table.setCellWidget(r, 5, rm)
 
     def _remove(self, row):
         if 0 <= row < self.table.rowCount():
@@ -117,11 +135,13 @@ class _EventTable(QWidget):
             name_w = self.table.cellWidget(r, 1)
             dev_w = self.table.cellWidget(r, 2)
             msg_w = self.table.cellWidget(r, 3)
+            var_w = self.table.cellWidget(r, 4)
             out.append(dict(
                 name=name_w.text().strip() if name_w else '',
                 device=dev_w.currentData() if dev_w else '',
                 message=msg_w.text().strip() if msg_w else '',
                 topic=msg_w.text().strip() if msg_w else '',
+                variable=var_w.text().strip() if var_w else '',
             ))
         return out
 
@@ -204,8 +224,8 @@ class CommManagerDialog(QDialog):
         self.tabs.addTab(devices_page, '设备管理')
 
         # --- 接收 / 发送事件 ---
-        self.recv_table = _EventTable()
-        self.send_table = _EventTable()
+        self.recv_table = _EventTable(var_role='write')
+        self.send_table = _EventTable(var_role='read')
         self.tabs.addTab(self.recv_table, '接收事件')
         self.tabs.addTab(self.send_table, '发送事件')
 
@@ -269,6 +289,12 @@ class CommManagerDialog(QDialog):
         row.addStretch(1)
         row.addWidget(self.tcp_send_btn)
         tcp_lay.addLayout(row)
+        vrow = QHBoxLayout()
+        vrow.addWidget(QLabel('读回写变量'))
+        self.tcp_var_edit = QLineEdit()
+        self.tcp_var_edit.setPlaceholderText('可选，如 tcpLastRecv')
+        vrow.addWidget(self.tcp_var_edit, 1)
+        tcp_lay.addLayout(vrow)
         self.tcp_log = QPlainTextEdit()
         self.tcp_log.setReadOnly(True)
         self.tcp_log.setPlaceholderText('测试日志…')
@@ -379,6 +405,84 @@ class CommManagerDialog(QDialog):
         send = self.send_table.rows()
         self.recv_table.set_rows(recv, names)
         self.send_table.set_rows(send, names)
+
+
+    def _refresh_tcp_devices(self):
+        names = []
+        for d in self._devices:
+            proto = (d.get('protocol') or '')
+            if 'TCP' in proto.upper() or proto in ('TCP Client', 'TCP Server'):
+                names.append(d.get('name') or '')
+        cur = self.tcp_device.currentData() if self.tcp_device.count() else ''
+        self.tcp_device.blockSignals(True)
+        self.tcp_device.clear()
+        self.tcp_device.addItem('（手动填写）', '')
+        for n in names:
+            if n:
+                self.tcp_device.addItem(n, n)
+        if cur:
+            i = self.tcp_device.findData(cur)
+            if i >= 0:
+                self.tcp_device.setCurrentIndex(i)
+        self.tcp_device.blockSignals(False)
+
+    def _tcp_fill_from_device(self):
+        name = self.tcp_device.currentData() or ''
+        d = next((x for x in self._devices if (x.get('name') or '') == name), None)
+        if not d:
+            # fall back to selected device list row
+            row = self.device_list.currentRow()
+            if 0 <= row < len(self._devices):
+                d = self._devices[row]
+        if not d:
+            self.tcp_log.appendPlainText('无设备可填充')
+            return
+        self.tcp_host.setText(str(d.get('host') or '127.0.0.1'))
+        self.tcp_port.setValue(int(d.get('port') or 5001))
+        self.tcp_log.appendPlainText(
+            f"已填充 {d.get('name')} · {d.get('protocol')} · {d.get('host')}:{d.get('port')}"
+        )
+
+    def _tcp_test_send(self):
+        import socket
+        from datetime import datetime
+        host = (self.tcp_host.text() or '').strip() or '127.0.0.1'
+        port = int(self.tcp_port.value())
+        payload = self.tcp_payload.text() or ''
+        timeout_ms = int(self.tcp_timeout.value())
+        ts = datetime.now().strftime('%H:%M:%S')
+        self.tcp_log.appendPlainText(f'[{ts}] → {host}:{port}  {payload!r}')
+        try:
+            with socket.create_connection((host, port), timeout=timeout_ms / 1000.0) as sock:
+                sock.settimeout(timeout_ms / 1000.0)
+                data = (payload + '\n').encode('utf-8', errors='replace')
+                sock.sendall(data)
+                buf = b''
+                try:
+                    while len(buf) < 4096:
+                        chunk = sock.recv(1024)
+                        if not chunk:
+                            break
+                        buf += chunk
+                        if b'\n' in buf:
+                            break
+                except socket.timeout:
+                    pass
+                text = buf.decode('utf-8', errors='replace')
+                self.tcp_log.appendPlainText(f'[{ts}] ← {text!r} ({len(buf)} bytes)')
+                var = (self.tcp_var_edit.text() or '').strip()
+                if var and hasattr(self, 'document'):
+                    p = deepcopy(self.document.project)
+                    variables = p.setdefault('variables', {})
+                    # store under global dict if nested, else flat
+                    if isinstance(variables.get('global'), dict):
+                        variables['global'][var] = text
+                    else:
+                        variables[var] = text
+                    self.document.commit(p)
+                    self.tcp_log.appendPlainText(f'[{ts}] 已写入变量 {var}')
+        except Exception as err:
+            self.tcp_log.appendPlainText(f'[{ts}] 失败：{err}')
 
     def accept_save(self):
         # Flush current form into devices list

@@ -210,6 +210,7 @@ class OperatorHmiView(QWidget):
         self._run_status_labels = []
         self._log_panes = []
         self._clock_labels = []
+        self._host_sm = None
 
         placements = list(ui.get('placements') or [])
         controls = ui.get('controls') or {}
@@ -296,6 +297,13 @@ class OperatorHmiView(QWidget):
                     f"{state} · {result.get('elapsedMs', '')} ms"
                 )
 
+        host = getattr(self, '_host_sm', None)
+        if host is not None:
+            try:
+                host.sync_from_runtime(result)
+            except Exception:
+                pass
+
     def set_preview_image(self, data):
         """Live / source preview hook (e.g. after capture, before run)."""
         if not data:
@@ -310,15 +318,23 @@ class OperatorHmiView(QWidget):
 
     def append_log(self, message: str):
         for log in self._log_panes:
-            log.appendPlainText(str(message))
-
-    # ----- internals -----
+            try:
+                log.appendPlainText(str(message))
+            except Exception:
+                pass
         for lv in getattr(self, '_log_views', []) or []:
             try:
                 lv.appendPlainText(str(message))
             except Exception:
                 pass
+        host = getattr(self, '_host_sm', None)
+        if host is not None:
+            try:
+                host.append_info(str(message))
+            except Exception:
+                pass
 
+    # ----- internals -----
     def _clear_grid(self):
         while self._grid_layout.count():
             item = self._grid_layout.takeAt(0)
@@ -355,34 +371,28 @@ class OperatorHmiView(QWidget):
             self._fix_right.hide()
 
     def _build_default_grid(self):
-        """VM-style default shell: large image | OK/NG+状态 | 日志."""
+        """VM-style default: 图像+OK/NG | 上位机状态机 (p41–43)."""
+        left = QVBoxLayout()
+        left.setSpacing(6)
         cell = self._make_cell_frame('图像')
         view = ImageView()
-        view.setMinimumHeight(220)
+        view.setMinimumHeight(200)
         self._image_views.append(view)
         cell.layout().addWidget(view, 1)
-        self._grid_layout.addWidget(cell, 0, 0)
-        self._grid_layout.setRowStretch(0, 3)
-        self._grid_layout.setColumnStretch(0, 4)
+        left.addWidget(cell, 3)
 
+        row = QHBoxLayout()
         lamp = StatusLamp('OK/NG')
         self._status_lamps.append(lamp)
         status = QLabel('空闲')
         status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         status.setStyleSheet(f'color:{TEXT_MUTED};padding:3px;font-size:11px;')
         self._run_status_labels.append(status)
-        side = QVBoxLayout()
-        side.setSpacing(8)
-        side.addWidget(lamp)
-        side.addWidget(status)
-        side.addStretch(1)
-        wrap = QWidget()
-        wrap.setLayout(side)
-        self._grid_layout.addWidget(wrap, 0, 1)
-        self._grid_layout.setColumnStretch(1, 1)
+        row.addWidget(lamp, 1)
+        row.addWidget(status, 1)
+        left.addLayout(row)
 
         log_cell = self._make_cell_frame('界面日志')
-        from PySide6.QtWidgets import QPlainTextEdit
         log = QPlainTextEdit()
         log.setReadOnly(True)
         log.setMaximumBlockCount(500)
@@ -390,9 +400,22 @@ class OperatorHmiView(QWidget):
         log.setStyleSheet('font-size:11px;')
         self._log_views = getattr(self, '_log_views', [])
         self._log_views.append(log)
+        self._log_panes.append(log)
         log_cell.layout().addWidget(log, 1)
-        self._grid_layout.addWidget(log_cell, 1, 0, 1, 2)
-        self._grid_layout.setRowStretch(1, 1)
+        left.addWidget(log_cell, 1)
+
+        left_w = QWidget()
+        left_w.setLayout(left)
+        self._grid_layout.addWidget(left_w, 0, 0)
+        self._grid_layout.setColumnStretch(0, 3)
+        self._grid_layout.setRowStretch(0, 1)
+
+        from desktop.host_state_machine import HostStateMachineWidget
+        host = HostStateMachineWidget(compact=True)
+        host.triggerCommands.connect(self.triggerCommands.emit)
+        self._host_sm = host
+        self._grid_layout.addWidget(host, 0, 1)
+        self._grid_layout.setColumnStretch(1, 2)
 
     def _build_from_placements(self, split, placements, controls):
         rows, cols = _split_rows_cols(split)
@@ -557,32 +580,39 @@ class OperatorHmiView(QWidget):
             cell.layout().addWidget(lab, 1)
             return cell
 
+        if name in ('上位机状态机', '状态机面板', '上位机'):
+            from desktop.host_state_machine import HostStateMachineWidget
+            host = HostStateMachineWidget(compact=False)
+            host.triggerCommands.connect(self.triggerCommands.emit)
+            self._host_sm = host
+            return host
+
         # p41 host-chrome stubs (no robot SDK)
         if name in ('IP地址', '端口'):
-            box = QWidget()
-            lay = QVBoxLayout(box)
-            lay.setContentsMargins(6, 6, 6, 6)
-            cap = QLabel(name)
-            cap.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
-            edit = QLineEdit(str(state.get('value') or ('127.0.0.1' if name == 'IP地址' else '5001')))
-            edit.setReadOnly(True)
-            lay.addWidget(cap)
-            lay.addWidget(edit)
-            return box
+            cell = self._make_cell_frame(name)
+            edit = QLineEdit(str(state.get('value') or ('192.168.1.109' if name == 'IP地址' else '5001')))
+            edit.setPlaceholderText(name)
+            cell.layout().addWidget(edit)
+            cell.layout().addStretch(1)
+            return cell
         if name == '连接状态':
-            lab = QLabel(str(state.get('value') or '连接状态: --'))
+            cell = self._make_cell_frame('连接状态')
+            lab = QLabel(str(state.get('value') or '未连接'))
             lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            lab.setStyleSheet(f'color:{TEXT_MUTED};padding:8px;')
-            return lab
+            lab.setStyleSheet(f'color:{TEXT_MUTED};padding:8px;font-weight:600;')
+            cell.layout().addWidget(lab, 1)
+            return cell
         if name == '信息提示栏':
-            from PySide6.QtWidgets import QPlainTextEdit
+            cell = self._make_cell_frame('信息提示栏')
             log = QPlainTextEdit()
             log.setReadOnly(True)
             log.setPlaceholderText('信息提示栏…')
             log.setMaximumBlockCount(200)
+            self._log_panes.append(log)
             self._log_views = getattr(self, '_log_views', [])
             self._log_views.append(log)
-            return log
+            cell.layout().addWidget(log, 1)
+            return cell
         # Fallback stub for charts / layout containers etc.
         cell = self._make_cell_frame(name)
         hint = CONTROL_STUB_HINTS.get(name, '')

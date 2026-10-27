@@ -21,7 +21,7 @@ CONTROL_LIBRARY = {
     '基础': [
         '图像', '多图像', '运行控制', '运行状态', 'OK/NG', '文本框', '按钮',
         '开关控制', '参数设置', '设置变量', '字符设置', '信号灯', '条件信号灯',
-        'IP地址', '端口', '连接状态',
+        'IP地址', '端口', '连接状态', '上位机状态机',
     ],
     '布局': ['组合框', '子界面', 'Tab页'],
     '图表': ['表格', '线图阵列', '多数据线图', '生产统计', '饼图', '参数组合', '文本框组合'],
@@ -59,6 +59,7 @@ CONTROL_STUB_HINTS = {
     '端口': '上位机通讯端口',
     '连接状态': '连接状态指示',
     '信息提示栏': '运行/通讯信息',
+    '上位机状态机': '手动/自动 · Idle/Run/Pause/Alarm（p41–43，无机械手 SDK）',
 }
 
 SPLIT_PRESETS = ['1', '2', '3', '4', '6', '8', '9', '自定义']
@@ -72,7 +73,11 @@ TRIGGER_COMMAND_TYPES = [
     '执行·单次',
     '执行·连续',
     '执行·停止',
+    '执行·暂停',
+    '执行·继续',
     '模块动作',
+    '状态·报警',
+    '状态·清除报警',
 ]
 
 UI_LINK_TARGETS = ['全局相机', '通讯', '变量', '日志', '综合配置']
@@ -856,3 +861,20 @@ class RunUiDesignerDialog(QDialog):
         if not self._template_meta:
             self._template_meta = dict(name='导出模板', author='', scenario='', description='')
         self._save_template()
+
+
+def default_host_run_ui():
+    """p41–43 style layout metadata: split-2 with 图像 + 上位机状态机."""
+    return {
+        'split': '2',
+        'placements': [
+            {'name': '图像', 'page': 1, 'cell': 0, 'category': '基础'},
+            {'name': '上位机状态机', 'page': 1, 'cell': 1, 'category': '基础'},
+        ],
+        'controls': {
+            '图像': {'commands': [], 'binding': ''},
+            '上位机状态机': {'commands': [], 'binding': ''},
+        },
+        'fixedBars': {'top': False, 'bottom': True, 'left': False, 'right': False,
+                      'cameraBind': '未绑定', 'commBind': 'TCP.连接状态'},
+    }
