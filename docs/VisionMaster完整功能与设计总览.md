@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㉒ · ESC/再点清除对比 · UPH窗口 · Comm折叠持久 · 换型失败码 · Alarm联调条 · 2026-10-28】
+
+- **结果表↔对比叠层 ESC / 再点清除**：`keyPressEvent` Esc 优先清 `_filmstrip_compare_active`；再双击同帧路径 toggle `_clear_filmstrip_compare_overlays`；状态栏提示「ESC/再点清除」。
+- **UPH 趋势窗口可调**：`ProductionStatsPanel._uph_window` + `prodUphWindowSpin`（8–48，步进 8）；`trend_uph_text` 按窗口切片 spark/均/峰（`n=k/win`）。
+- **Comm 折叠态持久**：`QSettings('SIEANS','VisionDesktop')` 键 `vars/foldCommAccept`；Variables 打开恢复勾选，切换即时写回。
+- **配方换型失败码细分**：`VARIANT_EMPTY` / `VARIANT_NO_RECIPES` / `RECIPE_MISSING` / `APPLY_ERROR` / `ENTER_RUN_FAIL` / `TRIAL_FIRE_FAIL`；`_report_variant_fail` → 日志+状态栏+联调条；`recipe_library.FAIL_CODES`。
+- **Host SM Alarm 历史联调条**：`hostLiaisonStrip` + `push_liaison_event`；试跑清除/`TRIAL_CLEAR`、换型失败码、报警清除写入；筛选「联调」+ 列表 `·联调` 标记。
+- **冒烟**：`smoke-wave22-esc-uphwin-foldpersist-failcode-liaison-e2e`（另回归 wave21 / film-locate）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆㉑ · 结果表双击对比叠层 · 试跑失败Alarm联调 · Comm折叠 · UPH趋势 · 补stamp · 2026-10-28】
 
 - **结果表双击 → 该帧对比叠层**：`cellDoubleClicked` → `filmCompareRequested`（先 `filmLocateRequested`）；`MainWindow._on_hmi_film_compare` 定位胶片后调 `_show_filmstrip_compare_overlays(highlight_path=)`；行 tip「单击定位 · 双击对比叠层」。

@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit, QGridLayout, QSizePolicy, QLineEdit, QListWidget,
     QTableWidget, QTableWidgetItem, QProgressBar, QHeaderView,
     QComboBox, QTabWidget, QStackedWidget, QFileDialog, QApplication,
+    QSpinBox,
 )
 
 from desktop.image_view import ImageView
@@ -142,6 +143,7 @@ class ProductionStatsPanel(QWidget):
         self._elapsed_hist = []  # newest first ms, max 48 — drives HMI trend spark
         self._ok_hist = []  # newest first bool, max 48 — OK/NG spark
         self._uph_hist = []  # newest first UPH, max 48 — wave21 UPH trend
+        self._uph_window = 24  # wave22: adjustable spark window (8..48)
         self._gate_key = None  # None → auto probe flow vars
         self._trend_listeners = []  # callables(panel) after record/reset
         root = QVBoxLayout(self)
@@ -229,14 +231,31 @@ class ProductionStatsPanel(QWidget):
         self._uph_lab.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
         self._uph_lab.setToolTip('末次/均耗时 → 估算 UPH（件/小时，按均耗时）')
         root.addWidget(self._uph_lab)
+        uph_row = QHBoxLayout()
+        uph_row.setSpacing(6)
         self._uph_trend_lab = QLabel('UPH趋势 · · ·  ·  等待')
         self._uph_trend_lab.setObjectName('prodUphTrend')
         self._uph_trend_lab.setStyleSheet(
             f'color:{TEXT_MUTED};font-size:12px;font-family:monospace;'
             f'background:{CARD};border:1px solid {LINE};border-radius:2px;padding:4px 6px;'
         )
-        self._uph_trend_lab.setToolTip('产线 UPH 趋势看板（高=更快；按每次均耗时估算件/小时）')
-        root.addWidget(self._uph_trend_lab)
+        self._uph_trend_lab.setToolTip(
+            '产线 UPH 趋势看板（高=更快；按每次均耗时估算件/小时）；右侧可调窗口'
+        )
+        uph_row.addWidget(self._uph_trend_lab, 1)
+        win_lab = QLabel('窗口')
+        win_lab.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
+        uph_row.addWidget(win_lab)
+        self._uph_window_spin = QSpinBox()
+        self._uph_window_spin.setObjectName('prodUphWindowSpin')
+        self._uph_window_spin.setRange(8, 48)
+        self._uph_window_spin.setSingleStep(8)
+        self._uph_window_spin.setValue(int(self._uph_window))
+        self._uph_window_spin.setToolTip('UPH 趋势窗口（8–48，步进 8）；影响 spark 与均/峰统计')
+        self._uph_window_spin.setMaximumWidth(72)
+        self._uph_window_spin.valueChanged.connect(self._on_uph_window_changed)
+        uph_row.addWidget(self._uph_window_spin)
+        root.addLayout(uph_row)
 
         cap = QLabel('最近结果')
         cap.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;font-weight:600;')
@@ -507,17 +526,50 @@ class ProductionStatsPanel(QWidget):
         return list(self._uph_hist)
 
     def trend_uph_text(self):
-        # wave21 UPH trend board
+        # wave21 UPH trend board · wave22 window adjustable
         if not self._uph_hist:
             return 'UPH趋势 · · ·  ·  等待'
-        spark = self.sparkline(self._uph_hist, 24)
-        last = self._uph_hist[0]
-        peak = max(self._uph_hist)
-        avg = sum(self._uph_hist) / len(self._uph_hist)
+        win = self.uph_window()
+        slice_ = self._uph_hist[:win]
+        spark = self.sparkline(slice_, win)
+        last = slice_[0]
+        peak = max(slice_)
+        avg = sum(slice_) / len(slice_)
         return (
             f'UPH {spark}  ·  末次 {last:.0f} · 均 {avg:.0f}'
-            f' · 峰 {peak:.0f} · n={len(self._uph_hist)}'
+            f' · 峰 {peak:.0f} · n={len(slice_)}/{win}'
         )
+
+    def uph_window(self) -> int:
+        try:
+            return max(8, min(48, int(self._uph_window)))
+        except Exception:
+            return 24
+
+    def set_uph_window(self, n: int):
+        """wave22: set UPH trend window (8..48)."""
+        try:
+            n = int(n)
+        except (TypeError, ValueError):
+            return
+        # snap to nearest 8-step within range
+        n = max(8, min(48, n))
+        n = 8 * max(1, round(n / 8))
+        n = max(8, min(48, n))
+        self._uph_window = n
+        spin = getattr(self, '_uph_window_spin', None)
+        if spin is not None:
+            try:
+                spin.blockSignals(True)
+                spin.setValue(n)
+                spin.blockSignals(False)
+            except Exception:
+                pass
+        self._refresh_labels()
+        self._notify_trend()
+
+    def _on_uph_window_changed(self, value: int):
+        self.set_uph_window(value)
 
 
 
@@ -1870,11 +1922,21 @@ class OperatorHmiView(QWidget):
 
     def _pulse_alarm_cleared(self, state: str, zh: str):
         """细妆⑳：离开 Alarm → 固定栏短暂恢复高亮 + 短提示。"""
-        if getattr(self, '_trial_fail_alarm', False):
+        was_trial = bool(getattr(self, '_trial_fail_alarm', False))
+        if was_trial:
             self._trial_fail_alarm = False
             tip = f'✓ 试跑失败已清除 · 联调已恢复 · {zh}'
         else:
             tip = f'✓ 报警已清除 · {zh}'
+        # wave22: push Host SM Alarm 历史联调条
+        try:
+            host = getattr(self, '_host_sm', None)
+            if host is not None and hasattr(host, 'push_liaison_event'):
+                kind = '试跑清除' if was_trial else '报警清除'
+                code = 'TRIAL_CLEAR' if was_trial else 'ALARM_CLEAR'
+                host.push_liaison_event(tip, kind=kind, code=code)
+        except Exception:
+            pass
         try:
             self._live_run_status = zh
             # green restore flash

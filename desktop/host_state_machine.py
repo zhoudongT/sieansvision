@@ -69,6 +69,8 @@ class HostStateMachineWidget(QWidget):
         self._alarm_timer.timeout.connect(self._on_alarm_timeout)
         self._alarm_history = []  # list[{ts, reason, cleared}]
         self._alarm_history_max = 40
+        self._liaison_events = []  # wave22: 联调条 [{ts, kind, code, text}]
+        self._liaison_events_max = 12
 
         root = QVBoxLayout(self)
         root.setContentsMargins(4, 4, 4, 4)
@@ -620,6 +622,18 @@ class HostStateMachineWidget(QWidget):
             f'border-radius:2px;padding:4px 8px;font-size:11px;font-weight:600;'
         )
         lay.addWidget(self._prod_strip)
+        # wave22: Alarm 历史联调条（试跑清除 / 换型失败 / 报警清除）
+        self._liaison_strip = QLabel('联调 · 等待事件（试跑清除 / 换型失败 / 报警清除）')
+        self._liaison_strip.setObjectName('hostLiaisonStrip')
+        self._liaison_strip.setWordWrap(True)
+        self._liaison_strip.setStyleSheet(
+            f'background:#1c2a3a;color:#9ec9f0;border:1px solid #3a5a7a;'
+            f'border-radius:2px;padding:4px 8px;font-size:11px;'
+        )
+        self._liaison_strip.setToolTip(
+            '联调事件条：试跑失败清除、换型失败码、报警清除等写入此处（最近 12 条）'
+        )
+        lay.addWidget(self._liaison_strip)
         self._alarm_spark = QLabel('报警序列 · · ·')
         self._alarm_spark.setObjectName('hostAlarmSpark')
         self._alarm_spark.setStyleSheet(f'color:{TEXT_MUTED};font-size:12px;font-family:monospace;')
@@ -638,6 +652,7 @@ class HostStateMachineWidget(QWidget):
         self._alarm_status_filter.addItem('全部', 'all')
         self._alarm_status_filter.addItem('未清除', 'open')
         self._alarm_status_filter.addItem('已清除', 'cleared')
+        self._alarm_status_filter.addItem('联调', 'liaison')
         self._alarm_status_filter.currentIndexChanged.connect(lambda *_: self._refresh_alarm_history_ui())
         filt_row.addWidget(self._alarm_status_filter)
         lay.addLayout(filt_row)
@@ -704,9 +719,58 @@ class HostStateMachineWidget(QWidget):
             self._log_line(f'导出失败：{err}')
 
 
+    def push_liaison_event(self, text: str, *, kind: str = '', code: str = ''):
+        """wave22: append 联调条 event (试跑清除 / 换型失败 / 报警清除)."""
+        entry = {
+            'ts': datetime.now().strftime('%H:%M:%S'),
+            'kind': str(kind or '联调'),
+            'code': str(code or ''),
+            'text': str(text or ''),
+        }
+        self._liaison_events.append(entry)
+        if len(self._liaison_events) > self._liaison_events_max:
+            self._liaison_events = self._liaison_events[-self._liaison_events_max:]
+        try:
+            if self._alarm_history and ('清除' in entry['kind'] or 'CLEAR' in entry['code']):
+                self._alarm_history[-1]['liaison'] = True
+        except Exception:
+            pass
+        self._refresh_liaison_strip()
+        try:
+            self._log_line(
+                f"联调 · {entry['kind']}"
+                + (f"[{entry['code']}]" if entry['code'] else '')
+                + f" · {entry['text'][:80]}"
+            )
+        except Exception:
+            pass
+
+    def liaison_events(self):
+        return list(self._liaison_events)
+
+    def _refresh_liaison_strip(self):
+        strip = getattr(self, '_liaison_strip', None)
+        if strip is None:
+            return
+        if not self._liaison_events:
+            strip.setText('联调 · 等待事件（试跑清除 / 换型失败 / 报警清除）')
+            return
+        bits = []
+        for e in reversed(self._liaison_events[-4:]):
+            bit = f"{e.get('ts', '')} {e.get('kind', '')}"
+            if e.get('code'):
+                bit += f"[{e['code']}]"
+            txt = str(e.get('text') or '')
+            if txt:
+                bit += ' · ' + (txt[:48] + ('…' if len(txt) > 48 else ''))
+            bits.append(bit)
+        strip.setText('联调 · ' + '  ‖  '.join(bits))
+
     def clear_alarm_history(self):
         self._alarm_history.clear()
+        self._liaison_events.clear()
         self._refresh_alarm_history_ui()
+        self._refresh_liaison_strip()
         self._log_line('报警历史已清空')
 
     @staticmethod
@@ -720,6 +784,7 @@ class HostStateMachineWidget(QWidget):
 
     def _record_alarm(self, reason: str = ''):
         reason_s = str(reason or '报警')
+        is_liaison = any(k in reason_s for k in ('试跑', '联调', '换型失败', 'VARIANT_', 'TRIAL_'))
         entry = {
             'ts': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'reason': reason_s,
@@ -727,6 +792,7 @@ class HostStateMachineWidget(QWidget):
             'cleared_at': '',
             'severity': self._classify_alarm_severity(reason_s),
             'state_at': self._state,
+            'liaison': bool(is_liaison),
         }
         self._alarm_history.append(entry)
         if len(self._alarm_history) > self._alarm_history_max:
@@ -754,6 +820,8 @@ class HostStateMachineWidget(QWidget):
                 continue
             if status == 'cleared' and not cleared:
                 continue
+            if status == 'liaison' and not e.get('liaison'):
+                continue
             if needle and needle not in reason.lower() and needle not in str(e.get('ts') or '').lower():
                 continue
             sev = e.get('severity') or 'info'
@@ -768,7 +836,8 @@ class HostStateMachineWidget(QWidget):
                     dur = f' · {secs}s'
                 except Exception:
                     dur = ''
-            lst.addItem(f"{e.get('ts', '')}  [{sev_zh}] {mark}  {reason}{dur}")
+            lia = ' ·联调' if e.get('liaison') else ''
+            lst.addItem(f"{e.get('ts', '')}  [{sev_zh}] {mark}  {reason}{dur}{lia}")
             shown += 1
         lab = getattr(self, '_alarm_hist_count', None)
         if lab is not None:

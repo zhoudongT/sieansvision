@@ -14,6 +14,22 @@ from pathlib import Path
 
 from desktop.model import uid
 
+# wave22: 换型失败码（MainWindow._report_variant_fail 对齐）
+FAIL_CODES = {
+    'VARIANT_EMPTY': '变体名为空',
+    'VARIANT_NO_RECIPES': '变体下无配方',
+    'RECIPE_MISSING': '配方不存在',
+    'APPLY_ERROR': '换型套用异常',
+    'ENTER_RUN_FAIL': '切运行态失败',
+    'TRIAL_FIRE_FAIL': '单次试跑触发失败',
+}
+
+
+def fail_message(code: str, detail: str = '') -> str:
+    base = FAIL_CODES.get(str(code or ''), str(code or 'APPLY_ERROR'))
+    detail = str(detail or '').strip()
+    return f'{base} · {detail}' if detail else base
+
 
 def _now():
     return datetime.now().strftime('%Y-%m-%d %H:%M:%S')

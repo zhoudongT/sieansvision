@@ -1297,13 +1297,14 @@ class MainWindow(QMainWindow):
     def _clear_filmstrip_compare_overlays(self):
         if getattr(self, '_filmstrip_compare_active', False):
             self._filmstrip_compare_active = False
+            self._filmstrip_compare_path = ''
             try:
                 self._apply_measure_geom_overlays(
                     (getattr(self, 'last_result', None) or {}).get('results') or [])
             except Exception:
                 pass
             try:
-                self.statusBar().clearMessage()
+                self.statusBar().showMessage('对比叠层已清除', 2000)
             except Exception:
                 pass
 
@@ -1353,6 +1354,7 @@ class MainWindow(QMainWindow):
         try:
             view.set_geom_overlays(specs)
             self._filmstrip_compare_active = True
+            self._filmstrip_compare_path = highlight_path or ''
         except Exception:
             return
         try:
@@ -1969,8 +1971,16 @@ class MainWindow(QMainWindow):
         return False
 
     def keyPressEvent(self, event):
-        # Esc dismisses canvas status chip — but not when float/modal owns focus
+        # Esc: clear compare overlay first, then canvas status chip
         if event.key() == Qt.Key.Key_Escape:
+            if getattr(self, '_filmstrip_compare_active', False):
+                try:
+                    self._clear_filmstrip_compare_overlays()
+                    self.log('ESC · 对比叠层已清除')
+                except Exception:
+                    pass
+                event.accept()
+                return
             chip = getattr(self, '_canvas_status_chip', None)
             if chip is not None and chip.isVisible():
                 if self._chip_esc_blocked_by_focus():
@@ -2084,12 +2094,29 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
             return
+        # wave22: 再点同帧 → 清除对比叠层
+        try:
+            active = bool(getattr(self, '_filmstrip_compare_active', False))
+            cur = str(getattr(self, '_filmstrip_compare_path', '') or '')
+            same = False
+            if active and cur:
+                try:
+                    same = (Path(cur).resolve() == Path(path).resolve()) or cur == path
+                except Exception:
+                    same = cur == path
+            if same:
+                self._clear_filmstrip_compare_overlays()
+                self.log(f'再点清除对比叠层 · {Path(path).name}')
+                return
+        except Exception:
+            pass
         try:
             self._show_filmstrip_compare_overlays(highlight_path=path)
             self.statusBar().showMessage(
                 f"结果表双击对比叠层 · seq={payload.get('seq') or '—'} · "
-                + Path(path).name,
-                4000,
+                + Path(path).name
+                + ' · ESC/再点清除',
+                5000,
             )
         except Exception as err:
             try:
@@ -3797,7 +3824,8 @@ class MainWindow(QMainWindow):
         """
         variant = (variant or '').strip()
         if not variant:
-            return
+            self._report_variant_fail('VARIANT_EMPTY', '变体名为空')
+            return {'ok': False, 'failCode': 'VARIANT_EMPTY'}
         if trial_once is None:
             chk = getattr(self, 'variant_trial_chk', None)
             try:
@@ -3810,8 +3838,12 @@ class MainWindow(QMainWindow):
             p = self.document.project
             recs = rl.recipes_for_variant(p, variant)
             if not recs:
-                self.log(f'变体「{variant}」下无配方')
-                return
+                self._report_variant_fail(
+                    'VARIANT_NO_RECIPES',
+                    f'变体「{variant}」下无配方',
+                    variant=variant,
+                )
+                return {'ok': False, 'failCode': 'VARIANT_NO_RECIPES', 'variant': variant}
             entry = recs[0]
             rid = entry.get('id')
             try:
@@ -3824,7 +3856,12 @@ class MainWindow(QMainWindow):
                     pass
             except Exception:
                 chip = ''
-            stats = rl.apply_recipe(p, rid)
+            try:
+                stats = rl.apply_recipe(p, rid)
+            except ValueError as ve:
+                code = 'RECIPE_MISSING' if '不存在' in str(ve) else 'APPLY_ERROR'
+                self._report_variant_fail(code, str(ve), variant=variant)
+                return {'ok': False, 'failCode': code, 'variant': variant, 'error': str(ve)}
             self.document.mark_dirty()
             try:
                 self.refresh_variant_chip()
@@ -3850,8 +3887,36 @@ class MainWindow(QMainWindow):
                 })
             except Exception:
                 pass
+            return {'ok': True, 'failCode': '', **(stats or {}), 'variant': variant,
+                    'trialOnce': trial_once}
         except Exception as exc:
-            self.log(f'变体快切失败：{exc}')
+            self._report_variant_fail('APPLY_ERROR', str(exc), variant=variant)
+            return {'ok': False, 'failCode': 'APPLY_ERROR', 'variant': variant, 'error': str(exc)}
+
+    def _report_variant_fail(self, code: str, message: str, *, variant: str = ''):
+        """wave22: 配方换型失败码细分 → 日志 + 状态栏 + Host SM 联调条."""
+        code = str(code or 'APPLY_ERROR')
+        msg = str(message or '')
+        tip = f'换型失败[{code}]'
+        if variant:
+            tip += f' · 变体 {variant}'
+        if msg:
+            tip += f' · {msg}'
+        try:
+            self.log(tip)
+        except Exception:
+            pass
+        try:
+            self.statusBar().showMessage(tip, 6000)
+        except Exception:
+            pass
+        try:
+            hmi = getattr(self, 'operator_hmi', None)
+            host = getattr(hmi, '_host_sm', None) if hmi else None
+            if host is not None and hasattr(host, 'push_liaison_event'):
+                host.push_liaison_event(tip, kind='换型失败', code=code)
+        except Exception:
+            pass
 
     def sync_after_recipe_apply(self, stats=None):
         """细妆⑱：配方套用 → 生产任务字段 / HMI 配方徽章 / 可选切运行 + 单次试跑."""
@@ -3908,7 +3973,8 @@ class MainWindow(QMainWindow):
                 self.guard(lambda: self.set_app_mode('run'))
                 self.log(f'换型闭环 · 已切运行态 · 配方 {name or "—"}')
             except Exception as err:
-                self.log(f'换型切运行态失败：{err}')
+                self._report_variant_fail('ENTER_RUN_FAIL', str(err),
+                                         variant=variant)
         if trial:
             try:
                 hmi = getattr(self, 'operator_hmi', None)
@@ -3923,7 +3989,8 @@ class MainWindow(QMainWindow):
                     self.guard(lambda: self._run_hmi_commands(_dc(DEFAULT_RUN_COMMANDS)))
                     self.log('换型闭环 · 已触发单次试跑')
                 except Exception as err:
-                    self.log(f'换型单次试跑失败：{err}')
+                    self._report_variant_fail('TRIAL_FIRE_FAIL', str(err),
+                                             variant=str(stats.get('variant') or ''))
             try:
                 from PySide6.QtCore import QTimer
                 # slight delay so run-mode layout settles

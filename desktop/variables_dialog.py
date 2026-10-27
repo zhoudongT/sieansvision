@@ -3,7 +3,7 @@ from copy import deepcopy
 import math
 import re
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QSettings
 from PySide6.QtGui import QGuiApplication, QColor, QBrush
 from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDialog, QDialogButtonBox,
     QFormLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QPushButton,
@@ -242,7 +242,7 @@ class VariablesDialog(QDialog):
         self.fold_comm.setToolTip(
             '折叠分组：隐藏 commAccept_<项> 明细，保留 Pass/Fail/Skip/Overall/At/Host/Port 摘要'
         )
-        self.fold_comm.setChecked(False)
+        self.fold_comm.setChecked(self._load_fold_comm_pref())
         self.count_label = QLabel('0 项')
         row.addWidget(self.mode); row.addWidget(self.scope); row.addWidget(self.global_only)
         row.addWidget(self.fold_comm); row.addWidget(self.search, 1); row.addWidget(self.count_label)
@@ -269,11 +269,35 @@ class VariablesDialog(QDialog):
         self.message = QLabel(); self.message.setWordWrap(True); layout.addWidget(self.message)
         self._load_definitions()
         self.mode.currentIndexChanged.connect(self.render); self.scope.currentIndexChanged.connect(self.render); self.search.textChanged.connect(self.render); self.global_only.toggled.connect(self.render)
-        self.fold_comm.toggled.connect(self.render)
+        self.fold_comm.toggled.connect(self._on_fold_comm_toggled)
         self.document.changed.connect(self._document_changed)
         self.backend.result.connect(self._result); self.backend.error.connect(self._error)
         self.finished.connect(self._disconnect)
         self.render(); QTimer.singleShot(0, self.refresh)
+
+    @staticmethod
+    def _settings():
+        return QSettings('SIEANS', 'VisionDesktop')
+
+    def _load_fold_comm_pref(self) -> bool:
+        """wave22: Comm 折叠态持久（跨会话）."""
+        try:
+            v = self._settings().value('vars/foldCommAccept', False)
+            if isinstance(v, str):
+                return v.lower() in ('1', 'true', 'yes')
+            return bool(v)
+        except Exception:
+            return False
+
+    def _save_fold_comm_pref(self, on: bool):
+        try:
+            self._settings().setValue('vars/foldCommAccept', bool(on))
+        except Exception:
+            pass
+
+    def _on_fold_comm_toggled(self, on: bool):
+        self._save_fold_comm_pref(bool(on))
+        self.render()
 
     def _signature(self):
         p = self.document.project
