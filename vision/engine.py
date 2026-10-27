@@ -332,6 +332,64 @@ def yolo(image, canvas, p, offset):
     return {'model': name, 'count': len(items), 'items': items, **selection}
 
 
+
+def distort_correct(image, canvas, p, offset):
+    """Real OpenCV undistort. Modes: coeffs (inline) or file (JSON calib)."""
+    import json as _json
+    from pathlib import Path as _Path
+    mode = str(p.get('mode') or 'file')
+    alpha = float(p.get('alpha') or 0)
+    K = None
+    D = None
+    note = ''
+    if mode == 'coeffs' or (p.get('fx') and not p.get('calibPath')):
+        fx = float(p.get('fx') or 0); fy = float(p.get('fy') or 0)
+        cx = float(p.get('cx') or 0); cy = float(p.get('cy') or 0)
+        if fx <= 0 or fy <= 0:
+            # fall back to image center estimate only if user left zeros — still mark uncalibrated
+            h, w = image.shape[:2]
+            if fx <= 0: fx = w * 0.9
+            if fy <= 0: fy = h * 0.9
+            if cx <= 0: cx = w / 2.0
+            if cy <= 0: cy = h / 2.0
+            note = '内参缺省用图像尺寸估计'
+        K = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], np.float64)
+        D = np.array([float(p.get('k1') or 0), float(p.get('k2') or 0),
+                      float(p.get('p1') or 0), float(p.get('p2') or 0),
+                      float(p.get('k3') or 0)], np.float64)
+    else:
+        path = str(p.get('calibPath') or '').strip()
+        if not path:
+            raise ValueError('未配置标定文件或内参；拒绝静默透传')
+        raw = _Path(path).read_text(encoding='utf-8')
+        cal = _json.loads(raw)
+        # accept sieans-intrinsics model or flat keys
+        if 'fx' in cal:
+            fx, fy, cx, cy = float(cal['fx']), float(cal['fy']), float(cal['cx']), float(cal['cy'])
+            K = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], np.float64)
+            D = np.array([float(cal.get(k) or 0) for k in ('k1','k2','p1','p2','k3')], np.float64)
+        elif 'cameraMatrix' in cal:
+            K = np.array(cal['cameraMatrix'], np.float64)
+            D = np.array(cal.get('distCoeffs') or cal.get('distortion') or [0,0,0,0,0], np.float64).ravel()[:5]
+        else:
+            raise ValueError('标定文件格式无法识别（需 fx/fy/cx/cy 或 cameraMatrix）')
+        note = 'from file: ' + path
+    h, w = image.shape[:2]
+    newK, _ = cv2.getOptimalNewCameraMatrix(K, D, (w, h), alpha, (w, h))
+    und = cv2.undistort(image, K, D, None, newK)
+    canvas[:] = und if und.shape == canvas.shape else cv2.resize(und, (canvas.shape[1], canvas.shape[0]))
+    # also write into ROI region if offset used — canvas is full source copy
+    return {
+        'status': 'ok',
+        'mode': mode,
+        'width': w, 'height': h,
+        'cameraMatrix': K.tolist(),
+        'newCameraMatrix': newK.tolist(),
+        'distCoeffs': D.tolist(),
+        'alpha': alpha,
+        'note': note or 'undistort ok',
+    }
+
 def run(request):
     if request.get('operation') == 'depth_import':
         from depth_import import run as run_depth_import
@@ -374,9 +432,11 @@ def run(request):
     elif operation == 'yolo_segment':
         from yolo_segmentation import segment
         data, mask_image = segment(image, canvas, p, offset, MODEL_DIR, MODELS)
+    elif operation == 'distort_correct':
+        data = distort_correct(image, canvas, p, offset)
     else:
         raise ValueError('未知视觉操作')
-    extension = '.png' if operation == 'preprocess' or operation == 'yolo_segment' and p.get('output') == 'mask' else '.jpg'
+    extension = '.png' if operation in ('preprocess', 'distort_correct') or (operation == 'yolo_segment' and p.get('output') == 'mask') else '.jpg'
     _, encoded = cv2.imencode(extension, canvas, [] if extension == '.png' else [cv2.IMWRITE_JPEG_QUALITY, 88])
     return {'operation': operation, 'result': data, 'elapsedMs': round((time.perf_counter()-started)*1000, 1),
             **({'maskImage':mask_image} if operation == 'yolo_segment' else {}),

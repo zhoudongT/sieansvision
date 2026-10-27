@@ -4,13 +4,16 @@
 持久化到 project.commManager；运行侧仍走既有 industrial / socket 算子。
 """
 from copy import deepcopy
+import socket
+import threading
+from datetime import datetime
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTabWidget,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QComboBox, QLineEdit, QWidget, QFormLayout, QSpinBox, QMessageBox,
-    QSplitter, QListWidget, QListWidgetItem, QGroupBox,
+    QSplitter, QListWidget, QListWidgetItem, QGroupBox, QPlainTextEdit,
 )
 
 from desktop.widgets.switch import OrangeSwitch
@@ -234,6 +237,45 @@ class CommManagerDialog(QDialog):
         resp_form.addRow('应答内容', self.resp_ack)
         self.tabs.addTab(resp, '响应')
 
+        # --- TCP 测试（对标 VM 通信管理连通性）---
+        tcp = QWidget()
+        tcp_lay = QVBoxLayout(tcp)
+        tcp_lay.setContentsMargins(12, 12, 12, 12)
+        tip = QLabel('选用设备管理中的 TCP Client/Server，或手动填写主机/端口，发送一行文本并读回（短超时）。')
+        tip.setWordWrap(True)
+        tip.setStyleSheet('color:#666;')
+        tcp_lay.addWidget(tip)
+        form = QFormLayout()
+        self.tcp_device = QComboBox()
+        self.tcp_device.setEditable(False)
+        self.tcp_host = QLineEdit('127.0.0.1')
+        self.tcp_port = QSpinBox(); self.tcp_port.setRange(1, 65535); self.tcp_port.setValue(9000)
+        self.tcp_payload = QLineEdit('PING')
+        self.tcp_timeout = QSpinBox(); self.tcp_timeout.setRange(100, 30000); self.tcp_timeout.setValue(2000)
+        self.tcp_timeout.setSuffix(' ms')
+        form.addRow('设备', self.tcp_device)
+        form.addRow('主机', self.tcp_host)
+        form.addRow('端口', self.tcp_port)
+        form.addRow('发送', self.tcp_payload)
+        form.addRow('超时', self.tcp_timeout)
+        tcp_lay.addLayout(form)
+        row = QHBoxLayout()
+        self.tcp_send_btn = QPushButton('发送并读回')
+        self.tcp_send_btn.setObjectName('primaryButton')
+        self.tcp_send_btn.clicked.connect(self._tcp_test_send)
+        self.tcp_fill_btn = QPushButton('从当前设备填充')
+        self.tcp_fill_btn.clicked.connect(self._tcp_fill_from_device)
+        row.addWidget(self.tcp_fill_btn)
+        row.addStretch(1)
+        row.addWidget(self.tcp_send_btn)
+        tcp_lay.addLayout(row)
+        self.tcp_log = QPlainTextEdit()
+        self.tcp_log.setReadOnly(True)
+        self.tcp_log.setPlaceholderText('测试日志…')
+        tcp_lay.addWidget(self.tcp_log, 1)
+        self.tabs.addTab(tcp, 'TCP 测试')
+
+
         bar = QHBoxLayout()
         ok = QPushButton('确定')
         ok.setObjectName('primaryButton')
@@ -267,6 +309,7 @@ class CommManagerDialog(QDialog):
         self.resp_enabled.setChecked(bool(resp.get('enabled')))
         self.resp_timeout.setValue(int(resp.get('timeoutMs') or 3000))
         self.resp_ack.setText(str(resp.get('ack') or 'OK'))
+        self._refresh_tcp_devices()
 
     def _add_device(self):
         n = len(self._devices) + 1
@@ -277,6 +320,7 @@ class CommManagerDialog(QDialog):
         self.device_list.addItem(QListWidgetItem(self._devices[-1]['name']))
         self.device_list.setCurrentRow(self.device_list.count() - 1)
         self._refresh_event_devices()
+        self._refresh_tcp_devices()
 
     def _remove_device(self):
         row = self.device_list.currentRow()
@@ -285,6 +329,7 @@ class CommManagerDialog(QDialog):
         self.device_list.takeItem(row)
         del self._devices[row]
         self._refresh_event_devices()
+        self._refresh_tcp_devices()
         if self._devices:
             self.device_list.setCurrentRow(min(row, len(self._devices) - 1))
         else:

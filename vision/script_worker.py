@@ -4,6 +4,11 @@ import json
 import sys
 import time
 import traceback
+from pathlib import Path as _Path
+_root = _Path(__file__).resolve().parent.parent
+_pydeps = _root / ".pydeps"
+if _pydeps.is_dir() and str(_pydeps) not in sys.path:
+    sys.path.insert(0, str(_pydeps))
 
 
 class Log:

@@ -28,8 +28,32 @@ DEFAULT_CS = (
 
 DEFAULT_PY = (
     "def run(ctx):\n"
-    '    # ctx["vars"] / ctx["results"] / ctx["image"]\n'
-    "    return dict(result=dict(passed=True))\n"
+    '    """Python 脚本（对齐 VM C# 脚本位）。OpenCV 可用：import cv2。"""\n'
+    "    import base64\n"
+    "    import cv2\n"
+    "    import numpy as np\n"
+    "    img = ctx.get(\"image\") or \"\"\n"
+    "    result = dict(passed=True, opencv=cv2.__version__)\n"
+    "    annotated = None\n"
+    "    if img:\n"
+    "        raw = base64.b64decode(img.split(\",\", 1)[-1])\n"
+    "        arr = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)\n"
+    "        if arr is not None:\n"
+    "            gray = cv2.cvtColor(arr, cv2.COLOR_BGR2GRAY)\n"
+    "            edges = cv2.Canny(gray, 80, 160)\n"
+    "            overlay = arr.copy()\n"
+    "            overlay[edges > 0] = (0, 165, 255)  # sieans orange-ish\n"
+    "            ok, buf = cv2.imencode(\".png\", overlay)\n"
+    "            if ok:\n"
+    "                annotated = \"data:image/png;base64,\" + base64.b64encode(buf).decode()\n"
+    "            result[\"width\"] = int(arr.shape[1])\n"
+    "            result[\"height\"] = int(arr.shape[0])\n"
+    "            result[\"edges\"] = int((edges > 0).sum())\n"
+    "    out = dict(result=result)\n"
+    "    if annotated:\n"
+    "        out[\"annotatedImage\"] = annotated\n"
+    "        out[\"image\"] = annotated\n"
+    "    return out\n"
 )
 
 
@@ -62,8 +86,8 @@ class CsharpScriptPanel(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         hint = QLabel(
             '对齐 VisionMaster「C# 脚本」：设计态编辑器。'
-            'C# 运行标记 unsupported；若需本机执行请改用「Python 自定义脚本」'
-            '或切语言为 Python（仍建议用 script 算子跑真实代码）。'
+            'C# = unsupported（无 CLR）。切语言为 Python 且运行时勾选允许脚本即可真实执行（含 OpenCV）；'
+            '也可改用「Python 自定义脚本」算子。'
         )
         hint.setWordWrap(True)
         hint.setStyleSheet('color:#666;padding:8px 10px 4px;')

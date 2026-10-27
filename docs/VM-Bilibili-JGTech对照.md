@@ -30,40 +30,40 @@
 | 7 | 快速模板匹配 | ✓ | Implemented | `LocateMatchPanel` 四 Tab |
 | 8 | 灰度模板匹配 | ✓ | Implemented | locate `matchMode=gray` |
 | 9 | 位置修正 | ✓ | Implemented | `pose_correct` |
-| 10 | 通信管理 | ✓ | Shell | `CommManagerDialog` 五 Tab（真实后端仍可加深） |
+| 10 | 通信管理 | ✓ | Implemented | `CommManagerDialog` 设备/收发/心跳/响应 + **TCP 测试** Tab |
 | 11 | 收发数据 / 全局变量 | ✓ | Implemented | `receive_data`/`send_data` + 变量表 UX |
-| 12 | C#脚本 | ✓ | Shell | `csharp_script` 编辑器；CLR unsupported |
-| 13 | 畸变矫正 | ✓ | Shell | `distort_correct` 透传 |
+| 12 | C#脚本 | ✓ | Implemented | `csharp_script`：C#=unsupported；**Python+OpenCV 可跑**（需允许脚本） |
+| 13 | 畸变矫正 | ✓ | Implemented | `distort_correct` → vision OpenCV undistort；未标定显式 uncalibrated |
 | 14 | 线与线的交点 | ✓ | Implemented | `line_intersect` |
 | 15 | 矩形查找 | ✓ | Implemented | `rect_find` → geometry.rects |
 | 16 | 点与点距离 | ✓ | Implemented | `point_distance` |
 | 17 | 点与线距离 | ✓ | Implemented | `point_line_distance` |
 | 18 | 条件分支 | ✓ | Implemented | condition 规则表 |
 | 19 | 分支模块 | ✓ | Implemented | `branch` |
-| 20 | 平移九点标定 | ✓ | Shell | `nine_point` 仿射估（非 SVD） |
-| 21 | 格式化（发出数据） | ✓ | Shell | `format_data` |
-| 22 | 输出(保存)图像 | ✓ | Shell | `output_image` |
+| 20 | 平移九点标定 | ✓ | Implemented | `nine_point` 仿射最小二乘（AtA/Gaussian，满秩等价 SVD） |
+| 21 | 格式化（发出数据） | ✓ | Implemented | `format_data` `{0}`/`{name}` 模板 → 变量 |
+| 22 | 输出(保存)图像 | ✓ | Implemented | `output_image` 落盘 base64（可选格式转换） |
 | 23 | 变量计算 | ✓ | Implemented | `var_calc` |
-| 24 | 协议解析 | ✓ | Shell | `protocol_parse` |
-| 25 | 文本保存 | ✓ | Shell | `text_save` |
+| 24 | 协议解析 | ✓ | Implemented | `protocol_parse` delimited/json/regex/**fixed** |
+| 25 | 文本保存 | ✓ | Implemented | `text_save` 追加/覆盖写文件 |
 | 26 | 组合模块 | ✓ | Implemented | Group + N4 |
 | 27 | 耗时统计 | ✓ | Implemented | `elapsed_stats` |
-| 28 | 运行界面设计1 | ✓ | Shell | 运行界面设计器 + VM默认壳 |
-| 29 | 运行界面设计2 | ✓ | Shell | 控件库/触发（深度可再贴） |
+| 28 | 运行界面设计1 | ✓ | Implemented | 运行界面设计器 + **VM 默认壳**（图像/OKNG/日志） |
+| 29 | 运行界面设计2 | ✓ | Implemented | 控件库四分类 + 触发命令 + 固定栏；深度可再贴帧 |
 | 30 | 全局触发 | ✓ | Implemented | 部分匹配列 |
-| 31 | 远程通信连接其他电脑如何设置ip | — | Shell* | *复用 CommManager；未下帧。网络/IP 教程式，非新算子 |
-| 32 | 定位引导·自动化九点标定_（副本） | — | Skip(industry) | 机器人引导；复用 `nine_point` 即可 |
-| 33 | 定位引导·文件夹模拟_（副本） | — | Skip(industry) | 同上 |
-| 34 | 定位引导·自动化九点标定 | — | Skip(industry) | 机械手链路；不做厂商 SDK |
-| 35 | 定位引导·文件夹模拟 | — | Skip(industry) | 图像文件夹模拟；可用图像源胶片条近似 |
-| 36 | 验证九点标定 | — | Skip(industry) | 验证流程；可后补对照壳 |
-| 37 | 相对移动定位纠偏法 | — | Skip(industry) | 机械手纠偏 |
-| 38 | 设置图像基准位置 | — | Skip(industry) | 引导项目子步 |
-| 39 | 设置机械手基准位置 | — | Skip(industry) | 机械手基准；Skip SDK |
-| 40 | 生产任务设计 | — | Shell | **`production_task` 薄壳**（任务名/配方→变量）；无产线 SDK |
-| 41 | 上位机状态机·UI设计1 | — | Shell* | *对齐运行界面/HMI；未深做状态机引擎 |
-| 42 | 上位机状态机·UI设计2 | — | Shell* | 同上 |
-| 43 | 上位机状态机·UI设计3 | — | Shell* | 同上 |
+| 31 | 远程通信连接其他电脑如何设置ip | ✓ | Shell* | *复用 CommManager；未下帧。网络/IP 教程式，非新算子 |
+| 32 | 定位引导·自动化九点标定_（副本） | ✓ | Skip(industry) | 机器人引导；复用 `nine_point` 即可 |
+| 33 | 定位引导·文件夹模拟_（副本） | ✓ | Skip(industry) | 同上 |
+| 34 | 定位引导·自动化九点标定 | ✓ | Skip(industry) | 机械手链路；不做厂商 SDK |
+| 35 | 定位引导·文件夹模拟 | ✓ | Skip(industry) | 图像文件夹模拟；可用图像源胶片条近似 |
+| 36 | 验证九点标定 | ✓ | Skip(industry) | 验证流程；可后补对照壳 |
+| 37 | 相对移动定位纠偏法 | ✓ | Skip(industry) | 机械手纠偏 |
+| 38 | 设置图像基准位置 | ✓ | Skip(industry) | 引导项目子步 |
+| 39 | 设置机械手基准位置 | ✓ | Skip(industry) | 机械手基准；Skip SDK |
+| 40 | 生产任务设计 | ✓ | Shell | **`production_task` 薄壳**（任务名/配方→变量）；无产线 SDK |
+| 41 | 上位机状态机·UI设计1 | ✓ | Shell* | *对齐运行界面/HMI；未深做状态机引擎 |
+| 42 | 上位机状态机·UI设计2 | ✓ | Shell* | 同上 |
+| 43 | 上位机状态机·UI设计3 | ✓ | Shell* | 同上 |
 | 44 | 为什么用旋转中心标定 | — | Skip(industry) | 理论课 |
 | 45 | 旋转中心·原理公式 | — | Skip(industry) | 理论课 |
 | 46 | 旋转中心·公式基础 | — | Skip(industry) | 理论课 |
@@ -90,9 +90,9 @@
 ### 统计（约）
 | 类别 | 数量 |
 |------|------|
-| Watched（有帧） | 30（p1–30） |
-| Implemented | ~18 |
-| Shell / Shell* | ~14（含 p40 新壳、Comm/HMI/标定透传等） |
+| Watched（有帧） | 30+（p1–30 齐；p31+ 持续下帧中） |
+| Implemented | ~28（p1–30 壳已加深） |
+| Shell / Shell* | ~6（p31/40/41–43/54/62–63 等） |
 | Skip(industry) / Skip | ~21 |
 | 纯 Unwatched 且待定 | 0（31–65 均已归类） |
 
@@ -102,9 +102,22 @@
 - **p3**：先装 **MVS**（设备树、虚拟相机）再装 **VisionMaster** — sieans 对应：**相机管理（GenTL）+ 图像源本地/SDK**；首启检查「能枚举设备 / 能开默认工程」即可，勿复刻安装向导 UI。
 
 ### 行业案例策略（p31–65）重申
+
+> **Allen（t187u）**：p31+ **不能砍掉**，仍需继续看帧。对照表保持 Skip(industry)/Shell*/Unwatched，**不要**标 Dropped。下帧用 `docs/vm-bilibili-jgtech/` + `bin/bili_fetch.py`；行业集只记 UI/流程缺口，不做机器人厂商 SDK 深克隆。
 1. **不做**机械手/旋转中心/十二点/单点抓取等厂商 SDK 深实现。
 2. **可复用已有**：`nine_point`、`pose_correct`、CommManager、运行 HMI、`csharp_script`/`script`、`production_task`。
 3. 若 Allen 点名某集要「可跑 demo」，再对该集下帧 + 最小壳，仍避免机器人运行时。
+
+
+### p31–43 下帧速记（UI/流程缺口；无机器人 SDK）
+- **p31 远程通信/IP**：CommManager 主机/端口 + TCP 测试即可对标；教程式网络设置，无新算子。
+- **p32–39 定位引导/九点/纠偏/基准**：流程上复用 `nine_point` + `pose_correct` + 图像源胶片；机械手链路保持 Skip(industry)，对照只记步骤名。
+- **p40 生产任务**：已有 `production_task` 薄壳（任务名/配方→变量）。
+- **p41–43 上位机状态机 UI**：对齐运行界面设计器/OperatorHmiView；状态机引擎仍 Shell*，先贴控件布局。
+
+- **p31 帧观感**：空流程 + 全局图像棋盘；通讯侧靠系统/通信管理配 IP（对标 CommManager host/port + TCP 测试）。
+- **p40 帧观感**：生产任务=图像→模板匹配→位置修正→圆查找→基准/目标物理坐标→偏差 dx/dy→MoveX/Y→发送上位机；sieans 可用 locate+pose_correct+geometry+var_calc+send_data 串，机械手 SDK 仍 Skip。
+- **p41 帧观感**：上位机 UI 含 IP/端口、连接机械手、回原点、XYZ/角度/速度、吸嘴开闭、信息栏；对标 HMI 控件+Comm TCP，不做厂商机械手协议深实现。
 
 ---
 

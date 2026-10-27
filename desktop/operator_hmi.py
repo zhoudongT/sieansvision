@@ -313,6 +313,12 @@ class OperatorHmiView(QWidget):
             log.appendPlainText(str(message))
 
     # ----- internals -----
+        for lv in getattr(self, '_log_views', []) or []:
+            try:
+                lv.appendPlainText(str(message))
+            except Exception:
+                pass
+
     def _clear_grid(self):
         while self._grid_layout.count():
             item = self._grid_layout.takeAt(0)
@@ -349,14 +355,15 @@ class OperatorHmiView(QWidget):
             self._fix_right.hide()
 
     def _build_default_grid(self):
+        """VM-style default shell: large image | OK/NG+状态 | 日志."""
         cell = self._make_cell_frame('图像')
         view = ImageView()
         view.setMinimumHeight(220)
         self._image_views.append(view)
         cell.layout().addWidget(view, 1)
         self._grid_layout.addWidget(cell, 0, 0)
-        self._grid_layout.setRowStretch(0, 1)
-        self._grid_layout.setColumnStretch(0, 1)
+        self._grid_layout.setRowStretch(0, 3)
+        self._grid_layout.setColumnStretch(0, 4)
 
         lamp = StatusLamp('OK/NG')
         self._status_lamps.append(lamp)
@@ -365,13 +372,27 @@ class OperatorHmiView(QWidget):
         status.setStyleSheet(f'color:{TEXT_MUTED};padding:3px;font-size:11px;')
         self._run_status_labels.append(status)
         side = QVBoxLayout()
+        side.setSpacing(8)
         side.addWidget(lamp)
         side.addWidget(status)
         side.addStretch(1)
         wrap = QWidget()
         wrap.setLayout(side)
         self._grid_layout.addWidget(wrap, 0, 1)
-        self._grid_layout.setColumnStretch(1, 0)
+        self._grid_layout.setColumnStretch(1, 1)
+
+        log_cell = self._make_cell_frame('界面日志')
+        from PySide6.QtWidgets import QPlainTextEdit
+        log = QPlainTextEdit()
+        log.setReadOnly(True)
+        log.setMaximumBlockCount(500)
+        log.setPlaceholderText('运行日志…')
+        log.setStyleSheet('font-size:11px;')
+        self._log_views = getattr(self, '_log_views', [])
+        self._log_views.append(log)
+        log_cell.layout().addWidget(log, 1)
+        self._grid_layout.addWidget(log_cell, 1, 0, 1, 2)
+        self._grid_layout.setRowStretch(1, 1)
 
     def _build_from_placements(self, split, placements, controls):
         rows, cols = _split_rows_cols(split)
