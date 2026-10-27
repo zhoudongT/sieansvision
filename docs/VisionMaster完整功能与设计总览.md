@@ -426,6 +426,15 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆69 · 频率撤销栈档位预览条 · 忽略高亮多选滚入 · DST diff导入策略合并/覆盖 · A/B回滚冲突一键忽略 · jitter旁标拖拽调音 · 2026-10-28】
+
+- **频率撤销栈档位预览条**：`ensure_/refresh_…_undo_stack_preview_bar`；深度 chips + focus；角标菜单「档位预览条」。
+- **忽略高亮多选滚入**：`highlight_…_overlap_rows(keys)` + `scroll_…_highlight_keys_into_view`；菜单「多选高亮滚入」。
+- **DST diff 导入策略（合并/覆盖）**：`…_batch_diff_import_strategy` / `set_…`；`import_…_batch_diff(strategy=)`；覆盖先清史再写入；菜单「导入策略·合并 / ·覆盖」。
+- **A/B 回滚冲突一键忽略**：`ignore_…_rollback_conflicts`；把预览冲突键写入忽略名单；槽对话框「一键忽略冲突」。
+- **jitter 旁标拖拽调音**：`bind_…_volume_mute_badge_bar_drag` + `drag_…_to(pct)`；垂直拖拽写音量；菜单「旁标拖拽调音」。
+- 非硬件进度约 **~95.5%**（细妆持续）。
+
 ## 【细妆68 · 频率撤销栈按档回退/清空 · 忽略高亮滚入可视 · DST diff导入再应用 · A/B回滚预览冲突列表 · jitter音量旁标条 · 2026-10-28】
 
 - **频率撤销栈按档回退/清空**：`restore_…_undo_stack_at(index)` 恢复指定档并丢弃更新档；`clear_…_undo_stack`；角标菜单「按档回退… / 清空撤销栈」。
