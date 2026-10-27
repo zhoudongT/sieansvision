@@ -1,23 +1,47 @@
-"""SIEANS Vision industrial UI tokens — VisionMaster-aligned Dark + orange active."""
+"""SIEANS Vision industrial UI tokens — VisionMaster 4.x-aligned Dark + light property float.
 
-# Palette — charcoal Dark workbench, orange = active
-BG = '#1a1f26'
-PANEL = '#222831'
-CARD = '#2b333d'
-LINE = '#3a4552'
-LINE_SOFT = '#323a45'
+Visual targets (VM V4.2/4.3 frames):
+- Workbench: neutral charcoal (not blue-gray), dense chrome, radius 0–2px
+- Font: Microsoft YaHei / YaHei UI, ~12px body / 11px secondary
+- Tabs: flat + orange underline when selected
+- Property float: light gray body, dark title + orange hairline, orange ON toggles
+Keep sieans brand/accent; do not copy HIKROBOT logo.
+"""
+
+# —— Dark workbench (neutral charcoal, less blue) ——
+BG = '#2a2c30'
+PANEL = '#32353a'
+CARD = '#3a3d42'
+LINE = '#4a4e54'
+LINE_SOFT = '#3f4348'
 ACCENT = '#e67a2e'
 ACCENT_DEEP = '#c45f18'
-TEXT = '#e8edf2'
-TEXT_MUTED = '#9aa7b5'
-TEXT_DIM = '#6b7684'
+TEXT = '#e8e8e8'
+TEXT_MUTED = '#a8a8a8'
+TEXT_DIM = '#787878'
 OK = '#2d9b6c'
 WARN = '#d4a017'
-HOVER = '#2f3844'
-SELECTED = '#3a2a1c'
-HEADER = '#252c35'
-CANVAS = '#1e242c'
-CANVAS_DOT = '#2a323c'
+HOVER = '#3d4046'
+SELECTED = '#3d2e1f'
+HEADER = '#232528'
+CANVAS = '#2d2f33'
+CANVAS_DOT = '#3a3d42'
+RAIL_BG = '#1a1b1d'
+STATUS_BG = '#151617'
+SCROLL = '#55585e'
+
+# —— Light property float (VM 属性浮窗 / extra/01_t200.jpg) ——
+FLOAT_BG = '#f0f0f0'
+FLOAT_BG_ALT = '#e8e8e8'
+FLOAT_CARD = '#ffffff'
+FLOAT_LINE = '#d0d0d0'
+FLOAT_LINE_SOFT = '#e0e0e0'
+FLOAT_TITLE_BG = '#2b2d30'
+FLOAT_TEXT = '#222222'
+FLOAT_TEXT_MUTED = '#666666'
+FLOAT_INPUT_BG = '#ffffff'
+FLOAT_BTN_BG = '#e8e8e8'
+FLOAT_SWITCH_OFF = '#c0c0c0'
 
 CATEGORY_COLORS = {
     '相机采集': '#e67a2e',
@@ -38,8 +62,8 @@ def category_color(name: str) -> str:
 
 WORKBENCH_QSS = f"""
 QMainWindow, QWidget {{
-  font-family: "Microsoft YaHei UI", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
-  font-size: 13px;
+  font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  font-size: 12px;
   color: {TEXT};
 }}
 QMainWindow {{ background: {BG}; }}
@@ -47,37 +71,44 @@ QMenuBar {{
   background: {HEADER};
   border-bottom: 1px solid {LINE};
   color: {TEXT};
-  spacing: 6px;
-  padding: 4px 6px;
+  spacing: 4px;
+  padding: 2px 4px;
+  font-size: 12px;
 }}
+QMenuBar::item {{ padding: 4px 8px; }}
 QMenuBar::item:selected {{ background: {HOVER}; color: {ACCENT}; }}
 QMenu {{
   background: {CARD};
   border: 1px solid {LINE};
   color: {TEXT};
+  font-size: 12px;
+  padding: 2px;
 }}
+QMenu::item {{ padding: 5px 24px 5px 12px; }}
 QMenu::item:selected {{ background: {SELECTED}; color: {ACCENT}; }}
 QToolBar {{
   background: {HEADER};
   border-bottom: 1px solid {LINE};
-  spacing: 6px;
-  padding: 4px 8px;
+  spacing: 4px;
+  padding: 2px 6px;
 }}
 QToolButton {{
-  padding: 6px 10px;
-  border-radius: 4px;
+  padding: 4px 8px;
+  border-radius: 2px;
   color: {TEXT};
   background: transparent;
+  font-size: 12px;
 }}
 QToolButton:hover {{ background: {HOVER}; }}
 QToolButton:checked {{ background: {SELECTED}; color: {ACCENT}; }}
 QPushButton {{
   background: {CARD};
   border: 1px solid {LINE};
-  border-radius: 4px;
-  padding: 6px 12px;
-  min-height: 22px;
+  border-radius: 2px;
+  padding: 4px 10px;
+  min-height: 20px;
   color: {TEXT};
+  font-size: 12px;
 }}
 QPushButton:hover {{ background: {HOVER}; }}
 QPushButton:pressed {{ background: {SELECTED}; }}
@@ -92,15 +123,16 @@ QPushButton#primaryButton:hover {{ background: {ACCENT_DEEP}; }}
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit {{
   background: {CARD};
   border: 1px solid {LINE};
-  border-radius: 4px;
-  padding: 5px 8px;
+  border-radius: 2px;
+  padding: 3px 6px;
   color: {TEXT};
   selection-background-color: {SELECTED};
+  font-size: 12px;
 }}
 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus, QPlainTextEdit:focus {{
   border: 1px solid {ACCENT};
 }}
-QComboBox::drop-down {{ border: 0; width: 22px; }}
+QComboBox::drop-down {{ border: 0; width: 18px; }}
 QComboBox QAbstractItemView {{
   background: {CARD};
   border: 1px solid {LINE};
@@ -110,75 +142,90 @@ QComboBox QAbstractItemView {{
 QTreeWidget, QTableWidget, QListWidget {{
   background: {CARD};
   border: 1px solid {LINE_SOFT};
-  border-radius: 4px;
+  border-radius: 2px;
   alternate-background-color: {PANEL};
   outline: 0;
   color: {TEXT};
+  font-size: 12px;
 }}
 QHeaderView::section {{
   background: {HEADER};
   color: {TEXT_MUTED};
-  padding: 7px 8px;
+  padding: 5px 6px;
   border: 0;
   border-bottom: 1px solid {LINE};
   font-weight: 600;
+  font-size: 11px;
 }}
 QTabWidget::pane {{
   border: 1px solid {LINE};
   background: {PANEL};
-  border-radius: 0 0 4px 4px;
+  border-radius: 0;
   top: -1px;
 }}
 QTabBar::tab {{
-  background: {HEADER};
-  padding: 8px 14px;
-  margin-right: 2px;
-  border-top-left-radius: 4px;
-  border-top-right-radius: 4px;
+  background: transparent;
+  padding: 6px 12px;
+  margin-right: 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
   color: {TEXT_MUTED};
+  font-size: 12px;
 }}
+QTabBar::tab:hover {{ color: {TEXT}; background: {HOVER}; }}
 QTabBar::tab:selected {{
-  background: {PANEL};
+  background: transparent;
   color: {ACCENT};
   font-weight: 600;
   border-bottom: 2px solid {ACCENT};
 }}
-QSplitter::handle {{ background: {LINE_SOFT}; width: 3px; height: 3px; }}
+QSplitter::handle {{ background: {LINE_SOFT}; width: 2px; height: 2px; }}
 QStatusBar, QStatusBar#workbenchStatus {{
-  background: #12161c;
+  background: {STATUS_BG};
   color: {TEXT_MUTED};
   border-top: 1px solid {LINE};
+  font-size: 11px;
+  min-height: 22px;
+  max-height: 26px;
 }}
 QLabel#statusConfig, QLabel#statusTiming, QLabel#statusLog, QLabel#statusVersion {{
   color: {TEXT_MUTED};
-  padding: 0 4px;
+  padding: 0 3px;
+  font-size: 11px;
 }}
 QLabel#statusConfig[error="true"] {{ color: #e05555; }}
-QLabel#brand {{ color: {ACCENT}; font-size: 18px; font-weight: 700; padding: 4px 10px; }}
+QLabel#brand {{
+  color: {ACCENT};
+  font-size: 15px;
+  font-weight: 700;
+  padding: 2px 8px;
+  font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+}}
 QScrollBar:vertical {{
-  background: transparent; width: 10px; margin: 2px;
+  background: transparent; width: 8px; margin: 1px;
 }}
 QScrollBar::handle:vertical {{
-  background: #4a5562; border-radius: 4px; min-height: 28px;
+  background: {SCROLL}; border-radius: 2px; min-height: 24px;
 }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar:horizontal {{
-  background: transparent; height: 10px; margin: 2px;
+  background: transparent; height: 8px; margin: 1px;
 }}
 QScrollBar::handle:horizontal {{
-  background: #4a5562; border-radius: 4px; min-width: 28px;
+  background: {SCROLL}; border-radius: 2px; min-width: 24px;
 }}
 
 /* —— Left rail + library —— */
 QWidget#operatorRail {{
-  background: #151a20;
+  background: {RAIL_BG};
   border-right: 1px solid {LINE};
 }}
 QToolButton#railButton {{
   background: transparent;
   border: 0;
-  border-radius: 6px;
-  padding: 6px;
+  border-radius: 2px;
+  padding: 4px;
   margin: 0;
 }}
 QToolButton#railButton:hover {{ background: {HOVER}; }}
@@ -192,7 +239,7 @@ QWidget#libraryPane {{
 }}
 QLabel#libraryTitle {{
   color: {TEXT};
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   padding: 2px 2px 0 2px;
 }}
@@ -204,9 +251,9 @@ QLabel#libraryHint {{
 QLineEdit#operatorSearch {{
   background: {CARD};
   border: 1px solid {LINE};
-  border-radius: 6px;
-  padding: 7px 12px;
-  font-size: 13px;
+  border-radius: 2px;
+  padding: 5px 8px;
+  font-size: 12px;
 }}
 QLineEdit#operatorSearch:focus {{ border: 1px solid {ACCENT}; }}
 
@@ -223,9 +270,9 @@ QGraphicsView {{
   border: 0;
 }}
 QWidget#flowMinimap {{
-  background: #1a1f26;
+  background: {RAIL_BG};
   border: 1px solid {LINE};
-  border-radius: 4px;
+  border-radius: 2px;
 }}
 
 /* —— Right image + filmstrip —— */
@@ -240,6 +287,7 @@ QWidget#filmstripBar {{
 QLabel#filmstripCount {{
   color: {TEXT_MUTED};
   font-weight: 600;
+  font-size: 11px;
 }}
 QListWidget#filmstripThumbs {{
   background: transparent;
@@ -250,14 +298,14 @@ QListWidget#filmstripThumbs::item:selected {{
   border: 1px solid {ACCENT};
 }}
 
-/* —— Property / settings inspector (docked fallback) —— */
+/* —— Property / settings inspector (docked fallback, dark) —— */
 QWidget#propertyPanel {{
   background: {PANEL};
   border-left: 1px solid {LINE_SOFT};
 }}
 QLabel#panelTitle {{
   color: {TEXT};
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 700;
   padding: 4px 2px 0 2px;
 }}
@@ -268,23 +316,23 @@ QLabel#operatorSignature {{
 }}
 QLabel#panelDescription {{
   color: {TEXT_MUTED};
-  font-size: 12px;
+  font-size: 11px;
   padding: 0 2px 4px 2px;
 }}
 QGroupBox#propertySection {{
   background: {CARD};
   border: 1px solid {LINE_SOFT};
-  border-radius: 6px;
-  margin-top: 12px;
-  padding: 10px 8px 8px 8px;
+  border-radius: 2px;
+  margin-top: 10px;
+  padding: 8px 6px 6px 6px;
   font-weight: 600;
   color: {TEXT};
 }}
 QGroupBox#propertySection::title {{
   subcontrol-origin: margin;
   subcontrol-position: top left;
-  left: 10px;
-  padding: 0 6px;
+  left: 8px;
+  padding: 0 4px;
   color: {TEXT};
   background: {CARD};
 }}
@@ -293,18 +341,18 @@ QLabel#sectionHint {{
   font-size: 11px;
 }}
 QLabel#typeMark {{
-  background: #3a2a1c;
+  background: {SELECTED};
   color: {ACCENT};
   border: 1px solid {ACCENT_DEEP};
-  border-radius: 4px;
+  border-radius: 2px;
   font-size: 11px;
   font-weight: 600;
   padding: 2px;
 }}
 QComboBox#valueMode {{
   max-width: 100px;
-  font-size: 12px;
-  padding: 4px 6px;
+  font-size: 11px;
+  padding: 3px 5px;
   background: {HEADER};
 }}
 QScrollArea#propertyScroll {{
@@ -314,8 +362,9 @@ QScrollArea#propertyScroll {{
 QPushButton#bindButton {{
   background: {HEADER};
   border: 1px solid {LINE};
-  padding: 2px;
+  padding: 1px;
   min-height: 18px;
+  border-radius: 2px;
 }}
 
 /* —— Dialogs —— */
@@ -326,65 +375,68 @@ QDialog {{
 QDialog QGroupBox {{
   background: {CARD};
   border: 1px solid {LINE_SOFT};
-  border-radius: 6px;
-  margin-top: 12px;
-  padding-top: 8px;
+  border-radius: 2px;
+  margin-top: 10px;
+  padding-top: 6px;
   font-weight: 600;
 }}
 QDialog QGroupBox::title {{
   subcontrol-origin: margin;
-  left: 10px;
-  padding: 0 6px;
+  left: 8px;
+  padding: 0 4px;
 }}
 QDialog QLabel#dialogTitle {{
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
   color: {TEXT};
 }}
 QDialog QLabel#dialogHint {{
   color: {TEXT_MUTED};
-  font-size: 12px;
+  font-size: 11px;
 }}
 QMessageBox {{
   background: {PANEL};
 }}
 
 /* —— Multi-flow tabs / 全流程 / 运行界面 —— */
-QWidget#flowTabBar {{
-  background: {HEADER};
-  border-bottom: 1px solid {LINE};
-}}
 QPushButton#flowAllButton, QPushButton#flowAddButton, QPushButton#flowTabName, QPushButton#flowTabRun {{
-  background: {CARD};
-  border: 1px solid {LINE};
-  border-radius: 4px;
-  padding: 4px 10px;
-  min-height: 20px;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 5px 10px;
+  min-height: 18px;
+  color: {TEXT_MUTED};
+  font-size: 12px;
 }}
 QPushButton#flowAllButton:checked, QPushButton#flowTabName:checked {{
-  background: {SELECTED};
+  background: transparent;
   color: {ACCENT};
-  border: 1px solid {ACCENT_DEEP};
+  border-bottom: 2px solid {ACCENT};
   font-weight: 600;
 }}
+QPushButton#flowAllButton:hover, QPushButton#flowTabName:hover, QPushButton#flowAddButton:hover {{
+  color: {TEXT};
+  background: {HOVER};
+}}
 QPushButton#flowTabRun {{
-  padding: 4px 6px;
+  padding: 4px 5px;
   color: {TEXT_MUTED};
 }}
 QFrame#flowCard {{
   background: {CARD};
   border: 1px solid {LINE};
-  border-radius: 8px;
+  border-radius: 2px;
   border-top: 3px solid {ACCENT};
 }}
 QLabel#flowCardTitle {{
   font-weight: 700;
-  font-size: 14px;
+  font-size: 13px;
   color: {TEXT};
 }}
 QLabel#flowCardStats {{
   color: {TEXT_MUTED};
-  font-size: 12px;
+  font-size: 11px;
 }}
 QWidget#allFlowsPanel {{
   background: {CANVAS};
@@ -393,44 +445,50 @@ QWidget#runModePane {{
   background: {PANEL};
 }}
 QLabel#runFixedBar {{
-  background: #2a3340;
-  color: #c5d0dc;
+  background: {CARD};
+  color: {TEXT_MUTED};
   border: 1px solid {LINE};
-  border-radius: 4px;
-  padding: 4px 8px;
-  font-size: 12px;
+  border-radius: 2px;
+  padding: 3px 6px;
+  font-size: 11px;
 }}
 QLabel#runFixedBarSide {{
-  background: #2a3340;
-  color: #c5d0dc;
+  background: {CARD};
+  color: {TEXT_MUTED};
   border: 1px solid {LINE};
-  border-radius: 4px;
+  border-radius: 2px;
   font-size: 11px;
-  padding: 4px 2px;
+  padding: 3px 2px;
 }}
 QFrame#runPreviewCell {{
   background: {CARD};
   border: 1px dashed {LINE};
-  border-radius: 6px;
+  border-radius: 2px;
 }}
 QWidget#operatorGridHost {{
   background: {PANEL};
 }}
 QWidget#runModePane QPushButton {{
-  min-height: 28px;
+  min-height: 26px;
 }}
 QLabel#modeBadge {{
   background: {SELECTED};
   color: {ACCENT};
   border: 1px solid {ACCENT_DEEP};
-  border-radius: 4px;
-  padding: 2px 8px;
+  border-radius: 2px;
+  padding: 2px 6px;
   font-weight: 700;
+  font-size: 11px;
 }}
 QLabel#modeBadge[runMode="true"] {{
   background: #1c3a2a;
   color: {OK};
   border: 1px solid {OK};
+}}
+QFrame#groupBreadcrumb {{
+  background: {CARD};
+  border: 1px solid {LINE};
+  border-radius: 2px;
 }}
 """
 
@@ -445,8 +503,8 @@ QToolButton#categoryHeader {{
   font-size: 12px;
   color: {TEXT};
   border: 1px solid {LINE_SOFT};
-  border-radius: 6px;
-  padding: 8px 10px;
+  border-radius: 2px;
+  padding: 6px 8px;
   background: {CARD};
   margin: 0 2px;
 }}
@@ -473,7 +531,162 @@ QListWidget#operatorTiles::item {{
 }}
 QLabel#emptyOps {{
   color: {TEXT_DIM};
-  padding: 24px 8px;
+  padding: 20px 8px;
+  font-size: 11px;
+}}
+"""
+
+# Light property float — applied on PropertyFloat dialog only
+PROPERTY_FLOAT_QSS = f"""
+QDialog#propertyFloat {{
+  background: {FLOAT_BG};
+  border: 1px solid {FLOAT_LINE};
+  border-radius: 2px;
+  font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
   font-size: 12px;
+  color: {FLOAT_TEXT};
+}}
+QFrame#propertyFloatTitle {{
+  background: {FLOAT_TITLE_BG};
+  border: 0;
+  border-bottom: 2px solid {ACCENT};
+  border-top-left-radius: 2px;
+  border-top-right-radius: 2px;
+}}
+QLabel#propertyFloatTitleLabel {{
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+}}
+QPushButton#propertyFloatClose {{
+  background: transparent;
+  color: #c8c8c8;
+  border: 0;
+  font-size: 13px;
+  border-radius: 2px;
+}}
+QPushButton#propertyFloatClose:hover {{
+  color: #ffffff;
+  background: #4a4a4a;
+}}
+QWidget#propertyFloatBody {{
+  background: {FLOAT_BG};
+  color: {FLOAT_TEXT};
+}}
+QWidget#propertyFloatBody QLabel {{
+  color: {FLOAT_TEXT};
+  font-size: 12px;
+}}
+QWidget#propertyFloatBody QGroupBox {{
+  background: {FLOAT_CARD};
+  border: 1px solid {FLOAT_LINE};
+  border-radius: 2px;
+  margin-top: 10px;
+  padding: 8px 6px 6px 6px;
+  font-weight: 600;
+  color: {FLOAT_TEXT};
+}}
+QWidget#propertyFloatBody QGroupBox::title {{
+  subcontrol-origin: margin;
+  left: 8px;
+  padding: 0 4px;
+  background: {FLOAT_CARD};
+  color: {FLOAT_TEXT};
+}}
+QWidget#propertyFloatBody QLineEdit,
+QWidget#propertyFloatBody QSpinBox,
+QWidget#propertyFloatBody QDoubleSpinBox,
+QWidget#propertyFloatBody QComboBox,
+QWidget#propertyFloatBody QPlainTextEdit {{
+  background: {FLOAT_INPUT_BG};
+  border: 1px solid {FLOAT_LINE};
+  border-radius: 2px;
+  padding: 3px 6px;
+  color: {FLOAT_TEXT};
+  selection-background-color: #ffe0c8;
+  font-size: 12px;
+}}
+QWidget#propertyFloatBody QLineEdit:focus,
+QWidget#propertyFloatBody QSpinBox:focus,
+QWidget#propertyFloatBody QDoubleSpinBox:focus,
+QWidget#propertyFloatBody QComboBox:focus {{
+  border: 1px solid {ACCENT};
+}}
+QWidget#propertyFloatBody QComboBox QAbstractItemView {{
+  background: {FLOAT_CARD};
+  border: 1px solid {FLOAT_LINE};
+  selection-background-color: #ffe0c8;
+  color: {FLOAT_TEXT};
+}}
+QWidget#propertyFloatBody QPushButton {{
+  background: {FLOAT_BTN_BG};
+  border: 1px solid {FLOAT_LINE};
+  border-radius: 2px;
+  padding: 4px 10px;
+  min-height: 20px;
+  color: {FLOAT_TEXT};
+}}
+QWidget#propertyFloatBody QPushButton:hover {{
+  background: #dedede;
+}}
+QWidget#propertyFloatBody QPushButton#bindButton {{
+  background: {FLOAT_BTN_BG};
+  border: 1px solid {FLOAT_LINE};
+  padding: 1px;
+  min-height: 18px;
+  max-width: 28px;
+}}
+QWidget#propertyFloatBody QScrollArea {{
+  background: transparent;
+  border: 0;
+}}
+QWidget#propertyFloatBody QWidget#propertyPanel {{
+  background: {FLOAT_BG};
+  border: 0;
+}}
+QWidget#propertyFloatBody QGroupBox#propertySection {{
+  background: {FLOAT_CARD};
+  border: 1px solid {FLOAT_LINE};
+  border-radius: 2px;
+  margin-top: 10px;
+  padding: 8px 6px 6px 6px;
+  font-weight: 600;
+  color: {FLOAT_TEXT};
+}}
+QWidget#propertyFloatBody QGroupBox#propertySection::title {{
+  background: {FLOAT_CARD};
+  color: {FLOAT_TEXT};
+}}
+QWidget#propertyFloatBody QLabel#panelTitle,
+QWidget#propertyFloatBody QLabel#panelDescription,
+QWidget#propertyFloatBody QLabel#sectionHint {{
+  color: {FLOAT_TEXT_MUTED};
+}}
+QFrame#propertyFloatFooter {{
+  background: {FLOAT_BG_ALT};
+  border-top: 1px solid {FLOAT_LINE};
+  border-bottom-left-radius: 2px;
+  border-bottom-right-radius: 2px;
+}}
+QFrame#propertyFloatFooter QPushButton {{
+  background: {FLOAT_BTN_BG};
+  border: 1px solid {FLOAT_LINE};
+  border-radius: 2px;
+  padding: 5px 14px;
+  color: {FLOAT_TEXT};
+  font-size: 12px;
+}}
+QFrame#propertyFloatFooter QPushButton:hover {{
+  background: #dedede;
+}}
+QFrame#propertyFloatFooter QPushButton#primaryButton {{
+  background: {ACCENT};
+  color: white;
+  border: 1px solid {ACCENT_DEEP};
+  font-weight: 600;
+}}
+QFrame#propertyFloatFooter QPushButton#primaryButton:hover {{
+  background: {ACCENT_DEEP};
 }}
 """

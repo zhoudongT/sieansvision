@@ -1,7 +1,9 @@
 """Capsule toggle: ON=orange, OFF=gray (VisionMaster-style)."""
-from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, Property, QRectF, QPointF
+from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, Property, QRectF
 from PySide6.QtGui import QPainter, QColor, QPen
 from PySide6.QtWidgets import QWidget
+
+from desktop.theme import ACCENT, FLOAT_SWITCH_OFF
 
 
 class OrangeSwitch(QWidget):
@@ -12,7 +14,7 @@ class OrangeSwitch(QWidget):
         super().__init__(parent)
         self._checked = bool(checked)
         self._knob = 1.0 if checked else 0.0
-        self.setFixedSize(44, 22)
+        self.setFixedSize(42, 20)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setToolTip('开 / 关')
         self._anim = QPropertyAnimation(self, b'knob', self)
@@ -58,8 +60,8 @@ class OrangeSwitch(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         track = QRectF(1, 1, self.width() - 2, self.height() - 2)
-        on = QColor('#e67a2e')
-        off = QColor('#6a7380')
+        on = QColor(ACCENT)
+        off = QColor(FLOAT_SWITCH_OFF)
         color = QColor(on)
         t = self._knob
         color.setRed(int(off.red() + (on.red() - off.red()) * t))
@@ -68,7 +70,7 @@ class OrangeSwitch(QWidget):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(color)
         painter.drawRoundedRect(track, track.height() / 2, track.height() / 2)
-        margin = 2.5
+        margin = 2.0
         diameter = track.height() - margin * 2
         x = track.left() + margin + (track.width() - diameter - margin * 2) * t
         painter.setBrush(QColor('#ffffff'))

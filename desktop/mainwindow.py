@@ -55,8 +55,14 @@ class MainWindow(QMainWindow):
         return action
 
     def build_ui(self):
-        files=self.menuBar().addMenu('文件');edit=self.menuBar().addMenu('编辑');view=self.menuBar().addMenu('视图')
-        tools_menu=self.menuBar().addMenu('工具');settings_menu=self.menuBar().addMenu('设置')
+        # VM shell order: 文件 / 设置 / 工具 / 系统 / 帮助（保留 sieans 扩展菜单）
+        files=self.menuBar().addMenu('文件')
+        settings_menu=self.menuBar().addMenu('设置')
+        tools_menu=self.menuBar().addMenu('工具')
+        system_menu=self.menuBar().addMenu('系统')
+        help_menu=self.menuBar().addMenu('帮助')
+        edit=system_menu.addMenu('编辑')
+        view=system_menu.addMenu('视图')
         # A4: 方案 .sol vs 流程 .prc
         self.new_action=self.action('新建方案',self.new_project,'Ctrl+N')
         self.open_action=self.action('打开方案',self.open_project,'Ctrl+O')
@@ -100,7 +106,7 @@ class MainWindow(QMainWindow):
         edit.addAction(self.action('复制模块',self.copy_nodes,'Ctrl+Shift+C'));edit.addAction(self.action('粘贴模块',lambda:self.document.paste() if not self.busy else None,'Ctrl+Shift+V'))
         toolbar=QToolBar('工程与运行');toolbar.setMovable(False);self.addToolBar(toolbar)
         brand=QLabel('SIEANS VISION');brand.setObjectName('brand');toolbar.addWidget(brand)
-        tag=QLabel('视觉检测平台');tag.setStyleSheet('color:#9aa7b5;font-size:12px;padding-right:10px;');toolbar.addWidget(tag)
+        tag=QLabel('视觉检测平台');tag.setStyleSheet('color:#a8a8a8;font-size:11px;padding-right:8px;');toolbar.addWidget(tag)
         for a in [self.open_action,self.save_action]:toolbar.addAction(a)
         self.image_action=self.action('打开图像',self.open_image);toolbar.addAction(self.image_action)
         self.reference_action=self.action('设置参考图',lambda:self.open_image(True));toolbar.addAction(self.reference_action)
@@ -116,7 +122,7 @@ class MainWindow(QMainWindow):
         self.run_selected_action=self.action('执行所选',lambda:self.run(self.selected));toolbar.addAction(self.run_selected_action)
         toolbar.addSeparator()
         # A1: 设计态 ↔ 运行模式
-        mode_lab=QLabel('运行模式');mode_lab.setStyleSheet('color:#9aa7b5;padding-left:6px;')
+        mode_lab=QLabel('运行模式');mode_lab.setStyleSheet('color:#a8a8a8;padding-left:6px;font-size:11px;')
         toolbar.addWidget(mode_lab)
         self.mode_switch=OrangeSwitch(False)
         self.mode_switch.setToolTip('关闭=设计态（可编辑）；打开=运行模式（操作员界面，锁定画布）')
@@ -147,7 +153,7 @@ class MainWindow(QMainWindow):
 
         flow=QWidget();flow.setObjectName('flowPane');fl=QVBoxLayout(flow);fl.setContentsMargins(0,0,0,0);fl.setSpacing(0)
         self.demo_notice=QLabel();self.demo_notice.setWordWrap(True);self.demo_notice.setTextFormat(Qt.TextFormat.PlainText)
-        self.demo_notice.setStyleSheet('background:#2b333d;color:#9ecfe0;padding:10px 12px;border:1px solid #3a4552;border-radius:6px;margin:6px;');self.demo_notice.hide();fl.addWidget(self.demo_notice)
+        self.demo_notice.setStyleSheet('background:#3a3d42;color:#c8c8c8;padding:8px 10px;border:1px solid #4a4e54;border-radius:2px;margin:4px;');self.demo_notice.hide();fl.addWidget(self.demo_notice)
         # A2: multi-flow tab bar
         self.flow_tab_bar=FlowTabBar()
         self.flow_tab_bar.allFlowsRequested.connect(self.show_all_flows)
@@ -185,7 +191,7 @@ class MainWindow(QMainWindow):
         design_stack.addWidget(self.all_flows_panel) # 1 = 全流程
         fl.addWidget(design_stack,1)
         hint=QLabel('双击节点打开属性浮窗 · 端口拖拽连线 · Esc 取消 · Ctrl+滚轮缩放 · 右键流程 Tab 可导出/拷贝/间隔/NG停止/超时')
-        hint.setStyleSheet('color:#6b7684;padding:4px 8px;');fl.addWidget(hint)
+        hint.setStyleSheet('color:#787878;padding:2px 6px;font-size:11px;');fl.addWidget(hint)
         self._flow_pane=flow
         horizontal.addWidget(flow)
 
@@ -202,7 +208,7 @@ class MainWindow(QMainWindow):
         # Right: image | filmstrip (module-result lives in bottom)
         right=QWidget();right.setObjectName('imagePane');rl=QVBoxLayout(right);rl.setContentsMargins(0,0,0,0);rl.setSpacing(0)
         self.images=QTabWidget();self.input_view=ImageView();self.output_view=ImageView()
-        self.images.addTab(self.input_view,'图像');self.images.addTab(self.output_view,'模块结果')
+        self.images.addTab(self.input_view,'全局图像');self.images.addTab(self.output_view,'模块结果')
         self.cloud_view=CloudView();self.images.addTab(self.cloud_view,'3D 点云');self.input_view.roi_changed.connect(self.update_roi)
         depth_page=QWidget();depth_layout=QVBoxLayout(depth_page);self.depth_view=ImageView();self.depth_caption=QLabel('尚无深度数据')
         self.depth_caption.setWordWrap(True);depth_layout.addWidget(self.depth_view,1);depth_layout.addWidget(self.depth_caption);self.images.addTab(depth_page,'深度图')
@@ -223,7 +229,7 @@ class MainWindow(QMainWindow):
 
         self.results=ResultPanel();self.logs=QPlainTextEdit();self.logs.setReadOnly(True);self.logs.document().setMaximumBlockCount(200)
         if hasattr(self.results,'image_requested'):self.results.image_requested.connect(self.output_view.show_data)
-        bottom=QTabWidget();bottom.addTab(self.results,'当前结果');bottom.addTab(self.logs,'运行记录')
+        bottom=QTabWidget();bottom.addTab(self.results,'当前结果');bottom.addTab(self.logs,'历史结果')
         help_pad=QPlainTextEdit();help_pad.setReadOnly(True)
         help_pad.setPlainText('帮助：双击「0 图像源1」配置本地/相机/SDK；工具栏 ▶单次 / ↻连续 / ■停止；胶片条可批量跑本地图。')
         bottom.addTab(help_pad,'帮助')
@@ -233,7 +239,7 @@ class MainWindow(QMainWindow):
         view.addAction(self.action('适应流程',self.flow.fit));view.addAction(self.action('适应图像',lambda:(self.input_view.fit(),self.output_view.fit())))
         self.roi_action=self.action('框选所选模块 ROI',self.roi_mode);self.roi_action.setCheckable(True);view.addAction(self.roi_action)
         view.addAction(self.action('清除所选模块 ROI',lambda:self.update_roi(None)))
-        self.menuBar().addAction(self.action('桌面版说明',self.about))
+        help_menu.addAction(self.action('桌面版说明',self.about))
         # Ensure multi-flow scheme shell exists even on blank doc
         try:
             flow_scheme.ensure_scheme(self.document.project)

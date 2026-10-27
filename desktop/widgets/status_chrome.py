@@ -3,6 +3,7 @@ from datetime import datetime
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QStatusBar, QLabel, QWidget, QHBoxLayout, QSizePolicy
+from desktop.theme import TEXT_DIM
 
 
 class WorkbenchStatusBar(QStatusBar):
@@ -27,7 +28,7 @@ class WorkbenchStatusBar(QStatusBar):
 
     def _sep(self):
         sep = QLabel('│')
-        sep.setStyleSheet('color:#5a6572;padding:0 6px;')
+        sep.setStyleSheet(f'color:{TEXT_DIM};padding:0 4px;font-size:11px;')
         return sep
 
     def set_config(self, text, ok=True):

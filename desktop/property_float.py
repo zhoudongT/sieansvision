@@ -9,50 +9,11 @@ from PySide6.QtWidgets import (
 
 from desktop.forms import ParameterPanel
 from desktop.image_source import ImageSourceForm
-
-
-FLOAT_QSS = """
-QDialog#propertyFloat {
-  background: #f5f7fa;
-  border: 1px solid #c5cdd6;
-  border-radius: 6px;
-}
-QFrame#propertyFloatTitle {
-  background: #2b333d;
-  border-top-left-radius: 6px;
-  border-top-right-radius: 6px;
-}
-QLabel#propertyFloatTitleLabel {
-  color: #ffffff; font-size: 14px; font-weight: 700;
-}
-QPushButton#propertyFloatClose {
-  background: transparent; color: #c8d0d8; border: 0; font-size: 14px;
-}
-QPushButton#propertyFloatClose:hover {
-  color: #ffffff; background: #4a5562; border-radius: 4px;
-}
-QWidget#propertyFloatBody { background: #f5f7fa; }
-QFrame#propertyFloatFooter {
-  background: #eef1f5; border-top: 1px solid #d5dde6;
-  border-bottom-left-radius: 6px; border-bottom-right-radius: 6px;
-}
-QPushButton#primaryButton {
-  background: #e67a2e; color: white; border: 1px solid #c45f18;
-  font-weight: 600; padding: 6px 16px; border-radius: 4px;
-}
-QPushButton#primaryButton:hover { background: #d56c22; }
-QGroupBox#propertySection {
-  background: #ffffff; border: 1px solid #d5dde6; border-radius: 6px;
-  margin-top: 12px; padding: 10px 8px 8px 8px; font-weight: 600; color: #1a3550;
-}
-QGroupBox#propertySection::title {
-  subcontrol-origin: margin; left: 10px; padding: 0 6px; background: #ffffff;
-}
-"""
+from desktop.theme import PROPERTY_FLOAT_QSS
 
 
 class PropertyFloat(QDialog):
-    """浅色面板叠在深色画布上；深色标题条 + 底栏 连续执行/执行/确定。"""
+    """浅色面板叠在深色画布上；深色标题条 + 橙线 + 底栏 连续执行/执行/确定。"""
     changed = Signal(dict)
     sourceChanged = Signal(dict)
     runModule = Signal(object)
@@ -79,13 +40,13 @@ class PropertyFloat(QDialog):
         self.title_bar = QFrame()
         self.title_bar.setObjectName('propertyFloatTitle')
         title_layout = QHBoxLayout(self.title_bar)
-        title_layout.setContentsMargins(12, 8, 8, 8)
+        title_layout.setContentsMargins(12, 6, 6, 6)
         self.title = QLabel('属性')
         self.title.setObjectName('propertyFloatTitleLabel')
         title_layout.addWidget(self.title, 1)
         close = QPushButton('✕')
         close.setObjectName('propertyFloatClose')
-        close.setFixedSize(28, 28)
+        close.setFixedSize(26, 26)
         close.clicked.connect(self.close)
         title_layout.addWidget(close)
         root.addWidget(self.title_bar)
@@ -98,7 +59,7 @@ class PropertyFloat(QDialog):
         self.footer = QFrame()
         self.footer.setObjectName('propertyFloatFooter')
         foot = QHBoxLayout(self.footer)
-        foot.setContentsMargins(10, 8, 10, 10)
+        foot.setContentsMargins(10, 6, 10, 8)
         self.cont_btn = QPushButton('连续执行')
         self.exec_btn = QPushButton('执行')
         self.exec_btn.setObjectName('primaryButton')
@@ -113,7 +74,7 @@ class PropertyFloat(QDialog):
         root.addWidget(self.footer)
         self._panel = None
         self._source_form = None
-        self.setStyleSheet(FLOAT_QSS)
+        self.setStyleSheet(PROPERTY_FLOAT_QSS)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and self.title_bar.geometry().contains(event.position().toPoint()):
@@ -172,7 +133,10 @@ class PropertyFloat(QDialog):
             self.show(); self.raise_(); self.activateWindow()
             return
         panel = ParameterPanel()
-        panel.setStyleSheet('QWidget#propertyPanel{background:#f5f7fa;border:0;}')
+        panel.setStyleSheet(
+            'QWidget#propertyPanel{background:#f0f0f0;border:0;}'
+            'QLabel{color:#222222;}'
+        )
         panel.set_step(step, definition, project)
         panel.changed.connect(self._on_step_changed)
         self.body.addWidget(panel)

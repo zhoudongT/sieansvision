@@ -2,6 +2,7 @@
 from PySide6.QtCore import Qt, QRectF, Signal
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush
 from PySide6.QtWidgets import QWidget
+from desktop.theme import ACCENT, RAIL_BG, LINE, TEXT_MUTED, OK
 
 
 class MiniMap(QWidget):
@@ -39,8 +40,8 @@ class MiniMap(QWidget):
     def paintEvent(self, _event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.fillRect(self.rect(), QColor('#1a1f26'))
-        painter.setPen(QPen(QColor('#3a4552'), 1))
+        painter.fillRect(self.rect(), QColor(RAIL_BG))
+        painter.setPen(QPen(QColor(LINE), 1))
         painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
         if self.scene is None:
             return
@@ -63,10 +64,10 @@ class MiniMap(QWidget):
                 r = item.boundingRect()
                 x, y = map_pt(item.scenePos())
                 w, h = r.width() * scale, r.height() * scale
-                painter.setBrush(QColor('#e67a2e') if item.source else QColor('#2d9b6c'))
+                painter.setBrush(QColor(ACCENT) if item.source else QColor(OK))
                 painter.drawRoundedRect(QRectF(x, y, max(3, w), max(2, h)), 2, 2)
             elif isinstance(item, Edge):
-                painter.setPen(QPen(QColor('#4a90a8'), 1))
+                painter.setPen(QPen(QColor(TEXT_MUTED), 1))
                 path = item.path()
                 if path.elementCount() >= 2:
                     a = path.elementAt(0)
@@ -88,13 +89,13 @@ class MiniMap(QWidget):
             x2 = (br.x() - bounds.x()) * scale + ox
             y2 = (br.y() - bounds.y()) * scale + oy
             painter.setBrush(QColor(230, 122, 46, 40))
-            painter.setPen(QPen(QColor('#e67a2e'), 1))
+            painter.setPen(QPen(QColor(ACCENT), 1))
             painter.drawRect(QRectF(x1, y1, x2 - x1, y2 - y1))
 
         # zoom %
         if self.view is not None:
             pct = int(round(self.view.transform().m11() * 100))
-            painter.setPen(QColor('#9aa7b5'))
+            painter.setPen(QColor(TEXT_MUTED))
             painter.drawText(6, self.height() - 6, f'{pct}%')
 
     def mousePressEvent(self, event):

@@ -3,6 +3,7 @@ from copy import deepcopy
 from PySide6.QtCore import Qt, QPointF, QRectF, QRect, Signal, QTimer
 from PySide6.QtGui import QColor, QPen, QBrush, QPainter, QPainterPath, QFont, QPolygonF
 from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsObject, QGraphicsItem, QGraphicsPathItem, QMenu, QApplication
+from desktop.theme import ACCENT, CANVAS, CANVAS_DOT, CARD, LINE, SELECTED, TEXT, TEXT_MUTED, OK, WARN
 
 
 class Port(QGraphicsObject):
@@ -21,7 +22,7 @@ class Port(QGraphicsObject):
 
     def paint(self,painter,option,widget=None):
         # Halcon-inspired: top/bottom ≈ iconic image chain (cyan); left/right ≈ control/data (amber).
-        base='#e67a2e' if self.side in ('top','bottom') else '#d4a017'
+        base=ACCENT if self.side in ('top','bottom') else WARN
         color=QColor('#d26345' if self.highlight=='invalid' else '#18a66d' if self.highlight=='valid' else base)
         painter.setPen(QPen(color,2 if self.highlight else 1.5));painter.setBrush(color if self.output or self.highlight=='valid' else QColor('white'))
         if self.highlight:painter.drawEllipse(QRectF(-8,-8,16,16))
@@ -52,19 +53,19 @@ class Node(QGraphicsObject):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         selected=self.isSelected()
         if self.source:
-            fill=QColor('#3a2a1c' if selected else '#2f3a28')
-            border=QColor('#e67a2e' if selected else '#5a8a4a')
+            fill=QColor(SELECTED if selected else '#2f3a28')
+            border=QColor(ACCENT if selected else '#5a8a4a')
         else:
-            fill=QColor('#3a2a1c' if selected else '#2b333d')
-            border=QColor('#e67a2e' if selected else '#4a5562')
+            fill=QColor(SELECTED if selected else CARD)
+            border=QColor(ACCENT if selected else LINE)
         painter.setPen(QPen(border,2.4 if selected else 1.4))
         painter.setBrush(fill)
-        painter.drawRoundedRect(QRectF(0,0,220,self.height),14 if self.source else 8,14 if self.source else 8)
-        painter.setPen(QColor('#f0f4f8'));painter.setFont(QFont('Microsoft YaHei UI',10,QFont.Weight.DemiBold))
+        painter.drawRoundedRect(QRectF(0,0,220,self.height),6 if self.source else 2,6 if self.source else 2)
+        painter.setPen(QColor(TEXT));painter.setFont(QFont('Microsoft YaHei UI',9,QFont.Weight.DemiBold))
         painter.drawText(QRectF(14,6,192,32),Qt.AlignmentFlag.AlignVCenter,painter.fontMetrics().elidedText(self.label,Qt.TextElideMode.ElideRight,190))
         if not self.source:
-            painter.setPen(QPen(QColor('#3a4552'),1));painter.drawLine(12,42,208,42)
-            painter.setPen(QColor(self.color));painter.setFont(QFont('Microsoft YaHei UI',9))
+            painter.setPen(QPen(QColor(LINE),1));painter.drawLine(12,42,208,42)
+            painter.setPen(QColor(self.color));painter.setFont(QFont('Microsoft YaHei UI',8))
             painter.drawText(QRectF(14,46,192,28),Qt.AlignmentFlag.AlignVCenter,self.state)
 
     def itemChange(self,change,value):
@@ -107,7 +108,7 @@ class Edge(QGraphicsPathItem):
         step=next((s for s in self.host.document.project['steps'] if s['id']==self.edge['to']),None)
         is_image_sub = bool(step and step.get('imageFrom')==self.edge['from'])
         side_wire = self.edge.get('fromPort')=='right' or self.edge.get('toPort')=='left'
-        color = QColor('#e67a2e' if self.isSelected() else ('#3a9a6c' if is_image_sub else '#d4a017'))
+        color = QColor(ACCENT if self.isSelected() else (OK if is_image_sub else WARN))
         p=QPen(color, 2.6 if self.isSelected() else 1.9)
         if (not is_image_sub) or side_wire:
             p.setStyle(Qt.PenStyle.DashLine)
@@ -129,12 +130,12 @@ class Edge(QGraphicsPathItem):
         badge=f'{a_i}→{b_i}'
         if is_image_sub:
             badge += ' ·图'
-        painter.setPen(QColor('#c8d0d8'))
+        painter.setPen(QColor(TEXT_MUTED))
         painter.setFont(QFont('Microsoft YaHei UI', 8))
         painter.drawText(mid+QPointF(8, -4), badge)
         when=self.edge.get('when','always')
         if when not in ('always','success'):
-            painter.setPen(QColor('#9aa7b5'));painter.drawText(mid+QPointF(6,12),{'true':'成立','false':'不成立','error':'失败'}.get(when,when))
+            painter.setPen(QColor(TEXT_MUTED));painter.drawText(mid+QPointF(6,12),{'true':'成立','false':'不成立','error':'失败'}.get(when,when))
 
 
 class FlowScene(QGraphicsScene):
@@ -201,7 +202,7 @@ class FlowScene(QGraphicsScene):
 
     def start_link(self,port):
         self.cancel_link();self.link=(port.node_id,port.side,port.output)
-        self.link_preview=self.addPath(QPainterPath(),QPen(QColor('#e67a2e'),2,Qt.PenStyle.DashLine))
+        self.link_preview=self.addPath(QPainterPath(),QPen(QColor(ACCENT),2,Qt.PenStyle.DashLine))
         self.link_preview.setZValue(100);self.link_preview.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
         self.update_link(port.scenePos())
         self.notice.emit('拖到另一模块的'+('输入' if port.output else '输出')+'端口松开，或点击目标端口；Esc 取消')
@@ -250,11 +251,11 @@ class FlowScene(QGraphicsScene):
             item=self.nodes.get(record['id'])
             if not item:continue
             item.state='执行失败' if record.get('error') else '已跳过' if record.get('skipped') else f"完成 · {record.get('output',{}).get('elapsedMs',0)} ms"
-            item.color='#e05555' if record.get('error') else '#2d9b6c';item.update()
+            item.color='#e05555' if record.get('error') else OK;item.update()
 
     def drawBackground(self,painter,rect):
-        painter.fillRect(rect,QColor('#1e242c'))
-        painter.setPen(QPen(QColor('#2a323c'),1))
+        painter.fillRect(rect,QColor(CANVAS))
+        painter.setPen(QPen(QColor(CANVAS_DOT),1))
         left=int(rect.left()/20)*20;top=int(rect.top()/20)*20
         # VisionMaster-style dotted grid
         for x in range(left,int(rect.right())+20,20):

@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from desktop.image_view import ImageView
+from desktop.theme import TEXT, TEXT_MUTED, TEXT_DIM, CARD, LINE, OK, PANEL
 from desktop.widgets.switch import OrangeSwitch
 from desktop.run_ui_designer import (
     SPLIT_PRESETS, CONTROL_STUB_HINTS, CAMERA_BIND_OPTIONS, COMM_BIND_OPTIONS,
@@ -65,8 +66,8 @@ class StatusLamp(QLabel):
             border = '#3d4a5c'
         self.setText(text)
         self.setStyleSheet(
-            f'background:{color};color:#e8eef5;border:2px solid {border};'
-            f'border-radius:8px;font-weight:700;padding:8px;'
+            f'background:{color};color:{TEXT};border:2px solid {border};'
+            f'border-radius:2px;font-weight:700;padding:6px;font-size:12px;'
         )
 
 
@@ -361,7 +362,7 @@ class OperatorHmiView(QWidget):
         self._status_lamps.append(lamp)
         status = QLabel('空闲')
         status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        status.setStyleSheet('color:#9aa7b5;padding:4px;')
+        status.setStyleSheet(f'color:{TEXT_MUTED};padding:3px;font-size:11px;')
         self._run_status_labels.append(status)
         side = QVBoxLayout()
         side.addWidget(lamp)
@@ -391,7 +392,7 @@ class OperatorHmiView(QWidget):
                     el = QVBoxLayout(empty)
                     lab = QLabel(f'窗格 {idx + 1}')
                     lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    lab.setStyleSheet('color:#6b7684;')
+                    lab.setStyleSheet(f'color:{TEXT_DIM};font-size:11px;')
                     el.addStretch(1)
                     el.addWidget(lab)
                     el.addStretch(1)
@@ -410,7 +411,7 @@ class OperatorHmiView(QWidget):
         lay.setContentsMargins(6, 6, 6, 6)
         lay.setSpacing(4)
         cap = QLabel(title)
-        cap.setStyleSheet('color:#9aa7b5;font-size:11px;font-weight:600;')
+        cap.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;font-weight:600;')
         lay.addWidget(cap)
         return frame
 
@@ -474,7 +475,7 @@ class OperatorHmiView(QWidget):
             row = QHBoxLayout()
             sw = OrangeSwitch(False)
             lab = QLabel('OFF')
-            lab.setStyleSheet('color:#9aa7b5;')
+            lab.setStyleSheet(f'color:{TEXT_MUTED};font-size:12px;')
 
             def _on_toggle(on, c=commands, l=lab):
                 l.setText('ON' if on else 'OFF')
@@ -500,7 +501,7 @@ class OperatorHmiView(QWidget):
             cell = self._make_cell_frame('运行状态')
             lab = QLabel('空闲')
             lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            lab.setStyleSheet('color:#e8eef5;font-size:14px;font-weight:600;padding:12px;')
+            lab.setStyleSheet(f'color:{TEXT};font-size:13px;font-weight:600;padding:8px;')
             self._run_status_labels.append(lab)
             cell.layout().addWidget(lab, 1)
             return cell
@@ -530,7 +531,7 @@ class OperatorHmiView(QWidget):
             cell = self._make_cell_frame('世界时钟')
             lab = QLabel('--:--:--')
             lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            lab.setStyleSheet('color:#e8eef5;font-size:22px;font-weight:700;padding:12px;')
+            lab.setStyleSheet(f'color:{TEXT};font-size:20px;font-weight:700;padding:8px;')
             self._clock_labels.append(lab)
             cell.layout().addWidget(lab, 1)
             return cell
@@ -540,7 +541,7 @@ class OperatorHmiView(QWidget):
         hint = CONTROL_STUB_HINTS.get(name, '')
         body = QLabel(f'▣ {name}' + (f'\n{hint}' if hint else '') + (f'\n⛓ {binding}' if binding else ''))
         body.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        body.setStyleSheet('color:#c5d0dc;font-weight:600;')
+        body.setStyleSheet(f'color:{TEXT_MUTED};font-weight:600;font-size:12px;')
         body.setWordWrap(True)
         cell.layout().addStretch(1)
         cell.layout().addWidget(body)

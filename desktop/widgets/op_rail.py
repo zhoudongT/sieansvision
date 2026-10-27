@@ -2,6 +2,7 @@
 from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QPainter, QColor, QPen, QPixmap, QIcon
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QToolButton, QButtonGroup, QSizePolicy
+from desktop.theme import ACCENT, TEXT_MUTED
 
 
 # (category key used in toolbox, tooltip, glyph drawer key)
@@ -19,7 +20,7 @@ RAIL_ITEMS = [
 
 
 def _icon(kind, size=28, active=False):
-    accent = QColor('#e67a2e' if active else '#9aa7b5')
+    accent = QColor(ACCENT if active else TEXT_MUTED)
     pix = QPixmap(size, size)
     pix.fill(Qt.GlobalColor.transparent)
     p = QPainter(pix)
@@ -80,8 +81,8 @@ class OperatorRail(QWidget):
         self.setObjectName('operatorRail')
         self.setFixedWidth(48)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 8, 4, 8)
-        layout.setSpacing(4)
+        layout.setContentsMargins(2, 6, 2, 6)
+        layout.setSpacing(2)
         self.group = QButtonGroup(self)
         self.group.setExclusive(True)
         all_btn = QToolButton()

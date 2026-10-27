@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QTextEdit, QDialogButtonBox, QFileDialog,
 )
 
+from desktop.theme import TEXT, TEXT_MUTED
 from desktop.widgets.switch import OrangeSwitch
 
 # C1: 四分类控件库（中文原文标签）— 列表项即带标签 stub
@@ -518,7 +519,7 @@ class RunUiDesignerDialog(QDialog):
                     cv = QVBoxLayout(cell)
                     lab = QLabel(f'窗格 {cell_i + 1}')
                     lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    lab.setStyleSheet('color:#9aa7b5;')
+                    lab.setStyleSheet(f'color:{TEXT_MUTED};font-size:12px;')
                     lab.setWordWrap(True)
                     lab.setProperty('cellIndex', cell_i)
                     cv.addStretch(1)
@@ -600,7 +601,7 @@ class RunUiDesignerDialog(QDialog):
         labels = self._cell_labels[page_idx] if page_idx < len(self._cell_labels) else []
         for i, lab in enumerate(labels):
             lab.setText(f'窗格 {i + 1}')
-            lab.setStyleSheet('color:#9aa7b5;')
+            lab.setStyleSheet(f'color:{TEXT_MUTED};font-size:12px;')
         for p in self._placements:
             if p.get('page') != page_idx:
                 continue
@@ -610,7 +611,7 @@ class RunUiDesignerDialog(QDialog):
                 name = p.get('name') or ''
                 hint = CONTROL_STUB_HINTS.get(name, '')
                 labels[cell].setText(f'▣ {name}\n[{cat}]' + (f'\n{hint}' if hint else ''))
-                labels[cell].setStyleSheet('color:#e8eef5;font-weight:600;')
+                labels[cell].setStyleSheet(f'color:{TEXT};font-weight:600;font-size:12px;')
 
     def _on_commands_changed(self, commands):
         if not self._current_control:

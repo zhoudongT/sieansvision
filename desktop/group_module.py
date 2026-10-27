@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QComboBox, QMessageBox, QFrame,
 )
 
+from desktop.theme import CARD, LINE, TEXT, ACCENT
 from desktop.widgets.switch import OrangeSwitch
 
 
@@ -208,14 +209,14 @@ class GroupBreadcrumb(QFrame):
         lay = QHBoxLayout(self)
         lay.setContentsMargins(8, 4, 8, 4)
         self.label = QLabel('组合模块')
-        self.label.setStyleSheet('color:#f0f4f8;font-weight:600;')
+        self.label.setStyleSheet(f'color:{TEXT};font-weight:600;font-size:12px;')
         lay.addWidget(self.label, 1)
         back = QPushButton('返回上层')
         back.setObjectName('primaryButton')
         back.clicked.connect(self.exitGroup.emit)
         lay.addWidget(back)
         self.setStyleSheet(
-            'QFrame#groupBreadcrumb{background:#2b333d;border:1px solid #3a4552;border-radius:4px;}'
+            f'QFrame#groupBreadcrumb{background:{CARD};border:1px solid {LINE};border-radius:2px;}'
         )
 
     def set_path(self, flow_name, group_name):
