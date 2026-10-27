@@ -365,6 +365,7 @@ class MainWindow(QMainWindow):
 
     def apply_production_chain(self, ops):
         """Insert production_task suggested chain as real flow nodes (p40 demo)."""
+        from desktop.production_task_panel import seed_chain_step_params
         ops = list(ops or [])
         if not ops:
             self.log('建议链为空'); return
@@ -377,12 +378,21 @@ class MainWindow(QMainWindow):
             if not key or key not in self.definitions:
                 self.log(f'跳过未知算子：{key}'); continue
             nid = self.document.add(self.definitions[key], parent=parent)
-            # rename to step label
+            # rename + seed runnable demo params (var_calc / format / send)
             name = item.get('name') or self.definitions[key].get('name')
             proj = __import__('copy').deepcopy(self.document.project)
             for s in proj['steps']:
                 if s['id'] == nid:
                     s['name'] = name
+                    try:
+                        seeded = seed_chain_step_params(
+                            key, name, item.get('vars') or '',
+                            project=proj, existing=s.get('params') or {},
+                        )
+                        if seeded:
+                            s['params'] = seeded
+                    except Exception:
+                        pass
                     break
             self.document.commit(proj, label=f'产线链·{name}')
             added.append(nid)
@@ -1377,8 +1387,15 @@ class MainWindow(QMainWindow):
         elif state == 'completed' and not self.continuous and not self.run_all_filmstrip:
             try:
                 self._set_keep_host_running(False)
-                # sync_from_runtime via set_runtime already → Idle; reinforce chrome
-                self._sync_host_sm_state('Idle', '单次完成')
+                # Honor Alarm auto-clear policy: off/timeout may keep Alarm
+                host = None
+                hmi = getattr(self, 'operator_hmi', None)
+                if hmi is not None:
+                    host = getattr(hmi, '_host_sm', None)
+                if host is not None and hasattr(host, 'holds_alarm_on_ok') and host.holds_alarm_on_ok():
+                    pass  # sync_from_runtime already applied policy
+                else:
+                    self._sync_host_sm_state('Idle', '单次完成')
             except Exception:
                 pass
             pending = list(getattr(self, '_pending_trigger_cmds', None) or [])

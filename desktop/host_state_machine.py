@@ -36,6 +36,17 @@ STATE_COLOR = {
 
 MODES = ('正常生产', '九点标定', '旋转标定')
 
+# Alarm auto-clear policy (practical UX)
+ALARM_CLEAR_OFF = 'off'
+ALARM_CLEAR_ON_OK = 'on_ok'
+ALARM_CLEAR_TIMEOUT = 'timeout'
+ALARM_CLEAR_POLICIES = (ALARM_CLEAR_OFF, ALARM_CLEAR_ON_OK, ALARM_CLEAR_TIMEOUT)
+ALARM_CLEAR_ZH = {
+    ALARM_CLEAR_OFF: '关闭（需手动清除）',
+    ALARM_CLEAR_ON_OK: '下次运行成功清除',
+    ALARM_CLEAR_TIMEOUT: '超时自动清除',
+}
+
 
 class HostStateMachineWidget(QWidget):
     """Clickable host HMI chrome (p42/p43). Emits triggerCommands like OperatorHmiView."""
@@ -51,6 +62,11 @@ class HostStateMachineWidget(QWidget):
         self._connected = False
         self._mode = '正常生产'
         self._compact = compact
+        self._alarm_auto_clear = ALARM_CLEAR_ON_OK
+        self._alarm_timeout_sec = 8
+        self._alarm_timer = QTimer(self)
+        self._alarm_timer.setSingleShot(True)
+        self._alarm_timer.timeout.connect(self._on_alarm_timeout)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(4, 4, 4, 4)
@@ -136,6 +152,10 @@ class HostStateMachineWidget(QWidget):
         self._state = state
         self._paint_badge()
         self._sync_auto_buttons()
+        if state == 'Alarm' and prev != 'Alarm':
+            self._arm_alarm_timeout()
+        elif state != 'Alarm':
+            self._cancel_alarm_timeout()
         if state != prev:
             self.stateChanged.emit(state)
             msg = f'状态 {STATE_ZH.get(prev, prev)} → {STATE_ZH[state]}'
@@ -147,6 +167,7 @@ class HostStateMachineWidget(QWidget):
         """Map engine job state → host state (without fighting Pause/Alarm).
 
         keep_running: continuous/run-all still active — cycle completed stays Running.
+        Alarm + completed: honor alarm_auto_clear policy (off | on_ok | timeout).
         """
         result = result or {}
         st = result.get('state')
@@ -156,6 +177,12 @@ class HostStateMachineWidget(QWidget):
             if st == 'failed':
                 return
         if st == 'completed':
+            if self._state == 'Alarm':
+                if self._alarm_auto_clear == ALARM_CLEAR_ON_OK:
+                    self._clear_alarm_auto('下次运行成功')
+                else:
+                    self._log_line('运行成功 · 报警仍保持（自动清除策略）')
+                return
             # Continuous production: stay Running across cycles (only Stop→Stopped)
             if keep_running or self._state == 'Running':
                 elapsed = result.get('elapsedMs')
@@ -168,7 +195,7 @@ class HostStateMachineWidget(QWidget):
         elif st == 'cancelled':
             self.set_state('Stopped', '用户停止')
         elif st in ('running', 'pending'):
-            if self._state not in ('Running', 'Paused'):
+            if self._state not in ('Running', 'Paused', 'Alarm'):
                 self.set_state('Running', '流程执行中')
 
     def append_info(self, message: str):
@@ -303,8 +330,26 @@ class HostStateMachineWidget(QWidget):
         alarm_row.addStretch(1)
         lay.addLayout(alarm_row)
 
+        policy_row = QHBoxLayout()
+        policy_row.addWidget(QLabel('报警自动清除'))
+        self._alarm_policy_combo = QComboBox()
+        for key in ALARM_CLEAR_POLICIES:
+            self._alarm_policy_combo.addItem(ALARM_CLEAR_ZH[key], key)
+        self._alarm_policy_combo.currentIndexChanged.connect(self._on_alarm_policy_changed)
+        policy_row.addWidget(self._alarm_policy_combo, 1)
+        policy_row.addWidget(QLabel('超时秒'))
+        self._alarm_timeout_spin = QSpinBox()
+        self._alarm_timeout_spin.setRange(1, 600)
+        self._alarm_timeout_spin.setValue(int(self._alarm_timeout_sec))
+        self._alarm_timeout_spin.setToolTip('仅「超时自动清除」生效')
+        self._alarm_timeout_spin.valueChanged.connect(self._on_alarm_timeout_sec_changed)
+        policy_row.addWidget(self._alarm_timeout_spin)
+        lay.addLayout(policy_row)
+        self._load_alarm_policy_settings()
+
         tip = QLabel(
             '「开始」→ 连续；「暂停/继续」→ 软暂停；「停止」→ 硬停止。'
+            '报警可手动清除，或按策略：下次成功 / 超时自动清除。'
             '九点/旋转标定模式仅切换 UI 上下文（无厂商标定 SDK）。'
         )
         tip.setWordWrap(True)
@@ -427,6 +472,123 @@ class HostStateMachineWidget(QWidget):
     def _on_mode(self, mode: str):
         self._mode = mode or '正常生产'
         self._log_line(f'切换模式 → {self._mode}')
+
+    @property
+    def alarm_auto_clear(self) -> str:
+        return self._alarm_auto_clear
+
+    def set_alarm_auto_clear(self, policy: str, timeout_sec: int | None = None):
+        """Public: off | on_ok | timeout (+ optional seconds)."""
+        if policy in ALARM_CLEAR_POLICIES:
+            self._alarm_auto_clear = policy
+        if timeout_sec is not None:
+            try:
+                self._alarm_timeout_sec = max(1, min(600, int(timeout_sec)))
+            except (TypeError, ValueError):
+                pass
+        self._sync_alarm_policy_widgets()
+        if self._state == 'Alarm':
+            self._arm_alarm_timeout()
+        self._save_alarm_policy_settings()
+
+    def holds_alarm_on_ok(self) -> bool:
+        """True when OK run must NOT force Idle (policy=off or timeout waiting)."""
+        return self._state == 'Alarm' and self._alarm_auto_clear != ALARM_CLEAR_ON_OK
+
+    def _sync_alarm_policy_widgets(self):
+        combo = getattr(self, '_alarm_policy_combo', None)
+        spin = getattr(self, '_alarm_timeout_spin', None)
+        if combo is not None:
+            combo.blockSignals(True)
+            idx = combo.findData(self._alarm_auto_clear)
+            if idx < 0:
+                idx = combo.findData(ALARM_CLEAR_ON_OK)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+            combo.blockSignals(False)
+        if spin is not None:
+            spin.blockSignals(True)
+            spin.setValue(int(self._alarm_timeout_sec))
+            spin.setEnabled(self._alarm_auto_clear == ALARM_CLEAR_TIMEOUT)
+            spin.blockSignals(False)
+
+    def _on_alarm_policy_changed(self, *_):
+        combo = getattr(self, '_alarm_policy_combo', None)
+        if combo is None:
+            return
+        key = combo.currentData()
+        if key in ALARM_CLEAR_POLICIES:
+            self._alarm_auto_clear = key
+        spin = getattr(self, '_alarm_timeout_spin', None)
+        if spin is not None:
+            spin.setEnabled(self._alarm_auto_clear == ALARM_CLEAR_TIMEOUT)
+        if self._state == 'Alarm':
+            self._arm_alarm_timeout()
+        self._save_alarm_policy_settings()
+        self._log_line(f'报警自动清除 → {ALARM_CLEAR_ZH.get(self._alarm_auto_clear, self._alarm_auto_clear)}')
+
+    def _on_alarm_timeout_sec_changed(self, value):
+        try:
+            self._alarm_timeout_sec = max(1, min(600, int(value)))
+        except (TypeError, ValueError):
+            return
+        if self._state == 'Alarm' and self._alarm_auto_clear == ALARM_CLEAR_TIMEOUT:
+            self._arm_alarm_timeout()
+        self._save_alarm_policy_settings()
+
+    def _load_alarm_policy_settings(self):
+        try:
+            from PySide6.QtCore import QSettings
+            s = QSettings('SIEANS', 'VisionDesktop')
+            pol = str(s.value('hostAlarmAutoClear', ALARM_CLEAR_ON_OK) or ALARM_CLEAR_ON_OK)
+            if pol not in ALARM_CLEAR_POLICIES:
+                pol = ALARM_CLEAR_ON_OK
+            self._alarm_auto_clear = pol
+            try:
+                self._alarm_timeout_sec = max(1, min(600, int(s.value('hostAlarmAutoClearSec', 8) or 8)))
+            except (TypeError, ValueError):
+                self._alarm_timeout_sec = 8
+        except Exception:
+            pass
+        self._sync_alarm_policy_widgets()
+
+    def _save_alarm_policy_settings(self):
+        try:
+            from PySide6.QtCore import QSettings
+            s = QSettings('SIEANS', 'VisionDesktop')
+            s.setValue('hostAlarmAutoClear', self._alarm_auto_clear)
+            s.setValue('hostAlarmAutoClearSec', int(self._alarm_timeout_sec))
+        except Exception:
+            pass
+
+    def _arm_alarm_timeout(self):
+        self._cancel_alarm_timeout()
+        if self._alarm_auto_clear != ALARM_CLEAR_TIMEOUT or self._state != 'Alarm':
+            return
+        ms = max(1, int(self._alarm_timeout_sec)) * 1000
+        self._alarm_timer.start(ms)
+        self._log_line(f'报警超时清除已启动 · {self._alarm_timeout_sec}s')
+
+    def _cancel_alarm_timeout(self):
+        try:
+            if self._alarm_timer.isActive():
+                self._alarm_timer.stop()
+        except Exception:
+            pass
+
+    def _on_alarm_timeout(self):
+        if self._state != 'Alarm' or self._alarm_auto_clear != ALARM_CLEAR_TIMEOUT:
+            return
+        self._clear_alarm_auto(f'超时 {self._alarm_timeout_sec}s')
+
+    def _clear_alarm_auto(self, reason: str = ''):
+        """Policy-driven clear (same emit path as manual clear)."""
+        if self._state != 'Alarm':
+            return
+        tip = reason or '自动清除'
+        self.set_state('Idle', tip)
+        self.triggerCommands.emit([dict(type='状态·清除报警', config=tip)])
+        self._log_line(f'报警已自动清除 · {tip}')
 
     def _raise_alarm(self):
         """Simulate alarm + emit 状态·报警 so MainWindow / chrome stay in sync."""

@@ -33,11 +33,25 @@ CHAIN_OP_MAP = [
 
 
 def chain_to_operations(chain):
-    """Turn DEFAULT_CHAIN rows into addable operations (skip source)."""
+    """Turn DEFAULT_CHAIN rows into addable operations (skip source).
+
+    Composite hints like ``send_data / format_data`` expand to format then send
+    so 「应用到流程」 yields a runnable emit path (P0 p40).
+    """
     out = []
     for row in chain or []:
         op_hint = str(row.get('op') or '').lower()
         step_name = str(row.get('step') or '') or '步骤'
+        vars_hint = str(row.get('vars') or '')
+        # Composite: format + send → two nodes
+        if 'format' in op_hint and 'send' in op_hint:
+            out.append({'operation': 'format_data', 'name': f'{step_name}·格式化', 'vars': vars_hint})
+            out.append({'operation': 'send_data', 'name': f'{step_name}·发送', 'vars': vars_hint})
+            continue
+        # Prefer var_calc when row is clearly calc (偏差 / 移动量) even if nine_point listed
+        if 'var_calc' in op_hint and ('偏差' in step_name or '移动' in step_name or 'nine' not in op_hint):
+            out.append({'operation': 'var_calc', 'name': step_name, 'vars': vars_hint})
+            continue
         key = None
         for needle, catalog_key in CHAIN_OP_MAP:
             if needle and needle.lower() in op_hint:
@@ -45,8 +59,83 @@ def chain_to_operations(chain):
                 break
         if key is None:
             continue
-        out.append({'operation': key, 'name': step_name, 'vars': str(row.get('vars') or '')})
+        out.append({'operation': key, 'name': step_name, 'vars': vars_hint})
     return out
+
+
+def seed_chain_step_params(operation, name='', vars_hint='', project=None, existing=None):
+    """Seed demo-runnable params for a chain-inserted step (no robot SDK).
+
+    - var_calc: expressions from vars_hint (comma names) with sensible formulas
+    - format_data: MoveX/MoveY template → flow.formatted
+    - send_data: LocalLoop device + variable formatted
+    """
+    from copy import deepcopy as _dc
+    op = str(operation or '')
+    params = _dc(existing or {})
+    names = [x.strip() for x in str(vars_hint or '').replace(';', ',').split(',') if x.strip()]
+    step = str(name or '')
+
+    if op == 'var_calc':
+        from desktop.var_calc_panel import normalize_var_calc_params
+        exprs = []
+        if '偏差' in step or set(names) >= {'dx', 'dy'} or (not names and '偏差' in step):
+            exprs = [
+                dict(name='dx', expression='target_X_M - start_X_M', initial=0, outType='number', initOnRun=False),
+                dict(name='dy', expression='target_Y_M - start_Y_M', initial=0, outType='number', initOnRun=False),
+            ]
+        elif '移动' in step or set(names) >= {'MoveX', 'MoveY'} or 'MoveX' in names:
+            exprs = [
+                dict(name='MoveX', expression='dx', initial=0, outType='number', initOnRun=False),
+                dict(name='MoveY', expression='dy', initial=0, outType='number', initOnRun=False),
+            ]
+        elif names:
+            # Generic: init named vars to 0 so chain is editable/runnable
+            for i, n in enumerate(names[:8]):
+                exprs.append(dict(
+                    name=n, expression='0', initial=0, outType='number', initOnRun=True,
+                ))
+        if exprs:
+            params['expressions'] = exprs
+            params['scope'] = 'flow'
+            return normalize_var_calc_params(params)
+        return normalize_var_calc_params(params)
+
+    if op == 'format_data':
+        params.setdefault('template', 'MoveX={MoveX},MoveY={MoveY}')
+        params.setdefault('targetVar', 'formatted')
+        params.setdefault('scope', 'flow')
+        params.setdefault('args', 'MoveX,MoveY')
+        return params
+
+    if op == 'send_data':
+        # Prefer LocalLoop from ensure_comm_manager defaults
+        device = str(params.get('device') or '').strip()
+        if not device:
+            device = 'LocalLoop'
+            try:
+                from desktop.comm_manager import ensure_comm_manager
+                cm = ensure_comm_manager(project or {})
+                for d in (cm.get('devices') or []):
+                    if (d.get('protocol') or '') == 'Local Bus' or (d.get('name') or '') == 'LocalLoop':
+                        device = d.get('name') or 'LocalLoop'
+                        break
+            except Exception:
+                pass
+        params['device'] = device
+        params['sourceMode'] = 'variable'
+        params['sourceScope'] = 'flow'
+        params['sourceVar'] = str(params.get('sourceVar') or 'formatted')
+        params.setdefault('message', '')
+        params.setdefault('encoding', 'utf-8')
+        return params
+
+    if op == 'geometry' and names:
+        # Soft hint only — leave defaults, stash note in unused key if any
+        params.setdefault('note', f'chain vars: {", ".join(names)}')
+        return params
+
+    return params or None
 
 DEFAULT_CHAIN = [
     {'step': '读取图像', 'op': '图像源 / camera_capture', 'vars': ''},

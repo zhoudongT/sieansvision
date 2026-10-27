@@ -383,6 +383,22 @@ class CommRecvListener(QObject):
                     host.document.commit(p)
                     if hasattr(host, 'log'):
                         host.log(f'通信接收 [{device_name}] → 变量 {", ".join(written)} · {text[:48]}')
+                    # Live-patch open Variables dialog (P1 Comm ↔ 变量)
+                    try:
+                        dlg = (getattr(host, 'dialogs', None) or {}).get('variables')
+                        if dlg is not None and dlg.isVisible() and hasattr(dlg, 'live_patch_flow_var'):
+                            for ref in written:
+                                # written as scope.name
+                                parts = ref.split('.', 1)
+                                vname = parts[-1]
+                                if parts[0] == 'flow' or len(parts) == 1:
+                                    dlg.live_patch_flow_var(vname, text)
+                                elif parts[0] == 'global' and hasattr(dlg, 'live_patch_global_var'):
+                                    dlg.live_patch_global_var(vname, text)
+                                else:
+                                    dlg.live_patch_flow_var(vname, text)
+                    except Exception:
+                        pass
             elif hasattr(host, 'log'):
                 host.log(f'通信接收 [{device_name}] · {text[:48]}')
         except Exception as err:
