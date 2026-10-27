@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊸ · pin对比条撤销预览tip · 吸史冲突一键改键 · DST范围最近记忆 · A/B按来源说明条 · jitter深度右键清栈 · 2026-10-28】
+
+- **pin 对比条撤销预览 tip**：`preview_…_avoid_compare_bar_undo`；窥栈顶将恢复键；tip「撤销预览 · 深N · 现→恢复」；属性 `UndoPreview`。
+- **吸史冲突一键改键**：`suggest/fix_…_shortcut_conflict_fix`；候选 Ctrl+Alt+Z/Y…；「改键」按钮；冲突 tip 示建议键。
+- **DST 范围最近记忆**：`list/remember/apply_…_year_range_recent`（≤5）；设定自动记；「近YYYY–YYYY」按钮点首条。
+- **A/B 按来源策略说明条**：`render_…_import_conflict_source_explain`；冲突菜单顶说明条；source 时绿字+现源解析。
+- **jitter 深度右键清栈**：`clear_…_seed_redo`；深度旁标/重种钮右击清栈；tip「右击清栈」。
+- **冒烟**：`smoke-wave75-pinundoprev-histfix-dstrecent-abexplain-jitterclear-e2e`（另回归 wave74/73/72）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊷ · pin对比条应用撤销 · 吸史快捷冲突检测 · DST年范围对话框 · A/B冲突按来源 · jitter重种深度指示 · 2026-10-28】
 
 - **pin 对比条应用撤销**：应用前压撤销栈（≤8）；`undo_…_avoid_compare_bar`；对比条左键应用 / 右键撤销；`undo_depth` tip/属性。
