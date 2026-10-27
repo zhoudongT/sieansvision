@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊧ · 导引带色/透明度预设 · 仅选删色短撤销 · PNG目录记忆/最近导出 · 热同步α步进 · 脉冲缓动 · 2026-10-28】
+
+- **吸附导引带透明度/颜色预设菜单**：green/amber/cyan/soft/strong + α 8/12/20%；`_build_merge_diff_fail_hist_drop_snap_guide_menu`；同菜单含脉冲缓动快捷。
+- **仅选删色撤销条**：删色后 4s 短撤销条 + toast 单击 `undo_solo_delete` → `undo_sev_pin_arc_seize_recent_shift_range_solo`。
+- **PNG 另存默认目录记忆 + 最近导出清单**：`toastCurvePngExportDir` / `toastCurvePngRecentExports`；预览窗「最近导出」菜单。
+- **热同步菜单内嵌 α 步进快捷项**：±5/±10/±20 勾选 + α±N；`refresh` 同步勾选态。
+- **脉冲 easing 曲线可选**：`mergeDiffFailHistDropPulseEasing` 对齐 toast（OutCubic/InOutQuad/OutBounce/Linear）。
+- **冒烟**：`smoke-wave58-guidepreset-soloundo-pngmem-hotsyncalpha-pulseeasing-e2e`（另回归 wave57/56/55）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊦ · 吸附预设可视化/脉冲时长 · 仅选快捷删色 · PNG另存再复制 · 热同步勾选实时 · α步进5/10/20 · 2026-10-28】
 
 - **吸附预设可视化 / 脉冲时长可配**：`mergeDiffFailHistDropSnapThresh` 预设 10/18/28 + 虚线导引带 `hostMergeDiffFailHistDropSnapGuide`；`mergeDiffFailHistDropPulseMs` 控制落点高亮脉冲时长。
