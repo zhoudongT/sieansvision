@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊨ · 导引带自定义色拾取 · 撤销条可拖时长 · PNG命名模板 · 热同步α滑条 · 脉冲强度 · 2026-10-28】
+
+- **导引带自定义色拾取**：`custom` 预设 + `mergeDiffFailHistDropSnapGuideCustomHex`；`prompt_merge_diff_fail_hist_drop_snap_guide_custom_color`（QColorDialog）；菜单「自定义色拾取…」。
+- **撤销条可拖时长**：`sevPinSoloDeleteUndoMs` 1.5–12s；滚轮 / Shift·Ctrl·Alt+左右拖 / 右键 2/4/6/8/10s 预设；`set_sev_pin_solo_delete_undo_ms(rescale_left=True)`。
+- **PNG 导出命名模板**：`toastCurvePngNameTemplate` 默认 `tip-anim-{easing}-{ts}.png`；占位 `{ts}/{date}/{easing}/{name}`；另存对话框默认文件名展开。
+- **热同步 α 滑条**：色阶热同步菜单内嵌 `QSlider` 0–255；`refresh` 同步勾选与滑条值。
+- **脉冲强度独立旋钮**：`mergeDiffFailHistDropPulseIntensityPct` 40–100%；缩放脉冲起/峰/终 opacity；导引带菜单内嵌强度滑条。
+- **冒烟**：`smoke-wave59-guidecustom-undoms-pngtmpl-alphaslider-pulseinten-e2e`（另回归 wave58/57/56）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊧ · 导引带色/透明度预设 · 仅选删色短撤销 · PNG目录记忆/最近导出 · 热同步α步进 · 脉冲缓动 · 2026-10-28】
 
 - **吸附导引带透明度/颜色预设菜单**：green/amber/cyan/soft/strong + α 8/12/20%；`_build_merge_diff_fail_hist_drop_snap_guide_menu`；同菜单含脉冲缓动快捷。

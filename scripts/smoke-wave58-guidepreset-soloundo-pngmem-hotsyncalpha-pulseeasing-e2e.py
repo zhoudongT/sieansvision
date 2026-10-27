@@ -119,7 +119,7 @@ def main():
     presets = [a for a in menu_g.actions() if a.property('isSnapGuidePreset')]
     alphas = [a for a in menu_g.actions() if a.property('isSnapGuideAlpha')]
     easings = [a for a in menu_g.actions() if a.property('isDropPulseEasing')]
-    assert len(presets) == 5 and len(alphas) == 3 and len(easings) == 4
+    assert len(presets) >= 5 and len(alphas) == 3 and len(easings) == 4  # wave59+ may add custom
     ok('吸附导引带透明度/颜色预设菜单')
 
     # --- 2. solo delete short undo ---

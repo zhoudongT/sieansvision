@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
     QGraphicsOpacityEffect,
     QWidgetAction,
     QInputDialog,
+    QSlider,
 )
 
 from desktop.theme import TEXT, TEXT_MUTED, TEXT_DIM, OK, PANEL, LINE
@@ -1055,7 +1056,7 @@ class HostStateMachineWidget(QWidget):
         try:
             _gpre = str(self._host_settings().value(
                 'host/mergeDiffFailHistDropSnapGuidePreset', 'green') or 'green').strip().lower()
-            if _gpre not in ('green', 'amber', 'cyan', 'soft', 'strong'):
+            if _gpre not in ('green', 'amber', 'cyan', 'soft', 'strong', 'custom'):
                 _gpre = 'green'
             self._merge_diff_fail_hist_drop_snap_guide_preset = _gpre
         except Exception:
@@ -1103,6 +1104,41 @@ class HostStateMachineWidget(QWidget):
         self._sev_pin_solo_delete_undo_timer.setInterval(200)
         self._sev_pin_solo_delete_undo_timer.timeout.connect(
             self._on_sev_pin_solo_delete_undo_tick)
+        # wave59: 导引带自定义色 / 撤销条时长 / PNG命名模板 / 脉冲强度
+        try:
+            _ghex = str(self._host_settings().value(
+                'host/mergeDiffFailHistDropSnapGuideCustomHex', '#3ecf8e')
+                or '#3ecf8e').strip()
+            if not _ghex.startswith('#') or len(_ghex) not in (4, 7, 9):
+                _ghex = '#3ecf8e'
+            self._merge_diff_fail_hist_drop_snap_guide_custom_hex = _ghex
+        except Exception:
+            self._merge_diff_fail_hist_drop_snap_guide_custom_hex = '#3ecf8e'
+        try:
+            _ums = int(self._host_settings().value(
+                'host/sevPinSoloDeleteUndoMs', 4000) or 4000)
+            self._sev_pin_solo_delete_undo_ms = max(1500, min(12000, _ums))
+        except Exception:
+            self._sev_pin_solo_delete_undo_ms = 4000
+        try:
+            _tmpl = str(self._host_settings().value(
+                'host/toastCurvePngNameTemplate',
+                'tip-anim-{easing}-{ts}.png') or 'tip-anim-{easing}-{ts}.png').strip()
+            if not _tmpl:
+                _tmpl = 'tip-anim-{easing}-{ts}.png'
+            if '{ts}' not in _tmpl and '{date}' not in _tmpl and '{easing}' not in _tmpl:
+                if not _tmpl.lower().endswith('.png'):
+                    _tmpl = _tmpl + '.png'
+            self._toast_curve_png_name_template = _tmpl
+        except Exception:
+            self._toast_curve_png_name_template = 'tip-anim-{easing}-{ts}.png'
+        try:
+            _pint = int(self._host_settings().value(
+                'host/mergeDiffFailHistDropPulseIntensityPct', 100) or 100)
+            self._merge_diff_fail_hist_drop_pulse_intensity_pct = max(
+                40, min(100, _pint))
+        except Exception:
+            self._merge_diff_fail_hist_drop_pulse_intensity_pct = 100
         # wave54: 失败历史组头拖拽顺序
         try:
             raw_ord = self._host_settings().value(
@@ -3636,13 +3672,58 @@ class HostStateMachineWidget(QWidget):
             pass
         return list(recent)
 
+    def sev_pin_solo_delete_undo_ms(self) -> int:
+        """wave59: 仅选删色撤销条时长 ms（可拖调）."""
+        try:
+            v = int(getattr(self, '_sev_pin_solo_delete_undo_ms', 4000) or 4000)
+        except Exception:
+            v = 4000
+        return max(1500, min(12000, v))
+
+    def set_sev_pin_solo_delete_undo_ms(
+            self, ms: int = 4000, *, persist: bool = True,
+            rescale_left: bool = True) -> int:
+        """wave59: 设置仅选删色撤销条时长；可等比重算剩余."""
+        try:
+            v = int(ms)
+        except Exception:
+            v = 4000
+        v = max(1500, min(12000, v))
+        old = int(getattr(self, '_sev_pin_solo_delete_undo_ms', 4000) or 4000)
+        self._sev_pin_solo_delete_undo_ms = v
+        if rescale_left and old > 0:
+            try:
+                left = int(getattr(self, '_sev_pin_solo_delete_undo_left_ms', 0) or 0)
+                if left > 0:
+                    self._sev_pin_solo_delete_undo_left_ms = max(
+                        0, int(round(left * (v / float(old)))))
+            except Exception:
+                pass
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/sevPinSoloDeleteUndoMs', int(v))
+            except Exception:
+                pass
+        try:
+            snap = getattr(self, '_sev_pin_solo_delete_undo', None)
+            if isinstance(snap, dict):
+                snap['ms'] = v
+        except Exception:
+            pass
+        try:
+            self._update_sev_pin_solo_delete_undo_bar()
+        except Exception:
+            pass
+        self._last_sev_pin_solo_delete_undo_ms = v
+        return v
+
     def _arm_sev_pin_solo_delete_undo(self, color: str, idx: int = 0) -> bool:
         """wave58: 武装仅选删色短撤销条."""
         color = str(color or '').strip()
         if not color:
             return False
-        undo_ms = int(getattr(self, '_sev_pin_solo_delete_undo_ms', 4000) or 4000)
-        undo_ms = max(1500, min(12000, undo_ms))
+        undo_ms = self.sev_pin_solo_delete_undo_ms()
         self._sev_pin_solo_delete_undo = {
             'color': color, 'idx': int(idx), 'ms': undo_ms}
         self._sev_pin_solo_delete_undo_left_ms = undo_ms
@@ -3693,12 +3774,118 @@ class HostStateMachineWidget(QWidget):
             'border-radius:2px;color:#9ed9a8;font-size:10px;}'
             'QProgressBar::chunk{background:#3ecf8e;}')
         bar.hide()
+        bar.setToolTip('单击撤销 · 滚轮/左右拖调时长')
+        # wave59: 可拖时长 — 滚轮调默认时长；左右拖调时长
+        self._sev_pin_solo_delete_undo_bar_drag_x = None
+        self._sev_pin_solo_delete_undo_bar_drag_ms0 = None
+
+        def _bar_press(e, b=bar):
+            try:
+                from PySide6.QtCore import Qt as _Qt
+                if e.button() == _Qt.MouseButton.LeftButton:
+                    # Alt/Ctrl+拖 = 调时长；普通单击 = 撤销
+                    mods = e.modifiers()
+                    if mods & (_Qt.KeyboardModifier.AltModifier
+                               | _Qt.KeyboardModifier.ControlModifier
+                               | _Qt.KeyboardModifier.ShiftModifier):
+                        try:
+                            self._sev_pin_solo_delete_undo_bar_drag_x = int(e.position().x())
+                        except Exception:
+                            self._sev_pin_solo_delete_undo_bar_drag_x = int(e.pos().x())
+                        self._sev_pin_solo_delete_undo_bar_drag_ms0 = (
+                            self.sev_pin_solo_delete_undo_ms())
+                        self._last_sev_pin_solo_delete_undo_bar_drag_armed = True
+                        return
+                    self.undo_sev_pin_arc_seize_recent_shift_range_solo()
+                    return
+                if e.button() == _Qt.MouseButton.RightButton:
+                    # 右键：时长预设菜单
+                    self._show_sev_pin_solo_delete_undo_ms_menu(b.mapToGlobal(e.pos()))
+                    return
+            except Exception:
+                try:
+                    self.undo_sev_pin_arc_seize_recent_shift_range_solo()
+                except Exception:
+                    pass
+
+        def _bar_move(e, b=bar):
+            dx0 = getattr(self, '_sev_pin_solo_delete_undo_bar_drag_x', None)
+            ms0 = getattr(self, '_sev_pin_solo_delete_undo_bar_drag_ms0', None)
+            if dx0 is None or ms0 is None:
+                return
+            try:
+                try:
+                    x = int(e.position().x())
+                except Exception:
+                    x = int(e.pos().x())
+                # 每 2px → ±100ms
+                delta = int(round((x - dx0) / 2.0)) * 100
+                self.set_sev_pin_solo_delete_undo_ms(ms0 + delta, persist=True)
+                self._last_sev_pin_solo_delete_undo_bar_dragged = True
+            except Exception:
+                pass
+
+        def _bar_release(e):
+            self._sev_pin_solo_delete_undo_bar_drag_x = None
+            self._sev_pin_solo_delete_undo_bar_drag_ms0 = None
+
+        def _bar_wheel(e):
+            try:
+                delta = e.angleDelta().y()
+                step = 500 if abs(delta) >= 120 else 250
+                cur = self.sev_pin_solo_delete_undo_ms()
+                if delta > 0:
+                    self.set_sev_pin_solo_delete_undo_ms(cur + step)
+                elif delta < 0:
+                    self.set_sev_pin_solo_delete_undo_ms(cur - step)
+                self._last_sev_pin_solo_delete_undo_bar_wheeled = True
+                e.accept()
+            except Exception:
+                pass
+
         try:
-            bar.mousePressEvent = lambda e: self.undo_sev_pin_arc_seize_recent_shift_range_solo()
+            bar.mousePressEvent = _bar_press
+            bar.mouseMoveEvent = _bar_move
+            bar.mouseReleaseEvent = _bar_release
+            bar.wheelEvent = _bar_wheel
         except Exception:
             pass
         self._sev_pin_solo_delete_undo_bar = bar
         return bar
+
+    def _show_sev_pin_solo_delete_undo_ms_menu(self, global_pos=None) -> bool:
+        """wave59: 撤销条时长预设菜单."""
+        try:
+            menu = QMenu(self)
+            menu.setObjectName('hostSevPinSoloDeleteUndoMsMenu')
+            cur = self.sev_pin_solo_delete_undo_ms()
+            for ms, lab in (
+                (2000, '时长 · 2s'),
+                (4000, '时长 · 4s'),
+                (6000, '时长 · 6s'),
+                (8000, '时长 · 8s'),
+                (10000, '时长 · 10s'),
+            ):
+                mark = '✓ ' if abs(cur - ms) < 50 else ''
+                act = QAction(f'{mark}{lab}', menu)
+                act.setCheckable(True)
+                act.setChecked(abs(cur - ms) < 50)
+                act.setProperty('isSoloDeleteUndoMs', True)
+                act.setData(ms)
+                act.triggered.connect(
+                    lambda *_a, mm=ms: self.set_sev_pin_solo_delete_undo_ms(mm))
+                menu.addAction(act)
+            self._last_sev_pin_solo_delete_undo_ms_menu = menu
+            if getattr(self, '_sev_pin_solo_delete_undo_ms_menu_no_exec', False):
+                self._last_sev_pin_solo_delete_undo_ms_menu_shown = True
+                return True
+            if global_pos is not None:
+                menu.exec(global_pos)
+            else:
+                menu.exec(self.mapToGlobal(self.rect().center()))
+            return True
+        except Exception:
+            return False
 
     def _show_sev_pin_solo_delete_undo_bar(self) -> bool:
         bar = self._ensure_sev_pin_solo_delete_undo_bar()
@@ -3735,7 +3922,10 @@ class HostStateMachineWidget(QWidget):
             if isinstance(snap, dict):
                 color = str(snap.get('color') or '')
             bar.setFormat(f'撤销 {color or "删色"} · {sec}s' if left else '已过期')
-            bar.setToolTip('单击撤销删色' if left else '')
+            # wave59: 保留可拖时长提示
+            bar.setToolTip(
+                '单击撤销 · Shift/Ctrl/Alt+拖调时长 · 滚轮调时长 · 右键预设'
+                if left else '')
             return True
         except Exception:
             return False
@@ -6080,6 +6270,21 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             self._last_undo_color_scale_hot_sync_menu_refreshed = False
             return False
+        # wave59: sync α slider
+        try:
+            slider = getattr(self, '_last_undo_color_alpha_slider', None)
+            val_lab = getattr(self, '_last_undo_color_alpha_slider_val', None)
+            cur_a = int(self.stale_prune_undo_color_custom_rgb().get('alpha', 160))
+            if slider is not None:
+                blocked = slider.blockSignals(True)
+                slider.setValue(max(0, min(255, cur_a)))
+                slider.blockSignals(blocked)
+                n += 1
+            if val_lab is not None:
+                val_lab.setText(str(cur_a))
+            self._last_undo_color_scale_hot_sync_menu_alpha = cur_a
+        except Exception:
+            pass
         self._last_undo_color_scale_hot_sync_menu_refreshed = True
         self._last_undo_color_scale_hot_sync_menu_refresh_n = n
         self._last_undo_color_scale_hot_sync_menu_cur = cur_cs
@@ -6145,6 +6350,49 @@ class HostStateMachineWidget(QWidget):
             lambda *_: self.adjust_stale_prune_undo_color_custom_alpha(
                 self.stale_prune_undo_color_custom_alpha_step()))
         menu.addAction(act_inc)
+        # wave59: 热同步 α 滑条
+        menu.addSeparator()
+        try:
+            wrap = QWidget(menu)
+            lay = QHBoxLayout(wrap)
+            lay.setContentsMargins(8, 2, 8, 2)
+            lay.setSpacing(6)
+            lab = QLabel('α', wrap)
+            lab.setStyleSheet('color:#9aa7b5;font-size:11px;')
+            slider = QSlider(Qt.Orientation.Horizontal, wrap)
+            slider.setObjectName('hostUndoColorAlphaSlider')
+            slider.setRange(0, 255)
+            try:
+                cur_a = int(self.stale_prune_undo_color_custom_rgb().get('alpha', 160))
+            except Exception:
+                cur_a = 160
+            slider.setValue(max(0, min(255, cur_a)))
+            slider.setFixedWidth(140)
+            val_lab = QLabel(str(slider.value()), wrap)
+            val_lab.setObjectName('hostUndoColorAlphaSliderVal')
+            val_lab.setFixedWidth(28)
+            val_lab.setStyleSheet('color:#c8d2dc;font-size:11px;')
+
+            def _on_alpha(v, vl=val_lab):
+                self.set_stale_prune_undo_color_custom_alpha(int(v))
+                try:
+                    vl.setText(str(int(v)))
+                except Exception:
+                    pass
+
+            slider.valueChanged.connect(_on_alpha)
+            lay.addWidget(lab)
+            lay.addWidget(slider, 1)
+            lay.addWidget(val_lab)
+            wa = QWidgetAction(menu)
+            wa.setProperty('isUndoColorAlphaSlider', True)
+            wa.setProperty('isUndoColorScaleHotSync', True)
+            wa.setDefaultWidget(wrap)
+            menu.addAction(wa)
+            self._last_undo_color_alpha_slider = slider
+            self._last_undo_color_alpha_slider_val = val_lab
+        except Exception:
+            pass
         try:
             menu.aboutToShow.connect(
                 lambda m=menu: self.refresh_undo_color_scale_hot_sync_menu(m))
@@ -7484,19 +7732,19 @@ class HostStateMachineWidget(QWidget):
         return v
 
     def merge_diff_fail_hist_drop_snap_guide_preset(self) -> str:
-        """wave58: 导引带颜色预设 green/amber/cyan/soft/strong."""
+        """wave58–59: 导引带颜色预设 green/amber/cyan/soft/strong/custom."""
         v = str(getattr(
             self, '_merge_diff_fail_hist_drop_snap_guide_preset', 'green')
             or 'green').strip().lower()
-        if v not in ('green', 'amber', 'cyan', 'soft', 'strong'):
+        if v not in ('green', 'amber', 'cyan', 'soft', 'strong', 'custom'):
             v = 'green'
         return v
 
     def set_merge_diff_fail_hist_drop_snap_guide_preset(
             self, name: str = 'green', *, persist: bool = True) -> str:
-        """wave58: 设置导引带颜色预设."""
+        """wave58–59: 设置导引带颜色预设（含 custom）."""
         name = str(name or 'green').strip().lower()
-        if name not in ('green', 'amber', 'cyan', 'soft', 'strong'):
+        if name not in ('green', 'amber', 'cyan', 'soft', 'strong', 'custom'):
             name = 'green'
         self._merge_diff_fail_hist_drop_snap_guide_preset = name
         # soft/strong also nudge alpha
@@ -7557,13 +7805,93 @@ class HostStateMachineWidget(QWidget):
     def _snap_guide_preset_hex(self, name: str = None) -> str:
         name = str(name or self.merge_diff_fail_hist_drop_snap_guide_preset()
                    or 'green').lower()
+        if name == 'custom':
+            return self.merge_diff_fail_hist_drop_snap_guide_custom_hex()
         return {
             'green': '#3ecf8e',
             'amber': '#f0c040',
             'cyan': '#40c0f0',
             'soft': '#3ecf8e',
             'strong': '#3ecf8e',
+            'custom': self.merge_diff_fail_hist_drop_snap_guide_custom_hex(),
         }.get(name, '#3ecf8e')
+
+    def merge_diff_fail_hist_drop_snap_guide_custom_hex(self) -> str:
+        """wave59: 导引带自定义色 hex."""
+        v = str(getattr(
+            self, '_merge_diff_fail_hist_drop_snap_guide_custom_hex', '#3ecf8e')
+            or '#3ecf8e').strip()
+        if not v.startswith('#'):
+            v = '#' + v
+        try:
+            c = QColor(v)
+            if c.isValid():
+                return c.name()
+        except Exception:
+            pass
+        return '#3ecf8e'
+
+    def set_merge_diff_fail_hist_drop_snap_guide_custom_hex(
+            self, hexv: str = '#3ecf8e', *, persist: bool = True,
+            apply_preset: bool = True) -> str:
+        """wave59: 设置导引带自定义色并切到 custom 预设."""
+        hexv = str(hexv or '#3ecf8e').strip()
+        if not hexv.startswith('#'):
+            hexv = '#' + hexv
+        try:
+            c = QColor(hexv)
+            if c.isValid():
+                hexv = c.name()
+            else:
+                hexv = '#3ecf8e'
+        except Exception:
+            hexv = '#3ecf8e'
+        self._merge_diff_fail_hist_drop_snap_guide_custom_hex = hexv
+        if apply_preset:
+            self._merge_diff_fail_hist_drop_snap_guide_preset = 'custom'
+        if persist:
+            try:
+                s = self._host_settings()
+                s.setValue(
+                    'host/mergeDiffFailHistDropSnapGuideCustomHex', hexv)
+                if apply_preset:
+                    s.setValue(
+                        'host/mergeDiffFailHistDropSnapGuidePreset', 'custom')
+            except Exception:
+                pass
+        try:
+            self._apply_merge_diff_fail_hist_drop_snap_guide_style()
+        except Exception:
+            pass
+        self._last_merge_diff_fail_hist_drop_snap_guide_custom_hex = hexv
+        return hexv
+
+    def prompt_merge_diff_fail_hist_drop_snap_guide_custom_color(
+            self, color: str = '') -> str:
+        """wave59: 导引带自定义色拾取（QColorDialog）."""
+        color = str(color or '').strip()
+        if not color and not getattr(
+                self, '_snap_guide_custom_color_no_dialog', False):
+            try:
+                cur = QColor(self.merge_diff_fail_hist_drop_snap_guide_custom_hex())
+                picked = QColorDialog.getColor(cur, self, '导引带自定义色')
+                if picked is not None and picked.isValid():
+                    color = picked.name()
+            except Exception:
+                color = ''
+        if not color and getattr(self, '_snap_guide_custom_color_no_dialog', False):
+            color = str(getattr(
+                self, '_snap_guide_custom_color_smoke_pick', '') or '#aa66ff')
+        if not color:
+            self._last_merge_diff_fail_hist_drop_snap_guide_custom_picked = ''
+            return ''
+        got = self.set_merge_diff_fail_hist_drop_snap_guide_custom_hex(color)
+        self._last_merge_diff_fail_hist_drop_snap_guide_custom_picked = got
+        try:
+            self._flash_host_toast(f'导引带自定义色 · {got}', kind='ok', ms=1200)
+        except Exception:
+            pass
+        return got
 
     def _apply_merge_diff_fail_hist_drop_snap_guide_style(self, guide=None) -> bool:
         """wave58: 按预设刷导引带样式."""
@@ -7620,6 +7948,24 @@ class HostStateMachineWidget(QWidget):
                 lambda *_a, pp=pct: self.set_merge_diff_fail_hist_drop_snap_guide_alpha_pct(pp))
             menu.addAction(act)
         menu.addSeparator()
+        # wave59: 自定义色拾取
+        act_pick = QAction('自定义色拾取…', menu)
+        act_pick.setProperty('isSnapGuideCustomPick', True)
+        act_pick.triggered.connect(
+            lambda *_: self.prompt_merge_diff_fail_hist_drop_snap_guide_custom_color())
+        menu.addAction(act_pick)
+        mark_c = '✓ ' if cur == 'custom' else ''
+        act_cus = QAction(
+            f'{mark_c}颜色 · 自定义 ({self.merge_diff_fail_hist_drop_snap_guide_custom_hex()})',
+            menu)
+        act_cus.setCheckable(True)
+        act_cus.setChecked(cur == 'custom')
+        act_cus.setProperty('isSnapGuidePreset', True)
+        act_cus.setData('custom')
+        act_cus.triggered.connect(
+            lambda *_: self.set_merge_diff_fail_hist_drop_snap_guide_preset('custom'))
+        menu.addAction(act_cus)
+        menu.addSeparator()
         # pulse easing shortcuts
         cur_ez = self.merge_diff_fail_hist_drop_pulse_easing()
         for ez, lab in (
@@ -7637,6 +7983,43 @@ class HostStateMachineWidget(QWidget):
             act.triggered.connect(
                 lambda *_a, nn=ez: self.set_merge_diff_fail_hist_drop_pulse_easing(nn))
             menu.addAction(act)
+        menu.addSeparator()
+        # wave59: 脉冲强度独立旋钮（菜单内嵌滑条）
+        try:
+            wrap = QWidget(menu)
+            lay = QHBoxLayout(wrap)
+            lay.setContentsMargins(8, 2, 8, 2)
+            lay.setSpacing(6)
+            lab_i = QLabel('脉冲强度', wrap)
+            lab_i.setStyleSheet('color:#9aa7b5;font-size:11px;')
+            slider = QSlider(Qt.Orientation.Horizontal, wrap)
+            slider.setObjectName('hostMergeDiffFailHistDropPulseIntensitySlider')
+            slider.setRange(40, 100)
+            slider.setValue(self.merge_diff_fail_hist_drop_pulse_intensity_pct())
+            slider.setFixedWidth(120)
+            val_lab = QLabel(f'{slider.value()}%', wrap)
+            val_lab.setObjectName('hostMergeDiffFailHistDropPulseIntensityVal')
+            val_lab.setFixedWidth(36)
+            val_lab.setStyleSheet('color:#c8d2dc;font-size:11px;')
+
+            def _on_pint(v, vl=val_lab):
+                self.set_merge_diff_fail_hist_drop_pulse_intensity_pct(int(v))
+                try:
+                    vl.setText(f'{int(v)}%')
+                except Exception:
+                    pass
+
+            slider.valueChanged.connect(_on_pint)
+            lay.addWidget(lab_i)
+            lay.addWidget(slider, 1)
+            lay.addWidget(val_lab)
+            wa = QWidgetAction(menu)
+            wa.setProperty('isDropPulseIntensitySlider', True)
+            wa.setDefaultWidget(wrap)
+            menu.addAction(wa)
+            self._last_merge_diff_fail_hist_drop_pulse_intensity_slider = slider
+        except Exception:
+            pass
         self._last_merge_diff_fail_hist_drop_snap_guide_menu = menu
         return menu
 
@@ -7664,6 +8047,33 @@ class HostStateMachineWidget(QWidget):
                 pass
         self._last_merge_diff_fail_hist_drop_pulse_easing = name
         return name
+
+    def merge_diff_fail_hist_drop_pulse_intensity_pct(self) -> int:
+        """wave59: 落点脉冲强度 40–100%（独立于时长/缓动）."""
+        try:
+            v = int(getattr(
+                self, '_merge_diff_fail_hist_drop_pulse_intensity_pct', 100) or 100)
+        except Exception:
+            v = 100
+        return max(40, min(100, v))
+
+    def set_merge_diff_fail_hist_drop_pulse_intensity_pct(
+            self, pct: int = 100, *, persist: bool = True) -> int:
+        """wave59: 设置落点脉冲强度."""
+        try:
+            v = int(pct)
+        except Exception:
+            v = 100
+        v = max(40, min(100, v))
+        self._merge_diff_fail_hist_drop_pulse_intensity_pct = v
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/mergeDiffFailHistDropPulseIntensityPct', int(v))
+            except Exception:
+                pass
+        self._last_merge_diff_fail_hist_drop_pulse_intensity_pct = v
+        return v
 
     def _drop_pulse_easing_curve(self) -> QEasingCurve:
         """wave58: 脉冲缓动名 → QEasingCurve（与 toast 同套）."""
@@ -7761,17 +8171,26 @@ class HostStateMachineWidget(QWidget):
                     pass
             dur = self.merge_diff_fail_hist_drop_pulse_ms()
             ez_name = self.merge_diff_fail_hist_drop_pulse_easing()
+            # wave59: 强度独立旋钮缩放起/峰/终 opacity
+            inten = self.merge_diff_fail_hist_drop_pulse_intensity_pct() / 100.0
+            start_v = max(0.08, min(1.0, 0.35 * inten))
+            peak_v = max(0.20, min(1.0, 1.0 * inten))
+            end_v = max(0.12, min(1.0, 0.78 * inten))
             anim = QPropertyAnimation(eff, b'opacity', self)
             anim.setDuration(int(dur))
-            anim.setStartValue(0.35)
-            anim.setKeyValueAt(0.55, 1.0)
-            anim.setEndValue(0.78)
+            anim.setStartValue(start_v)
+            anim.setKeyValueAt(0.55, peak_v)
+            anim.setEndValue(end_v)
             anim.setEasingCurve(self._drop_pulse_easing_curve())
             anim.start()
             self._merge_diff_fail_hist_drop_hl_anim = anim
             self._last_merge_diff_fail_hist_drop_highlight_pulsed = True
             self._last_merge_diff_fail_hist_drop_highlight_pulse_ms = int(dur)
             self._last_merge_diff_fail_hist_drop_highlight_pulse_easing = ez_name
+            self._last_merge_diff_fail_hist_drop_highlight_pulse_intensity = int(
+                round(inten * 100))
+            self._last_merge_diff_fail_hist_drop_highlight_pulse_vals = {
+                'start': start_v, 'peak': peak_v, 'end': end_v}
             return True
         except Exception:
             self._last_merge_diff_fail_hist_drop_highlight_pulsed = False
@@ -9691,6 +10110,61 @@ class HostStateMachineWidget(QWidget):
         self._last_toast_curve_png_export_dir = d
         return d
 
+    def toast_curve_png_name_template(self) -> str:
+        """wave59: 曲线 PNG 导出命名模板（{ts}/{date}/{easing}/{name}）."""
+        v = str(getattr(
+            self, '_toast_curve_png_name_template',
+            'tip-anim-{easing}-{ts}.png')
+            or 'tip-anim-{easing}-{ts}.png').strip()
+        if not v:
+            v = 'tip-anim-{easing}-{ts}.png'
+        return v
+
+    def set_toast_curve_png_name_template(
+            self, template: str = 'tip-anim-{easing}-{ts}.png',
+            *, persist: bool = True) -> str:
+        """wave59: 设置 PNG 导出命名模板."""
+        v = str(template or 'tip-anim-{easing}-{ts}.png').strip()
+        if not v:
+            v = 'tip-anim-{easing}-{ts}.png'
+        if not v.lower().endswith('.png'):
+            v = v + '.png'
+        self._toast_curve_png_name_template = v
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/toastCurvePngNameTemplate', v)
+            except Exception:
+                pass
+        self._last_toast_curve_png_name_template = v
+        return v
+
+    def resolve_toast_curve_png_name(
+            self, *, easing: str = None, name: str = 'tip-anim',
+            when=None) -> str:
+        """wave59: 按模板展开导出文件名."""
+        from datetime import datetime as _dt
+        tmpl = self.toast_curve_png_name_template()
+        when = when or _dt.now()
+        ez = str(easing or getattr(
+            self, '_last_toast_hist_cap_tip_anim_curve_easing_a', None)
+            or self.toast_hist_cap_tip_anim_easing()
+            or 'OutCubic').strip() or 'OutCubic'
+        # sanitize easing for filename
+        ez_safe = ''.join(ch if ch.isalnum() or ch in '-_' else '_' for ch in ez)
+        name_safe = ''.join(
+            ch if ch.isalnum() or ch in '-_' else '_' for ch in str(name or 'tip-anim'))
+        ts = when.strftime('%Y%m%d-%H%M%S')
+        date = when.strftime('%Y%m%d')
+        out = tmpl.replace('{ts}', ts).replace('{date}', date)
+        out = out.replace('{easing}', ez_safe).replace('{name}', name_safe)
+        if not out.lower().endswith('.png'):
+            out = out + '.png'
+        # strip path separators
+        out = out.replace('/', '_').replace('\\', '_').replace('..', '_')
+        self._last_toast_curve_png_resolved_name = out
+        return out
+
     def toast_curve_png_recent_exports(self) -> list:
         """wave58: 最近导出曲线 PNG 清单."""
         raw = getattr(self, '_toast_curve_png_recent_exports', None)
@@ -9810,9 +10284,10 @@ class HostStateMachineWidget(QWidget):
             try:
                 from pathlib import Path as _P
                 start_dir = self.toast_curve_png_export_dir()
-                start = 'tip-anim-easing-curve.png'
+                start_name = self.resolve_toast_curve_png_name()
+                start = start_name
                 if start_dir:
-                    start = str(_P(start_dir) / 'tip-anim-easing-curve.png')
+                    start = str(_P(start_dir) / start_name)
                 path, _flt = QFileDialog.getSaveFileName(
                     self, '另存曲线 PNG',
                     start,
