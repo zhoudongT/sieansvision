@@ -58,6 +58,8 @@ class Node(QGraphicsObject):
     """VisionMaster-style compact light pill node."""
     WIDTH = 168
     HEIGHT = 28
+    WORLD_MIN = -4000
+    WORLD_MAX = 12000
 
     def __init__(self, node_id, label, position, source=False):
         super().__init__()
@@ -123,9 +125,16 @@ class Node(QGraphicsObject):
 
     def itemChange(self,change,value):
         if change==QGraphicsItem.GraphicsItemChange.ItemPositionChange:
-            return QPointF(max(0,min(9800,value.x())),max(0,min(9800,value.y())))
+            # Soft world bounds only. A hard y>=0 floor left an empty band at the
+            # top of the canvas (sceneRect is padded above items), so nodes could
+            # never reach the visible top edge — Allen: 「允许移动上画布最上边」.
+            return QPointF(
+                max(Node.WORLD_MIN, min(Node.WORLD_MAX, value.x())),
+                max(Node.WORLD_MIN, min(Node.WORLD_MAX, value.y())),
+            )
         if change==QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged and self.scene():
             self.scene().update_edges()
+            self.scene().expand_for_item(self)
         return super().itemChange(change,value)
 
     def mouseReleaseEvent(self,event):
@@ -219,7 +228,17 @@ class FlowScene(QGraphicsScene):
                 item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
         for e in p['edges']:
             item=Edge(e,self);self.addItem(item);self.edges.append(item)
-        self.setSceneRect(self.itemsBoundingRect().adjusted(-40,-30,160,160));self.blockSignals(False)
+        self.setSceneRect(self.itemsBoundingRect().adjusted(-80,-80,160,160));self.blockSignals(False)
+
+    def expand_for_item(self, item):
+        """Grow sceneRect so a dragged node can reach the view's top/edges and stay findable."""
+        if item is None:
+            return
+        margin = 120
+        needed = item.sceneBoundingRect().adjusted(-margin, -margin, margin, margin)
+        current = self.sceneRect()
+        if current.isNull() or not current.contains(needed):
+            self.setSceneRect(current.united(needed) if not current.isNull() else needed)
 
     def selection_changed(self):
         nodes=[n.node_id for n in self.selectedItems() if isinstance(n,Node)]
@@ -406,7 +425,10 @@ class FlowView(QGraphicsView):
         if not raw:
             event.ignore();return
         pos=self.mapToScene(event.position().toPoint())
-        self.dropped.emit(raw,dict(x=max(0,min(9800,pos.x())),y=max(0,min(9800,pos.y()))))
+        self.dropped.emit(raw,dict(
+            x=max(Node.WORLD_MIN,min(Node.WORLD_MAX,pos.x())),
+            y=max(Node.WORLD_MIN,min(Node.WORLD_MAX,pos.y())),
+        ))
         event.setDropAction(Qt.DropAction.CopyAction)
         event.accept()
 
