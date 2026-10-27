@@ -15,6 +15,30 @@ from PySide6.QtWidgets import (
 from desktop.widgets.switch import OrangeSwitch
 
 
+def _rebuild_scales(p):
+    """Derive engine `scales` list from VM-style start/end/step (cap 8)."""
+    try:
+        s0 = float(p.get('scaleStart') or 1.0)
+        s1 = float(p.get('scaleEnd') or s0)
+        st = float(p.get('scaleStep') or 0.1)
+    except (TypeError, ValueError):
+        p['scales'] = [1.0]
+        return
+    if st <= 0:
+        st = 0.1
+    if s1 < s0:
+        s0, s1 = s1, s0
+    vals = []
+    x = s0
+    # inclusive end with float tolerance
+    while x <= s1 + 1e-9 and len(vals) < 8:
+        vals.append(round(x, 4))
+        x += st
+    if not vals:
+        vals = [round(s0, 4)]
+    p['scales'] = vals
+
+
 def normalize_locate_params(params=None):
     p = deepcopy(params or {})
     mode = p.get('matchMode') or 'fast'
@@ -34,7 +58,10 @@ def normalize_locate_params(params=None):
     p.setdefault('showScore', True)
     p.setdefault('showContour', True)
     p.setdefault('showOrigin', False)
+    p.setdefault('showCross', True)
     p.setdefault('resultJudgeEnable', False)
+    p.setdefault('resultJudgeMin', 0.0)
+    p.setdefault('resultJudgeMax', 1.0)
     p.setdefault('roiMode', 'inherit')  # inherit | draw
     # Gray-match extras (VM 灰度模板 / 运行参数)
     p.setdefault('grayLevel', 8)          # 灰度级数
@@ -46,7 +73,19 @@ def normalize_locate_params(params=None):
     p.setdefault('scaleStep', 0.1)
     p.setdefault('contrast', 20)
     p.setdefault('maxOverlap', 0.5)
+    # engine template_matching reads overlapThreshold — mirror maxOverlap
+    if 'overlapThreshold' not in p:
+        p['overlapThreshold'] = float(p.get('maxOverlap') or 0.5)
     p.setdefault('sortBy', 'score')
+    # VM p07 运行参数帧：全部搜索 / 匹配极性 / 角度·尺度使能 / 金字塔级数
+    p.setdefault('fullSearch', False)
+    p.setdefault('matchPolarity', 'consider')  # consider | ignore
+    p.setdefault('angleEnable', True)
+    p.setdefault('scaleEnable', True)
+    p.setdefault('pyramidLevels', 4)
+    p.setdefault('featureScale', 3.0)   # VM 模板配置·特征尺度
+    p.setdefault('thresholdMode', 'auto')  # auto | manual
+    _rebuild_scales(p)
     return p
 
 
@@ -104,6 +143,16 @@ class LocateMatchPanel(QWidget):
                     self.params.get('hasTemplate') or str(self.params.get('templatePath') or '').strip()
                 )
                 self.params['hasTemplate'] = self.params['templateReady']
+            if key == 'maxOverlap':
+                self.params['overlapThreshold'] = float(value)
+            if key in ('scaleStart', 'scaleEnd', 'scaleStep', 'scaleEnable'):
+                if self.params.get('scaleEnable', True):
+                    _rebuild_scales(self.params)
+                else:
+                    self.params['scales'] = [1.0]
+            if key in ('angleStart', 'angleEnd', 'angleStep') and not self.params.get('angleEnable', True):
+                self.params['angleStart'] = 0.0
+                self.params['angleEnd'] = 0.0
             self._emit()
 
     def _set_top(self, key, value):
@@ -255,6 +304,12 @@ class LocateMatchPanel(QWidget):
         form = QFormLayout(w)
         form.setContentsMargins(10, 10, 10, 10)
         form.setSpacing(8)
+        mode = self.params.get('matchMode') or 'fast'
+
+        # VM p07：全部搜索模式
+        full = OrangeSwitch(bool(self.params.get('fullSearch', False)))
+        full.toggled.connect(lambda c: self._set_param('fullSearch', bool(c)))
+        form.addRow('全部搜索模式', full)
 
         score = QDoubleSpinBox()
         score.setRange(0.0, 1.0)
@@ -270,9 +325,23 @@ class LocateMatchPanel(QWidget):
         matches.valueChanged.connect(lambda v: self._set_param('maxMatches', int(v)))
         form.addRow('最大匹配个数', matches)
 
-        a0 = QDoubleSpinBox(); a0.setRange(-180, 180); a0.setValue(float(self.params.get('angleStart') or 0))
-        a1 = QDoubleSpinBox(); a1.setRange(-180, 180); a1.setValue(float(self.params.get('angleEnd') or 0))
-        a_step = QDoubleSpinBox(); a_step.setRange(0.1, 180); a_step.setValue(float(self.params.get('angleStep') or 10))
+        pol = QComboBox()
+        pol.addItem('考虑极性', 'consider')
+        pol.addItem('忽略极性', 'ignore')
+        pol.setCurrentIndex(max(0, pol.findData(self.params.get('matchPolarity') or 'consider')))
+        pol.currentIndexChanged.connect(lambda _: self._set_param('matchPolarity', pol.currentData()))
+        form.addRow('匹配极性', pol)
+
+        ang_en = OrangeSwitch(bool(self.params.get('angleEnable', True)))
+        ang_en.toggled.connect(lambda c: self._set_param('angleEnable', bool(c)))
+        form.addRow('角度搜索使能', ang_en)
+
+        a0 = QDoubleSpinBox(); a0.setRange(-180, 180); a0.setDecimals(2)
+        a0.setValue(float(self.params.get('angleStart') or 0))
+        a1 = QDoubleSpinBox(); a1.setRange(-180, 180); a1.setDecimals(2)
+        a1.setValue(float(self.params.get('angleEnd') or 0))
+        a_step = QDoubleSpinBox(); a_step.setRange(0.1, 180); a_step.setDecimals(2)
+        a_step.setValue(float(self.params.get('angleStep') or 10))
         a0.valueChanged.connect(lambda v: self._set_param('angleStart', float(v)))
         a1.valueChanged.connect(lambda v: self._set_param('angleEnd', float(v)))
         a_step.valueChanged.connect(lambda v: self._set_param('angleStep', float(v)))
@@ -280,7 +349,40 @@ class LocateMatchPanel(QWidget):
         form.addRow('终止角度', a1)
         form.addRow('角度步长', a_step)
 
-        if (self.params.get('matchMode') or 'fast') == 'gray':
+        sc_en = OrangeSwitch(bool(self.params.get('scaleEnable', True)))
+        sc_en.toggled.connect(lambda c: self._set_param('scaleEnable', bool(c)))
+        form.addRow('尺度搜索使能', sc_en)
+
+        s0 = QDoubleSpinBox(); s0.setRange(0.1, 5.0); s0.setDecimals(3); s0.setSingleStep(0.05)
+        s0.setValue(float(self.params.get('scaleStart') or 1.0))
+        s0.valueChanged.connect(lambda v: self._set_param('scaleStart', float(v)))
+        form.addRow('起始缩放', s0)
+        s1 = QDoubleSpinBox(); s1.setRange(0.1, 5.0); s1.setDecimals(3); s1.setSingleStep(0.05)
+        s1.setValue(float(self.params.get('scaleEnd') or 1.0))
+        s1.valueChanged.connect(lambda v: self._set_param('scaleEnd', float(v)))
+        form.addRow('终止缩放', s1)
+        ss = QDoubleSpinBox(); ss.setRange(0.01, 1.0); ss.setDecimals(3)
+        ss.setValue(float(self.params.get('scaleStep') or 0.1))
+        ss.valueChanged.connect(lambda v: self._set_param('scaleStep', float(v)))
+        form.addRow('缩放步长', ss)
+
+        ov = QDoubleSpinBox(); ov.setRange(0.01, 0.9); ov.setDecimals(2)
+        ov.setValue(float(self.params.get('maxOverlap') or 0.5))
+        ov.valueChanged.connect(lambda v: self._set_param('maxOverlap', float(v)))
+        form.addRow('最大重叠', ov)
+
+        sort = QComboBox()
+        for k, lab in (('score', '按分数'), ('x', '按 X'), ('y', '按 Y')):
+            sort.addItem(lab, k)
+        sort.setCurrentIndex(max(0, sort.findData(self.params.get('sortBy') or 'score')))
+        sort.currentIndexChanged.connect(lambda _: self._set_param('sortBy', sort.currentData()))
+        form.addRow('排序方式', sort)
+
+        pyr = QSpinBox(); pyr.setRange(1, 8); pyr.setValue(int(self.params.get('pyramidLevels') or 4))
+        pyr.valueChanged.connect(lambda v: self._set_param('pyramidLevels', int(v)))
+        form.addRow('金字塔级数', pyr)
+
+        if mode == 'gray':
             gray_lv = QSpinBox(); gray_lv.setRange(2, 256)
             gray_lv.setValue(int(self.params.get('grayLevel') or 8))
             gray_lv.valueChanged.connect(lambda v: self._set_param('grayLevel', int(v)))
@@ -295,47 +397,34 @@ class LocateMatchPanel(QWidget):
                 lambda _: self._set_param('scoreType', score_type.currentData())
             )
             form.addRow('评分方式', score_type)
-
-            sub = OrangeSwitch(bool(self.params.get('subPixel', True)))
-            sub.toggled.connect(lambda c: self._set_param('subPixel', bool(c)))
-            form.addRow('亚像素', sub)
-
-            timeout = QSpinBox(); timeout.setRange(0, 60000)
-            timeout.setValue(int(self.params.get('timeoutMs') or 3000))
-            timeout.valueChanged.connect(lambda v: self._set_param('timeoutMs', int(v)))
-            form.addRow('超时(ms)', timeout)
-
-        s0 = QDoubleSpinBox(); s0.setRange(0.1, 5.0); s0.setDecimals(3); s0.setSingleStep(0.05)
-        s0.setValue(float(self.params.get('scaleStart') or 1.0))
-        s0.valueChanged.connect(lambda v: self._set_param('scaleStart', float(v)))
-        form.addRow('起始缩放', s0)
-        s1 = QDoubleSpinBox(); s1.setRange(0.1, 5.0); s1.setDecimals(3); s1.setSingleStep(0.05)
-        s1.setValue(float(self.params.get('scaleEnd') or 1.0))
-        s1.valueChanged.connect(lambda v: self._set_param('scaleEnd', float(v)))
-        form.addRow('终止缩放', s1)
-        ss = QDoubleSpinBox(); ss.setRange(0.01, 1.0); ss.setDecimals(3)
-        ss.setValue(float(self.params.get('scaleStep') or 0.1))
-        ss.valueChanged.connect(lambda v: self._set_param('scaleStep', float(v)))
-        form.addRow('缩放步长', ss)
-        ov = QDoubleSpinBox(); ov.setRange(0, 1); ov.setDecimals(2)
-        ov.setValue(float(self.params.get('maxOverlap') or 0.5))
-        ov.valueChanged.connect(lambda v: self._set_param('maxOverlap', float(v)))
-        form.addRow('最大重叠', ov)
-        sort = QComboBox()
-        for k, lab in (('score', '按分数'), ('x', '按 X'), ('y', '按 Y')):
-            sort.addItem(lab, k)
-        sort.setCurrentIndex(max(0, sort.findData(self.params.get('sortBy') or 'score')))
-        sort.currentIndexChanged.connect(lambda _: self._set_param('sortBy', sort.currentData()))
-        form.addRow('排序方式', sort)
-        if (self.params.get('matchMode') or 'fast') == 'fast':
+        else:
             ct = QSpinBox(); ct.setRange(0, 255); ct.setValue(int(self.params.get('contrast') or 20))
             ct.valueChanged.connect(lambda v: self._set_param('contrast', int(v)))
             form.addRow('对比度阈值', ct)
-            timeout = QSpinBox(); timeout.setRange(0, 60000)
-            timeout.setValue(int(self.params.get('timeoutMs') or 3000))
-            timeout.valueChanged.connect(lambda v: self._set_param('timeoutMs', int(v)))
-            form.addRow('超时(ms)', timeout)
-        tip = QLabel('对应 VM「运行参数」：分数/个数/角度/缩放；灰度另含级数/评分/亚像素。')
+            fs = QDoubleSpinBox(); fs.setRange(0.5, 20); fs.setDecimals(1)
+            fs.setValue(float(self.params.get('featureScale') or 3.0))
+            fs.valueChanged.connect(lambda v: self._set_param('featureScale', float(v)))
+            form.addRow('特征尺度', fs)
+            tm = QComboBox()
+            tm.addItem('自动', 'auto')
+            tm.addItem('手动', 'manual')
+            tm.setCurrentIndex(max(0, tm.findData(self.params.get('thresholdMode') or 'auto')))
+            tm.currentIndexChanged.connect(lambda _: self._set_param('thresholdMode', tm.currentData()))
+            form.addRow('阈值模式', tm)
+
+        sub = OrangeSwitch(bool(self.params.get('subPixel', True)))
+        sub.toggled.connect(lambda c: self._set_param('subPixel', bool(c)))
+        form.addRow('亚像素', sub)
+
+        timeout = QSpinBox(); timeout.setRange(0, 60000)
+        timeout.setValue(int(self.params.get('timeoutMs') or 3000))
+        timeout.valueChanged.connect(lambda v: self._set_param('timeoutMs', int(v)))
+        form.addRow('超时(ms)', timeout)
+
+        tip = QLabel(
+            '对齐 VM「运行参数」帧：全部搜索/分数/个数/极性/角度·尺度范围；'
+            'scales 与 overlapThreshold 同步写入引擎可读字段。无假 Halcon 核。'
+        )
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
@@ -362,7 +451,16 @@ class LocateMatchPanel(QWidget):
         _sw('showScore', '显示匹配分数', True)
         _sw('showContour', '显示轮廓', True)
         _sw('showOrigin', '显示模板原点', False)
+        _sw('showCross', '显示十字准星', True)
         _sw('resultJudgeEnable', '结果判断使能', False)
+        jmin = QDoubleSpinBox(); jmin.setRange(0, 1); jmin.setDecimals(3)
+        jmin.setValue(float(self.params.get('resultJudgeMin') or 0))
+        jmin.valueChanged.connect(lambda v: self._set_param('resultJudgeMin', float(v)))
+        form.addRow('判断分数下限', jmin)
+        jmax = QDoubleSpinBox(); jmax.setRange(0, 1); jmax.setDecimals(3)
+        jmax.setValue(float(self.params.get('resultJudgeMax') or 1))
+        jmax.valueChanged.connect(lambda v: self._set_param('resultJudgeMax', float(v)))
+        form.addRow('判断分数上限', jmax)
         lay.addLayout(form)
         lay.addStretch(1)
         return w

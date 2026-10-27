@@ -993,3 +993,11 @@ sieans：`config_status.node_needs_bang` + `Node.needs_config` / `run_failed`（
 | 组合模块红节点 | `docs/vm-bilibili-jgtech/frames/p26_*` |
 | 运行界面 | `docs/vm-bilibili-jgtech/frames/p28_*` `p29_*` |
 | 全局触发 / 红叹号 | `docs/vm-bilibili-jgtech/frames/p30_*` |
+
+## 【2026-10-27 续】P2 卡尺级密度 · Geometry / Locate（暂停点）
+
+- **GeometryFindPanel**（对 p05/p06 运行参数帧）：补边缘类型 / 滤波尺寸 / 卡尺宽·投影长 / 剔除点数 / 直线反向 / 角度归一化；圆：扇环内外径、初定位；结果显示：显示卡尺 / 拟合误差。引擎仅软用滤波尺寸、maxCount、扇环收紧半径、反向与角度归一 — **不伪称 Halcon 卡尺核**。
+- **LocateMatchPanel**（对 p07/p08）：全部搜索、匹配极性、角度/尺度使能、金字塔级数；快速另含特征尺度/阈值模式；结果显示十字准星 + 判断分数上下限；`scales` 由起止步长重建，`maxOverlap`→`overlapThreshold` 同步引擎。
+- **工具栏轻抛光**：`var`→「变量」；通信/上位机/产线链/触发/运行钮补 ToolTip；主栏 `mainToolBar` 略收紧间距。
+- **无推送、无机械手 SDK。本批后暂停等 Allen 反馈。**
+

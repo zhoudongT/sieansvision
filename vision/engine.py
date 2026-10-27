@@ -83,24 +83,61 @@ def geometry(image, canvas, p, offset):
     mode = p.get('feature', 'contours')
     ox, oy = offset
     result = []
+    # Soft caliper-adjacent knobs (OpenCV only — not a Halcon caliper kernel).
+    filt = int(number(p, 'filterSize', 1, 1, 31))
+    max_count = int(number(p, 'maxCount', 50, 1, 100))
+    if filt > 1:
+        k = filt * 2 + 1
+        gray = cv2.GaussianBlur(gray, (k, k), 0)
+
     if mode in ('lines', 'edges'):
-        edges = cv2.Canny(gray, number(p, 'cannyLow', 50, 0, 255), number(p, 'cannyHigh', 150, 0, 255))
+        # Prefer explicit edgeThreshold as Canny low when set densely from UI
+        low = number(p, 'cannyLow', 50, 0, 255)
+        high = number(p, 'cannyHigh', 150, 0, 255)
+        et = p.get('edgeThreshold')
+        if et is not None:
+            try:
+                etv = float(et)
+                if 1 <= etv <= 255:
+                    low = etv
+                    high = max(high, etv * 2)
+            except (TypeError, ValueError):
+                pass
+        edges = cv2.Canny(gray, low, high)
         if mode == 'edges':
             canvas[oy:oy+gray.shape[0], ox:ox+gray.shape[1]][edges > 0] = (0, 210, 80)
             return {'feature': mode, 'edgePixels': int(np.count_nonzero(edges))}
         lines = cv2.HoughLinesP(edges, 1, np.pi/180, int(number(p, 'votes', 40, 1, 10000)),
                                minLineLength=number(p, 'minLength', 40, 1, 10000), maxLineGap=number(p, 'maxGap', 10, 0, 1000))
-        for x1, y1, x2, y2 in ([] if lines is None else lines.reshape(-1, 4)[:100]):
+        reverse = bool(p.get('reverseFind'))
+        ang_norm = bool(p.get('angleNormalize'))
+        for x1, y1, x2, y2 in ([] if lines is None else lines.reshape(-1, 4)[:max_count]):
+            if reverse:
+                x1, y1, x2, y2 = x2, y2, x1, y1
             a, b = (int(x1)+ox, int(y1)+oy), (int(x2)+ox, int(y2)+oy)
+            ang = math.degrees(math.atan2(y2-y1, x2-x1))
+            if ang_norm:
+                ang = ang % 180.0
             cv2.line(canvas, a, b, (0, 210, 80), 2)
             result.append({'start': a, 'end': b, 'lengthPixels': math.hypot(x2-x1, y2-y1),
-                           'angleDeg': math.degrees(math.atan2(y2-y1, x2-x1))})
+                           'angleDeg': ang})
     elif mode == 'circles':
+        min_r = int(number(p, 'minRadius', 5, 0, 10000))
+        max_r = int(number(p, 'maxRadius', 200, 0, 10000))
+        # VM 扇环：若外径>0，收紧 Hough 半径窗
+        try:
+            ai = int(p.get('annulusInner') or 0)
+            ao = int(p.get('annulusOuter') or 0)
+        except (TypeError, ValueError):
+            ai = ao = 0
+        if ao > 0:
+            min_r = max(min_r, ai) if ai > 0 else min_r
+            max_r = ao if max_r <= 0 else min(max_r, ao)
         found = cv2.HoughCircles(cv2.GaussianBlur(gray, (5, 5), 1), cv2.HOUGH_GRADIENT, 1.2,
                                 number(p, 'minDistance', 30, 1, 10000),
                                 param1=number(p, 'cannyHigh', 150, 1, 255), param2=number(p, 'votes', 30, 1, 1000),
-                                minRadius=int(number(p, 'minRadius', 5, 0, 10000)), maxRadius=int(number(p, 'maxRadius', 200, 0, 10000)))
-        for x, y, r in ([] if found is None else found.reshape(-1, 3)[:100]):
+                                minRadius=min_r, maxRadius=max_r)
+        for x, y, r in ([] if found is None else found.reshape(-1, 3)[:max_count]):
             center = [float(x)+ox, float(y)+oy]
             cv2.circle(canvas, tuple(map(round, center)), round(float(r)), (0, 210, 80), 2)
             result.append({'center': center, 'radiusPixels': float(r), 'diameterPixels': float(2*r)})

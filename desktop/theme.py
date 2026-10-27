@@ -89,11 +89,14 @@ QMenu::item:selected {{ background: {SELECTED}; color: {ACCENT}; }}
 QToolBar {{
   background: {HEADER};
   border-bottom: 1px solid {LINE};
-  spacing: 4px;
-  padding: 2px 6px;
+  spacing: 2px;
+  padding: 1px 4px;
+}}
+QToolBar#mainToolBar {{
+  min-height: 28px;
 }}
 QToolButton {{
-  padding: 4px 8px;
+  padding: 3px 7px;
   border-radius: 2px;
   color: {TEXT};
   background: transparent;
