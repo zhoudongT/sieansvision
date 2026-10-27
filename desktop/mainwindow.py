@@ -23,6 +23,7 @@ from desktop.property_float import PropertyFloat
 from desktop.group_module import GroupBreadcrumb, normalize_group_params, group_bindings_ready, default_group_inner
 from desktop.image_source import normalize_source
 from desktop import scheme as flow_scheme
+from desktop.operator_hmi import OperatorHmiView
 STYLE = WORKBENCH_QSS
 
 
@@ -188,24 +189,15 @@ class MainWindow(QMainWindow):
         self._flow_pane=flow
         horizontal.addWidget(flow)
 
-        # A1 run-mode operator surface (hidden until toggled)
-        run_pane=QWidget();run_pane.setObjectName('runModePane');rl_run=QVBoxLayout(run_pane)
-        run_title=QLabel('运行模式 · 操作员界面')
-        run_title.setObjectName('dialogTitle');rl_run.addWidget(run_title)
-        run_hint=QLabel('画布编辑已锁定；工具箱已隐藏。可执行单次/连续；打开「运行界面设计」定制操作员 HMI。')
-        run_hint.setObjectName('dialogHint');run_hint.setWordWrap(True);rl_run.addWidget(run_hint)
-        run_btns=QHBoxLayout()
-        b=QPushButton('▶ 单次');b.setObjectName('primaryButton');b.clicked.connect(lambda:self.guard(self.run_once));run_btns.addWidget(b)
-        b=QPushButton('↻ 连续');b.clicked.connect(lambda:self.guard(self.run_continuous));run_btns.addWidget(b)
-        b=QPushButton('■ 停止');b.clicked.connect(lambda:self.guard(self.stop_run));run_btns.addWidget(b)
-        b=QPushButton('运行界面设计');b.clicked.connect(lambda:self.guard(self.open_run_ui_designer));run_btns.addWidget(b)
-        b=QPushButton('返回设计态');b.clicked.connect(lambda:self.set_app_mode('design'));run_btns.addWidget(b)
-        run_btns.addStretch(1);rl_run.addLayout(run_btns)
-        self.run_mode_image=None  # filled after image views exist
-        self._run_pane=run_pane
-        self._run_pane_layout=rl_run
-        horizontal.addWidget(run_pane)
-        run_pane.hide()
+        # A1 run-mode operator HMI (hidden until toggled) — driven by project.runUi
+        self.operator_hmi=OperatorHmiView()
+        self.operator_hmi.triggerCommands.connect(lambda cmds:self.guard(lambda:self._run_hmi_commands(cmds)))
+        self.operator_hmi.designRequested.connect(lambda:self.guard(self.open_run_ui_designer))
+        self.operator_hmi.backToDesign.connect(lambda:self.set_app_mode('design'))
+        self._run_pane=self.operator_hmi
+        self.run_mode_image=None  # image panes live inside operator_hmi
+        horizontal.addWidget(self.operator_hmi)
+        self.operator_hmi.hide()
 
         # Right: image | filmstrip (module-result lives in bottom)
         right=QWidget();right.setObjectName('imagePane');rl=QVBoxLayout(right);rl.setContentsMargins(0,0,0,0);rl.setSpacing(0)
@@ -224,11 +216,7 @@ class MainWindow(QMainWindow):
         # Keep ParameterPanel as hidden fallback for programmatic refresh; property float is primary
         self.parameters=ParameterPanel();self.parameters.hide();self.parameters.changed.connect(self.update_step)
         horizontal.addWidget(right)
-        # Embed a live image mirror area into run pane
-        self.run_mode_image=ImageView()
-        self._run_pane_layout.addWidget(self.run_mode_image,1)
-        run_foot=QLabel('运行界面设计器入口：工具 → 运行界面设计（对标 VM4.4）')
-        run_foot.setObjectName('dialogHint');self._run_pane_layout.addWidget(run_foot)
+        self._image_pane=right
         horizontal.setSizes([300,560,520,0]);horizontal.setChildrenCollapsible(False)
         self._main_horizontal=horizontal
         root_split.addWidget(horizontal)
@@ -410,6 +398,8 @@ class MainWindow(QMainWindow):
             self.filmstrip.thumbs.blockSignals(False)
             self.filmstrip.auto_switch.blockSignals(False)
             self.filmstrip.setVisible(cfg.get('mode','local')=='local' and self.app_mode=='design')
+        if self.app_mode=='run' and hasattr(self,'operator_hmi'):
+            self.operator_hmi.reload_layout(p)
 
     def rename_project(self):
         if self.busy:return
@@ -526,7 +516,7 @@ class MainWindow(QMainWindow):
             p=deepcopy(self.document.project);step=next(s for s in p['steps'] if s['id']==self.selected)
             if step['operation'] not in ('locate','defects'):raise ValueError('当前模块不使用参考图')
             step['reference']=data;self.document.commit(p);self.log('已设置所选模块参考图');return
-        self.image=data;self.input_view.show_data(data);self.output_view.show_data('');self.results.set_results([]);self.log(f'载入图像 {image.width()} × {image.height()}')
+        self.image=data;self.input_view.show_data(data);self.output_view.show_data('');self.results.set_results([]);self._mirror_preview_to_operator();self.log(f'载入图像 {image.width()} × {image.height()}')
         self.clear_cloud();self.last_result=None;self.refresh_parameters()
         # keep filmstrip in sync for local source
         try:
@@ -739,11 +729,14 @@ class MainWindow(QMainWindow):
                 self.all_flows_panel.set_flows(p.get('flows') or [])
         except Exception:
             pass
-        # Mirror output to run-mode image if present
-        if hasattr(self,'run_mode_image') and self.run_mode_image is not None:
+        # Mirror result into run-mode operator HMI
+        if hasattr(self,'operator_hmi') and self.operator_hmi is not None:
             try:
-                pix=self.output_view
-                # best-effort: copy last annotated if any was set on output_view
+                annotated=''
+                for record in reversed(records):
+                    annotated=record.get('output',{}).get('annotatedImage') or ''
+                    if annotated:break
+                self.operator_hmi.set_runtime(result, image=self.image, annotated=annotated)
             except Exception:
                 pass
         text={'completed':'运行完成','cancelled':'已停止','failed':'运行失败'}.get(result.get('state'),result.get('state','未知'))
@@ -772,6 +765,14 @@ class MainWindow(QMainWindow):
         self.logs.appendPlainText(str(message))
         if hasattr(self,'wb_status'):self.wb_status.push_log(str(message))
         else:self.statusBar().showMessage(str(message))
+        if self.app_mode=='run' and hasattr(self,'operator_hmi'):
+            try:self.operator_hmi.append_log(str(message))
+            except Exception:pass
+
+    def _mirror_preview_to_operator(self):
+        if self.app_mode=='run' and hasattr(self,'operator_hmi') and self.image:
+            try:self.operator_hmi.set_preview_image(self.image)
+            except Exception:pass
 
     def open_template(self, relative):
         if self.busy or not self.engine_ready:return
@@ -873,7 +874,7 @@ class MainWindow(QMainWindow):
         if image.isNull() or image.width()*image.height()>16000000:raise ValueError('无效图像，或超过 1600 万像素')
         data='data:image/'+('jpeg' if p.suffix.lower() in ('.jpg','.jpeg') else p.suffix[1:].lstrip('.') or 'png')+';base64,'+base64.b64encode(raw).decode()
         self.image=data;self.input_view.show_data(data);self.output_view.show_data('');self.results.set_results([])
-        self.clear_cloud();self.last_result=None
+        self.clear_cloud();self.last_result=None;self._mirror_preview_to_operator()
         # persist currentIndex
         proj=deepcopy(self.document.project)
         cfg=normalize_source(proj.get('sourceConfig'))
@@ -1114,16 +1115,18 @@ class MainWindow(QMainWindow):
         # Lock graph edit
         if hasattr(self,'scene'):
             self.scene.set_edit_locked(mode=='run')
-        # Layout: hide toolbox/rail in run mode; show operator pane
+        # Layout: hide toolbox / flow canvas / design image in run mode; show operator HMI
         if hasattr(self,'_left_pane') and self._left_pane is not None:
             self._left_pane.setVisible(mode=='design')
         if hasattr(self,'_flow_pane'):
             self._flow_pane.setVisible(mode=='design')
+        if hasattr(self,'_image_pane') and self._image_pane is not None:
+            self._image_pane.setVisible(mode=='design')
         if hasattr(self,'_run_pane'):
             self._run_pane.setVisible(mode=='run')
         if hasattr(self,'_main_horizontal'):
             if mode=='run':
-                self._main_horizontal.setSizes([0,0,520,640])
+                self._main_horizontal.setSizes([0,0,0,1600])
             else:
                 self._main_horizontal.setSizes([300,560,520,0])
         # Close property float in run mode
@@ -1131,9 +1134,20 @@ class MainWindow(QMainWindow):
             try:self.property_float.close()
             except Exception:pass
             self.property_float=None
+        if mode=='run' and hasattr(self,'operator_hmi'):
+            self.operator_hmi.reload_layout(self.document.project)
+            # Seed image panes with last annotated / current source
+            annotated=''
+            if self.last_result:
+                for record in reversed(self.last_result.get('results') or []):
+                    annotated=(record.get('output') or {}).get('annotatedImage') or ''
+                    if annotated:break
+                self.operator_hmi.set_runtime(self.last_result, image=self.image, annotated=annotated)
+            elif self.image:
+                self.operator_hmi.set_preview_image(self.image)
         self.set_busy(self.busy)
         self.document_changed()
-        self.log('已切换到'+('运行模式（画布锁定，操作员界面）' if mode=='run' else '设计态（完整工作台）'))
+        self.log('已切换到'+('运行模式（操作员 HMI · 画布锁定）' if mode=='run' else '设计态（完整工作台）'))
 
 
     # ---- B3 组合模块：进入 / 退出嵌套画布 ----
@@ -1209,13 +1223,75 @@ class MainWindow(QMainWindow):
             self.log('全局触发已更新')
             self.scene.rebuild()
 
+    def _run_hmi_commands(self, commands):
+        """Execute trigger-command list from operator HMI buttons (B5)."""
+        cmds = list(commands or [])
+        if not cmds:
+            return
+        for cmd in cmds:
+            ctype = (cmd or {}).get('type') or ''
+            cfg = (cmd or {}).get('config') or ''
+            if ctype in ('执行·单次', '执行'):
+                self.run_once(); return  # run is async; further cmds after finish not chained yet
+            if ctype == '执行·连续':
+                self.run_continuous(); return
+            if ctype == '执行·停止':
+                self.stop_run(); continue
+            if ctype == '方案保存':
+                self.save_project(); continue
+            if ctype == '方案另存':
+                self.save_project_as() if hasattr(self, 'save_project_as') else self.save_project(); continue
+            if ctype == '复位':
+                self.results.set_results([])
+                if hasattr(self, 'operator_hmi'):
+                    self.operator_hmi.set_runtime({}, image=self.image, annotated='')
+                self.log('复位'); continue
+            if ctype == '界面链接':
+                target = cfg or '日志'
+                if target == '日志':
+                    # bottom tabs: 0 results, 1 logs
+                    try:
+                        # find bottom QTabWidget among central children — best-effort focus logs via status
+                        self.log(f'界面链接 → {target}')
+                    except Exception:
+                        pass
+                elif target == '全局相机':
+                    self.log('界面链接 → 全局相机（请从设备菜单打开）')
+                elif target == '通讯':
+                    self.log('界面链接 → 通讯（请从设备菜单打开）')
+                elif target == '变量':
+                    try:
+                        from desktop.variables_dialog import VariablesDialog
+                        VariablesDialog(self.document, self).exec()
+                    except Exception as err:
+                        self.log(f'变量对话框：{err}')
+                else:
+                    self.log(f'界面链接 → {target}')
+                continue
+            if ctype == '参数配置':
+                self.log('参数配置：请返回设计态编辑模块属性')
+                continue
+            if ctype == '模块动作':
+                # config may hold module id; fall back to selected / full run
+                target = cfg.strip() or self.selected
+                if target:
+                    self.run(target)
+                else:
+                    self.run_once()
+                return
+            self.log(f'未接线触发命令：{ctype}' + (f' · {cfg}' if cfg else ''))
+
     def open_run_ui_designer(self):
         if self.dialogs.get('run_ui'):
             self.dialogs['run_ui'].show();self.dialogs['run_ui'].raise_();return
         from desktop.run_ui_designer import RunUiDesignerDialog
         dlg=RunUiDesignerDialog(self.document,self,templates_root=self.root)
         dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        dlg.destroyed.connect(lambda *_:self.dialogs.pop('run_ui',None))
+        def _on_designer_gone(*_):
+            self.dialogs.pop('run_ui', None)
+            if self.app_mode == 'run' and hasattr(self, 'operator_hmi'):
+                self.operator_hmi.reload_layout(self.document.project)
+        dlg.destroyed.connect(_on_designer_gone)
         self.dialogs['run_ui']=dlg
         dlg.show()
 

@@ -413,6 +413,12 @@ QFrame#runPreviewCell {{
   border: 1px dashed {LINE};
   border-radius: 6px;
 }}
+QWidget#operatorGridHost {{
+  background: {PANEL};
+}}
+QWidget#runModePane QPushButton {{
+  min-height: 28px;
+}}
 QLabel#modeBadge {{
   background: {SELECTED};
   color: {ACCENT};
