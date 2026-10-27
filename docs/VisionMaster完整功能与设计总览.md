@@ -426,6 +426,17 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊹ · diff多选批量开目录 · 色板自定义/最近色 · 保持tip可关 · 中键回退可配 · undo条可点撤销 · 2026-10-28】
+
+- **diff 多选批量开目录**：清单 ExtendedSelection；「打开选中」→ `open_merge_diff_selected` / `open_merge_diff_paths`（去重批量）。
+- **色板自定义/最近色**：`pick_sev_pin_arc_seize_custom_color`（QColorDialog）+ `remember_sev_pin_arc_seize_color`（最多 6）；菜单「最近」+「自定义…」。
+- **保持 tip 可关**：`toast_hist_cap_keep_exit_tip_enabled` / 容量菜单「退出保持提示」开关（`host/toastHistCapKeepExitTip`）。
+- **中键回退可配**：`path_copy_badge_parent_fallback_enabled`（`host/pathCopyBadgeParentFallback`）；关则失败不回退本级。
+- **undo 条可点撤销**：进度条增高可点；`_on_stale_prune_undo_bar_clicked` → `undo_prune_stale_alarm_film_csv_dirs`。
+- **冒烟**：`smoke-wave44-diffbatch-recentcolor-tiptoggle-fallbackcfg-undoclick-e2e`（另回归 wave43/42）。
+
+---
+
 ## 【细妆㊸ · diff清单可点开目录 · 抢占预设色板 · 保持退出确认tip · 中键失败回退本级 · undo进度条 · 2026-10-28】
 
 - **diff 清单可点开目录**：`show_last_merge_diff` 交互对话框（`hostMergeDiffList`）；双击/「打开目录」→ `open_merge_diff_path`；`_merge_diff_no_exec` 供冒烟。
