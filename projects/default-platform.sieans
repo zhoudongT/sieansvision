@@ -247,5 +247,26 @@
       "openAndRun": true
     }
   },
-  "notes": "【打开即跑 · 今日交付】胶片条已挂 circle/caliper/fixture 样张。设计态 ▶ 单次：预处理→圆查找→测量→变量；或切「运行模式」用操作员界面开始/停止。无需预先「打开图像」——打开工程会自动载入第一张。"
+  "notes": "【打开即跑 · 今日交付】胶片条已挂 circle/caliper/fixture 样张。设计态 ▶ 单次：预处理→圆查找→测量→变量；或切「运行模式」用操作员界面开始/停止。无需预先「打开图像」——打开工程会自动载入第一张。",
+  "globalTriggers": {
+    "events": [],
+    "strings": [
+      {
+        "event": "RUN",
+        "match": "RUN",
+        "partial": false,
+        "commandType": "执行·单次",
+        "config": "",
+        "enabled": true
+      },
+      {
+        "event": "STOP",
+        "match": "STOP",
+        "partial": false,
+        "commandType": "执行·停止",
+        "config": "",
+        "enabled": true
+      }
+    ]
+  }
 }

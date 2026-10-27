@@ -121,12 +121,81 @@ def _upstream(project, step_id):
     return [s for s in project.get('steps', []) if s.get('id') in parents and s.get('id') != step_id]
 
 
+def _flatten_result_fields(obj, prefix='', depth=0, limit=40):
+    """Collect dotted field paths from a result dict for the upstream picker."""
+    out = []
+    if depth > 3 or len(out) >= limit:
+        return out
+    if isinstance(obj, dict):
+        for key, val in obj.items():
+            if key in ('image', 'annotated', 'thumbnail', 'preview') and depth == 0:
+                out.append(key if not prefix else f'{prefix}.{key}')
+                continue
+            path = key if not prefix else f'{prefix}.{key}'
+            out.append(path)
+            if isinstance(val, (dict, list)) and depth < 2:
+                out.extend(_flatten_result_fields(val, path, depth + 1, limit - len(out)))
+            if len(out) >= limit:
+                break
+    elif isinstance(obj, list) and obj and depth < 2:
+        out.append(f'{prefix}.0' if prefix else '0')
+        if isinstance(obj[0], dict):
+            out.extend(_flatten_result_fields(obj[0], f'{prefix}.0' if prefix else '0', depth + 1, limit - len(out)))
+    # unique preserve order
+    seen, uniq = set(), []
+    for p in out:
+        if p not in seen:
+            seen.add(p)
+            uniq.append(p)
+    return uniq[:limit]
+
+
+def result_field_index(last_result, nodes, definitions=None):
+    """Map upstream step id → suggested field paths from last run (fallback: common keys)."""
+    records = (last_result or {}).get('results') or []
+    by_id = {r.get('id'): r for r in records if isinstance(r, dict) and r.get('id')}
+    defs = definitions or {}
+    index = {}
+    for node in nodes or []:
+        nid = node.get('id')
+        if not nid:
+            continue
+        rec = by_id.get(nid) or {}
+        result = (rec.get('output') or {}).get('result') if isinstance(rec.get('output'), dict) else None
+        if result is None:
+            result = rec.get('result') if isinstance(rec.get('result'), dict) else {}
+        paths = _flatten_result_fields(result) if result else []
+        if not paths:
+            op = node.get('operation') or ''
+            # light fallbacks by op + generic
+            fallback = {
+                'receive_data': ['payload', 'ok', 'device', 'bytes'],
+                'send_data': ['ok', 'device', 'bytes', 'payload'],
+                'var_calc': ['value', 'ok', 'expression', 'error'],
+                'group': ['ok', 'status', 'outputs'],
+            }.get(op, ['ok', 'status', 'value', 'count', 'payload'])
+            # definition outputs if available
+            dout = (defs.get(op) or {}).get('outputs') if isinstance(defs, dict) else None
+            if dout:
+                from_def = []
+                for o in dout:
+                    if isinstance(o, dict):
+                        from_def.append(o.get('key') or o.get('name') or '')
+                    elif isinstance(o, str):
+                        from_def.append(o)
+                fallback = [x for x in from_def if x] or fallback
+            paths = fallback
+        index[nid] = paths
+    return index
+
+
 class ReferenceEditor(QWidget):
     """Build a runtime reference without requiring reference syntax from users."""
     changed = Signal(object)
 
-    def __init__(self, value, nodes, parent=None):
+    def __init__(self, value, nodes, parent=None, field_index=None):
         super().__init__(parent)
+        self._field_index = field_index or {}
         self.scope = QComboBox()
         self.scope.setObjectName('referenceScope')
         for key, label in SCOPES + [('results', '上游结果')]:
@@ -135,6 +204,11 @@ class ReferenceEditor(QWidget):
         self.node.setObjectName('referenceNode')
         for node in nodes:
             self.node.addItem(node.get('name', node['id']), node['id'])
+        self.field = QComboBox()
+        self.field.setObjectName('referenceField')
+        self.field.setEditable(True)
+        self.field.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.field.lineEdit().setPlaceholderText('选择或输入上游字段…')
         self.path = QLineEdit()
         self.path.setObjectName('referencePath')
         self.path.setPlaceholderText('变量名 / 字段路径，例如 point.x 或 rows.0.value')
@@ -147,6 +221,7 @@ class ReferenceEditor(QWidget):
         row.addWidget(self.scope)
         row.addWidget(self.node)
         layout.addLayout(row)
+        layout.addWidget(self.field)
         layout.addWidget(self.path)
         layout.addWidget(self.error)
         ref = value.get('$ref', '') if isinstance(value, dict) else ''
@@ -162,10 +237,46 @@ class ReferenceEditor(QWidget):
             self.path.setText('.'.join(parts[2:]))
         else:
             self.path.setText('.'.join(parts[1:]))
-        self.node.setVisible(self.scope.currentData() == 'results')
-        self.scope.currentIndexChanged.connect(self._commit)
-        self.node.currentIndexChanged.connect(self._commit)
+        self._reload_fields(select_path=self.path.text().strip())
+        show_results = self.scope.currentData() == 'results'
+        self.node.setVisible(show_results)
+        self.field.setVisible(show_results)
+        self.scope.currentIndexChanged.connect(self._on_scope_or_node)
+        self.node.currentIndexChanged.connect(self._on_scope_or_node)
+        self.field.activated.connect(self._on_field_picked)
+        self.field.lineEdit().editingFinished.connect(self._on_field_picked)
         self.path.editingFinished.connect(self._commit)
+
+    def _reload_fields(self, select_path=''):
+        self.field.blockSignals(True)
+        self.field.clear()
+        self.field.addItem('（手填路径）', '')
+        nid = self.node.currentData()
+        for path in self._field_index.get(nid) or []:
+            self.field.addItem(path, path)
+        if select_path:
+            idx = self.field.findData(select_path)
+            if idx < 0:
+                self.field.addItem(select_path, select_path)
+                idx = self.field.findData(select_path)
+            self.field.setCurrentIndex(max(0, idx))
+        self.field.blockSignals(False)
+
+    def _on_scope_or_node(self, *_):
+        show_results = self.scope.currentData() == 'results'
+        self.node.setVisible(show_results)
+        self.field.setVisible(show_results)
+        if show_results:
+            self._reload_fields(select_path=self.path.text().strip())
+        self._commit()
+
+    def _on_field_picked(self, *_):
+        data = self.field.currentData()
+        text = (self.field.currentText() or '').strip()
+        path = data if data else text
+        if path and path != '（手填路径）':
+            self.path.setText(path)
+        self._commit()
 
     def reference(self):
         scope, path = self.scope.currentData(), self.path.text().strip()
@@ -180,7 +291,9 @@ class ReferenceEditor(QWidget):
         return {'$ref': scope + '.' + path}
 
     def _commit(self, *_):
-        self.node.setVisible(self.scope.currentData() == 'results')
+        show_results = self.scope.currentData() == 'results'
+        self.node.setVisible(show_results)
+        self.field.setVisible(show_results)
         value = self.reference()
         self.error.setText('' if value else '请选择可用范围、上游模块并填写有效字段路径。')
         if value is not None:
@@ -191,9 +304,10 @@ class ValueEditor(QWidget):
     """Typed constant or reference — Halcon/VM style: value first, bind on the side."""
     changed = Signal(object)
 
-    def __init__(self, schema, value, nodes=(), parent=None):
+    def __init__(self, schema, value, nodes=(), parent=None, field_index=None):
         super().__init__(parent)
         self.schema, self._value = deepcopy(schema), deepcopy(value)
+        self._field_index = field_index or {}
         is_ref = isinstance(value, dict) and set(value) == {'$ref'}
         self._literal = _default(schema) if is_ref else deepcopy(value)
         self.mode = QComboBox()
@@ -201,14 +315,14 @@ class ValueEditor(QWidget):
         self.mode.addItem('固定值', 'literal')
         self.mode.addItem('绑定上游', 'reference')
         self.mode.setMaximumWidth(96)
-        self.binding_hint = QLabel('绑定：scope.path 或 results.模块.字段')
+        self.binding_hint = QLabel('绑定：scope.path 或 results.模块.字段（可从上游字段下拉挑选）')
         self.binding_hint.setObjectName('bindingHint')
         self.binding_hint.setStyleSheet('color:#6a7a8a;font-size:10px;')
         self.binding_hint.setVisible(False)
         self.mode.setToolTip('固定值 = 直接填写；绑定上游 = 订阅变量 / 上游模块结果（VisionMaster ⛓ 同款）。切换后在右侧选范围与字段路径。')
         self.stack = QStackedWidget()
         self.literal = self._make_literal(self._literal, nodes)
-        self.reference = ReferenceEditor(value if is_ref else {}, nodes)
+        self.reference = ReferenceEditor(value if is_ref else {}, nodes, field_index=self._field_index)
         self.stack.addWidget(self.literal)
         self.stack.addWidget(self.reference)
         self.mode.setCurrentIndex(int(is_ref))
@@ -583,12 +697,13 @@ class ParameterPanel(QWidget):
         self.tabs.addTab(scroll, label)
         return outer
 
-    def set_step(self, step, definition, project):
+    def set_step(self, step, definition, project, last_result=None):
         definition = definition or {}
-        context = ([{k: s.get(k) for k in ('id', 'name')} for s in project.get('steps', [])], project.get('edges', []))
+        context = ([{k: s.get(k) for k in ('id', 'name')} for s in project.get('steps', [])], project.get('edges', []), id(last_result))
         if step == self._step and definition == self._definition and context == self._context:
             return
         self._step, self._definition, self._context = deepcopy(step), deepcopy(definition), deepcopy(context)
+        self._last_result = last_result
         while self.tabs.count():
             widget = self.tabs.widget(0)
             self.tabs.removeTab(0)
@@ -657,6 +772,13 @@ class ParameterPanel(QWidget):
         page.addWidget(image_box)
 
         nodes = _upstream(project, step['id'])
+        # Enrich nodes with operation for field fallbacks
+        by_id = {s.get('id'): s for s in project.get('steps') or []}
+        for n in nodes:
+            full = by_id.get(n.get('id')) or {}
+            if 'operation' not in n:
+                n['operation'] = full.get('operation')
+        field_index = result_field_index(getattr(self, '_last_result', None) or last_result, nodes)
         plugin = step.get('operation') == 'plugin'
         params = step.get('params', {})
 
@@ -667,7 +789,7 @@ class ParameterPanel(QWidget):
             values = params.get('inputs', {}) if plugin else params
             for field in input_defs:
                 key = field['key']
-                editor = ValueEditor(field, values.get(key, _default(field)), nodes)
+                editor = ValueEditor(field, values.get(key, _default(field)), nodes, field_index=field_index)
                 editor.setObjectName('input:' + key)
                 editor.changed.connect(lambda value, key=key, group=('inputs' if plugin else None): self._set_param(group, key, value))
                 in_form.addRow(_label(field), editor)
@@ -690,7 +812,7 @@ class ParameterPanel(QWidget):
             key = field['key']
             if step.get('operation') == 'script' and key == 'code':
                 continue
-            editor = ValueEditor(field, values.get(key, _default(field)), nodes)
+            editor = ValueEditor(field, values.get(key, _default(field)), nodes, field_index=field_index)
             editor.setObjectName('parameter:' + key)
             editor.changed.connect(lambda value, key=key, group=group: self._set_param(group, key, value))
             param_form.addRow(_label(field), editor)

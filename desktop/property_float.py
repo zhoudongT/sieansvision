@@ -348,7 +348,9 @@ class PropertyFloat(QDialog):
             'QWidget#propertyPanel{background:#f0f0f0;border:0;}'
             'QLabel{color:#222222;}'
         )
-        panel.set_step(step, definition, project)
+        host = self.parent()
+        last_result = getattr(host, 'last_result', None) if host is not None else None
+        panel.set_step(step, definition, project, last_result=last_result)
         panel.changed.connect(self._on_step_changed)
         self.body.addWidget(panel)
         self._panel = panel

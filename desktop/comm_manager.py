@@ -764,9 +764,24 @@ class CommManagerDialog(QDialog):
 
 
     def _commit_test_writeback(self, var_edit, scope_combo, text, log_widget, ts=''):
-        """Write test reply into flow/global vars; honor scope combo or flow./global. prefix."""
+        """Write test reply into flow/global vars; honor scope combo or flow./global. prefix.
+        Also forward payload to MainWindow.fire_string_trigger for live RUN etc.
+        """
         raw = (var_edit.text() or '').strip() if var_edit else ''
+        # Always try string-trigger dispatch (even when no var binding)
+        host = self.parent()
+        while host is not None and not hasattr(host, 'fire_string_trigger'):
+            host = host.parent() if hasattr(host, 'parent') else None
+        fired = False
+        if host is not None and text is not None and str(text) != '':
+            try:
+                fired = bool(host.fire_string_trigger(text, reason='通信试收'))
+            except Exception as err:
+                log_widget.appendPlainText(f'字符串触发异常：{err}')
         if not raw or not hasattr(self, 'document'):
+            if fired:
+                prefix = f'[{ts}] ' if ts else ''
+                log_widget.appendPlainText(f'{prefix}已派发字符串触发')
             return
         # If user typed bare name, prefix with combo scope
         if '.' not in raw and scope_combo is not None:
@@ -775,6 +790,9 @@ class CommManagerDialog(QDialog):
         p = deepcopy(self.document.project)
         scope, name = write_project_variable(p, raw, text)
         if not name:
+            if fired:
+                prefix = f'[{ts}] ' if ts else ''
+                log_widget.appendPlainText(f'{prefix}已派发字符串触发')
             return
         # remember prefs
         cm = ensure_comm_manager(p)
@@ -783,7 +801,8 @@ class CommManagerDialog(QDialog):
         prefs['lastScope'] = scope
         self.document.commit(p)
         prefix = f'[{ts}] ' if ts else ''
-        log_widget.appendPlainText(f'{prefix}已写入变量 {scope}.{name}')
+        extra = ' · 已派发字符串触发' if fired else ''
+        log_widget.appendPlainText(f'{prefix}已写入变量 {scope}.{name}{extra}')
 
     def accept_save(self):
         # Flush current form into devices list

@@ -299,37 +299,38 @@
   "globalTriggers": {
     "events": [
       {
-        "enabled": true,
         "event": "流程开始",
-        "commands": [
-          {
-            "action": "log",
-            "text": "trigger:flow-start"
-          }
-        ]
+        "match": "流程开始",
+        "partial": false,
+        "commandType": "界面链接",
+        "config": "日志",
+        "enabled": true
       },
       {
-        "enabled": true,
         "event": "流程结束",
-        "commands": [
-          {
-            "action": "log",
-            "text": "trigger:flow-end"
-          }
-        ]
+        "match": "流程结束",
+        "partial": false,
+        "commandType": "界面链接",
+        "config": "日志",
+        "enabled": true
       }
     ],
     "strings": [
       {
-        "enabled": true,
-        "match": "equals",
-        "pattern": "RUN",
-        "commands": [
-          {
-            "action": "run",
-            "target": ""
-          }
-        ]
+        "event": "RUN",
+        "match": "RUN",
+        "partial": false,
+        "commandType": "执行·单次",
+        "config": "",
+        "enabled": true
+      },
+      {
+        "event": "STOP",
+        "match": "STOP",
+        "partial": false,
+        "commandType": "执行·停止",
+        "config": "",
+        "enabled": true
       }
     ]
   },

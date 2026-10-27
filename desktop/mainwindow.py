@@ -426,7 +426,7 @@ class MainWindow(QMainWindow):
         if step and step.get('operation') in ('subflow','loop'):
             for field in definition.get('parameters',[]):
                 if field['key']=='subflowId':field['choices']=[dict(value=s['id'],label=s['name']) for s in self.document.project.get('subflows',[])]
-        self.parameters.set_step(step,definition,self.document.project)
+        self.parameters.set_step(step,definition,self.document.project,last_result=self.last_result)
         self.input_view.show_roi(step.get('params',{}).get('roi') if step else None)
 
     def update_step(self,step):
@@ -1507,6 +1507,19 @@ class MainWindow(QMainWindow):
         cmds = collect_event_commands(self.document.project, event_name)
         self._dispatch_global_triggers(cmds, reason=event_name)
 
+    def fire_string_trigger(self, text, reason='外部字符串'):
+        """Live string-trigger entry: Comm / HMI / inject "RUN" → _run_hmi_commands."""
+        from desktop.global_triggers import collect_string_commands
+        payload = '' if text is None else str(text)
+        if not payload:
+            return False
+        cmds = collect_string_commands(self.document.project, payload)
+        if not cmds:
+            return False
+        self.log(f'字符串触发匹配「{payload[:48]}」×{len(cmds)}')
+        self._dispatch_global_triggers(cmds, reason=reason or '外部字符串')
+        return True
+
     def _fire_string_triggers_from_results(self, records):
         from desktop.global_triggers import collect_string_commands, payloads_from_run_results
         steps = self.document.project.get('steps') or []
@@ -1532,11 +1545,15 @@ class MainWindow(QMainWindow):
 
     def _run_hmi_commands(self, commands):
         """Execute trigger-command list from operator HMI buttons (B5)."""
+        from desktop.global_triggers import ACTION_TO_COMMAND, COMMAND_TYPES
         cmds = list(commands or [])
         if not cmds:
             return
         for cmd in cmds:
-            ctype = (cmd or {}).get('type') or ''
+            raw = (cmd or {}).get('type') or ''
+            ctype = ACTION_TO_COMMAND.get(raw) or raw
+            if ctype not in COMMAND_TYPES and raw in COMMAND_TYPES:
+                ctype = raw
             cfg = (cmd or {}).get('config') or ''
             if ctype in ('执行·单次', '执行'):
                 self.run_once(); return  # run is async; further cmds after finish not chained yet

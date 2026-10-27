@@ -46,13 +46,73 @@ def ensure_triggers(project):
     return gt
 
 
+# Seed / English action → dialog COMMAND_TYPES
+ACTION_TO_COMMAND = {
+    'run': '执行·单次',
+    'run_once': '执行·单次',
+    'once': '执行·单次',
+    'continuous': '执行·连续',
+    'run_continuous': '执行·连续',
+    'stop': '执行·停止',
+    'pause': '执行·暂停',
+    'resume': '执行·继续',
+    'continue': '执行·继续',
+    'save': '方案保存',
+    'save_as': '方案另存',
+    'reset': '复位',
+    'alarm': '状态·报警',
+    'clear_alarm': '状态·清除报警',
+    'module': '模块动作',
+}
+
+
+def _row_enabled(row):
+    if not isinstance(row, dict):
+        return False
+    if 'enabled' in row and row.get('enabled') is False:
+        return False
+    return True
+
+
+def _commands_from_row(row, source='', extra=None):
+    """Normalize dialog rows (commandType) and seed rows (commands[{action}])."""
+    out = []
+    extra = dict(extra or {})
+    ctype = (row or {}).get('commandType') or (row or {}).get('command') or ''
+    if ctype:
+        out.append(dict(type=ctype, config=(row or {}).get('config') or '', source=source, **extra))
+    for c in (row or {}).get('commands') or []:
+        if not isinstance(c, dict):
+            continue
+        action = str(c.get('action') or c.get('type') or '').strip()
+        if not action or action == 'log':
+            continue
+        mapped = ACTION_TO_COMMAND.get(action) or (action if action in COMMAND_TYPES else '')
+        if not mapped:
+            continue
+        cfg = c.get('config') or c.get('target') or c.get('text') or ''
+        out.append(dict(type=mapped, config=cfg, source=source, **extra))
+    return out
+
+
 def match_string_row(received, row):
-    """Full or partial string match (VM 部分匹配)."""
-    needle = str((row or {}).get('match') or (row or {}).get('event') or '')
+    """Full or partial string match (VM 部分匹配). Supports dialog + seed schemas."""
     text = '' if received is None else str(received)
+    row = row or {}
+    mode = row.get('match')
+    # Seed schema: match=equals|contains, pattern=needle
+    if mode in ('equals', 'contains', 'partial', 'full'):
+        needle = str(row.get('pattern') or row.get('event') or '')
+        if not needle:
+            return False
+        if mode in ('equals', 'full'):
+            return needle == text
+        return needle in text
+    # Dialog schema: match/event is the needle; partial bool
+    needle = str(row.get('event') or row.get('match') or row.get('pattern') or '')
     if not needle:
         return False
-    if (row or {}).get('partial', True):
+    if row.get('partial', True):
         return needle in text
     return needle == text
 
@@ -62,12 +122,11 @@ def collect_string_commands(project, received):
     gt = ensure_triggers(project if isinstance(project, dict) else {})
     out = []
     for row in gt.get('strings') or []:
-        if not isinstance(row, dict):
+        if not _row_enabled(row):
             continue
         if match_string_row(received, row):
-            ctype = row.get('commandType') or row.get('command') or ''
-            if ctype:
-                out.append(dict(type=ctype, config=row.get('config') or '', source='string', match=row.get('match') or row.get('event') or ''))
+            needle = row.get('pattern') or row.get('event') or row.get('match') or ''
+            out.extend(_commands_from_row(row, source='string', extra=dict(match=str(needle))))
     return out
 
 
@@ -79,12 +138,10 @@ def collect_event_commands(project, event_name):
     gt = ensure_triggers(project if isinstance(project, dict) else {})
     out = []
     for row in gt.get('events') or []:
-        if not isinstance(row, dict):
+        if not _row_enabled(row):
             continue
         if str(row.get('event') or '').strip() == name:
-            ctype = row.get('commandType') or row.get('command') or ''
-            if ctype:
-                out.append(dict(type=ctype, config=row.get('config') or '', source='event', event=name))
+            out.extend(_commands_from_row(row, source='event', extra=dict(event=name)))
     return out
 
 
@@ -280,6 +337,28 @@ class _TriggerTable(QWidget):
         return match_string_row(received, row)
 
 
+
+def _ui_normalize_row(row, kind='string'):
+    """Map seed {pattern,commands[{action}]} → dialog {event,commandType,config,partial}."""
+    row = dict(row or {})
+    cmds = _commands_from_row(row)
+    if kind == 'string':
+        mode = row.get('match')
+        if mode in ('equals', 'contains', 'partial', 'full'):
+            needle = str(row.get('pattern') or row.get('event') or '')
+            partial = mode not in ('equals', 'full')
+        else:
+            needle = str(row.get('event') or row.get('match') or row.get('pattern') or '')
+            partial = bool(row.get('partial', True))
+        ctype = (cmds[0]['type'] if cmds else '') or row.get('commandType') or COMMAND_TYPES[0]
+        cfg = (cmds[0].get('config') if cmds else '') or row.get('config') or ''
+        return dict(event=needle, match=needle, partial=partial, commandType=ctype, config=cfg)
+    # event
+    ctype = (cmds[0]['type'] if cmds else '') or row.get('commandType') or COMMAND_TYPES[0]
+    cfg = (cmds[0].get('config') if cmds else '') or row.get('config') or ''
+    return dict(event=row.get('event') or '', match=row.get('event') or '', partial=False, commandType=ctype, config=cfg)
+
+
 class GlobalTriggersDialog(QDialog):
     """设置级全局触发壳：事件触发 / 字符串触发。"""
 
@@ -293,7 +372,7 @@ class GlobalTriggersDialog(QDialog):
         title = QLabel('全局触发')
         title.setObjectName('dialogTitle')
         root.addWidget(title)
-        hint = QLabel('事件 → 命令 / 字符串触发（部分匹配）→ 执行流程。运行时：流程开始/结束/NG 派发事件；receive_data 载荷自动匹配字符串触发（常接通信收数）。配置随方案保存。')
+        hint = QLabel('事件 → 命令 / 字符串触发（部分匹配）→ 执行流程。运行时：流程开始/结束/NG 派发事件；receive_data 载荷、通信试收、以及 fire_string_trigger("RUN") 均匹配字符串触发（常接 执行·单次）。配置随方案保存。')
         hint.setObjectName('dialogHint')
         hint.setWordWrap(True)
         root.addWidget(hint)
@@ -333,8 +412,8 @@ class GlobalTriggersDialog(QDialog):
         root.addLayout(bar)
 
         gt = ensure_triggers(deepcopy(document.project))
-        self.event_table.set_rows(gt.get('events') or [])
-        self.string_table.set_rows(gt.get('strings') or [])
+        self.event_table.set_rows([_ui_normalize_row(r, 'event') for r in (gt.get('events') or [])])
+        self.string_table.set_rows([_ui_normalize_row(r, 'string') for r in (gt.get('strings') or [])])
 
     def _matched_commands(self, text):
         cmds = []

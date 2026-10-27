@@ -5,7 +5,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTabWidget,
     QTableWidget, QTableWidgetItem, QHeaderView, QFormLayout, QLineEdit,
-    QComboBox, QMessageBox, QFrame,
+    QComboBox, QMessageBox, QFrame, QInputDialog, QAbstractItemView,
 )
 
 from desktop.theme import CARD, LINE, TEXT, ACCENT
@@ -133,33 +133,122 @@ class GroupParamPanel(QWidget):
     def _io_tab(self, kind):
         w = QWidget()
         v = QVBoxLayout(w)
-        table = QTableWidget(3, 3)
-        table.setHorizontalHeaderLabels(['参数名称', '类型', '订阅关系'])
+        table = QTableWidget(0, 4)
+        table.setHorizontalHeaderLabels(['参数名称', '类型', '订阅关系', '操作'])
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setAlternatingRowColors(True)
         io = (self.params.get('io') or {}).get(kind) or []
         defaults = [
-            ('ImageData', 'IMAGE', self.params.get('imageData') or '—'),
-            ('InputROI', 'ROI', self.params.get('inputRoi') or '—'),
-            ('Result', 'JSON', '—'),
+            ('ImageData', 'IMAGE', self.params.get('imageData') or ''),
+            ('InputROI', 'ROI', self.params.get('inputRoi') or ''),
+            ('Result', 'JSON', ''),
         ] if kind == 'inputs' else [
             ('ImageData', 'IMAGE', '组内输出'),
-            ('Output', 'ANY', '—'),
-            ('Status', 'BOOL', '—'),
+            ('Output', 'ANY', ''),
+            ('Status', 'BOOL', ''),
         ]
         rows = io if io else [{'name': a, 'type': b, 'binding': c} for a, b, c in defaults]
-        for r, row in enumerate(rows[:3]):
+        for row in rows:
             if isinstance(row, dict):
                 vals = [row.get('name', ''), row.get('type', ''), row.get('binding', '')]
             else:
-                vals = list(row)
-            for c, val in enumerate(vals):
-                table.setItem(r, c, QTableWidgetItem(str(val)))
-        v.addWidget(table)
-        note = QLabel('I/O：输入/输出订阅关系随 ⛓ 绑定写入；运行时引擎会展开组内算子并回写 flow 变量（circleCount/passGate 等）。')
+                vals = list(row)[:3]
+            self._io_append_row(table, kind, vals)
+        table.itemChanged.connect(lambda *_: self._emit())
+        v.addWidget(table, 1)
+        bar = QHBoxLayout()
+        add = QPushButton('添加行')
+        add.clicked.connect(lambda *_ , t=table, k=kind: self._io_add_row(t, k))
+        bar.addWidget(add)
+        bar.addStretch(1)
+        v.addLayout(bar)
+        note = QLabel('I/O 可编辑并随方案保存；订阅关系可用 ⛓ 挑选，也可手填 results./flow. 路径。')
         note.setWordWrap(True)
+        note.setObjectName('dialogHint')
         v.addWidget(note)
         setattr(self, f'_{kind}_table', table)
         return w
+
+    def _io_append_row(self, table, kind, vals=None):
+        vals = list(vals or ['', 'ANY', ''])
+        while len(vals) < 3:
+            vals.append('')
+        r = table.rowCount()
+        table.blockSignals(True)
+        table.insertRow(r)
+        for c, val in enumerate(vals[:3]):
+            table.setItem(r, c, QTableWidgetItem(str(val)))
+        ops = QWidget()
+        ol = QHBoxLayout(ops)
+        ol.setContentsMargins(2, 0, 2, 0)
+        chain = QPushButton('⛓')
+        chain.setFixedWidth(28)
+        chain.setToolTip('挑选订阅源')
+        chain.clicked.connect(lambda *_ , t=table, rr=r, k=kind: self._io_bind_row(t, rr, k))
+        rm = QPushButton('删')
+        rm.setFixedWidth(28)
+        rm.clicked.connect(lambda *_ , t=table, rr=r: self._io_remove_row(t, rr))
+        ol.addWidget(chain)
+        ol.addWidget(rm)
+        table.setCellWidget(r, 3, ops)
+        table.blockSignals(False)
+
+    def _io_add_row(self, table, kind):
+        self._io_append_row(table, kind, ['NewParam', 'ANY', ''])
+        self._emit()
+
+    def _io_remove_row(self, table, row):
+        if 0 <= row < table.rowCount():
+            table.removeRow(row)
+            self._emit()
+
+    def _io_bind_row(self, table, row, kind):
+        if row < 0 or row >= table.rowCount():
+            return
+        current_item = table.item(row, 2)
+        current = current_item.text() if current_item else ''
+        try:
+            from desktop.bind_dialog import BindSourceDialog
+            dlg = BindSourceDialog(self.project, current=current, group_step=self.step, parent=self)
+            if not dlg.exec():
+                return
+            choice = dlg.selected or ''
+        except Exception:
+            options = ['', '0 图像源1.图像', '0 图像源1.ROI', 'flow.passGate', 'flow.circleCount']
+            for i, s in enumerate(self.project.get('steps') or [], start=1):
+                name = s.get('name') or s.get('operation') or s['id']
+                options.extend([f'{i} {name}.图像', f'{i} {name}.ROI', f'{i} {name}.Output'])
+            choice, ok = QInputDialog.getItem(self, '订阅绑定', '选择订阅源', options, 0, True)
+            if not ok:
+                return
+        table.blockSignals(True)
+        table.setItem(row, 2, QTableWidgetItem(choice))
+        table.blockSignals(False)
+        # Mirror ImageData / InputROI when editing those named rows
+        name_item = table.item(row, 0)
+        name = (name_item.text() if name_item else '').strip()
+        if kind == 'inputs' and name == 'ImageData':
+            self.image_data.setText(choice)
+        elif kind == 'inputs' and name == 'InputROI':
+            self.input_roi.setText(choice)
+        self._emit()
+
+    def _read_io_table(self, kind):
+        table = getattr(self, f'_{kind}_table', None)
+        if table is None:
+            return list((self.params.get('io') or {}).get(kind) or [])
+        out = []
+        for r in range(table.rowCount()):
+            def cell(c):
+                it = table.item(r, c)
+                return it.text().strip() if it else ''
+            name, typ, binding = cell(0), cell(1), cell(2)
+            if not name and not binding:
+                continue
+            out.append(dict(name=name or f'param{r+1}', type=typ or 'ANY', binding=binding))
+        return out
 
     def _display_tab(self):
         w = QWidget()
@@ -197,6 +286,25 @@ class GroupParamPanel(QWidget):
             self.params['loopIntervalMs'] = max(0, int(self.loop_interval.text() or 0))
         except ValueError:
             self.params['loopIntervalMs'] = 0
+        io = dict(self.params.get('io') or {})
+        io['inputs'] = self._read_io_table('inputs')
+        io['outputs'] = self._read_io_table('outputs')
+        io.setdefault('display', {})
+        self.params['io'] = io
+        # Keep top ImageData/InputROI in sync with named input rows when present
+        for row in io['inputs']:
+            if row.get('name') == 'ImageData' and row.get('binding'):
+                self.params['imageData'] = row['binding']
+                if self.image_data.text().strip() != row['binding']:
+                    self.image_data.blockSignals(True)
+                    self.image_data.setText(row['binding'])
+                    self.image_data.blockSignals(False)
+            if row.get('name') == 'InputROI' and row.get('binding'):
+                self.params['inputRoi'] = row['binding']
+                if self.input_roi.text().strip() != row['binding']:
+                    self.input_roi.blockSignals(True)
+                    self.input_roi.setText(row['binding'])
+                    self.input_roi.blockSignals(False)
         step = deepcopy(self.step)
         step['params'] = deepcopy(self.params)
         self.changed.emit(step)
