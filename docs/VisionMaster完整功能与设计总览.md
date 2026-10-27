@@ -426,6 +426,17 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊥ · 落点高亮动画/跨日吸附 · Shift右键仅选 · 剪贴板toast预览 · 徽章色阶热同步 · α步进重置 · 2026-10-28】
+
+- **落点高亮动画 / 跨日组吸附**：组头切换时 opacity 脉冲；`_snap_merge_diff_fail_hist_drop_target` 磁吸最近组头。
+- **Shift 色块右键仅选该段**：右键清选后仅选该行；左键仍为跳转。
+- **剪贴板 toast 单击预览 PNG**：toast action=`preview_curve_png`；`show_toast_hist_cap_tip_anim_curve_clipboard_preview`。
+- **徽章条与 undo 预设热同步菜单**：改色阶预设热刷徽章条；右键徽章条弹出热同步菜单。
+- **α 旋钮步进/重置默认**：`±10` / `重置默认`；`adjust_` / `reset_stale_prune_undo_color_custom_alpha_default`。
+- **冒烟**：`smoke-wave56-dropanim-chipsolo-clippreview-hotsync-alphastep-e2e`（另回归 wave55/54/53）。
+
+---
+
 ## 【细妆㊤ · 组头落点高亮/折叠态保留 · Shift色块可点跳 · 曲线剪贴板toast · 徽章色阶对齐 · α旋钮默认 · 2026-10-28】
 
 - **组头拖拽落点高亮 / 折叠态保留**：拖拽中组头绿框高亮；`persist_merge_diff_batch_fail_history_collapsed` 写入 QSettings；重排后折叠态不丢。
