@@ -85,14 +85,14 @@ UI_LINK_TARGETS = ['全局相机', '通讯', '变量', '日志', '综合配置']
 # C2: 固定栏绑定占位选项
 CAMERA_BIND_OPTIONS = [
     '未绑定',
-    '相机状态·占位',
+    '相机状态·实况',
     '全局相机.连接状态',
     '全局相机.取流状态',
     '全局相机.触发状态',
 ]
 COMM_BIND_OPTIONS = [
     '未绑定',
-    '通讯状态·占位',
+    '通讯状态·实况',
     'TCP.连接状态',
     '串口.连接状态',
     'PLC.通讯状态',
@@ -417,10 +417,10 @@ class RunUiDesignerDialog(QDialog):
         gf = QFormLayout(grp)
         self.cam_bind = QComboBox()
         self.cam_bind.addItems(CAMERA_BIND_OPTIONS)
-        self.cam_bind.setToolTip('绑定相机状态占位（引擎接线后续）')
+        self.cam_bind.setToolTip('绑定相机状态（固定栏实况 / 会话提示）')
         self.comm_bind = QComboBox()
         self.comm_bind.addItems(COMM_BIND_OPTIONS)
-        self.comm_bind.setToolTip('绑定通讯状态占位（引擎接线后续）')
+        self.comm_bind.setToolTip('绑定通讯状态（固定栏实况 / 徽章）')
         self.cam_bind.currentIndexChanged.connect(self._on_bind_changed)
         self.comm_bind.currentIndexChanged.connect(self._on_bind_changed)
         gf.addRow(QLabel('相机状态'), self.cam_bind)
@@ -461,7 +461,7 @@ class RunUiDesignerDialog(QDialog):
             lst = self.lib_tabs.widget(i)
             lst.currentItemChanged.connect(self._pick_control_item)
 
-        foot = QLabel('  C1 四类控件库 stub · C2 固定栏绑相机/通讯 · C3 模板元数据保存/载入；按钮触发命令与 ⛓ 订阅已接入。')
+        foot = QLabel('  C1 控件库（表格/饼图/线图已可视化）· C2 固定栏绑相机/通讯实况 · C3 模板元数据；按钮触发与 ⛓ 已接入。')
         foot.setObjectName('dialogHint')
         foot.setWordWrap(True)
         root.addWidget(foot)

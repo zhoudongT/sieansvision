@@ -1037,6 +1037,11 @@ sieans：`config_status.node_needs_bang` + `Node.needs_config` / `run_failed`（
 
 已闭合本批：胶片条**格式过滤下拉**（显 N / 文件夹导入同步）；报警历史**关键字筛选**；Host 信息栏 ↔ HMI「信息提示栏」单向镜像；Group **显示设置**开关（showInnerImage/ROI）+ 循环引擎展开文案；进组**组内红叹号**扫盲 chip。
 
+
+## 【细妆进度 · 2026-10-27 续②】
+
+已闭合：设置菜单「运行间隔/流程超时」；胶片格式↔sourceConfig 双向；浮窗连续跑热更新字幕；N4 状态栏 ToolTip 计数；HMI 表格/饼图/线图可视化；固定栏绑定「实况」文案；从模板「多协议通信」；all_flows 显示说明。
+
 ## 【细妆剩余清单 · 持续更新 · 2026-10-27 深夜】
 
 > Allen t194：每一处细妆完成；下列为仍未闭合项（无 robot SDK / 无 push）。
@@ -1046,12 +1051,12 @@ sieans：`config_status.node_needs_bang` + `Node.needs_config` / `run_failed`（
 | chrome | 工具栏纯图标人工观感确认；品牌条与 VM 分区像素级对照 |
 | panels | 模板「创建模板…」提示已接；**编辑子窗**阈值画笔仍缺；卡尺叠层加深 |
 | harvest | 全算子面板「插入上游字段」扫盲（少数 wave3 薄壳可能仍缺） |
-| HMI | 控件 1:1 可视化（非 stub）；固定栏**相机会话异步**实况；模板市场/云同步 |
-| filmstrip | 格式过滤下拉已落地（显N）；属性面板双向仍可加深 |
-| float | 与 VM 帧像素级 QSS 对照；模块连续执行中参数热更新提示 |
+| HMI | 表格/饼图/线图已可视化；其余容器壳仍薄；固定栏**相机会话异步**仍可加深；无模板市场 |
+| filmstrip | 格式过滤下拉 + sourceConfig 双向已接；属性面板控件仍可加深 |
+| float | 连续执行中热更新字幕已接；像素级 QSS 对照仍可加深 |
 | nest | 引擎循环已实执；进组红叹号 chip 已接；组内扫盲动画仍可加深 |
-| labels | 全菜单/ToolTip 中英混用扫尾；状态栏「组件配置完成」与 N4 联动文案 |
-| settings | 流程超时/运行间隔与连续跑调度的全路径走查 |
+| labels | N4 ToolTip 已强化；中英混用扫尾仍可继续 |
+| settings | 设置菜单已挂运行间隔/流程超时；连续跑全路径走查仍可加深 |
 | samples | 更多行业 Skip 集仅 UI 示意样例（无厂商 SDK） |
 | Comm | 收发事件 ↔ 运行时变量更深联调；全局触发←Comm 收数表壳联调 |
 | Host SM | 信息栏→HMI 镜像已接；HMI→Host 已有；报警历史筛选已接 |

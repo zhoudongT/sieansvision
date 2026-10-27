@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
     QPlainTextEdit, QGridLayout, QSizePolicy, QLineEdit, QListWidget,
+    QTableWidget, QTableWidgetItem, QProgressBar, QHeaderView,
 )
 
 from desktop.image_view import ImageView
@@ -1282,7 +1283,57 @@ class OperatorHmiView(QWidget):
             cell.layout().addWidget(panel, 1)
             return cell
 
-        # Fallback stub for charts / layout containers etc.
+        # 细妆：表格 / 简单图表可视化（非纯 stub）
+        if name in ('表格', '结果表'):
+            cell = self._make_cell_frame(name + (f' · {binding}' if binding else ''))
+            table = QTableWidget(4, 3)
+            table.setHorizontalHeaderLabels(['项', '值', '判定'])
+            table.horizontalHeader().setStretchLastSection(True)
+            table.verticalHeader().setVisible(False)
+            table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+            demos = [('模块', '—', '—'), ('耗时(ms)', '—', '—'), ('OK计数', '—', '—'), ('NG计数', '—', '—')]
+            for r, row in enumerate(demos):
+                for c, val in enumerate(row):
+                    table.setItem(r, c, QTableWidgetItem(val))
+            table.setObjectName('hmiResultTable')
+            self._result_tables = getattr(self, '_result_tables', [])
+            self._result_tables.append(table)
+            cell.layout().addWidget(table, 1)
+            return cell
+        if name in ('饼图',):
+            cell = self._make_cell_frame(name)
+            bar_ok = QProgressBar(); bar_ok.setRange(0, 100); bar_ok.setValue(85)
+            bar_ok.setFormat('OK %p%'); bar_ok.setStyleSheet('QProgressBar::chunk{background:#3ecf8e;}')
+            bar_ng = QProgressBar(); bar_ng.setRange(0, 100); bar_ng.setValue(15)
+            bar_ng.setFormat('NG %p%'); bar_ng.setStyleSheet('QProgressBar::chunk{background:#e35d6a;}')
+            cell.layout().addWidget(QLabel('良率示意（饼图简化条）'))
+            cell.layout().addWidget(bar_ok)
+            cell.layout().addWidget(bar_ng)
+            cell.layout().addStretch(1)
+            return cell
+        if name in ('多数据线图', '线图阵列'):
+            cell = self._make_cell_frame(name)
+            tip = QLabel('曲线示意：周期耗时 / 判定序列（引擎时序后续加深）')
+            tip.setWordWrap(True)
+            tip.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
+            spark = QLabel('▁▂▃▅▄▆▇▅▄▃▂▁  ·  live sparkline shell')
+            spark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            spark.setStyleSheet(f'color:{TEXT};font-size:16px;letter-spacing:1px;padding:12px;')
+            cell.layout().addWidget(tip)
+            cell.layout().addWidget(spark, 1)
+            return cell
+        if name in ('组合框', '子界面', 'Tab页', '参数组合', '文本框组合'):
+            cell = self._make_cell_frame(name)
+            body = QLabel(f'▣ {name}\n容器壳 · 子控件随布局配置展开')
+            body.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            body.setStyleSheet(f'color:{TEXT_MUTED};font-weight:600;font-size:12px;')
+            body.setWordWrap(True)
+            cell.layout().addStretch(1)
+            cell.layout().addWidget(body)
+            cell.layout().addStretch(1)
+            return cell
+
+        # Fallback stub for remaining chart / exotic controls
         cell = self._make_cell_frame(name)
         hint = CONTROL_STUB_HINTS.get(name, '')
         body = QLabel(f'▣ {name}' + (f'\n{hint}' if hint else '') + (f'\n⛓ {binding}' if binding else ''))

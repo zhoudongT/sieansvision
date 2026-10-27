@@ -85,6 +85,7 @@ class MainWindow(QMainWindow):
             ('打开即跑 · 参考图缺陷', 'projects/open-and-run-defects.sieans'),
             ('打开即跑 · 条码识别', 'projects/open-and-run-barcode.sieans'),
             ('打开即跑 · 组合+通信', 'projects/open-and-run-group-comm.sieans'),
+            ('打开即跑 · 多协议通信', 'projects/open-and-run-comm-multiproto.sieans'),
             ('空白检测工程', 'projects/templates/blank-inspection.sieans'),
             ('采集 → 几何 → 尺寸', 'projects/templates/measure-chain.sieans'),
             ('参考图缺陷检测', 'projects/templates/defect-inspection.sieans'),
@@ -113,6 +114,9 @@ class MainWindow(QMainWindow):
         settings_menu.addAction(self.action('全局触发…',self.open_global_triggers))
         settings_menu.addAction(self.action('通信管理…',self.open_comm_manager))
         settings_menu.addAction(self.action('一键套用上位机运行壳…',self.apply_host_run_ui_template))
+        settings_menu.addSeparator()
+        settings_menu.addAction(self.action('设置运行间隔…', self._settings_run_interval))
+        settings_menu.addAction(self.action('设置流程超时…', self._settings_flow_timeout))
         self._jump_skip_persist_action = self.action(
             '跨会话记住跳层确认跳过', self._toggle_jump_skip_persist)
         self._jump_skip_persist_action.setCheckable(True)
@@ -274,6 +278,10 @@ class MainWindow(QMainWindow):
         self.filmstrip.pathSelected.connect(self.load_filmstrip_path)
         self.filmstrip.listChanged.connect(self.filmstrip_list_changed)
         self.filmstrip.autoSwitchChanged.connect(self.filmstrip_auto_changed)
+        try:
+            self.filmstrip.formatFilterChanged.connect(self._on_filmstrip_format_filter)
+        except Exception:
+            pass
         self.filmstrip.stopAtLastChanged.connect(self.filmstrip_stop_at_last_changed)
         if hasattr(self.filmstrip, 'continuousPauseToggled'):
             self.filmstrip.continuousPauseToggled.connect(self._on_filmstrip_continuous_pause)
@@ -573,9 +581,9 @@ class MainWindow(QMainWindow):
                     step = next((s for s in (p.get('steps') or []) if s.get('id') == sid), None)
                     names.append((step or {}).get('name') or sid)
             more = '…' if len(bad) > 3 else ''
-            self.wb_status.config_label.setToolTip('未配置：' + '、'.join(names) + more)
+            self.wb_status.config_label.setToolTip(f'未配置完整 {len(bad)} 处：' + '、'.join(names) + more + '（与画布红叹号同源 · N4）')
         else:
-            self.wb_status.config_label.setToolTip('')
+            self.wb_status.config_label.setToolTip('组件配置完成（与画布红叹号同源 · N4）')
 
     def document_changed(self):
         p=self.document.project
@@ -3583,6 +3591,31 @@ class MainWindow(QMainWindow):
         else:
             self.open_project_file(path)
 
+
+    def _settings_run_interval(self):
+        """设置菜单：当前活动流程运行间隔（与流程 Tab 右键同源）。"""
+        if self.busy:
+            return
+        try:
+            p = self.document.project
+            flow_scheme.ensure_scheme(p)
+            fid = p.get('activeFlowId') or (p.get('flows') or [{}])[0].get('id')
+            self._flow_tab_context(fid, 'interval')
+        except Exception as err:
+            self.log(f'设置运行间隔失败：{err}')
+
+    def _settings_flow_timeout(self):
+        """设置菜单：当前活动流程超时（与流程 Tab 右键同源）。"""
+        if self.busy:
+            return
+        try:
+            p = self.document.project
+            flow_scheme.ensure_scheme(p)
+            fid = p.get('activeFlowId') or (p.get('flows') or [{}])[0].get('id')
+            self._flow_tab_context(fid, 'timeout')
+        except Exception as err:
+            self.log(f'设置流程超时失败：{err}')
+
     def _ask_run_interval(self, current=0):
         """C4: 「设置运行间隔」对话框，单位 ms，上限 100000。"""
         dlg = QDialog(self)
@@ -3652,6 +3685,23 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
+
+    def _on_filmstrip_format_filter(self, key):
+        """胶片条格式过滤 → sourceConfig.imageFormatFilter（细妆双向）。"""
+        if self.busy:
+            return
+        try:
+            from copy import deepcopy
+            p = deepcopy(self.document.project)
+            from desktop.image_source import normalize_source
+            cfg = normalize_source(p.get('sourceConfig'))
+            cfg['imageFormatFilter'] = key or '全部'
+            p['sourceConfig'] = cfg
+            self.document.commit(p, label='胶片格式过滤')
+            self.log(f'胶片格式过滤：{cfg["imageFormatFilter"]}')
+        except Exception as err:
+            self.log(f'胶片格式过滤失败：{err}')
+
     def _sync_filmstrip_visibility(self):
         """Local+design: show filmstrip. Camera/SDK: hide bar but still wire interval/auto-switch;
         soft-disable 运行全部 so a later mode flip does not leave a stale enabled button."""
@@ -3668,6 +3718,11 @@ class MainWindow(QMainWindow):
             # (even while hidden) so camera→local flip restores correct controls.
             try:
                 self.filmstrip.set_interval_hint(cfg.get('intervalMs') or 0)
+            except Exception:
+                pass
+            try:
+                if hasattr(self.filmstrip, 'set_format_filter'):
+                    self.filmstrip.set_format_filter(cfg.get('imageFormatFilter') or '全部')
             except Exception:
                 pass
             try:

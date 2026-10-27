@@ -65,7 +65,7 @@ class FlowParamDialog(QDialog):
         w = QWidget()
         form = QFormLayout(w)
         form.addRow(QLabel('显示全局图像'), QLabel('开' if display.get('globalImage', True) else '关'))
-        form.addRow(QLabel('说明'), QLabel(display.get('note') or '流程级显示相关设置（占位）'))
+        form.addRow(QLabel('说明'), QLabel(display.get('note') or '流程级显示：与运行界面分屏 / 固定栏配置联动'))
         return w
 
 

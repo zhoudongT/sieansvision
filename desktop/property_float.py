@@ -76,6 +76,8 @@ class PropertyFloat(QDialog):
         self.cancel_btn = QPushButton('取消')
         self.ok_btn = QPushButton('确定')
         self.cont_btn.clicked.connect(lambda: self.runModuleContinuous.emit(self._node_id))
+        self.cont_btn.setToolTip('连续执行本模块；运行中改参会即时提交（Esc 可弃改）')
+        self.exec_btn.setToolTip('单次执行本模块')
         self.exec_btn.clicked.connect(lambda: self.runModule.emit(self._node_id))
         self.cancel_btn.clicked.connect(self._on_cancel_close)
         self.ok_btn.clicked.connect(self._on_ok_close)
@@ -621,3 +623,13 @@ class PropertyFloat(QDialog):
         self._step_dirty = True
         # Live commit-on-change while open (canvas/result RT); Esc/✕ restores baseline
         self.changed.emit(step)
+        try:
+            host = self.parent()
+            running = bool(getattr(host, 'continuous', False) or getattr(host, 'busy', False)
+                           or getattr(host, 'run_all_filmstrip', False))
+            if running and hasattr(self, 'subtitle'):
+                self.subtitle.setText('连续/运行中 · 参数已热更新')
+                self.subtitle.setVisible(True)
+                self.subtitle.setStyleSheet('color:#c67c00;font-size:11px;')
+        except Exception:
+            pass
