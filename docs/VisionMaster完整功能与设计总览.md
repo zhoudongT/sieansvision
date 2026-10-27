@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆55 · pin建议历史筛选高亮/多字段 · 冲突策略指示条右键菜单 · DST自定义排序撤/重做栈 · A/B冲突预览表复制/导出 · jitter重做旁标 chrome · 2026-10-28】
+
+- **pin 建议历史筛选高亮/多字段**：`filter_…` 附 `_matches`/`_highlight`（label/keys/ts）；`highlight_…_suggest_history`；菜单条目「」高亮 + matchFields；对话框「多字段(键/标签/时间)」。
+- **冲突策略指示条右键菜单**：旁标左击仍循环；右击 QMenu 替/并/跳/询（可勾选）；`_confirm_trial_undo_ics_lab_menu_no_exec` smoke；tooltip「右击菜单」。
+- **DST 自定义排序撤/重做栈**：对齐 jitter；`undo/redo_reorder_…_ttl_preset_customs` + depth/clear_redo；菜单「撤销/重做排序 · N」「清重做栈」。
+- **A/B 冲突预览表复制/导出**：`format/copy/export_…_preview_table`；对话框「复制表」「导出…」；TSV。
+- **jitter 重做旁标 chrome**：`hostJitterSeedRedoClearUndoTtlPresetCustomsReorderRedoDepthLab`；对齐深度 lab；点击重做/右击清栈；`_refresh_…_reorder_redo_depth_ui`。
+- **冒烟**：`smoke-wave87-pinsuggesthistfilterhl-confirmstratmenu-dstundoredo-abprevcopyexport-jitterredochrome-e2e`（另回归 wave86/85/84）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆54 · pin建议历史按键过滤/搜索 · 导入冲突策略默认+持久指示条 · DST自定义拖拽排序 · A/B回退冲突预览表 · jitter重做深度/清redo UI · 2026-10-28】
 
 - **pin 建议历史按键过滤/搜索**：`filter/set/get_…_suggest_history_filter_query`；菜单「筛选…」/`清除筛选`；smoke `filter_history`。
