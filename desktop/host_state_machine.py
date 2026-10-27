@@ -10,10 +10,12 @@ from copy import deepcopy
 from datetime import datetime, timedelta
 
 from PySide6.QtCore import Qt, Signal, QTimer, QSettings
+from PySide6.QtGui import QAction, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
     QTabWidget, QFormLayout, QLineEdit, QGroupBox, QPlainTextEdit,
     QGridLayout, QSizePolicy, QComboBox, QDoubleSpinBox, QSpinBox, QListWidget, QListWidgetItem, QFileDialog, QApplication,
+    QMenu,
 )
 
 from desktop.theme import TEXT, TEXT_MUTED, TEXT_DIM, OK, PANEL, LINE
@@ -690,11 +692,38 @@ class HostStateMachineWidget(QWidget):
         self._alarm_sev_filter.currentIndexChanged.connect(self._on_alarm_sev_filter_changed)
         filt_row.addWidget(self._alarm_sev_filter)
         lay.addLayout(filt_row)
+        # wave28: 严重度筛芯片条
+        chip_row = QHBoxLayout()
+        chip_row.setSpacing(4)
+        self._alarm_sev_chips = {}
+        for lab, key in (
+            ('全部', 'all'),
+            ('错', 'error'),
+            ('警', 'warning'),
+            ('讯', 'info'),
+        ):
+            b = QPushButton(lab)
+            b.setObjectName(f'hostAlarmSevChip_{key}')
+            b.setCheckable(True)
+            b.setFixedHeight(20)
+            b.setMaximumWidth(40)
+            b.setToolTip(f'严重度筛 · {lab}')
+            b.clicked.connect(lambda *_a, k=key: self.set_alarm_severity_filter(k))
+            chip_row.addWidget(b)
+            self._alarm_sev_chips[key] = b
+        chip_row.addStretch(1)
+        chip_hint = QLabel('芯片')
+        chip_hint.setStyleSheet(f'color:{TEXT_MUTED};font-size:10px;')
+        chip_row.addWidget(chip_hint)
+        lay.addLayout(chip_row)
+        self._sync_alarm_sev_chips()
         self._alarm_list = QListWidget()
         self._alarm_list.setObjectName('hostAlarmHistoryList')
         self._alarm_list.setStyleSheet('font-size:11px;')
-        self._alarm_list.setToolTip('双击高亮/条目：若带胶片 path 则定位胶片')
+        self._alarm_list.setToolTip('双击或右键：若带胶片 path 则定位胶片')
         self._alarm_list.itemDoubleClicked.connect(self._on_alarm_item_double_clicked)
+        self._alarm_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._alarm_list.customContextMenuRequested.connect(self._on_alarm_list_context_menu)
         lay.addWidget(self._alarm_list, 1)
         row = QHBoxLayout()
         b_clear = QPushButton('清空历史')
@@ -746,6 +775,19 @@ class HostStateMachineWidget(QWidget):
         self._liaison_window_badge.mousePressEvent = lambda e: self._on_liaison_badge_clicked(e)
         row.addWidget(self._liaison_window_badge)
         self._sync_liaison_window_badge()
+        # wave28: 联调切窗快捷键 Alt+L
+        try:
+            self._liaison_cycle_shortcut = QShortcut(QKeySequence('Alt+L'), self)
+            self._liaison_cycle_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            self._liaison_cycle_shortcut.activated.connect(self.cycle_liaison_window)
+            self._liaison_window.setToolTip(
+                (self._liaison_window.toolTip() or '联调 CSV 时段') + ' · Alt+L 循环'
+            )
+            self._liaison_window_badge.setToolTip(
+                (self._liaison_window_badge.toolTip() or '') + ' · Alt+L'
+            )
+        except Exception:
+            self._liaison_cycle_shortcut = None
         b_lia_copy = QPushButton('复制联调CSV')
         b_lia_copy.setObjectName('hostLiaisonCopyBtn')
         b_lia_copy.setToolTip('复制联调条事件为 CSV 到剪贴板（按时段）')
@@ -890,7 +932,7 @@ class HostStateMachineWidget(QWidget):
         return self.cycle_liaison_window()
 
     def cycle_liaison_window(self) -> int:
-        """wave27: 循环全部→5分→15分→1时→24时→全部；返回新 sec."""
+        """wave27/28: 循环全部→5分→15分→1时→24时→全部（徽章/Alt+L）；返回新 sec."""
         combo = getattr(self, '_liaison_window', None)
         if combo is None or combo.count() <= 0:
             return self.liaison_window_sec()
@@ -1134,6 +1176,38 @@ class HostStateMachineWidget(QWidget):
             self._host_settings().setValue('host/alarmSevFilter', key)
         except Exception:
             pass
+        try:
+            self._sync_alarm_sev_chips()
+        except Exception:
+            pass
+
+    def _sync_alarm_sev_chips(self):
+        """wave28: 严重度筛芯片条高亮当前."""
+        chips = getattr(self, '_alarm_sev_chips', None) or {}
+        if not chips:
+            return
+        cur = self.alarm_severity_filter()
+        styles = {
+            'all': ('#2a3340', '#9aa0a6', '#3a3d42'),
+            'error': ('#3a1c1c', '#e35d6a', '#e35d6a'),
+            'warning': ('#3a3420', '#e0b84a', '#e0b84a'),
+            'info': ('#1c2a3a', '#6eb6ff', '#6eb6ff'),
+        }
+        for key, b in chips.items():
+            on = (key == cur)
+            bg, fg, bd = styles.get(key, styles['all'])
+            if on:
+                b.setChecked(True)
+                b.setStyleSheet(
+                    f'background:{bg};color:{fg};border:1px solid {bd};'
+                    f'border-radius:3px;font-size:10px;font-weight:700;padding:1px 4px;'
+                )
+            else:
+                b.setChecked(False)
+                b.setStyleSheet(
+                    'background:#2a2c30;color:#6a7078;border:1px solid #3a3d42;'
+                    'border-radius:3px;font-size:10px;padding:1px 4px;'
+                )
 
     def alarm_severity_filter(self) -> str:
         combo = getattr(self, '_alarm_sev_filter', None)
@@ -1178,8 +1252,56 @@ class HostStateMachineWidget(QWidget):
 
     def _on_alarm_item_double_clicked(self, item):
         """wave26: 高亮首条/条目双击 → 若有 filmPath 则定位胶片."""
-        if item is None:
+        self._locate_film_from_alarm_item(item, source='alarm_dblclick')
+
+    def _on_alarm_list_context_menu(self, pos):
+        """wave28: 报警列表右键 → 定位胶片."""
+        menu = self._build_alarm_list_context_menu(pos)
+        if menu is None:
             return
+        lst = getattr(self, '_alarm_list', None)
+        if lst is None:
+            return
+        if getattr(self, '_alarm_ctx_menu_no_exec', False):
+            self._last_alarm_ctx_menu = menu
+            return menu
+        try:
+            menu.exec(lst.mapToGlobal(pos))
+        except Exception:
+            pass
+
+    def _build_alarm_list_context_menu(self, pos=None):
+        """Build (no exec) context menu for smoke / right-click."""
+        lst = getattr(self, '_alarm_list', None)
+        if lst is None:
+            return None
+        item = None
+        if pos is not None:
+            try:
+                item = lst.itemAt(pos)
+            except Exception:
+                item = None
+        if item is None:
+            item = lst.currentItem()
+        menu = QMenu(self)
+        act = QAction('定位胶片', self)
+        fp = self._film_path_from_alarm_item(item)
+        act.setEnabled(bool(fp))
+        if fp:
+            act.setToolTip(fp)
+            act.setText(f'定位胶片 · {fp.rsplit("/", 1)[-1]}')
+        else:
+            act.setText('定位胶片（无 path）')
+        act.triggered.connect(
+            lambda *_: self._locate_film_from_alarm_item(item, source='alarm_context')
+        )
+        menu.addAction(act)
+        self._last_alarm_ctx_item = item
+        return menu
+
+    def _film_path_from_alarm_item(self, item) -> str:
+        if item is None:
+            return ''
         fp = ''
         try:
             data = item.data(Qt.ItemDataRole.UserRole) or {}
@@ -1188,19 +1310,25 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             fp = ''
         if not fp:
-            # fallback: jump film path from last fail-code jump
             fp = str(getattr(self, '_jump_film_path', '') or '').strip()
         if not fp:
+            fp = str(getattr(self, '_current_film_path', '') or '').strip()
+        return fp
+
+    def _locate_film_from_alarm_item(self, item, *, source: str = 'alarm'):
+        fp = self._film_path_from_alarm_item(item)
+        if not fp:
             try:
-                self._log_line('报警双击 · 无胶片 path（跳失败码时未带 film）')
+                self._log_line('报警定位胶片 · 无 path')
             except Exception:
                 pass
-            return
+            return False
         try:
-            self.alarmFilmLocateRequested.emit({'path': fp, 'source': 'alarm_dblclick'})
-            self._log_line(f'报警双击定位胶片 · {fp}')
+            self.alarmFilmLocateRequested.emit({'path': fp, 'source': source})
+            self._log_line(f'报警定位胶片 · {fp}')
         except Exception:
-            pass
+            return False
+        return True
 
     def push_liaison_event(self, text: str, *, kind: str = '', code: str = ''):
         """wave22: append 联调条 event (试跑清除 / 换型失败 / 报警清除)."""

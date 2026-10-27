@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㉘ · 撤销深度徽章 · 严重度芯片条 · 报警右键定位 · 锁序复位提示 · Alt+L切窗 · 2026-10-28】
+
+- **撤销栈深度徽章**：`compareThumbUndoDepth` 显示栈深；有条目时青边高亮。
+- **严重度筛芯片条**：全部/错/警/讯 `hostAlarmSevChip_*` 与 combo/spark/持久同步高亮。
+- **报警列表右键定位胶片**：上下文菜单「定位胶片」→ `alarmFilmLocateRequested`（无 path 时禁用）。
+- **锁序时复位仍可用提示**：锁态下 ↺ tip「锁序下仍可用」+ 青边；复位不解锁、不禁拖以外的复位。
+- **联调切窗快捷键**：`Alt+L` → `cycle_liaison_window`；combo/徽章 tip 标注。
+- **冒烟**：`smoke-wave28-undodepth-sevchips-alarmctx-lockresettip-altl-e2e`（另回归 wave27）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆㉗ · 对比锁序持久 · 运行报警filmPath · 严重度筛持久 · 徽章切窗 · 复位撤销栈 · 2026-10-28】
 
 - **对比锁序 QSettings 持久**：`film/compareOrderLocked`；`load_order_lock_pref` / `save_order_lock_pref`；MW 启动加载；锁钮切换即时写回。

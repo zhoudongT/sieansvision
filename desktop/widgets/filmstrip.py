@@ -776,6 +776,18 @@ class CompareThumbStrip(QWidget):
         self._undo_btn.setEnabled(False)
         self._undo_btn.clicked.connect(self.undo_order)
         head.addWidget(self._undo_btn)
+        # wave28: 撤销栈深度徽章
+        self._undo_depth_badge = QLabel('0')
+        self._undo_depth_badge.setObjectName('compareThumbUndoDepth')
+        self._undo_depth_badge.setFixedHeight(16)
+        self._undo_depth_badge.setMinimumWidth(14)
+        self._undo_depth_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._undo_depth_badge.setStyleSheet(
+            'background:#2a2c30;color:#6a7078;border:1px solid #3a3d42;'
+            'border-radius:3px;padding:0 3px;font-size:9px;font-weight:700;'
+        )
+        self._undo_depth_badge.setToolTip('撤销栈深度')
+        head.addWidget(self._undo_depth_badge)
         self._clear_btn = QPushButton('×')
         self._clear_btn.setObjectName('compareThumbClear')
         self._clear_btn.setFixedSize(20, 20)
@@ -926,6 +938,17 @@ class CompareThumbStrip(QWidget):
         if btn is not None:
             btn.setText('🔒' if locked else '🔓')
             btn.setToolTip('已锁定对比序（点击解锁）' if locked else '锁定对比序（禁止拖拽）')
+        # wave28: 锁序时复位仍可用提示
+        rbtn = getattr(self, '_reset_btn', None)
+        if rbtn is not None:
+            if locked:
+                rbtn.setToolTip('复位对比序到进入时顺序（锁序下仍可用）')
+                rbtn.setStyleSheet(
+                    'color:#9ec9f0;border:1px solid #3a5a7a;border-radius:2px;'
+                )
+            else:
+                rbtn.setToolTip('复位对比序到进入时顺序')
+                rbtn.setStyleSheet('')
         try:
             if locked:
                 self._list.setDragDropMode(QAbstractItemView.DragDropMode.NoDragDrop)
@@ -941,7 +964,7 @@ class CompareThumbStrip(QWidget):
             self._title.setText(f'对比·{n}{lock_mark}')
 
     def reset_order(self):
-        """wave26/27: 复位到进入对比时的基线序（先压入撤销栈）."""
+        """wave26–28: 复位到进入对比时的基线序（先压入撤销栈；锁序下仍可用）."""
         base = list(getattr(self, '_baseline_paths', None) or [])
         if not base:
             return False
@@ -980,11 +1003,24 @@ class CompareThumbStrip(QWidget):
 
     def _sync_undo_btn(self):
         btn = getattr(self, '_undo_btn', None)
-        if btn is None:
-            return
         n = len(getattr(self, '_order_undo_stack', None) or [])
-        btn.setEnabled(n > 0)
-        btn.setToolTip(f'撤销对比序（{n}）' if n else '撤销对比序（空）')
+        if btn is not None:
+            btn.setEnabled(n > 0)
+            btn.setToolTip(f'撤销对比序（{n}）' if n else '撤销对比序（空）')
+        badge = getattr(self, '_undo_depth_badge', None)
+        if badge is not None:
+            badge.setText(str(n))
+            badge.setToolTip(f'撤销栈深度 · {n}' + (f'/{self._order_undo_max}' if getattr(self, '_order_undo_max', None) else ''))
+            if n > 0:
+                badge.setStyleSheet(
+                    'background:#1c2a3a;color:#9ec9f0;border:1px solid #6eb6ff;'
+                    'border-radius:3px;padding:0 3px;font-size:9px;font-weight:700;'
+                )
+            else:
+                badge.setStyleSheet(
+                    'background:#2a2c30;color:#6a7078;border:1px solid #3a3d42;'
+                    'border-radius:3px;padding:0 3px;font-size:9px;font-weight:700;'
+                )
 
     def undo_order(self) -> bool:
         """wave27: 弹出撤销栈恢复上一对比序."""
