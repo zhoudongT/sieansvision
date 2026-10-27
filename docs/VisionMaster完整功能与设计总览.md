@@ -426,6 +426,17 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊡ · 失败历史全展/全折 · Ctrl+A · 双缓动对比 · 清历史撤销 · undo色阶预设 · 2026-10-28】
+
+- **失败历史全展/全折**：对话框「全展/全折」按钮；`expand_/collapse_merge_diff_batch_fail_history_groups`。
+- **拖拽列表 Ctrl+A**：全选最近色以便批量 Delete。
+- **曲线小窗对比双缓动**：主/对比下拉；蓝/红双曲线；`show_toast_hist_cap_tip_anim_easing_curve_compare`。
+- **徽章清历史撤销**：清除时快照；菜单「撤销清除失败历史」(Z)；`undo_path_copy_badge_fail_history_clear`。
+- **undo 色阶预设**：traffic/cool/mono/sunset；右键菜单勾选；`set_stale_prune_undo_color_scale_preset`。
+- **冒烟**：`smoke-wave52-failexpand-ctrla-curvecompare-badgeundo-colorscale-e2e`（另回归 wave51/50/49）。
+
+---
+
 ## 【细妆㊠ · 失败历史分组折叠 · 多选Del · easing曲线小窗 · 徽章清历史 · undo色阶 · 2026-10-28】
 
 - **失败历史分组折叠**：按日分组 ▾/▸ 头；单击折叠/展开；`_merge_diff_fail_hist_collapsed`。
