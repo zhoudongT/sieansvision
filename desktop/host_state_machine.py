@@ -7672,8 +7672,9 @@ class HostStateMachineWidget(QWidget):
                 'count': len(slots),
                 'names': [str(s.get('name') or '') for s in slots],
                 'default': self.stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_layout_default_slot(),
-                'actions': ['save', 'load', 'rename', 'delete', 'cycle', 'reorder', 'default', 'jump_default', 'autoload', 'rebind_default', 'autoload_toggle', 'shortcut_history'],
+                'actions': ['save', 'load', 'rename', 'delete', 'cycle', 'reorder', 'default', 'jump_default', 'autoload', 'rebind_default', 'autoload_toggle', 'shortcut_history', 'shortcut_rollback'],
                 'autoload_enabled': self.stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_layout_default_slot_autoload_enabled(),
+                'shortcut_rollback': getattr(self, '_last_ab_trial_fallback_import_conflict_preview_layout_default_slot_shortcut_rollback', None),
                 'default_shortcut': self.stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_layout_default_slot_shortcut(),
                 'shortcut_history': self.list_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_layout_default_slot_shortcut_history(limit=8),
                 'shortcut_conflicts': self.detect_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_layout_default_slot_shortcut_conflicts(),
@@ -7753,7 +7754,9 @@ class HostStateMachineWidget(QWidget):
             btn_ae.setProperty('isAbMirrorChannelPresetImportConflictPreviewLayoutSlotsDialogAutoloadToggle', True)
             btn_ae.setCheckable(True)
             btn_ae.setChecked(bool(_ae))
-            for b in (btn_save, btn_load, btn_ren, btn_del, btn_cyc, btn_def, btn_jmp, btn_rb, btn_ae):
+            btn_rbk = QPushButton('快捷史回滚', dlg)
+            btn_rbk.setProperty('isAbMirrorChannelPresetImportConflictPreviewLayoutSlotsDialogShortcutRollback', True)
+            for b in (btn_save, btn_load, btn_ren, btn_del, btn_cyc, btn_def, btn_jmp, btn_rb, btn_ae, btn_rbk):
                 row.addWidget(b)
             v.addLayout(row)
             def _sel_name():
@@ -7825,6 +7828,8 @@ class HostStateMachineWidget(QWidget):
                 ))
             btn_rb.clicked.connect(
                 lambda *_: self.show_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_layout_default_slot_shortcut_rebind_dialog())
+            btn_rbk.clicked.connect(
+                lambda *_: self.rollback_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_layout_default_slot_shortcut_history(0, persist=True))
             def _toggle_ae(checked=False):
                 self.set_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_layout_default_slot_autoload_enabled(bool(checked), persist=True)
                 try:
@@ -8295,6 +8300,47 @@ class HostStateMachineWidget(QWidget):
                 pass
         return list(hist)
 
+
+    def rollback_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_layout_default_slot_shortcut_history(
+            self, index: int = 0, *, persist: bool = True) -> dict:
+        """wave98: one-click rollback default-slot shortcut from recent history."""
+        hist = self.list_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_layout_default_slot_shortcut_history(limit=64)
+        if not hist:
+            out = {'ok': False, 'reason': 'empty'}
+            self._last_ab_trial_fallback_import_conflict_preview_layout_default_slot_shortcut_rollback = dict(out)
+            try:
+                self._flash_host_toast('无可回滚的快捷史', kind='warn', ms=800)
+            except Exception:
+                pass
+            return out
+        try:
+            idx = max(0, min(len(hist) - 1, int(index)))
+        except Exception:
+            idx = 0
+        entry = dict(hist[idx])
+        key = str(entry.get('key') or '').strip()
+        if not key:
+            out = {'ok': False, 'reason': 'blank_key', 'index': idx}
+            self._last_ab_trial_fallback_import_conflict_preview_layout_default_slot_shortcut_rollback = dict(out)
+            return out
+        try:
+            cur = self.stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_layout_default_slot_shortcut()
+        except Exception:
+            cur = ''
+        applied = self.set_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_layout_default_slot_shortcut(
+            key, persist=persist)
+        try:
+            self.remember_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_layout_default_slot_shortcut_history(
+                applied, conflicts=[{'reason': 'rollback', 'from': cur, 'index': idx}], persist=persist)
+        except Exception:
+            pass
+        out = {'ok': True, 'key': applied, 'from': cur, 'index': idx, 'entry': entry}
+        self._last_ab_trial_fallback_import_conflict_preview_layout_default_slot_shortcut_rollback = dict(out)
+        try:
+            self._flash_host_toast(f'快捷史回滚 · {applied}', kind='ok', ms=800)
+        except Exception:
+            pass
+        return out
 
     def _ensure_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_layout_default_slot_shortcut(
             self, *, force: bool = False) -> object:
@@ -12127,10 +12173,11 @@ class HostStateMachineWidget(QWidget):
                 'via': 'ignore_menu',
                 'keys': list(keys),
                 'by_role': {str(k): list(v) for k, v in _by.items()},
-                'actions': ['remove', 'clear', 'export', 'import', 'by_role', 'clear_role', 'export_by_role', 'import_by_role', 'merge_strategy', 'strategy_shortcut', 'strategy_badge'],
+                'actions': ['remove', 'clear', 'export', 'import', 'by_role', 'clear_role', 'export_by_role', 'import_by_role', 'merge_strategy', 'strategy_shortcut', 'strategy_badge', 'jump_overlap'],
                 'merge_strategy': self.stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy(),
                 'strategy_shortcut': self.stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_shortcut(),
                 'strategy_badge': self.refresh_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_conflict_badge(),
+                'jump_overlap': self.jump_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap(None),
             }
             return True
         try:
@@ -12233,6 +12280,11 @@ class HostStateMachineWidget(QWidget):
             act_badge.triggered.connect(
                 lambda *_: self.refresh_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_conflict_badge())
             menu.addAction(act_badge)
+            act_jmp = QAction('跳转重叠项', menu)
+            act_jmp.setProperty('isUndoEyedropperHistoryOrderShortcutFixConfirmTrialUndoImportConflictStrategyIgnoreMenuJumpOverlap', True)
+            act_jmp.triggered.connect(
+                lambda *_: self.jump_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap(None))
+            menu.addAction(act_jmp)
             act_im = QAction('导入忽略名单…', menu)
             act_im.setProperty('isUndoEyedropperHistoryOrderShortcutFixConfirmTrialUndoImportConflictStrategyIgnoreMenuImport', True)
             act_im.triggered.connect(
@@ -12577,10 +12629,71 @@ class HostStateMachineWidget(QWidget):
                 lab.setStyleSheet('color:#ff9933;font-weight:700;' if conflicted else 'color:#88cc88;')
                 lab.setProperty('isUndoEyedropperIgnoreByRoleMergeStrategyConflictBadge', True)
                 lab.setProperty('icsIgnoreByRoleMergeStrategyConflicted', bool(conflicted))
+                try:
+                    lab.setCursor(Qt.CursorShape.PointingHandCursor)
+                except Exception:
+                    pass
+                if not getattr(lab, '_ics_merge_strategy_conflict_badge_click_wired', False):
+                    try:
+                        lab.mousePressEvent = lambda ev, _s=self: (
+                            _s._on_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_badge_clicked(),
+                            type(lab).mousePressEvent(lab, ev) if hasattr(type(lab), 'mousePressEvent') else None,
+                        )[0]
+                        lab._ics_merge_strategy_conflict_badge_click_wired = True
+                    except Exception:
+                        try:
+                            lab.clicked.connect(self._on_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_badge_clicked)
+                            lab._ics_merge_strategy_conflict_badge_click_wired = True
+                        except Exception:
+                            pass
         except Exception:
             pass
         return out
 
+
+    def jump_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap(
+            self, index: int = None) -> dict:
+        """wave98: jump/focus overlapping ignore key from conflict badge click."""
+        try:
+            badge = self.refresh_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_conflict_badge()
+        except Exception:
+            badge = {}
+        overlaps = list(badge.get('overlaps') or [])
+        if not overlaps:
+            out = {'ok': False, 'reason': 'none', 'total': 0}
+            self._last_ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_jump = dict(out)
+            try:
+                self._flash_host_toast('无重叠项可跳', kind='ok', ms=700)
+            except Exception:
+                pass
+            return out
+        if index is None:
+            try:
+                idx = int(getattr(self, '_ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_idx', 0) or 0)
+            except Exception:
+                idx = 0
+            idx = idx % len(overlaps)
+        else:
+            try:
+                idx = int(index) % len(overlaps)
+            except Exception:
+                idx = 0
+        item = dict(overlaps[idx])
+        key = str(item.get('key') or '')
+        roles = list(item.get('roles') or [])
+        self._ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_idx = (idx + 1) % len(overlaps)
+        out = {'ok': True, 'index': idx, 'key': key, 'roles': roles, 'total': len(overlaps)}
+        self._last_ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_jump = dict(out)
+        self._ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_focused_overlap = dict(item)
+        try:
+            self._flash_host_toast(f'跳重叠 · {key} · {"/".join(str(r) for r in roles)}', kind='warn', ms=900)
+        except Exception:
+            pass
+        return out
+
+    def _on_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_badge_clicked(
+            self, *args) -> dict:
+        return self.jump_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap(None)
 
     def import_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role(
             self, path: str = None, *, persist: bool = True, strategy: str = None) -> dict:
@@ -14065,6 +14178,20 @@ class HostStateMachineWidget(QWidget):
                     act_fcc.triggered.connect(
                         lambda *_: self.set_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_clear_count(not bool(_fcc), persist=True))
                     menu.addAction(act_fcc)
+                    act_fw = QAction('闪完 wav…', menu)
+                    act_fw.setProperty('isJitterSeedRedoClearUndoTtlPresetCustomsReorderUndoDepthLabMenuFlashDoneWav', True)
+                    act_fw.triggered.connect(
+                        lambda *_: self.pick_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_wav())
+                    menu.addAction(act_fw)
+                    try:
+                        _fmb = bool(self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_mute_badge())
+                    except Exception:
+                        _fmb = False
+                    act_fmb = QAction(f'关声旁标 · {"静音" if _fmb else "有声"}', menu)
+                    act_fmb.setProperty('isJitterSeedRedoClearUndoTtlPresetCustomsReorderUndoDepthLabMenuFlashDoneMuteBadge', True)
+                    act_fmb.triggered.connect(
+                        lambda *_: self.set_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_mute_badge(not bool(_fmb), persist=True))
+                    menu.addAction(act_fmb)
                     if _cf_now:
                         tip_cf = QAction(_cf_tip or '快捷冲突', menu)
                         tip_cf.setEnabled(False)
@@ -18075,8 +18202,9 @@ class HostStateMachineWidget(QWidget):
                 'via': 'badge_context',
                 'count': int(n),
                 'freq_ms': int(freq),
-                'actions': ['clear', 'freq', 'presets', 'export', 'import', 'manage', 'delete_preset', 'rename', 'save_as', 'import_preview', 'import_merge'],
+                'actions': ['clear', 'freq', 'presets', 'export', 'import', 'manage', 'delete_preset', 'rename', 'save_as', 'import_preview', 'import_merge', 'import_merge_strategy', 'import_merge_undo'],
                 'presets': [str(p.get('name') or '') for p in _pres],
+                'import_merge_strategy': self.merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets_reorder_badge_freq_import_merge_strategy(),
             }
             return True
         try:
@@ -18213,6 +18341,27 @@ class HostStateMachineWidget(QWidget):
             act_img.triggered.connect(
                 lambda *_: self.merge_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets_reorder_badge_freq_import())
             menu.addAction(act_img)
+            try:
+                _ims = self.merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets_reorder_badge_freq_import_merge_strategy()
+            except Exception:
+                _ims = 'prefer_incoming'
+            act_ims = QAction(f'合并策略记忆 · {_ims}', menu)
+            act_ims.setProperty('isCycleKeySuggestHistoryFilterPresetsReorderBadgeMenuFreqImportMergeStrategy', True)
+            def _cycle_ims(*_a, _cur=_ims):
+                order = ['prefer_incoming', 'prefer_existing', 'merge', 'replace']
+                try:
+                    i = order.index(_cur)
+                    nxt = order[(i + 1) % len(order)]
+                except Exception:
+                    nxt = 'prefer_incoming'
+                self.set_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets_reorder_badge_freq_import_merge_strategy(nxt, persist=True)
+            act_ims.triggered.connect(_cycle_ims)
+            menu.addAction(act_ims)
+            act_imu = QAction('撤销上次合并', menu)
+            act_imu.setProperty('isCycleKeySuggestHistoryFilterPresetsReorderBadgeMenuFreqImportMergeUndo', True)
+            act_imu.triggered.connect(
+                lambda *_: self.undo_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets_reorder_badge_freq_import_merge(persist=True))
+            menu.addAction(act_imu)
             if global_pos is not None:
                 menu.exec(global_pos)
             else:
@@ -18669,13 +18818,19 @@ class HostStateMachineWidget(QWidget):
         return out
 
     def merge_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets_reorder_badge_freq_import(
-            self, path: str = None, *, strategy: str = 'prefer_incoming', persist: bool = True) -> dict:
+            self, path: str = None, *, strategy: str = None, persist: bool = True) -> dict:
         """wave97: one-click merge import of badge-freq presets."""
         if getattr(self, '_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_no_dialog', False):
             smoke = getattr(self, '_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_smoke_path', None)
             path = str(smoke or path or '')
         preview = self.preview_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets_reorder_badge_freq_import_conflicts(path)
-        strat = str(strategy or 'prefer_incoming').strip().lower()
+        if strategy is None:
+            try:
+                strat = self.merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets_reorder_badge_freq_import_merge_strategy()
+            except Exception:
+                strat = 'prefer_incoming'
+        else:
+            strat = str(strategy or 'prefer_incoming').strip().lower()
         if strat not in ('replace', 'merge', 'prefer_incoming', 'prefer_existing'):
             strat = 'prefer_incoming'
         existing = list(preview.get('existing') or [])
@@ -18694,6 +18849,23 @@ class HostStateMachineWidget(QWidget):
                     by[nm] = dict(p)
                 # prefer_existing keeps by[nm]
             merged = list(by.values())
+        try:
+            _pre_freq = self.merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets_reorder_badge_freq_ms()
+        except Exception:
+            _pre_freq = None
+        _snap = {
+            'presets': [dict(x) for x in list(existing)],
+            'freq_ms': _pre_freq,
+        }
+        self._cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_snap = dict(_snap)
+        if persist:
+            try:
+                import json as _json
+                self._host_settings().setValue(
+                    'host/mergeDiffFailHistDropSnapGuideRecentMaxPinKeyAvoidCompareBarUndoSwatchConflictPreviewCycleKeySuggestHistoryFilterQueryPresetsReorderBadgeFreqImportMergeUndoSnap',
+                    _json.dumps(_snap, ensure_ascii=False))
+            except Exception:
+                pass
         self.set_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets_reorder_badge_freq_presets(
             merged, persist=persist)
         freq = preview.get('freq_ms')
@@ -18703,11 +18875,17 @@ class HostStateMachineWidget(QWidget):
                     int(freq), persist=persist)
             except Exception:
                 pass
+        try:
+            self.set_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets_reorder_badge_freq_import_merge_strategy(
+                strat, persist=persist)
+        except Exception:
+            pass
         out = {
             'strategy': strat,
             'merged': len(merged),
             'conflicts': int(preview.get('conflict_count') or 0),
             'presets': list(merged),
+            'undo_ready': True,
         }
         self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge = dict(out)
         try:
@@ -18716,6 +18894,90 @@ class HostStateMachineWidget(QWidget):
             pass
         return out
 
+
+    def merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets_reorder_badge_freq_import_merge_strategy(
+            self) -> str:
+        """wave98: remembered badge-freq import merge strategy."""
+        cur = getattr(self, '_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_strategy', None)
+        if isinstance(cur, str) and cur.strip():
+            return cur.strip().lower()
+        try:
+            raw = self._host_settings().value(
+                'host/mergeDiffFailHistDropSnapGuideRecentMaxPinKeyAvoidCompareBarUndoSwatchConflictPreviewCycleKeySuggestHistoryFilterQueryPresetsReorderBadgeFreqImportMergeStrategy',
+                'prefer_incoming')
+            v = str(raw or 'prefer_incoming').strip().lower()
+        except Exception:
+            v = 'prefer_incoming'
+        if v not in ('replace', 'merge', 'prefer_incoming', 'prefer_existing'):
+            v = 'prefer_incoming'
+        self._cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_strategy = v
+        return v
+
+    def set_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets_reorder_badge_freq_import_merge_strategy(
+            self, strategy: str, *, persist: bool = True) -> str:
+        v = str(strategy or 'prefer_incoming').strip().lower()
+        if v not in ('replace', 'merge', 'prefer_incoming', 'prefer_existing'):
+            v = 'prefer_incoming'
+        self._cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_strategy = v
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/mergeDiffFailHistDropSnapGuideRecentMaxPinKeyAvoidCompareBarUndoSwatchConflictPreviewCycleKeySuggestHistoryFilterQueryPresetsReorderBadgeFreqImportMergeStrategy',
+                    v)
+            except Exception:
+                pass
+        try:
+            self._flash_host_toast(f'频率合并策略 · {v}', kind='ok', ms=600)
+        except Exception:
+            pass
+        return v
+
+    def undo_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets_reorder_badge_freq_import_merge(
+            self, *, persist: bool = True) -> dict:
+        """wave98: undo last badge-freq import merge from snapshot."""
+        snap = getattr(self, '_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_snap', None)
+        if not isinstance(snap, dict) or not snap:
+            try:
+                import json as _json
+                raw = self._host_settings().value(
+                    'host/mergeDiffFailHistDropSnapGuideRecentMaxPinKeyAvoidCompareBarUndoSwatchConflictPreviewCycleKeySuggestHistoryFilterQueryPresetsReorderBadgeFreqImportMergeUndoSnap',
+                    '')
+                snap = _json.loads(str(raw or '')) if raw else None
+            except Exception:
+                snap = None
+        if not isinstance(snap, dict) or not snap:
+            out = {'ok': False, 'reason': 'empty'}
+            self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo = dict(out)
+            try:
+                self._flash_host_toast('无可撤销的频率合并', kind='warn', ms=800)
+            except Exception:
+                pass
+            return out
+        presets = list(snap.get('presets') or [])
+        freq = snap.get('freq_ms')
+        self.set_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets_reorder_badge_freq_presets(
+            presets, persist=persist)
+        if freq is not None:
+            try:
+                self.set_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets_reorder_badge_freq_ms(
+                    int(freq), persist=persist)
+            except Exception:
+                pass
+        self._cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_snap = None
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/mergeDiffFailHistDropSnapGuideRecentMaxPinKeyAvoidCompareBarUndoSwatchConflictPreviewCycleKeySuggestHistoryFilterQueryPresetsReorderBadgeFreqImportMergeUndoSnap',
+                    '')
+            except Exception:
+                pass
+        out = {'ok': True, 'restored': len(presets), 'freq_ms': freq}
+        self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo = dict(out)
+        try:
+            self._flash_host_toast(f'频率合并已撤销 · {len(presets)}档', kind='ok', ms=800)
+        except Exception:
+            pass
+        return out
 
     def filter_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history(
             self, query: str = None, *, limit: int = 24) -> list:
@@ -21867,6 +22129,175 @@ class HostStateMachineWidget(QWidget):
         return v
 
 
+    def merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_wav(
+            self) -> str:
+        """wave98: optional custom wav path for flash-done sound."""
+        cur = getattr(self, '_jitter_reorder_undo_depth_lab_flash_done_sound_wav', None)
+        if isinstance(cur, str):
+            return cur
+        try:
+            raw = self._host_settings().value(
+                'host/mergeDiffFailHistDropPulsePreviewLoopGapJitterSeedRedoClearUndoTtlPresetCustomsReorderUndoDepthLabFlashDoneSoundWav',
+                '')
+            v = str(raw or '')
+        except Exception:
+            v = ''
+        self._jitter_reorder_undo_depth_lab_flash_done_sound_wav = v
+        return v
+
+    def set_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_wav(
+            self, path: str, *, persist: bool = True) -> str:
+        v = str(path or '').strip()
+        self._jitter_reorder_undo_depth_lab_flash_done_sound_wav = v
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/mergeDiffFailHistDropPulsePreviewLoopGapJitterSeedRedoClearUndoTtlPresetCustomsReorderUndoDepthLabFlashDoneSoundWav',
+                    v)
+            except Exception:
+                pass
+        try:
+            tip = f'闪完 wav · {v}' if v else '闪完 wav · 清空(用系统啷)'
+            self._flash_host_toast(tip, kind='ok', ms=700)
+        except Exception:
+            pass
+        return v
+
+    def pick_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_wav(
+            self) -> str:
+        if getattr(self, '_jitter_reorder_undo_depth_lab_flash_done_sound_wav_no_dialog', False):
+            smoke = getattr(self, '_jitter_reorder_undo_depth_lab_flash_done_sound_wav_smoke_path', None)
+            return self.set_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_wav(
+                str(smoke or ''), persist=True)
+        try:
+            path, _ = QFileDialog.getOpenFileName(
+                self, '选择闪完音效 wav', '', 'WAV (*.wav);;All (*)')
+        except Exception:
+            path = ''
+        return self.set_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_wav(
+            path, persist=True)
+
+    def merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_mute_badge(
+            self) -> bool:
+        """wave98: mute flash-done sound via badge/flag."""
+        cur = getattr(self, '_jitter_reorder_undo_depth_lab_flash_done_sound_mute_badge', None)
+        if isinstance(cur, bool):
+            return cur
+        try:
+            raw = self._host_settings().value(
+                'host/mergeDiffFailHistDropPulsePreviewLoopGapJitterSeedRedoClearUndoTtlPresetCustomsReorderUndoDepthLabFlashDoneSoundMuteBadge',
+                False)
+            if isinstance(raw, bool):
+                v = raw
+            else:
+                v = str(raw).strip().lower() not in ('0', 'false', 'no', '')
+        except Exception:
+            v = False
+        self._jitter_reorder_undo_depth_lab_flash_done_sound_mute_badge = bool(v)
+        return bool(v)
+
+    def set_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_mute_badge(
+            self, muted: bool, *, persist: bool = True) -> bool:
+        v = bool(muted)
+        self._jitter_reorder_undo_depth_lab_flash_done_sound_mute_badge = v
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/mergeDiffFailHistDropPulsePreviewLoopGapJitterSeedRedoClearUndoTtlPresetCustomsReorderUndoDepthLabFlashDoneSoundMuteBadge',
+                    bool(v))
+            except Exception:
+                pass
+        try:
+            self.refresh_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_mute_badge()
+        except Exception:
+            pass
+        try:
+            self._flash_host_toast(f'闪完关声旁标 · {"静音" if v else "有声"}', kind='ok', ms=600)
+        except Exception:
+            pass
+        return v
+
+    def refresh_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_mute_badge(
+            self) -> dict:
+        muted = bool(self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_mute_badge())
+        out = {'muted': muted, 'badge': '静' if muted else '声'}
+        self._last_jitter_reorder_undo_depth_lab_flash_done_sound_mute_badge = dict(out)
+        try:
+            lab = getattr(self, '_last_jitter_reorder_undo_depth_lab_flash_done_sound_mute_lab', None)
+            if lab is not None:
+                lab.setText('静' if muted else '声')
+                lab.setToolTip('闪完音效已关' if muted else '闪完音效开')
+                lab.setStyleSheet('color:#999;' if muted else 'color:#66aa66;')
+                lab.setProperty('isJitterSeedRedoClearUndoTtlPresetCustomsReorderUndoDepthLabFlashDoneSoundMuteBadge', True)
+                lab.setProperty('jitterFlashDoneSoundMuted', bool(muted))
+                if not getattr(lab, '_jitter_flash_done_mute_badge_wired', False):
+                    try:
+                        lab.setCursor(Qt.CursorShape.PointingHandCursor)
+                        lab.mousePressEvent = lambda ev, _s=self: (
+                            _s.set_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_mute_badge(
+                                not bool(_s.merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_mute_badge()), persist=True),
+                            None)[0]
+                        lab._jitter_flash_done_mute_badge_wired = True
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        return out
+
+    def _play_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound(
+            self) -> dict:
+        """wave98: play custom wav or system beep unless muted."""
+        try:
+            muted = bool(self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_mute_badge())
+        except Exception:
+            muted = False
+        if muted:
+            out = {'played': False, 'muted': True}
+            self._last_jitter_reorder_undo_depth_lab_flash_done_sound_play = dict(out)
+            return out
+        try:
+            wav = str(self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_wav() or '').strip()
+        except Exception:
+            wav = ''
+        played = False
+        mode = 'beep'
+        if wav:
+            try:
+                from pathlib import Path as _Path
+                if _Path(wav).is_file():
+                    try:
+                        from PySide6.QtMultimedia import QSoundEffect
+                        from PySide6.QtCore import QUrl
+                        fx = getattr(self, '_jitter_flash_done_sound_fx', None)
+                        if fx is None:
+                            fx = QSoundEffect(self)
+                            self._jitter_flash_done_sound_fx = fx
+                        fx.setSource(QUrl.fromLocalFile(wav))
+                        fx.setVolume(0.8)
+                        fx.play()
+                        played = True
+                        mode = 'wav'
+                    except Exception:
+                        try:
+                            import subprocess
+                            subprocess.Popen(['aplay', '-q', wav], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                            played = True
+                            mode = 'aplay'
+                        except Exception:
+                            played = False
+            except Exception:
+                played = False
+        if not played:
+            try:
+                QApplication.beep()
+                played = True
+                mode = 'beep'
+            except Exception:
+                played = False
+        out = {'played': bool(played), 'muted': False, 'mode': mode, 'wav': wav}
+        self._last_jitter_reorder_undo_depth_lab_flash_done_sound_play = dict(out)
+        return out
+
     def show_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_toast_text_dialog(
             self) -> str:
         """wave96: edit flash-done toast text."""
@@ -21958,10 +22389,15 @@ class HostStateMachineWidget(QWidget):
                 _snd = False
             if _snd:
                 try:
-                    QApplication.beep()
-                    self._last_jitter_reorder_undo_depth_lab_flash_done_beeped = True
+                    _play = self._play_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound()
+                    self._last_jitter_reorder_undo_depth_lab_flash_done_beeped = bool((_play or {}).get('played'))
+                    self._last_jitter_reorder_undo_depth_lab_flash_done_sound_mode = str((_play or {}).get('mode') or '')
                 except Exception:
-                    self._last_jitter_reorder_undo_depth_lab_flash_done_beeped = False
+                    try:
+                        QApplication.beep()
+                        self._last_jitter_reorder_undo_depth_lab_flash_done_beeped = True
+                    except Exception:
+                        self._last_jitter_reorder_undo_depth_lab_flash_done_beeped = False
             else:
                 self._last_jitter_reorder_undo_depth_lab_flash_done_beeped = False
             try:
@@ -21976,6 +22412,14 @@ class HostStateMachineWidget(QWidget):
                     self._last_jitter_reorder_undo_depth_lab_flash_done_count_cleared = False
             else:
                 self._last_jitter_reorder_undo_depth_lab_flash_done_count_cleared = False
+            try:
+                _mute = bool(self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_mute_badge())
+            except Exception:
+                _mute = False
+            try:
+                _wav = str(self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_wav() or '')
+            except Exception:
+                _wav = ''
             self._last_jitter_reorder_undo_depth_lab_flash_done = {
                 'times': int(times),
                 'color': str(color),
@@ -21984,6 +22428,9 @@ class HostStateMachineWidget(QWidget):
                 'last_only': bool(toast_last_only),
                 'sound': bool(_snd),
                 'clear_count': bool(_clr),
+                'muted': bool(_mute),
+                'wav': _wav,
+                'sound_mode': str(getattr(self, '_last_jitter_reorder_undo_depth_lab_flash_done_sound_mode', '') or ''),
             }
 
         def _tick():
@@ -27803,8 +28250,9 @@ class HostStateMachineWidget(QWidget):
                 'count': len(hist),
                 'limit': int(lim),
                 'which_filter': str(_whf),
-                'actions': ['browse', 'export', 'limit', 'clear', 'recheck', 'which_filter', 'batch_recheck', 'export_filtered'],
+                'actions': ['browse', 'export', 'limit', 'clear', 'recheck', 'which_filter', 'batch_recheck', 'export_filtered', 'batch_diff'],
                 'keys': [str(h.get('key') or '') for h in hist[:8]],
+                'batch_diff': getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff', None) or {},
             }
             return True
         try:
@@ -27858,6 +28306,11 @@ class HostStateMachineWidget(QWidget):
             act_br.triggered.connect(
                 lambda *_: self.recheck_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_shortcut_conflict_history_batch(persist=True))
             menu.addAction(act_br)
+            act_bd = QAction('差异 toast', menu)
+            act_bd.setProperty('isDstClearUndoTtlPresetCustomsReorderShortcutConflictHistoryMenuBatchDiff', True)
+            act_bd.triggered.connect(
+                lambda *_: self.show_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_shortcut_conflict_history_batch_diff_toast())
+            menu.addAction(act_bd)
             act_lim = QAction(f'设上限… · {lim}', menu)
             act_lim.setProperty('isDstClearUndoTtlPresetCustomsReorderShortcutConflictHistoryMenuLimit', True)
             def _set_lim():
@@ -27998,17 +28451,69 @@ class HostStateMachineWidget(QWidget):
                 'conflicts': list(conflicts or []),
                 'count': len(conflicts or []),
             })
+        hit = sum(1 for r in results if r.get('count'))
+        keys_now = {str(r.get('key') or '') for r in results if r.get('count')}
+        prev = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_recheck', None) or {}
+        prev_keys = set()
+        try:
+            prev_keys = {str(r.get('key') or '') for r in list(prev.get('results') or []) if r.get('count')}
+        except Exception:
+            prev_keys = set()
+        added = sorted(keys_now - prev_keys)
+        cleared = sorted(prev_keys - keys_now)
+        delta_hit = int(hit) - int(prev.get('hit') or 0) if prev else 0
+        diff = {
+            'added': added,
+            'cleared': cleared,
+            'delta_hit': delta_hit,
+            'prev_hit': int(prev.get('hit') or 0) if prev else None,
+            'hit': int(hit),
+        }
         out = {
             'which': wh,
             'checked': len(results),
-            'hit': sum(1 for r in results if r.get('count')),
+            'hit': hit,
             'results': results,
+            'diff': diff,
         }
         self._last_dst_reorder_shortcut_conflict_history_batch_recheck = dict(out)
+        self._last_dst_reorder_shortcut_conflict_history_batch_diff = dict(diff)
         try:
-            self._flash_host_toast(f'DST 批量复检 · {wh} · {out["checked"]}条/{out["hit"]}冲突', kind='ok', ms=900)
+            if prev:
+                sign = '+' if delta_hit > 0 else ''
+                tip = f'DST 批量复检 · {wh} · {out["checked"]}条/{hit}冲突 · 差{sign}{delta_hit} 新{len(added)}/清{len(cleared)}'
+                self._flash_host_toast(tip, kind='warn' if delta_hit > 0 else 'ok', ms=1100)
+            else:
+                self._flash_host_toast(f'DST 批量复检 · {wh} · {out["checked"]}条/{hit}冲突', kind='ok', ms=900)
         except Exception:
             pass
+        return out
+
+    def show_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_shortcut_conflict_history_batch_diff_toast(
+            self) -> dict:
+        """wave98: re-flash last batch recheck diff toast."""
+        diff = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff', None) or {}
+        batch = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_recheck', None) or {}
+        if not diff and not batch:
+            out = {'ok': False, 'reason': 'empty'}
+            try:
+                self._flash_host_toast('尚无批量复检差异', kind='warn', ms=700)
+            except Exception:
+                pass
+            return out
+        added = list(diff.get('added') or [])
+        cleared = list(diff.get('cleared') or [])
+        delta = int(diff.get('delta_hit') or 0)
+        hit = int(diff.get('hit') if diff.get('hit') is not None else batch.get('hit') or 0)
+        wh = str(batch.get('which') or 'all')
+        sign = '+' if delta > 0 else ''
+        tip = f'DST 差异 · {wh} · 冲突{hit} · 差{sign}{delta} 新{len(added)}/清{len(cleared)}'
+        try:
+            self._flash_host_toast(tip, kind='warn' if delta > 0 else 'ok', ms=1100)
+        except Exception:
+            pass
+        out = {'ok': True, 'diff': dict(diff), 'toast': tip}
+        self._last_dst_reorder_shortcut_conflict_history_batch_diff_toast = dict(out)
         return out
 
     def export_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_shortcut_conflict_history_filtered(

@@ -426,6 +426,16 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆66 · 频率预设导入合并策略记忆/撤销 · 忽略策略旁标点击跳重叠项 · DST批量复检差异diff toast · A/B快捷史回滚一键 · jitter闪完音效自定义wav/关声旁标 · 2026-10-28】
+
+- **频率预设导入合并策略记忆/撤销**：`…_badge_freq_import_merge_strategy`；合并默认读记忆；合并前快照；`undo_…_badge_freq_import_merge`；角标菜单「合并策略记忆 · … / 撤销上次合并」。
+- **忽略策略旁标点击跳重叠项**：`jump_…_merge_strategy_overlap`；旁标 `mousePressEvent` 连点轮询重叠键；忽略菜单「跳转重叠项」。
+- **DST 批量复检差异 diff toast**：批量复检对比上次 hit/keys；`diff{added,cleared,delta_hit}`；`show_…_batch_diff_toast`；历史菜单「差异 toast」。
+- **A/B 快捷史回滚一键**：`rollback_…_default_slot_shortcut_history`；槽位对话框「快捷史回滚」。
+- **jitter 闪完音效自定义 wav/关声旁标**：`…_flash_done_sound_wav` / `pick_…`；`…_mute_badge` + 旁标刷新/点击切换；`_play_…`（wav→aplay→beep）；旁标菜单「闪完 wav… / 关声旁标」。
+- **验证**：`scripts/smoke-wave98-…-e2e.py` 6/6；regress wave97 6/6。非硬件约 **~94%**。
+
+
 ## 【细妆65 · pin频率预设导入冲突预览/一键合并 · 忽略名单合并策略快捷/冲突旁标 · DST复检批量/导出筛选结果 · A/B默认槽改绑冲突检测/最近快捷史 · jitter闪完音效/旁标闪完计数清零 · 2026-10-28】
 
 - **pin 频率预设导入冲突预览/一键合并**：`preview_…_badge_freq_import_conflicts`（name 重叠 / ms 不一致）；`merge_…_badge_freq_import`（replace|merge|prefer_incoming|prefer_existing）；角标菜单「导入冲突预览… / 一键合并导入…」。
