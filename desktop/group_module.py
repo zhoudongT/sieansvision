@@ -216,7 +216,7 @@ class GroupBreadcrumb(QFrame):
         back.clicked.connect(self.exitGroup.emit)
         lay.addWidget(back)
         self.setStyleSheet(
-            f'QFrame#groupBreadcrumb{background:{CARD};border:1px solid {LINE};border-radius:2px;}'
+            f'QFrame#groupBreadcrumb{{background:{CARD};border:1px solid {LINE};border-radius:2px;}}'
         )
 
     def set_path(self, flow_name, group_name):
