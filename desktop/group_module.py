@@ -80,6 +80,7 @@ class GroupParamPanel(QWidget):
             box.addLayout(row)
             bind_row.addLayout(box, 1)
             edit.editingFinished.connect(self._emit)
+            edit.textChanged.connect(lambda *_: self._sync_enter_enabled())
         root.addLayout(bind_row)
 
         self.tabs = QTabWidget()
@@ -89,16 +90,17 @@ class GroupParamPanel(QWidget):
         self.tabs.addTab(self._display_tab(), '显示设置')
         self.tabs.addTab(self._loop_tab(), '循环设置')
 
-        enter = QPushButton('进入组合模块')
-        enter.setObjectName('primaryButton')
-        enter.setToolTip('嵌套画布 Tab；未绑定 ImageData/InputROI 时不可进入')
-        enter.clicked.connect(self._try_enter)
-        root.addWidget(enter)
+        self.enter_btn = QPushButton('进入组合模块')
+        self.enter_btn.setObjectName('primaryButton')
+        self.enter_btn.setToolTip('嵌套画布 Tab；未绑定 ImageData/InputROI 时不可进入（按钮灰显）')
+        self.enter_btn.clicked.connect(lambda *_: self._try_enter())
+        root.addWidget(self.enter_btn)
 
         tip = QLabel('组内可再放模块与连线；出组后对外暴露组级 I/O。循环使能与主流程单次/连续分层。')
         tip.setWordWrap(True)
         tip.setObjectName('dialogHint')
         root.addWidget(tip)
+        self._sync_enter_enabled()
 
     def _pick_binding(self, key):
         """Prefer shared upstream_field_picker; fall back to BindSourceDialog."""
@@ -388,28 +390,50 @@ class GroupParamPanel(QWidget):
         io['inputs'] = self._read_io_table('inputs')
         io['outputs'] = self._read_io_table('outputs')
         io.setdefault('display', {})
-        self.params['io'] = io
-        # Keep top ImageData/InputROI in sync with named input rows when present
+        # Line edits are authoritative: push ImageData/InputROI into named IO rows
+        # (↑ insert writes both cell + line edit; clearing a line edit must clear the row).
         for row in io['inputs']:
-            if row.get('name') == 'ImageData' and row.get('binding'):
-                self.params['imageData'] = row['binding']
-                if self.image_data.text().strip() != row['binding']:
-                    self.image_data.blockSignals(True)
-                    self.image_data.setText(row['binding'])
-                    self.image_data.blockSignals(False)
-            if row.get('name') == 'InputROI' and row.get('binding'):
-                self.params['inputRoi'] = row['binding']
-                if self.input_roi.text().strip() != row['binding']:
-                    self.input_roi.blockSignals(True)
-                    self.input_roi.setText(row['binding'])
-                    self.input_roi.blockSignals(False)
+            if row.get('name') == 'ImageData':
+                row['binding'] = self.params.get('imageData') or ''
+            elif row.get('name') == 'InputROI':
+                row['binding'] = self.params.get('inputRoi') or ''
+        # Mirror into table cells so IO tab matches top binds
+        for kind, key, name in (
+            ('inputs', 'imageData', 'ImageData'),
+            ('inputs', 'inputRoi', 'InputROI'),
+        ):
+            table = getattr(self, f'_{kind}_table', None)
+            if table is None:
+                continue
+            val = self.params.get(key) or ''
+            for r in range(table.rowCount()):
+                it = table.item(r, 0)
+                if it and it.text().strip() == name:
+                    table.blockSignals(True)
+                    table.setItem(r, 2, QTableWidgetItem(val))
+                    table.blockSignals(False)
+                    break
+        self.params['io'] = io
         step = deepcopy(self.step)
         step['params'] = deepcopy(self.params)
         self.changed.emit(step)
+        self._sync_enter_enabled()
+
+    def _sync_enter_enabled(self):
+        # Grey out enter until ImageData + InputROI both bound.
+        if not hasattr(self, 'enter_btn') or self.enter_btn is None:
+            return
+        img = (self.image_data.text() if hasattr(self, 'image_data') else '') or ''
+        roi = (self.input_roi.text() if hasattr(self, 'input_roi') else '') or ''
+        ready = bool(img.strip()) and bool(roi.strip())
+        if not ready:
+            ready = group_bindings_ready(self.params)
+        self.enter_btn.setEnabled(bool(ready))
 
     def _try_enter(self):
         self._emit()
         if not group_bindings_ready(self.params):
+            self._sync_enter_enabled()
             QMessageBox.warning(self, '组合模块', '进组前必须绑定 ImageData 与 InputROI。')
             return
         self.enterGroup.emit()

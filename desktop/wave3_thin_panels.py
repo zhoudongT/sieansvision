@@ -228,9 +228,45 @@ class OutputImagePanel(_ShellBase):
             normalize_output_image_params, parent,
         )
 
+    def _refresh_incomplete_banner(self):
+        if not hasattr(self, '_incomplete_banner') or self._incomplete_banner is None:
+            return
+        from desktop.config_status import step_incomplete
+        bang = step_incomplete(self.step, self.project)
+        if bang:
+            missing = []
+            if not self.step.get('imageFrom'):
+                missing.append('输入源(imageFrom)')
+            if not str(self.params.get('path') or '').strip():
+                missing.append('保存路径')
+            self._incomplete_banner.setText(
+                '⚠ 组件参数未配置完整：' + ('、'.join(missing) or '请检查输入源与路径')
+            )
+            self._incomplete_banner.setStyleSheet(
+                'color:#c62828;background:#ffebee;padding:6px 8px;border-radius:3px;'
+            )
+        else:
+            self._incomplete_banner.setText('组件配置完成')
+            self._incomplete_banner.setStyleSheet('color:#2e7d32;padding:4px 8px;')
+        self._incomplete_banner.setObjectName('incompleteBanner')
+        self._incomplete_banner.setVisible(True)
+
+    def _set_param(self, key, value):
+        super()._set_param(key, value)
+        if key == 'path':
+            self._refresh_incomplete_banner()
+
+    def _set_top(self, key, value):
+        super()._set_top(key, value)
+        if key == 'imageFrom':
+            self._refresh_incomplete_banner()
+
     def _basic_tab(self):
         w = QWidget(); form = QFormLayout(w); form.setContentsMargins(10, 10, 10, 10)
         self._name_row(form, '输出图像')
+        self._incomplete_banner = QLabel()
+        self._incomplete_banner.setWordWrap(True)
+        form.addRow(self._incomplete_banner)
         image_from = QComboBox()
         image_from.addItem('（无图像输入）', None)
         incoming = {e['from'] for e in self.project.get('edges', []) if e.get('to') == self.step.get('id')}
@@ -240,24 +276,39 @@ class OutputImagePanel(_ShellBase):
         def _sub(n): return f"{index_map.get(n,'?')} {names.get(n,n)}.图像"
         for node in sorted(incoming, key=lambda n: (index_map.get(n, 999), n)):
             image_from.addItem(_sub(node), node)
+        # Soft candidates: locate/geometry/preprocess even without edge (densify picker)
+        soft_ops = ('locate', 'geometry_find', 'preprocess', 'pose_correct', 'distort_correct')
+        for s in self.project.get('steps', []):
+            if s.get('id') == self.step.get('id'):
+                continue
+            if s.get('operation') in soft_ops and image_from.findData(s['id']) < 0:
+                image_from.addItem(_sub(s['id']) + '（可选）', s['id'])
         cur = self.step.get('imageFrom')
         if cur and image_from.findData(cur) < 0:
             image_from.addItem('已断开：'+_sub(cur), cur)
         image_from.setCurrentIndex(max(0, image_from.findData(cur)))
         image_from.currentIndexChanged.connect(lambda _: self._set_top('imageFrom', image_from.currentData()))
+        self._image_from = image_from
         form.addRow('输入源', image_from)
         row = QHBoxLayout()
         path = QLineEdit(str(self.params.get('path') or ''))
         path.setPlaceholderText('保存目录或文件路径')
         path.editingFinished.connect(lambda: self._set_param('path', path.text().strip()))
+        def _live_path(text):
+            self.params['path'] = (text or '').strip()
+            self.step['params'] = self.params
+            self._refresh_incomplete_banner()
+        path.textChanged.connect(_live_path)
+        self._path_edit = path
         browse = QPushButton('浏览…')
         def _b():
             d = QFileDialog.getExistingDirectory(self, '选择保存目录')
             if d:
                 path.setText(d); self._set_param('path', d)
-        browse.clicked.connect(_b)
+        browse.clicked.connect(lambda *_: _b())
         row.addWidget(path, 1); row.addWidget(browse)
         form.addRow('保存路径', row)
+        self._refresh_incomplete_banner()
         fmt = QComboBox()
         for f in ('png', 'jpg', 'bmp', 'tif'):
             fmt.addItem(f, f)
