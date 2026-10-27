@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆57 · pin建议历史筛选预设持久/导出 · 冲突策略快捷键可改绑定 · DST旁标右键菜单 · A/B预览列显隐 · jitter旁标快捷键 · 2026-10-28】
+
+- **pin 建议历史筛选预设持久/导出**：`export/import_…_filter_query_presets` JSON；最近查询子菜单「导出预设…/导入预设…」；QSettings 已持久。
+- **冲突策略快捷键可改绑定**：`get/set_…_strategy_shortcut` + `_ensure_…`；旁标右键「改绑快捷键…」；`show_…_rebind_dialog`；tooltip 显当前键。
+- **DST 旁标右键菜单**：撤/重做旁标 QMenu（撤销·清撤栈 / 重做·清重做栈）；`clear_…_reorder_undo`；`_dst_reorder_depth_lab_menu_no_exec` smoke。
+- **A/B 预览列显隐**：`get/set/toggle_…_preview_columns`；对话框列勾选；`format_…` 尊列；至少一列。
+- **jitter 旁标快捷键**：默认 `Ctrl+Alt+J` → `_on_jitter_reorder_redo_hotkey`；`_ensure_jitter_reorder_redo_shortcut`；tooltip 标键。
+- **冒烟**：`smoke-wave89-pinsuggestfilterpresetio-confirmstratrebind-dstlabmenu-abprevcols-jitterhotkey-e2e`（另回归 wave88/87/86）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆56 · pin建议历史筛选最近查询预设 · 冲突策略旁标快捷键 · DST撤重做旁标 · A/B预览列筛/排序 · jitter旁标右键菜单 · 2026-10-28】
 
 - **pin 建议历史筛选最近查询预设**：`list/remember/apply/clear_…_filter_query_presets`；筛选对话框「最近查询」子菜单 + 清预设；`set_…_filter_query` 顺带 remember。

@@ -7350,6 +7350,66 @@ class HostStateMachineWidget(QWidget):
         self._last_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview = dict(out)
         return dict(out)
 
+
+    def stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_columns(
+            self) -> list:
+        """wave89: 冲突预览可见列 [status|flow|current|incoming]."""
+        cur = getattr(self, '_ab_trial_fallback_import_conflict_preview_columns', None)
+        if isinstance(cur, list) and cur:
+            return [str(c) for c in cur]
+        try:
+            import json as _json
+            raw = self._host_settings().value(
+                'host/stalePruneUndoColorScaleAbMirrorChannelPresetImportConflictPreviewColumns',
+                '["status","flow","current","incoming"]')
+            parsed = _json.loads(str(raw or '[]'))
+            if isinstance(parsed, list) and parsed:
+                cur = [str(c) for c in parsed if str(c) in ('status', 'flow', 'current', 'incoming')]
+        except Exception:
+            cur = None
+        if not cur:
+            cur = ['status', 'flow', 'current', 'incoming']
+        self._ab_trial_fallback_import_conflict_preview_columns = list(cur)
+        return list(cur)
+
+    def set_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_columns(
+            self, columns=None, *, persist: bool = True) -> list:
+        """wave89: 设定冲突预览可见列."""
+        allowed = ('status', 'flow', 'current', 'incoming')
+        cols = []
+        for c in list(columns or []):
+            v = str(c or '').strip().lower()
+            if v in allowed and v not in cols:
+                cols.append(v)
+        if not cols:
+            cols = list(allowed)
+        self._ab_trial_fallback_import_conflict_preview_columns = list(cols)
+        if persist:
+            try:
+                import json as _json
+                self._host_settings().setValue(
+                    'host/stalePruneUndoColorScaleAbMirrorChannelPresetImportConflictPreviewColumns',
+                    _json.dumps(cols, ensure_ascii=False))
+            except Exception:
+                pass
+        return list(cols)
+
+    def toggle_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_column(
+            self, column: str, *, persist: bool = True) -> list:
+        """wave89: 切换单列显隐（至少保留一列）."""
+        col = str(column or '').strip().lower()
+        cur = self.stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_columns()
+        if col in cur:
+            if len(cur) <= 1:
+                return list(cur)
+            cur = [c for c in cur if c != col]
+        else:
+            if col in ('status', 'flow', 'current', 'incoming'):
+                # keep canonical order
+                order = ['status', 'flow', 'current', 'incoming']
+                cur = [c for c in order if c in cur or c == col]
+        return self.set_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_columns(cur, persist=persist)
+
     def filter_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_rows(
             self, rows=None, *, status: str = 'all') -> list:
         """wave88: 按 status 筛预览行 all|conflict|same|new."""
@@ -7382,18 +7442,17 @@ class HostStateMachineWidget(QWidget):
         return list(src_rows)
 
     def format_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_table(
-            self, text: str = None, *, from_clipboard: bool = True, flows=None, sep: str = '\t') -> str:
-        """wave87: 冲突预览表格式化为 TSV/CSV 文本."""
+            self, text: str = None, *, from_clipboard: bool = True, flows=None, sep: str = '\t', columns=None) -> str:
+        """wave87–89: 冲突预览表格式化为 TSV/CSV 文本（可列显隐）."""
         prev = self.preview_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial_fallback(
             text, from_clipboard=from_clipboard, flows=flows)
         rows = list(prev.get('rows') or [])
-        lines = ['status' + sep + 'flow' + sep + 'current' + sep + 'incoming']
+        cols = list(columns) if columns is not None else self.stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_columns()
+        if not cols:
+            cols = ['status', 'flow', 'current', 'incoming']
+        lines = [sep.join(cols)]
         for r in rows:
-            lines.append(
-                str(r.get('status') or '') + sep
-                + str(r.get('flow') or '') + sep
-                + str(r.get('current') or '') + sep
-                + str(r.get('incoming') or ''))
+            lines.append(sep.join(str(r.get(c) or '') for c in cols))
         out = '\n'.join(lines)
         self._last_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_table_text = out
         return out
@@ -7529,10 +7588,30 @@ class HostStateMachineWidget(QWidget):
             row_fs.addWidget(btn_rev)
             row_fs.addStretch(1)
             lay.addLayout(row_fs)
+            # wave89: 列显隐
+            row_cols = QHBoxLayout()
+            row_cols.addWidget(QLabel('列', dlg))
+            try:
+                _vis = set(self.stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_columns())
+            except Exception:
+                _vis = {'status', 'flow', 'current', 'incoming'}
+            col_checks = {}
+            for lab_c, key_c in (('状态', 'status'), ('流程', 'flow'), ('现有', 'current'), ('导入', 'incoming')):
+                cb = QCheckBox(lab_c, dlg)
+                cb.setChecked(key_c in _vis)
+                cb.setProperty('isAbMirrorChannelPresetImportConflictPreviewColumn', True)
+                cb.setProperty('abMirrorChannelPresetImportConflictPreviewColumn', key_c)
+                col_checks[key_c] = cb
+                row_cols.addWidget(cb)
+            row_cols.addStretch(1)
+            lay.addLayout(row_cols)
             lst = QListWidget(dlg)
             lst.setObjectName('hostAbMirrorChannelPresetImportConflictPreviewList')
             lst.setProperty('isAbMirrorChannelPresetImportConflictPreviewTable', True)
-            state = {'rows': list(rows), 'filter': 'all', 'sort': 'flow', 'reverse': False}
+            state = {
+                'rows': list(rows), 'filter': 'all', 'sort': 'flow', 'reverse': False,
+                'columns': [k for k in ('status', 'flow', 'current', 'incoming') if col_checks[k].isChecked()] or ['status', 'flow', 'current', 'incoming'],
+            }
             def _refill():
                 try:
                     fr = self.filter_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_rows(
@@ -7541,11 +7620,22 @@ class HostStateMachineWidget(QWidget):
                         fr, key=state['sort'], reverse=state['reverse'])
                 except Exception:
                     fr = list(state['rows'])
+                cols = list(state.get('columns') or ['status', 'flow', 'current', 'incoming'])
                 lst.clear()
                 for r in fr:
                     st = str(r.get('status') or '')
                     mark = {'conflict': '⚠', 'same': '=', 'new': '+'}.get(st, '?')
-                    line = f"{mark} {r.get('flow')} · 现有={r.get('current')} → 导入={r.get('incoming')} · {st}"
+                    parts = []
+                    for c in cols:
+                        if c == 'status':
+                            parts.append(str(st))
+                        elif c == 'flow':
+                            parts.append(str(r.get('flow') or ''))
+                        elif c == 'current':
+                            parts.append(f"现有={r.get('current')}")
+                        elif c == 'incoming':
+                            parts.append(f"导入={r.get('incoming')}")
+                    line = f"{mark} " + ' · '.join(parts)
                     item = QListWidgetItem(line)
                     item.setData(Qt.ItemDataRole.UserRole, dict(r))
                     lst.addItem(item)
@@ -7569,6 +7659,22 @@ class HostStateMachineWidget(QWidget):
             cmb_f.currentIndexChanged.connect(_on_filter)
             cmb_s.currentIndexChanged.connect(_on_sort)
             btn_rev.toggled.connect(_on_rev)
+            def _on_col(_state=None):
+                cols = [k for k in ('status', 'flow', 'current', 'incoming') if col_checks[k].isChecked()]
+                if not cols:
+                    # 至少一列
+                    col_checks['status'].blockSignals(True)
+                    col_checks['status'].setChecked(True)
+                    col_checks['status'].blockSignals(False)
+                    cols = ['status']
+                state['columns'] = cols
+                try:
+                    self.set_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_columns(cols, persist=True)
+                except Exception:
+                    pass
+                _refill()
+            for _cb in col_checks.values():
+                _cb.stateChanged.connect(_on_col)
             _refill()
             lay.addWidget(lst)
             row_io = QHBoxLayout()
@@ -10413,7 +10519,12 @@ class HostStateMachineWidget(QWidget):
             if lab is not None:
                 lab.setText(abbr)
                 lab.setProperty('confirmTrialUndoImportConflictStrategy', str(v))
-                lab.setToolTip(f'导入冲突策略 · {zh}（默认·持久）· 点击切换 · 右击菜单 · Ctrl+Alt+I')
+                try:
+                    _sk = self.stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut()
+                except Exception:
+                    _sk = 'Ctrl+Alt+I'
+                lab.setProperty('confirmTrialUndoImportConflictStrategyShortcut', str(_sk))
+                lab.setToolTip(f'导入冲突策略 · {zh}（默认·持久）· 点击切换 · 右击菜单/改绑 · {_sk}')
                 lab.setStyleSheet('color:#7ec8e3;font-size:10px;font-weight:600;')
                 lab.setVisible(True)
         except Exception:
@@ -10444,6 +10555,105 @@ class HostStateMachineWidget(QWidget):
         return str(nxt)
 
 
+    def stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut(
+            self) -> str:
+        """wave89: 导入冲突策略循环快捷键（默认 Ctrl+Alt+I）."""
+        cur = getattr(self, '_ics_strategy_shortcut_key', None)
+        if cur:
+            return str(cur)
+        try:
+            raw = self._host_settings().value(
+                'host/stalePruneUndoEyedropperHistoryOrderShortcutFixConfirmTrialUndoImportConflictStrategyShortcut',
+                'Ctrl+Alt+I')
+            v = str(raw or 'Ctrl+Alt+I').strip() or 'Ctrl+Alt+I'
+        except Exception:
+            v = 'Ctrl+Alt+I'
+        try:
+            v = QKeySequence(v).toString(QKeySequence.SequenceFormat.PortableText) or v
+        except Exception:
+            pass
+        self._ics_strategy_shortcut_key = v
+        return v
+
+    def set_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut(
+            self, key: str = 'Ctrl+Alt+I', *, persist: bool = True, rebind: bool = True) -> str:
+        """wave89: 设定导入冲突策略循环快捷键并可重绑."""
+        v = str(key or '').strip() or 'Ctrl+Alt+I'
+        try:
+            v = QKeySequence(v).toString(QKeySequence.SequenceFormat.PortableText) or v
+        except Exception:
+            pass
+        if not v:
+            v = 'Ctrl+Alt+I'
+        self._ics_strategy_shortcut_key = v
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/stalePruneUndoEyedropperHistoryOrderShortcutFixConfirmTrialUndoImportConflictStrategyShortcut',
+                    v)
+            except Exception:
+                pass
+        if rebind:
+            try:
+                self._ensure_confirm_trial_undo_import_conflict_strategy_shortcut(force=True)
+            except Exception:
+                pass
+        try:
+            self.refresh_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_lab()
+        except Exception:
+            pass
+        return v
+
+    def _ensure_confirm_trial_undo_import_conflict_strategy_shortcut(self, *, force: bool = False):
+        """wave89: 安装/重绑冲突策略快捷键."""
+        key = self.stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut()
+        sc = getattr(self, '_ics_strategy_shortcut', None)
+        if sc is None or force:
+            try:
+                if sc is not None:
+                    try:
+                        sc.setParent(None)
+                    except Exception:
+                        pass
+                    try:
+                        sc.deleteLater()
+                    except Exception:
+                        pass
+                sc = QShortcut(QKeySequence(key), self)
+                sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+                sc.setProperty('isUndoEyedropperHistoryOrderShortcutFixConfirmTrialUndoImportConflictStrategyShortcut', True)
+                sc.activated.connect(self._on_confirm_trial_undo_import_conflict_strategy_hotkey)
+                self._ics_strategy_shortcut = sc
+            except Exception:
+                self._ics_strategy_shortcut = getattr(self, '_ics_strategy_shortcut', None)
+                return getattr(self, '_ics_strategy_shortcut', None)
+        else:
+            try:
+                sc.setKey(QKeySequence(key))
+            except Exception:
+                pass
+        try:
+            sc.setProperty('confirmTrialUndoImportConflictStrategyShortcut', key)
+        except Exception:
+            pass
+        return sc
+
+    def show_confirm_trial_undo_import_conflict_strategy_shortcut_rebind_dialog(self) -> str:
+        """wave89: 改绑冲突策略快捷键对话框."""
+        cur = self.stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut()
+        if getattr(self, '_ics_strategy_shortcut_rebind_no_dialog', False):
+            smoke = getattr(self, '_ics_strategy_shortcut_rebind_smoke', None)
+            nxt = str(smoke if smoke is not None else cur)
+            return self.set_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut(nxt)
+        try:
+            text, ok = QInputDialog.getText(self, '改绑冲突策略快捷键', '快捷键（如 Ctrl+Alt+I）', text=cur)
+        except Exception:
+            return cur
+        if not ok:
+            return cur
+        return self.set_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut(str(text or cur))
+
+
     def _refresh_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_redo_depth_ui(
             self, depth: int = None) -> int:
         """wave87: 刷新 jitter 排序重做旁标 chrome."""
@@ -10463,8 +10673,13 @@ class HostStateMachineWidget(QWidget):
                 lab.setProperty('jitterSeedRedoClearUndoTtlPresetCustomsReorderRedoDepth', int(d))
                 lab.setStyleSheet(
                     'color:#7ec87e;font-size:10px;' if d > 0 else 'color:#6a7380;font-size:10px;')
+                try:
+                    _jk = self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_redo_shortcut()
+                except Exception:
+                    _jk = 'Ctrl+Alt+J'
+                lab.setProperty('jitterSeedRedoClearUndoTtlPresetCustomsReorderRedoShortcut', str(_jk))
                 lab.setToolTip(
-                    f'jitter排序重做栈 · {d}' + (' · 点击重做 · 右击菜单' if d > 0 else ''))
+                    f'jitter排序重做栈 · {d}' + (f' · 点击重做 · 右击菜单 · {_jk}' if d > 0 else f' · {_jk}'))
         except Exception:
             pass
         return int(d)
@@ -10492,7 +10707,7 @@ class HostStateMachineWidget(QWidget):
                 lab_u.setProperty('dstClearUndoTtlPresetCustomsReorderUndoDepth', int(ud))
                 lab_u.setStyleSheet(
                     'color:#f0a020;font-size:10px;' if ud > 0 else 'color:#6a7380;font-size:10px;')
-                lab_u.setToolTip(f'DST排序撤栈 · {ud}' + (' · 点击撤销' if ud > 0 else ''))
+                lab_u.setToolTip(f'DST排序撤栈 · {ud}' + (' · 点击撤销 · 右击菜单' if ud > 0 else ''))
         except Exception:
             pass
         try:
@@ -10505,7 +10720,7 @@ class HostStateMachineWidget(QWidget):
                 lab_r.setProperty('dstClearUndoTtlPresetCustomsReorderRedoDepth', int(rd))
                 lab_r.setStyleSheet(
                     'color:#7ec87e;font-size:10px;' if rd > 0 else 'color:#6a7380;font-size:10px;')
-                lab_r.setToolTip(f'DST排序重做栈 · {rd}' + (' · 点击重做 · 右击清栈' if rd > 0 else ''))
+                lab_r.setToolTip(f'DST排序重做栈 · {rd}' + (' · 点击重做 · 右击菜单' if rd > 0 else ''))
         except Exception:
             pass
         out = {'undo': ud, 'redo': rd}
@@ -11457,7 +11672,11 @@ class HostStateMachineWidget(QWidget):
         lab_ics.setFixedWidth(14)
         lab_ics.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lab_ics.setStyleSheet('color:#7ec8e3;font-size:10px;font-weight:600;')
-        lab_ics.setToolTip(f'导入冲突策略 · {_ics_zh}（默认·持久）· 点击切换 · 右击菜单 · Ctrl+Alt+I')
+        try:
+            _ics_key_tip = self.stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut()
+        except Exception:
+            _ics_key_tip = 'Ctrl+Alt+I'
+        lab_ics.setToolTip(f'导入冲突策略 · {_ics_zh}（默认·持久）· 点击切换 · 右击菜单/改绑 · {_ics_key_tip}')
         try:
             lab_ics.setCursor(Qt.CursorShape.PointingHandCursor)
         except Exception:
@@ -11481,11 +11700,17 @@ class HostStateMachineWidget(QWidget):
                 is_right = False
             if is_right:
                 try:
+                    try:
+                        _sk = self.stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut()
+                    except Exception:
+                        _sk = 'Ctrl+Alt+I'
                     if getattr(self, '_confirm_trial_undo_ics_lab_menu_no_exec', False):
                         self._last_confirm_trial_undo_ics_lab_menu_smoke = {
                             'current': cur,
                             'choices': list(order),
                             'via': 'right_click_menu',
+                            'rebind': str(_sk),
+                            'actions': list(order) + ['rebind'],
                         }
                         return
                     menu = QMenu(_lab)
@@ -11502,6 +11727,12 @@ class HostStateMachineWidget(QWidget):
                                 self.refresh_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_lab(),
                             ))
                         menu.addAction(act)
+                    menu.addSeparator()
+                    act_rb = QAction(f'改绑快捷键… · {_sk}', menu)
+                    act_rb.setProperty('isUndoEyedropperHistoryOrderShortcutFixConfirmTrialUndoImportConflictStrategyLabMenuRebind', True)
+                    act_rb.triggered.connect(
+                        lambda *_: self.show_confirm_trial_undo_import_conflict_strategy_shortcut_rebind_dialog())
+                    menu.addAction(act_rb)
                     try:
                         menu.exec(_lab.mapToGlobal(e.pos()))
                     except Exception:
@@ -11522,17 +11753,16 @@ class HostStateMachineWidget(QWidget):
             lab_ics.mousePressEvent = _on_ics_click  # type: ignore[method-assign]
         except Exception:
             pass
-        # wave88: 冲突策略旁标快捷键 Ctrl+Alt+I 循环
+        # wave88–89: 冲突策略旁标快捷键（可改绑）
         try:
-            if getattr(self, '_ics_strategy_shortcut', None) is None:
-                sc = QShortcut(QKeySequence('Ctrl+Alt+I'), self)
-                sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
-                sc.setProperty('isUndoEyedropperHistoryOrderShortcutFixConfirmTrialUndoImportConflictStrategyShortcut', True)
-                sc.activated.connect(self._on_confirm_trial_undo_import_conflict_strategy_hotkey)
-                self._ics_strategy_shortcut = sc
+            _ics_key = self.stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut()
+        except Exception:
+            _ics_key = 'Ctrl+Alt+I'
+        try:
+            self._ensure_confirm_trial_undo_import_conflict_strategy_shortcut(force=False)
         except Exception:
             self._ics_strategy_shortcut = getattr(self, '_ics_strategy_shortcut', None)
-        lab_ics.setProperty('confirmTrialUndoImportConflictStrategyShortcut', 'Ctrl+Alt+I')
+        lab_ics.setProperty('confirmTrialUndoImportConflictStrategyShortcut', str(_ics_key))
         lay.addWidget(lab_ics)
         self._last_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_lab = lab_ics
         # wave87: jitter 排序重做旁标 chrome（对齐深度 lab）
@@ -11548,8 +11778,12 @@ class HostStateMachineWidget(QWidget):
         lab_jrd.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lab_jrd.setStyleSheet(
             'color:#7ec87e;font-size:10px;' if _jrd > 0 else 'color:#6a7380;font-size:10px;')
+        try:
+            _jrd_key_tip = self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_redo_shortcut()
+        except Exception:
+            _jrd_key_tip = 'Ctrl+Alt+J'
         lab_jrd.setToolTip(
-            f'jitter排序重做栈 · {_jrd}' + (' · 点击重做 · 右击菜单' if _jrd > 0 else ''))
+            f'jitter排序重做栈 · {_jrd}' + (f' · 点击重做 · 右击菜单 · {_jrd_key_tip}' if _jrd > 0 else f' · {_jrd_key_tip}'))
         try:
             lab_jrd.setCursor(Qt.CursorShape.PointingHandCursor)
         except Exception:
@@ -11616,6 +11850,19 @@ class HostStateMachineWidget(QWidget):
             pass
         lay.addWidget(lab_jrd)
         self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_redo_depth_lab = lab_jrd
+        # wave89: jitter 重做快捷键
+        try:
+            _jrd_key = self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_redo_shortcut()
+        except Exception:
+            _jrd_key = 'Ctrl+Alt+J'
+        try:
+            self._ensure_jitter_reorder_redo_shortcut(force=False)
+        except Exception:
+            self._jitter_reorder_redo_shortcut = getattr(self, '_jitter_reorder_redo_shortcut', None)
+        try:
+            lab_jrd.setProperty('jitterSeedRedoClearUndoTtlPresetCustomsReorderRedoShortcut', str(_jrd_key))
+        except Exception:
+            pass
         # wave88: DST 撤/重做旁标
         try:
             _dud = int(self.toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_undo_depth())
@@ -11633,12 +11880,61 @@ class HostStateMachineWidget(QWidget):
         lab_dud.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lab_dud.setStyleSheet(
             'color:#f0a020;font-size:10px;' if _dud > 0 else 'color:#6a7380;font-size:10px;')
-        lab_dud.setToolTip(f'DST排序撤栈 · {_dud}' + (' · 点击撤销' if _dud > 0 else ''))
+        lab_dud.setToolTip(f'DST排序撤栈 · {_dud}' + (' · 点击撤销 · 右击菜单' if _dud > 0 else ''))
         try:
             lab_dud.setCursor(Qt.CursorShape.PointingHandCursor)
         except Exception:
             pass
         def _on_dud_click(e, _lab=lab_dud):
+            try:
+                btn = e.button() if e is not None else None
+            except Exception:
+                btn = None
+            is_right = False
+            try:
+                is_right = (btn == Qt.MouseButton.RightButton)
+            except Exception:
+                is_right = False
+            if is_right:
+                try:
+                    try:
+                        ud_now = int(self.toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_undo_depth())
+                    except Exception:
+                        ud_now = 0
+                    if getattr(self, '_dst_reorder_depth_lab_menu_no_exec', False):
+                        self._last_dst_reorder_undo_lab_menu_smoke = {
+                            'via': 'right_click_menu',
+                            'depth': int(ud_now),
+                            'actions': ['undo', 'clear_undo'],
+                        }
+                        return
+                    menu = QMenu(_lab)
+                    menu.setProperty('isDstClearUndoTtlPresetCustomsReorderUndoDepthLabMenu', True)
+                    act_u = QAction(f'撤销 · {ud_now}', menu)
+                    act_u.setProperty('isDstClearUndoTtlPresetCustomsReorderUndoDepthLabMenuUndo', True)
+                    act_u.setEnabled(bool(ud_now))
+                    act_u.triggered.connect(
+                        lambda *_: (
+                            self.undo_reorder_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs(),
+                            self._refresh_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_depth_ui(),
+                        ))
+                    menu.addAction(act_u)
+                    act_c = QAction(f'清撤栈 · {ud_now}', menu)
+                    act_c.setProperty('isDstClearUndoTtlPresetCustomsReorderUndoDepthLabMenuClear', True)
+                    act_c.setEnabled(bool(ud_now))
+                    act_c.triggered.connect(
+                        lambda *_: (
+                            self.clear_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_undo(),
+                            self._refresh_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_depth_ui(),
+                        ))
+                    menu.addAction(act_c)
+                    try:
+                        menu.exec(_lab.mapToGlobal(e.pos()))
+                    except Exception:
+                        menu.exec()
+                except Exception:
+                    pass
+                return
             try:
                 self.undo_reorder_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs()
                 self._refresh_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_depth_ui()
@@ -11658,7 +11954,7 @@ class HostStateMachineWidget(QWidget):
         lab_drd.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lab_drd.setStyleSheet(
             'color:#7ec87e;font-size:10px;' if _drd > 0 else 'color:#6a7380;font-size:10px;')
-        lab_drd.setToolTip(f'DST排序重做栈 · {_drd}' + (' · 点击重做 · 右击清栈' if _drd > 0 else ''))
+        lab_drd.setToolTip(f'DST排序重做栈 · {_drd}' + (' · 点击重做 · 右击菜单' if _drd > 0 else ''))
         try:
             lab_drd.setCursor(Qt.CursorShape.PointingHandCursor)
         except Exception:
@@ -11675,8 +11971,41 @@ class HostStateMachineWidget(QWidget):
                 is_right = False
             if is_right:
                 try:
-                    self.clear_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_redo()
-                    self._refresh_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_depth_ui()
+                    try:
+                        rd_now = int(self.toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_redo_depth())
+                    except Exception:
+                        rd_now = 0
+                    if getattr(self, '_dst_reorder_depth_lab_menu_no_exec', False):
+                        self._last_dst_reorder_redo_lab_menu_smoke = {
+                            'via': 'right_click_menu',
+                            'depth': int(rd_now),
+                            'actions': ['redo', 'clear_redo'],
+                        }
+                        return
+                    menu = QMenu(_lab)
+                    menu.setProperty('isDstClearUndoTtlPresetCustomsReorderRedoDepthLabMenu', True)
+                    act_r = QAction(f'重做 · {rd_now}', menu)
+                    act_r.setProperty('isDstClearUndoTtlPresetCustomsReorderRedoDepthLabMenuRedo', True)
+                    act_r.setEnabled(bool(rd_now))
+                    act_r.triggered.connect(
+                        lambda *_: (
+                            self.redo_reorder_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs(),
+                            self._refresh_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_depth_ui(),
+                        ))
+                    menu.addAction(act_r)
+                    act_c = QAction(f'清重做栈 · {rd_now}', menu)
+                    act_c.setProperty('isDstClearUndoTtlPresetCustomsReorderRedoDepthLabMenuClear', True)
+                    act_c.setEnabled(bool(rd_now))
+                    act_c.triggered.connect(
+                        lambda *_: (
+                            self.clear_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_redo(),
+                            self._refresh_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_depth_ui(),
+                        ))
+                    menu.addAction(act_c)
+                    try:
+                        menu.exec(_lab.mapToGlobal(e.pos()))
+                    except Exception:
+                        menu.exec()
                 except Exception:
                     pass
                 return
@@ -14345,6 +14674,17 @@ class HostStateMachineWidget(QWidget):
                     lambda *_a, _p=persist: self.clear_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets(
                         persist=_p))
                 sub_hp.addAction(act_pc)
+            sub_hp.addSeparator()
+            act_pexp = QAction('导出预设…', sub_hp)
+            act_pexp.setProperty('isCycleKeySuggestHistoryFilterPresetExport', True)
+            act_pexp.triggered.connect(
+                lambda *_a: self.export_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets())
+            sub_hp.addAction(act_pexp)
+            act_pimp = QAction('导入预设…', sub_hp)
+            act_pimp.setProperty('isCycleKeySuggestHistoryFilterPresetImport', True)
+            act_pimp.triggered.connect(
+                lambda *_a, _p=persist: self.import_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets(persist=_p))
+            sub_hp.addAction(act_pimp)
             sub_h.addSeparator()
             if not hist_rows:
                 act_he = QAction('历史空' if not hist_all else '无匹配', sub_h)
@@ -14682,6 +15022,111 @@ class HostStateMachineWidget(QWidget):
         """wave88: 应用一条最近查询预设."""
         return self.set_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query(
             str(query or ''), persist=persist, remember=True)
+
+
+    def export_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets(
+            self, path: str = None, *, limit: int = 64) -> dict:
+        """wave89: 导出筛选最近查询预设 JSON."""
+        import json as _json
+        presets = self.list_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets(limit=limit)
+        payload = {
+            'kind': 'cycleKeySuggestHistoryFilterQueryPresets',
+            'version': 1,
+            'presets': list(presets),
+        }
+        target = path
+        if not target:
+            smoke = getattr(self, '_cycle_key_suggest_history_filter_presets_export_smoke', None)
+            if isinstance(smoke, dict) and smoke.get('path'):
+                target = str(smoke.get('path'))
+            elif smoke:
+                target = str(smoke)
+        if not target and not getattr(self, '_cycle_key_suggest_history_filter_presets_export_no_dialog', False):
+            try:
+                target, _ = QFileDialog.getSaveFileName(
+                    self, '导出筛选预设', 'filter-query-presets.json', 'JSON (*.json)')
+            except Exception:
+                target = ''
+        if not target:
+            out = {'ok': False, 'path': '', 'count': len(presets), 'presets': list(presets)}
+            self._last_cycle_key_suggest_history_filter_presets_export = out
+            return out
+        try:
+            Path = __import__('pathlib').Path
+            Path(target).write_text(_json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+            out = {'ok': True, 'path': str(target), 'count': len(presets), 'presets': list(presets)}
+        except Exception as e:
+            out = {'ok': False, 'path': str(target), 'count': len(presets), 'error': str(e), 'presets': list(presets)}
+        self._last_cycle_key_suggest_history_filter_presets_export = out
+        return out
+
+    def import_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets(
+            self, path: str = None, text: str = None, *, persist: bool = True, merge: bool = True, limit: int = 8) -> dict:
+        """wave89: 导入筛选最近查询预设 JSON（可合并）。"""
+        import json as _json
+        raw = text
+        target = path
+        if raw is None:
+            if not target:
+                smoke = getattr(self, '_cycle_key_suggest_history_filter_presets_import_smoke', None)
+                if isinstance(smoke, dict) and smoke.get('path'):
+                    target = str(smoke.get('path'))
+                elif smoke:
+                    target = str(smoke)
+            if not target and not getattr(self, '_cycle_key_suggest_history_filter_presets_import_no_dialog', False):
+                try:
+                    target, _ = QFileDialog.getOpenFileName(
+                        self, '导入筛选预设', '', 'JSON (*.json)')
+                except Exception:
+                    target = ''
+            if target:
+                try:
+                    Path = __import__('pathlib').Path
+                    raw = Path(target).read_text(encoding='utf-8')
+                except Exception as e:
+                    out = {'ok': False, 'path': str(target), 'count': 0, 'error': str(e)}
+                    self._last_cycle_key_suggest_history_filter_presets_import = out
+                    return out
+        if raw is None or str(raw).strip() == '':
+            out = {'ok': False, 'path': str(target or ''), 'count': 0, 'error': 'empty'}
+            self._last_cycle_key_suggest_history_filter_presets_import = out
+            return out
+        try:
+            data = _json.loads(str(raw))
+        except Exception as e:
+            out = {'ok': False, 'path': str(target or ''), 'count': 0, 'error': f'json:{e}'}
+            self._last_cycle_key_suggest_history_filter_presets_import = out
+            return out
+        incoming = []
+        if isinstance(data, dict):
+            incoming = list(data.get('presets') or [])
+        elif isinstance(data, list):
+            incoming = list(data)
+        incoming = [str(x).strip() for x in incoming if str(x or '').strip()]
+        cur = []
+        if merge:
+            cur = self.list_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets(limit=64)
+        # incoming first (newest), then rest unique
+        seen = set()
+        out_list = []
+        for v in list(incoming) + list(cur):
+            if v in seen:
+                continue
+            seen.add(v)
+            out_list.append(v)
+        lim = max(1, int(limit or 8))
+        out_list = out_list[:lim]
+        self._merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_presets = list(out_list)
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/mergeDiffFailHistDropSnapGuideRecentMaxPinAvoidCompareBarUndoSwatchConflictPreviewCycleKeySuggestHistoryFilterPresets',
+                    _json.dumps(out_list, ensure_ascii=False))
+            except Exception:
+                pass
+        out = {'ok': True, 'path': str(target or ''), 'count': len(out_list), 'presets': list(out_list), 'merged': bool(merge)}
+        self._last_cycle_key_suggest_history_filter_presets_import = out
+        return out
 
 
     def filter_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history(
@@ -17215,6 +17660,103 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             pass
         return dict(out)
+
+
+    def merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_redo_shortcut(
+            self) -> str:
+        """wave89: jitter 排序重做快捷键（默认 Ctrl+Alt+J）."""
+        cur = getattr(self, '_jitter_reorder_redo_shortcut_key', None)
+        if cur:
+            return str(cur)
+        try:
+            raw = self._host_settings().value(
+                'host/mergeDiffFailHistDropPulsePreviewLoopGapJitterSeedRedoClearUndoTtlPresetCustomsReorderRedoShortcut',
+                'Ctrl+Alt+J')
+            v = str(raw or 'Ctrl+Alt+J').strip() or 'Ctrl+Alt+J'
+        except Exception:
+            v = 'Ctrl+Alt+J'
+        try:
+            v = QKeySequence(v).toString(QKeySequence.SequenceFormat.PortableText) or v
+        except Exception:
+            pass
+        self._jitter_reorder_redo_shortcut_key = v
+        return v
+
+    def set_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_redo_shortcut(
+            self, key: str = 'Ctrl+Alt+J', *, persist: bool = True, rebind: bool = True) -> str:
+        """wave89: 设定 jitter 重做快捷键."""
+        v = str(key or '').strip() or 'Ctrl+Alt+J'
+        try:
+            v = QKeySequence(v).toString(QKeySequence.SequenceFormat.PortableText) or v
+        except Exception:
+            pass
+        if not v:
+            v = 'Ctrl+Alt+J'
+        self._jitter_reorder_redo_shortcut_key = v
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/mergeDiffFailHistDropPulsePreviewLoopGapJitterSeedRedoClearUndoTtlPresetCustomsReorderRedoShortcut',
+                    v)
+            except Exception:
+                pass
+        if rebind:
+            try:
+                self._ensure_jitter_reorder_redo_shortcut(force=True)
+            except Exception:
+                pass
+        try:
+            self._refresh_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_redo_depth_ui()
+        except Exception:
+            pass
+        return v
+
+    def _ensure_jitter_reorder_redo_shortcut(self, *, force: bool = False):
+        """wave89: 安装/重绑 jitter 重做快捷键."""
+        key = self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_redo_shortcut()
+        sc = getattr(self, '_jitter_reorder_redo_shortcut', None)
+        if sc is None or force:
+            try:
+                if sc is not None:
+                    try:
+                        sc.setParent(None)
+                    except Exception:
+                        pass
+                    try:
+                        sc.deleteLater()
+                    except Exception:
+                        pass
+                sc = QShortcut(QKeySequence(key), self)
+                sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+                sc.setProperty('isJitterSeedRedoClearUndoTtlPresetCustomsReorderRedoShortcut', True)
+                sc.activated.connect(self._on_jitter_reorder_redo_hotkey)
+                self._jitter_reorder_redo_shortcut = sc
+            except Exception:
+                self._jitter_reorder_redo_shortcut = getattr(self, '_jitter_reorder_redo_shortcut', None)
+                return getattr(self, '_jitter_reorder_redo_shortcut', None)
+        else:
+            try:
+                sc.setKey(QKeySequence(key))
+            except Exception:
+                pass
+        try:
+            sc.setProperty('jitterSeedRedoClearUndoTtlPresetCustomsReorderRedoShortcut', key)
+        except Exception:
+            pass
+        return sc
+
+    def _on_jitter_reorder_redo_hotkey(self) -> bool:
+        """wave89: 快捷键触发 jitter 排序重做."""
+        try:
+            ok = bool(self.redo_reorder_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs())
+        except Exception:
+            ok = False
+        try:
+            self._refresh_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_redo_depth_ui()
+        except Exception:
+            pass
+        self._last_jitter_reorder_redo_hotkey = {'ok': bool(ok)}
+        return bool(ok)
 
 
     def undo_reorder_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs(
@@ -22307,6 +22849,18 @@ class HostStateMachineWidget(QWidget):
             '_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_redo',
             []) or [])
         return int(len(redo))
+
+
+    def clear_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_undo(
+            self) -> int:
+        """wave89: 清空 DST 自定义排序撤栈."""
+        depth = self.toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_undo_depth()
+        self._toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_undo = []
+        try:
+            self._refresh_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_depth_ui()
+        except Exception:
+            pass
+        return int(depth)
 
     def clear_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_redo(
             self) -> int:

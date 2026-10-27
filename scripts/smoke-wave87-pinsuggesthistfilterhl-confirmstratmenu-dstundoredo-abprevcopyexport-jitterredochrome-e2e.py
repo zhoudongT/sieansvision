@@ -271,7 +271,7 @@ def main():
         s.sync()
     except Exception:
         pass
-    assert '点击重做 · 右击清栈' in hsm_src
+    assert ('点击重做 · 右击清栈' in hsm_src) or ('点击重做 · 右击菜单' in hsm_src)
     ok('jitter重做旁标 chrome')
 
     print(f'\nwave87: {pass_n} PASS / {fail_n} FAIL', flush=True)
