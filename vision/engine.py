@@ -475,8 +475,6 @@ def run(request):
         # Design-time 图像显示：透传上游图；channel 分离；可选叠加模块名
         ch = (p.get('channel') or 'auto')
         try:
-            import cv2
-            import numpy as np
             if ch in ('r', 'g', 'b') and canvas.ndim == 3 and canvas.shape[2] >= 3:
                 # OpenCV BGR
                 idx = {'b': 0, 'g': 1, 'r': 2}[ch]
@@ -500,7 +498,6 @@ def run(request):
         }
         if data['showName']:
             try:
-                import cv2
                 label = str(p.get('_stepName') or '显示')
                 cv2.putText(canvas, label, (12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 200, 255), 2, cv2.LINE_AA)
             except Exception:

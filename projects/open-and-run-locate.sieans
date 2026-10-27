@@ -1,7 +1,7 @@
 {
   "version": 2,
   "id": "49c6c6f8b1b04c8d",
-  "name": "打开即跑 · 模板匹配",
+  "name": "打开即跑 · 定位→位姿→OK/NG",
   "steps": [
     {
       "id": "3a3570f6657c45d7",
@@ -38,13 +38,97 @@
         "y": 160
       },
       "imageFrom": "source"
+    },
+    {
+      "id": "20b5415f91344c45",
+      "operation": "pose_correct",
+      "name": "位置修正",
+      "params": {
+        "fixtureSource": "auto",
+        "baseX": 0.0,
+        "baseY": 0.0,
+        "baseAngle": 0.0,
+        "followRoi": true,
+        "outputCoord": "fixture",
+        "bindStepId": "3a3570f6657c45d7",
+        "bindField": "items[0]"
+      },
+      "position": {
+        "x": 300,
+        "y": 300
+      },
+      "imageFrom": "3a3570f6657c45d7"
+    },
+    {
+      "id": "96efc0fab4b34e9e",
+      "operation": "var_calc",
+      "name": "分数门限·OK/NG",
+      "params": {
+        "scope": "flow",
+        "expressions": [
+          {
+            "name": "matchScore",
+            "expression": "locate_score",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "matchCount",
+            "expression": "locate_count",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "poseX",
+            "expression": "locate_x",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "poseY",
+            "expression": "locate_y",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "passGate",
+            "expression": "locate_found > 0 && locate_score >= 0.7",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          }
+        ]
+      },
+      "position": {
+        "x": 300,
+        "y": 440
+      },
+      "imageFrom": "20b5415f91344c45"
     }
   ],
   "edges": [
     {
-      "id": "bb11df27902d4fea",
+      "id": "f28acb58b01d4308",
       "from": "source",
       "to": "3a3570f6657c45d7",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "f23e30431f9341be",
+      "from": "3a3570f6657c45d7",
+      "to": "20b5415f91344c45",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "26df3a6a30754ea0",
+      "from": "20b5415f91344c45",
+      "to": "96efc0fab4b34e9e",
       "fromPort": "bottom",
       "toPort": "top"
     }
@@ -83,19 +167,31 @@
     "currentIndex": 0
   },
   "runUi": {
-    "split": "2",
+    "split": "4",
     "placements": [
       {
         "name": "图像",
-        "page": 1,
+        "page": 3,
         "cell": 0,
         "category": "基础"
       },
       {
-        "name": "上位机状态机",
-        "page": 1,
+        "name": "OK/NG",
+        "page": 3,
         "cell": 1,
         "category": "基础"
+      },
+      {
+        "name": "运行控制",
+        "page": 3,
+        "cell": 2,
+        "category": "基础"
+      },
+      {
+        "name": "生产统计",
+        "page": 3,
+        "cell": 3,
+        "category": "图表"
       }
     ],
     "controls": {
@@ -103,8 +199,16 @@
         "commands": [],
         "binding": "source"
       },
-      "上位机状态机": {
+      "OK/NG": {
+        "commands": [],
+        "binding": ""
+      },
+      "运行控制": {
         "commands": [
+          {
+            "type": "执行·单次",
+            "config": ""
+          },
           {
             "type": "执行·连续",
             "config": ""
@@ -114,7 +218,11 @@
             "config": ""
           }
         ],
-        "binding": "host"
+        "binding": ""
+      },
+      "生产统计": {
+        "commands": [],
+        "binding": "stats"
       }
     },
     "fixedBars": {
@@ -125,12 +233,15 @@
       "cameraBind": "未绑定",
       "commBind": "TCP.连接状态",
       "showRunStatus": true,
-      "showOkNg": true
+      "showOkNg": true,
+      "showCounters": true,
+      "showHistory": true
     },
     "meta": {
-      "template": "host_state_machine",
-      "version": 1
+      "template": "open_and_run_locate",
+      "version": 2,
+      "openAndRun": true
     }
   },
-  "notes": "【打开即跑】fixture 样张 + 已嵌入参考模板。打开后 ▶ 单次执行快速匹配。"
+  "notes": "【打开即跑 · 定位路径】fixture 样张 + 嵌入模板。▶ 单次：图源→模板匹配→位置修正(绑定 matches)→分数门限写 passGate。运行界面 OK/NG 灯跟 flow.passGate；matchScore/poseX/poseY 进变量。"
 }

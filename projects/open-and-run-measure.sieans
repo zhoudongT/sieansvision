@@ -1,0 +1,251 @@
+{
+  "version": 2,
+  "id": "e9625921698d4f4c",
+  "name": "打开即跑 · 几何测量 OK/NG",
+  "steps": [
+    {
+      "id": "2e219b0689914d47",
+      "operation": "preprocess",
+      "name": "图像预处理",
+      "params": {
+        "method": "grayscale",
+        "threshold": 127,
+        "kernel": 3,
+        "cannyLow": 50,
+        "cannyHigh": 150,
+        "invert": false,
+        "blur": 1
+      },
+      "position": {
+        "x": 300,
+        "y": 140
+      },
+      "imageFrom": "source"
+    },
+    {
+      "id": "f914407a56e94d5e",
+      "operation": "geometry",
+      "name": "圆查找",
+      "params": {
+        "feature": "circles",
+        "minRadius": 20,
+        "maxRadius": 180,
+        "minDistance": 30,
+        "votes": 25,
+        "cannyLow": 50,
+        "cannyHigh": 150,
+        "maxCount": 5,
+        "filterSize": 1,
+        "threshold": 127,
+        "minArea": 50,
+        "edgeType": "both"
+      },
+      "position": {
+        "x": 300,
+        "y": 260
+      },
+      "imageFrom": "2e219b0689914d47"
+    },
+    {
+      "id": "fbcfed48dc11445b",
+      "operation": "measure",
+      "name": "尺寸测量",
+      "params": {
+        "feature": "circles",
+        "threshold": 127,
+        "minArea": 50,
+        "unit": "px"
+      },
+      "position": {
+        "x": 300,
+        "y": 380
+      },
+      "imageFrom": "f914407a56e94d5e"
+    },
+    {
+      "id": "8c1c474d20584b5f",
+      "operation": "var_calc",
+      "name": "测量门限·OK/NG",
+      "params": {
+        "scope": "flow",
+        "expressions": [
+          {
+            "name": "circleCount",
+            "expression": "geometry_count",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "firstRadius",
+            "expression": "geometry_radius",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "measureCount",
+            "expression": "measure_count",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "passGate",
+            "expression": "circleCount > 0 && measureCount > 0",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          }
+        ]
+      },
+      "position": {
+        "x": 300,
+        "y": 500
+      },
+      "imageFrom": "fbcfed48dc11445b"
+    }
+  ],
+  "edges": [
+    {
+      "id": "f56be6aa5ecf4d4f",
+      "from": "source",
+      "to": "2e219b0689914d47",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "3a7e4771aaaa4586",
+      "from": "2e219b0689914d47",
+      "to": "f914407a56e94d5e",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "aa4fb722d4e94fcd",
+      "from": "f914407a56e94d5e",
+      "to": "fbcfed48dc11445b",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "bca21983fc08406d",
+      "from": "fbcfed48dc11445b",
+      "to": "8c1c474d20584b5f",
+      "fromPort": "bottom",
+      "toPort": "top"
+    }
+  ],
+  "sourcePosition": {
+    "x": 300,
+    "y": 40
+  },
+  "variables": {},
+  "sourceConfig": {
+    "mode": "local",
+    "pixelFormat": "RGB24",
+    "intervalMs": 0,
+    "saveInSolution": false,
+    "showImageName": true,
+    "snStart": 0,
+    "imageCache": 0,
+    "outputMono8": false,
+    "stitchEnable": false,
+    "stitchStartY": 0,
+    "stitchHeight": 0,
+    "stitchClearOnTrigger": false,
+    "autoSwitch": false,
+    "stopAtLast": true,
+    "charFilterEnable": false,
+    "inputChar": "",
+    "triggerChar": "",
+    "cameraId": "",
+    "cameraParams": {},
+    "exposure": 0.0,
+    "gain": 0.0,
+    "images": [
+      "/home/allen/文档/sieansvision/public/vision/samples/circle-ring.png",
+      "/home/allen/文档/sieansvision/public/vision/samples/circle-hole.png",
+      "/home/allen/文档/sieansvision/public/vision/samples/caliper-width-pass.png"
+    ],
+    "currentIndex": 0
+  },
+  "runUi": {
+    "split": "4",
+    "placements": [
+      {
+        "name": "图像",
+        "page": 3,
+        "cell": 0,
+        "category": "基础"
+      },
+      {
+        "name": "OK/NG",
+        "page": 3,
+        "cell": 1,
+        "category": "基础"
+      },
+      {
+        "name": "运行控制",
+        "page": 3,
+        "cell": 2,
+        "category": "基础"
+      },
+      {
+        "name": "生产统计",
+        "page": 3,
+        "cell": 3,
+        "category": "图表"
+      }
+    ],
+    "controls": {
+      "图像": {
+        "commands": [],
+        "binding": "source"
+      },
+      "OK/NG": {
+        "commands": [],
+        "binding": ""
+      },
+      "运行控制": {
+        "commands": [
+          {
+            "type": "执行·单次",
+            "config": ""
+          },
+          {
+            "type": "执行·连续",
+            "config": ""
+          },
+          {
+            "type": "执行·停止",
+            "config": ""
+          }
+        ],
+        "binding": ""
+      },
+      "生产统计": {
+        "commands": [],
+        "binding": "stats"
+      }
+    },
+    "fixedBars": {
+      "top": false,
+      "bottom": true,
+      "left": false,
+      "right": false,
+      "cameraBind": "未绑定",
+      "commBind": "TCP.连接状态",
+      "showRunStatus": true,
+      "showOkNg": true,
+      "showCounters": true,
+      "showHistory": true
+    },
+    "meta": {
+      "template": "open_and_run_measure",
+      "version": 1,
+      "openAndRun": true
+    }
+  },
+  "notes": "【打开即跑 · 测量】circle/caliper 样张。▶ 单次：预处理→圆查找→尺寸测量→passGate(有圆且有测量)。运行界面看 OK/NG；变量 circleCount/firstRadius/measureCount。"
+}

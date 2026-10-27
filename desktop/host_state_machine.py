@@ -13,7 +13,7 @@ from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
     QTabWidget, QFormLayout, QLineEdit, QGroupBox, QPlainTextEdit,
-    QGridLayout, QSizePolicy, QComboBox, QDoubleSpinBox, QSpinBox,
+    QGridLayout, QSizePolicy, QComboBox, QDoubleSpinBox, QSpinBox, QListWidget,
 )
 
 from desktop.theme import TEXT, TEXT_MUTED, TEXT_DIM, OK, PANEL, LINE
@@ -67,6 +67,8 @@ class HostStateMachineWidget(QWidget):
         self._alarm_timer = QTimer(self)
         self._alarm_timer.setSingleShot(True)
         self._alarm_timer.timeout.connect(self._on_alarm_timeout)
+        self._alarm_history = []  # list[{ts, reason, cleared}]
+        self._alarm_history_max = 40
 
         root = QVBoxLayout(self)
         root.setContentsMargins(4, 4, 4, 4)
@@ -119,6 +121,7 @@ class HostStateMachineWidget(QWidget):
 
         self.tabs.addTab(self._build_manual(), '手动控制')
         self.tabs.addTab(self._build_auto(), '自动运行')
+        self.tabs.addTab(self._build_alarm_history(), '报警历史')
         if compact:
             # Live-point: auto controls visible without digging into 手动
             try:
@@ -153,6 +156,7 @@ class HostStateMachineWidget(QWidget):
         self._paint_badge()
         self._sync_auto_buttons()
         if state == 'Alarm' and prev != 'Alarm':
+            self._record_alarm(reason or '报警')
             self._arm_alarm_timeout()
         elif state != 'Alarm':
             self._cancel_alarm_timeout()
@@ -586,9 +590,70 @@ class HostStateMachineWidget(QWidget):
         if self._state != 'Alarm':
             return
         tip = reason or '自动清除'
+        if self._alarm_history:
+            self._alarm_history[-1]['cleared'] = True
+            self._refresh_alarm_history_ui()
         self.set_state('Idle', tip)
         self.triggerCommands.emit([dict(type='状态·清除报警', config=tip)])
         self._log_line(f'报警已自动清除 · {tip}')
+
+    def _build_alarm_history(self):
+        """Thin but usable alarm history (timestamp + reason + clear list)."""
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(8, 8, 8, 8)
+        tip = QLabel('最近报警记录（进入 Alarm 时追加；不含机械手/厂商标定 SDK）。')
+        tip.setWordWrap(True)
+        tip.setStyleSheet(f'color:{TEXT_DIM};font-size:11px;')
+        lay.addWidget(tip)
+        self._alarm_list = QListWidget()
+        self._alarm_list.setObjectName('hostAlarmHistoryList')
+        self._alarm_list.setStyleSheet('font-size:11px;')
+        lay.addWidget(self._alarm_list, 1)
+        row = QHBoxLayout()
+        b_clear = QPushButton('清空历史')
+        b_clear.setObjectName('hostAlarmHistoryClearBtn')
+        b_clear.clicked.connect(self.clear_alarm_history)
+        row.addWidget(b_clear)
+        self._alarm_hist_count = QLabel('0 条')
+        self._alarm_hist_count.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
+        row.addWidget(self._alarm_hist_count)
+        row.addStretch(1)
+        lay.addLayout(row)
+        return w
+
+    def alarm_history(self):
+        """Public snapshot for smoke / HMI."""
+        return list(self._alarm_history)
+
+    def clear_alarm_history(self):
+        self._alarm_history.clear()
+        self._refresh_alarm_history_ui()
+        self._log_line('报警历史已清空')
+
+    def _record_alarm(self, reason: str = ''):
+        entry = {
+            'ts': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'reason': str(reason or '报警'),
+            'cleared': False,
+        }
+        self._alarm_history.append(entry)
+        if len(self._alarm_history) > self._alarm_history_max:
+            self._alarm_history = self._alarm_history[-self._alarm_history_max:]
+        self._refresh_alarm_history_ui()
+
+    def _refresh_alarm_history_ui(self):
+        lst = getattr(self, '_alarm_list', None)
+        if lst is None:
+            return
+        lst.clear()
+        for e in reversed(self._alarm_history):
+            mark = '·' if not e.get('cleared') else '✓'
+            lst.addItem(f"{e.get('ts', '')}  {mark}  {e.get('reason', '')}")
+        lab = getattr(self, '_alarm_hist_count', None)
+        if lab is not None:
+            lab.setText(f'{len(self._alarm_history)} 条')
+
 
     def _raise_alarm(self):
         """Simulate alarm + emit 状态·报警 so MainWindow / chrome stay in sync."""
@@ -600,6 +665,9 @@ class HostStateMachineWidget(QWidget):
         if self._state != 'Alarm':
             self._log_line('当前无报警，无需清除')
             return
+        if self._alarm_history:
+            self._alarm_history[-1]['cleared'] = True
+            self._refresh_alarm_history_ui()
         self.set_state('Idle', '清除报警')
         self.triggerCommands.emit([dict(type='状态·清除报警', config='清除报警')])
         self._log_line('已清除报警 → 空闲')
