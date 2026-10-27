@@ -196,7 +196,7 @@ class AllFlowsPanel(QWidget):
         self.scroll.setWidget(self.host)
         root.addWidget(self.scroll, 1)
 
-        self.link_hint = QLabel('流程间连线：在后续批次中支持拖拽编排；当前可在各流程 Tab 内编辑模块。')
+        self.link_hint = QLabel('流程间编排：卡片已按序排列；→ 表示方案内顺序。打开各流程 Tab 编辑模块；参数⚙ 回写 I/O。')
         self.link_hint.setObjectName('dialogHint')
         root.addWidget(self.link_hint)
 
@@ -209,7 +209,13 @@ class AllFlowsPanel(QWidget):
             if w:
                 w.deleteLater()
         self._cards.clear()
-        for flow in self._flows:
+        for i, flow in enumerate(self._flows):
+            if i > 0:
+                arrow = QLabel('→')
+                arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                arrow.setStyleSheet('color:#888;font-size:22px;font-weight:700;padding:0 4px;')
+                arrow.setObjectName('flowOrderArrow')
+                self.grid.addWidget(arrow)
             card = FlowCard(flow)
             card.runOnce.connect(self.runOnce.emit)
             card.runContinuous.connect(self.runContinuous.emit)

@@ -996,7 +996,7 @@ class RunUiDesignerDialog(QDialog):
             f'运行界面预览：已配置控件 {len(self._control_state)} 个，'
             f'窗格放置 {len(self._placements)} 个，含触发命令的按钮类 {n_btn} 个。\n'
             f'固定栏相机：{self.cam_bind.currentText()} · 通讯：{self.comm_bind.currentText()}\n'
-            '操作员态将按布局与命令自上而下执行（引擎侧接线后续批次）。')
+            '操作员态将按布局与命令执行：按钮/开关 → 全局触发（单次/连续/停止/注入 RUN）；图像与状态格由运行壳刷新。')
 
     def _export(self):
         self.exportRequested.emit()

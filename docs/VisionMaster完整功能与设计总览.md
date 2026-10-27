@@ -392,7 +392,7 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 | panels | overlay→engine/canvas 实绘已接；geometry 卡尺σ/投影角 UI 已补 |
 | harvest | 全覆盖（elapsed 下拉选步，无需 harvest） |
 | HMI | 连接状态灯·变量/参数格·组合框/Tab/子界面**嵌套判定灯**已接 |
-| filmstrip / 全流程 | 已接；**流程参数 I/O 可回写** |
+| filmstrip / 全流程 | 已接；**流程参数 I/O 可回写**；卡片间顺序 → 已示意 |
 | float | 已接 |
 | nest/Group | 引擎展开 tip 已接 |
 | labels | EN→CN 扫尾已接 |
@@ -402,13 +402,15 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 | Host SM | 已接 |
 | 云/市场 | 模板市场本地已接；**云同步**需后端（非本机 UI 缺口） |
 | 算法核 | 卡尺为 OpenCV 启发式（非 Halcon 核）— 文档已声明，非 UI 缺口 |
+| 扩展插件 | 第三方 plugin 无专用属性页时走通用保留（catalog 回退文案） |
 
 ### 进度续⑦ · 2026-10-27 深夜
 - HMI：连接状态 ●灯；设置变量/参数设置 tip+Enter 派发；组合框/Tab/子界面嵌套 StatusLamp·良率条·连接灯
 - Comm：`_commit_test_writeback` → `fire_string_trigger` 活路 smoke（RUN/CONT）
 - panels：叠层实绘 tip；geometry 卡尺高斯σ / 投影角
 - smoke：`scripts/smoke-ux-polish-hmi-comm-e2e-live.py` 6 PASS；overlay 11 PASS
-- 全流程：FlowParamDialog I/O 表可编辑回写 flow.io；显示全局图像开关可写
+- 全流程：FlowParamDialog I/O 表可编辑回写 flow.io；显示全局图像开关可写；卡片间 → 顺序示意
+- run_ui：操作员态触发接线说明已去「后续批次」措辞
 
 ### 进度续⑥ · 2026-10-27 深夜
 - measure_geom：`annotate_geom` 引擎实绘 + runtime 调用 + ImageView/mainwindow 画布矢量叠层
