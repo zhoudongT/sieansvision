@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆⑳ · 结果表↔胶片定位 · commAccept簇滚动 · 试跑回填 · Alarm恢复 · 变体试跑 · 2026-10-28】
+
+- **结果表行点击 ↔ 胶片定位加深**：历史行 stamp `filmPath/filmIndex`（`set_film_stamp` ← finished）；`UserRole` 元数据；`cellClicked` → `filmLocateRequested`；`FilmstripBar.select_path/select_index` 滚入视口；胶片选中反查 `highlight_rows_for_film`。
+- **Variables 高亮后自动滚到 commAccept* 簇**：`highlight_written_keys` 优先 `scrollToItem(PositionAtCenter)` 首条 `commAccept*`，簇行青蓝高亮并 `setRangeSelected`；message 提示「已滚到 commAccept* 簇」。
+- **测量链/换型试跑后 HMI 判定/配方徽章实跑回填**：`set_trial_backfill_pending` → `finished` 调 `backfill_after_trial`（徽章 tip「试跑回填 · OK/NG · ms」、短暂 OK/NG 边框、strip 标签闪「试跑OK」、固定栏 okng）。
+- **Alarm 清除 → 固定栏恢复动画/短提示**：`_paint_machine_chrome` 边沿检测 Alarm→非 Alarm → `_pulse_alarm_cleared`（固定栏绿闪「✓ 报警已清除」+ 日志，1.6s 后 settle）。
+- **产线变体快切可选 trialOnce**：工具栏 `recipeVariantTrialChk`「试跑」；`apply_variant_quick(..., trial_once=)` 勾选则 `enterRun+trialOnce`。
+- **冒烟**：`smoke-hmi-result-film-locate-e2e` / `smoke-wave20-vars-alarm-variant-trial-e2e`（另回归 vars-highlight / chrome-recipe）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆⑲ · 结果表配方联动 · Comm→变量高亮 · 换型试跑 · Alarm栏 · 2026-10-28】
 
 - **结果表 / 胶片 ↔ 配方徽章联动加深**：结果表第 10 列「配方」；历史行 stamp `_live_recipe/_live_variant`；CSV 含 recipe/variant；点击配方徽章或「配方筛选」按当前配方过滤；strip 配方标签显示「筛选中」。

@@ -201,6 +201,67 @@ class FilmstripBar(QWidget):
             return self._paths[self._index]
         return ''
 
+    def select_index(self, index, *, emit=True):
+        """细妆⑳：按序号定位缩略并滚入视口（结果表 ↔ 胶片）。"""
+        if not self._paths:
+            return False
+        try:
+            index = int(index)
+        except Exception:
+            return False
+        if index < 0 or index >= len(self._paths):
+            return False
+        self._index = index
+        try:
+            self.thumbs.blockSignals(True)
+            self.thumbs.setCurrentRow(index)
+            item = self.thumbs.item(index)
+            if item is not None:
+                self.thumbs.scrollToItem(item)
+            self.thumbs.blockSignals(False)
+        except Exception:
+            try:
+                self.thumbs.blockSignals(False)
+            except Exception:
+                pass
+            return False
+        self._refresh_count()
+        if emit:
+            try:
+                self.pathSelected.emit(self._paths[index])
+            except Exception:
+                pass
+        return True
+
+    def select_path(self, path, *, emit=True):
+        """细妆⑳：按路径定位缩略（规范化比对）；找不到返回 False。"""
+        path = str(path or '').strip()
+        if not path or not self._paths:
+            return False
+        try:
+            target = str(Path(path).resolve())
+        except Exception:
+            target = path
+        hit = -1
+        for i, pth in enumerate(self._paths):
+            try:
+                if str(Path(pth).resolve()) == target or pth == path or pth == target:
+                    hit = i
+                    break
+            except Exception:
+                if pth == path:
+                    hit = i
+                    break
+        if hit < 0:
+            # basename fallback when only filename stamped
+            base = Path(path).name
+            for i, pth in enumerate(self._paths):
+                if Path(pth).name == base:
+                    hit = i
+                    break
+        if hit < 0:
+            return False
+        return self.select_index(hit, emit=emit)
 
     def _exts_for_filter(self, key=None):
         key = key if key is not None else getattr(self, '_format_filter_key', '全部')

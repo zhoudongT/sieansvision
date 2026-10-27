@@ -399,7 +399,10 @@ class VariablesDialog(QDialog):
             pass
         hi = QColor('#2a4a2a')
         hi_fg = QColor('#b8f0c4')
+        cluster_hi = QColor('#1e3a4a')
+        cluster_fg = QColor('#9ed9f0')
         matched_rows = []
+        matched_names = []
         try:
             for r in range(self.table.rowCount()):
                 name_item = self.table.item(r, 1)
@@ -421,24 +424,57 @@ class VariablesDialog(QDialog):
                 if not hit:
                     continue
                 matched_rows.append(r)
+                matched_names.append(name)
+                is_cluster = str(name).startswith('commAccept')
+                bg, fg = (cluster_hi, cluster_fg) if is_cluster else (hi, hi_fg)
                 for c in range(self.table.columnCount()):
                     it = self.table.item(r, c)
                     if it is None:
                         it = QTableWidgetItem('')
                         self.table.setItem(r, c, it)
-                    it.setBackground(QBrush(hi))
-                    it.setForeground(QBrush(hi_fg))
-                try:
-                    self.table.selectRow(r)
-                    self.table.scrollToItem(self.table.item(r, 1))
-                except Exception:
-                    pass
+                    it.setBackground(QBrush(bg))
+                    it.setForeground(QBrush(fg))
         except Exception:
             return
         if matched_rows:
-            self.message.setText(
-                f'即时高亮 · 写入 {len(matched_rows)} 行（{duration_ms}ms）'
-            )
+            # 细妆⑳：优先滚到 commAccept* 簇（首条 cluster 行）；否则滚到首条命中
+            cluster_rows = [
+                r for r, n in zip(matched_rows, matched_names)
+                if str(n).startswith('commAccept')
+            ]
+            focus_row = cluster_rows[0] if cluster_rows else matched_rows[0]
+            try:
+                self.table.selectRow(focus_row)
+                focus_item = self.table.item(focus_row, 1)
+                if focus_item is not None:
+                    from PySide6.QtWidgets import QAbstractItemView
+                    self.table.scrollToItem(
+                        focus_item, QAbstractItemView.ScrollHint.PositionAtCenter
+                    )
+            except Exception:
+                try:
+                    self.table.scrollToItem(self.table.item(focus_row, 1))
+                except Exception:
+                    pass
+            # also soft-select whole cluster range if contiguous-ish
+            try:
+                if cluster_rows:
+                    from PySide6.QtWidgets import QTableWidgetSelectionRange
+                    self.table.setRangeSelected(
+                        QTableWidgetSelectionRange(
+                            min(cluster_rows), 0, max(cluster_rows),
+                            max(0, self.table.columnCount() - 1)
+                        ),
+                        True,
+                    )
+            except Exception:
+                pass
+            n_cluster = len(cluster_rows)
+            tip = f'即时高亮 · 写入 {len(matched_rows)} 行'
+            if n_cluster:
+                tip += f' · 已滚到 commAccept* 簇（{n_cluster}）'
+            tip += f'（{duration_ms}ms）'
+            self.message.setText(tip)
             # clear highlight after duration
             def _clear(rows=list(matched_rows)):
                 try:

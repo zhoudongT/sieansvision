@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from pathlib import Path
 from datetime import datetime
 
 from PySide6.QtCore import Qt, Signal, QTimer
@@ -495,6 +496,7 @@ class OperatorHmiView(QWidget):
     backToDesign = Signal()
     runUiChanged = Signal(object)  # dict patch, e.g. {'fixedBars': {...}}
     pauseToggled = Signal(bool)  # bridge 生产统计 暂停计数 ↔ ContinuousRun / 运行全部
+    filmLocateRequested = Signal(object)  # 细妆⑳：结果表行 → 胶片定位 {path,index,seq}
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -512,6 +514,10 @@ class OperatorHmiView(QWidget):
         self._result_history=[]; self._result_tables = []; self._gate_hist=[]; self._gate_spark_labs=[]; self._gate_filter_mode='all'  # all|pass|fail
         self._recipe_filter_labs = []; self._recipe_filter_active = False
         self._last_module_name = '流程'  # 结果表「模块」列跟末次步骤名
+        self._pending_film_stamp = {}  # 细妆⑳：{path,index} stamped into next history row
+        self._pending_trial_backfill = False  # 细妆⑳：试跑完成后回填判定/配方徽章
+        self._alarm_was_on = False  # 细妆⑳：Alarm→恢复动画边沿
+        self._film_row_wired = False
         self._layout_fp = None
         self._clock_timer = QTimer(self)
         self._clock_timer.setInterval(1000)
@@ -1193,11 +1199,17 @@ class OperatorHmiView(QWidget):
             except Exception:
                 pass
         # 细妆⑲：Host SM Alarm ↔ 固定栏色联动（代码级 polish，非人工签字）
+        # 细妆⑳：Alarm 清除 → 固定栏恢复动画 / 短提示
         try:
-            self._live_host_alarm = (st == 'Alarm')
-            if st == 'Alarm':
+            was = bool(getattr(self, '_alarm_was_on', False))
+            now_alarm = (st == 'Alarm')
+            self._live_host_alarm = now_alarm
+            if now_alarm:
                 self._live_run_status = zh  # 报警
             self._apply_fixed_bars(getattr(self, '_fixed_bars_cache', None) or {})
+            if was and not now_alarm:
+                self._pulse_alarm_cleared(st, zh)
+            self._alarm_was_on = now_alarm
         except Exception:
             pass
 
@@ -1364,6 +1376,15 @@ class OperatorHmiView(QWidget):
                     'recipe': getattr(self, '_live_recipe', '') or '',
                     'variant': getattr(self, '_live_variant', '') or '',
                 }
+                # 细妆⑳：胶片路径/序号 stamp（结果表行点击定位）
+                stamp = getattr(self, '_pending_film_stamp', None) or {}
+                if stamp.get('path'):
+                    entry['filmPath'] = str(stamp.get('path') or '')
+                if stamp.get('index') is not None:
+                    try:
+                        entry['filmIndex'] = int(stamp.get('index'))
+                    except Exception:
+                        pass
                 # de-dupe identical consecutive (same module+elapsed+judge within same second)
                 if not hist or (hist[-1].get('module'), hist[-1].get('elapsedMs'), hist[-1].get('judge'), hist[-1].get('ts')) != (
                     entry['module'], entry['elapsedMs'], entry['judge'], entry['ts']):
@@ -1589,7 +1610,22 @@ class OperatorHmiView(QWidget):
                         recipe_txt,
                     ]
                     for c, val in enumerate(vals):
-                        table.setItem(r, c, QTableWidgetItem(val))
+                        it = QTableWidgetItem(val)
+                        if c == 0:
+                            # 细妆⑳：行元数据供点击定位胶片 / 反查高亮
+                            it.setData(Qt.ItemDataRole.UserRole, {
+                                'filmPath': e.get('filmPath') or '',
+                                'filmIndex': e.get('filmIndex'),
+                                'seq': e.get('seq'),
+                            })
+                            tip_bits = []
+                            if e.get('filmPath'):
+                                tip_bits.append(f"胶片 {Path(str(e.get('filmPath'))).name}")
+                            elif e.get('filmIndex') is not None:
+                                tip_bits.append(f"胶片#{e.get('filmIndex')}")
+                            if tip_bits:
+                                it.setToolTip('点击定位 · ' + ' · '.join(tip_bits))
+                        table.setItem(r, c, it)
             except Exception:
                 pass
         self._refresh_recipe_filter_labs()
@@ -1674,7 +1710,227 @@ class OperatorHmiView(QWidget):
                 pass
 
 
+    def set_film_stamp(self, path: str = '', index=None):
+        """细妆⑳：MainWindow.finished 推送当前胶片路径，供下一条结果表 stamp。"""
+        bag = {}
+        if path:
+            bag['path'] = str(path)
+        if index is not None:
+            try:
+                bag['index'] = int(index)
+            except Exception:
+                pass
+        self._pending_film_stamp = bag
+
+    def set_trial_backfill_pending(self, on: bool = True):
+        """细妆⑳：换型/测量链 trialOnce 后等待实跑回填判定徽章。"""
+        self._pending_trial_backfill = bool(on)
+
+    def backfill_after_trial(self, result: dict | None = None):
+        """细妆⑳：试跑完成后把判定/耗时回填到配方徽章 tip + 固定栏短提示。"""
+        if not getattr(self, '_pending_trial_backfill', False):
+            return False
+        self._pending_trial_backfill = False
+        result = result or {}
+        state = result.get('state') or ''
+        elapsed = result.get('elapsedMs')
+        judge = '—'
+        try:
+            for panel in getattr(self, '_stats_panels', []) or []:
+                oh = panel.ok_history() if hasattr(panel, 'ok_history') else None
+                if oh:
+                    judge = 'OK' if oh[0] else 'NG'
+                    break
+        except Exception:
+            pass
+        if judge == '—' and state == 'completed':
+            judge = 'OK'
+        elif judge == '—' and state == 'failed':
+            judge = 'NG'
+        recipe = getattr(self, '_live_recipe', '') or '—'
+        variant = getattr(self, '_live_variant', '') or ''
+        tip = f'试跑回填 · {judge}'
+        if elapsed is not None:
+            tip += f' · {elapsed} ms'
+        tip += f' · 配方 {recipe}' + (f'/{variant}' if variant else '')
+        badge = getattr(self, '_recipe_badge', None)
+        if badge is not None:
+            try:
+                base = badge.text() or f'配方 · {recipe}'
+                # flash judge into tooltip; briefly accent border by OK/NG
+                badge.setToolTip(tip)
+                if str(judge).upper() in ('OK', 'PASS', '通'):
+                    badge.setStyleSheet(
+                        'background:#1e3a28;color:#b8f0c4;border:2px solid #3ecf8e;'
+                        'border-radius:3px;padding:3px 8px;font-size:11px;font-weight:700;'
+                    )
+                elif str(judge).upper() in ('NG', 'FAIL', '拒'):
+                    badge.setStyleSheet(
+                        'background:#3a1c1c;color:#ffb4b4;border:2px solid #e35d6a;'
+                        'border-radius:3px;padding:3px 8px;font-size:11px;font-weight:700;'
+                    )
+                # restore accent after short pulse (keep recipe text)
+                def _restore(b=badge, name=recipe, var=variant):
+                    try:
+                        self.set_recipe_chrome(name, var)
+                    except Exception:
+                        pass
+                QTimer.singleShot(2200, _restore)
+            except Exception:
+                pass
+        try:
+            self.update_fixed_bar_live(okng=judge if judge != '—' else None)
+        except Exception:
+            pass
+        try:
+            self.append_log(tip)
+        except Exception:
+            pass
+        # ephemeral tip label on strip recipe lab
+        strip = getattr(self, '_strip_recipe_lab', None)
+        if strip is not None:
+            try:
+                prev = strip.text()
+                strip.setText(f'{prev} · 试跑{judge}' if prev else tip)
+                def _rst(lab=strip, t=prev):
+                    try:
+                        lab.setText(t)
+                    except Exception:
+                        pass
+                QTimer.singleShot(2400, _rst)
+            except Exception:
+                pass
+        return True
+
+    def _pulse_alarm_cleared(self, state: str, zh: str):
+        """细妆⑳：离开 Alarm → 固定栏短暂恢复高亮 + 短提示。"""
+        tip = f'✓ 报警已清除 · {zh}'
+        try:
+            self._live_run_status = zh
+            # green restore flash
+            flash_ss = (
+                'background:#1c3a2a;color:#b8f0c4;border:2px solid #3ecf8e;'
+                'border-radius:3px;padding:5px 10px;font-size:11px;font-weight:700;'
+            )
+            for bar in (getattr(self, '_fix_top', None), getattr(self, '_fix_bottom', None)):
+                if bar is None:
+                    continue
+                try:
+                    bar.setText(f'▬  {tip}')
+                    bar.setStyleSheet(flash_ss)
+                    bar.show()
+                except Exception:
+                    pass
+            side_ss = (
+                'background:#1c3a2a;color:#b8f0c4;border:2px solid #3ecf8e;'
+                'border-radius:2px;padding:2px;font-size:10px;font-weight:700;'
+            )
+            for bar in (getattr(self, '_fix_left', None), getattr(self, '_fix_right', None)):
+                if bar is None:
+                    continue
+                try:
+                    if not bar.isHidden():
+                        bar.setStyleSheet(side_ss)
+                except Exception:
+                    pass
+            try:
+                self.append_log(tip)
+            except Exception:
+                pass
+            def _settle():
+                try:
+                    self._apply_fixed_bars(getattr(self, '_fixed_bars_cache', None) or {})
+                except Exception:
+                    pass
+            QTimer.singleShot(1600, _settle)
+        except Exception:
+            pass
+
+    def _on_result_row_clicked(self, row: int, _col: int = 0):
+        """细妆⑳：结果表行点击 → 发 filmLocateRequested（胶片定位）。"""
+        try:
+            hist = list(reversed(list(getattr(self, '_result_history', []) or [])[-50:]))
+            # apply same filters as UI
+            mode = getattr(self, '_gate_filter_mode', 'all') or 'all'
+            live_recipe = (getattr(self, '_live_recipe', '') or '').strip()
+            recipe_on = bool(getattr(self, '_recipe_filter_active', False)) and live_recipe and live_recipe != '—'
+            rows = hist
+            if mode == 'pass':
+                rows = [e for e in rows if e.get('gatePass') is True
+                        or str(e.get('judge') or '').upper() in ('OK', 'PASS', '通')]
+            elif mode == 'fail':
+                rows = [e for e in rows if e.get('gatePass') is False
+                        or str(e.get('judge') or '').upper() in ('NG', 'FAIL', '拒')]
+            if recipe_on:
+                rows = [e for e in rows if (e.get('recipe') or '').strip() == live_recipe]
+            if row < 0 or row >= len(rows):
+                return
+            e = rows[row]
+            path = e.get('filmPath') or ''
+            idx = e.get('filmIndex')
+            payload = {
+                'path': path,
+                'index': idx,
+                'seq': e.get('seq'),
+                'ts': e.get('ts'),
+                'judge': e.get('judge'),
+                'recipe': e.get('recipe'),
+            }
+            if path or idx is not None:
+                self.filmLocateRequested.emit(payload)
+                try:
+                    self.append_log(
+                        f"结果表定位胶片 · seq={e.get('seq')} · "
+                        f"{Path(path).name if path else f'#{idx}'}"
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def highlight_rows_for_film(self, path: str = '', index=None):
+        """细妆⑳：胶片选中 → 反查结果表高亮匹配行（双向加深）。"""
+        path = str(path or '').strip()
+        try:
+            target = str(Path(path).resolve()) if path else ''
+        except Exception:
+            target = path
+        matched = []
+        for table in getattr(self, '_result_tables', []) or []:
+            try:
+                table.clearSelection()
+                for r in range(table.rowCount()):
+                    it0 = table.item(r, 0)
+                    if it0 is None:
+                        continue
+                    meta = it0.data(Qt.ItemDataRole.UserRole) or {}
+                    if not isinstance(meta, dict):
+                        meta = {}
+                    hit = False
+                    fp = str(meta.get('filmPath') or '')
+                    if target and fp:
+                        try:
+                            hit = str(Path(fp).resolve()) == target or fp == path
+                        except Exception:
+                            hit = fp == path
+                    if not hit and index is not None and meta.get('filmIndex') is not None:
+                        try:
+                            hit = int(meta.get('filmIndex')) == int(index)
+                        except Exception:
+                            pass
+                    if hit:
+                        table.selectRow(r)
+                        matched.append(r)
+                        try:
+                            table.scrollToItem(table.item(r, 0))
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+        return matched
+
     def set_recipe_chrome(self, name: str = '', variant: str = ''):
+
         """细妆⑱：刷新运行态配方/变体徽章（换型闭环 → HMI 一目了然）."""
         name = (name or '').strip() or '—'
         variant = (variant or '').strip()
@@ -2138,6 +2394,12 @@ class OperatorHmiView(QWidget):
             table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
             table.setObjectName('hmiResultTable')
             table.setMinimumHeight(120)
+            table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+            table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+            try:
+                table.cellClicked.connect(self._on_result_row_clicked)
+            except Exception:
+                pass
             self._result_tables = getattr(self, '_result_tables', [])
             self._result_tables.append(table)
             self._result_history = getattr(self, '_result_history', [])

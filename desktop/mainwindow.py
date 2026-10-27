@@ -181,14 +181,29 @@ class MainWindow(QMainWindow):
         a_recipe = self.action('配方', self.open_recipe_switch)
         apply_toolbar_action(a_recipe, 'recipe'); toolbar.addAction(a_recipe)
         # 细妆⑮：产品变体 quick-switch chip
+        # 细妆⑳：可选 trialOnce（旁边「试跑」勾选）
         self.variant_chip = QComboBox()
         self.variant_chip.setObjectName('recipeVariantChip')
         self.variant_chip.setMinimumWidth(88)
         self.variant_chip.setMaximumWidth(140)
-        self.variant_chip.setToolTip('产品变体快切：选中后一键套用该变体下首条配方')
+        self.variant_chip.setToolTip(
+            '产品变体快切：选中后一键套用该变体下首条配方\n'
+            '勾选右侧「试跑」→ 套用后单次试跑（trialOnce）'
+        )
         self.variant_chip.addItem('变体·—', '')
         self.variant_chip.currentIndexChanged.connect(self._on_variant_chip)
         toolbar.addWidget(self.variant_chip)
+        try:
+            from PySide6.QtWidgets import QCheckBox
+            self.variant_trial_chk = QCheckBox('试跑')
+            self.variant_trial_chk.setObjectName('recipeVariantTrialChk')
+            self.variant_trial_chk.setToolTip(
+                '变体快切可选 trialOnce：勾选后套用变体并切运行态 + 单次试跑'
+            )
+            self.variant_trial_chk.setStyleSheet('font-size:11px;padding:0 4px;')
+            toolbar.addWidget(self.variant_trial_chk)
+        except Exception:
+            self.variant_trial_chk = None
         try:
             self.refresh_variant_chip()
         except Exception:
@@ -325,6 +340,10 @@ class MainWindow(QMainWindow):
             self.operator_hmi.runUiChanged.connect(lambda patch:self.guard(lambda:self._on_hmi_run_ui_changed(patch)))
         if hasattr(self.operator_hmi, 'pauseToggled'):
             self.operator_hmi.pauseToggled.connect(self._on_hmi_pause_toggled)
+        if hasattr(self.operator_hmi, 'filmLocateRequested'):
+            self.operator_hmi.filmLocateRequested.connect(
+                lambda payload: self.guard(lambda: self._on_hmi_film_locate(payload))
+            )
         self._run_pane=self.operator_hmi
         self.run_mode_image=None  # image panes live inside operator_hmi
         horizontal.addWidget(self.operator_hmi)
@@ -341,6 +360,7 @@ class MainWindow(QMainWindow):
         rl.addWidget(self.images,1)
         self.filmstrip=FilmstripBar()
         self.filmstrip.pathSelected.connect(self.load_filmstrip_path)
+        self.filmstrip.pathSelected.connect(self._on_filmstrip_path_for_hmi)
         self.filmstrip.listChanged.connect(self.filmstrip_list_changed)
         self.filmstrip.autoSwitchChanged.connect(self.filmstrip_auto_changed)
         try:
@@ -1652,7 +1672,22 @@ class MainWindow(QMainWindow):
                 annotated=self._pick_annotated_image(records) or ''
                 named_recs=[{**r,'name':names.get(r['id'],r.get('name') or r['id'])} for r in records]
                 hmi_result={**result,'results':named_recs}
+                # 细妆⑳：把当前胶片路径 stamp 进结果表行，供行点击定位
+                try:
+                    fs = getattr(self, 'filmstrip', None)
+                    fpath = fs.current_path() if fs is not None and hasattr(fs, 'current_path') else ''
+                    findex = fs.current_index() if fs is not None and hasattr(fs, 'current_index') else None
+                    if hasattr(self.operator_hmi, 'set_film_stamp'):
+                        self.operator_hmi.set_film_stamp(fpath or '', findex)
+                except Exception:
+                    pass
                 self.operator_hmi.set_runtime(hmi_result, image=self.image, annotated=annotated)
+                # 细妆⑳：测量链/换型试跑后 HMI 判定/配方徽章实跑回填
+                try:
+                    if hasattr(self.operator_hmi, 'backfill_after_trial'):
+                        self.operator_hmi.backfill_after_trial(result)
+                except Exception:
+                    pass
                 # Re-apply Display fit/channel after set_runtime so HMI panes keep live mode
                 if _disp_applied:
                     disp_step = next((s for s in (self.document.project.get('steps') or []) if s.get('id')==ann_sid), None)
@@ -1974,7 +2009,54 @@ class MainWindow(QMainWindow):
             return False
         return bool(self.image)
 
+    def _on_hmi_film_locate(self, payload):
+        """细妆⑳：结果表行点击 → 胶片定位（select_path / select_index）。"""
+        payload = payload or {}
+        if isinstance(payload, str):
+            payload = {'path': payload}
+        path = str(payload.get('path') or '').strip()
+        index = payload.get('index')
+        fs = getattr(self, 'filmstrip', None)
+        if fs is None:
+            return
+        ok = False
+        try:
+            if path and hasattr(fs, 'select_path'):
+                ok = bool(fs.select_path(path, emit=True))
+            if not ok and index is not None and hasattr(fs, 'select_index'):
+                ok = bool(fs.select_index(int(index), emit=True))
+        except Exception as err:
+            self.log(f'结果表→胶片定位失败：{err}')
+            return
+        if ok:
+            try:
+                self.statusBar().showMessage(
+                    f"结果表定位胶片 · seq={payload.get('seq') or '—'} · "
+                    + (Path(path).name if path else f'#{index}'),
+                    3500,
+                )
+            except Exception:
+                pass
+        else:
+            try:
+                self.statusBar().showMessage('结果表行无胶片路径（该次运行未 stamp）', 3000)
+            except Exception:
+                pass
+
+    def _on_filmstrip_path_for_hmi(self, path):
+        """细妆⑳：胶片选中 → 结果表反查高亮匹配行。"""
+        hmi = getattr(self, 'operator_hmi', None)
+        if hmi is None or not hasattr(hmi, 'highlight_rows_for_film'):
+            return
+        try:
+            fs = getattr(self, 'filmstrip', None)
+            idx = fs.current_index() if fs is not None and hasattr(fs, 'current_index') else None
+            hmi.highlight_rows_for_film(path or '', idx)
+        except Exception:
+            pass
+
     def load_filmstrip_path(self, path):
+
         if self.busy or not path:return
         from pathlib import Path as P
         p=P(path)
@@ -3596,6 +3678,7 @@ class MainWindow(QMainWindow):
                 chip.setCurrentIndex(i)
         chip.blockSignals(False)
         tip = '产品变体快切：选中后一键套用该变体下首条配方'
+        tip += '\n勾选右侧「试跑」→ 套用后 enterRun + 单次试跑'
         if variants:
             tip += f'\n已登记：{", ".join(variants)}'
         chip.setToolTip(tip)
@@ -3609,11 +3692,21 @@ class MainWindow(QMainWindow):
             return
         self.apply_variant_quick(variant)
 
-    def apply_variant_quick(self, variant: str):
-        """Apply first recipe under variant (toolbar / production_task chip)."""
+    def apply_variant_quick(self, variant: str, *, trial_once=None):
+        """Apply first recipe under variant (toolbar / production_task chip).
+
+        细妆⑳：trial_once=None 时读工具栏「试跑」勾选；True 则 enterRun+trialOnce。
+        """
         variant = (variant or '').strip()
         if not variant:
             return
+        if trial_once is None:
+            chk = getattr(self, 'variant_trial_chk', None)
+            try:
+                trial_once = bool(chk.isChecked()) if chk is not None else False
+            except Exception:
+                trial_once = False
+        trial_once = bool(trial_once)
         try:
             from desktop import recipe_library as rl
             p = self.document.project
@@ -3648,13 +3741,14 @@ class MainWindow(QMainWindow):
             self.log(
                 f"变体快切「{variant}」→ 配方 {stats.get('name')} "
                 f"（写入 {stats.get('applied', 0)} · 跳过 {stats.get('skipped', 0)}）"
+                + (' · 试跑' if trial_once else '')
             )
             try:
-                # 快切不默认进运行态；只刷生产任务/HMI 徽章
+                # 细妆⑳：勾选「试跑」→ enterRun + trialOnce；否则仅刷徽章
                 self.sync_after_recipe_apply({
                     **stats,
-                    'enterRun': False,
-                    'trialOnce': False,
+                    'enterRun': trial_once,
+                    'trialOnce': trial_once,
                 })
             except Exception:
                 pass
@@ -3718,6 +3812,12 @@ class MainWindow(QMainWindow):
             except Exception as err:
                 self.log(f'换型切运行态失败：{err}')
         if trial:
+            try:
+                hmi = getattr(self, 'operator_hmi', None)
+                if hmi is not None and hasattr(hmi, 'set_trial_backfill_pending'):
+                    hmi.set_trial_backfill_pending(True)
+            except Exception:
+                pass
             def _fire_once():
                 try:
                     from desktop.operator_hmi import DEFAULT_RUN_COMMANDS
