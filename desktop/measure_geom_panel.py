@@ -99,6 +99,22 @@ class MeasureGeomPanel(QWidget):
             items.append((s['id'], '%d %s' % (i, s.get('name') or s.get('operation'))))
         return items
 
+    def _bind_kind(self, default_field):
+        """line vs point bind kind from default field hint."""
+        df = str(default_field or '')
+        if 'match' in df or 'circle' in df or df.startswith('center'):
+            return 'point'
+        return 'line'
+
+    def _suggest_field(self, upstream_id, default_field):
+        from desktop.upstream_field_picker import default_bind_field_for_op
+        op = ''
+        for s in self.project.get('steps') or []:
+            if s.get('id') == upstream_id:
+                op = s.get('operation') or ''
+                break
+        return default_bind_field_for_op(op, self._bind_kind(default_field)) or default_field
+
     def _bind_row(self, form, label, id_key, field_key, default_field):
         box = QComboBox()
         for data, lab in self._step_items():
@@ -108,21 +124,54 @@ class MeasureGeomPanel(QWidget):
         if idx < 0 and cur:
             box.addItem('已丢失：' + cur, cur); idx = box.findData(cur)
         box.setCurrentIndex(max(0, idx))
-        box.currentIndexChanged.connect(lambda _: self._set_param(id_key, box.currentData() or ''))
-        form.addRow(label + ' 来源', box)
         field = QLineEdit(str(self.params.get(field_key) or default_field))
         field.setPlaceholderText(default_field)
+        field.setToolTip(
+            '绑定字段路径：lines[0] / lines.0 / matches[0] / circles[0]\n'
+            '切换来源会按上游算子自动建议；「插入上游字段」只写入字段名并同步来源。'
+        )
         field.editingFinished.connect(lambda: self._set_param(field_key, field.text().strip() or default_field))
+
+        def _on_source_changed(*_):
+            nid = box.currentData() or ''
+            self._set_param(id_key, nid)
+            if nid:
+                sug = self._suggest_field(nid, default_field)
+                # only auto-fill when empty or still a generic default
+                cur_f = field.text().strip()
+                if not cur_f or cur_f in ('lines[0]', 'lines.0', 'matches[0]', 'circles[0]', default_field):
+                    field.setText(sug)
+                    self._set_param(field_key, sug)
+
+        box.currentIndexChanged.connect(_on_source_changed)
+        form.addRow(label + ' 来源', box)
         from PySide6.QtWidgets import QHBoxLayout, QPushButton
         from desktop.upstream_field_picker import fill_line_from_picker
         frow = QHBoxLayout()
         pick = QPushButton('插入上游字段')
-        pick.clicked.connect(
-            lambda *_ , e=field, fk=field_key, df=default_field: (
-                fill_line_from_picker(self, self.project, self.step.get('id'), e, self._set_param, fk)
-                or (e.setText(df) if not e.text().strip() else None)
+        pick.setToolTip('挑选上游模块字段 → 同步「来源」并只写入字段路径（非整段 results.* 令牌）')
+
+        def _pick(*_, e=field, fk=field_key, df=default_field, src=box):
+            picked = fill_line_from_picker(
+                self, self.project, self.step.get('id'), e, self._set_param, fk, field_only=True,
             )
-        )
+            if not picked:
+                if not e.text().strip():
+                    e.setText(df); self._set_param(fk, df)
+                return
+            nid, _field, _token = picked
+            if nid:
+                i = src.findData(nid)
+                if i < 0:
+                    # upstream may be missing from list (e.g. source)
+                    src.addItem(nid, nid); i = src.findData(nid)
+                if i >= 0:
+                    src.blockSignals(True)
+                    src.setCurrentIndex(i)
+                    src.blockSignals(False)
+                    self._set_param(id_key, nid)
+
+        pick.clicked.connect(_pick)
         frow.addWidget(field, 1)
         frow.addWidget(pick)
         form.addRow(label + ' 字段', frow)
@@ -158,7 +207,7 @@ class MeasureGeomPanel(QWidget):
         scale.setValue(float(self.params.get('scale') or 1))
         scale.valueChanged.connect(lambda v: self._set_param('scale', float(v)))
         form.addRow('像素比例', scale)
-        tip = QLabel('绑定字段示例：lines[0]、matches[0]、center；手动模式在「手动坐标」Tab 填写。')
+        tip = QLabel('绑定字段示例：lines[0]、lines.0、matches[0]、circles[0]；切换来源自动建议字段；叠层随「结果显示」开关。手动模式在「手动坐标」Tab。')
         tip.setWordWrap(True); tip.setStyleSheet('color:#888;'); form.addRow(tip)
         return w
 

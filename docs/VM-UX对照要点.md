@@ -1073,20 +1073,26 @@ sieans：`config_status.node_needs_bang` + `Node.needs_config` / `run_failed`（
 | 域 | 剩余细妆 |
 |----|----------|
 | chrome | **单色图标已接** + 截图留档（artifacts/toolbar-chrome-mono.png）；人工观感签字仍外置 |
-| panels | overlay→engine/canvas 实绘已接；geometry 卡尺σ/投影角 UI 已补 |
+| panels | overlay 实绘已接；**measure_geom 上游挑选/字段绑定/叠层即时同步**；geometry 卡尺σ/投影角 UI 已补 |
 | harvest | 全覆盖（elapsed 下拉选步，无需 harvest） |
-| HMI | 组合框 QStackedWidget + Tab 嵌套下拉/拖放约束文案已接 |
+| HMI | 组合框嵌套已接；**趋势 spark / 饼图 / 结果表**跟生产统计 elapsed+OK/NG 刷新 |
 | filmstrip / 全流程 | 已接；**流程参数 I/O 可回写**；卡片间顺序 → 已示意 |
 | float | 已接 |
 | nest/Group | 引擎展开 tip 已接 |
 | labels | EN→CN 扫尾已接 |
 | settings | 已接 |
-| samples | 四行业 UI 壳已接（含印刷字符读码） |
+| samples | 四行业 UI 壳 + 打开即跑卡尺；**卡尺 Runtime live e2e** 已接 |
 | Comm | **试收→fire_string_trigger(RUN/CONT) 活路已验**；真机 TCP 需现场设备（非代码缺口） |
 | Host SM | 已接 |
 | 云/市场 | 模板市场本地已接；**云同步**需后端（非本机 UI 缺口） |
 | 算法核 | 多卡尺+多边缘分带已接（OpenCV）；Halcon 核仍外置 |
 | 扩展插件 | 第三方 plugin 无专用属性页时走通用保留（catalog 回退文案） |
+
+### 进度续⑪ · 2026-10-28
+- Runtime e2e：`smoke-caliper-runtime-e2e.cjs` 12 PASS（passGate/lineCount/score/rms + measure_geom bind）
+- measure_geom：上游字段只写路径并同步来源；geometry 字段索引补 lines/rms；show* 改后即时重绘叠层
+- HMI：ProductionStats elapsed/OK 历史 → 多数据线图 spark + OK 序列 + 饼图良率 + 结果表耗时
+- flow-control：`_pickLine/_pickPoint` 解包 lines[]/matches[]；bind 缺省字段
 
 ### 进度续⑧ · 2026-10-27 深夜
 - chrome：`desktop/toolbar_icons.py` 单色图标；`brandStrip` 分区；ToolTip 全中文

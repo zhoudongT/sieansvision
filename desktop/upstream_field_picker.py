@@ -33,20 +33,27 @@ def pick_upstream_field(parent: QWidget, project: dict, step_id=None, last_resul
         fields = []
     if not fields:
         op = str(node.get('operation') or '')
+        geo_fields = [
+            'lines', 'lines[0]', 'lines[1]', 'lines.0', 'lines.1',
+            'circles', 'circles[0]', 'rects', 'rects[0]',
+            'count', 'score', 'bestScore', 'rmsPixels', 'rms',
+            'angleDeg', 'lengthPx', 'inlierCount', 'ok', 'status',
+        ]
         fields = {
-            'locate': ['matches', 'matches.0', 'score', 'ok', 'angle', 'x', 'y'],
+            'locate': ['matches', 'matches[0]', 'matches.0', 'score', 'ok', 'angle', 'x', 'y'],
             'pose_correct': ['fixtureX', 'fixtureY', 'fixtureAngle', 'matrix', 'ok'],
             'distort_correct': ['status', 'mode', 'calibPath', 'coeffs', 'ok'],
             'receive_data': ['payload', 'ok', 'device', 'bytes'],
             'send_data': ['sent', 'ok', 'device', 'bytes'],
             'var_calc': ['value', 'ok', 'values', 'errors'],
             'group': ['ok', 'status', 'outputs'],
-            'geometry_find': ['ok', 'count', 'shapes', 'shapes.0', 'x', 'y'],
-            'measure_geom': ['ok', 'value', 'distance', 'angle', 'length'],
-            'point_distance': ['ok', 'value', 'distance', 'length'],
-            'point_line_distance': ['ok', 'value', 'distance'],
-            'line_intersect': ['ok', 'x', 'y', 'point'],
-            'measure': ['ok', 'value', 'distance', 'angle', 'length'],
+            'geometry': list(geo_fields),
+            'geometry_find': list(geo_fields),
+            'measure_geom': ['ok', 'value', 'distance', 'angle', 'length', 'intersectX', 'intersectY'],
+            'point_distance': ['ok', 'value', 'distance', 'length', 'dx', 'dy', 'x1', 'y1', 'x2', 'y2'],
+            'point_line_distance': ['ok', 'value', 'distance', 'footX', 'footY', 'px', 'py'],
+            'line_intersect': ['ok', 'intersectX', 'intersectY', 'parallel', 'status', 'x', 'y'],
+            'measure': ['ok', 'value', 'distance', 'angle', 'length', 'circles', 'circles[0]'],
             'condition': ['ok', 'branch', 'matched', 'passed'],
             'nine_point': ['ok', 'matrix', 'rms', 'resultVar'],
             'format_data': ['ok', 'text', 'targetVar', 'formatted'],
@@ -108,16 +115,43 @@ def make_upstream_ref_row(owner, project, step_id, params, set_param, key='upstr
     return row, edit
 
 
-def fill_line_from_picker(owner, project, step_id, line_edit, set_param=None, key=None):
-    """Pick upstream field and write token into an existing QLineEdit."""
+def fill_line_from_picker(owner, project, step_id, line_edit, set_param=None, key=None, *, field_only=False):
+    """Pick upstream field and write into an existing QLineEdit.
+
+    field_only=True → write just the field path (for measure_geom bind rows).
+    Default writes results.<id>.<field> token (for free-form refs).
+    Returns (nid, field, token) or None.
+    """
     picked = pick_upstream_field(
         owner, project, step_id=step_id,
         last_result=host_last_result(owner),
     )
     if not picked:
         return None
-    _nid, _field, token = picked
-    line_edit.setText(token)
+    nid, field, token = picked
+    value = field if field_only else token
+    line_edit.setText(value)
     if set_param and key:
-        set_param(key, token)
-    return token
+        set_param(key, value)
+    return nid, field, token
+
+
+def default_bind_field_for_op(op, kind='line'):
+    """Suggest measure_geom bind field from upstream operation + bind kind."""
+    op = str(op or '')
+    if kind == 'line':
+        if op in ('geometry', 'geometry_find'):
+            return 'lines[0]'
+        if op == 'measure':
+            return 'lines[0]'
+        return 'lines[0]'
+    # point
+    if op == 'locate':
+        return 'matches[0]'
+    if op in ('geometry', 'geometry_find'):
+        return 'lines[0]'  # midpoint via _pickPoint unwrap
+    if op in ('line_intersect',):
+        return 'intersectX'  # not a full point — prefer manual; still list
+    if op == 'measure':
+        return 'circles[0]'
+    return 'matches[0]'

@@ -567,6 +567,13 @@ class MainWindow(QMainWindow):
                 self._apply_display_to_result_pane(step)
         except Exception:
             pass
+        # measure_geom 叠层开关：改 show* 后立刻按上次运行结果重绘矢量层（无需重跑）
+        try:
+            op = (step or {}).get('operation') or ''
+            if op in ('line_intersect', 'point_distance', 'point_line_distance') and self.last_result:
+                self._apply_measure_geom_overlays(self.last_result.get('results') or [])
+        except Exception:
+            pass
 
     def update_hybrid_commit(self, payload):
         """Atomic PropertyFloat hybrid OK: source+step in ONE document.commit (single undo tip)."""

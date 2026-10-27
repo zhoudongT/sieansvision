@@ -408,20 +408,34 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 | 域 | 剩余细妆 |
 |----|----------|
 | chrome | **单色图标已接** + 截图留档（artifacts/toolbar-chrome-mono.png）；人工观感签字仍外置 |
-| panels | overlay→engine/canvas 实绘已接；geometry 卡尺σ/投影角 UI 已补 |
+| panels | overlay 实绘已接；**measure_geom 上游挑选/字段绑定/叠层开关即时同步**；geometry 卡尺σ/投影角 UI 已补 |
 | harvest | 全覆盖（elapsed 下拉选步，无需 harvest） |
-| HMI | 组合框 QStackedWidget + Tab 嵌套下拉/拖放约束文案已接 |
+| HMI | 组合框嵌套已接；**趋势 spark / 饼图 / 结果表**跟生产统计 elapsed+OK/NG 实时刷新 |
 | filmstrip / 全流程 | 已接；**流程参数 I/O 可回写**；卡片间顺序 → 已示意 |
 | float | 已接 |
 | nest/Group | 引擎展开 tip 已接 |
 | labels | EN→CN 扫尾已接 |
 | settings | 已接 |
-| samples | 四行业 UI 壳 + **打开即跑卡尺/测量/TCP环回** 已接 |
+| samples | 四行业 UI 壳 + 打开即跑卡尺/测量/TCP环回；**卡尺 Runtime e2e（live）** 已接 |
 | Comm | 试收触发活路已验；**环回协议模拟器**（:19880）可本机联调；真机 TCP 仍外置 |
 | Host SM | 已接 |
 | 云/市场 | 模板市场 + **本地云同步站**（:19779 list/publish/sync）已接；真实远端后端仍外置 |
 | 算法核 | 直线 **多卡尺+多边缘分带**（OpenCV）；Halcon 核仍外置 |
 | 扩展插件 | 第三方 plugin 无专用属性页时走通用保留（catalog 回退文案） |
+
+
+## 【细妆⑪ · 卡尺 Runtime e2e · measure_geom 绑定 · HMI 趋势计时 · 2026-10-28】
+
+> Allen t196 连续自驱 — 无真机 / 无 robot SDK / 无 push；把 ⑩ 后仍薄的 Runtime 路径、几何测量绑定、HMI 图表计时收实。
+
+### 已落地
+- **Live Runtime e2e · 卡尺**：`scripts/smoke-caliper-runtime-e2e.cjs`（对齐 locate/measure e2e 模式）跑通 `open-and-run-caliper.sieans`：passGate/lineCount/lineScore/lineRms + geometry.lines；并顺带验 measure_geom bind（line_intersect / point_line_distance）。
+- **measure_geom 绑定抛光**：`flow-control` `_pickLine/_pickPoint` 解包 `lines[]/matches[]`；bind 缺字段默认 `lines[0]`/`matches[0]`；line2 与 line1 同级 fallback；面板「插入上游字段」只写字段路径并同步来源；切换来源按算子建议字段；geometry 字段索引补 `lines[0]/rmsPixels/…`；改 show* 后按 `last_result` 即时重绘矢量叠层。
+- **HMI 图表计时加深**：`ProductionStatsPanel` 记 elapsed/OK 历史；多数据线图 unicode spark + OK 序列；饼图良率条与结果表耗时/OK/NG 跟统计面板实时刷新。
+- **冒烟**：caliper-runtime-e2e 12 PASS；multi-sample 8 PASS；locate-measure 9 PASS。
+
+### 仍为外依赖
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
 
 ## 【细妆⑩ · 多卡尺多边缘 · 打开即跑卡尺 · 诊断字段 · 2026-10-28】
 

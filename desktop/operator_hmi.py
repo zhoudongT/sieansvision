@@ -104,7 +104,10 @@ class ProductionStatsPanel(QWidget):
         self._ng = 0
         self._paused = False
         self._history = []  # newest first, max 40
+        self._elapsed_hist = []  # newest first ms, max 48 — drives HMI trend spark
+        self._ok_hist = []  # newest first bool, max 48 — OK/NG spark
         self._gate_key = None  # None → auto probe flow vars
+        self._trend_listeners = []  # callables(panel) after record/reset
         root = QVBoxLayout(self)
         root.setContentsMargins(4, 4, 4, 4)
         root.setSpacing(4)
@@ -243,9 +246,12 @@ class ProductionStatsPanel(QWidget):
         self._ok = 0
         self._ng = 0
         self._history.clear()
+        self._elapsed_hist.clear()
+        self._ok_hist.clear()
         self._list.clear()
         self.clear_alarm()
         self._refresh_labels()
+        self._notify_trend()
 
     def clear_alarm(self):
         self._alarm.hide()
@@ -276,10 +282,20 @@ class ProductionStatsPanel(QWidget):
         line = f'{ts}  {tag}{ms}' + (f'  {detail}' if detail else '')
         self._history.insert(0, line)
         self._history = self._history[:40]
+        try:
+            em = float(elapsed_ms) if elapsed_ms is not None else None
+        except (TypeError, ValueError):
+            em = None
+        if em is not None and em >= 0:
+            self._elapsed_hist.insert(0, em)
+            self._elapsed_hist = self._elapsed_hist[:48]
+        self._ok_hist.insert(0, bool(ok))
+        self._ok_hist = self._ok_hist[:48]
         self._list.insertItem(0, line)
         while self._list.count() > 40:
             self._list.takeItem(self._list.count() - 1)
         self._refresh_labels()
+        self._notify_trend()
 
     def _refresh_labels(self):
         total = self._ok + self._ng
@@ -296,6 +312,62 @@ class ProductionStatsPanel(QWidget):
         else:
             self._yield_lab.setText('良率 —\n0/0')
             self._yield_lab.setToolTip('尚无计数。运行完成后按判定门 (gate) 累计 OK/NG。')
+
+    def ok_count(self):
+        return self._ok
+
+    def ng_count(self):
+        return self._ng
+
+    def elapsed_history(self):
+        return list(self._elapsed_hist)
+
+    def ok_history(self):
+        return list(self._ok_hist)
+
+    def add_trend_listener(self, cb):
+        if callable(cb):
+            self._trend_listeners.append(cb)
+
+    def _notify_trend(self):
+        for cb in list(self._trend_listeners):
+            try:
+                cb(self)
+            except Exception:
+                pass
+
+    @staticmethod
+    def sparkline(values, width=24):
+        """Unicode spark from newest-first values (renders left=oldest)."""
+        bars = '▁▂▃▄▅▆▇█'
+        if not values:
+            return '·' * max(8, width // 3) + '  ·  等待运行'
+        seq = list(reversed(values[:width]))
+        lo = min(seq); hi = max(seq)
+        span = (hi - lo) or 1.0
+        out = []
+        for v in seq:
+            idx = int(round((float(v) - lo) / span * (len(bars) - 1)))
+            idx = max(0, min(len(bars) - 1, idx))
+            out.append(bars[idx])
+        return ''.join(out)
+
+    def trend_elapsed_text(self):
+        spark = self.sparkline(self._elapsed_hist, 24)
+        if not self._elapsed_hist:
+            return f'{spark}'
+        last = self._elapsed_hist[0]
+        avg = sum(self._elapsed_hist) / len(self._elapsed_hist)
+        return f'{spark}  ·  末次 {last:.0f} ms · 均 {avg:.0f} ms · n={len(self._elapsed_hist)}'
+
+    def trend_ok_text(self):
+        if not self._ok_hist:
+            return '· · ·  ·  判定序列等待'
+        # map OK→▇ NG→▁
+        seq = list(reversed(self._ok_hist[:24]))
+        s = ''.join('▇' if v else '▁' for v in seq)
+        return f'{s}  ·  OK序列 (高=OK)'
+
 
 
 class OperatorHmiView(QWidget):
@@ -317,6 +389,9 @@ class OperatorHmiView(QWidget):
         self._log_panes = []
         self._clock_labels = []
         self._stats_panels = []
+        self._trend_sparks = []  # QLabel live elapsed spark
+        self._trend_ok_sparks = []  # QLabel OK/NG sequence
+        self._yield_bars = []  # (bar_ok, bar_ng) tuples
         self._layout_fp = None
         self._clock_timer = QTimer(self)
         self._clock_timer.setInterval(1000)
@@ -482,6 +557,10 @@ class OperatorHmiView(QWidget):
         self._log_panes = []
         self._clock_labels = []
         self._stats_panels = []
+        self._trend_sparks = []
+        self._trend_ok_sparks = []
+        self._yield_bars = []
+        self._result_tables = []
         self._host_sm = None
 
         placements = list(ui.get('placements') or [])
@@ -914,7 +993,8 @@ class OperatorHmiView(QWidget):
 
     def _wire_stats_panel(self, panel: ProductionStatsPanel):
         """Connect 「判定门」 picks → persist into runUi.fixedBars.gateKey;
-        re-emit pauseToggled so MainWindow can bridge ContinuousRun / 运行全部."""
+        re-emit pauseToggled so MainWindow can bridge ContinuousRun / 运行全部;
+        feed HMI trend spark / 饼图 from elapsed + OK/NG history."""
         try:
             panel.gateKeyChanged.connect(self._on_stats_gate_key)
         except Exception:
@@ -923,6 +1003,91 @@ class OperatorHmiView(QWidget):
             panel.pauseToggled.connect(self.pauseToggled.emit)
         except Exception:
             pass
+        try:
+            panel.add_trend_listener(lambda _p: self._refresh_trend_charts())
+        except Exception:
+            pass
+        # initial paint if history already present
+        try:
+            self._refresh_trend_charts()
+        except Exception:
+            pass
+
+    def _refresh_trend_charts(self):
+        """Push ProductionStatsPanel elapsed/OK history into spark + yield bars."""
+        panel = None
+        for p in getattr(self, '_stats_panels', []) or []:
+            panel = p
+            break
+        # elapsed spark
+        for lab in getattr(self, '_trend_sparks', []) or []:
+            try:
+                if panel is None:
+                    lab.setText(ProductionStatsPanel.sparkline([]))
+                else:
+                    lab.setText(panel.trend_elapsed_text())
+            except Exception:
+                pass
+        for lab in getattr(self, '_trend_ok_sparks', []) or []:
+            try:
+                if panel is None:
+                    lab.setText('· · ·  ·  判定序列等待')
+                else:
+                    lab.setText(panel.trend_ok_text())
+            except Exception:
+                pass
+        total = 0
+        ok_n = 0
+        ng_n = 0
+        if panel is not None:
+            try:
+                ok_n = int(panel.ok_count())
+                ng_n = int(panel.ng_count())
+                total = ok_n + ng_n
+            except Exception:
+                pass
+        for pair in getattr(self, '_yield_bars', []) or []:
+            try:
+                bar_ok, bar_ng = pair
+                if total <= 0:
+                    bar_ok.setValue(0); bar_ng.setValue(0)
+                    bar_ok.setFormat('OK —'); bar_ng.setFormat('NG —')
+                else:
+                    yp = int(round(100.0 * ok_n / total))
+                    np_ = 100 - yp
+                    bar_ok.setValue(yp); bar_ng.setValue(np_)
+                    bar_ok.setFormat(f'OK {yp}% ({ok_n})')
+                    bar_ng.setFormat(f'NG {np_}% ({ng_n})')
+            except Exception:
+                pass
+        # 结果表格：模块/耗时/OK/NG
+        last_ms = '—'
+        if panel is not None:
+            try:
+                hist = panel.elapsed_history()
+                if hist:
+                    last_ms = f'{hist[0]:.0f}'
+            except Exception:
+                pass
+        rows = [
+            ('模块', '流程', '—'),
+            ('耗时(ms)', str(last_ms), '—'),
+            ('OK计数', str(ok_n), '—'),
+            ('NG计数', str(ng_n), '—'),
+        ]
+        for table in getattr(self, '_result_tables', []) or []:
+            try:
+                for r, row in enumerate(rows):
+                    for c, val in enumerate(row):
+                        item = table.item(r, c)
+                        if item is None:
+                            from PySide6.QtWidgets import QTableWidgetItem
+                            item = QTableWidgetItem(val)
+                            table.setItem(r, c, item)
+                        else:
+                            item.setText(str(val))
+            except Exception:
+                pass
 
     def _on_stats_gate_key(self, key):
         fb = dict(getattr(self, '_fixed_bars_cache', {}) or {})
@@ -1340,25 +1505,42 @@ class OperatorHmiView(QWidget):
             return cell
         if name in ('饼图',):
             cell = self._make_cell_frame(name)
-            bar_ok = QProgressBar(); bar_ok.setRange(0, 100); bar_ok.setValue(85)
+            bar_ok = QProgressBar(); bar_ok.setRange(0, 100); bar_ok.setValue(0)
             bar_ok.setFormat('OK %p%'); bar_ok.setStyleSheet('QProgressBar::chunk{background:#3ecf8e;}')
-            bar_ng = QProgressBar(); bar_ng.setRange(0, 100); bar_ng.setValue(15)
+            bar_ok.setObjectName('hmiYieldOkBar')
+            bar_ng = QProgressBar(); bar_ng.setRange(0, 100); bar_ng.setValue(0)
             bar_ng.setFormat('NG %p%'); bar_ng.setStyleSheet('QProgressBar::chunk{background:#e35d6a;}')
-            cell.layout().addWidget(QLabel('良率示意（饼图简化条）'))
+            bar_ng.setObjectName('hmiYieldNgBar')
+            tip = QLabel('良率（跟生产统计 OK/NG；运行后刷新）')
+            tip.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
+            cell.layout().addWidget(tip)
             cell.layout().addWidget(bar_ok)
             cell.layout().addWidget(bar_ng)
             cell.layout().addStretch(1)
+            self._yield_bars = getattr(self, '_yield_bars', [])
+            self._yield_bars.append((bar_ok, bar_ng))
             return cell
         if name in ('多数据线图', '线图阵列'):
             cell = self._make_cell_frame(name)
-            tip = QLabel('曲线示意：周期耗时 / 判定序列（跟 productionStats / elapsed；触发 RUN 后刷新）')
+            tip = QLabel('趋势：周期耗时 spark + OK/NG 序列（跟生产统计 elapsed；每次 RUN 完成刷新）')
             tip.setWordWrap(True)
             tip.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
-            spark = QLabel('▁▂▃▅▄▆▇▅▄▃▂▁  ·  实时趋势示意')
+            spark = QLabel(ProductionStatsPanel.sparkline([]))
             spark.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            spark.setStyleSheet(f'color:{TEXT};font-size:16px;letter-spacing:1px;padding:12px;')
+            spark.setObjectName('hmiTrendSpark')
+            spark.setStyleSheet(f'color:{TEXT};font-size:16px;letter-spacing:1px;padding:8px;')
+            spark.setWordWrap(True)
+            ok_spark = QLabel('· · ·  ·  判定序列等待')
+            ok_spark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            ok_spark.setObjectName('hmiTrendOkSpark')
+            ok_spark.setStyleSheet(f'color:{TEXT_MUTED};font-size:14px;letter-spacing:1px;padding:4px;')
             cell.layout().addWidget(tip)
             cell.layout().addWidget(spark, 1)
+            cell.layout().addWidget(ok_spark)
+            self._trend_sparks = getattr(self, '_trend_sparks', [])
+            self._trend_ok_sparks = getattr(self, '_trend_ok_sparks', [])
+            self._trend_sparks.append(spark)
+            self._trend_ok_sparks.append(ok_spark)
             return cell
         if name in ('组合框', '参数组合', '文本框组合'):
             cell = self._make_cell_frame(name)
