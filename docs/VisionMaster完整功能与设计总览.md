@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊷ · pin对比条应用撤销 · 吸史快捷冲突检测 · DST年范围对话框 · A/B冲突按来源 · jitter重种深度指示 · 2026-10-28】
+
+- **pin 对比条应用撤销**：应用前压撤销栈（≤8）；`undo_…_avoid_compare_bar`；对比条左键应用 / 右键撤销；`undo_depth` tip/属性。
+- **吸史快捷冲突检测**：`detect/format_…_order_shortcut_conflicts`；保留键/同键/钉上限碰撞；设定时 warn toast；「键…」tip/样式。
+- **DST 年范围对话框**：`prompt_…_dst_calendar_year_range`；「范围…」按钮；年标签可点；`1990,2035` / `2010-2020`。
+- **A/B 冲突策略默认按来源**：策略 `source`；`resolve_…_from_source`（team→rename / local→overwrite / clipboard→skip；payload.conflict 优先）；菜单「按来源」。
+- **jitter 重种深度指示**：`_refresh_…_seed_redo_depth_ui`；「重种·N」文案+绿字；旁标深度；撤/重/重抽刷新。
+- **冒烟**：`smoke-wave74-pinundocmp-histconflict-dstrange-absource-jitterdepth-e2e`（另回归 wave73/72/71）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊶ · pin对比条点击应用 · 吸史快捷自定义 · DST年范围/本月 · A/B导入冲突策略 · jitter撤种重做栈 · 2026-10-28】
 
 - **pin 对比条点击一键应用**：`apply_…_avoid_compare_bar`；对比条可点（手型光标）；刷新色标/条。
