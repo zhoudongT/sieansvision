@@ -732,12 +732,13 @@ class OperatorHmiView(QWidget):
                 lv.appendPlainText(str(message))
             except Exception:
                 pass
-        host = getattr(self, '_host_sm', None)
-        if host is not None:
-            try:
-                host.append_info(str(message))
-            except Exception:
-                pass
+        if not getattr(self, '_mirroring_host_info', False):
+            host = getattr(self, '_host_sm', None)
+            if host is not None:
+                try:
+                    host.append_info(str(message))
+                except Exception:
+                    pass
 
     def eventFilter(self, obj, event):
         """Alarm rail click → 状态·清除报警 when Alarm active."""
@@ -790,9 +791,36 @@ class OperatorHmiView(QWidget):
         except Exception:
             pass
         try:
+            # Host 信息栏 → HMI「信息提示栏」单向镜像（避免与 append_log 递归）
+            host.infoLogged.connect(self._on_host_info_logged)
+        except Exception:
+            pass
+        try:
             self._paint_machine_chrome(getattr(host, 'state', None) or 'Idle')
         except Exception:
             pass
+
+    def _on_host_info_logged(self, line: str):
+        """Mirror Host SM info bar into HMI 信息提示栏 / 界面日志 panes only."""
+        if getattr(self, '_mirroring_host_info', False):
+            return
+        self._mirroring_host_info = True
+        try:
+            text = str(line or '')
+            for log in getattr(self, '_log_panes', []) or []:
+                try:
+                    log.appendPlainText(text)
+                except Exception:
+                    pass
+            for lv in getattr(self, '_log_views', []) or []:
+                if lv in (getattr(self, '_log_panes', None) or []):
+                    continue
+                try:
+                    lv.appendPlainText(text)
+                except Exception:
+                    pass
+        finally:
+            self._mirroring_host_info = False
 
     def set_host_machine_state(self, state: str, reason: str = ''):
         """MainWindow / triggers push Idle|Running|Paused|Alarm|Stopped."""

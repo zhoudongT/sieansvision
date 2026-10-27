@@ -2166,6 +2166,18 @@ class MainWindow(QMainWindow):
         self.document_changed()
         self._refresh_group_breadcrumb()
         self.log(f'已进入组合模块「{step.get("name") or node_id}」· 深度 {len(self._group_stack)} · 可撤销/重做本层编辑')
+        try:
+            ok, msg, bad = project_incomplete_summary(self.document.project)
+            if not ok and bad:
+                tip = f'组内红叹号 {len(bad)} 处：' + '、'.join(str(x) for x in bad[:6])
+                if len(bad) > 6:
+                    tip += '…'
+                self.log(tip)
+                self._show_canvas_status_chip(tip, ms=4500)
+            elif ok:
+                self._show_canvas_status_chip('组内组件配置完成 · 可编辑嵌套流程', ms=2800)
+        except Exception:
+            pass
 
     def exit_group_module(self):
         if not self._group_stack:

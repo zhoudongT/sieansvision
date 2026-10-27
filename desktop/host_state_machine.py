@@ -606,6 +606,15 @@ class HostStateMachineWidget(QWidget):
         tip.setWordWrap(True)
         tip.setStyleSheet(f'color:{TEXT_DIM};font-size:11px;')
         lay.addWidget(tip)
+        filt_row = QHBoxLayout()
+        filt_row.addWidget(QLabel('筛选'))
+        self._alarm_filter = QLineEdit()
+        self._alarm_filter.setObjectName('hostAlarmHistoryFilter')
+        self._alarm_filter.setPlaceholderText('按原因关键字筛选…')
+        self._alarm_filter.setClearButtonEnabled(True)
+        self._alarm_filter.textChanged.connect(lambda *_: self._refresh_alarm_history_ui())
+        filt_row.addWidget(self._alarm_filter, 1)
+        lay.addLayout(filt_row)
         self._alarm_list = QListWidget()
         self._alarm_list.setObjectName('hostAlarmHistoryList')
         self._alarm_list.setStyleSheet('font-size:11px;')
@@ -687,13 +696,23 @@ class HostStateMachineWidget(QWidget):
         lst = getattr(self, '_alarm_list', None)
         if lst is None:
             return
+        needle = ''
+        filt = getattr(self, '_alarm_filter', None)
+        if filt is not None:
+            needle = (filt.text() or '').strip().lower()
         lst.clear()
+        shown = 0
         for e in reversed(self._alarm_history):
+            reason = str(e.get('reason', '') or '')
+            if needle and needle not in reason.lower() and needle not in str(e.get('ts') or '').lower():
+                continue
             mark = '·' if not e.get('cleared') else '✓'
-            lst.addItem(f"{e.get('ts', '')}  {mark}  {e.get('reason', '')}")
+            lst.addItem(f"{e.get('ts', '')}  {mark}  {reason}")
+            shown += 1
         lab = getattr(self, '_alarm_hist_count', None)
         if lab is not None:
-            lab.setText(f'{len(self._alarm_history)} 条')
+            total = len(self._alarm_history)
+            lab.setText(f'{shown}/{total} 条' if needle else f'{total} 条')
 
 
     def _raise_alarm(self):

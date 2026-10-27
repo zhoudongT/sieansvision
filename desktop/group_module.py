@@ -353,8 +353,17 @@ class GroupParamPanel(QWidget):
     def _display_tab(self):
         w = QWidget()
         form = QFormLayout(w)
-        form.addRow(QLabel('显示组内图像'), QLabel('开'))
-        form.addRow(QLabel('说明'), QLabel('显示设置占位（对标 VM Group 显示设置）'))
+        disp = dict((self.params.get('io') or {}).get('display') or {})
+        self._show_inner = OrangeSwitch(bool(disp.get('showInnerImage', True)))
+        self._show_inner.toggled.connect(lambda *_: self._emit())
+        form.addRow(QLabel('显示组内图像'), self._show_inner)
+        self._show_roi = OrangeSwitch(bool(disp.get('showInnerRoi', True)))
+        self._show_roi.toggled.connect(lambda *_: self._emit())
+        form.addRow(QLabel('显示组内 ROI'), self._show_roi)
+        tip = QLabel('对标 VM Group 显示设置：出组后叠加开关写入 io.display。')
+        tip.setWordWrap(True)
+        tip.setObjectName('dialogHint')
+        form.addRow(tip)
         return w
 
     def _loop_tab(self):
@@ -369,7 +378,7 @@ class GroupParamPanel(QWidget):
         self.loop_interval = QLineEdit(str(self.params.get('loopIntervalMs') or 0))
         self.loop_interval.editingFinished.connect(self._emit)
         form.addRow(QLabel('循环间隔(ms)'), self.loop_interval)
-        tip = QLabel('与主流程「单次/连续」分层：组可按循环策略重复内部链路。')
+        tip = QLabel('引擎展开内层链路：loopEnabled 时按 loopCount（≤100）重复；loopIntervalMs 为组内间隔。与主流程「单次/连续」分层独立。')
         tip.setWordWrap(True)
         form.addRow(tip)
         return w
@@ -390,6 +399,10 @@ class GroupParamPanel(QWidget):
         io['inputs'] = self._read_io_table('inputs')
         io['outputs'] = self._read_io_table('outputs')
         io.setdefault('display', {})
+        if hasattr(self, '_show_inner'):
+            io['display']['showInnerImage'] = bool(self._show_inner.isChecked())
+        if hasattr(self, '_show_roi'):
+            io['display']['showInnerRoi'] = bool(self._show_roi.isChecked())
         # Line edits are authoritative: push ImageData/InputROI into named IO rows
         # (↑ insert writes both cell + line edit; clearing a line edit must clear the row).
         for row in io['inputs']:

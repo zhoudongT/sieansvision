@@ -5,7 +5,7 @@ from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QIcon, QPixmap, QImage
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QListWidget,
-    QListWidgetItem, QAbstractItemView, QFileDialog, QMessageBox,
+    QListWidgetItem, QAbstractItemView, QFileDialog, QMessageBox, QComboBox,
 )
 
 from .switch import OrangeSwitch
@@ -27,6 +27,7 @@ class FilmstripBar(QWidget):
     runAllRequested = Signal()
     continuousPauseToggled = Signal(bool)  # True=paused
     listChanged = Signal(list)           # paths
+    formatFilterChanged = Signal(str)    # 全部|.bmp|.jpg|.png|.tif
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -83,6 +84,19 @@ class FilmstripBar(QWidget):
         self.clear_btn.setToolTip('清空全部本地图')
         self.clear_btn.clicked.connect(self.clear_all)
         bar.addWidget(self.clear_btn)
+        bar.addWidget(QLabel('格式'))
+        self.format_filter = QComboBox()
+        self.format_filter.setObjectName('filmstripFormatFilter')
+        self.format_filter.setToolTip('本地图像格式过滤（与属性/导入一致）')
+        self.format_filter.addItem('全部', '全部')
+        self.format_filter.addItem('BMP', '.bmp')
+        self.format_filter.addItem('JPEG', '.jpg')
+        self.format_filter.addItem('PNG', '.png')
+        self.format_filter.addItem('TIFF', '.tif')
+        self.format_filter.setFixedWidth(72)
+        self.format_filter.currentIndexChanged.connect(self._on_format_filter_changed)
+        bar.addWidget(self.format_filter)
+        self._format_filter_key = '全部'
         self.interval_label = QLabel('')
         self.interval_label.setObjectName('filmstripInterval')
         self.interval_label.setStyleSheet('color:#888;font-size:11px;')
@@ -124,6 +138,68 @@ class FilmstripBar(QWidget):
         if 0 <= self._index < len(self._paths):
             return self._paths[self._index]
         return ''
+
+
+    def _exts_for_filter(self, key=None):
+        key = key if key is not None else getattr(self, '_format_filter_key', '全部')
+        if key in (None, '', '全部'):
+            return set(IMAGE_EXTS)
+        if key == '.jpg':
+            return {'.jpg', '.jpeg'}
+        if key == '.tif':
+            return {'.tif', '.tiff'}
+        return {key}
+
+    def _on_format_filter_changed(self, *_):
+        key = self.format_filter.currentData()
+        self._format_filter_key = key or '全部'
+        self._apply_format_filter_visibility()
+        tip = '本地图像格式过滤：' + (
+            ', '.join(sorted(self._exts_for_filter())) if self._format_filter_key != '全部'
+            else ', '.join(sorted(IMAGE_EXTS))
+        )
+        self.set_format_filter_hint(tip)
+        self.formatFilterChanged.emit(str(self._format_filter_key))
+
+    def set_format_filter(self, key='全部'):
+        """属性面板 / 外部同步格式过滤。"""
+        key = key or '全部'
+        combo = getattr(self, 'format_filter', None)
+        if combo is None:
+            self._format_filter_key = key
+            return
+        idx = combo.findData(key)
+        if idx < 0 and key in ('.jpeg',):
+            idx = combo.findData('.jpg')
+        if idx < 0 and key in ('.tiff',):
+            idx = combo.findData('.tif')
+        if idx < 0:
+            idx = 0
+        combo.blockSignals(True)
+        combo.setCurrentIndex(idx)
+        combo.blockSignals(False)
+        self._format_filter_key = combo.currentData() or '全部'
+        self._apply_format_filter_visibility()
+
+    def _apply_format_filter_visibility(self):
+        """Hide thumbs whose suffix is outside current format filter (paths kept)."""
+        allowed = self._exts_for_filter()
+        for i in range(self.thumbs.count()):
+            item = self.thumbs.item(i)
+            if item is None:
+                continue
+            path = item.data(Qt.ItemDataRole.UserRole) or ''
+            suf = Path(str(path)).suffix.lower()
+            show = (self._format_filter_key == '全部') or (suf in allowed)
+            item.setHidden(not show)
+        # Recount visible
+        n = len(self._paths)
+        vis = sum(1 for i in range(self.thumbs.count()) if not self.thumbs.item(i).isHidden())
+        cur = (self._index + 1) if n else 0
+        if self._format_filter_key != '全部':
+            self.count_label.setText(f'图像源 ({cur}/{n} · 显{vis})')
+        else:
+            self.count_label.setText(f'图像源 ({cur}/{n})')
 
     def set_format_filter_hint(self, text=''):
         """细妆：胶片条格式过滤提示（ToolTip；不污染取图间隔文案）。"""
@@ -184,11 +260,21 @@ class FilmstripBar(QWidget):
             self.empty_hint.setVisible(len(self._paths) == 0)
             self.thumbs.setVisible(len(self._paths) > 0)
         self.set_format_filter_hint()
+        if hasattr(self, '_apply_format_filter_visibility'):
+            self._apply_format_filter_visibility()
 
     def _refresh_count(self):
         n = len(self._paths)
         cur = (self._index + 1) if n else 0
-        self.count_label.setText(f'图像源 ({cur}/{n})')
+        key = getattr(self, '_format_filter_key', '全部')
+        if key != '全部' and hasattr(self, 'thumbs'):
+            vis = sum(
+                1 for i in range(self.thumbs.count())
+                if self.thumbs.item(i) is not None and not self.thumbs.item(i).isHidden()
+            )
+            self.count_label.setText(f'图像源 ({cur}/{n} · 显{vis})')
+        else:
+            self.count_label.setText(f'图像源 ({cur}/{n})')
 
     def _row_changed(self, row):
         if row < 0 or row >= len(self._paths):
@@ -207,9 +293,10 @@ class FilmstripBar(QWidget):
         folder = QFileDialog.getExistingDirectory(self, '添加图像文件夹')
         if not folder:
             return
+        allowed = self._exts_for_filter() if hasattr(self, '_exts_for_filter') else IMAGE_EXTS
         paths = []
         for path in sorted(Path(folder).iterdir()):
-            if path.is_file() and path.suffix.lower() in IMAGE_EXTS:
+            if path.is_file() and path.suffix.lower() in allowed:
                 paths.append(str(path))
         if not paths:
             QMessageBox.information(self, '添加图像文件夹', '文件夹内没有可导入的图像格式。')
