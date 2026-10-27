@@ -1,0 +1,68 @@
+"""Node config completeness — VisionMaster「未配置完整」红叹号依据."""
+from __future__ import annotations
+
+from copy import deepcopy
+
+
+def source_incomplete(config) -> bool:
+    cfg = config or {}
+    mode = cfg.get('mode') or 'local'
+    if mode == 'local':
+        return not bool(cfg.get('images'))
+    # camera / sdk
+    cam = cfg.get('cameraId') or (cfg.get('cameraParams') or {}).get('deviceId')
+    return not bool(cam)
+
+
+def step_incomplete(step, project=None) -> bool:
+    if not step:
+        return False
+    op = step.get('operation') or ''
+    params = step.get('params') or {}
+    if op == 'camera_capture':
+        return not bool(params.get('deviceId') or params.get('cameraId'))
+    if op == 'locate':
+        has_img = bool(step.get('imageFrom'))
+        has_tpl = bool(
+            step.get('reference')
+            or params.get('templatePath')
+            or params.get('modelPath')
+            or params.get('hasTemplate')
+            or params.get('templateReady')
+        )
+        return not (has_img and has_tpl)
+    if op == 'group':
+        try:
+            from desktop.group_module import group_bindings_ready
+            return not group_bindings_ready(params)
+        except Exception:
+            return not (
+                str(params.get('imageData') or '').strip()
+                and str(params.get('inputRoi') or '').strip()
+            )
+    if op in (
+        'tcp_exchange', 'udp_exchange', 'serial_exchange',
+        'mqtt_publish', 'mqtt_receive', 'modbus_read', 'modbus_write', 'modbus_wait',
+        's7_read', 's7_write',
+    ):
+        return not bool(
+            params.get('host') or params.get('address') or params.get('port')
+            or params.get('topic') or params.get('device') or params.get('channel')
+            or params.get('endpoint')
+        )
+    if op == 'condition':
+        return not bool(
+            params.get('expression') or params.get('condition')
+            or params.get('rules') or params.get('table')
+        )
+    if op in ('comm_send', 'comm_recv', 'send_data', 'receive_data'):
+        return not bool(params.get('device') or params.get('channel') or params.get('message'))
+    return False
+
+
+def node_needs_bang(project, node_id: str) -> bool:
+    """True → 画红叹号（未配置完整）。运行失败由 Node.run_failed 另画。"""
+    if node_id == 'source':
+        return source_incomplete(project.get('sourceConfig'))
+    step = next((s for s in (project.get('steps') or []) if s.get('id') == node_id), None)
+    return step_incomplete(step, project)

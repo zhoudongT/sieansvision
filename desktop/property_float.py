@@ -132,6 +132,18 @@ class PropertyFloat(QDialog):
             self._last_step = deepcopy(step)
             self.show(); self.raise_(); self.activateWindow()
             return
+        # P1-9 / JGTech: 模板匹配定位 → VM 快速匹配四 Tab
+        if step and step.get('operation') == 'locate':
+            from desktop.locate_match_panel import LocateMatchPanel, normalize_locate_params
+            step = deepcopy(step)
+            step['params'] = normalize_locate_params(step.get('params'))
+            panel = LocateMatchPanel(step, definition, project)
+            panel.changed.connect(self._on_step_changed)
+            self.body.addWidget(panel)
+            self._panel = panel
+            self._last_step = deepcopy(step)
+            self.show(); self.raise_(); self.activateWindow()
+            return
         panel = ParameterPanel()
         panel.setStyleSheet(
             'QWidget#propertyPanel{background:#f0f0f0;border:0;}'

@@ -4,6 +4,7 @@ from PySide6.QtCore import Qt, QPointF, QRectF, QRect, Signal, QTimer
 from PySide6.QtGui import QColor, QPen, QBrush, QPainter, QPainterPath, QFont, QPolygonF
 from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsObject, QGraphicsItem, QGraphicsPathItem, QMenu, QApplication
 from desktop.theme import ACCENT, CANVAS, CANVAS_DOT, CARD, LINE, SELECTED, TEXT, TEXT_MUTED, OK, WARN
+from desktop.config_status import node_needs_bang
 
 
 class Port(QGraphicsObject):
@@ -75,12 +76,15 @@ class Node(QGraphicsObject):
         self.setZValue(2)
         self.state = '图像输入' if source else '等待执行'
         self.color = '#2d9b6c'
+        self.needs_config = False  # N4: 未配置完整 → 红叹号
+        self.run_failed = False    # 运行失败 → 红叹号（与未配置同徽章）
         self.setToolTip(label + '\n拖动移动 · 双击配置 · Ctrl 多选')
         sides = ('bottom', 'right') if source else ('top', 'left', 'bottom', 'right')
         self.ports = {side: Port(self, side, side in ('bottom', 'right')) for side in sides}
 
     def boundingRect(self):
-        return QRectF(-3, -3, self.width + 6, self.height + 6)
+        # Extra pad on top-right for N4 red bang badge.
+        return QRectF(-3, -8, self.width + 14, self.height + 14)
 
     def paint(self, painter, option, widget=None):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -122,6 +126,28 @@ class Node(QGraphicsObject):
             Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
             painter.fontMetrics().elidedText(self.label, Qt.TextElideMode.ElideRight, int(text_rect.width())),
         )
+        # N4: VisionMaster 未配置/失败红叹号（节点右上角）
+        if self.needs_config or self.run_failed:
+            cx = self.width - 2
+            cy = 2
+            tri = QPolygonF([
+                QPointF(cx, cy - 7),
+                QPointF(cx + 8, cy + 7),
+                QPointF(cx - 8, cy + 7),
+            ])
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor('#e53935'))
+            painter.drawPolygon(tri)
+            painter.setPen(QPen(QColor('#ffffff'), 1.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.drawLine(QPointF(cx, cy - 2), QPointF(cx, cy + 3))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor('#ffffff'))
+            painter.drawEllipse(QPointF(cx, cy + 5.5), 1.1, 1.1)
+            # Soft red border cue when incomplete
+            if self.needs_config and not selected:
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.setPen(QPen(QColor('#e05555'), 1.4))
+                painter.drawRoundedRect(QRectF(0, 0, self.width, self.height), 3, 3)
 
     def itemChange(self,change,value):
         if change==QGraphicsItem.GraphicsItemChange.ItemPositionChange:
@@ -221,7 +247,11 @@ class FlowScene(QGraphicsScene):
             else:
                 label=f'{i} {label}'
             item=Node(n['id'],label,n.get('position',dict(x=60,y=40+i*56)),i==0)
-            item.setToolTip(label+'\n序号 '+str(i)+' · 拖动移动 · 双击配置 · 端口拖拽订阅（下方←上方）')
+            item.needs_config = node_needs_bang(p, n['id'])
+            tip = label+'\n序号 '+str(i)+' · 拖动移动 · 双击配置 · 端口拖拽订阅（下方←上方）'
+            if item.needs_config:
+                tip += '\n⚠ 组件参数未配置完整'
+            item.setToolTip(tip)
             self.addItem(item);self.nodes[n['id']]=item
             if n['id'] in ids:item.setSelected(True)
             if self.edit_locked:
@@ -312,8 +342,11 @@ class FlowScene(QGraphicsScene):
         for record in results:
             item=self.nodes.get(record['id'])
             if not item:continue
-            item.state='执行失败' if record.get('error') else '已跳过' if record.get('skipped') else f"完成 · {record.get('output',{}).get('elapsedMs',0)} ms"
-            item.color='#e05555' if record.get('error') else OK;item.update()
+            failed = bool(record.get('error'))
+            item.state='执行失败' if failed else '已跳过' if record.get('skipped') else f"完成 · {record.get('output',{}).get('elapsedMs',0)} ms"
+            item.color='#e05555' if failed else OK
+            item.run_failed = failed
+            item.update()
 
     def drawBackground(self,painter,rect):
         painter.fillRect(rect,QColor(CANVAS))
