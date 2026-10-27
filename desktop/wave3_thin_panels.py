@@ -1,0 +1,267 @@
+"""Wave3 薄壳：格式化 / 输出图像 / 协议解析 / 文本保存 — 设计态可用."""
+from copy import deepcopy
+
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QLabel, QTabWidget, QFormLayout, QLineEdit,
+    QComboBox, QScrollArea, QFrame, QPlainTextEdit, QSpinBox, QHBoxLayout,
+    QPushButton, QFileDialog,
+)
+
+from desktop.widgets.switch import OrangeSwitch
+
+
+def normalize_format_data_params(params=None):
+    p = deepcopy(params or {})
+    p.setdefault('template', '{0}')
+    p.setdefault('args', '')
+    p.setdefault('targetVar', 'formatted')
+    p.setdefault('scope', 'flow')
+    return p
+
+
+def normalize_output_image_params(params=None):
+    p = deepcopy(params or {})
+    p.setdefault('path', '')
+    p.setdefault('format', 'png')
+    p.setdefault('quality', 95)
+    p.setdefault('useTimestamp', True)
+    p.setdefault('onlyOnOk', False)
+    return p
+
+
+def normalize_protocol_parse_params(params=None):
+    p = deepcopy(params or {})
+    p.setdefault('sourceVar', 'recvData')
+    p.setdefault('sourceScope', 'flow')
+    p.setdefault('protocol', 'delimited')  # delimited | fixed | json | regex
+    p.setdefault('delimiter', ',')
+    p.setdefault('pattern', '')
+    p.setdefault('fields', 'f0,f1,f2')
+    return p
+
+
+def normalize_text_save_params(params=None):
+    p = deepcopy(params or {})
+    p.setdefault('path', '')
+    p.setdefault('content', '')
+    p.setdefault('sourceVar', '')
+    p.setdefault('append', True)
+    p.setdefault('encoding', 'utf-8')
+    p.setdefault('newline', True)
+    return p
+
+
+class _ShellBase(QWidget):
+    changed = Signal(dict)
+
+    def __init__(self, step, project, title, hint, normalize, parent=None):
+        super().__init__(parent)
+        self.step = deepcopy(step)
+        self.project = project or {}
+        self.params = normalize(step.get('params'))
+        self.step['params'] = self.params
+        self._title = title
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        lab = QLabel(hint)
+        lab.setWordWrap(True)
+        lab.setStyleSheet('color:#666;padding:8px 10px 4px;')
+        root.addWidget(lab)
+        self.tabs = QTabWidget()
+        root.addWidget(self.tabs, 1)
+        self.tabs.addTab(self._wrap(self._basic_tab()), '基本参数')
+        self.tabs.addTab(self._wrap(self._result_tab()), '结果显示')
+
+    def _wrap(self, inner):
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidget(inner)
+        return scroll
+
+    def _emit(self):
+        self.step['params'] = deepcopy(self.params)
+        self.changed.emit(deepcopy(self.step))
+
+    def _set_param(self, key, value):
+        if self.params.get(key) != value:
+            self.params[key] = deepcopy(value)
+            self._emit()
+
+    def _set_top(self, key, value):
+        if self.step.get(key) != value:
+            self.step[key] = deepcopy(value)
+            self._emit()
+
+    def _name_row(self, form, default):
+        name = QLineEdit(self.step.get('name') or default)
+        name.setMaxLength(80)
+        name.editingFinished.connect(lambda: self._set_top('name', name.text()))
+        form.addRow('模块名称', name)
+
+    def _basic_tab(self):
+        raise NotImplementedError
+
+    def _result_tab(self):
+        w = QWidget()
+        form = QFormLayout(w)
+        form.setContentsMargins(10, 10, 10, 10)
+        tip = QLabel('设计态配置已保存；运行结果见引擎字段。')
+        tip.setStyleSheet('color:#888;')
+        form.addRow(tip)
+        return w
+
+
+class FormatDataPanel(_ShellBase):
+    def __init__(self, step, definition, project, parent=None):
+        super().__init__(
+            step, project, '格式化',
+            '对齐 VisionMaster「格式化（发出数据）」：模板字符串 + 参数 → 写入变量。',
+            normalize_format_data_params, parent,
+        )
+
+    def _basic_tab(self):
+        w = QWidget(); form = QFormLayout(w); form.setContentsMargins(10, 10, 10, 10)
+        self._name_row(form, '格式化')
+        tpl = QPlainTextEdit(); tpl.setPlainText(str(self.params.get('template') or '{0}'))
+        tpl.setMaximumHeight(80)
+        tpl.textChanged.connect(lambda: self._set_param('template', tpl.toPlainText()))
+        form.addRow('模板', tpl)
+        args = QLineEdit(str(self.params.get('args') or ''))
+        args.setPlaceholderText('参数列表，逗号分隔或变量名')
+        args.editingFinished.connect(lambda: self._set_param('args', args.text().strip()))
+        form.addRow('参数', args)
+        var = QLineEdit(str(self.params.get('targetVar') or 'formatted'))
+        var.editingFinished.connect(lambda: self._set_param('targetVar', var.text().strip() or 'formatted'))
+        form.addRow('目标变量', var)
+        return w
+
+
+class OutputImagePanel(_ShellBase):
+    def __init__(self, step, definition, project, parent=None):
+        super().__init__(
+            step, project, '输出图像',
+            '对齐 VisionMaster「输出(保存)图像」：保存上游图像到文件。',
+            normalize_output_image_params, parent,
+        )
+
+    def _basic_tab(self):
+        w = QWidget(); form = QFormLayout(w); form.setContentsMargins(10, 10, 10, 10)
+        self._name_row(form, '输出图像')
+        image_from = QComboBox()
+        image_from.addItem('（无图像输入）', None)
+        incoming = {e['from'] for e in self.project.get('edges', []) if e.get('to') == self.step.get('id')}
+        index_map = {'source': 0}; names = {'source': '图像源1'}
+        for i, s in enumerate(self.project.get('steps', []), start=1):
+            index_map[s['id']] = i; names[s['id']] = s.get('name', s['id'])
+        def _sub(n): return f"{index_map.get(n,'?')} {names.get(n,n)}.图像"
+        for node in sorted(incoming, key=lambda n: (index_map.get(n, 999), n)):
+            image_from.addItem(_sub(node), node)
+        cur = self.step.get('imageFrom')
+        if cur and image_from.findData(cur) < 0:
+            image_from.addItem('已断开：'+_sub(cur), cur)
+        image_from.setCurrentIndex(max(0, image_from.findData(cur)))
+        image_from.currentIndexChanged.connect(lambda _: self._set_top('imageFrom', image_from.currentData()))
+        form.addRow('输入源', image_from)
+        row = QHBoxLayout()
+        path = QLineEdit(str(self.params.get('path') or ''))
+        path.setPlaceholderText('保存目录或文件路径')
+        path.editingFinished.connect(lambda: self._set_param('path', path.text().strip()))
+        browse = QPushButton('浏览…')
+        def _b():
+            d = QFileDialog.getExistingDirectory(self, '选择保存目录')
+            if d:
+                path.setText(d); self._set_param('path', d)
+        browse.clicked.connect(_b)
+        row.addWidget(path, 1); row.addWidget(browse)
+        form.addRow('保存路径', row)
+        fmt = QComboBox()
+        for f in ('png', 'jpg', 'bmp', 'tif'):
+            fmt.addItem(f, f)
+        fmt.setCurrentIndex(max(0, fmt.findData(self.params.get('format') or 'png')))
+        fmt.currentIndexChanged.connect(lambda _: self._set_param('format', fmt.currentData()))
+        form.addRow('格式', fmt)
+        q = QSpinBox(); q.setRange(1, 100); q.setValue(int(self.params.get('quality') or 95))
+        q.valueChanged.connect(lambda v: self._set_param('quality', int(v)))
+        form.addRow('质量', q)
+        ts = OrangeSwitch(bool(self.params.get('useTimestamp', True)))
+        ts.toggled.connect(lambda c: self._set_param('useTimestamp', bool(c)))
+        form.addRow('文件名加时间戳', ts)
+        return w
+
+
+class ProtocolParsePanel(_ShellBase):
+    def __init__(self, step, definition, project, parent=None):
+        super().__init__(
+            step, project, '协议解析',
+            '对齐 VisionMaster「协议解析」：从接收变量解析字段。',
+            normalize_protocol_parse_params, parent,
+        )
+
+    def _basic_tab(self):
+        w = QWidget(); form = QFormLayout(w); form.setContentsMargins(10, 10, 10, 10)
+        self._name_row(form, '协议解析')
+        src = QLineEdit(str(self.params.get('sourceVar') or 'recvData'))
+        src.editingFinished.connect(lambda: self._set_param('sourceVar', src.text().strip()))
+        form.addRow('源变量', src)
+        proto = QComboBox()
+        for v, lab in (('delimited', '分隔符'), ('fixed', '定长'), ('json', 'JSON'), ('regex', '正则')):
+            proto.addItem(lab, v)
+        proto.setCurrentIndex(max(0, proto.findData(self.params.get('protocol') or 'delimited')))
+        proto.currentIndexChanged.connect(lambda _: self._set_param('protocol', proto.currentData()))
+        form.addRow('协议类型', proto)
+        delim = QLineEdit(str(self.params.get('delimiter') or ','))
+        delim.editingFinished.connect(lambda: self._set_param('delimiter', delim.text()))
+        form.addRow('分隔符', delim)
+        fields = QLineEdit(str(self.params.get('fields') or 'f0,f1,f2'))
+        fields.editingFinished.connect(lambda: self._set_param('fields', fields.text().strip()))
+        form.addRow('字段名', fields)
+        pat = QLineEdit(str(self.params.get('pattern') or ''))
+        pat.setPlaceholderText('正则或定长规格（可选）')
+        pat.editingFinished.connect(lambda: self._set_param('pattern', pat.text()))
+        form.addRow('模式', pat)
+        return w
+
+
+class TextSavePanel(_ShellBase):
+    def __init__(self, step, definition, project, parent=None):
+        super().__init__(
+            step, project, '文本保存',
+            '对齐 VisionMaster「文本保存」：写入/追加文本到文件。',
+            normalize_text_save_params, parent,
+        )
+
+    def _basic_tab(self):
+        w = QWidget(); form = QFormLayout(w); form.setContentsMargins(10, 10, 10, 10)
+        self._name_row(form, '文本保存')
+        row = QHBoxLayout()
+        path = QLineEdit(str(self.params.get('path') or ''))
+        path.setPlaceholderText('文件路径')
+        path.editingFinished.connect(lambda: self._set_param('path', path.text().strip()))
+        browse = QPushButton('浏览…')
+        def _b():
+            f, _ = QFileDialog.getSaveFileName(self, '文本文件', '', '文本 (*.txt *.csv *.log);;全部 (*)')
+            if f:
+                path.setText(f); self._set_param('path', f)
+        browse.clicked.connect(_b)
+        row.addWidget(path, 1); row.addWidget(browse)
+        form.addRow('文件路径', row)
+        content = QPlainTextEdit(); content.setPlainText(str(self.params.get('content') or ''))
+        content.setMaximumHeight(100)
+        content.textChanged.connect(lambda: self._set_param('content', content.toPlainText()))
+        form.addRow('内容', content)
+        svar = QLineEdit(str(self.params.get('sourceVar') or ''))
+        svar.setPlaceholderText('若填写则优先用变量内容')
+        svar.editingFinished.connect(lambda: self._set_param('sourceVar', svar.text().strip()))
+        form.addRow('源变量', svar)
+        ap = OrangeSwitch(bool(self.params.get('append', True)))
+        ap.toggled.connect(lambda c: self._set_param('append', bool(c)))
+        form.addRow('追加写入', ap)
+        enc = QComboBox()
+        for e in ('utf-8', 'gbk', 'ascii'):
+            enc.addItem(e, e)
+        enc.setCurrentIndex(max(0, enc.findData(self.params.get('encoding') or 'utf-8')))
+        enc.currentIndexChanged.connect(lambda _: self._set_param('encoding', enc.currentData()))
+        form.addRow('编码', enc)
+        return w
