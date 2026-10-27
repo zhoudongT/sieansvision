@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊦ · 吸附预设可视化/脉冲时长 · 仅选快捷删色 · PNG另存再复制 · 热同步勾选实时 · α步进5/10/20 · 2026-10-28】
+
+- **吸附预设可视化 / 脉冲时长可配**：`mergeDiffFailHistDropSnapThresh` 预设 10/18/28 + 虚线导引带 `hostMergeDiffFailHistDropSnapGuide`；`mergeDiffFailHistDropPulseMs` 控制落点高亮脉冲时长。
+- **右键仅选后快捷删色**：Shift 区间条右键仅选后，再右键同色或 Del → `delete_sev_pin_arc_seize_recent_shift_range_solo`。
+- **PNG 预览窗另存/再复制**：曲线剪贴板预览对话框增加「另存为…」「再复制」按钮。
+- **热同步菜单勾选态实时刷新**：`refresh_undo_color_scale_hot_sync_menu` + `aboutToShow`；切换预设后 ✓ 即时同步。
+- **α 步进可配 5/10/20**：`stalePruneUndoColorCustomAlphaStep`；预览窗「步进±N」循环；± 按钮跟步进。
+- **冒烟**：`smoke-wave57-snapviz-pulsems-solodel-pngsave-hotsynclive-alphastepcfg-e2e`（另回归 wave56/55/54）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊥ · 落点高亮动画/跨日吸附 · Shift右键仅选 · 剪贴板toast预览 · 徽章色阶热同步 · α步进重置 · 2026-10-28】
 
 - **落点高亮动画 / 跨日组吸附**：组头切换时 opacity 脉冲；`_snap_merge_diff_fail_hist_drop_target` 磁吸最近组头。
