@@ -249,12 +249,17 @@ class ConditionBranchPanel(QWidget):
         lpick = QPushButton('↑')
         lpick.setFixedWidth(28)
         lpick.setToolTip('插入上游字段')
-        def _pick_left(ed=left):
-            picked = pick_upstream_field(self, self.project, self.step.get('id'))
+        def _pick_left(_checked=False, ed=left):
+            # clicked(bool) must not bind into ed — keep line edit via default kwonly-ish default
+            from desktop.upstream_field_picker import host_last_result
+            picked = pick_upstream_field(
+                self, self.project, self.step.get('id'),
+                last_result=host_last_result(self),
+            )
             if picked:
                 ed.setText(picked[2] if len(picked) > 2 else str(picked[1]))
                 self._harvest_rules()
-        lpick.clicked.connect(_pick_left)
+        lpick.clicked.connect(lambda *_: _pick_left())
         left_lay.addWidget(left, 1)
         left_lay.addWidget(lpick)
         self.rules_table.setCellWidget(r, 1, left_wrap)
@@ -279,12 +284,16 @@ class ConditionBranchPanel(QWidget):
         rpick = QPushButton('↑')
         rpick.setFixedWidth(28)
         rpick.setToolTip('插入上游字段')
-        def _pick_right(ed=right):
-            picked = pick_upstream_field(self, self.project, self.step.get('id'))
+        def _pick_right(_checked=False, ed=right):
+            from desktop.upstream_field_picker import host_last_result
+            picked = pick_upstream_field(
+                self, self.project, self.step.get('id'),
+                last_result=host_last_result(self),
+            )
             if picked:
                 ed.setText(picked[2] if len(picked) > 2 else str(picked[1]))
                 self._harvest_rules()
-        rpick.clicked.connect(_pick_right)
+        rpick.clicked.connect(lambda *_: _pick_right())
         right_lay.addWidget(right, 1)
         right_lay.addWidget(rpick)
         self.rules_table.setCellWidget(r, 3, right_wrap)

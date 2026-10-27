@@ -328,7 +328,7 @@
       {
         "device": "LocalLoop",
         "variable": "flow.recvData",
-        "demoPayload": ""
+        "demoPayload": "OK,12.5,PASS"
       }
     ],
     "heartbeat": {
