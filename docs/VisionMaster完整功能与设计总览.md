@@ -426,6 +426,19 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㉓ · 多选对比 · UPH窗口持久 · 联调CSV · 失败码徽章 · Comm簇计数 · 联调固定栏闪 · 2026-10-28】
+
+- **结果表↔胶片多选对比**：结果表 `ExtendedSelection`；「多选对比」/ 多行双击 → `filmCompareRequested({paths, multi})`；`_show_filmstrip_compare_overlays(highlight_paths=)` 优先多选帧（≤6）；同组再点 / ESC 清除。
+- **UPH 窗口持久**：`QSettings prod/uphWindow`；`ProductionStatsPanel` 启动加载、`set_uph_window` 写回。
+- **联调条导出 CSV**：`liaison_events_csv` / 复制联调CSV / 导出联调…。
+- **换型失败码 HMI 徽章**：`hmiFailCodeBadge`（⚠ CODE）；`_report_variant_fail` 置位；换型成功 / 点击 / 8s 清除。
+- **Comm 折叠按簇计数徽章**：折叠勾选文案「簇 N」/「已藏 N」。
+- **Host SM 联调 → 固定栏短闪**：`liaisonPushed` → HMI `_on_liaison_pushed` 蓝闪 1.4s。
+- **冒烟**：`smoke-wave23-multi-uphpersist-liaisoncsv-failbadge-foldbadge-flash-e2e`（另回归 wave22）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆㉒ · ESC/再点清除对比 · UPH窗口 · Comm折叠持久 · 换型失败码 · Alarm联调条 · 2026-10-28】
 
 - **结果表↔对比叠层 ESC / 再点清除**：`keyPressEvent` Esc 优先清 `_filmstrip_compare_active`；再双击同帧路径 toggle `_clear_filmstrip_compare_overlays`；状态栏提示「ESC/再点清除」。

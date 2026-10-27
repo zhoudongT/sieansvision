@@ -541,6 +541,42 @@ class VariablesDialog(QDialog):
         if self.mode.currentData() == 'initial': return self.initial[scope], self.types[scope]
         return self._scope_values(self.runtime_draft, scope), (self.runtime_draft.setdefault('globalTypes', {}) if scope == 'global' else self.types[scope])
 
+    def _count_comm_detail_keys(self) -> int:
+        """wave23: count commAccept_<id> detail keys across scopes."""
+        names = set()
+        try:
+            for scope, bucket in (self.initial or {}).items():
+                if isinstance(bucket, dict):
+                    names.update(str(k) for k in bucket)
+        except Exception:
+            pass
+        try:
+            draft = self.runtime_draft or {}
+            for scope in ('flow', 'global', 'modules'):
+                bucket = self._scope_values(draft, scope) if hasattr(self, '_scope_values') else {}
+                if isinstance(bucket, dict):
+                    names.update(str(k) for k in bucket)
+            gtypes = draft.get('globalTypes') or {}
+            if isinstance(gtypes, dict):
+                names.update(str(k) for k in gtypes)
+        except Exception:
+            pass
+        try:
+            types = self.types or {}
+            for bucket in types.values():
+                if isinstance(bucket, dict):
+                    names.update(str(k) for k in bucket)
+        except Exception:
+            pass
+        try:
+            proj_vars = (self.document.project.get('variables') or {}) if self.document else {}
+            for bucket in proj_vars.values():
+                if isinstance(bucket, dict):
+                    names.update(str(k) for k in bucket)
+        except Exception:
+            pass
+        return sum(1 for n in names if str(n).startswith('commAccept_'))
+
     def render(self, *_):
         mode = self.mode.currentData(); initial = mode == 'initial'; overview = mode == 'overview'
         self.hint.setText('初始定义随工程保存；全局变量在“运行当前值”管理。支持备注 / 复制变量 / 仅全局过滤。' if initial else '值为最近读取的快照。全局表支持备注与持久化开关；可用「仅全局」快速过滤。')
@@ -611,6 +647,23 @@ class VariablesDialog(QDialog):
                     except Exception:
                         pass
         self.count_label.setText(f'{self.table.rowCount()} 项')
+        # wave23: Comm 折叠按簇计数徽章（扫 initial / runtime / project.variables）
+        try:
+            fc = getattr(self, 'fold_comm', None)
+            if fc is not None:
+                detail_n = self._count_comm_detail_keys()
+                if fc.isChecked():
+                    fc.setText(f'折叠 commAccept* · 已藏 {detail_n}')
+                else:
+                    fc.setText(
+                        f'折叠 commAccept* · 簇 {detail_n}' if detail_n else '折叠 commAccept*'
+                    )
+                fc.setToolTip(
+                    '折叠分组：隐藏 commAccept_<项> 明细，保留 Pass/Fail/Skip/Overall/At/Host/Port 摘要'
+                    + (f'（当前簇 {detail_n} 项明细）' if detail_n else '')
+                )
+        except Exception:
+            pass
         editable = not overview and not self.busy and not self.stale and (initial or self.runtime_draft is not None)
         self.dup_button.setEnabled(editable); self.copy_name_button.setEnabled(self.table.rowCount() > 0)
 

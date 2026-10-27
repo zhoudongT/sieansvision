@@ -5,7 +5,7 @@ from copy import deepcopy
 from pathlib import Path
 from datetime import datetime
 
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, QSettings
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
     QPlainTextEdit, QGridLayout, QSizePolicy, QLineEdit, QListWidget,
@@ -144,6 +144,10 @@ class ProductionStatsPanel(QWidget):
         self._ok_hist = []  # newest first bool, max 48 — OK/NG spark
         self._uph_hist = []  # newest first UPH, max 48 — wave21 UPH trend
         self._uph_window = 24  # wave22: adjustable spark window (8..48)
+        try:
+            self._uph_window = self._load_uph_window_pref()
+        except Exception:
+            pass
         self._gate_key = None  # None → auto probe flow vars
         self._trend_listeners = []  # callables(panel) after record/reset
         root = QVBoxLayout(self)
@@ -546,8 +550,8 @@ class ProductionStatsPanel(QWidget):
         except Exception:
             return 24
 
-    def set_uph_window(self, n: int):
-        """wave22: set UPH trend window (8..48)."""
+    def set_uph_window(self, n: int, *, persist: bool = True):
+        """wave22/23: set UPH trend window (8..48); persist via QSettings."""
         try:
             n = int(n)
         except (TypeError, ValueError):
@@ -565,8 +569,33 @@ class ProductionStatsPanel(QWidget):
                 spin.blockSignals(False)
             except Exception:
                 pass
+        if persist:
+            try:
+                self._save_uph_window_pref(n)
+            except Exception:
+                pass
         self._refresh_labels()
         self._notify_trend()
+
+    @staticmethod
+    def _uph_settings():
+        return QSettings('SIEANS', 'VisionDesktop')
+
+    def _load_uph_window_pref(self) -> int:
+        """wave23: UPH 窗口持久."""
+        try:
+            v = int(self._uph_settings().value('prod/uphWindow', 24) or 24)
+        except (TypeError, ValueError):
+            v = 24
+        v = max(8, min(48, v))
+        v = 8 * max(1, round(v / 8))
+        return max(8, min(48, v))
+
+    def _save_uph_window_pref(self, n: int):
+        try:
+            self._uph_settings().setValue('prod/uphWindow', int(n))
+        except Exception:
+            pass
 
     def _on_uph_window_changed(self, value: int):
         self.set_uph_window(value)
@@ -632,6 +661,18 @@ class OperatorHmiView(QWidget):
         self._recipe_badge.mousePressEvent = lambda e: self._toggle_recipe_filter()
         self._recipe_filter_active = False
         header.addWidget(self._recipe_badge)
+        # wave23: 换型失败码 HMI 徽章
+        self._fail_code_badge = QLabel('')
+        self._fail_code_badge.setObjectName('hmiFailCodeBadge')
+        self._fail_code_badge.setStyleSheet(
+            'background:#3a1c1c;color:#ffb4b4;border:1px solid #e35d6a;'
+            'border-radius:3px;padding:3px 8px;font-size:11px;font-weight:700;'
+        )
+        self._fail_code_badge.setToolTip('换型失败码（VARIANT_/APPLY_/ENTER_/TRIAL_）；点击清除')
+        self._fail_code_badge.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._fail_code_badge.mousePressEvent = lambda e: self.clear_fail_code_badge()
+        self._fail_code_badge.hide()
+        header.addWidget(self._fail_code_badge)
         header.addStretch(1)
         self._state_badge = QLabel('空闲')
         self._state_badge.setObjectName('modeBadge')
@@ -1165,6 +1206,11 @@ class OperatorHmiView(QWidget):
         try:
             # Host 信息栏 → HMI「信息提示栏」单向镜像（避免与 append_log 递归）
             host.infoLogged.connect(self._on_host_info_logged)
+        except Exception:
+            pass
+        try:
+            # wave23: 联调条 → 固定栏短闪
+            host.liaisonPushed.connect(self._on_liaison_pushed)
         except Exception:
             pass
         try:
@@ -2040,8 +2086,23 @@ class OperatorHmiView(QWidget):
             pass
 
     def _on_result_row_double_clicked(self, row: int, _col: int = 0):
-        """wave21: 结果表双击 → 定位胶片并打开该帧对比叠层。"""
+        """wave21: 结果表双击 → 定位胶片并打开该帧对比叠层；wave23: 多选时走多选对比。"""
         try:
+            # wave23: if multiple rows selected, prefer multi compare
+            try:
+                table = self.sender() if hasattr(self, 'sender') else None
+                if table is None:
+                    for t0 in getattr(self, '_result_tables', []) or []:
+                        if t0 is not None and t0.currentRow() == row:
+                            table = t0
+                            break
+                if table is not None:
+                    sel = sorted({ix.row() for ix in table.selectedIndexes()})
+                    if len(sel) > 1:
+                        self.request_multi_film_compare()
+                        return
+            except Exception:
+                pass
             payload = self._result_row_payload(row)
             if not payload:
                 return
@@ -2176,6 +2237,165 @@ class OperatorHmiView(QWidget):
             except Exception:
                 pass
         return matched
+
+    def set_fail_code_badge(self, code: str = '', message: str = ''):
+        """wave23: 换型失败码 HMI 徽章."""
+        badge = getattr(self, '_fail_code_badge', None)
+        if badge is None:
+            return
+        code = str(code or '').strip()
+        if not code:
+            self.clear_fail_code_badge()
+            return
+        msg = str(message or '').strip()
+        tip = f'换型失败[{code}]'
+        if msg:
+            tip += f' · {msg}'
+        badge.setText(f'⚠ {code}')
+        badge.setToolTip(tip + ' · 点击清除')
+        badge.show()
+        try:
+            self.append_log(tip)
+        except Exception:
+            pass
+        # auto-hide after 8s
+        try:
+            QTimer.singleShot(8000, lambda c=code: self._auto_hide_fail_badge(c))
+        except Exception:
+            pass
+
+    def _auto_hide_fail_badge(self, code: str):
+        badge = getattr(self, '_fail_code_badge', None)
+        if badge is None or badge.isHidden():
+            return
+        if code and code not in (badge.text() or ''):
+            return
+        self.clear_fail_code_badge()
+
+    def clear_fail_code_badge(self):
+        badge = getattr(self, '_fail_code_badge', None)
+        if badge is None:
+            return
+        badge.hide()
+        badge.setText('')
+        badge.setToolTip('换型失败码；点击清除')
+
+    def request_multi_film_compare(self):
+        """wave23: 结果表多选行 → filmCompareRequested(paths=[...])."""
+        try:
+            table = None
+            for t0 in getattr(self, '_result_tables', []) or []:
+                if t0 is not None and t0.selectedIndexes():
+                    table = t0
+                    break
+            if table is None and getattr(self, '_result_tables', None):
+                table = self._result_tables[0]
+            if table is None:
+                return False
+            rows = sorted({ix.row() for ix in table.selectedIndexes()})
+            if not rows:
+                try:
+                    self.append_log('多选对比：请先多选结果表行（Ctrl/Shift）')
+                except Exception:
+                    pass
+                return False
+            paths, indices, seqs = [], [], []
+            first = None
+            for r in rows:
+                payload = self._result_row_payload(r)
+                if not payload:
+                    continue
+                if first is None:
+                    first = payload
+                p = str(payload.get('path') or '').strip()
+                if p and p not in paths:
+                    paths.append(p)
+                if payload.get('index') is not None:
+                    indices.append(payload.get('index'))
+                if payload.get('seq') is not None:
+                    seqs.append(payload.get('seq'))
+            if not paths:
+                try:
+                    self.append_log('多选对比：所选行无胶片 path（可先补 stamp）')
+                except Exception:
+                    pass
+                return False
+            slim = {
+                'path': paths[0],
+                'paths': paths[:6],
+                'indices': indices[:6],
+                'seqs': seqs[:6],
+                'multi': True,
+                'seq': (first or {}).get('seq'),
+                'index': (first or {}).get('index'),
+            }
+            try:
+                self.filmLocateRequested.emit({
+                    'path': paths[0], 'index': slim.get('index'), 'seq': slim.get('seq'),
+                })
+            except Exception:
+                pass
+            self.filmCompareRequested.emit(slim)
+            try:
+                self.append_log(
+                    f"多选对比 · {len(paths[:6])} 帧 · "
+                    + ', '.join(Path(x).name for x in paths[:6])
+                )
+            except Exception:
+                pass
+            return True
+        except Exception:
+            return False
+
+    def _on_liaison_pushed(self, entry):
+        """wave23: Host SM 联调条 → 固定栏短闪."""
+        entry = entry or {}
+        kind = str(entry.get('kind') or '联调')
+        code = str(entry.get('code') or '')
+        text = str(entry.get('text') or '')
+        tip = f'联调 · {kind}'
+        if code:
+            tip += f'[{code}]'
+        if text:
+            tip += ' · ' + text[:40]
+        try:
+            flash_ss = (
+                'background:#1c2a3a;color:#b8d8f0;border:2px solid #6eb6ff;'
+                'border-radius:3px;padding:5px 10px;font-size:11px;font-weight:700;'
+            )
+            for bar in (getattr(self, '_fix_top', None), getattr(self, '_fix_bottom', None)):
+                if bar is None:
+                    continue
+                try:
+                    bar.setText(f'▬  {tip}')
+                    bar.setStyleSheet(flash_ss)
+                    bar.show()
+                except Exception:
+                    pass
+            side_ss = (
+                'background:#1c2a3a;color:#b8d8f0;border:2px solid #6eb6ff;'
+                'border-radius:2px;padding:2px;font-size:10px;font-weight:700;'
+            )
+            for bar in (getattr(self, '_fix_left', None), getattr(self, '_fix_right', None)):
+                if bar is None:
+                    continue
+                try:
+                    if not bar.isHidden():
+                        bar.setStyleSheet(side_ss)
+                except Exception:
+                    pass
+            try:
+                self.append_log(tip)
+            except Exception:
+                pass
+            def _settle():
+                try:
+                    self._apply_fixed_bars(getattr(self, '_fixed_bars_cache', None) or {})
+                except Exception:
+                    pass
+            QTimer.singleShot(1400, _settle)
+        except Exception:
+            pass
 
     def set_recipe_chrome(self, name: str = '', variant: str = ''):
 
@@ -2643,7 +2863,7 @@ class OperatorHmiView(QWidget):
             table.setObjectName('hmiResultTable')
             table.setMinimumHeight(120)
             table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-            table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+            table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)  # wave23 多选对比
             try:
                 table.cellClicked.connect(self._on_result_row_clicked)
                 table.cellDoubleClicked.connect(self._on_result_row_double_clicked)
@@ -2676,6 +2896,11 @@ class OperatorHmiView(QWidget):
             filt_row.addWidget(lab_rf)
             self._recipe_filter_labs = getattr(self, '_recipe_filter_labs', [])
             self._recipe_filter_labs.append(lab_rf)
+            btn_multi = QPushButton('多选对比')
+            btn_multi.setObjectName('hmiMultiCompareBtn')
+            btn_multi.setToolTip('结果表多选行 → 胶片多帧对比叠层（最多 6 帧）；再点同组或 ESC 清除')
+            btn_multi.clicked.connect(self.request_multi_film_compare)
+            filt_row.addWidget(btn_multi)
             cell.layout().addLayout(filt_row)
             cell.layout().addWidget(table, 1)
             btn_row = QHBoxLayout()

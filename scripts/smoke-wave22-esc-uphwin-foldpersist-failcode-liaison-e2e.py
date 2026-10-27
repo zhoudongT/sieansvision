@@ -44,6 +44,9 @@ def main():
 
     # --- UPH window adjustable ---
     panel = ProductionStatsPanel()
+    # default or persisted (wave23 may have changed QSettings)
+    assert 8 <= panel.uph_window() <= 48
+    panel.set_uph_window(24)
     assert panel.uph_window() == 24
     for _ in range(10):
         panel.record(True, elapsed_ms=100 + _ * 5)

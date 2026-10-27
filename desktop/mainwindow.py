@@ -1298,6 +1298,7 @@ class MainWindow(QMainWindow):
         if getattr(self, '_filmstrip_compare_active', False):
             self._filmstrip_compare_active = False
             self._filmstrip_compare_path = ''
+            self._filmstrip_compare_paths = []
             try:
                 self._apply_measure_geom_overlays(
                     (getattr(self, 'last_result', None) or {}).get('results') or [])
@@ -1308,8 +1309,12 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
-    def _show_filmstrip_compare_overlays(self, highlight_path: str = ''):
-        """Build color-cycled overlays from _filmstrip_results (+ current)."""
+    def _show_filmstrip_compare_overlays(self, highlight_path: str = '',
+                                        highlight_paths=None):
+        """Build color-cycled overlays from _filmstrip_results (+ current).
+
+        wave23: highlight_paths — 多选对比优先帧列表（最多 6）。
+        """
         view = getattr(self, 'output_view', None)
         if view is None or not hasattr(view, 'set_geom_overlays'):
             return
@@ -1324,9 +1329,13 @@ class MainWindow(QMainWindow):
         except Exception:
             return
         frames = []
-        # Prefer hovered first, then current, then rest (cap 6)
+        # Prefer multi-selected / hovered first, then current, then rest (cap 6)
         order = []
-        if highlight_path and highlight_path in cache:
+        multi = [str(x) for x in (highlight_paths or []) if str(x).strip()]
+        for hp in multi:
+            if hp in cache and hp not in order:
+                order.append(hp)
+        if highlight_path and highlight_path in cache and highlight_path not in order:
             order.append(highlight_path)
         try:
             cur = self.filmstrip.current_path() if hasattr(self, 'filmstrip') else ''
@@ -1354,13 +1363,20 @@ class MainWindow(QMainWindow):
         try:
             view.set_geom_overlays(specs)
             self._filmstrip_compare_active = True
-            self._filmstrip_compare_path = highlight_path or ''
+            self._filmstrip_compare_path = highlight_path or (multi[0] if multi else '')
+            self._filmstrip_compare_paths = list(multi or (
+                [highlight_path] if highlight_path else []))
         except Exception:
             return
         try:
             from pathlib import Path as _P
-            leaf = _P(highlight_path).name if highlight_path else '多帧'
+            if multi and len(multi) > 1:
+                leaf = f'多选{len(multi)}帧'
+            else:
+                leaf = _P(highlight_path).name if highlight_path else '多帧'
             msg = f'胶片对比预览 · {leaf} · {len(frames)} 帧 · ' + (' | '.join(tip_bits[:3]))
+            if multi and len(multi) > 1:
+                msg += ' · ESC/再点清除'
             self.statusBar().showMessage(msg)
         except Exception:
             pass
@@ -2088,36 +2104,66 @@ class MainWindow(QMainWindow):
                 path = fs.current_path() or ''
             except Exception:
                 path = ''
-        if not path:
+        # wave23: multi paths from 多选对比
+        multi_paths = []
+        try:
+            raw = payload.get('paths') or []
+            if isinstance(raw, (list, tuple)):
+                multi_paths = [str(x).strip() for x in raw if str(x).strip()]
+        except Exception:
+            multi_paths = []
+        if multi_paths and not path:
+            path = multi_paths[0]
+        if not path and not multi_paths:
             try:
                 self.statusBar().showMessage('对比叠层：无胶片路径（可先补 stamp）', 3000)
             except Exception:
                 pass
             return
-        # wave22: 再点同帧 → 清除对比叠层
+        # wave22/23: 再点同帧/同组 → 清除对比叠层
         try:
             active = bool(getattr(self, '_filmstrip_compare_active', False))
             cur = str(getattr(self, '_filmstrip_compare_path', '') or '')
+            cur_paths = [str(x) for x in (getattr(self, '_filmstrip_compare_paths', None) or [])]
             same = False
-            if active and cur:
+            if active and multi_paths and cur_paths:
+                try:
+                    a = sorted(str(Path(x).resolve()) for x in multi_paths)
+                    b = sorted(str(Path(x).resolve()) for x in cur_paths)
+                    same = a == b
+                except Exception:
+                    same = sorted(multi_paths) == sorted(cur_paths)
+            elif active and cur and path and not multi_paths:
                 try:
                     same = (Path(cur).resolve() == Path(path).resolve()) or cur == path
                 except Exception:
                     same = cur == path
             if same:
                 self._clear_filmstrip_compare_overlays()
-                self.log(f'再点清除对比叠层 · {Path(path).name}')
+                tip = Path(path).name if path else f'{len(multi_paths)}帧'
+                self.log(f'再点清除对比叠层 · {tip}')
                 return
         except Exception:
             pass
         try:
-            self._show_filmstrip_compare_overlays(highlight_path=path)
-            self.statusBar().showMessage(
-                f"结果表双击对比叠层 · seq={payload.get('seq') or '—'} · "
-                + Path(path).name
-                + ' · ESC/再点清除',
-                5000,
+            self._show_filmstrip_compare_overlays(
+                highlight_path=path,
+                highlight_paths=multi_paths or None,
             )
+            if multi_paths and len(multi_paths) > 1:
+                self.statusBar().showMessage(
+                    f"多选对比叠层 · {len(multi_paths)} 帧 · "
+                    + ', '.join(Path(x).name for x in multi_paths[:4])
+                    + ' · ESC/再点清除',
+                    5000,
+                )
+            else:
+                self.statusBar().showMessage(
+                    f"结果表双击对比叠层 · seq={payload.get('seq') or '—'} · "
+                    + Path(path).name
+                    + ' · ESC/再点清除',
+                    5000,
+                )
         except Exception as err:
             try:
                 self.log(f'结果表→对比叠层失败：{err}')
@@ -3915,6 +3961,8 @@ class MainWindow(QMainWindow):
             host = getattr(hmi, '_host_sm', None) if hmi else None
             if host is not None and hasattr(host, 'push_liaison_event'):
                 host.push_liaison_event(tip, kind='换型失败', code=code)
+            if hmi is not None and hasattr(hmi, 'set_fail_code_badge'):
+                hmi.set_fail_code_badge(code, tip)
         except Exception:
             pass
 
@@ -3952,6 +4000,8 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'operator_hmi') and self.operator_hmi is not None:
                 if hasattr(self.operator_hmi, 'set_recipe_chrome'):
                     self.operator_hmi.set_recipe_chrome(name, variant)
+                if hasattr(self.operator_hmi, 'clear_fail_code_badge'):
+                    self.operator_hmi.clear_fail_code_badge()
                 if getattr(self, 'app_mode', 'design') == 'run':
                     self.operator_hmi.reload_layout(self.document.project)
         except Exception:

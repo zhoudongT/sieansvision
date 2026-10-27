@@ -54,6 +54,7 @@ class HostStateMachineWidget(QWidget):
     triggerCommands = Signal(object)  # list[dict]
     stateChanged = Signal(str)
     infoLogged = Signal(str)
+    liaisonPushed = Signal(object)  # wave23: 联调条事件 → HMI 固定栏短闪
 
     def __init__(self, parent=None, compact=False):
         super().__init__(parent)
@@ -675,6 +676,16 @@ class HostStateMachineWidget(QWidget):
         b_save.setToolTip('导出报警历史 CSV 文件')
         b_save.clicked.connect(self.export_alarm_history_file)
         row.addWidget(b_save)
+        b_lia_copy = QPushButton('复制联调CSV')
+        b_lia_copy.setObjectName('hostLiaisonCopyBtn')
+        b_lia_copy.setToolTip('复制联调条事件为 CSV 到剪贴板')
+        b_lia_copy.clicked.connect(self.export_liaison_clipboard)
+        row.addWidget(b_lia_copy)
+        b_lia_save = QPushButton('导出联调…')
+        b_lia_save.setObjectName('hostLiaisonExportBtn')
+        b_lia_save.setToolTip('导出联调条事件 CSV 文件')
+        b_lia_save.clicked.connect(self.export_liaison_file)
+        row.addWidget(b_lia_save)
         self._alarm_hist_count = QLabel('0 条')
         self._alarm_hist_count.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
         row.addWidget(self._alarm_hist_count)
@@ -719,6 +730,37 @@ class HostStateMachineWidget(QWidget):
             self._log_line(f'导出失败：{err}')
 
 
+    def liaison_events_csv(self) -> str:
+        """wave23: 联调条 CSV（clipboard / file）."""
+        lines = ['timestamp,kind,code,text']
+        for e in self._liaison_events:
+            ts = str(e.get('ts') or '').replace(',', ' ')
+            kind = str(e.get('kind') or '').replace(',', ' ')
+            code = str(e.get('code') or '').replace(',', ' ')
+            text = str(e.get('text') or '').replace('"', "'").replace('\n', ' ')
+            lines.append(f'{ts},{kind},{code},"{text}"')
+        return '\n'.join(lines) + ('\n' if lines else '')
+
+    def export_liaison_clipboard(self):
+        csv = self.liaison_events_csv()
+        try:
+            QApplication.clipboard().setText(csv)
+            self._log_line(f'联调条已复制 CSV · {len(self._liaison_events)} 条')
+        except Exception as err:
+            self._log_line(f'联调复制失败：{err}')
+
+    def export_liaison_file(self):
+        path, _ = QFileDialog.getSaveFileName(
+            self, '导出联调条', 'liaison-events.csv', 'CSV (*.csv);;All (*)')
+        if not path:
+            return
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(self.liaison_events_csv())
+            self._log_line(f'联调条已导出 · {path}')
+        except Exception as err:
+            self._log_line(f'联调导出失败：{err}')
+
     def push_liaison_event(self, text: str, *, kind: str = '', code: str = ''):
         """wave22: append 联调条 event (试跑清除 / 换型失败 / 报警清除)."""
         entry = {
@@ -742,6 +784,10 @@ class HostStateMachineWidget(QWidget):
                 + (f"[{entry['code']}]" if entry['code'] else '')
                 + f" · {entry['text'][:80]}"
             )
+        except Exception:
+            pass
+        try:
+            self.liaisonPushed.emit(dict(entry))
         except Exception:
             pass
 
