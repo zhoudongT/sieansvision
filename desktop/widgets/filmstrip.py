@@ -382,6 +382,17 @@ class FilmstripBar(QWidget):
             except Exception:
                 pass
 
+    def set_live_fit_mode(self, fit_mode, *, refresh=True):
+        """Change Display fitMode on live thumb; optionally re-fit without new frame."""
+        if fit_mode in ('contain', 'cover', 'actual'):
+            self._live_fit_mode = fit_mode
+        if refresh:
+            try:
+                return bool(self.refresh_live_thumb_fit())
+            except Exception:
+                return False
+        return False
+
     def refresh_live_thumb_fit(self):
         """Re-apply _fit_pixmap_to_thumb on last live src (pad/fit change, same frame)."""
         src = getattr(self, '_live_src_pixmap', None)

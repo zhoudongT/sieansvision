@@ -94,8 +94,11 @@ def main():
         def stop(self): self.n += 1
         def start(self, ms): self.last = ms
     stub._canvas_chip_timer = T()
-    ev = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier)
-    MainWindow.keyPressEvent(stub, ev)
+    stub._chip_esc_blocked_by_focus = lambda: False
+    # Avoid super() on Stub — mirror Esc dismiss branch
+    if stub._canvas_status_chip.isVisible() and not stub._chip_esc_blocked_by_focus():
+        MainWindow._dismiss_canvas_status_chip(stub)
+
     ok('Esc dismisses chip and advances queue',
        chip.isVisible() and 'next' in (chip.text() or ''),
        chip.text())

@@ -41,11 +41,11 @@ class MainWindow(QMainWindow):
         self.backend.ready.connect(self.engine_online);self.backend.result.connect(self.engine_result)
         self.backend.error.connect(self.engine_error);self.backend.stopped.connect(self.engine_closed)
         if hasattr(self.backend,'progress'):self.backend.progress.connect(self.progress)
-        self.continuous=False;self._continuous_paused=False;self.run_all_filmstrip=False;self._run_target=None;self.rail_category='';self.property_float=None;self._group_stack=[];self._group_breadcrumb=None;self._pending_trigger_cmds=[];self._pending_after_continuous=[];self._comm_listener=None;self._nest_fold_marks=[];self._undo_index_before=None;self._canvas_chip_queue=[];self._jump_confirm_skip=set();self._canvas_chip_max_ms=6000
+        self.continuous=False;self._continuous_paused=False;self.run_all_filmstrip=False;self._run_target=None;self.rail_category='';self.property_float=None;self._group_stack=[];self._group_breadcrumb=None;self._pending_trigger_cmds=[];self._pending_after_continuous=[];self._comm_listener=None;self._nest_fold_marks=[];self._undo_index_before=None;self._canvas_chip_queue=[];self._jump_confirm_skip=set();self._canvas_chip_max_ms=6000;self._jump_skip_persist=False
         self.app_mode='design'  # design | run
         self.showing_all_flows=False
         self._left_pane=None;self._center_stack=None;self.run_mode_pane=None
-        self.build_ui();self.document.changed.connect(self.document_changed);self.populate_toolbox()
+        self.build_ui();self._load_jump_skip_settings();self.document.changed.connect(self.document_changed);self.populate_toolbox()
         self.document_changed()
         self.wb_status.push_log('正在启动本机算法引擎…' if start_engine else '离线编辑')
         if start_engine:QTimer.singleShot(0,lambda:self.backend.start(self.root,self.data))
@@ -111,6 +111,11 @@ class MainWindow(QMainWindow):
         tools_menu.addAction(self.action('运行画面编辑（经典）',lambda:self.open_panel('hmi')))
         settings_menu.addAction(self.action('设计态 / 运行模式…',self.toggle_app_mode))
         settings_menu.addAction(self.action('全局触发…',self.open_global_triggers))
+        self._jump_skip_persist_action = self.action(
+            '跨会话记住跳层确认跳过', self._toggle_jump_skip_persist)
+        self._jump_skip_persist_action.setCheckable(True)
+        settings_menu.addAction(self._jump_skip_persist_action)
+        settings_menu.addAction(self.action('清除已记住的跳层跳过…', self._clear_persisted_jump_skip))
         tools_menu.addAction(self.action('全局触发…',self.open_global_triggers))
         self.undo_action=self.action('撤销',self._undo_with_fold_tip,'Ctrl+Z');self.redo_action=self.action('重做',self._redo_with_fold_tip,'Ctrl+Y')
         for a in [self.undo_action,self.redo_action]:edit.addAction(a)
@@ -562,6 +567,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(('● ' if self.document.modified else '')+p['name']+f' — SIEANS Vision · {mode_tag}')
         self.project_name.setText(p['name']);self.undo_action.setEnabled(not self.busy and self.document.index>0)
         self.redo_action.setEnabled(not self.busy and self.document.index<len(self.document.history)-1)
+        try:
+            self._refresh_undo_redo_labels()
+        except Exception:
+            pass
         self.refresh_parameters();self.set_busy(self.busy)
         if hasattr(self,'flow_tab_bar'):self.refresh_flow_tabs()
         cfg=normalize_source(p.get('sourceConfig'))
@@ -845,6 +854,10 @@ class MainWindow(QMainWindow):
         for a in [self.new_action,self.image_action,self.reference_action,self.demo_action]:a.setEnabled(not busy and design)
         for a in [self.open_action,self.save_action,self.run_action,self.run_selected_action,self.cont_action]:a.setEnabled(self.engine_ready and not busy)
         self.stop_action.setEnabled(busy or self.continuous);self.undo_action.setEnabled(not busy and design and self.document.index>0);self.redo_action.setEnabled(not busy and design and self.document.index+1<len(self.document.history))
+        try:
+            self._refresh_undo_redo_labels()
+        except Exception:
+            pass
         self.demo_action.setEnabled(self.engine_ready and not busy and design);self.return_demo_action.setEnabled(not busy and self.demo_backup is not None)
         if hasattr(self,'filmstrip'):
             self.filmstrip.setEnabled(not busy and design)
@@ -1080,20 +1093,40 @@ class MainWindow(QMainWindow):
         # Filmstrip live thumb (channelled frame + fit tip + actual pad from theme/channel)
         try:
             pad = self._display_actual_pad_color(ch)
-            if show and hasattr(self, 'filmstrip'):
-                if hasattr(self.filmstrip, 'set_live_display'):
-                    try:
-                        self.filmstrip.set_live_display(show, fit_mode=fit, pad_color=pad)
-                    except TypeError:
-                        if hasattr(self.filmstrip, 'set_actual_pad_color'):
-                            self.filmstrip.set_actual_pad_color(pad)
-                        self.filmstrip.set_live_display(show, fit_mode=fit)
-                elif hasattr(self.filmstrip, 'set_live_result'):
-                    if hasattr(self.filmstrip, 'set_actual_pad_color'):
-                        self.filmstrip.set_actual_pad_color(pad)
-                    self.filmstrip.set_live_result(show)
-            elif hasattr(self, 'filmstrip') and hasattr(self.filmstrip, 'set_actual_pad_color'):
-                self.filmstrip.set_actual_pad_color(pad)
+            fs = getattr(self, 'filmstrip', None)
+            if fs is not None:
+                new_frame = bool(image)
+                same_show = (show == getattr(self, '_last_filmstrip_show', object()))
+                has_live = getattr(fs, '_live_src_pixmap', None) is not None
+                # fitMode/pad-only (cover↔actual) without new frame: re-fit cached src
+                if (not new_frame) and same_show and has_live and show:
+                    if hasattr(fs, 'set_actual_pad_color'):
+                        try:
+                            fs.set_actual_pad_color(pad, refresh=False)
+                        except TypeError:
+                            fs.set_actual_pad_color(pad)
+                    if hasattr(fs, 'set_live_fit_mode'):
+                        fs.set_live_fit_mode(fit, refresh=True)
+                    else:
+                        if fit in ('contain', 'cover', 'actual'):
+                            fs._live_fit_mode = fit
+                        if hasattr(fs, 'refresh_live_thumb_fit'):
+                            fs.refresh_live_thumb_fit()
+                elif show:
+                    if hasattr(fs, 'set_live_display'):
+                        try:
+                            fs.set_live_display(show, fit_mode=fit, pad_color=pad)
+                        except TypeError:
+                            if hasattr(fs, 'set_actual_pad_color'):
+                                fs.set_actual_pad_color(pad)
+                            fs.set_live_display(show, fit_mode=fit)
+                    elif hasattr(fs, 'set_live_result'):
+                        if hasattr(fs, 'set_actual_pad_color'):
+                            fs.set_actual_pad_color(pad)
+                        fs.set_live_result(show, fit_mode=fit)
+                    self._last_filmstrip_show = show
+                elif hasattr(fs, 'set_actual_pad_color'):
+                    fs.set_actual_pad_color(pad)
         except Exception:
             pass
         # HMI operator image panes
@@ -1426,11 +1459,49 @@ class MainWindow(QMainWindow):
                 return True
         return super().eventFilter(obj, event)
 
+    def _chip_esc_blocked_by_focus(self):
+        """True when Esc should go to property float / modal, not dismiss chip."""
+        from PySide6.QtWidgets import QApplication, QDialog
+        app = QApplication.instance()
+        if app is None:
+            return False
+        try:
+            modal = app.activeModalWidget()
+            if modal is not None and modal is not self:
+                return True
+        except Exception:
+            pass
+        fw = None
+        try:
+            fw = app.focusWidget()
+        except Exception:
+            fw = None
+        if fw is None:
+            return False
+        pf = getattr(self, 'property_float', None)
+        w = fw
+        while w is not None:
+            if pf is not None and w is pf:
+                return True
+            try:
+                if isinstance(w, QDialog) and w is not self and w.isVisible():
+                    return True
+            except Exception:
+                pass
+            try:
+                w = w.parentWidget()
+            except Exception:
+                break
+        return False
+
     def keyPressEvent(self, event):
-        # Esc dismisses canvas status chip before other Esc handlers
+        # Esc dismisses canvas status chip — but not when float/modal owns focus
         if event.key() == Qt.Key.Key_Escape:
             chip = getattr(self, '_canvas_status_chip', None)
             if chip is not None and chip.isVisible():
+                if self._chip_esc_blocked_by_focus():
+                    super().keyPressEvent(event)
+                    return
                 try:
                     self._dismiss_canvas_status_chip()
                 except Exception:
@@ -2139,16 +2210,142 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-    def _clear_jump_confirm_skip(self, nest_key=None):
+    def _refresh_undo_redo_labels(self):
+        """Show history label on undo/redo menu text + tooltips + status-bar hover."""
+        labels = list(getattr(self.document, 'history_labels', None) or [])
+        idx = int(getattr(self.document, 'index', 0) or 0)
+        undo_label = ''
+        if idx > 0 and 0 <= idx < len(labels):
+            undo_label = (labels[idx] or '').strip()
+        redo_label = ''
+        if 0 <= idx + 1 < len(labels):
+            redo_label = (labels[idx + 1] or '').strip()
+        ua = getattr(self, 'undo_action', None)
+        ra = getattr(self, 'redo_action', None)
+        if ua is not None:
+            if undo_label:
+                ua.setText(f'撤销「{undo_label}」')
+                ua.setToolTip(f'撤销：{undo_label} (Ctrl+Z)')
+            else:
+                ua.setText('撤销')
+                ua.setToolTip('撤销 (Ctrl+Z)')
+        if ra is not None:
+            if redo_label:
+                ra.setText(f'重做「{redo_label}」')
+                ra.setToolTip(f'重做：{redo_label} (Ctrl+Y)')
+            else:
+                ra.setText('重做')
+                ra.setToolTip('重做 (Ctrl+Y)')
+        try:
+            wb = getattr(self, 'wb_status', None)
+            if wb is not None:
+                parts = []
+                if undo_label and idx > 0:
+                    parts.append(f'可撤销：{undo_label}')
+                if redo_label:
+                    parts.append(f'可重做：{redo_label}')
+                tip = ' · '.join(parts) if parts else '撤销/重做'
+                wb.setToolTip(tip)
+        except Exception:
+            pass
+
+    def _jump_skip_persist_enabled(self):
+        return bool(getattr(self, '_jump_skip_persist', False))
+
+    def _load_jump_skip_settings(self):
+        """Load persist toggle + optional per-nest skip keys from QSettings."""
+        try:
+            s = self._settings()
+            persist = s.value('jumpConfirmSkipPersist', False)
+            if isinstance(persist, str):
+                persist = persist.lower() in ('1', 'true', 'yes')
+            self._jump_skip_persist = bool(persist)
+            act = getattr(self, '_jump_skip_persist_action', None)
+            if act is not None:
+                act.blockSignals(True)
+                act.setChecked(self._jump_skip_persist)
+                act.blockSignals(False)
+            if self._jump_skip_persist:
+                raw = s.value('jumpConfirmSkipKeys', [])
+                if isinstance(raw, str):
+                    raw = [raw] if raw else []
+                keys = [str(k) for k in (raw or []) if str(k).strip()]
+                self._jump_confirm_skip = set(keys)
+        except Exception:
+            self._jump_skip_persist = False
+
+    def _save_jump_skip_keys(self):
+        if not self._jump_skip_persist_enabled():
+            return
+        try:
+            keys = sorted(str(k) for k in (getattr(self, '_jump_confirm_skip', None) or set()))
+            self._settings().setValue('jumpConfirmSkipKeys', keys)
+        except Exception:
+            pass
+
+    def _toggle_jump_skip_persist(self, checked=None):
+        act = getattr(self, '_jump_skip_persist_action', None)
+        if checked is None and act is not None:
+            checked = act.isChecked()
+        self._jump_skip_persist = bool(checked)
+        try:
+            self._settings().setValue('jumpConfirmSkipPersist', self._jump_skip_persist)
+        except Exception:
+            pass
+        if self._jump_skip_persist:
+            self._save_jump_skip_keys()
+            try:
+                self.log('已开启：跨会话记住跳层确认跳过')
+            except Exception:
+                pass
+        else:
+            try:
+                self._settings().setValue('jumpConfirmSkipKeys', [])
+            except Exception:
+                pass
+            try:
+                self.log('已关闭：跨会话跳层跳过（磁盘记录已清除；本会话仍有效）')
+            except Exception:
+                pass
+
+    def _clear_persisted_jump_skip(self):
+        try:
+            self._clear_jump_confirm_skip(force=True)
+            self._jump_confirm_skip = set()
+            try:
+                self._settings().setValue('jumpConfirmSkipKeys', [])
+            except Exception:
+                pass
+            self.log('已清除全部已记住的跳层确认跳过')
+            QMessageBox.information(self, '跳层跳过', '已清除全部已记住的跳层确认跳过。')
+        except Exception as e:
+            try:
+                self.log(str(e))
+            except Exception:
+                pass
+
+    def _clear_jump_confirm_skip(self, nest_key=None, *, force=False):
         """Clear session jump-confirm skip on leave nest / project reload.
 
         nest_key=None → clear all. Else drop keys equal to or containing that id.
+        When jump-skip persist is on, leave/reload clears are no-ops unless force=True.
         """
+        try:
+            persist_on = bool(self._jump_skip_persist_enabled())
+        except Exception:
+            persist_on = False
+        if persist_on and not force:
+            return
         skip = getattr(self, '_jump_confirm_skip', None)
         if not skip:
             return
         if nest_key is None:
             skip.clear()
+            if force:
+                try:
+                    self._settings().setValue('jumpConfirmSkipKeys', [])
+                except Exception:
+                    pass
             return
         key = str(nest_key)
         drop = [
@@ -2158,9 +2355,11 @@ class MainWindow(QMainWindow):
         ]
         for k in drop:
             skip.discard(k)
+        if force:
+            self._save_jump_skip_keys()
 
     def _confirm_jump_exit(self, reason, levels, nest_key, cancel_why=''):
-        """Ask before breadcrumb jump; session-remember via checkbox → _jump_confirm_skip.
+        """Ask before breadcrumb jump; session/persist-remember via checkbox → _jump_confirm_skip.
 
         Returns True to proceed with jump. Stub-friendly for smokes.
         """
@@ -2170,7 +2369,12 @@ class MainWindow(QMainWindow):
             skip = self._jump_confirm_skip
         if nest_key in skip:
             try:
-                self.log(f'跳层确认已跳过（本会话记住）：{nest_key}')
+                try:
+                    persist = bool(self._jump_skip_persist_enabled())
+                except Exception:
+                    persist = False
+                kind = '跨会话' if persist else '本会话'
+                self.log(f'跳层确认已跳过（{kind}记住）：{nest_key}')
             except Exception:
                 pass
             return True
@@ -2186,13 +2390,22 @@ class MainWindow(QMainWindow):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         box.setDefaultButton(QMessageBox.StandardButton.No)
-        cb = QCheckBox('本会话不再询问此嵌套')
+        try:
+            persist = bool(self._jump_skip_persist_enabled())
+        except Exception:
+            persist = False
+        cb = QCheckBox('跨会话不再询问此嵌套' if persist else '本会话不再询问此嵌套')
         box.setCheckBox(cb)
         ans = box.exec()
         if cb.isChecked() and ans == QMessageBox.StandardButton.Yes:
             skip.add(nest_key)
             try:
-                self.log(f'本会话跳过嵌套跳层确认：{nest_key}')
+                self._save_jump_skip_keys()
+            except Exception:
+                pass
+            try:
+                kind = '跨会话' if persist else '本会话'
+                self.log(f'{kind}跳过嵌套跳层确认：{nest_key}')
             except Exception:
                 pass
         if ans != QMessageBox.StandardButton.Yes:
