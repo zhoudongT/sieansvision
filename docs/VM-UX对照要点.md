@@ -1031,3 +1031,23 @@ sieans：`config_status.node_needs_bang` + `Node.needs_config` / `run_failed`（
 - 主工具栏 `ToolButtonIconOnly` + 18px 图标 + 紧间距（对标 VM 纯图标观感；文案走 ToolTip）。
 - 算子库 IconSize 24 / Grid 64×52。
 - 固定栏 `_refresh_fixed_bar_device_status` 读通讯徽章；HMI IP/端口/连接状态可 `set_device_chrome` 实况刷新。
+
+## 【细妆剩余清单 · 持续更新 · 2026-10-27 深夜】
+
+> Allen t194：每一处细妆完成；下列为仍未闭合项（无 robot SDK / 无 push）。
+
+| 域 | 剩余细妆 |
+|----|----------|
+| chrome | 工具栏纯图标人工观感确认；品牌条与 VM 分区像素级对照 |
+| panels | 灰度/特征模板**编辑子窗**（阈值画笔）；卡尺级几何全参数引擎软用加深 |
+| harvest | 全算子面板「插入上游字段」扫盲（少数 wave3 薄壳可能仍缺） |
+| HMI | 控件 1:1 可视化（非 stub）；固定栏**相机会话异步**实况；模板市场/云同步 |
+| filmstrip | 格式过滤下拉与属性面板双向同步（现 ToolTip 列表） |
+| float | 与 VM 帧像素级 QSS 对照；模块连续执行中参数热更新提示 |
+| nest | Group **引擎展开**与循环实执；进组红叹号组内扫盲动画 |
+| labels | 全菜单/ToolTip 中英混用扫尾；状态栏「组件配置完成」与 N4 联动文案 |
+| settings | 流程超时/运行间隔与连续跑调度的全路径走查 |
+| samples | 更多行业 Skip 集仅 UI 示意样例（无厂商 SDK） |
+| Comm | 收发事件 ↔ 运行时变量更深联调；全局触发←Comm 收数表壳联调 |
+| Host SM | 信息栏与 HMI「信息提示栏」双向；报警历史筛选 |
+

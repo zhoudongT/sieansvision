@@ -279,7 +279,7 @@ class LocateMatchPanel(QWidget):
 
         row = QHBoxLayout()
         load_btn = QPushButton('载入模板…')
-        create_btn = QPushButton('标记已创建')
+        create_btn = QPushButton('创建模板…')
         clear_btn = QPushButton('清除')
 
         def _load():
@@ -292,7 +292,14 @@ class LocateMatchPanel(QWidget):
                 self._set_param('hasTemplate', True)
 
         def _mark():
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self, '创建模板',
+                '模板编辑子窗（对比度阈值 / 画笔）后续迭代。\n'
+                '本步将模板标记为已就绪，便于流程跑通与红叹号清除。',
+            )
             self._set_param('hasTemplate', True)
+            self._set_param('templateReady', True)
             status.setText('模板状态：已就绪（已创建/载入）')
             status.setStyleSheet('font-weight:600;color:#2e7d32;')
 
