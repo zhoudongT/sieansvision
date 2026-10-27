@@ -39,7 +39,7 @@ def builtin_definitions():
     metadata=json.loads(Path(__file__).with_name('builtin-catalog.json').read_text(encoding='utf-8'))
     definitions={}
     groups={'group':'流程控制','subflow':'流程控制','loop':'流程控制','condition':'流程控制','branch_merge':'流程控制','branch':'流程控制','delay':'流程控制','variables':'变量与数据','var_calc':'变量与数据','format_data':'变量与数据','text_save':'变量与数据','elapsed_stats':'流程控制','receive_data':'工业通信','send_data':'工业通信','protocol_parse':'工业通信','output_image':'图像处理',
-            'preprocess':'图像处理','locate':'定位与测量','pose_correct':'定位与测量','distort_correct':'标定与校正','nine_point':'标定与校正','geometry':'定位与测量','measure':'定位与测量','line_intersect':'定位与测量','point_distance':'定位与测量','point_line_distance':'定位与测量','csharp_script':'变量与数据','production_task':'流程控制','barcode':'识别','ocr':'识别','defects':'识别','yolo':'识别','yolo_segment':'识别'}
+            'preprocess':'图像处理','display':'图像处理','locate':'定位与测量','pose_correct':'定位与测量','distort_correct':'标定与校正','nine_point':'标定与校正','geometry':'定位与测量','measure':'定位与测量','line_intersect':'定位与测量','point_distance':'定位与测量','point_line_distance':'定位与测量','csharp_script':'变量与数据','production_task':'流程控制','barcode':'识别','ocr':'识别','defects':'识别','yolo':'识别','yolo_segment':'识别'}
     for operation,meta in metadata.items():
         if operation=='plugin':continue
         defaults=deepcopy(meta.get('defaults',{}));parameters=[]
@@ -204,6 +204,17 @@ def builtin_definitions():
         defaults=dict(path='', content='', sourceVar='', append=True, encoding='utf-8', newline=True),
         parameters=[field('path', '文件路径', 'string', ''), field('append', '追加', 'boolean', True)],
         description='文本保存（VM p=25）。',
+    )
+    definitions['display'] = dict(
+        operation='display', name='图像显示', category='图像处理',
+        defaults=dict(showOverlay=True, showName=True, fitMode='contain', channel='auto'),
+        parameters=[
+            field('showOverlay', '显示叠加', 'boolean', True),
+            field('showName', '显示名称', 'boolean', True),
+            field('fitMode', '适应模式', 'string', 'contain',
+                  choices=choices(('contain', '适应'), ('cover', '铺满'), ('actual', '实际像素'))),
+        ],
+        description='图像显示（VM 图像显示组）：订阅上游图像，设计态预览。',
     )
 
 

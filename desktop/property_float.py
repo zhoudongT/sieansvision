@@ -76,8 +76,8 @@ class PropertyFloat(QDialog):
         self.ok_btn = QPushButton('确定')
         self.cont_btn.clicked.connect(lambda: self.runModuleContinuous.emit(self._node_id))
         self.exec_btn.clicked.connect(lambda: self.runModule.emit(self._node_id))
-        self.cancel_btn.clicked.connect(self.close)
-        self.ok_btn.clicked.connect(self.close)
+        self.cancel_btn.clicked.connect(self._on_footer_close)
+        self.ok_btn.clicked.connect(self._on_ok_close)
         foot.addWidget(self.cont_btn)
         foot.addStretch(1)
         foot.addWidget(self.exec_btn)
@@ -123,6 +123,43 @@ class PropertyFloat(QDialog):
                 item.widget().deleteLater()
         self._panel = None
         self._source_form = None
+
+    def _sync_host_filmstrip(self):
+        """Keep filmstrip soft-disable/visibility after OK/close without re-show_source."""
+        host = self.parent()
+        if host is None:
+            return
+        try:
+            if hasattr(host, '_sync_filmstrip_visibility'):
+                host._sync_filmstrip_visibility()
+            if hasattr(host, '_sync_filmstrip_interval_hint'):
+                host._sync_filmstrip_interval_hint()
+        except Exception:
+            pass
+
+    def _on_ok_close(self):
+        # Flush any pending source form edits (editingFinished may not have fired)
+        form = getattr(self, '_source_form', None)
+        if form is not None:
+            try:
+                if hasattr(form, 'config'):
+                    self.sourceChanged.emit(form.config())
+            except Exception:
+                pass
+        self._sync_host_filmstrip()
+        self.close()
+
+    def _on_footer_close(self):
+        self._sync_host_filmstrip()
+        self.close()
+
+    def hideEvent(self, event):
+        # Closing via ✕ / Esc still keeps soft-disable without reopening float
+        try:
+            self._sync_host_filmstrip()
+        except Exception:
+            pass
+        super().hideEvent(event)
 
     def show_source(self, config, title='0 图像源'):
         self._node_id = 'source'
@@ -251,11 +288,16 @@ class PropertyFloat(QDialog):
             self._last_step = deepcopy(step)
             self.show(); self.raise_(); self.activateWindow()
             return
-        if step and step.get('operation') in ('format_data', 'output_image', 'protocol_parse', 'text_save'):
+        if step and step.get('operation') in (
+            'format_data', 'output_image', 'protocol_parse', 'text_save',
+            'preprocess', 'display',
+        ):
             from desktop.wave3_thin_panels import (
                 FormatDataPanel, OutputImagePanel, ProtocolParsePanel, TextSavePanel,
+                PreprocessPanel, DisplayPanel,
                 normalize_format_data_params, normalize_output_image_params,
                 normalize_protocol_parse_params, normalize_text_save_params,
+                normalize_preprocess_params, normalize_display_params,
             )
             step = deepcopy(step)
             op = step.get('operation')
@@ -264,6 +306,8 @@ class PropertyFloat(QDialog):
                 'output_image': (OutputImagePanel, normalize_output_image_params),
                 'protocol_parse': (ProtocolParsePanel, normalize_protocol_parse_params),
                 'text_save': (TextSavePanel, normalize_text_save_params),
+                'preprocess': (PreprocessPanel, normalize_preprocess_params),
+                'display': (DisplayPanel, normalize_display_params),
             }
             Panel, norm = panel_map[op]
             step['params'] = norm(step.get('params'))

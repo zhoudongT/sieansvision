@@ -704,6 +704,7 @@ class ParameterPanel(QWidget):
             return
         self._step, self._definition, self._context = deepcopy(step), deepcopy(definition), deepcopy(context)
         self._last_result = last_result
+        self._project_for_banner = project or {}
         while self.tabs.count():
             widget = self.tabs.widget(0)
             self.tabs.removeTab(0)
@@ -739,7 +740,12 @@ class ParameterPanel(QWidget):
         self.name_edit.setMaxLength(80)
         self.name_edit.editingFinished.connect(lambda: self._set_top('name', self.name_edit.text()))
         basic.addRow('模块名称', self.name_edit)
+        self._incomplete_banner = QLabel()
+        self._incomplete_banner.setObjectName('incompleteBanner')
+        self._incomplete_banner.setWordWrap(True)
+        basic.addRow(self._incomplete_banner)
         page.addWidget(basic_box)
+        self._refresh_incomplete_banner()
 
         # —— 图像输入 (iconic) —— VisionMaster「订阅图像源」
         image_box, image_form = _section(
@@ -848,10 +854,34 @@ class ParameterPanel(QWidget):
         page.addStretch(1)
         self.tabs.setCurrentIndex(0)
 
+    def _refresh_incomplete_banner(self):
+        bang_lab = getattr(self, '_incomplete_banner', None)
+        if bang_lab is None or self._step is None:
+            return
+        try:
+            from desktop.config_status import step_incomplete
+            bang = step_incomplete(self._step, getattr(self, '_project_for_banner', None) or {})
+        except Exception:
+            bang = False
+        if bang:
+            missing = []
+            if not self._step.get('imageFrom') and (self._step.get('operation') or '') in (
+                'preprocess', 'display', 'geometry', 'measure', 'locate', 'barcode', 'ocr', 'blob', 'fixture', 'defects', 'yolo', 'pose_correct',
+            ):
+                missing.append('输入源(imageFrom)')
+            bang_lab.setText('⚠ 组件参数未配置完整：' + ('、'.join(missing) or '请检查必填项'))
+            bang_lab.setStyleSheet('color:#c62828;background:#ffebee;padding:6px 8px;border-radius:3px;')
+        else:
+            bang_lab.setText('组件配置完成')
+            bang_lab.setStyleSheet('color:#2e7d32;padding:4px 8px;')
+        bang_lab.setVisible(True)
+
     def _set_top(self, key, value):
         if self._step is not None and self._step.get(key) != value:
             self._step[key] = deepcopy(value)
             self.changed.emit(deepcopy(self._step))
+            if key == 'imageFrom':
+                self._refresh_incomplete_banner()
 
     def _set_param(self, group, key, value):
         if self._step is None:

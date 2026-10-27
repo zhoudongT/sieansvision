@@ -471,9 +471,24 @@ def run(request):
         data, mask_image = segment(image, canvas, p, offset, MODEL_DIR, MODELS)
     elif operation == 'distort_correct':
         data = distort_correct(image, canvas, p, offset)
+    elif operation == 'display':
+        # Design-time 图像显示：透传上游图；可选叠加模块名
+        data = {
+            'shown': True,
+            'fitMode': p.get('fitMode') or 'contain',
+            'showOverlay': bool(p.get('showOverlay', True)),
+            'showName': bool(p.get('showName', True)),
+        }
+        if data['showName']:
+            try:
+                import cv2
+                label = str(p.get('_stepName') or '显示')
+                cv2.putText(canvas, label, (12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 200, 255), 2, cv2.LINE_AA)
+            except Exception:
+                pass
     else:
         raise ValueError('未知视觉操作')
-    extension = '.png' if operation in ('preprocess', 'distort_correct') or (operation == 'yolo_segment' and p.get('output') == 'mask') else '.jpg'
+    extension = '.png' if operation in ('preprocess', 'distort_correct', 'display') or (operation == 'yolo_segment' and p.get('output') == 'mask') else '.jpg'
     _, encoded = cv2.imencode(extension, canvas, [] if extension == '.png' else [cv2.IMWRITE_JPEG_QUALITY, 88])
     return {'operation': operation, 'result': data, 'elapsedMs': round((time.perf_counter()-started)*1000, 1),
             **({'maskImage':mask_image} if operation == 'yolo_segment' else {}),

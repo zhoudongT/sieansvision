@@ -459,5 +459,20 @@ class GroupBreadcrumb(QFrame):
             f'QFrame#groupBreadcrumb{{background:{CARD};border:1px solid {LINE};border-radius:2px;}}'
         )
 
-    def set_path(self, flow_name, group_name):
-        self.label.setText(f'{flow_name}  ›  组合模块 · {group_name}（嵌套编辑）')
+    def set_path(self, flow_name, group_name=None, *, parts=None):
+        """Breadcrumb: 主流程 › G1 › G2 …（嵌套编辑）.
+
+        Accepts legacy (flow_name, group_name) or parts=['主流程','G1','G2'].
+        """
+        if parts:
+            segs = [str(p).strip() for p in parts if str(p).strip()]
+        else:
+            segs = [str(flow_name or '主流程').strip()]
+            if group_name:
+                segs.append(str(group_name).strip())
+        if len(segs) <= 1:
+            text = (segs[0] if segs else '主流程') + '（嵌套编辑）'
+        else:
+            text = '  ›  '.join(segs) + '（嵌套编辑）'
+        self.label.setText(text)
+        self.setToolTip(' / '.join(segs))

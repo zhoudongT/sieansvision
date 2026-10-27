@@ -1,4 +1,4 @@
-"""Wave3 薄壳：格式化 / 输出图像 / 协议解析 / 文本保存 — 设计态可用."""
+"""Wave3 薄壳：格式化 / 输出图像 / 协议解析 / 文本保存 / 预处理 / 图像显示 — 设计态可用."""
 from copy import deepcopy
 
 from PySide6.QtCore import Signal
@@ -527,4 +527,181 @@ class TextSavePanel(_ShellBase):
         tip = QLabel('路径为空时节点红叹号。')
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
+        return w
+
+
+def normalize_preprocess_params(params=None):
+    p = deepcopy(params or {})
+    p.setdefault('method', 'grayscale')
+    p.setdefault('threshold', 127)
+    p.setdefault('kernel', 3)
+    p.setdefault('cannyLow', 50)
+    p.setdefault('cannyHigh', 150)
+    p.setdefault('invert', False)
+    p.setdefault('blur', 1)
+    return p
+
+
+def normalize_display_params(params=None):
+    """图像显示（薄壳）：订阅上游图像并可选标注开关 — 对齐 VM 图像显示组."""
+    p = deepcopy(params or {})
+    p.setdefault('showOverlay', True)
+    p.setdefault('showName', True)
+    p.setdefault('fitMode', 'contain')  # contain | cover | actual
+    p.setdefault('channel', 'auto')  # auto | r | g | b | gray
+    return p
+
+
+class PreprocessPanel(_ShellBase):
+    def __init__(self, step, definition, project, parent=None):
+        super().__init__(
+            step, project, '图像预处理',
+            '对齐 VisionMaster「图像预处理」：灰度 / 模糊 / 二值 / Canny / 形态学。',
+            normalize_preprocess_params, parent,
+        )
+
+    def _missing_fields(self):
+        missing = []
+        if not self.step.get('imageFrom'):
+            missing.append('输入源(imageFrom)')
+        return missing
+
+    def _set_top(self, key, value):
+        super()._set_top(key, value)
+        if key == 'imageFrom':
+            self._refresh_incomplete_banner()
+
+    def _basic_tab(self):
+        w = QWidget(); form = QFormLayout(w); form.setContentsMargins(10, 10, 10, 10)
+        self._name_row(form, '图像预处理')
+        self._ensure_incomplete_banner(form)
+        image_from = QComboBox()
+        image_from.addItem('（无图像输入）', None)
+        incoming = {e['from'] for e in self.project.get('edges', []) if e.get('to') == self.step.get('id')}
+        index_map = {'source': 0}; names = {'source': '图像源1'}
+        for i, s in enumerate(self.project.get('steps', []), start=1):
+            index_map[s['id']] = i; names[s['id']] = s.get('name', s['id'])
+        def _sub(n): return f"{index_map.get(n,'?')} {names.get(n,n)}.图像"
+        for node in sorted(incoming, key=lambda n: (index_map.get(n, 999), n)):
+            image_from.addItem(_sub(node), node)
+        soft_ops = ('locate', 'geometry', 'preprocess', 'pose_correct', 'distort_correct', 'output_image')
+        for s in self.project.get('steps', []):
+            if s.get('id') == self.step.get('id'):
+                continue
+            if s.get('operation') in soft_ops and image_from.findData(s['id']) < 0:
+                image_from.addItem(_sub(s['id']) + '（可选）', s['id'])
+        # Always offer source
+        if image_from.findData('source') < 0:
+            image_from.addItem(_sub('source') + '（可选）', 'source')
+        cur = self.step.get('imageFrom')
+        if cur and image_from.findData(cur) < 0:
+            image_from.addItem('已断开：' + _sub(cur), cur)
+        image_from.setCurrentIndex(max(0, image_from.findData(cur)))
+        image_from.currentIndexChanged.connect(lambda _: self._set_top('imageFrom', image_from.currentData()))
+        self._image_from = image_from
+        form.addRow('输入源', image_from)
+
+        method = QComboBox()
+        for val, lab in (
+            ('grayscale', '灰度化'), ('blur', '高斯模糊'), ('threshold', '二值化'),
+            ('canny', '边缘提取'), ('open', '开运算'), ('close', '闭运算'),
+        ):
+            method.addItem(lab, val)
+        method.setCurrentIndex(max(0, method.findData(self.params.get('method') or 'grayscale')))
+        method.currentIndexChanged.connect(lambda _: self._set_param('method', method.currentData()))
+        form.addRow('处理方法', method)
+
+        thr = QSpinBox(); thr.setRange(0, 255); thr.setValue(int(self.params.get('threshold') or 127))
+        thr.valueChanged.connect(lambda v: self._set_param('threshold', int(v)))
+        form.addRow('二值阈值', thr)
+
+        ker = QSpinBox(); ker.setRange(1, 51); ker.setSingleStep(2)
+        ker.setValue(int(self.params.get('kernel') or 3))
+        ker.valueChanged.connect(lambda v: self._set_param('kernel', int(v) if int(v) % 2 else int(v) + 1))
+        form.addRow('核大小（奇数）', ker)
+
+        lo = QSpinBox(); lo.setRange(0, 255); lo.setValue(int(self.params.get('cannyLow') or 50))
+        lo.valueChanged.connect(lambda v: self._set_param('cannyLow', int(v)))
+        form.addRow('Canny 低阈值', lo)
+        hi = QSpinBox(); hi.setRange(0, 255); hi.setValue(int(self.params.get('cannyHigh') or 150))
+        hi.valueChanged.connect(lambda v: self._set_param('cannyHigh', int(v)))
+        form.addRow('Canny 高阈值', hi)
+
+        inv = OrangeSwitch(bool(self.params.get('invert', False)))
+        inv.toggled.connect(lambda c: self._set_param('invert', bool(c)))
+        form.addRow('反色', inv)
+
+        tip = QLabel('未选输入源时节点红叹号（config_status.preprocess）。')
+        tip.setStyleSheet('color:#888;')
+        form.addRow(tip)
+        self._refresh_incomplete_banner()
+        return w
+
+
+class DisplayPanel(_ShellBase):
+    """图像显示薄壳 — incompleteBanner harvest 与预处理/输出图像对齐."""
+
+    def __init__(self, step, definition, project, parent=None):
+        super().__init__(
+            step, project, '图像显示',
+            '对齐 VisionMaster「图像显示」：订阅上游图像，设计态预览开关。',
+            normalize_display_params, parent,
+        )
+
+    def _missing_fields(self):
+        missing = []
+        if not self.step.get('imageFrom'):
+            missing.append('输入源(imageFrom)')
+        return missing
+
+    def _set_top(self, key, value):
+        super()._set_top(key, value)
+        if key == 'imageFrom':
+            self._refresh_incomplete_banner()
+
+    def _basic_tab(self):
+        w = QWidget(); form = QFormLayout(w); form.setContentsMargins(10, 10, 10, 10)
+        self._name_row(form, '图像显示')
+        self._ensure_incomplete_banner(form)
+        image_from = QComboBox()
+        image_from.addItem('（无图像输入）', None)
+        incoming = {e['from'] for e in self.project.get('edges', []) if e.get('to') == self.step.get('id')}
+        index_map = {'source': 0}; names = {'source': '图像源1'}
+        for i, s in enumerate(self.project.get('steps', []), start=1):
+            index_map[s['id']] = i; names[s['id']] = s.get('name', s['id'])
+        def _sub(n): return f"{index_map.get(n,'?')} {names.get(n,n)}.图像"
+        for node in sorted(incoming, key=lambda n: (index_map.get(n, 999), n)):
+            image_from.addItem(_sub(node), node)
+        soft_ops = ('locate', 'geometry', 'preprocess', 'pose_correct', 'output_image')
+        for s in self.project.get('steps', []):
+            if s.get('id') == self.step.get('id'):
+                continue
+            if s.get('operation') in soft_ops and image_from.findData(s['id']) < 0:
+                image_from.addItem(_sub(s['id']) + '（可选）', s['id'])
+        if image_from.findData('source') < 0:
+            image_from.addItem(_sub('source') + '（可选）', 'source')
+        cur = self.step.get('imageFrom')
+        if cur and image_from.findData(cur) < 0:
+            image_from.addItem('已断开：' + _sub(cur), cur)
+        image_from.setCurrentIndex(max(0, image_from.findData(cur)))
+        image_from.currentIndexChanged.connect(lambda _: self._set_top('imageFrom', image_from.currentData()))
+        self._image_from = image_from
+        form.addRow('输入源', image_from)
+
+        ov = OrangeSwitch(bool(self.params.get('showOverlay', True)))
+        ov.toggled.connect(lambda c: self._set_param('showOverlay', bool(c)))
+        form.addRow('显示叠加', ov)
+        sn = OrangeSwitch(bool(self.params.get('showName', True)))
+        sn.toggled.connect(lambda c: self._set_param('showName', bool(c)))
+        form.addRow('显示名称', sn)
+        fit = QComboBox()
+        for val, lab in (('contain', '适应'), ('cover', '铺满'), ('actual', '实际像素')):
+            fit.addItem(lab, val)
+        fit.setCurrentIndex(max(0, fit.findData(self.params.get('fitMode') or 'contain')))
+        fit.currentIndexChanged.connect(lambda _: self._set_param('fitMode', fit.currentData()))
+        form.addRow('适应模式', fit)
+        tip = QLabel('未选输入源时 incompleteBanner / 画布红叹号。')
+        tip.setStyleSheet('color:#888;')
+        form.addRow(tip)
+        self._refresh_incomplete_banner()
         return w

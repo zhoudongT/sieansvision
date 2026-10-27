@@ -265,6 +265,7 @@ class OperatorHmiView(QWidget):
     designRequested = Signal()
     backToDesign = Signal()
     runUiChanged = Signal(object)  # dict patch, e.g. {'fixedBars': {...}}
+    pauseToggled = Signal(bool)  # bridge 生产统计 暂停计数 ↔ ContinuousRun / 运行全部
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -594,9 +595,14 @@ class OperatorHmiView(QWidget):
 
 
     def _wire_stats_panel(self, panel: ProductionStatsPanel):
-        """Connect 「判定门」 picks → persist into runUi.fixedBars.gateKey."""
+        """Connect 「判定门」 picks → persist into runUi.fixedBars.gateKey;
+        re-emit pauseToggled so MainWindow can bridge ContinuousRun / 运行全部."""
         try:
             panel.gateKeyChanged.connect(self._on_stats_gate_key)
+        except Exception:
+            pass
+        try:
+            panel.pauseToggled.connect(self.pauseToggled.emit)
         except Exception:
             pass
 

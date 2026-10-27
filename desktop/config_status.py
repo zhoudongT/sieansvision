@@ -116,6 +116,8 @@ def step_incomplete(step, project=None) -> bool:
         return not str(params.get('taskName') or '').strip()
     if op == 'preprocess':
         return not bool(step.get('imageFrom'))
+    if op == 'display':
+        return not bool(step.get('imageFrom'))
     if op == 'defects':
         return not (bool(step.get('imageFrom')) and (
             params.get('referencePath') or params.get('hasReference') or step.get('reference')

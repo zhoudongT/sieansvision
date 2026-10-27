@@ -223,6 +223,8 @@ class MainWindow(QMainWindow):
         self.operator_hmi.backToDesign.connect(lambda:self.set_app_mode('design'))
         if hasattr(self.operator_hmi,'runUiChanged'):
             self.operator_hmi.runUiChanged.connect(lambda patch:self.guard(lambda:self._on_hmi_run_ui_changed(patch)))
+        if hasattr(self.operator_hmi, 'pauseToggled'):
+            self.operator_hmi.pauseToggled.connect(self._on_hmi_pause_toggled)
         self._run_pane=self.operator_hmi
         self.run_mode_image=None  # image panes live inside operator_hmi
         horizontal.addWidget(self.operator_hmi)
@@ -762,7 +764,12 @@ class MainWindow(QMainWindow):
         for a in [self.open_action,self.save_action,self.run_action,self.run_selected_action,self.cont_action]:a.setEnabled(self.engine_ready and not busy)
         self.stop_action.setEnabled(busy or self.continuous);self.undo_action.setEnabled(not busy and design and self.document.index>0);self.redo_action.setEnabled(not busy and design and self.document.index+1<len(self.document.history))
         self.demo_action.setEnabled(self.engine_ready and not busy and design);self.return_demo_action.setEnabled(not busy and self.demo_backup is not None)
-        if hasattr(self,'filmstrip'):self.filmstrip.setEnabled(not busy and design)
+        if hasattr(self,'filmstrip'):
+            self.filmstrip.setEnabled(not busy and design)
+            # Parent setEnabled(True) re-enables children — re-apply camera soft-disable
+            if not busy and design:
+                try: self._sync_filmstrip_visibility()
+                except Exception: pass
         for action in self.workspace_actions:action.setEnabled(self.engine_ready and (not busy or action.data() in ('continuous','hmi')))
         for key,dialog in list(self.dialogs.items()):
             if hasattr(dialog,'set_busy'):
@@ -805,8 +812,8 @@ class MainWindow(QMainWindow):
 
 
     def pause_continuous(self):
-        """Soft-pause ContinuousRun: keep continuous=True but skip next QTimer schedule."""
-        if not self.continuous:
+        """Soft-pause ContinuousRun or 运行全部: skip next QTimer schedule."""
+        if not (self.continuous or self.run_all_filmstrip):
             return
         self._continuous_paused = True
         try:
@@ -814,11 +821,17 @@ class MainWindow(QMainWindow):
                 self.filmstrip.set_continuous_paused(True)
         except Exception:
             pass
-        self.log('连续运行已暂停（可改间隔后继续）')
+        # Bridge → HMI 生产统计 pause buttons (avoid re-entry)
+        try:
+            self._sync_hmi_pause_buttons(True)
+        except Exception:
+            pass
+        kind = '运行全部' if self.run_all_filmstrip and not self.continuous else '连续运行'
+        self.log(f'{kind}已暂停（可改间隔后继续）')
 
     def resume_continuous(self):
-        """Resume paused ContinuousRun; schedule next tick if not busy."""
-        if not self.continuous:
+        """Resume paused ContinuousRun / 运行全部; schedule next tick if not busy."""
+        if not (self.continuous or self.run_all_filmstrip):
             return
         was = bool(getattr(self, '_continuous_paused', False))
         self._continuous_paused = False
@@ -827,11 +840,19 @@ class MainWindow(QMainWindow):
                 self.filmstrip.set_continuous_paused(False)
         except Exception:
             pass
-        self.log('连续运行已继续')
+        try:
+            self._sync_hmi_pause_buttons(False)
+        except Exception:
+            pass
+        kind = '运行全部' if self.run_all_filmstrip and not self.continuous else '连续运行'
+        self.log(f'{kind}已继续')
         if was and not self.busy:
             from PySide6.QtCore import QTimer
             delay = self._filmstrip_advance_delay_ms()
-            QTimer.singleShot(delay, lambda: self.guard(lambda: self.run(self._run_target) if self.continuous and not getattr(self, '_continuous_paused', False) else None))
+            if self.run_all_filmstrip:
+                QTimer.singleShot(delay, lambda: self.guard(self.run) if self.run_all_filmstrip and not getattr(self, '_continuous_paused', False) else None)
+            else:
+                QTimer.singleShot(delay, lambda: self.guard(lambda: self.run(self._run_target) if self.continuous and not getattr(self, '_continuous_paused', False) else None))
 
     def _flush_after_continuous(self):
         """Chain non-run commands that followed 执行·连续 once continuous ends."""
@@ -975,10 +996,22 @@ class MainWindow(QMainWindow):
                 self._flush_after_continuous()
             return
         if self.run_all_filmstrip and state=='completed':
+            if getattr(self, '_continuous_paused', False):
+                self.log('运行全部暂停中 — 跳过下次切图')
+                return
             if self.filmstrip.advance():
-                QTimer.singleShot(self._filmstrip_advance_delay_ms(), lambda:self.guard(self.run))
+                QTimer.singleShot(self._filmstrip_advance_delay_ms(), lambda:self.guard(self.run) if self.run_all_filmstrip and not getattr(self,'_continuous_paused',False) else None)
             else:
-                self.run_all_filmstrip=False;self.log('运行全部完成')
+                self.run_all_filmstrip=False
+                self._continuous_paused=False
+                try:
+                    if hasattr(self,'filmstrip') and hasattr(self.filmstrip,'set_continuous_paused'):
+                        self.filmstrip.set_continuous_paused(False)
+                    if hasattr(self,'filmstrip') and hasattr(self.filmstrip,'set_continuous_controls_enabled'):
+                        self.filmstrip.set_continuous_controls_enabled(False)
+                except Exception:
+                    pass
+                self.log('运行全部完成')
             return
         if state in ('failed', 'cancelled'):
             self._pending_trigger_cmds = []
@@ -1176,6 +1209,34 @@ class MainWindow(QMainWindow):
         self._sync_filmstrip_interval_hint()
         self.log(f'添加模块: 流程1.图像源1 · 本地图 {len(paths)} 张' if paths else '图像源本地列表已清空')
 
+    def _sync_hmi_pause_buttons(self, paused):
+        """Mirror ContinuousRun / 运行全部 pause onto HMI 生产统计 buttons."""
+        hmi = getattr(self, 'operator_hmi', None)
+        if hmi is None:
+            return
+        paused = bool(paused)
+        panels = list(getattr(hmi, '_stats_panels', None) or [])
+        for panel in panels:
+            btn = getattr(panel, '_pause_btn', None)
+            if btn is None:
+                continue
+            if btn.isChecked() == paused:
+                continue
+            btn.blockSignals(True)
+            btn.setChecked(paused)
+            panel._paused = paused
+            btn.setText('▶ 继续计数' if paused else '⏸ 暂停计数')
+            btn.blockSignals(False)
+
+    def _on_hmi_pause_toggled(self, paused):
+        """Bridge OperatorHmiView 暂停计数 ↔ ContinuousRun / 运行全部 pause."""
+        if paused:
+            if self.continuous or self.run_all_filmstrip:
+                self.pause_continuous()
+        else:
+            if self.continuous or self.run_all_filmstrip:
+                self.resume_continuous()
+
     def _on_filmstrip_continuous_pause(self, paused):
         if paused:
             self.pause_continuous()
@@ -1201,7 +1262,14 @@ class MainWindow(QMainWindow):
     def run_all_images(self):
         if self.busy or not self.engine_ready:return
         if not self.filmstrip.paths():raise ValueError('请先在胶片条添加本地图像')
-        self.continuous=False;self.run_all_filmstrip=True
+        self.continuous=False;self.run_all_filmstrip=True;self._continuous_paused=False
+        try:
+            if hasattr(self.filmstrip, 'set_continuous_controls_enabled'):
+                self.filmstrip.set_continuous_controls_enabled(True)
+            if hasattr(self.filmstrip, 'set_continuous_paused'):
+                self.filmstrip.set_continuous_paused(False)
+        except Exception:
+            pass
         # jump to first
         self.filmstrip.thumbs.setCurrentRow(0)
         self.guard(self.run)
@@ -1567,6 +1635,22 @@ class MainWindow(QMainWindow):
 
 
     # ---- B3 组合模块：进入 / 退出嵌套画布 ----
+    def _group_breadcrumb_parts(self):
+        """Full nest path: 主流程 › G1 › G2 …"""
+        parts = ['主流程']
+        for fr in (self._group_stack or []):
+            parts.append(fr.get('name') or '组合模块')
+        return parts
+
+    def _refresh_group_breadcrumb(self):
+        if not hasattr(self, '_group_breadcrumb') or self._group_breadcrumb is None:
+            return
+        if self._group_stack:
+            self._group_breadcrumb.set_path(None, parts=self._group_breadcrumb_parts())
+            self._group_breadcrumb.setVisible(True)
+        else:
+            self._group_breadcrumb.setVisible(False)
+
     def enter_group_module(self, node_id):
         step = next((s for s in self.document.project.get('steps', []) if s.get('id') == node_id), None)
         if not step or step.get('operation') != 'group':
@@ -1579,30 +1663,39 @@ class MainWindow(QMainWindow):
             return
         inner = params.get('inner') or default_group_inner()
         params['inner'] = inner
-        # 先把当前外层写入 history，再切换视图
-        self.document.commit(deepcopy(self.document.project))
+        # Snapshot outer project + undo history so mid-nest undo stays on this nest level
+        try:
+            self.document.commit(deepcopy(self.document.project))
+        except Exception:
+            pass
         self._group_stack.append({
             'node_id': node_id,
             'name': step.get('name') or '组合模块',
             'outer_project': deepcopy(self.document.project),
+            'outer_history': deepcopy(getattr(self.document, 'history', None) or []),
+            'outer_index': int(getattr(self.document, 'index', 0) or 0),
+            'outer_saved': deepcopy(getattr(self.document, 'saved', None)),
         })
         view_project = deepcopy(self.document.project)
         view_project['steps'] = deepcopy(inner.get('steps') or [])
         view_project['edges'] = deepcopy(inner.get('edges') or [])
         view_project['sourcePosition'] = deepcopy(inner.get('sourcePosition') or dict(x=300, y=40))
-        view_project['name'] = f'{self.document.project.get("name","方案")} / {step.get("name") or "组合模块"}'
-        # 软切换：不走 validate 的完整 load（内层可为空）
+        nest_names = ' / '.join(fr.get('name') or '组合' for fr in self._group_stack)
+        view_project['name'] = f'{self.document.project.get("name","方案")} / {nest_names}'
+        # Soft switch + fresh history branch for this nest (mid-nest undo/redo)
         self.document.project = view_project
+        self.document.history = [deepcopy(view_project)]
+        self.document.index = 0
+        self.document.saved = deepcopy(view_project)
         self.selected = None
         self.scene.rebuild()
         self.document_changed()
-        self._group_breadcrumb.set_path('主流程', step.get('name') or '组合模块')
-        self._group_breadcrumb.setVisible(True)
-        self.log(f'已进入组合模块「{step.get("name") or node_id}」· ImageData/InputROI 绑定可在属性中配置')
+        self._refresh_group_breadcrumb()
+        self.log(f'已进入组合模块「{step.get("name") or node_id}」· 深度 {len(self._group_stack)} · 可撤销/重做本层编辑')
 
     def exit_group_module(self):
         if not self._group_stack:
-            self._group_breadcrumb.setVisible(False); return
+            self._refresh_group_breadcrumb(); return
         from copy import deepcopy
         frame = self._group_stack.pop()
         inner_steps = deepcopy(self.document.project.get('steps') or [])
@@ -1620,16 +1713,27 @@ class MainWindow(QMainWindow):
                 }
                 s['params'] = params
                 break
-        self.document.load(outer)
-        # load 已 emit changed → document_changed + 需 rebuild
-        self.scene.rebuild()
-        if self._group_stack:
-            top = self._group_stack[-1]
-            self._group_breadcrumb.set_path('主流程', top['name'])
-            self._group_breadcrumb.setVisible(True)
+        # Restore outer history branch; tip with merged outer as current tip
+        hist = list(frame.get('outer_history') or [])
+        idx = int(frame.get('outer_index') or 0)
+        if hist:
+            # Replace tip at idx with merged outer so undo still reaches pre-enter
+            if 0 <= idx < len(hist):
+                hist = hist[:idx] + [deepcopy(outer)]
+            else:
+                hist = hist + [deepcopy(outer)]
+                idx = len(hist) - 1
+            self.document.project = deepcopy(outer)
+            self.document.history = hist
+            self.document.index = min(idx, len(hist) - 1)
+            if frame.get('outer_saved') is not None:
+                self.document.saved = frame['outer_saved']
+            self.document.changed.emit()
         else:
-            self._group_breadcrumb.setVisible(False)
-        self.log(f'已退出组合模块「{frame["name"]}」')
+            self.document.load(outer)
+        self.scene.rebuild()
+        self._refresh_group_breadcrumb()
+        self.log(f'已退出组合模块「{frame["name"]}」· 剩余深度 {len(self._group_stack)}')
 
 
     def reload_comm_listener(self):
