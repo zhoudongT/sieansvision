@@ -312,18 +312,37 @@ class FlowView(QGraphicsView):
 
     def __init__(self,scene):
         super().__init__(scene);self.setAcceptDrops(True)
+        self.viewport().setAcceptDrops(True)
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setMinimumWidth(360);self.setMouseTracking(True);self._port_press=None;self._link_dragged=False
 
     def port_at(self,point):
+        """Hit-test ports in viewport space.
+
+        Ports use ItemIgnoresTransformations so they stay easy to click when
+        zoomed out. Compact VM nodes are only ~28px tall, so a fixed 12px
+        radius used to cover the whole pill and steal node moves. Prefer an
+        exact Port under the cursor; expand the radius only over empty canvas.
+        """
         point=point.toPoint() if isinstance(point,QPointF) else point
-        candidates=[]
-        for item in self.items(QRect(point.x()-12,point.y()-12,25,25)):
+        for item in self.items(point):
             if isinstance(item,Port):
-                delta=self.mapFromScene(item.scenePos())-point;distance=delta.x()**2+delta.y()**2
-                if distance<=12**2:candidates.append((distance,item))
+                return item
+            if isinstance(item,Node):
+                break
+        over_node=any(isinstance(item,Node) for item in self.items(point))
+        # Tight on node body so repositioning still works; generous on empty
+        # canvas so zoomed-out port linking stays easy (see test_native_graph).
+        radius=4 if over_node else 12
+        candidates=[]
+        for item in self.items(QRect(point.x()-radius,point.y()-radius,2*radius+1,2*radius+1)):
+            if isinstance(item,Port):
+                delta=self.mapFromScene(item.scenePos())-point
+                distance=delta.x()**2+delta.y()**2
+                if distance<=radius*radius:
+                    candidates.append((distance,item))
         return min(candidates,key=lambda pair:pair[0])[1] if candidates else None
 
     def mousePressEvent(self,event):
@@ -369,18 +388,27 @@ class FlowView(QGraphicsView):
         else:super().wheelEvent(event)
 
     def dragEnterEvent(self,event):
-        if self.scene().edit_locked:event.ignore();return
-        if event.mimeData().hasFormat('application/x-sieans-operator'):event.acceptProposedAction()
+        if self.scene().edit_locked or not event.mimeData().hasFormat('application/x-sieans-operator'):
+            event.ignore();return
+        event.setDropAction(Qt.DropAction.CopyAction)
+        event.accept()
 
     def dragMoveEvent(self,event):
-        if event.mimeData().hasFormat('application/x-sieans-operator'):event.acceptProposedAction()
+        if self.scene().edit_locked or not event.mimeData().hasFormat('application/x-sieans-operator'):
+            event.ignore();return
+        event.setDropAction(Qt.DropAction.CopyAction)
+        event.accept()
 
     def dropEvent(self,event):
-        if self.scene().edit_locked:
+        if self.scene().edit_locked or not event.mimeData().hasFormat('application/x-sieans-operator'):
             event.ignore();return
-        key=bytes(event.mimeData().data('application/x-sieans-operator')).decode('utf-8')
+        raw=bytes(event.mimeData().data('application/x-sieans-operator')).decode('utf-8').strip()
+        if not raw:
+            event.ignore();return
         pos=self.mapToScene(event.position().toPoint())
-        self.dropped.emit(key,dict(x=max(0,min(9800,pos.x())),y=max(0,min(9800,pos.y()))));event.acceptProposedAction()
+        self.dropped.emit(raw,dict(x=max(0,min(9800,pos.x())),y=max(0,min(9800,pos.y()))))
+        event.setDropAction(Qt.DropAction.CopyAction)
+        event.accept()
 
     def keyPressEvent(self,event):
         if event.key()==Qt.Key.Key_Escape:

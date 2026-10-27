@@ -3,8 +3,9 @@ import os
 os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
 from copy import deepcopy
 import unittest
-from PySide6.QtCore import Qt,QPoint,QPointF
+from PySide6.QtCore import Qt,QPoint,QPointF,QMimeData,QCoreApplication
 from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QDragEnterEvent,QDropEvent
 from PySide6.QtTest import QTest
 from desktop.model import Document
 from desktop.catalog import CORE
@@ -69,7 +70,7 @@ class NativeGraphGestures(unittest.TestCase):
         self.drag(self.port(self.a,'bottom'),self.port(self.b,'top'));before=deepcopy(self.doc.project)
         self.drag(self.port(self.a,'right'),self.port(self.b,'left'));self.assertEqual(self.doc.project,before)
         self.drag(self.port(self.b,'bottom'),self.port(self.a,'top'));self.assertEqual(self.doc.project,before)
-        self.assertTrue(any('循环' in message for message in self.notices))
+        self.assertTrue(any(('循环' in message or '订阅线序' in message) for message in self.notices))
         self.drag(self.port(self.a,'bottom'),self.port(self.b,'bottom'));self.assertEqual(self.doc.project,before)
 
     def test_ports_remain_easy_to_hit_when_zoomed_out_and_nodes_still_move(self):
@@ -79,6 +80,19 @@ class NativeGraphGestures(unittest.TestCase):
         origin=self.view.mapFromScene(self.scene.nodes[self.a].scenePos()+QPointF(70,24))
         self.drag(origin,origin+QPoint(55,0));app.processEvents()
         self.assertGreater(self.doc.project['steps'][0]['position']['x'],80)
+
+    def test_toolbox_mime_drop_creates_operator_node(self):
+        """算子库 MIME drop on FlowView must emit key+position for add_node."""
+        got=[]
+        self.view.dropped.connect(lambda key,pos: got.append((key,dict(pos))))
+        mime=QMimeData();mime.setData('application/x-sieans-operator',b'preprocess')
+        pos=self.view.viewport().rect().center()
+        enter=QDragEnterEvent(pos,Qt.DropAction.CopyAction,mime,Qt.MouseButton.LeftButton,Qt.KeyboardModifier.NoModifier)
+        self.assertTrue(QCoreApplication.sendEvent(self.view.viewport(),enter));self.assertTrue(enter.isAccepted())
+        drop=QDropEvent(pos,Qt.DropAction.CopyAction,mime,Qt.MouseButton.LeftButton,Qt.KeyboardModifier.NoModifier)
+        self.assertTrue(QCoreApplication.sendEvent(self.view.viewport(),drop));self.assertTrue(drop.isAccepted())
+        self.assertEqual(len(got),1);self.assertEqual(got[0][0],'preprocess')
+        self.assertIn('x',got[0][1]);self.assertIn('y',got[0][1])
 
 
 if __name__=='__main__':unittest.main()

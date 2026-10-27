@@ -145,6 +145,7 @@ class OperatorTiles(QListWidget):
         self.setSpacing(0)
         self.setDragEnabled(True)
         self.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
+        self.setDefaultDropAction(Qt.DropAction.CopyAction)
         self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -170,19 +171,28 @@ class OperatorTiles(QListWidget):
             self.setFixedHeight(height)
 
     def startDrag(self, actions):
-        item = self.currentItem()
+        item = self.currentItem() or (self.selectedItems()[0] if self.selectedItems() else None)
         if item is None:
             return
+        key = item.data(Qt.ItemDataRole.UserRole)
+        if not key:
+            return
+        if isinstance(key, bytes):
+            payload = key
+        else:
+            payload = str(key).encode('utf-8')
         mime = QMimeData()
-        mime.setData('application/x-sieans-operator', item.data(Qt.ItemDataRole.UserRole).encode())
+        mime.setData('application/x-sieans-operator', payload)
         drag = QDrag(self)
         drag.setMimeData(mime)
         pix = item.icon().pixmap(28, 28)
-        drag.setPixmap(pix)
-        drag.setHotSpot(pix.rect().center())
+        if not pix.isNull():
+            drag.setPixmap(pix)
+            drag.setHotSpot(pix.rect().center())
         self.setCursor(Qt.CursorShape.ClosedHandCursor)
         try:
-            drag.exec(Qt.DropAction.CopyAction)
+            # Copy-only so FlowView can accept without Move/Link negotiation.
+            drag.exec(Qt.DropAction.CopyAction, Qt.DropAction.CopyAction)
         finally:
             self.setCursor(Qt.CursorShape.OpenHandCursor)
 
@@ -199,6 +209,7 @@ class Toolbox(QScrollArea):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setFrameShape(QScrollArea.Shape.NoFrame)
         self.setObjectName('operatorToolbox')
+        self.setAcceptDrops(False)
         self.setStyleSheet(TOOLBOX_QSS)
         self.setAutoFillBackground(True)
         pal = self.palette()
