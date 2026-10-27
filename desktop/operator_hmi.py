@@ -259,6 +259,18 @@ class ProductionStatsPanel(QWidget):
         self._uph_window_spin.setMaximumWidth(72)
         self._uph_window_spin.valueChanged.connect(self._on_uph_window_changed)
         uph_row.addWidget(self._uph_window_spin)
+        # wave24: UPH 窗口预设快捷
+        self._uph_preset_btns = []
+        for preset in (8, 16, 24, 32, 48):
+            b = QPushButton(str(preset))
+            b.setObjectName(f'prodUphPreset{preset}')
+            b.setFixedWidth(28)
+            b.setMaximumHeight(22)
+            b.setToolTip(f'UPH 窗口快捷 → {preset}')
+            b.clicked.connect(lambda *_a, n=preset: self.set_uph_window(n))
+            uph_row.addWidget(b)
+            self._uph_preset_btns.append(b)
+        self._sync_uph_preset_chrome()
         root.addLayout(uph_row)
 
         cap = QLabel('最近结果')
@@ -576,6 +588,26 @@ class ProductionStatsPanel(QWidget):
                 pass
         self._refresh_labels()
         self._notify_trend()
+        self._sync_uph_preset_chrome()
+
+    def _sync_uph_preset_chrome(self):
+        """wave24: highlight active UPH preset button."""
+        cur = self.uph_window()
+        for b in getattr(self, '_uph_preset_btns', None) or []:
+            try:
+                n = int(b.text() or 0)
+            except Exception:
+                n = 0
+            if n == cur:
+                b.setStyleSheet(
+                    'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                    'border-radius:2px;font-size:10px;font-weight:700;padding:1px;'
+                )
+            else:
+                b.setStyleSheet(
+                    'background:#2a2c30;color:#9aa0a6;border:1px solid #3a3d42;'
+                    'border-radius:2px;font-size:10px;padding:1px;'
+                )
 
     @staticmethod
     def _uph_settings():
@@ -668,9 +700,11 @@ class OperatorHmiView(QWidget):
             'background:#3a1c1c;color:#ffb4b4;border:1px solid #e35d6a;'
             'border-radius:3px;padding:3px 8px;font-size:11px;font-weight:700;'
         )
-        self._fail_code_badge.setToolTip('换型失败码（VARIANT_/APPLY_/ENTER_/TRIAL_）；点击清除')
+        self._fail_code_badge.setToolTip(
+            '换型失败码（VARIANT_/APPLY_/ENTER_/TRIAL_）· 单击跳报警历史 · 右键清除'
+        )
         self._fail_code_badge.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._fail_code_badge.mousePressEvent = lambda e: self.clear_fail_code_badge()
+        self._fail_code_badge.mousePressEvent = lambda e: self._on_fail_code_badge_click(e)
         self._fail_code_badge.hide()
         header.addWidget(self._fail_code_badge)
         header.addStretch(1)
@@ -2252,7 +2286,9 @@ class OperatorHmiView(QWidget):
         if msg:
             tip += f' · {msg}'
         badge.setText(f'⚠ {code}')
-        badge.setToolTip(tip + ' · 点击清除')
+        badge.setToolTip(tip + ' · 单击跳报警历史 · 右键清除')
+        self._fail_code_last = code
+        self._fail_code_last_msg = msg
         badge.show()
         try:
             self.append_log(tip)
@@ -2278,7 +2314,49 @@ class OperatorHmiView(QWidget):
             return
         badge.hide()
         badge.setText('')
-        badge.setToolTip('换型失败码；点击清除')
+        badge.setToolTip('换型失败码 · 单击跳报警历史 · 右键清除')
+        self._fail_code_last = ''
+        self._fail_code_last_msg = ''
+
+    def _on_fail_code_badge_click(self, event):
+        """wave24: 左键跳报警历史；右键清除."""
+        try:
+            btn = event.button() if event is not None else None
+        except Exception:
+            btn = None
+        if btn == Qt.MouseButton.RightButton:
+            self.clear_fail_code_badge()
+            return
+        self.jump_fail_code_to_alarm()
+
+    def jump_fail_code_to_alarm(self, code: str = ''):
+        """wave24: 换型失败码 → Host SM 报警历史一键跳."""
+        code = str(code or getattr(self, '_fail_code_last', '') or '').strip()
+        if not code:
+            # parse from badge text "⚠ CODE"
+            badge = getattr(self, '_fail_code_badge', None)
+            raw = (badge.text() if badge is not None else '') or ''
+            code = raw.replace('⚠', '').strip()
+        host = getattr(self, '_host_sm', None)
+        if host is None or not hasattr(host, 'jump_to_alarm_for_code'):
+            try:
+                self.append_log(f'跳报警历史失败：无 Host SM · {code}')
+            except Exception:
+                pass
+            return False
+        try:
+            host.jump_to_alarm_for_code(code, keyword=code)
+        except Exception as err:
+            try:
+                self.append_log(f'跳报警历史失败：{err}')
+            except Exception:
+                pass
+            return False
+        try:
+            self.append_log(f'已跳报警历史 · {code}')
+        except Exception:
+            pass
+        return True
 
     def request_multi_film_compare(self):
         """wave23: 结果表多选行 → filmCompareRequested(paths=[...])."""
@@ -2348,19 +2426,34 @@ class OperatorHmiView(QWidget):
             return False
 
     def _on_liaison_pushed(self, entry):
-        """wave23: Host SM 联调条 → 固定栏短闪."""
+        """wave23/24: Host SM 联调条 → 固定栏短闪（颜色按严重度）."""
         entry = entry or {}
         kind = str(entry.get('kind') or '联调')
         code = str(entry.get('code') or '')
         text = str(entry.get('text') or '')
+        sev = str(entry.get('severity') or '').strip().lower()
+        if not sev:
+            try:
+                from desktop.host_state_machine import HostStateMachineWidget as _H
+                sev = _H._liaison_severity(kind, code)
+            except Exception:
+                sev = 'info'
         tip = f'联调 · {kind}'
         if code:
             tip += f'[{code}]'
         if text:
             tip += ' · ' + text[:40]
+        # wave24 severity palettes
+        palettes = {
+            'error': ('#3a1c1c', '#ffb4b4', '#e35d6a'),
+            'warn':  ('#3a3420', '#f0d9a0', '#e0b84a'),
+            'ok':    ('#1c3a2a', '#9ed9a8', '#3ecf8e'),
+            'info':  ('#1c2a3a', '#b8d8f0', '#6eb6ff'),
+        }
+        bg, fg, bd = palettes.get(sev, palettes['info'])
         try:
             flash_ss = (
-                'background:#1c2a3a;color:#b8d8f0;border:2px solid #6eb6ff;'
+                f'background:{bg};color:{fg};border:2px solid {bd};'
                 'border-radius:3px;padding:5px 10px;font-size:11px;font-weight:700;'
             )
             for bar in (getattr(self, '_fix_top', None), getattr(self, '_fix_bottom', None)):
@@ -2373,7 +2466,7 @@ class OperatorHmiView(QWidget):
                 except Exception:
                     pass
             side_ss = (
-                'background:#1c2a3a;color:#b8d8f0;border:2px solid #6eb6ff;'
+                f'background:{bg};color:{fg};border:2px solid {bd};'
                 'border-radius:2px;padding:2px;font-size:10px;font-weight:700;'
             )
             for bar in (getattr(self, '_fix_left', None), getattr(self, '_fix_right', None)):
@@ -2385,7 +2478,7 @@ class OperatorHmiView(QWidget):
                 except Exception:
                     pass
             try:
-                self.append_log(tip)
+                self.append_log(tip + f' · sev={sev}')
             except Exception:
                 pass
             def _settle():

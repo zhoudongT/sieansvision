@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㉔ · 多选对比侧栏 · 联调CSV时段 · 失败码跳Alarm · UPH预设 · 联闪严重度 · 2026-10-28】
+
+- **胶片多选对比侧栏缩略条**：`CompareThumbStrip` 贴图像右侧；多选≥2 帧时竖向展示 ≤6 缩略；点击聚焦胶片+保持对比；× / ESC 清除。
+- **联调 CSV 时段过滤**：`hostLiaisonWindow`（全部/近5分/近15分/近1时/近24时）；`filtered_liaison_events` / `liaison_events_csv(window_sec)`；导出含 severity 列；事件带 `epoch/ts_full`。
+- **换型失败码 → Alarm 一键跳**：HMI `hmiFailCodeBadge` 单击 → `jump_fail_code_to_alarm` → Host SM `jump_to_alarm_for_code`（切「报警历史」+ 关键字 + 联调筛）；右键清除。
+- **UPH 窗口预设快捷**：`prodUphPreset{8,16,24,32,48}` 一键设窗口；当前值高亮。
+- **Host SM 联闪颜色按严重度**：`_liaison_severity` → error 红 / warn 琥珀 / ok 绿 / info 蓝；固定栏短闪跟色。
+- **冒烟**：`smoke-wave24-comparestrip-liaisonwin-failjump-uphpreset-sevflash-e2e`（另回归 wave23）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆㉓ · 多选对比 · UPH窗口持久 · 联调CSV · 失败码徽章 · Comm簇计数 · 联调固定栏闪 · 2026-10-28】
 
 - **结果表↔胶片多选对比**：结果表 `ExtendedSelection`；「多选对比」/ 多行双击 → `filmCompareRequested({paths, multi})`；`_show_filmstrip_compare_overlays(highlight_paths=)` 优先多选帧（≤6）；同组再点 / ESC 清除。

@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtWidgets import (
@@ -676,14 +676,26 @@ class HostStateMachineWidget(QWidget):
         b_save.setToolTip('导出报警历史 CSV 文件')
         b_save.clicked.connect(self.export_alarm_history_file)
         row.addWidget(b_save)
+        # wave24: 联调 CSV 时段过滤
+        row.addWidget(QLabel('联调时段'))
+        self._liaison_window = QComboBox()
+        self._liaison_window.setObjectName('hostLiaisonWindow')
+        self._liaison_window.setToolTip('导出/复制联调 CSV 的时段窗口')
+        for lab, sec in (
+            ('全部', 0), ('近5分', 300), ('近15分', 900), ('近1时', 3600), ('近24时', 86400),
+        ):
+            self._liaison_window.addItem(lab, sec)
+        self._liaison_window.setCurrentIndex(0)
+        self._liaison_window.setMaximumWidth(88)
+        row.addWidget(self._liaison_window)
         b_lia_copy = QPushButton('复制联调CSV')
         b_lia_copy.setObjectName('hostLiaisonCopyBtn')
-        b_lia_copy.setToolTip('复制联调条事件为 CSV 到剪贴板')
+        b_lia_copy.setToolTip('复制联调条事件为 CSV 到剪贴板（按时段）')
         b_lia_copy.clicked.connect(self.export_liaison_clipboard)
         row.addWidget(b_lia_copy)
         b_lia_save = QPushButton('导出联调…')
         b_lia_save.setObjectName('hostLiaisonExportBtn')
-        b_lia_save.setToolTip('导出联调条事件 CSV 文件')
+        b_lia_save.setToolTip('导出联调条事件 CSV 文件（按时段）')
         b_lia_save.clicked.connect(self.export_liaison_file)
         row.addWidget(b_lia_save)
         self._alarm_hist_count = QLabel('0 条')
@@ -730,22 +742,89 @@ class HostStateMachineWidget(QWidget):
             self._log_line(f'导出失败：{err}')
 
 
-    def liaison_events_csv(self) -> str:
-        """wave23: 联调条 CSV（clipboard / file）."""
-        lines = ['timestamp,kind,code,text']
-        for e in self._liaison_events:
-            ts = str(e.get('ts') or '').replace(',', ' ')
+    @staticmethod
+    def _liaison_severity(kind: str = '', code: str = '') -> str:
+        """wave24: info|warn|error|ok for flash / CSV."""
+        code_u = str(code or '').upper()
+        kind_s = str(kind or '')
+        if any(x in code_u for x in (
+            'FAIL', 'ERROR', 'EMPTY', 'MISSING', 'VARIANT_', 'APPLY_', 'ENTER_',
+        )) or '失败' in kind_s:
+            return 'error'
+        if 'CLEAR' in code_u or '清除' in kind_s or kind_s in ('试跑清除', '报警清除'):
+            return 'ok'
+        if 'TRIAL' in code_u or '试跑' in kind_s or '换型' in kind_s:
+            return 'warn'
+        return 'info'
+
+    def liaison_window_sec(self) -> int:
+        """wave24: 0=全部; else last N seconds."""
+        combo = getattr(self, '_liaison_window', None)
+        if combo is None:
+            return 0
+        try:
+            return int(combo.currentData() or 0)
+        except Exception:
+            return 0
+
+    def set_liaison_window_sec(self, sec: int):
+        combo = getattr(self, '_liaison_window', None)
+        if combo is None:
+            return
+        sec = int(sec or 0)
+        for i in range(combo.count()):
+            if int(combo.itemData(i) or 0) == sec:
+                combo.setCurrentIndex(i)
+                return
+
+    def filtered_liaison_events(self, window_sec: int | None = None):
+        """wave24: 联调条按时段过滤."""
+        if window_sec is None:
+            window_sec = self.liaison_window_sec()
+        window_sec = int(window_sec or 0)
+        evs = list(self._liaison_events)
+        if window_sec <= 0:
+            return evs
+        try:
+            cutoff = datetime.now().timestamp() - window_sec
+        except Exception:
+            return evs
+        out = []
+        for e in evs:
+            ep = e.get('epoch')
+            if ep is None:
+                # legacy HH:MM:SS — keep
+                out.append(e)
+                continue
+            try:
+                if float(ep) >= cutoff:
+                    out.append(e)
+            except Exception:
+                out.append(e)
+        return out
+
+    def liaison_events_csv(self, window_sec: int | None = None) -> str:
+        """wave23/24: 联调条 CSV（clipboard / file）；可选时段过滤."""
+        lines = ['timestamp,kind,code,severity,text']
+        for e in self.filtered_liaison_events(window_sec):
+            ts = str(e.get('ts_full') or e.get('ts') or '').replace(',', ' ')
             kind = str(e.get('kind') or '').replace(',', ' ')
             code = str(e.get('code') or '').replace(',', ' ')
+            sev = str(e.get('severity') or self._liaison_severity(kind, code)).replace(',', ' ')
             text = str(e.get('text') or '').replace('"', "'").replace('\n', ' ')
-            lines.append(f'{ts},{kind},{code},"{text}"')
+            lines.append(f'{ts},{kind},{code},{sev},"{text}"')
         return '\n'.join(lines) + ('\n' if lines else '')
 
     def export_liaison_clipboard(self):
-        csv = self.liaison_events_csv()
+        win = self.liaison_window_sec()
+        evs = self.filtered_liaison_events(win)
+        csv = self.liaison_events_csv(win)
         try:
             QApplication.clipboard().setText(csv)
-            self._log_line(f'联调条已复制 CSV · {len(self._liaison_events)} 条')
+            tip = f'联调条已复制 CSV · {len(evs)} 条'
+            if win:
+                tip += f'（近 {win // 60} 分）' if win >= 60 else f'（近 {win}s）'
+            self._log_line(tip)
         except Exception as err:
             self._log_line(f'联调复制失败：{err}')
 
@@ -754,20 +833,65 @@ class HostStateMachineWidget(QWidget):
             self, '导出联调条', 'liaison-events.csv', 'CSV (*.csv);;All (*)')
         if not path:
             return
+        win = self.liaison_window_sec()
         try:
             with open(path, 'w', encoding='utf-8') as f:
-                f.write(self.liaison_events_csv())
-            self._log_line(f'联调条已导出 · {path}')
+                f.write(self.liaison_events_csv(win))
+            self._log_line(f'联调条已导出 · {path} · {len(self.filtered_liaison_events(win))} 条')
         except Exception as err:
             self._log_line(f'联调导出失败：{err}')
 
+    def jump_to_alarm_for_code(self, code: str = '', *, keyword: str = ''):
+        """wave24: 换型失败码 → 报警历史一键跳（切 tab + 筛关键字/联调）."""
+        code = str(code or '').strip()
+        keyword = str(keyword or code or '').strip()
+        try:
+            # tab index 2 = 报警历史
+            if hasattr(self, 'tabs') and self.tabs is not None:
+                for i in range(self.tabs.count()):
+                    if '报警' in (self.tabs.tabText(i) or ''):
+                        self.tabs.setCurrentIndex(i)
+                        break
+                else:
+                    self.tabs.setCurrentIndex(min(2, self.tabs.count() - 1))
+        except Exception:
+            pass
+        try:
+            filt = getattr(self, '_alarm_filter', None)
+            if filt is not None:
+                filt.setText(keyword)
+        except Exception:
+            pass
+        try:
+            sf = getattr(self, '_alarm_status_filter', None)
+            if sf is not None:
+                for i in range(sf.count()):
+                    if sf.itemData(i) == 'liaison':
+                        sf.setCurrentIndex(i)
+                        break
+        except Exception:
+            pass
+        try:
+            self._refresh_alarm_history_ui()
+        except Exception:
+            pass
+        try:
+            self._log_line(f'已跳转报警历史 · 筛选 {keyword or "联调"}')
+        except Exception:
+            pass
+        return True
+
     def push_liaison_event(self, text: str, *, kind: str = '', code: str = ''):
         """wave22: append 联调条 event (试跑清除 / 换型失败 / 报警清除)."""
+        now = datetime.now()
         entry = {
-            'ts': datetime.now().strftime('%H:%M:%S'),
+            'ts': now.strftime('%H:%M:%S'),
+            'ts_full': now.strftime('%Y-%m-%d %H:%M:%S'),
+            'epoch': now.timestamp(),
             'kind': str(kind or '联调'),
             'code': str(code or ''),
             'text': str(text or ''),
+            'severity': self._liaison_severity(kind, code),
         }
         self._liaison_events.append(entry)
         if len(self._liaison_events) > self._liaison_events_max:

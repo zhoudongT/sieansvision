@@ -6,6 +6,7 @@ from PySide6.QtGui import QIcon, QPixmap, QImage
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QListWidget,
     QListWidgetItem, QAbstractItemView, QFileDialog, QMessageBox, QComboBox,
+    QScrollArea, QFrame,
 )
 
 from .switch import OrangeSwitch
@@ -730,3 +731,88 @@ class FilmstripBar(QWidget):
             except Exception:
                 pass
 
+
+class CompareThumbStrip(QWidget):
+    """wave24: 多选对比侧栏缩略条（竖向 ≤6 帧）."""
+    pathActivated = Signal(str)   # click a thumb → focus that path
+    clearRequested = Signal()     # clear compare
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName('compareThumbStrip')
+        self.setFixedWidth(96)
+        self._paths = []
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(4, 4, 4, 4)
+        lay.setSpacing(4)
+        head = QHBoxLayout()
+        self._title = QLabel('对比')
+        self._title.setObjectName('compareThumbTitle')
+        self._title.setStyleSheet('color:#9ec9f0;font-size:11px;font-weight:700;')
+        head.addWidget(self._title, 1)
+        self._clear_btn = QPushButton('×')
+        self._clear_btn.setObjectName('compareThumbClear')
+        self._clear_btn.setFixedSize(20, 20)
+        self._clear_btn.setToolTip('清除多选对比叠层')
+        self._clear_btn.clicked.connect(self.clearRequested.emit)
+        head.addWidget(self._clear_btn)
+        lay.addLayout(head)
+        self._list = QListWidget()
+        self._list.setObjectName('compareThumbList')
+        self._list.setViewMode(QListWidget.ViewMode.IconMode)
+        self._list.setFlow(QListWidget.Flow.TopToBottom)
+        self._list.setWrapping(False)
+        self._list.setMovement(QListWidget.Movement.Static)
+        self._list.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self._list.setIconSize(QSize(72, 72))
+        self._list.setSpacing(4)
+        self._list.setStyleSheet(
+            'QListWidget{background:#1c1e22;border:1px solid #3a5a7a;border-radius:2px;}'
+            'QListWidget::item{border:1px solid #3a5a7a;border-radius:2px;padding:2px;}'
+            'QListWidget::item:selected{border:2px solid #6eb6ff;background:#1c2a3a;}'
+        )
+        self._list.itemClicked.connect(self._on_item)
+        lay.addWidget(self._list, 1)
+        self.hide()
+
+    def paths(self):
+        return list(self._paths)
+
+    def set_paths(self, paths, *, active: str = ''):
+        paths = [str(x) for x in (paths or []) if str(x).strip()][:6]
+        self._paths = paths
+        self._list.clear()
+        if not paths:
+            self.hide()
+            self._title.setText('对比')
+            return
+        self._title.setText(f'对比·{len(paths)}')
+        active_row = -1
+        for i, fp in enumerate(paths):
+            leaf = Path(fp).name
+            item = QListWidgetItem(leaf)
+            item.setData(Qt.ItemDataRole.UserRole, fp)
+            item.setToolTip(fp)
+            pix = QPixmap(fp)
+            if not pix.isNull():
+                item.setIcon(QIcon(pix.scaled(
+                    72, 72, Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation)))
+            else:
+                item.setIcon(QIcon())
+            self._list.addItem(item)
+            if active and (fp == active or Path(fp).name == Path(active).name):
+                active_row = i
+        if active_row >= 0:
+            self._list.setCurrentRow(active_row)
+        self.show()
+
+    def clear(self):
+        self.set_paths([])
+
+    def _on_item(self, item):
+        if item is None:
+            return
+        fp = item.data(Qt.ItemDataRole.UserRole) or ''
+        if fp:
+            self.pathActivated.emit(str(fp))

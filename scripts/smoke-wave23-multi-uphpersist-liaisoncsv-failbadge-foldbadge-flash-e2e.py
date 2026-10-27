@@ -102,7 +102,7 @@ def main():
     # --- Liaison CSV + flash ---
     host = HostStateMachineWidget()
     csv = host.liaison_events_csv()
-    assert csv.startswith('timestamp,kind,code,text')
+    assert csv.startswith('timestamp,kind,code')  # wave24 may add ,severity,text
     flashed = []
     hmi._wire_host_sm(host)
     # ensure fixed bars exist

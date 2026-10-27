@@ -19,7 +19,7 @@ from desktop.cloud_view import CloudView
 
 from desktop.theme import WORKBENCH_QSS
 from desktop.toolbar_icons import apply_toolbar_action, mono_icon
-from desktop.widgets import OperatorRail, FilmstripBar, MiniMap, WorkbenchStatusBar, FlowTabBar, AllFlowsPanel, OrangeSwitch
+from desktop.widgets import OperatorRail, FilmstripBar, CompareThumbStrip, MiniMap, WorkbenchStatusBar, FlowTabBar, AllFlowsPanel, OrangeSwitch
 from desktop.property_float import PropertyFloat
 from desktop.group_module import GroupBreadcrumb, normalize_group_params, group_bindings_ready, default_group_inner
 from desktop.config_status import project_incomplete_summary, node_needs_bang
@@ -365,7 +365,16 @@ class MainWindow(QMainWindow):
         depth_page=QWidget();depth_layout=QVBoxLayout(depth_page);self.depth_view=ImageView();self.depth_caption=QLabel('尚无深度数据')
         self.depth_caption.setWordWrap(True);depth_layout.addWidget(self.depth_view,1);depth_layout.addWidget(self.depth_caption);self.images.addTab(depth_page,'深度图')
         self.images.currentChanged.connect(self._on_images_tab)
-        rl.addWidget(self.images,1)
+        # wave24: 多选对比侧栏缩略条（竖向，贴图像右侧）
+        img_row = QHBoxLayout()
+        img_row.setContentsMargins(0, 0, 0, 0)
+        img_row.setSpacing(0)
+        img_row.addWidget(self.images, 1)
+        self.compare_strip = CompareThumbStrip()
+        self.compare_strip.pathActivated.connect(self._on_compare_strip_path)
+        self.compare_strip.clearRequested.connect(self._clear_filmstrip_compare_overlays)
+        img_row.addWidget(self.compare_strip)
+        rl.addLayout(img_row, 1)
         self.filmstrip=FilmstripBar()
         self.filmstrip.pathSelected.connect(self.load_filmstrip_path)
         self.filmstrip.pathSelected.connect(self._on_filmstrip_path_for_hmi)
@@ -1294,11 +1303,42 @@ class MainWindow(QMainWindow):
             return
         self._show_filmstrip_compare_overlays(highlight_path=path)
 
+    def _on_compare_strip_path(self, path: str):
+        """wave24: 侧栏缩略点击 → 定位胶片 + 保持多选对比高亮."""
+        path = str(path or '').strip()
+        if not path:
+            return
+        try:
+            fs = getattr(self, 'filmstrip', None)
+            if fs is not None and hasattr(fs, 'select_path'):
+                fs.select_path(path, emit=True)
+        except Exception:
+            pass
+        multi = list(getattr(self, '_filmstrip_compare_paths', None) or [])
+        try:
+            self._show_filmstrip_compare_overlays(
+                highlight_path=path,
+                highlight_paths=multi or None,
+            )
+        except Exception:
+            pass
+        try:
+            from pathlib import Path as _P
+            self.statusBar().showMessage(f'对比焦点 · {_P(path).name}', 2500)
+        except Exception:
+            pass
+
     def _clear_filmstrip_compare_overlays(self):
         if getattr(self, '_filmstrip_compare_active', False):
             self._filmstrip_compare_active = False
             self._filmstrip_compare_path = ''
             self._filmstrip_compare_paths = []
+            try:
+                strip = getattr(self, 'compare_strip', None)
+                if strip is not None:
+                    strip.clear()
+            except Exception:
+                pass
             try:
                 self._apply_measure_geom_overlays(
                     (getattr(self, 'last_result', None) or {}).get('results') or [])
@@ -1366,6 +1406,16 @@ class MainWindow(QMainWindow):
             self._filmstrip_compare_path = highlight_path or (multi[0] if multi else '')
             self._filmstrip_compare_paths = list(multi or (
                 [highlight_path] if highlight_path else []))
+            # wave24: 侧栏缩略条（多选≥2 才显示；悬停单帧不弹侧栏）
+            try:
+                strip = getattr(self, 'compare_strip', None)
+                if strip is not None:
+                    if multi and len(multi) >= 2:
+                        strip.set_paths(multi, active=self._filmstrip_compare_path)
+                    elif not multi:
+                        strip.clear()
+            except Exception:
+                pass
         except Exception:
             return
         try:
