@@ -3272,10 +3272,24 @@ class MainWindow(QMainWindow):
                     self.resume_continuous(); return
                 self.run_continuous(); return
             if ctype == '状态·报警':
+                try:
+                    self._set_keep_host_running(False)
+                except Exception:
+                    pass
                 self._sync_host_sm_state('Alarm', cfg or '触发')
-                self.log('状态·报警'); continue
+                self.log(f'状态·报警' + (f' · {cfg}' if cfg else ''))
+                try:
+                    self._show_canvas_status_chip('上位机报警 — 请清除后继续')
+                except Exception:
+                    pass
+                continue
             if ctype == '状态·清除报警':
                 self._sync_host_sm_state('Idle', '清除报警')
+                self.log('状态·清除报警 → 空闲')
+                try:
+                    self._show_canvas_status_chip('报警已清除')
+                except Exception:
+                    pass
                 continue
             if ctype == '方案保存':
                 self.save_project(); continue

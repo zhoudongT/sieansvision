@@ -69,12 +69,46 @@ class HostStateMachineWidget(QWidget):
         root.addLayout(head)
         self._paint_badge()
 
+        # Always-visible live controls (p41–43): drive SM + engine via triggerCommands
+        self._quick = QWidget()
+        self._quick.setObjectName('hostSmQuickBar')
+        qrow = QHBoxLayout(self._quick)
+        qrow.setContentsMargins(0, 0, 0, 0)
+        qrow.setSpacing(4)
+        self._q_start = QPushButton('▶ 开始')
+        self._q_start.setObjectName('primaryButton')
+        self._q_start.setToolTip('开始连续运行（正常生产）')
+        self._q_start.clicked.connect(lambda: self._auto_start(self._mode or '正常生产'))
+        self._q_pause = QPushButton('⏸ 暂停')
+        self._q_pause.setToolTip('软暂停连续/运行全部')
+        self._q_pause.clicked.connect(lambda: self._auto_pause(self._mode or '正常生产'))
+        self._q_resume = QPushButton('▶ 继续')
+        self._q_resume.setToolTip('从暂停继续')
+        self._q_resume.clicked.connect(lambda: self._auto_resume(self._mode or '正常生产'))
+        self._q_stop = QPushButton('■ 停止')
+        self._q_stop.setToolTip('硬停止流程')
+        self._q_stop.clicked.connect(lambda: self._auto_stop(self._mode or '正常生产'))
+        self._q_clear = QPushButton('清除报警')
+        self._q_clear.setToolTip('清除报警 → 空闲（状态·清除报警）')
+        self._q_clear.clicked.connect(self._clear_alarm)
+        for b in (self._q_start, self._q_pause, self._q_resume, self._q_stop, self._q_clear):
+            b.setMinimumHeight(28)
+            qrow.addWidget(b)
+        qrow.addStretch(1)
+        root.addWidget(self._quick)
+
         self.tabs = QTabWidget()
         self.tabs.setObjectName('hostHmiTabs')
         root.addWidget(self.tabs, 1)
 
         self.tabs.addTab(self._build_manual(), '手动控制')
         self.tabs.addTab(self._build_auto(), '自动运行')
+        if compact:
+            # Live-point: auto controls visible without digging into 手动
+            try:
+                self.tabs.setCurrentIndex(1)
+            except Exception:
+                pass
 
         # Info bar
         info_cap = QLabel('信息显示栏')
@@ -259,9 +293,11 @@ class HostStateMachineWidget(QWidget):
 
         alarm_row = QHBoxLayout()
         b_alarm = QPushButton('模拟报警')
-        b_alarm.clicked.connect(lambda: self.set_state('Alarm', '手动模拟'))
+        b_alarm.clicked.connect(self._raise_alarm)
         b_clear = QPushButton('清除报警→空闲')
-        b_clear.clicked.connect(lambda: self.set_state('Idle', '清除报警'))
+        b_clear.setObjectName('hostClearAlarmBtn')
+        b_clear.clicked.connect(self._clear_alarm)
+        self._btn_clear_alarm_tab = b_clear
         alarm_row.addWidget(b_alarm)
         alarm_row.addWidget(b_clear)
         alarm_row.addStretch(1)
@@ -296,11 +332,45 @@ class HostStateMachineWidget(QWidget):
 
     def _sync_auto_buttons(self):
         st = self._state
-        for mode, btns in self._mode_buttons.items():
+        for mode, btns in (getattr(self, '_mode_buttons', None) or {}).items():
             btns['start'].setEnabled(st in ('Idle', 'Stopped'))
             btns['pause'].setEnabled(st == 'Running')
             btns['resume'].setEnabled(st == 'Paused')
             btns['stop'].setEnabled(st in ('Running', 'Paused', 'Alarm'))
+        # Quick bar (always visible)
+        for attr, enabled in (
+            ('_q_start', st in ('Idle', 'Stopped')),
+            ('_q_pause', st == 'Running'),
+            ('_q_resume', st == 'Paused'),
+            ('_q_stop', st in ('Running', 'Paused', 'Alarm')),
+            ('_q_clear', st == 'Alarm'),
+        ):
+            btn = getattr(self, attr, None)
+            if btn is not None:
+                btn.setEnabled(enabled)
+        # Highlight clear when Alarm
+        clear = getattr(self, '_q_clear', None)
+        if clear is not None:
+            if st == 'Alarm':
+                clear.setStyleSheet(
+                    'background:#3a1c1c;color:#e35d6a;border:1px solid #e35d6a;'
+                    'border-radius:3px;font-weight:700;'
+                )
+                clear.setVisible(True)
+            else:
+                clear.setStyleSheet('')
+                # Keep visible but disabled when not Alarm so layout stable
+                clear.setVisible(True)
+        tab_clear = getattr(self, '_btn_clear_alarm_tab', None)
+        if tab_clear is not None:
+            tab_clear.setEnabled(st == 'Alarm')
+            if st == 'Alarm':
+                tab_clear.setStyleSheet(
+                    'background:#3a1c1c;color:#e35d6a;border:1px solid #e35d6a;'
+                    'font-weight:700;'
+                )
+            else:
+                tab_clear.setStyleSheet('')
 
     def _log_line(self, text: str):
         ts = datetime.now().strftime('%H:%M:%S')
@@ -358,11 +428,35 @@ class HostStateMachineWidget(QWidget):
         self._mode = mode or '正常生产'
         self._log_line(f'切换模式 → {self._mode}')
 
+    def _raise_alarm(self):
+        """Simulate alarm + emit 状态·报警 so MainWindow / chrome stay in sync."""
+        self.set_state('Alarm', '手动模拟')
+        self.triggerCommands.emit([dict(type='状态·报警', config='手动模拟')])
+
+    def _clear_alarm(self):
+        """Visible clear UX → Idle + 状态·清除报警 (engine/chrome path)."""
+        if self._state != 'Alarm':
+            self._log_line('当前无报警，无需清除')
+            return
+        self.set_state('Idle', '清除报警')
+        self.triggerCommands.emit([dict(type='状态·清除报警', config='清除报警')])
+        self._log_line('已清除报警 → 空闲')
+
     def _auto_start(self, mode: str):
-        self.mode_combo.setCurrentText(mode)
+        try:
+            self.mode_combo.setCurrentText(mode)
+        except Exception:
+            pass
         self._mode = mode
         if self._state == 'Alarm':
             self._log_line('报警中，请先清除报警')
+            return
+        if self._state == 'Running':
+            self._log_line('已在运行中')
+            return
+        if self._state == 'Paused':
+            # Prefer resume rather than re-start
+            self._auto_resume(mode)
             return
         self.set_state('Running', f'{mode} · 开始')
         # Continuous run for production feel; single also available via 运行控制

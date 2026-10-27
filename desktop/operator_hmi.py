@@ -44,6 +44,18 @@ DEFAULT_INJECT_RUN_COMMANDS = [
 DEFAULT_INJECT_STOP_COMMANDS = [
     dict(type='注入·STOP', config=''),
 ]
+DEFAULT_PAUSE_COMMANDS = [
+    dict(type='执行·暂停', config=''),
+]
+DEFAULT_RESUME_COMMANDS = [
+    dict(type='执行·继续', config=''),
+]
+DEFAULT_CLEAR_ALARM_COMMANDS = [
+    dict(type='状态·清除报警', config=''),
+]
+DEFAULT_ALARM_COMMANDS = [
+    dict(type='状态·报警', config=''),
+]
 
 
 def _split_rows_cols(split: str):
@@ -351,6 +363,11 @@ class OperatorHmiView(QWidget):
             self._state_rail_labels[st] = lab
             rail.addWidget(lab)
         rail.addStretch(1)
+        # Alarm rail click → 状态·清除报警 (via eventFilter)
+        alarm_lab = self._state_rail_labels.get('Alarm')
+        if alarm_lab is not None:
+            alarm_lab.installEventFilter(self)
+            alarm_lab.setObjectName('hostAlarmRail')
         root.addWidget(self._state_rail)
         self._paint_machine_chrome('Idle')
 
@@ -400,20 +417,29 @@ class OperatorHmiView(QWidget):
         self._default_strip = QWidget()
         strip = QHBoxLayout(self._default_strip)
         strip.setContentsMargins(0, 0, 0, 0)
-        for label, cmds, primary in (
-            ('▶ 单次', DEFAULT_RUN_COMMANDS, True),
-            ('↻ 连续', DEFAULT_CONT_COMMANDS, False),
-            ('■ 停止', DEFAULT_STOP_COMMANDS, False),
-            ('注入 RUN', DEFAULT_INJECT_RUN_COMMANDS, False),
-            ('注入 STOP', DEFAULT_INJECT_STOP_COMMANDS, False),
+        self._strip_btns = {}
+        for key, label, cmds, primary in (
+            ('once', '▶ 单次', DEFAULT_RUN_COMMANDS, True),
+            ('cont', '↻ 连续', DEFAULT_CONT_COMMANDS, False),
+            ('pause', '⏸ 暂停', DEFAULT_PAUSE_COMMANDS, False),
+            ('resume', '▶ 继续', DEFAULT_RESUME_COMMANDS, False),
+            ('stop', '■ 停止', DEFAULT_STOP_COMMANDS, False),
+            ('clear', '清除报警', DEFAULT_CLEAR_ALARM_COMMANDS, False),
+            ('inj_run', '注入 RUN', DEFAULT_INJECT_RUN_COMMANDS, False),
+            ('inj_stop', '注入 STOP', DEFAULT_INJECT_STOP_COMMANDS, False),
         ):
             btn = QPushButton(label)
             if primary:
                 btn.setObjectName('primaryButton')
+            if key == 'clear':
+                btn.setObjectName('hmiClearAlarmBtn')
+                btn.setToolTip('清除上位机报警 → 空闲（状态·清除报警）')
             btn.clicked.connect(lambda _=False, c=cmds: self.triggerCommands.emit(deepcopy(c)))
             strip.addWidget(btn)
+            self._strip_btns[key] = btn
         strip.addStretch(1)
         root.addWidget(self._default_strip)
+        self._sync_strip_buttons('Idle')
 
         self.reload_layout({})
 
@@ -683,6 +709,45 @@ class OperatorHmiView(QWidget):
             except Exception:
                 pass
 
+    def eventFilter(self, obj, event):
+        """Alarm rail click → 状态·清除报警 when Alarm active."""
+        try:
+            from PySide6.QtCore import QEvent
+            if (obj is (getattr(self, '_state_rail_labels', None) or {}).get('Alarm')
+                    and event.type() == QEvent.Type.MouseButtonPress
+                    and getattr(self, '_host_state', None) == 'Alarm'):
+                self.triggerCommands.emit(deepcopy(DEFAULT_CLEAR_ALARM_COMMANDS))
+                return True
+        except Exception:
+            pass
+        return super().eventFilter(obj, event)
+
+    def _sync_strip_buttons(self, state: str):
+        """Enable Pause/Resume/Clear on default strip from host state."""
+        st = state or 'Idle'
+        btns = getattr(self, '_strip_btns', None) or {}
+        mapping = {
+            'pause': st == 'Running',
+            'resume': st == 'Paused',
+            'clear': st == 'Alarm',
+            'cont': st in ('Idle', 'Stopped'),
+            'once': st in ('Idle', 'Stopped', 'Paused'),
+            'stop': st in ('Running', 'Paused', 'Alarm'),
+        }
+        for key, enabled in mapping.items():
+            b = btns.get(key)
+            if b is None:
+                continue
+            b.setEnabled(enabled)
+            if key == 'clear':
+                if st == 'Alarm':
+                    b.setStyleSheet(
+                        'background:#3a1c1c;color:#e35d6a;border:1px solid #e35d6a;'
+                        'border-radius:3px;font-weight:700;'
+                    )
+                else:
+                    b.setStyleSheet('')
+
     def _wire_host_sm(self, host):
         """Connect HostStateMachineWidget → triggerCommands + chrome mirror."""
         self._host_sm = host
@@ -761,6 +826,12 @@ class OperatorHmiView(QWidget):
                     'background:transparent;color:#5a6a7a;border:1px solid #2a3340;'
                     'border-radius:3px;padding:3px 6px;font-size:11px;'
                 )
+            # Alarm cell: click to clear when active
+            if key == 'Alarm':
+                lab.setCursor(Qt.CursorShape.PointingHandCursor if st == 'Alarm'
+                              else Qt.CursorShape.ArrowCursor)
+                lab.setToolTip('点击清除报警' if st == 'Alarm' else '报警')
+        self._sync_strip_buttons(st)
         for lab in getattr(self, '_run_status_labels', None) or []:
             try:
                 lab.setText(zh)
