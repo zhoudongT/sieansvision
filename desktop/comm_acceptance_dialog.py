@@ -7,10 +7,12 @@ No robot SDK / no field hardware claims.
 from __future__ import annotations
 
 import csv
+import json
 import io
 import socket
 import time
 from datetime import datetime
+from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
@@ -106,13 +108,14 @@ class _Runner(QThread):
 class CommAcceptanceDialog(QDialog):
     """Acceptance checklist shell — dry-run on sim, ready for field host/port."""
 
-    def __init__(self, parent=None, default_host='127.0.0.1', default_port=19880):
+    def __init__(self, parent=None, default_host='127.0.0.1', default_port=19880, data_dir=None):
         super().__init__(parent)
         self.setWindowTitle('真机 Comm 验收壳（干跑就绪）')
         self.setObjectName('commAcceptanceDialog')
         self.resize(860, 560)
         self._runner = None
         self._report = None
+        self._data_dir = Path(data_dir) if data_dir else None
         self._ensure_sim = True
 
         lay = QVBoxLayout(self)
@@ -123,6 +126,19 @@ class CommAcceptanceDialog(QDialog):
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;font-size:12px;')
         lay.addWidget(tip)
+        self.last_banner = QLabel('上次验收：尚无记录')
+        self.last_banner.setObjectName('commAcceptLastBanner')
+        self.last_banner.setWordWrap(True)
+        self.last_banner.setStyleSheet('color:#9ad;font-size:12px;padding:4px 2px;')
+        lay.addWidget(self.last_banner)
+        b_row = QHBoxLayout()
+        b_show = QPushButton('载入上次报告')
+        b_show.setObjectName('commAcceptLoadLastBtn')
+        b_show.setToolTip('从磁盘读取上次验收 JSON 并回填表格')
+        b_show.clicked.connect(self._load_last_report)
+        b_row.addWidget(b_show)
+        b_row.addStretch(1)
+        lay.addLayout(b_row)
 
         form_box = QGroupBox('目标')
         form = QFormLayout(form_box)
@@ -192,6 +208,22 @@ class CommAcceptanceDialog(QDialog):
         b_close.clicked.connect(self.accept)
         row.addWidget(b_close)
         lay.addLayout(row)
+        self._bootstrap_last()
+
+
+    def _bootstrap_last(self):
+        try:
+            path = self.last_report_path()
+            if path.is_file():
+                report = json.loads(path.read_text(encoding='utf-8'))
+                self._report = report
+                self._update_last_banner(report)
+                s = report.get('summary') or {}
+                self.summary_lab.setText(
+                    f"上次 PASS {s.get('pass', 0)} · FAIL {s.get('fail', 0)} · SKIP {s.get('skip', 0)}"
+                )
+        except Exception:
+            pass
 
     def _log(self, msg: str):
         self.log.append(msg)
@@ -255,6 +287,89 @@ class CommAcceptanceDialog(QDialog):
             f"PASS {s.get('pass', 0)} · FAIL {s.get('fail', 0)} · SKIP {s.get('skip', 0)}"
         )
         self._log(f"验收结束 {report.get('finishedAt')} @ {report.get('host')}:{report.get('port')}")
+        path = self._persist_report(report)
+        if path:
+            self._log(f'报告已落盘 {path}')
+        self._update_last_banner(report)
+
+
+    def _report_dir(self) -> Path:
+        base = self._data_dir or Path('data/native-desktop')
+        d = Path(base) / 'comm-acceptance'
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def last_report_path(self) -> Path:
+        return self._report_dir() / 'last-report.json'
+
+    def _persist_report(self, report: dict):
+        try:
+            path = self.last_report_path()
+            path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+            # also stamp a history copy
+            stamp = (report.get('finishedAt') or '').replace(':', '').replace(' ', '_')
+            if stamp:
+                hist = self._report_dir() / f'report-{stamp}.json'
+                try:
+                    hist.write_text(path.read_text(encoding='utf-8'), encoding='utf-8')
+                except Exception:
+                    pass
+            return str(path)
+        except Exception as err:
+            self._log(f'落盘失败：{err}')
+            return None
+
+    def _update_last_banner(self, report: dict | None):
+        if not hasattr(self, 'last_banner'):
+            return
+        if not report:
+            self.last_banner.setText('上次验收：尚无记录')
+            return
+        s = report.get('summary') or {}
+        self.last_banner.setText(
+            f"上次验收 {report.get('finishedAt') or '—'} @ {report.get('host')}:{report.get('port')} — "
+            f"PASS {s.get('pass', 0)} · FAIL {s.get('fail', 0)} · SKIP {s.get('skip', 0)}"
+        )
+
+    def _load_last_report(self):
+        path = self.last_report_path()
+        if not path.is_file():
+            QMessageBox.information(self, '上次报告', f'尚无落盘报告：\n{path}')
+            return
+        try:
+            report = json.loads(path.read_text(encoding='utf-8'))
+        except Exception as err:
+            QMessageBox.warning(self, '读取失败', str(err))
+            return
+        self._report = report
+        self._apply_report_to_table(report)
+        self._update_last_banner(report)
+        s = report.get('summary') or {}
+        self.summary_lab.setText(
+            f"PASS {s.get('pass', 0)} · FAIL {s.get('fail', 0)} · SKIP {s.get('skip', 0)}（已载入）"
+        )
+        self._log(f'已载入上次报告 {path}')
+
+    def _apply_report_to_table(self, report: dict):
+        items = {it.get('id'): it for it in (report.get('items') or []) if isinstance(it, dict)}
+        for i, (cid, title, cmd, _) in enumerate(CHECKLIST):
+            it = items.get(cid) or {}
+            status = it.get('status') or '—'
+            detail = it.get('detail') or ''
+            reply = it.get('reply') or ''
+            self.table.item(i, 3).setText(str(status))
+            text = detail
+            if reply:
+                text = f'{detail} | {reply}' if detail else reply
+            self.table.item(i, 4).setText(text)
+        # host/port
+        try:
+            if report.get('host'):
+                self.host_edit.setText(str(report['host']))
+            if report.get('port'):
+                self.port_spin.setValue(int(report['port']))
+        except Exception:
+            pass
 
     def report_csv(self) -> str:
         buf = io.StringIO()

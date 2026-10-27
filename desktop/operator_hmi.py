@@ -735,6 +735,9 @@ class OperatorHmiView(QWidget):
                             truthy = val not in (0, 0.0, False, None, '', '0', 'false', 'False')
                             ok = bool(truthy)
                             detail = f'{gate_key}={val}'
+                            self._last_gate_detail = detail
+                            self._last_gate_key = gate_key
+                            self._last_gate_value = val
                             break
                 # Prefer last step status if present
                 for record in reversed(result.get('results') or []):
@@ -748,7 +751,11 @@ class OperatorHmiView(QWidget):
                     if 'commOk' in out and out.get('commOk') in (0, False, '0'):
                         ok = False; detail = 'commOk=0'; break
                     if 'passGate' in out and out.get('passGate') in (0, False, '0'):
-                        ok = False; detail = 'passGate=0'; break
+                        ok = False; detail = 'passGate=0'
+                        self._last_gate_detail = detail
+                        self._last_gate_key = 'passGate'
+                        self._last_gate_value = out.get('passGate')
+                        break
             for panel in getattr(self, '_stats_panels', []) or []:
                 try:
                     panel.record(ok if state == 'completed' else False,
@@ -792,6 +799,12 @@ class OperatorHmiView(QWidget):
             self.update_fixed_bar_live(okng=okng, counters=counters)
         except Exception:
             pass
+        try:
+            if state in ('completed', 'failed'):
+                self.update_gate_column_live(result.get('variables') or {})
+        except Exception:
+            pass
+
     def apply_display(self, *, fit_mode=None, image=None, channel=None):
         """Live-apply Display fitMode (+ optional pre-channelled image) on HMI panes."""
         fit = fit_mode if fit_mode in ('contain', 'cover', 'actual') else None
@@ -1100,10 +1113,18 @@ class OperatorHmiView(QWidget):
         # 细妆⑬：追加一行历史（时间/序号/模块/耗时/判定/OK/NG/门限/备注）
         try:
             gate = ''
-            fb = getattr(self, '_fixed_bars_cache', None) or {}
-            if isinstance(fb, dict) and fb.get('gateKey'):
-                gate = str(fb.get('gateKey'))
-            # also try variables passGate from last runtime
+            # Prefer live passGate=/gateKey= value from last completed run
+            live = getattr(self, '_last_gate_detail', None)
+            if live:
+                gate = str(live)
+            else:
+                fb = getattr(self, '_fixed_bars_cache', None) or {}
+                if isinstance(fb, dict) and fb.get('gateKey'):
+                    gate = str(fb.get('gateKey'))
+                gk = getattr(self, '_last_gate_key', None)
+                gv = getattr(self, '_last_gate_value', None)
+                if gk is not None and gv is not None:
+                    gate = f'{gk}={gv}'
             note = ''
             hist = getattr(self, '_result_history', None)
             if hist is None:
@@ -1181,6 +1202,36 @@ class OperatorHmiView(QWidget):
         try:
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(self.result_history_csv())
+        except Exception:
+            pass
+
+
+    def update_gate_column_live(self, variables=None):
+        """Refresh 门限 column on newest history row from live flow.passGate (or gateKey)."""
+        try:
+            vars_bag = variables or {}
+            flow = vars_bag.get('flow') if isinstance(vars_bag, dict) else {}
+            if not isinstance(flow, dict):
+                flow = {}
+            preferred = []
+            fb = getattr(self, '_fixed_bars_cache', None) or {}
+            if isinstance(fb, dict) and fb.get('gateKey'):
+                preferred.append(str(fb.get('gateKey')))
+            preferred.extend(['passGate', 'commOk', 'passed', 'ok', 'ResultOK'])
+            detail = None
+            for k in preferred:
+                if k in flow:
+                    detail = f'{k}={flow.get(k)}'
+                    self._last_gate_detail = detail
+                    self._last_gate_key = k
+                    self._last_gate_value = flow.get(k)
+                    break
+            if not detail:
+                return
+            hist = getattr(self, '_result_history', None)
+            if hist:
+                hist[-1]['gate'] = detail
+            self._refresh_result_tables_ui()
         except Exception:
             pass
 

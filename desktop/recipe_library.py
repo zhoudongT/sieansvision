@@ -60,10 +60,25 @@ def _step_snapshot(step: dict) -> dict:
     }
 
 
-def capture_recipe(project: dict, name: str, note: str = '') -> dict:
-    """Snapshot current top-level steps (+ variables shell) as a named recipe."""
+def capture_recipe(project: dict, name: str, note: str = '',
+                   variant: str = '', var_keys=None, step_ops=None) -> dict:
+    """Snapshot current top-level steps (+ variables shell) as a named recipe.
+
+    variant: product variant label (e.g. A型/B型) for partial-apply grouping.
+    var_keys: optional list of variable names to keep in snapshot (subset).
+    step_ops: optional list of operations to keep in snapshot (subset).
+    """
     name = (name or '').strip() or f'配方{_now()}'
-    snap_steps = [_step_snapshot(s) for s in (project.get('steps') or []) if isinstance(s, dict)]
+    variant = (variant or '').strip()
+    want_ops = {str(x).strip() for x in (step_ops or []) if str(x).strip()} or None
+    want_vars = {str(x).strip() for x in (var_keys or []) if str(x).strip()} or None
+    snap_steps = []
+    for s in (project.get('steps') or []):
+        if not isinstance(s, dict):
+            continue
+        if want_ops and (s.get('operation') or '') not in want_ops:
+            continue
+        snap_steps.append(_step_snapshot(s))
     # light variables copy (names/values only; skip huge images)
     vars_out = {}
     raw_vars = project.get('variables')
@@ -73,6 +88,8 @@ def capture_recipe(project: dict, name: str, note: str = '') -> dict:
                 continue
             slim = {}
             for k, v in bucket.items():
+                if want_vars and k not in want_vars:
+                    continue
                 if isinstance(v, str) and (v.startswith('data:image/') or len(v) > 4096):
                     continue
                 slim[k] = deepcopy(v)
@@ -82,12 +99,18 @@ def capture_recipe(project: dict, name: str, note: str = '') -> dict:
         'id': uid(),
         'name': name,
         'note': (note or '').strip(),
+        'variant': variant,
+        'varKeys': sorted(want_vars) if want_vars else [],
+        'stepOps': sorted(want_ops) if want_ops else [],
         'updatedAt': _now(),
         'stepCount': len(snap_steps),
         'snapshot': {
             'steps': snap_steps,
             'variables': vars_out,
             'productionRecipe': name,
+            'variant': variant,
+            'varKeys': sorted(want_vars) if want_vars else [],
+            'stepOps': sorted(want_ops) if want_ops else [],
         },
     }
     recipes = ensure_recipes(project)
@@ -123,8 +146,16 @@ def _match_step(live_steps: list, snap: dict):
     return None
 
 
-def apply_recipe(project: dict, recipe_id: str) -> dict:
-    """Apply recipe snapshot params onto matching live steps. Returns stats."""
+def apply_recipe(project: dict, recipe_id: str, *,
+                 var_keys=None, step_ops=None, steps_only: bool = False,
+                 vars_only: bool = False) -> dict:
+    """Apply recipe snapshot params onto matching live steps. Returns stats.
+
+    Partial apply:
+      var_keys  — only merge these variable names (None = all in snapshot)
+      step_ops  — only apply steps whose operation is in this set (None = all)
+      steps_only / vars_only — skip the other half
+    """
     recipes = ensure_recipes(project)
     entry = next((r for r in recipes if isinstance(r, dict) and r.get('id') == recipe_id), None)
     if not entry:
@@ -132,40 +163,87 @@ def apply_recipe(project: dict, recipe_id: str) -> dict:
     snap = entry.get('snapshot') or {}
     snap_steps = snap.get('steps') or []
     live = [s for s in (project.get('steps') or []) if isinstance(s, dict)]
+    want_ops = {str(x).strip() for x in (step_ops or []) if str(x).strip()} or None
+    # fall back to recipe-stored subset if caller did not override
+    if want_ops is None and entry.get('stepOps'):
+        want_ops = {str(x).strip() for x in entry.get('stepOps') if str(x).strip()} or None
+    want_vars = {str(x).strip() for x in (var_keys or []) if str(x).strip()} or None
+    if want_vars is None and entry.get('varKeys'):
+        want_vars = {str(x).strip() for x in entry.get('varKeys') if str(x).strip()} or None
+
     applied = 0
     skipped = 0
-    for row in snap_steps:
-        if not isinstance(row, dict):
-            continue
-        target = _match_step(live, row)
-        if target is None:
-            skipped += 1
-            continue
-        params = row.get('params')
-        if isinstance(params, dict):
-            target['params'] = deepcopy(params)
-            applied += 1
-        if row.get('imageFrom') is not None:
-            target['imageFrom'] = row.get('imageFrom')
-    # optional variables merge (non-destructive for missing scopes)
-    vars_in = snap.get('variables')
-    if isinstance(vars_in, dict):
-        dest = project.setdefault('variables', {})
-        if not isinstance(dest, dict):
-            project['variables'] = {}
-            dest = project['variables']
-        for scope, bucket in vars_in.items():
-            if not isinstance(bucket, dict):
+    if not vars_only:
+        for row in snap_steps:
+            if not isinstance(row, dict):
                 continue
-            slot = dest.setdefault(scope, {})
-            if isinstance(slot, dict):
+            if want_ops and (row.get('operation') or '') not in want_ops:
+                skipped += 1
+                continue
+            target = _match_step(live, row)
+            if target is None:
+                skipped += 1
+                continue
+            params = row.get('params')
+            if isinstance(params, dict):
+                target['params'] = deepcopy(params)
+                applied += 1
+            if row.get('imageFrom') is not None:
+                target['imageFrom'] = row.get('imageFrom')
+    vars_applied = 0
+    if not steps_only:
+        vars_in = snap.get('variables')
+        if isinstance(vars_in, dict):
+            dest = project.setdefault('variables', {})
+            if not isinstance(dest, dict):
+                project['variables'] = {}
+                dest = project['variables']
+            for scope, bucket in vars_in.items():
+                if not isinstance(bucket, dict):
+                    continue
+                slot = dest.setdefault(scope, {})
+                if not isinstance(slot, dict):
+                    continue
                 for k, v in bucket.items():
+                    if want_vars and k not in want_vars:
+                        continue
                     slot[k] = deepcopy(v)
+                    vars_applied += 1
     name = str(entry.get('name') or '')
     project['activeRecipeId'] = entry['id']
+    if entry.get('variant'):
+        project['activeRecipeVariant'] = entry.get('variant')
     _sync_production_recipe_field(project, name)
     entry['updatedAt'] = entry.get('updatedAt') or _now()
-    return {'applied': applied, 'skipped': skipped, 'name': name, 'id': entry['id']}
+    return {
+        'applied': applied, 'skipped': skipped, 'varsApplied': vars_applied,
+        'name': name, 'id': entry['id'],
+        'variant': entry.get('variant') or '',
+        'partial': bool(want_ops or want_vars or steps_only or vars_only),
+    }
+
+
+def list_variants(project: dict) -> list:
+    """Unique product variant labels present on recipes (stable order)."""
+    seen = []
+    for r in ensure_recipes(project):
+        if not isinstance(r, dict):
+            continue
+        v = str(r.get('variant') or '').strip()
+        if v and v not in seen:
+            seen.append(v)
+    return seen
+
+
+def recipes_for_variant(project: dict, variant: str) -> list:
+    variant = (variant or '').strip()
+    out = []
+    for r in ensure_recipes(project):
+        if not isinstance(r, dict):
+            continue
+        if not variant or str(r.get('variant') or '').strip() == variant:
+            out.append(r)
+    return out
 
 
 def _sync_production_recipe_field(project: dict, name: str):

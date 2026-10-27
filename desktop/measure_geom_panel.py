@@ -172,8 +172,43 @@ class MeasureGeomPanel(QWidget):
                     self._set_param(id_key, nid)
 
         pick.clicked.connect(_pick)
+        canvas_btn = QPushButton('画布点选')
+        canvas_btn.setObjectName('measureGeomCanvasPickBtn')
+        canvas_btn.setToolTip('在模块结果/全局图像上点击直线或点，写入来源+字段（需先运行出几何结果）')
+        kind = self._bind_kind(default_field)
+
+        def _canvas_pick(*_, e=field, fk=field_key, df=default_field, src=box, ik=id_key, k=kind):
+            host = self.window()
+            begin = getattr(host, 'begin_geom_canvas_pick', None) if host is not None else None
+            if not callable(begin):
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.information(self, '画布点选', '当前窗口不支持画布点选（需主工作台）。')
+                return
+
+            def _on_hit(hit):
+                if not hit:
+                    return
+                nid = hit.get('stepId') or ''
+                field_path = hit.get('field') or df
+                if nid:
+                    i = src.findData(nid)
+                    if i < 0:
+                        src.addItem(hit.get('stepName') or nid, nid)
+                        i = src.findData(nid)
+                    if i >= 0:
+                        src.blockSignals(True)
+                        src.setCurrentIndex(i)
+                        src.blockSignals(False)
+                    self._set_param(ik, nid)
+                e.setText(field_path)
+                self._set_param(fk, field_path)
+
+            begin(k, _on_hit, status=f'点选{label}（{k}）')
+
+        canvas_btn.clicked.connect(_canvas_pick)
         frow.addWidget(field, 1)
         frow.addWidget(pick)
+        frow.addWidget(canvas_btn)
         form.addRow(label + ' 字段', frow)
 
     def _basic_tab(self, title):
@@ -207,7 +242,7 @@ class MeasureGeomPanel(QWidget):
         scale.setValue(float(self.params.get('scale') or 1))
         scale.valueChanged.connect(lambda v: self._set_param('scale', float(v)))
         form.addRow('像素比例', scale)
-        tip = QLabel('绑定字段示例：lines[0]、lines.0、matches[0]、circles[0]；切换来源自动建议字段；叠层随「结果显示」开关。手动模式在「手动坐标」Tab。')
+        tip = QLabel('绑定字段示例：lines[0]、matches[0]、circles[0]。「画布点选」：先运行几何/定位，再在图像上点击目标线/点写入绑定。叠层随「结果显示」开关。')
         tip.setWordWrap(True); tip.setStyleSheet('color:#888;'); form.addRow(tip)
         return w
 

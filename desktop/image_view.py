@@ -14,6 +14,7 @@ class ImageView(QGraphicsView):
     (「图像只有上面一条」). Defer fit until the view is visible with a real size.
     """
     roi_changed = Signal(list)
+    geom_picked = Signal(dict)  # canvas click-to-bind hit
 
     def __init__(self):
         super().__init__()
@@ -30,6 +31,11 @@ class ImageView(QGraphicsView):
         self.select_roi = False
         self.origin = None
         self.overlay = None
+        self._geom_pick = False
+        self._geom_pick_kind = 'line'
+        self._geom_pickables = []
+        self._geom_pick_tol = 14.0
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.bounds = QRectF()
         self._needs_fit = False
         self._fit_mode = 'contain'  # contain | cover | actual (Display 适应模式)
@@ -216,7 +222,63 @@ class ImageView(QGraphicsView):
                 item.setPen(pen); item.setZValue(19); items.append(item); self.scene().addItem(item)
         self._geom_items = items
 
+    def set_geom_pick_mode(self, enabled, kind='line', pickables=None, tol=14.0):
+        """Enable click-to-bind: left-click nearest line/point pickable."""
+        self._geom_pick = bool(enabled)
+        self._geom_pick_kind = kind or 'line'
+        self._geom_pickables = list(pickables or [])
+        self._geom_pick_tol = float(tol or 14.0)
+        if self._geom_pick:
+            self.setCursor(Qt.CursorShape.CrossCursor)
+            self.setDragMode(QGraphicsView.DragMode.NoDrag)
+            # preview candidates
+            try:
+                from desktop.geom_canvas_pick import overlay_specs_for_pickables
+                specs = overlay_specs_for_pickables(self._geom_pickables)
+                if specs:
+                    self.set_geom_overlays(specs)
+            except Exception:
+                pass
+        else:
+            self.unsetCursor()
+            self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+
+    def geom_pick_active(self):
+        return bool(getattr(self, '_geom_pick', False))
+
+
+    def keyPressEvent(self, event):
+        if getattr(self, '_geom_pick', False) and event.key() == Qt.Key.Key_Escape:
+            cancel = getattr(self, '_geom_pick_cancel', None)
+            if callable(cancel):
+                cancel()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+
     def mousePressEvent(self, event):
+        if getattr(self, '_geom_pick', False) and event.button() == Qt.MouseButton.RightButton:
+            cancel = getattr(self, '_geom_pick_cancel', None)
+            if callable(cancel):
+                cancel()
+            event.accept()
+            return
+        if getattr(self, '_geom_pick', False) and event.button() == Qt.MouseButton.LeftButton:
+            pt = self.mapToScene(event.position().toPoint())
+            try:
+                from desktop.geom_canvas_pick import hit_test
+                hit = hit_test(self._geom_pickables, float(pt.x()), float(pt.y()),
+                               kind=self._geom_pick_kind, tol=self._geom_pick_tol)
+            except Exception:
+                hit = None
+            if hit:
+                self.geom_picked.emit(hit)
+                event.accept()
+                return
+            # miss: still accept so user knows pick mode is on
+            event.accept()
+            return
         if self.select_roi and event.button() == Qt.MouseButton.LeftButton and not self.bounds.isEmpty():
             self.origin = self.mapToScene(event.position().toPoint())
             event.accept()

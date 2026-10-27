@@ -1146,6 +1146,71 @@ class MainWindow(QMainWindow):
 
 
 
+    def begin_geom_canvas_pick(self, kind='line', on_hit=None, status=None):
+        """Enter canvas click-to-bind on output image for measure_geom fields."""
+        view = getattr(self, 'output_view', None)
+        if view is None or not hasattr(view, 'set_geom_pick_mode'):
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(self, '画布点选', '输出画布不可用。')
+            return
+        try:
+            from desktop.geom_canvas_pick import collect_pickables
+            pickables = collect_pickables(getattr(self, 'last_result', None),
+                                         self.document.project, kind=kind)
+        except Exception as exc:
+            self.log(f'画布点选收集失败：{exc}')
+            pickables = []
+        if not pickables:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self, '画布点选',
+                '当前无可用几何结果。请先运行找线/定位/几何模块，再点「画布点选」。')
+            return
+        try:
+            self.images.setCurrentIndex(1)
+        except Exception:
+            pass
+        msg = status or f'画布点选（{kind}）— 点击高亮目标'
+        self.log(msg)
+        try:
+            self.statusBar().showMessage(msg + ' · Esc/右键取消')
+        except Exception:
+            pass
+
+        def _finish(hit=None):
+            try:
+                view.geom_picked.disconnect(_on_picked)
+            except Exception:
+                pass
+            try:
+                view.set_geom_pick_mode(False)
+            except Exception:
+                pass
+            try:
+                self._apply_measure_geom_overlays(
+                    (getattr(self, 'last_result', None) or {}).get('results') or [])
+            except Exception:
+                pass
+            if hit and callable(on_hit):
+                try:
+                    on_hit(hit)
+                    self.log(f"已绑定 {hit.get('stepName') or hit.get('stepId')} → {hit.get('field')}")
+                except Exception as exc:
+                    self.log(f'绑定回调失败：{exc}')
+            else:
+                self.log('画布点选已取消')
+
+        def _on_picked(hit):
+            _finish(hit)
+
+        try:
+            view.geom_picked.disconnect()
+        except Exception:
+            pass
+        view.geom_picked.connect(_on_picked)
+        view.set_geom_pick_mode(True, kind=kind, pickables=pickables)
+        view._geom_pick_cancel = lambda: _finish(None)
+
     def _apply_measure_geom_overlays(self, records):
         """Canvas draw path: vector overlays for measure_geom when annotatedImage already baked
         or as fallback from result scalars + step show* params."""
@@ -3388,7 +3453,7 @@ class MainWindow(QMainWindow):
     def open_comm_acceptance(self):
         """细妆⑬：真机 Comm 验收壳（默认环回干跑，Host/Port 可改真机）."""
         from desktop.comm_acceptance_dialog import CommAcceptanceDialog
-        dlg = CommAcceptanceDialog(self, default_host='127.0.0.1', default_port=19880)
+        dlg = CommAcceptanceDialog(self, default_host='127.0.0.1', default_port=19880, data_dir=self.data)
         dlg.exec()
 
 

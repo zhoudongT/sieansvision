@@ -426,6 +426,17 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆⑭ · 画布点选绑定 · 配方变体子集 · Comm报告落盘 · 门限列 live passGate · 2026-10-28】
+
+- **Canvas 点选加深（measure_geom 绑定）**：`desktop/geom_canvas_pick.py` 从 last_result 收集 lines/matches/circles/交点/垂足；`ImageView` 点选模式（左键命中 / 右键·Esc 取消）+ 预览叠层；几何量测面板每条绑定旁「画布点选」→ `MainWindow.begin_geom_canvas_pick` 写回来源 stepId + 字段路径。
+- **配方产品变体 / 变量子集 / 部分套用**：`recipe_library.capture_recipe(variant/var_keys/step_ops)`；`apply_recipe(..., var_keys/step_ops/steps_only/vars_only)`；`list_variants` / `recipes_for_variant`；换型对话框产品变体筛选 + 部分套用白名单（算子/变量）+ 只模块/只变量开关。
+- **Comm 验收报告落盘**：`data/.../comm-acceptance/last-report.json`（+ 时间戳副本）；对话框横幅显示上次 PASS/FAIL；「载入上次报告」回填表格；打开即 bootstrap。
+- **HMI 结果表门限列**：跟 live `passGate=<值>`（或判定门 gateKey 实值）；`_last_gate_detail` + `update_gate_column_live` 刷新最新行。
+- **Smokes**：`smoke-geom-canvas-pick-e2e` / `smoke-recipe-variants-partial-e2e` / `smoke-comm-acceptance-persist-e2e` / `smoke-hmi-passgate-column-e2e`（全部 PASS）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆⑬ · 产线配方换型 · 多卡尺ROI编辑 · 结果表CSV · Comm验收壳 · 2026-10-28】
 
 - **产线配方 / 一键换型**：`desktop/recipe_library.py` + `recipe_switch_dialog.py`；本方案 `project.recipes[]` 参数快照保存/套用（按算子+名称匹配）；工程库/模板/打开即跑整案换型；菜单「工具→产线配方/换型…」+ 工具栏「配方」；生产任务面板 tip。
