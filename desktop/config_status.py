@@ -51,10 +51,24 @@ def step_incomplete(step, project=None) -> bool:
             or params.get('endpoint')
         )
     if op == 'condition':
+        rules = params.get('rules') or params.get('table') or []
+        def _rule_ready(r):
+            if not isinstance(r, dict):
+                return False
+            if (r.get('comparison') or '') in ('is_true', 'is_false'):
+                return r.get('left') is not None and str(r.get('left')).strip() != ''
+            return str(r.get('left', '')).strip() != '' or r.get('left') == 0
+        if isinstance(rules, list) and rules:
+            return not any(_rule_ready(r) for r in rules)
         return not bool(
             params.get('expression') or params.get('condition')
-            or params.get('rules') or params.get('table')
+            or params.get('left') is not None
         )
+    if op == 'branch':
+        paths = params.get('paths') or []
+        return not (isinstance(paths, list) and len(paths) >= 1)
+    if op == 'pose_correct':
+        return not bool(step.get('imageFrom'))
     if op in ('comm_send', 'comm_recv', 'send_data', 'receive_data'):
         return not bool(params.get('device') or params.get('channel') or params.get('message'))
     return False

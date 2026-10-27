@@ -19,11 +19,16 @@ CORE = [
         field('feature','特征','string','contours',choices=choices(('contours','轮廓'),('lines','直线'),('circles','圆'),('edges','边缘'))),
         field('threshold','阈值',default=127,minimum=0,maximum=255),field('minArea','最小面积',default=50,minimum=1),field('invert','反色','boolean',False)]),
     dict(operation='barcode',name='条码与二维码',category='识别',parameters=[]),
-    dict(operation='locate',name='模板匹配定位',category='定位与测量',parameters=[field('minScore','最低匹配分数',default=.85,minimum=0,maximum=1),field('maxMatches','最多目标数','integer',1,minimum=1,maximum=50),field('angleStart','起始角度',default=0,minimum=-180,maximum=180),field('angleEnd','终止角度',default=0,minimum=-180,maximum=180),field('angleStep','角度步长',default=10,minimum=1,maximum=180)]),
+    dict(operation='locate',name='模板匹配定位',category='定位与测量',parameters=[field('matchMode','匹配模式','string','fast',choices=choices(('fast','快速匹配'),('gray','灰度模板匹配'))),field('minScore','最低匹配分数',default=.85,minimum=0,maximum=1),field('maxMatches','最多目标数','integer',1,minimum=1,maximum=50),field('angleStart','起始角度',default=0,minimum=-180,maximum=180),field('angleEnd','终止角度',default=0,minimum=-180,maximum=180),field('angleStep','角度步长',default=10,minimum=1,maximum=180)]),
     dict(operation='defects',name='参考图差异检测',category='识别',parameters=[field('differenceThreshold','灰度差阈值',default=30,minimum=1,maximum=255),field('minArea','最小差异面积',default=20,minimum=1),field('maxDefectRatio','允许差异比例',default=0,minimum=0,maximum=1)]),
     dict(operation='delay',name='延时等待',category='流程控制',parameters=[field('milliseconds','等待时间（ms）','integer',100,minimum=0,maximum=30000)]),
     dict(operation='condition',name='条件判断',category='流程控制',parameters=[field('comparison','比较方式','string','gt',choices=choices(('eq','等于'),('ne','不等于'),('gt','大于'),('lt','小于'),('is_true','为真'),('is_false','为假'))),field('left','左侧值'),field('right','右侧值')]),
     dict(operation='branch_merge',name='分支汇合',category='流程控制',parameters=[]),
+    dict(operation='branch',name='分支模块',category='流程控制',parameters=[]),
+    dict(operation='pose_correct',name='位置修正',category='定位与测量',parameters=[
+        field('fixtureSource','位姿来源','string','auto',choices=choices(('auto','自动上游'),('manual','手动'),('bind','绑定字段'))),
+        field('baseX','基准X',default=0),field('baseY','基准Y',default=0),field('baseAngle','基准角度',default=0),
+        field('followRoi','跟随ROI','boolean',True)]),
     dict(operation='yolo',name='YOLO 目标检测',category='识别',parameters=[field('model','模型文件','string','yolo11n.pt'),field('device','计算设备','string','cpu',choices=choices(('cpu','CPU'),('auto','自动'),('cuda:0','GPU 0'))),field('confidence','置信度',default=.25,minimum=0,maximum=1),field('iou','交并比阈值',default=.45,minimum=0,maximum=1),field('imageSize','推理尺寸','integer',640,minimum=32,maximum=1920)]),
 ]
 for definition in CORE:
@@ -33,8 +38,8 @@ for definition in CORE:
 def builtin_definitions():
     metadata=json.loads(Path(__file__).with_name('builtin-catalog.json').read_text(encoding='utf-8'))
     definitions={}
-    groups={'group':'流程控制','subflow':'流程控制','loop':'流程控制','condition':'流程控制','branch_merge':'流程控制','delay':'流程控制','variables':'变量与数据',
-            'preprocess':'图像处理','locate':'定位与测量','geometry':'定位与测量','measure':'定位与测量','barcode':'识别','ocr':'识别','defects':'识别','yolo':'识别','yolo_segment':'识别'}
+    groups={'group':'流程控制','subflow':'流程控制','loop':'流程控制','condition':'流程控制','branch_merge':'流程控制','branch':'流程控制','delay':'流程控制','variables':'变量与数据',
+            'preprocess':'图像处理','locate':'定位与测量','pose_correct':'定位与测量','geometry':'定位与测量','measure':'定位与测量','barcode':'识别','ocr':'识别','defects':'识别','yolo':'识别','yolo_segment':'识别'}
     for operation,meta in metadata.items():
         if operation=='plugin':continue
         defaults=deepcopy(meta.get('defaults',{}));parameters=[]
@@ -93,6 +98,30 @@ def builtin_definitions():
         ],
         description='组合模块（Group）：双击进入嵌套流程；进组前须绑定 ImageData / InputROI；循环设置与主流程分层。',
     )
+    # Wave2: 位置修正 / 分支模块（设计态壳 + 运行透传）
+    definitions['pose_correct'] = dict(
+        operation='pose_correct', name='位置修正', category='定位与测量',
+        defaults=dict(fixtureSource='auto', baseX=0.0, baseY=0.0, baseAngle=0.0, followRoi=True,
+                      outputCoord='fixture', bindStepId='', bindField='matches[0]'),
+        parameters=[
+            field('fixtureSource', '位姿来源', 'string', 'auto',
+                  choices=choices(('auto', '自动上游'), ('manual', '手动'), ('bind', '绑定字段'))),
+            field('baseX', '基准X', default=0),
+            field('baseY', '基准Y', default=0),
+            field('baseAngle', '基准角度', default=0),
+            field('followRoi', '跟随ROI', 'boolean', True),
+        ],
+        description='位置修正：用匹配位姿校正后续 ROI/坐标系（VM p=9）。',
+    )
+    definitions['branch'] = dict(
+        operation='branch', name='分支模块', category='流程控制',
+        defaults=dict(paths=[], defaultPathId='default'),
+        parameters=[],
+        description='分支模块：多路径条件表；出边 when=路径名（VM p=19）。',
+    )
+    if 'locate' in definitions:
+        extra('locate', 'matchMode', '匹配模式', 'string', 'fast',
+              choices=choices(('fast', '快速匹配'), ('gray', '灰度模板匹配')))
     for key,label,kind,default in [('iterations','循环上限','integer',1),('mode','循环方式','string','count'),('frameMode','每轮输入','string','previous'),('stopField','停止条件字段','string','passed'),('stopValue','停止条件值','boolean',True)]:extra('loop',key,label,kind,default)
     return definitions
 

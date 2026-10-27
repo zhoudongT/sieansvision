@@ -1,7 +1,7 @@
-"""模板匹配定位（locate）属性浮窗 — VisionMaster 快速匹配四 Tab 壳.
+"""模板匹配定位（locate）属性浮窗 — VisionMaster 快速/灰度匹配四 Tab 壳.
 
-Tabs (JGTech / VM 课): 基本参数 | 特征模板 | 运行参数 | 结果显示
-sieans catalog op = locate（模板匹配定位）.
+Tabs: 基本参数 | 特征模板或灰度模板 | 运行参数 | 结果显示
+matchMode: fast（快速/特征）| gray（灰度相关）.
 """
 from copy import deepcopy
 
@@ -17,6 +17,10 @@ from desktop.widgets.switch import OrangeSwitch
 
 def normalize_locate_params(params=None):
     p = deepcopy(params or {})
+    mode = p.get('matchMode') or 'fast'
+    if mode not in ('fast', 'gray'):
+        mode = 'fast'
+    p['matchMode'] = mode
     p.setdefault('minScore', 0.85)
     p.setdefault('maxMatches', 1)
     p.setdefault('angleStart', 0.0)
@@ -32,11 +36,16 @@ def normalize_locate_params(params=None):
     p.setdefault('showOrigin', False)
     p.setdefault('resultJudgeEnable', False)
     p.setdefault('roiMode', 'inherit')  # inherit | draw
+    # Gray-match extras (VM 灰度模板 / 运行参数)
+    p.setdefault('grayLevel', 8)          # 灰度级数
+    p.setdefault('scoreType', 'ncc')      # ncc | sad
+    p.setdefault('subPixel', True)
+    p.setdefault('timeoutMs', 3000)
     return p
 
 
 class LocateMatchPanel(QWidget):
-    """四 Tab：基本参数 / 特征模板 / 运行参数 / 结果显示."""
+    """四 Tab：基本参数 / 特征或灰度模板 / 运行参数 / 结果显示."""
     changed = Signal(dict)
 
     def __init__(self, step, definition, project, parent=None):
@@ -51,7 +60,10 @@ class LocateMatchPanel(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        hint = QLabel('对齐 VisionMaster「快速匹配」：基本参数 / 特征模板 / 运行参数 / 结果显示')
+        mode = self.params.get('matchMode') or 'fast'
+        mode_label = '灰度模板匹配' if mode == 'gray' else '快速匹配'
+        tpl_label = '灰度模板' if mode == 'gray' else '特征模板'
+        hint = QLabel(f'对齐 VisionMaster「{mode_label}」：基本参数 / {tpl_label} / 运行参数 / 结果显示')
         hint.setObjectName('dialogHint')
         hint.setWordWrap(True)
         hint.setStyleSheet('color:#666;padding:8px 10px 4px;')
@@ -62,7 +74,7 @@ class LocateMatchPanel(QWidget):
         root.addWidget(self.tabs, 1)
 
         self.tabs.addTab(self._wrap(self._basic_tab()), '基本参数')
-        self.tabs.addTab(self._wrap(self._template_tab()), '特征模板')
+        self.tabs.addTab(self._wrap(self._template_tab()), tpl_label)
         self.tabs.addTab(self._wrap(self._run_tab()), '运行参数')
         self.tabs.addTab(self._wrap(self._result_tab()), '结果显示')
 
@@ -93,6 +105,22 @@ class LocateMatchPanel(QWidget):
             self.step[key] = deepcopy(value)
             self._emit()
 
+    def _on_match_mode(self, mode):
+        """Switch fast↔gray; refresh tab title + default module name hint."""
+        if mode not in ('fast', 'gray'):
+            mode = 'fast'
+        if self.params.get('matchMode') == mode:
+            return
+        self.params['matchMode'] = mode
+        # Rename second tab
+        if hasattr(self, 'tabs') and self.tabs.count() >= 2:
+            self.tabs.setTabText(1, '灰度模板' if mode == 'gray' else '特征模板')
+        # Soft-rename module if still default-ish
+        cur = (self.step.get('name') or '').strip()
+        if cur in ('', '模板匹配定位', '快速匹配', '灰度模板匹配', '快速模板匹配'):
+            self.step['name'] = '灰度模板匹配' if mode == 'gray' else '模板匹配定位'
+        self._emit()
+
     def _basic_tab(self):
         w = QWidget()
         form = QFormLayout(w)
@@ -103,6 +131,14 @@ class LocateMatchPanel(QWidget):
         name.setMaxLength(80)
         name.editingFinished.connect(lambda: self._set_top('name', name.text()))
         form.addRow('模块名称', name)
+
+        mode = QComboBox()
+        mode.addItem('快速匹配（特征）', 'fast')
+        mode.addItem('灰度模板匹配', 'gray')
+        mi = max(0, mode.findData(self.params.get('matchMode') or 'fast'))
+        mode.setCurrentIndex(mi)
+        mode.currentIndexChanged.connect(lambda _: self._on_match_mode(mode.currentData()))
+        form.addRow('匹配模式', mode)
 
         # 输入源 — VM「0 图像源1.图像」
         image_from = QComboBox()
@@ -148,7 +184,7 @@ class LocateMatchPanel(QWidget):
         lay.setContentsMargins(10, 10, 10, 10)
 
         tip = QLabel(
-            'VisionMaster「特征模板」：创建 / 载入 / 编辑模板；对比度阈值与画笔在模板配置子窗。'
+            'VisionMaster「灰度模板」：创建 / 载入灰度模板。' if (self.params.get('matchMode') == 'gray') else 'VisionMaster「特征模板」：创建 / 载入 / 编辑模板；对比度阈值与画笔在模板配置子窗。'
             '此处落地载入路径与就绪标志（算法模板编辑器后续迭代）。'
         )
         tip.setWordWrap(True)
@@ -236,7 +272,32 @@ class LocateMatchPanel(QWidget):
         form.addRow('终止角度', a1)
         form.addRow('角度步长', a_step)
 
-        tip = QLabel('对应 VM「运行参数」：分数/个数/角度/尺度等；尺度数组可在后续扩展。')
+        if (self.params.get('matchMode') or 'fast') == 'gray':
+            gray_lv = QSpinBox(); gray_lv.setRange(2, 256)
+            gray_lv.setValue(int(self.params.get('grayLevel') or 8))
+            gray_lv.valueChanged.connect(lambda v: self._set_param('grayLevel', int(v)))
+            form.addRow('灰度级数', gray_lv)
+
+            score_type = QComboBox()
+            score_type.addItem('NCC 归一化相关', 'ncc')
+            score_type.addItem('SAD 绝对差', 'sad')
+            si = max(0, score_type.findData(self.params.get('scoreType') or 'ncc'))
+            score_type.setCurrentIndex(si)
+            score_type.currentIndexChanged.connect(
+                lambda _: self._set_param('scoreType', score_type.currentData())
+            )
+            form.addRow('评分方式', score_type)
+
+            sub = OrangeSwitch(bool(self.params.get('subPixel', True)))
+            sub.toggled.connect(lambda c: self._set_param('subPixel', bool(c)))
+            form.addRow('亚像素', sub)
+
+            timeout = QSpinBox(); timeout.setRange(0, 60000)
+            timeout.setValue(int(self.params.get('timeoutMs') or 3000))
+            timeout.valueChanged.connect(lambda v: self._set_param('timeoutMs', int(v)))
+            form.addRow('超时(ms)', timeout)
+
+        tip = QLabel('对应 VM「运行参数」：分数/个数/角度；灰度模式另含级数/评分/亚像素/超时。')
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)

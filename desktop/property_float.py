@@ -132,12 +132,43 @@ class PropertyFloat(QDialog):
             self._last_step = deepcopy(step)
             self.show(); self.raise_(); self.activateWindow()
             return
-        # P1-9 / JGTech: 模板匹配定位 → VM 快速匹配四 Tab
+        # P1-9 / JGTech: 模板匹配定位 → VM 快速/灰度匹配四 Tab
         if step and step.get('operation') == 'locate':
             from desktop.locate_match_panel import LocateMatchPanel, normalize_locate_params
             step = deepcopy(step)
             step['params'] = normalize_locate_params(step.get('params'))
             panel = LocateMatchPanel(step, definition, project)
+            panel.changed.connect(self._on_step_changed)
+            self.body.addWidget(panel)
+            self._panel = panel
+            self._last_step = deepcopy(step)
+            self.show(); self.raise_(); self.activateWindow()
+            return
+        # Wave2: 位置修正
+        if step and step.get('operation') == 'pose_correct':
+            from desktop.pose_correct_panel import PoseCorrectPanel, normalize_pose_correct_params
+            step = deepcopy(step)
+            step['params'] = normalize_pose_correct_params(step.get('params'))
+            panel = PoseCorrectPanel(step, definition, project)
+            panel.changed.connect(self._on_step_changed)
+            self.body.addWidget(panel)
+            self._panel = panel
+            self._last_step = deepcopy(step)
+            self.show(); self.raise_(); self.activateWindow()
+            return
+        # Wave2: 条件分支 / 分支模块 表
+        if step and step.get('operation') in ('condition', 'branch'):
+            from desktop.condition_branch_panel import (
+                ConditionBranchPanel, normalize_condition_params, normalize_branch_params,
+                sync_condition_flat,
+            )
+            step = deepcopy(step)
+            if step.get('operation') == 'branch':
+                step['params'] = normalize_branch_params(step.get('params'))
+            else:
+                step['params'] = normalize_condition_params(step.get('params'))
+                sync_condition_flat(step['params'])
+            panel = ConditionBranchPanel(step, definition, project)
             panel.changed.connect(self._on_step_changed)
             self.body.addWidget(panel)
             self._panel = panel
