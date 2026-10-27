@@ -426,6 +426,17 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆⑮ · 多源嵌套点选 · 变体快切 · Comm定时差分 · 门限序列spark · 2026-10-28】
+
+- **measure_geom 多源/嵌套绑定**：`geom_canvas_pick` 展开 `group/subflow` 的 `result.trace` 为子级候选；`merge_last_results` 合并胶片多帧缓存；`MainWindow._filmstrip_results`（≤32）在 finished 按路径落盘，画布点选合并当前结果+胶片缓存+组合内层。
+- **配方变体快切 chip**：工具栏 `recipeVariantChip`（选变体→套用该变体首条配方）；生产任务面板「产品变体」下拉 +「套用变体」；与 `activeRecipeVariant` / 配方对话框联动刷新。
+- **Comm 验收定时复测 / 上次↔本次差分**：间隔分钟 QTimer 自动重跑；`diff_reports` 项级 PASS/FAIL 变更；差分横幅 + 「对比上次↔当前」按钮；跑完自动对比磁盘上次再落盘。
+- **HMI 门限列序列 spark**：`_gate_hist` 记 recent passGate 真值；结果表上方 unicode 门限序列（高=通）；`gate_spark_text` / `_refresh_gate_spark`。
+- **Smokes**：`smoke-geom-multisource-nested-e2e` / `smoke-recipe-variant-chip-e2e` / `smoke-comm-schedule-diff-e2e` / `smoke-hmi-gate-spark-e2e`（全部 PASS）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆⑭ · 画布点选绑定 · 配方变体子集 · Comm报告落盘 · 门限列 live passGate · 2026-10-28】
 
 - **Canvas 点选加深（measure_geom 绑定）**：`desktop/geom_canvas_pick.py` 从 last_result 收集 lines/matches/circles/交点/垂足；`ImageView` 点选模式（左键命中 / 右键·Esc 取消）+ 预览叠层；几何量测面板每条绑定旁「画布点选」→ `MainWindow.begin_geom_canvas_pick` 写回来源 stepId + 字段路径。

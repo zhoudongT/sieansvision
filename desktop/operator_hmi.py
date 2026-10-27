@@ -392,7 +392,7 @@ class OperatorHmiView(QWidget):
         self._trend_sparks = []  # QLabel live elapsed spark
         self._trend_ok_sparks = []  # QLabel OK/NG sequence
         self._yield_bars = []  # (bar_ok, bar_ng) tuples
-        self._result_history=[]; self._result_tables = []
+        self._result_history=[]; self._result_tables = []; self._gate_hist=[]; self._gate_spark_labs=[]
         self._last_module_name = '流程'  # 结果表「模块」列跟末次步骤名
         self._layout_fp = None
         self._clock_timer = QTimer(self)
@@ -563,6 +563,9 @@ class OperatorHmiView(QWidget):
         self._trend_ok_sparks = []
         self._yield_bars = []
         self._result_tables = []
+        self._gate_spark_labs = []
+        # keep _gate_hist across rebuild so spark survives layout refresh
+        self._gate_hist = getattr(self, '_gate_hist', []) or []
         self._host_sm = None
 
         placements = list(ui.get('placements') or [])
@@ -1219,24 +1222,61 @@ class OperatorHmiView(QWidget):
                 preferred.append(str(fb.get('gateKey')))
             preferred.extend(['passGate', 'commOk', 'passed', 'ok', 'ResultOK'])
             detail = None
+            truthy = None
             for k in preferred:
                 if k in flow:
-                    detail = f'{k}={flow.get(k)}'
+                    val = flow.get(k)
+                    detail = f'{k}={val}'
                     self._last_gate_detail = detail
                     self._last_gate_key = k
-                    self._last_gate_value = flow.get(k)
+                    self._last_gate_value = val
+                    truthy = val not in (0, 0.0, False, None, '', '0', 'false', 'False')
                     break
-            if not detail:
-                return
-            hist = getattr(self, '_result_history', None)
-            if hist:
-                hist[-1]['gate'] = detail
+            if detail:
+                # 细妆⑮：passGate sequence hist for 门限 spark
+                gh = getattr(self, '_gate_hist', None)
+                if gh is None:
+                    self._gate_hist = []
+                    gh = self._gate_hist
+                if truthy is not None:
+                    gh.insert(0, bool(truthy))
+                    del gh[48:]
+                hist = getattr(self, '_result_history', None)
+                if hist:
+                    hist[-1]['gate'] = detail
+                    # also stamp gatePass for spark consumers
+                    hist[-1]['gatePass'] = bool(truthy) if truthy is not None else None
+                self._refresh_gate_spark()
             self._refresh_result_tables_ui()
         except Exception:
             pass
 
+    def gate_hist(self):
+        return list(getattr(self, '_gate_hist', []) or [])
+
+    def gate_spark_text(self, width=24):
+        """Unicode spark of recent passGate truthiness (high=pass)."""
+        gh = getattr(self, '_gate_hist', None) or []
+        if not gh:
+            return '· · ·  ·  门限序列等待'
+        seq = list(reversed(gh[:width]))
+        s = ''.join('▇' if v else '▁' for v in seq)
+        passed = sum(1 for v in gh if v)
+        return f'{s}  ·  门限 {passed}/{len(gh)} 通 (高=通)'
+
+    def _refresh_gate_spark(self):
+        text = self.gate_spark_text()
+        for lab in getattr(self, '_gate_spark_labs', []) or []:
+            try:
+                lab.setText(f'门限序列  {text}')
+                lab.setToolTip('最近 passGate / 判定门 真值序列（高=通 · 低=拒）')
+            except Exception:
+                pass
+
     def clear_result_history(self):
         self._result_history = []
+        self._gate_hist = []
+        self._refresh_gate_spark()
         self._refresh_result_tables_ui()
 
     def _refresh_result_tables_ui(self):
@@ -1667,6 +1707,14 @@ class OperatorHmiView(QWidget):
             self._result_tables = getattr(self, '_result_tables', [])
             self._result_tables.append(table)
             self._result_history = getattr(self, '_result_history', [])
+            # 细妆⑮：门限列 spark of recent passGate sequence
+            spark_lab = QLabel('门限序列  · · ·  ·  门限序列等待')
+            spark_lab.setObjectName('hmiGateSpark')
+            spark_lab.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;font-family:monospace;padding:2px 4px;')
+            spark_lab.setToolTip('最近 passGate / 判定门 真值序列（高=通 · 低=拒）')
+            self._gate_spark_labs = getattr(self, '_gate_spark_labs', [])
+            self._gate_spark_labs.append(spark_lab)
+            cell.layout().addWidget(spark_lab)
             cell.layout().addWidget(table, 1)
             btn_row = QHBoxLayout()
             b_copy = QPushButton('复制CSV')

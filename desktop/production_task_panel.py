@@ -232,7 +232,24 @@ class ProductionTaskPanel(QWidget):
         recipe.setPlaceholderText('配方/方案名')
         recipe.textChanged.connect(lambda t: self._set('recipe', t))
         form.addRow('配方/方案', recipe)
-        tip_r = QLabel('完整换型请用菜单 工具→产线配方/换型（保存快照 / 一键套用 / 工程库）')
+        self._recipe_edit = recipe
+
+        # 细妆⑮：产品变体快切
+        var_row = QHBoxLayout()
+        self._variant_chip = QComboBox()
+        self._variant_chip.setObjectName('productionTaskVariantChip')
+        self._variant_chip.setToolTip('产品变体快切：套用该变体下首条配方到当前工程')
+        self._variant_chip.addItem('（无变体）', '')
+        self._fill_variant_chip()
+        self._variant_chip.currentIndexChanged.connect(self._on_variant_chip)
+        var_row.addWidget(self._variant_chip, 1)
+        b_apply = QPushButton('套用变体')
+        b_apply.setObjectName('productionTaskVariantApplyBtn')
+        b_apply.setToolTip('将所选变体的首条配方参数套用到当前流程')
+        b_apply.clicked.connect(self._apply_variant_chip)
+        var_row.addWidget(b_apply)
+        form.addRow('产品变体', var_row)
+        tip_r = QLabel('变体快切 / 完整换型：工具→产线配方/换型（保存快照 · 一键套用 · 工程库）')
         tip_r.setWordWrap(True); tip_r.setStyleSheet('color:#888;font-size:11px;')
         form.addRow(tip_r)
 
@@ -266,6 +283,83 @@ class ProductionTaskPanel(QWidget):
         note.textChanged.connect(lambda: self._set('note', note.toPlainText()))
         form.addRow('备注', note)
         return w
+
+
+    def _fill_variant_chip(self):
+        chip = getattr(self, '_variant_chip', None)
+        if chip is None:
+            return
+        try:
+            from desktop import recipe_library as rl
+            variants = rl.list_variants(self.project)
+            active = str((self.project or {}).get('activeRecipeVariant') or '')
+        except Exception:
+            variants, active = [], ''
+        chip.blockSignals(True)
+        chip.clear()
+        if not variants:
+            chip.addItem('（无变体）', '')
+        else:
+            chip.addItem('选择变体…', '')
+            for v in variants:
+                chip.addItem(v, v)
+            if active:
+                i = chip.findData(active)
+                if i >= 0:
+                    chip.setCurrentIndex(i)
+        chip.blockSignals(False)
+
+    def _on_variant_chip(self, *_):
+        # selection alone does not apply — user clicks 套用变体, or double-intent via apply btn
+        pass
+
+    def _apply_variant_chip(self):
+        chip = getattr(self, '_variant_chip', None)
+        if chip is None:
+            return
+        variant = chip.currentData() or ''
+        if not variant:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(self, '产品变体', '请先选择一个产品变体（在「产线配方」中为配方填写变体标签）。')
+            return
+        try:
+            from desktop import recipe_library as rl
+            recs = rl.recipes_for_variant(self.project, variant)
+            if not recs:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.information(self, '产品变体', f'变体「{variant}」下无配方。')
+                return
+            entry = recs[0]
+            stats = rl.apply_recipe(self.project, entry.get('id'))
+            # sync recipe field
+            name = stats.get('name') or entry.get('name') or ''
+            if name and hasattr(self, '_recipe_edit'):
+                self._recipe_edit.blockSignals(True)
+                self._recipe_edit.setText(name)
+                self._recipe_edit.blockSignals(False)
+            self._set('recipe', name)
+            self._fill_variant_chip()
+            # notify parent MainWindow if reachable
+            w = self.window()
+            if w is not None and hasattr(w, 'refresh_variant_chip'):
+                try:
+                    w.refresh_variant_chip()
+                except Exception:
+                    pass
+            if w is not None and hasattr(w, 'log'):
+                try:
+                    w.log(f"生产任务变体快切「{variant}」→ {name}")
+                except Exception:
+                    pass
+            if w is not None and hasattr(w, 'document'):
+                try:
+                    w.document.mark_dirty()
+                    w.document.changed.emit()
+                except Exception:
+                    pass
+        except Exception as exc:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, '变体套用失败', str(exc))
 
     def _chain_tab(self):
         w = QWidget()

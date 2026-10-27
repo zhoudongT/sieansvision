@@ -34,7 +34,7 @@ class MainWindow(QMainWindow):
         super().__init__();self.root=Path(root);self.data=Path(data);self.document=Document()
         self.definitions=all_definitions([]);self.selected=None;self.image='';self.filename=None;self.busy=False;self.pending_project=Path(project) if project else None
         self.pending={};self.closing=False;self.engine_stopped=not start_engine;self.engine_ready=False
-        self.cloud=None;self.depth=None;self.dialogs={};self.last_result=None
+        self.cloud=None;self.depth=None;self.dialogs={};self.last_result=None;self._filmstrip_results={}
         self.demo_backup=None;self.demo_loading=False;self.demo_request=None
         self.setWindowTitle('SIEANS Vision · 视觉检测平台');self.resize(1600,950);self.setMinimumSize(1080,700)
         self.setStyleSheet(STYLE)
@@ -179,6 +179,19 @@ class MainWindow(QMainWindow):
         apply_toolbar_action(a_comm, 'comm'); toolbar.addAction(a_comm)
         a_recipe = self.action('配方', self.open_recipe_switch)
         apply_toolbar_action(a_recipe, 'recipe'); toolbar.addAction(a_recipe)
+        # 细妆⑮：产品变体 quick-switch chip
+        self.variant_chip = QComboBox()
+        self.variant_chip.setObjectName('recipeVariantChip')
+        self.variant_chip.setMinimumWidth(88)
+        self.variant_chip.setMaximumWidth(140)
+        self.variant_chip.setToolTip('产品变体快切：选中后一键套用该变体下首条配方')
+        self.variant_chip.addItem('变体·—', '')
+        self.variant_chip.currentIndexChanged.connect(self._on_variant_chip)
+        toolbar.addWidget(self.variant_chip)
+        try:
+            self.refresh_variant_chip()
+        except Exception:
+            pass
         a_host = self.action('上位机', self.apply_host_run_ui_template)
         apply_toolbar_action(a_host, 'host'); toolbar.addAction(a_host)
         a_chain = self.action('产线链', self.apply_production_demo_chain)
@@ -1155,8 +1168,21 @@ class MainWindow(QMainWindow):
             return
         try:
             from desktop.geom_canvas_pick import collect_pickables
-            pickables = collect_pickables(getattr(self, 'last_result', None),
-                                         self.document.project, kind=kind)
+            extras = list((getattr(self, '_filmstrip_results', None) or {}).values())
+            # Prefer current filmstrip path first in extras order
+            try:
+                cur = self.filmstrip.current_path() if hasattr(self, 'filmstrip') else None
+                if cur and cur in (getattr(self, '_filmstrip_results', None) or {}):
+                    extras = [self._filmstrip_results[cur]] + [e for e in extras if e.get('_filmPath') != cur]
+            except Exception:
+                pass
+            pickables = collect_pickables(
+                getattr(self, 'last_result', None),
+                self.document.project,
+                kind=kind,
+                include_nested=True,
+                extra_results=extras or None,
+            )
         except Exception as exc:
             self.log(f'画布点选收集失败：{exc}')
             pickables = []
@@ -1164,8 +1190,20 @@ class MainWindow(QMainWindow):
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.information(
                 self, '画布点选',
-                '当前无可用几何结果。请先运行找线/定位/几何模块，再点「画布点选」。')
+                '当前无可用几何结果（含组合内层 / 胶片缓存）。请先运行找线/定位/几何或「运行全部」后再点「画布点选」。')
             return
+        # status hint with source counts
+        try:
+            n_film = len(getattr(self, '_filmstrip_results', None) or {})
+            n_nest = sum(1 for p in pickables if p.get('_nested') or '/' in str(p.get('stepName') or ''))
+            src_hint = f'候选 {len(pickables)}'
+            if n_film:
+                src_hint += f' · 胶片缓存 {n_film}'
+            if n_nest:
+                src_hint += f' · 含组合内'
+            self.log(f'画布点选来源：{src_hint}')
+        except Exception:
+            pass
         try:
             self.images.setCurrentIndex(1)
         except Exception:
@@ -1446,6 +1484,26 @@ class MainWindow(QMainWindow):
 
     def finished(self,result,release=True):
         self.last_result=result
+        # multi-source filmstrip: stash per-path last_result for canvas pick
+        try:
+            path = ''
+            fs = getattr(self, 'filmstrip', None)
+            if fs is not None and hasattr(fs, 'current_path'):
+                path = fs.current_path() or ''
+            if path and isinstance(result, dict) and result.get('state') == 'completed':
+                bag = dict(result)
+                bag['_filmPath'] = path
+                # keep results only (drop huge annotated if needed later)
+                cache = getattr(self, '_filmstrip_results', None)
+                if cache is None:
+                    self._filmstrip_results = {}
+                    cache = self._filmstrip_results
+                cache[path] = bag
+                # cap 32 entries, drop oldest by insertion order
+                while len(cache) > 32:
+                    cache.pop(next(iter(cache)))
+        except Exception:
+            pass
         if release:self.set_busy(False)
         records=result.get('results',[])
         names={s['id']:s.get('name',s['operation']) for s in self.document.project['steps']}
@@ -3429,6 +3487,75 @@ class MainWindow(QMainWindow):
             self.log(f'注入STOP失败：{err}')
 
     # ---- Wave2 通信管理 / B4 全局触发壳 ----
+
+    def refresh_variant_chip(self):
+        """Rebuild toolbar 变体 chip from project.recipes[].variant."""
+        chip = getattr(self, 'variant_chip', None)
+        if chip is None:
+            return
+        try:
+            from desktop import recipe_library as rl
+            variants = rl.list_variants(self.document.project)
+            active = str((self.document.project or {}).get('activeRecipeVariant') or '')
+        except Exception:
+            variants, active = [], ''
+        chip.blockSignals(True)
+        chip.clear()
+        chip.addItem('变体·—', '')
+        for v in variants:
+            chip.addItem(f'变体·{v}', v)
+        if active:
+            i = chip.findData(active)
+            if i >= 0:
+                chip.setCurrentIndex(i)
+        chip.blockSignals(False)
+        tip = '产品变体快切：选中后一键套用该变体下首条配方'
+        if variants:
+            tip += f'\n已登记：{", ".join(variants)}'
+        chip.setToolTip(tip)
+
+    def _on_variant_chip(self, *_):
+        chip = getattr(self, 'variant_chip', None)
+        if chip is None:
+            return
+        variant = chip.currentData() or ''
+        if not variant:
+            return
+        self.apply_variant_quick(variant)
+
+    def apply_variant_quick(self, variant: str):
+        """Apply first recipe under variant (toolbar / production_task chip)."""
+        variant = (variant or '').strip()
+        if not variant:
+            return
+        try:
+            from desktop import recipe_library as rl
+            p = self.document.project
+            recs = rl.recipes_for_variant(p, variant)
+            if not recs:
+                self.log(f'变体「{variant}」下无配方')
+                return
+            entry = recs[0]
+            rid = entry.get('id')
+            stats = rl.apply_recipe(p, rid)
+            self.document.mark_dirty()
+            try:
+                self.refresh_variant_chip()
+            except Exception:
+                pass
+            # sync property panel if open
+            try:
+                if hasattr(self, 'refresh'):
+                    self.refresh()
+            except Exception:
+                pass
+            self.log(
+                f"变体快切「{variant}」→ 配方 {stats.get('name')} "
+                f"（写入 {stats.get('applied', 0)} · 跳过 {stats.get('skipped', 0)}）"
+            )
+        except Exception as exc:
+            self.log(f'变体快切失败：{exc}')
+
     def open_recipe_switch(self):
         """细妆⑬：产线配方 / 一键换型（本方案快照 + 工程库整案）."""
         from desktop.recipe_switch_dialog import RecipeSwitchDialog
@@ -3439,6 +3566,10 @@ class MainWindow(QMainWindow):
             self.document.changed.emit()
             self.refresh_parameters()
             self.scene.rebuild()
+            try:
+                self.refresh_variant_chip()
+            except Exception:
+                pass
         def _on_scheme(proj):
             try:
                 self.guard(lambda: self.use_project(proj))
@@ -3447,7 +3578,7 @@ class MainWindow(QMainWindow):
                 self.log(f'工程库换型失败：{err}')
         dlg.recipeApplied.connect(_on_applied)
         dlg.schemeLoaded.connect(_on_scheme)
-        dlg.recipesChanged.connect(lambda: self.log('配方库已更新'))
+        dlg.recipesChanged.connect(lambda: (self.log('配方库已更新'), self.refresh_variant_chip()))
         dlg.exec()
 
     def open_comm_acceptance(self):
@@ -4088,6 +4219,10 @@ class MainWindow(QMainWindow):
         if self.busy or not self.confirm_discard():return
         self.document.load(project);self.filename=None;self.image='';self.last_result=None
         self.input_view.show_data('');self.output_view.show_data('');self.clear_cloud();self.results.set_results([]);self.flow.fit()
+        try:
+            self.refresh_variant_chip()
+        except Exception:
+            pass
 
     def accept_frame(self,frame):
         if self.busy:return

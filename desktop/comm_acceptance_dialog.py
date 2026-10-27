@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal, QTimer
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QLineEdit, QSpinBox, QFormLayout,
@@ -137,8 +137,45 @@ class CommAcceptanceDialog(QDialog):
         b_show.setToolTip('从磁盘读取上次验收 JSON 并回填表格')
         b_show.clicked.connect(self._load_last_report)
         b_row.addWidget(b_show)
+        b_diff = QPushButton('对比上次↔当前')
+        b_diff.setObjectName('commAcceptDiffBtn')
+        b_diff.setToolTip('对比磁盘上次报告与当前内存报告（项级 PASS/FAIL 差分）')
+        b_diff.clicked.connect(self._compare_last_vs_now)
+        b_row.addWidget(b_diff)
         b_row.addStretch(1)
         lay.addLayout(b_row)
+
+        # 细妆⑮：定时复测 schedule
+        sched_box = QGroupBox('定时复测')
+        sched_box.setObjectName('commAcceptScheduleBox')
+        sform = QHBoxLayout(sched_box)
+        self.chk_schedule = QCheckBox('启用')
+        self.chk_schedule.setObjectName('commAcceptScheduleChk')
+        self.chk_schedule.setToolTip('按间隔自动重跑验收干跑（对比上次差分写入日志）')
+        sform.addWidget(self.chk_schedule)
+        sform.addWidget(QLabel('间隔(分)'))
+        self.schedule_spin = QSpinBox()
+        self.schedule_spin.setObjectName('commAcceptScheduleMin')
+        self.schedule_spin.setRange(1, 24 * 60)
+        self.schedule_spin.setValue(30)
+        self.schedule_spin.setToolTip('复测间隔（分钟）')
+        sform.addWidget(self.schedule_spin)
+        self.schedule_status = QLabel('定时：关')
+        self.schedule_status.setObjectName('commAcceptScheduleStatus')
+        self.schedule_status.setStyleSheet('color:#9ad;font-size:11px;')
+        sform.addWidget(self.schedule_status, 1)
+        lay.addWidget(sched_box)
+        self._schedule_timer = QTimer(self)
+        self._schedule_timer.setSingleShot(False)
+        self._schedule_timer.timeout.connect(self._on_schedule_fire)
+        self.chk_schedule.toggled.connect(self._on_schedule_toggled)
+        self.schedule_spin.valueChanged.connect(self._on_schedule_interval)
+
+        self.diff_banner = QLabel('差分：尚未对比')
+        self.diff_banner.setObjectName('commAcceptDiffBanner')
+        self.diff_banner.setWordWrap(True)
+        self.diff_banner.setStyleSheet('color:#c9a;font-size:12px;padding:4px 2px;')
+        lay.addWidget(self.diff_banner)
 
         form_box = QGroupBox('目标')
         form = QFormLayout(form_box)
@@ -279,6 +316,14 @@ class CommAcceptanceDialog(QDialog):
         self.table.item(row, 4).setText(text)
 
     def _on_done(self, report):
+        # Capture previous disk report BEFORE overwrite for last-vs-now diff
+        prev = None
+        try:
+            path0 = self.last_report_path()
+            if path0.is_file():
+                prev = json.loads(path0.read_text(encoding='utf-8'))
+        except Exception:
+            prev = None
         self._report = report
         self.btn_run.setEnabled(True)
         self.btn_stop.setEnabled(False)
@@ -287,10 +332,18 @@ class CommAcceptanceDialog(QDialog):
             f"PASS {s.get('pass', 0)} · FAIL {s.get('fail', 0)} · SKIP {s.get('skip', 0)}"
         )
         self._log(f"验收结束 {report.get('finishedAt')} @ {report.get('host')}:{report.get('port')}")
+        if prev:
+            try:
+                self._show_diff(prev, report, label='上次↔本次')
+            except Exception as err:
+                self._log(f'差分失败：{err}')
         path = self._persist_report(report)
         if path:
             self._log(f'报告已落盘 {path}')
         self._update_last_banner(report)
+        # Keep schedule ticking if enabled
+        if getattr(self, 'chk_schedule', None) and self.chk_schedule.isChecked():
+            self._refresh_schedule_status()
 
 
     def _report_dir(self) -> Path:
@@ -368,6 +421,136 @@ class CommAcceptanceDialog(QDialog):
                 self.host_edit.setText(str(report['host']))
             if report.get('port'):
                 self.port_spin.setValue(int(report['port']))
+        except Exception:
+            pass
+
+
+    # ----- 细妆⑮：schedule / last-vs-now diff -----
+
+    def _on_schedule_toggled(self, on: bool):
+        if on:
+            mins = int(self.schedule_spin.value())
+            self._schedule_timer.start(max(1, mins) * 60 * 1000)
+            self._refresh_schedule_status()
+            self._log(f'定时复测已启用 · 每 {mins} 分钟')
+        else:
+            self._schedule_timer.stop()
+            self.schedule_status.setText('定时：关')
+            self._log('定时复测已关闭')
+
+    def _on_schedule_interval(self, *_):
+        if self.chk_schedule.isChecked():
+            mins = int(self.schedule_spin.value())
+            self._schedule_timer.start(max(1, mins) * 60 * 1000)
+            self._refresh_schedule_status()
+
+    def _refresh_schedule_status(self):
+        if not self.chk_schedule.isChecked():
+            self.schedule_status.setText('定时：关')
+            return
+        mins = int(self.schedule_spin.value())
+        remain = self._schedule_timer.remainingTime()
+        if remain < 0:
+            self.schedule_status.setText(f'定时：每 {mins} 分')
+        else:
+            sec = max(0, remain // 1000)
+            self.schedule_status.setText(f'定时：每 {mins} 分 · 下次约 {sec // 60}分{sec % 60}秒')
+
+    def _on_schedule_fire(self):
+        if self._runner and self._runner.isRunning():
+            self._log('定时触发跳过：上次验收仍在跑')
+            return
+        self._log('定时触发 → 开始验收干跑')
+        self._start()
+
+    @staticmethod
+    def diff_reports(prev: dict | None, now: dict | None) -> dict:
+        """Compare two acceptance reports item-by-item.
+
+        Returns {changed:[{id,title,from,to,detail}], same, added, removed, summary}.
+        """
+        prev = prev or {}
+        now = now or {}
+        pmap = {it.get('id'): it for it in (prev.get('items') or []) if isinstance(it, dict) and it.get('id')}
+        nmap = {it.get('id'): it for it in (now.get('items') or []) if isinstance(it, dict) and it.get('id')}
+        changed, same = [], []
+        for cid, nit in nmap.items():
+            pit = pmap.get(cid)
+            if not pit:
+                changed.append({
+                    'id': cid, 'title': nit.get('title') or cid,
+                    'from': '—', 'to': nit.get('status'),
+                    'detail': nit.get('detail') or '',
+                })
+                continue
+            if (pit.get('status') or '') != (nit.get('status') or ''):
+                changed.append({
+                    'id': cid, 'title': nit.get('title') or cid,
+                    'from': pit.get('status'), 'to': nit.get('status'),
+                    'detail': f"{pit.get('detail') or ''} → {nit.get('detail') or ''}",
+                })
+            else:
+                same.append(cid)
+        removed = [cid for cid in pmap if cid not in nmap]
+        ps = prev.get('summary') or {}
+        ns = now.get('summary') or {}
+        return {
+            'changed': changed,
+            'same': same,
+            'removed': removed,
+            'prevSummary': ps,
+            'nowSummary': ns,
+            'prevAt': prev.get('finishedAt'),
+            'nowAt': now.get('finishedAt'),
+        }
+
+    def _show_diff(self, prev, now, label='上次↔当前'):
+        d = self.diff_reports(prev, now)
+        ch = d['changed']
+        ps, ns = d['prevSummary'], d['nowSummary']
+        head = (
+            f"{label} · 变更 {len(ch)} 项 · 相同 {len(d['same'])}"
+            f" · 摘要 PASS {ps.get('pass', 0)}→{ns.get('pass', 0)}"
+            f" / FAIL {ps.get('fail', 0)}→{ns.get('fail', 0)}"
+        )
+        if ch:
+            bits = [f"{c['title']}:{c['from']}→{c['to']}" for c in ch[:8]]
+            head += ' · ' + '；'.join(bits)
+            if len(ch) > 8:
+                head += f' …共{len(ch)}'
+        else:
+            head += ' · 无状态变化'
+        if hasattr(self, 'diff_banner'):
+            color = '#e35d6a' if ch else '#3ecf8e'
+            self.diff_banner.setStyleSheet(f'color:{color};font-size:12px;padding:4px 2px;')
+            self.diff_banner.setText(f'差分：{head}')
+        self._log(f'差分 {head}')
+        return d
+
+    def _compare_last_vs_now(self):
+        path = self.last_report_path()
+        if not path.is_file():
+            QMessageBox.information(self, '对比', f'尚无上次报告：\n{path}')
+            return
+        try:
+            prev = json.loads(path.read_text(encoding='utf-8'))
+        except Exception as err:
+            QMessageBox.warning(self, '读取失败', str(err))
+            return
+        now = self._report
+        if not now:
+            QMessageBox.information(self, '对比', '当前尚无内存报告，请先跑一次验收或载入后再对比。')
+            return
+        # If now is same object as disk (just loaded), try to use table snapshot as "now"
+        d = self._show_diff(prev, now, label='磁盘上次↔内存当前')
+        # Also paint table column tip for changed rows
+        try:
+            changed_ids = {c['id'] for c in d['changed']}
+            for i, (cid, title, cmd, _) in enumerate(CHECKLIST):
+                if cid in changed_ids:
+                    item = self.table.item(i, 3)
+                    if item:
+                        item.setToolTip('相对上次报告状态已变更')
         except Exception:
             pass
 
