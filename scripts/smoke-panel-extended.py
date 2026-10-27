@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Extended offscreen smoke: measure/nine/condition/data_io + pose/distort/production_task
-pickers; camera↔local filmstrip soft-disable; HMI gateKey project JSON round-trip;
++ wave3 (Format/Protocol/TextSave/OutputImage) + VarCalc + Group IO pickers;
+camera↔local filmstrip soft-disable; HMI gateKey project JSON round-trip;
 harvest audit for clicked.connect(fn) default-arg traps.
 Exit 0 on PASS. No robot SDK.
 """
@@ -73,6 +74,12 @@ def main() -> int:
     pose_id = "posGGGG22223333"
     dist_id = "dstHHHH33334444"
     task_id = "tskIIII44445555"
+    fmt_id = "fmtJJJJ55556666"
+    pr_id = "prKKKK66667777"
+    txt_id = "txtLLLL77778888"
+    oimg_id = "oimMMMM88889999"
+    var_id = "varNNNN99990000"
+    grp_id = "grpOOOO00001111"
 
     project = {
         "version": 2,
@@ -88,6 +95,12 @@ def main() -> int:
             {"id": pose_id, "operation": "pose_correct", "name": "位姿修正", "params": {}, "position": {"x": 0, "y": 480}, "variables": {}},
             {"id": dist_id, "operation": "distort_correct", "name": "畸变矫正", "params": {}, "position": {"x": 0, "y": 560}, "variables": {}},
             {"id": task_id, "operation": "production_task", "name": "生产任务", "params": {"statusVar": "taskStatus"}, "position": {"x": 0, "y": 640}, "variables": {}},
+            {"id": fmt_id, "operation": "format_data", "name": "格式化", "params": {"template": "{0}", "args": "", "targetVar": "formatted"}, "position": {"x": 0, "y": 720}, "variables": {}},
+            {"id": pr_id, "operation": "protocol_parse", "name": "协议解析", "params": {"sourceVar": "recvData", "targetPrefix": "parsed"}, "position": {"x": 0, "y": 800}, "variables": {}},
+            {"id": txt_id, "operation": "text_save", "name": "文本保存", "params": {"path": "/tmp/sieans-smoke.txt", "content": "", "sourceVar": ""}, "position": {"x": 0, "y": 880}, "variables": {}},
+            {"id": oimg_id, "operation": "output_image", "name": "输出图像", "params": {"path": "/tmp/sieans-out", "format": "png"}, "position": {"x": 0, "y": 960}, "variables": {}, "imageFrom": "source"},
+            {"id": var_id, "operation": "var_calc", "name": "变量计算", "params": {"expressions": [{"name": "v0", "expression": "0", "initial": 0, "outType": "number", "initOnRun": False}]}, "position": {"x": 0, "y": 1040}, "variables": {}},
+            {"id": grp_id, "operation": "group", "name": "组合模块", "params": {"imageData": "", "inputRoi": "", "io": {"inputs": [{"name": "ImageData", "type": "IMAGE", "binding": ""}], "outputs": [], "display": {}}}, "position": {"x": 0, "y": 1120}, "variables": {}},
         ],
         "edges": [],
         "variables": {},
@@ -258,6 +271,139 @@ def main() -> int:
             else:
                 bad("ProductionTaskPanel statusVar=%r" % sv)
 
+        # --- wave3 FormatData ---
+        from desktop.wave3_thin_panels import (
+            FormatDataPanel, ProtocolParsePanel, TextSavePanel, OutputImagePanel,
+        )
+        fstep = deepcopy(next(s for s in project["steps"] if s["id"] == fmt_id))
+        fp = FormatDataPanel(fstep, {}, project, parent=host)
+        fp.show(); app.processEvents()
+        fbtns = _find_buttons(fp, "插入上游字段")
+        if len(fbtns) < 1:
+            bad("FormatDataPanel missing insert")
+        else:
+            QInputDialog.getItem = staticmethod(_patch_getitem(["1 定位", "score"]))
+            fbtns[0].click(); app.processEvents()
+            args = fp.params.get("args") or ""
+            lines = [e.text() for e in fp.findChildren(QLineEdit) if "results." in (e.text() or "")]
+            if "results." in args or lines:
+                ok("FormatDataPanel picker -> %s" % (args if "results." in args else lines[0],))
+            else:
+                bad("FormatDataPanel args=%r" % args)
+
+        # --- wave3 ProtocolParse ---
+        prstep = deepcopy(next(s for s in project["steps"] if s["id"] == pr_id))
+        prp = ProtocolParsePanel(prstep, {}, project, parent=host)
+        prp.show(); app.processEvents()
+        prbtns = _find_buttons(prp, "插入上游字段")
+        if not prbtns:
+            bad("ProtocolParsePanel missing insert")
+        else:
+            QInputDialog.getItem = staticmethod(_patch_getitem(["4 接收", "payload"]))
+            prbtns[0].click(); app.processEvents()
+            src = prp.params.get("sourceVar") or ""
+            lines = [e.text() for e in prp.findChildren(QLineEdit) if "results." in (e.text() or "")]
+            if "results." in src or lines:
+                ok("ProtocolParsePanel picker -> %s" % (src if "results." in src else lines[0],))
+            else:
+                bad("ProtocolParsePanel sourceVar=%r" % src)
+
+        # --- wave3 TextSave ---
+        tsave = deepcopy(next(s for s in project["steps"] if s["id"] == txt_id))
+        tsp = TextSavePanel(tsave, {}, project, parent=host)
+        tsp.show(); app.processEvents()
+        tsbtns = _find_buttons(tsp, "插入上游字段")
+        if not tsbtns:
+            bad("TextSavePanel missing insert")
+        else:
+            QInputDialog.getItem = staticmethod(_patch_getitem(["4 接收", "payload"]))
+            tsbtns[0].click(); app.processEvents()
+            sv = tsp.params.get("sourceVar") or ""
+            lines = [e.text() for e in tsp.findChildren(QLineEdit) if "results." in (e.text() or "")]
+            if "results." in sv or lines:
+                ok("TextSavePanel picker -> %s" % (sv if "results." in sv else lines[0],))
+            else:
+                bad("TextSavePanel sourceVar=%r" % sv)
+
+        # --- wave3 OutputImage (no upstream picker; densify path/format) ---
+        ostep = deepcopy(next(s for s in project["steps"] if s["id"] == oimg_id))
+        op = OutputImagePanel(ostep, {}, project, parent=host)
+        op.show(); app.processEvents()
+        path_edits = [e for e in op.findChildren(QLineEdit) if (e.placeholderText() or "").find("保存") >= 0 or "sieans-out" in (e.text() or "")]
+        if not path_edits:
+            # fallback: any line edit with path-like text
+            path_edits = [e for e in op.findChildren(QLineEdit) if (e.text() or "").startswith("/tmp")]
+        if path_edits:
+            path_edits[0].setText("/tmp/sieans-out-smoke")
+            path_edits[0].editingFinished.emit()
+            app.processEvents()
+        if (op.params.get("path") or "").startswith("/tmp/sieans-out"):
+            ok("OutputImagePanel path densify -> %s format=%s" % (op.params.get("path"), op.params.get("format")))
+        else:
+            bad("OutputImagePanel path=%r" % op.params.get("path"))
+
+        # --- VarCalc ---
+        from desktop.var_calc_panel import VarCalcPanel
+        vstep = deepcopy(next(s for s in project["steps"] if s["id"] == var_id))
+        vp = VarCalcPanel(vstep, {}, project, parent=host)
+        vp.show(); app.processEvents()
+        # select first row so insert targets expression col
+        if vp.table.rowCount() > 0:
+            vp.table.selectRow(0)
+            vp.table.setCurrentCell(0, 1)
+        vbtns = _find_buttons(vp, "插入上游字段")
+        if not vbtns:
+            bad("VarCalcPanel missing insert")
+        else:
+            QInputDialog.getItem = staticmethod(_patch_getitem(["1 定位", "score"]))
+            vbtns[0].click(); app.processEvents()
+            exprs = vp.params.get("expressions") or []
+            expr0 = (exprs[0].get("expression") if exprs else "") or ""
+            if "results." in expr0 and "score" in expr0:
+                ok("VarCalcPanel picker -> expr=%s" % expr0)
+            else:
+                bad("VarCalcPanel expr=%r" % expr0)
+
+        # --- Group IO ↑ insert ---
+        from desktop.group_module import GroupParamPanel
+        from PySide6.QtWidgets import QTableWidget
+        gstep = deepcopy(next(s for s in project["steps"] if s["id"] == grp_id))
+        gp = GroupParamPanel(gstep, project, parent=host)
+        gp.show(); app.processEvents()
+        # Ensure inputs tab visible
+        gp.tabs.setCurrentIndex(0)
+        app.processEvents()
+        up_btns = [b for b in gp.findChildren(QPushButton) if (b.text() or "") == "↑"]
+        if not up_btns:
+            bad("GroupParamPanel missing ↑ IO insert")
+        else:
+            QInputDialog.getItem = staticmethod(_patch_getitem(["1 定位", "ok"]))
+            up_btns[0].click(); app.processEvents()
+            binding = ""
+            # prefer ImageData line / table cell
+            if "results." in (gp.image_data.text() or ""):
+                binding = gp.image_data.text()
+            else:
+                tables = gp.findChildren(QTableWidget)
+                for tbl in tables:
+                    for r in range(tbl.rowCount()):
+                        it = tbl.item(r, 2)
+                        if it and "results." in (it.text() or ""):
+                            binding = it.text()
+                            break
+                    if binding:
+                        break
+            io_in = ((gp.params.get("io") or {}).get("inputs") or [])
+            io_bind = ""
+            for row in io_in:
+                if isinstance(row, dict) and "results." in str(row.get("binding") or ""):
+                    io_bind = row.get("binding")
+                    break
+            if "results." in binding or io_bind:
+                ok("GroupParamPanel IO ↑ -> %s" % (binding or io_bind,))
+            else:
+                bad("GroupParamPanel IO binding empty imageData=%r io=%r" % (gp.image_data.text(), io_in))
+
         # --- harvest audit: clicked.connect(fn) default-arg traps ---
         import re
         traps = []
@@ -284,6 +430,9 @@ def main() -> int:
         up = (Path(__file__).resolve().parents[1] / "desktop" / "upstream_field_picker.py").read_text(encoding="utf-8")
         if "def _pick(*_):" in up or "clicked.connect(lambda" in up:
             safe_notes.append("upstream_field_picker _pick absorbs *args")
+        vc = (Path(__file__).resolve().parents[1] / "desktop" / "var_calc_panel.py").read_text(encoding="utf-8")
+        if "lambda *_: self._insert_upstream_field()" in vc:
+            safe_notes.append("var_calc insert uses lambda *_ wrapper")
         if traps:
             bad("clicked.connect default-arg traps: %s" % traps)
         else:
