@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊹ · pin撤销预览色标条 · 吸史改键候选菜单 · DST最近右键多选 · A/B说明条点源试算 · jitter清栈确认/撤销 · 2026-10-28】
+
+- **pin 撤销预览色标条**：`preview_…_undo` 增 `swatch_current/restore` · `bar_css/bar_text`；`render/_refresh_…_undo_swatch`；对比条旁 ●⇒● 渐变色标。
+- **吸史改键候选菜单**：`list_…_fix_candidates`；`show_…_fix_menu`（左点一键改键 / 右键候选）；smoke `no_exec` + `smoke_index`。
+- **DST 最近右键多选**：`selected/set/toggle/apply/remove_…_recent`；右键菜单勾选·应用首条·移除勾选；`menu_no_exec` smoke。
+- **A/B 说明条点源试算**：`trial_…_source_explain`；说明条点击轮换 team→local→clipboard→清；团/本/贴芯片；试算高亮。
+- **jitter 清栈确认/撤销**：`clear_…_seed_redo(confirm=)` + QMessageBox；快照可 `undo_clear_…`；「撤清」按钮；`_no_confirm` smoke。
+- **冒烟**：`smoke-wave76-pinswatch-histcands-dstmulti-abtrial-jitterundoclear-e2e`（另回归 wave75/74/73）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊸ · pin对比条撤销预览tip · 吸史冲突一键改键 · DST范围最近记忆 · A/B按来源说明条 · jitter深度右键清栈 · 2026-10-28】
 
 - **pin 对比条撤销预览 tip**：`preview_…_avoid_compare_bar_undo`；窥栈顶将恢复键；tip「撤销预览 · 深N · 现→恢复」；属性 `UndoPreview`。
