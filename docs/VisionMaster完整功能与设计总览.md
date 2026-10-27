@@ -388,18 +388,27 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 | 域 | 剩余细妆 |
 |----|----------|
-| chrome | 工具栏纯图标人工观感确认（非阻塞） |
-| panels | **overlay→engine/canvas 实绘已接**（locate/geometry/measure_geom）；模板子窗已接 |
-| harvest | 主流面板已接；elapsed 无文本绑定字段（下拉选步，无需 harvest） |
-| HMI | **组合框/Tab页/子界面容器壳已加深**；表格/饼图/线图/模板市场已接 |
-| filmstrip | 格式+缩略尺寸已接 |
-| float | 热更新+底栏 QSS 已接 |
-| nest | 循环/chip/tip 已接 |
-| labels | **EN→CN 扫尾本轮已接**（开/关、趋势示意、编辑器创建、SDK取图、recv 占位） |
-| settings | 间隔/超时/连续路径说明已接 |
-| samples | 三行业示意已接 |
-| Comm | 双向触发/变量挑选已接；**RUN→连续 structural 已验**；真机 TCP 试收仍可加深 |
-| Host SM | 信息栏↔HMI/报警已接 |
+| chrome | 工具栏纯图标**人工观感确认**（非阻塞 / 非代码缺口） |
+| panels | overlay→engine/canvas 实绘已接；geometry 卡尺σ/投影角 UI 已补 |
+| harvest | 全覆盖（elapsed 下拉选步，无需 harvest） |
+| HMI | 连接状态灯·变量/参数格·组合框/Tab/子界面**嵌套判定灯**已接 |
+| filmstrip / 全流程 | 已接；**流程参数 I/O 可回写** |
+| float | 已接 |
+| nest/Group | 引擎展开 tip 已接 |
+| labels | EN→CN 扫尾已接 |
+| settings | 已接 |
+| samples | 已接 |
+| Comm | **试收→fire_string_trigger(RUN/CONT) 活路已验**；真机 TCP 需现场设备（非代码缺口） |
+| Host SM | 已接 |
+| 云/市场 | 模板市场本地已接；**云同步**需后端（非本机 UI 缺口） |
+| 算法核 | 卡尺为 OpenCV 启发式（非 Halcon 核）— 文档已声明，非 UI 缺口 |
+
+### 进度续⑦ · 2026-10-27 深夜
+- HMI：连接状态 ●灯；设置变量/参数设置 tip+Enter 派发；组合框/Tab/子界面嵌套 StatusLamp·良率条·连接灯
+- Comm：`_commit_test_writeback` → `fire_string_trigger` 活路 smoke（RUN/CONT）
+- panels：叠层实绘 tip；geometry 卡尺高斯σ / 投影角
+- smoke：`scripts/smoke-ux-polish-hmi-comm-e2e-live.py` 6 PASS；overlay 11 PASS
+- 全流程：FlowParamDialog I/O 表可编辑回写 flow.io；显示全局图像开关可写
 
 ### 进度续⑥ · 2026-10-27 深夜
 - measure_geom：`annotate_geom` 引擎实绘 + runtime 调用 + ImageView/mainwindow 画布矢量叠层

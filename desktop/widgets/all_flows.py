@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor, QPen, QBrush, QFont, QPainter
 
 
 class FlowParamDialog(QDialog):
-    """流程参数窗：输入设置 / 输出设置 / 显示设置"""
+    """流程参数窗：输入设置 / 输出设置 / 显示设置（可编辑并回写 io）"""
     def __init__(self, flow, parent=None):
         super().__init__(parent)
         self.flow = deepcopy(flow)
@@ -22,24 +22,30 @@ class FlowParamDialog(QDialog):
         head = QLabel(title)
         head.setObjectName('dialogTitle')
         lay.addWidget(head)
-        hint = QLabel('流程级 I/O 与显示（壳层可用；完整订阅接线见后续批次）')
+        hint = QLabel('流程级 I/O 与显示：表格可编辑；确定后写回 flow.io（订阅名支持 模块.字段）')
         hint.setObjectName('dialogHint')
         lay.addWidget(hint)
         self.tabs = QTabWidget()
         lay.addWidget(self.tabs, 1)
         io = flow.get('io') or {}
-        self.tabs.addTab(self._table(io.get('inputs') or [], '输入'), '输入设置')
-        self.tabs.addTab(self._table(io.get('outputs') or [], '输出'), '输出设置')
+        self._in_table = None
+        self._out_table = None
+        self._global_image_sw = None
+        in_w, self._in_table = self._table(io.get('inputs') or [], '输入')
+        out_w, self._out_table = self._table(io.get('outputs') or [], '输出')
+        self.tabs.addTab(in_w, '输入设置')
+        self.tabs.addTab(out_w, '输出设置')
         self.tabs.addTab(self._display(io.get('display') or {}), '显示设置')
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self._accept_save)
         buttons.rejected.connect(self.reject)
         lay.addWidget(buttons)
 
     def _table(self, rows, kind):
         w = QWidget()
         v = QVBoxLayout(w)
-        table = QTableWidget(max(3, len(rows)), 3)
+        table = QTableWidget(max(4, len(rows) or 2), 3)
+        table.setObjectName('flowIoTable')
         table.setHorizontalHeaderLabels(['参数名称', '类型', '订阅关系'])
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         if not rows:
@@ -58,15 +64,47 @@ class FlowParamDialog(QDialog):
                 table.setItem(r, 0, QTableWidgetItem(str(row.get('name', ''))))
                 table.setItem(r, 1, QTableWidgetItem(str(row.get('type', ''))))
                 table.setItem(r, 2, QTableWidgetItem(str(row.get('binding', ''))))
-        v.addWidget(table)
-        return w
+        tip = QLabel('空行忽略；订阅关系例：0 图像源1.图像[] / flow.var')
+        tip.setStyleSheet('color:#888;font-size:11px;')
+        v.addWidget(table, 1)
+        v.addWidget(tip)
+        return w, table
 
     def _display(self, display):
+        from desktop.widgets.switch import OrangeSwitch
         w = QWidget()
         form = QFormLayout(w)
-        form.addRow(QLabel('显示全局图像'), QLabel('开' if display.get('globalImage', True) else '关'))
+        self._global_image_sw = OrangeSwitch(bool(display.get('globalImage', True)))
+        form.addRow(QLabel('显示全局图像'), self._global_image_sw)
         form.addRow(QLabel('说明'), QLabel(display.get('note') or '流程级显示：与运行界面分屏 / 固定栏配置联动'))
         return w
+
+    def _read_table(self, table):
+        rows = []
+        if table is None:
+            return rows
+        for r in range(table.rowCount()):
+            name = (table.item(r, 0).text() if table.item(r, 0) else '').strip()
+            typ = (table.item(r, 1).text() if table.item(r, 1) else '').strip()
+            bind = (table.item(r, 2).text() if table.item(r, 2) else '').strip()
+            if not name:
+                continue
+            rows.append(dict(name=name, type=typ or 'ANY', binding=bind))
+        return rows
+
+    def _accept_save(self):
+        io = dict(self.flow.get('io') or {})
+        io['inputs'] = self._read_table(self._in_table)
+        io['outputs'] = self._read_table(self._out_table)
+        disp = dict(io.get('display') or {})
+        if self._global_image_sw is not None:
+            disp['globalImage'] = bool(self._global_image_sw.isChecked())
+        io['display'] = disp
+        self.flow['io'] = io
+        self.accept()
+
+    def result_io(self):
+        return (self.flow.get('io') or {})
 
 
 class FlowCard(QFrame):
@@ -188,5 +226,6 @@ class AllFlowsPanel(QWidget):
             return
         dlg = FlowParamDialog(flow, self)
         if dlg.exec():
-            # shell OK — no deep wire yet
-            self.metaChanged.emit(flow_id, {})
+            io = dlg.result_io()
+            flow['io'] = io
+            self.metaChanged.emit(flow_id, {'io': io})

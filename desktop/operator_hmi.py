@@ -1210,12 +1210,36 @@ class OperatorHmiView(QWidget):
 
         if name in ('文本框', '字符设置', '设置变量', '参数设置'):
             cell = self._make_cell_frame(name + (f' · {binding}' if binding else ''))
+            tip = QLabel({
+                '文本框': '只读绑定文本（⛓ 变量/结果）',
+                '字符设置': '可写字符参数 → 流程变量',
+                '设置变量': '写入全局/流程变量',
+                '参数设置': '打开参数编辑 / 写入参数槽',
+            }.get(name, ''))
+            tip.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
+            tip.setWordWrap(True)
             edit = QLineEdit()
             edit.setPlaceholderText(binding or CONTROL_STUB_HINTS.get(name, name))
+            edit.setObjectName('hmiVarEdit')
             if name == '文本框':
                 edit.setReadOnly(True)
                 edit.setText(binding or '—')
+            else:
+                edit.setText(str(state.get('value') or ''))
+                # live: emit as set-variable command when edited+enter
+                def _commit(_=None, n=name, e=edit, c=commands, b=binding):
+                    val = e.text()
+                    cmds = list(c) or [dict(type='模块动作', config=f'{n}:{b or "var"}={val}')]
+                    self.triggerCommands.emit(deepcopy(cmds))
+                edit.editingFinished.connect(_commit)
+            cell.layout().addWidget(tip)
             cell.layout().addWidget(edit)
+            if name == '参数设置':
+                btn = QPushButton('打开参数…')
+                btn.setObjectName('hmiParamOpen')
+                btn.clicked.connect(lambda *_: self.triggerCommands.emit(
+                    list(commands) or [dict(type='参数配置', config=binding or '')]))
+                cell.layout().addWidget(btn)
             cell.layout().addStretch(1)
             return cell
 
@@ -1257,13 +1281,26 @@ class OperatorHmiView(QWidget):
             return cell
         if name == '连接状态':
             cell = self._make_cell_frame('连接状态')
-            lab = QLabel(str(state.get('value') or '未连接'))
+            row = QHBoxLayout()
+            val = str(state.get('value') or '未连接')
+            connected = val not in ('未连接', '断开', 'offline', 'OFF', '关', '')
+            dot = QLabel('●')
+            dot.setFixedWidth(22)
+            dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            dot.setStyleSheet(f'color:{"#3ecf8e" if connected else "#e35d6a"};font-size:16px;')
+            dot.setProperty('sieansChrome', 'connLamp')
+            lab = QLabel(val)
             lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            lab.setStyleSheet(f'color:{TEXT_MUTED};padding:8px;font-weight:600;')
+            lab.setStyleSheet(f'color:{"#3ecf8e" if connected else TEXT_MUTED};padding:8px;font-weight:600;')
             lab.setProperty('sieansChrome', 'conn')
             self._device_chrome_labels = getattr(self, '_device_chrome_labels', [])
             self._device_chrome_labels.append(lab)
-            cell.layout().addWidget(lab, 1)
+            self._device_chrome_labels.append(dot)
+            row.addStretch(1)
+            row.addWidget(dot)
+            row.addWidget(lab)
+            row.addStretch(1)
+            cell.layout().addLayout(row, 1)
             return cell
         if name == '信息提示栏':
             cell = self._make_cell_frame('信息提示栏')
@@ -1325,51 +1362,81 @@ class OperatorHmiView(QWidget):
             return cell
         if name in ('组合框', '参数组合', '文本框组合'):
             cell = self._make_cell_frame(name)
-            tip = QLabel('容器组合：下拉切换子页内容（示意壳，绑定随布局配置）')
+            tip = QLabel('容器组合：下拉切换子页；页内嵌判定灯 + 摘要（绑定随布局配置）')
             tip.setWordWrap(True)
             tip.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
             combo = QComboBox()
             combo.setObjectName('hmiComboContainer')
-            for lab in ('方案 A · 外观', '方案 B · 尺寸', '方案 C · 综合'):
+            pages = (
+                ('方案 A · 外观', '外观检测摘要 · 边缘/色差'),
+                ('方案 B · 尺寸', '尺寸检测摘要 · 宽高/公差'),
+                ('方案 C · 综合', '综合判定 · OK/NG 汇总'),
+            )
+            for lab, _ in pages:
                 combo.addItem(lab)
-            stack = QLabel('当前子页：方案 A · 外观\n（可嵌套图像 / 表格 / 判定灯）')
-            stack.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            stack.setWordWrap(True)
-            stack.setStyleSheet(f'color:{TEXT};padding:10px;border:1px dashed {TEXT_MUTED};border-radius:6px;')
-            def _on_combo(i, s=stack, c=combo):
-                s.setText(f'当前子页：{c.itemText(i)}\n（可嵌套图像 / 表格 / 判定灯）')
+            body = QWidget()
+            body.setObjectName('hmiComboStack')
+            bl = QVBoxLayout(body)
+            bl.setContentsMargins(4, 4, 4, 4)
+            lamp = StatusLamp('方案判定')
+            lamp.set_state(None)
+            lamp.setObjectName('hmiComboLamp')
+            summary = QLabel(pages[0][1])
+            summary.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            summary.setWordWrap(True)
+            summary.setStyleSheet(f'color:{TEXT};padding:8px;border:1px dashed {TEXT_MUTED};border-radius:6px;')
+            summary.setObjectName('hmiComboSummary')
+            bl.addWidget(lamp)
+            bl.addWidget(summary, 1)
+            def _on_combo(i, s=summary, c=combo, lp=lamp, pg=pages):
+                lab, txt = pg[i] if 0 <= i < len(pg) else (c.itemText(i), '')
+                s.setText(txt or lab)
+                try:
+                    lp.set_state(True if i == 0 else (False if i == 1 else None))
+                except Exception:
+                    pass
             combo.currentIndexChanged.connect(_on_combo)
             cell.layout().addWidget(tip)
             cell.layout().addWidget(combo)
-            cell.layout().addWidget(stack, 1)
+            cell.layout().addWidget(body, 1)
             return cell
         if name == 'Tab页':
             cell = self._make_cell_frame(name)
-            tip = QLabel('多页签容器：页内可再放控件（示意壳）')
+            tip = QLabel('多页签容器：页内嵌判定灯 / 产量条 / 连接灯（可再挂控件）')
             tip.setWordWrap(True)
             tip.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
             tabs = QTabWidget()
             tabs.setObjectName('hmiTabContainer')
-            for title, body_txt in (
-                ('检测', '页 1 · 图像 + OK/NG'),
-                ('统计', '页 2 · 产量 / 良率'),
-                ('通讯', '页 3 · 主机状态 / 日志'),
-            ):
-                page = QWidget()
-                lay = QVBoxLayout(page)
-                lay.setContentsMargins(8, 8, 8, 8)
-                lab = QLabel(body_txt)
-                lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                lab.setWordWrap(True)
-                lab.setStyleSheet(f'color:{TEXT};padding:12px;')
-                lay.addWidget(lab, 1)
-                tabs.addTab(page, title)
+            # 检测页
+            p1 = QWidget(); l1 = QVBoxLayout(p1); l1.setContentsMargins(8, 8, 8, 8)
+            lamp1 = StatusLamp('检测判定'); lamp1.set_state(True); lamp1.setObjectName('hmiTabDetectLamp')
+            l1.addWidget(QLabel('页 · 检测（图像区由布局另挂）'))
+            l1.addWidget(lamp1, 1)
+            tabs.addTab(p1, '检测')
+            # 统计页
+            p2 = QWidget(); l2 = QVBoxLayout(p2); l2.setContentsMargins(8, 8, 8, 8)
+            bar = QProgressBar(); bar.setRange(0, 100); bar.setValue(92)
+            bar.setFormat('良率 %p%'); bar.setObjectName('hmiTabYieldBar')
+            l2.addWidget(QLabel('页 · 统计'))
+            l2.addWidget(bar)
+            l2.addStretch(1)
+            tabs.addTab(p2, '统计')
+            # 通讯页
+            p3 = QWidget(); l3 = QVBoxLayout(p3); l3.setContentsMargins(8, 8, 8, 8)
+            row = QHBoxLayout()
+            dot = QLabel('●'); dot.setStyleSheet('color:#3ecf8e;font-size:16px;')
+            dot.setObjectName('hmiTabCommDot')
+            row.addWidget(dot); row.addWidget(QLabel('主机已连接（示意）')); row.addStretch(1)
+            l3.addLayout(row)
+            l3.addWidget(QLabel('页 · 通讯 / 日志入口'))
+            l3.addStretch(1)
+            tabs.addTab(p3, '通讯')
             cell.layout().addWidget(tip)
             cell.layout().addWidget(tabs, 1)
             return cell
         if name == '子界面':
             cell = self._make_cell_frame(name)
-            tip = QLabel('嵌套子界面壳：外框 + 内嵌分区（示意）')
+            tip = QLabel('嵌套子界面壳：标题栏 + 判定灯 + 内嵌分区')
             tip.setWordWrap(True)
             tip.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
             inner = QFrame()
@@ -1378,13 +1445,21 @@ class OperatorHmiView(QWidget):
                 f'QFrame#hmiSubUiShell{{border:1px solid {TEXT_MUTED};border-radius:8px;background:rgba(0,0,0,0.04);}}'
             )
             il = QVBoxLayout(inner)
+            head_row = QHBoxLayout()
             head = QLabel('子界面 · 标题栏')
             head.setStyleSheet(f'font-weight:600;color:{TEXT};padding:4px 8px;')
+            head_row.addWidget(head)
+            head_row.addStretch(1)
+            mini = StatusLamp('子')
+            mini.setFixedHeight(36)
+            mini.set_state(True)
+            mini.setObjectName('hmiSubUiLamp')
+            head_row.addWidget(mini)
             body = QLabel('内嵌区：可再挂载图像窗 / 表格 / 按钮行')
             body.setAlignment(Qt.AlignmentFlag.AlignCenter)
             body.setWordWrap(True)
             body.setStyleSheet(f'color:{TEXT_MUTED};padding:16px;')
-            il.addWidget(head)
+            il.addLayout(head_row)
             il.addWidget(body, 1)
             cell.layout().addWidget(tip)
             cell.layout().addWidget(inner, 1)

@@ -195,5 +195,5 @@ class MeasureGeomPanel(QWidget):
             'point_distance': '结果：distance / dx / dy / status · 叠层随开关',
             'point_line_distance': '结果：distance / footX / footY / status · 叠层随开关',
         }.get(self.op, '结果字段见引擎')
-        lab = QLabel(tip); lab.setWordWrap(True); lab.setStyleSheet('color:#888;'); form.addRow(lab)
+        lab = QLabel((tip or '') + ' · 叠层开关已接入引擎 annotate_geom + 画布矢量层（关则不画）。'); lab.setWordWrap(True); lab.setStyleSheet('color:#888;'); form.addRow(lab)
         return w

@@ -54,6 +54,8 @@ def normalize_geometry_params(params=None, feature=None):
     p.setdefault('caliperCount', 10)
     p.setdefault('caliperWidth', 20)   # VM 卡尺宽（Length2）
     p.setdefault('caliperLength', 40)  # VM 卡尺投影长（Length1）
+    p.setdefault('caliperSigma', 1.0)
+    p.setdefault('caliperProjAngle', 0.0)
     p.setdefault('edgeType', 'strongest')  # strongest|first|last|all — VM 边缘类型
     p.setdefault('filterSize', 1)      # VM 滤波尺寸
     p.setdefault('rejectPoints', 0)    # VM 剔除点数
@@ -235,6 +237,15 @@ class GeometryFindPanel(QWidget):
         clen.valueChanged.connect(lambda v: self._set_param('caliperLength', int(v)))
         form.addRow('卡尺投影长', clen)
 
+        sig = QDoubleSpinBox(); sig.setRange(0.1, 50); sig.setDecimals(2); sig.setSingleStep(0.5)
+        sig.setValue(float(self.params.get('caliperSigma') or 1.0))
+        sig.valueChanged.connect(lambda v: self._set_param('caliperSigma', float(v)))
+        form.addRow('卡尺高斯σ', sig)
+        ang = QDoubleSpinBox(); ang.setRange(-180, 180); ang.setDecimals(1); ang.setSingleStep(1)
+        ang.setValue(float(self.params.get('caliperProjAngle') or 0))
+        ang.valueChanged.connect(lambda v: self._set_param('caliperProjAngle', float(v)))
+        form.addRow('卡尺投影角°', ang)
+
         rp = QSpinBox(); rp.setRange(0, 200); rp.setValue(int(self.params.get('rejectPoints') or 0))
         rp.valueChanged.connect(lambda v: self._set_param('rejectPoints', int(v)))
         form.addRow('剔除点数', rp)
@@ -359,6 +370,10 @@ class GeometryFindPanel(QWidget):
         jmax.valueChanged.connect(lambda v: self._set_param('judgeMax', float(v)))
         form.addRow('判断上限', jmax)
         tip = QLabel('直线：起点/终点/角度；圆：中心/半径；矩形：中心/宽高/角度。引擎沿用 geometry。')
+        tip.setWordWrap(True)
+        tip.setStyleSheet('color:#888;')
+        form.addRow(tip)
+        tip = QLabel('叠层开关已接入引擎实绘（关则不画线/点/标签）。')
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)

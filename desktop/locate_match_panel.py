@@ -583,6 +583,10 @@ class LocateMatchPanel(QWidget):
         jmax.setValue(float(self.params.get('resultJudgeMax') or 1))
         jmax.valueChanged.connect(lambda v: self._set_param('resultJudgeMax', float(v)))
         form.addRow('判断分数上限', jmax)
+        tip = QLabel('匹配框/分数/搜索区等开关已接入模板匹配引擎实绘。')
+        tip.setWordWrap(True)
+        tip.setStyleSheet('color:#888;')
+        form.addRow(tip)
         lay.addLayout(form)
         lay.addStretch(1)
         return w
