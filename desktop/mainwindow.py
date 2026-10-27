@@ -374,6 +374,11 @@ class MainWindow(QMainWindow):
         self.compare_strip.pathActivated.connect(self._on_compare_strip_path)
         self.compare_strip.clearRequested.connect(self._clear_filmstrip_compare_overlays)
         self.compare_strip.pathsReordered.connect(self._on_compare_strip_reordered)
+        # wave27: 对比锁序 QSettings 持久
+        try:
+            self.compare_strip.load_order_lock_pref()
+        except Exception:
+            pass
         img_row.addWidget(self.compare_strip)
         rl.addLayout(img_row, 1)
         self.filmstrip=FilmstripBar()
@@ -2303,6 +2308,12 @@ class MainWindow(QMainWindow):
                 hmi.note_film_path(path or '')
         except Exception:
             pass
+        try:
+            host = getattr(hmi, '_host_sm', None)
+            if host is not None and hasattr(host, 'note_film_path'):
+                host.note_film_path(path or '')
+        except Exception:
+            pass
         if not hasattr(hmi, 'highlight_rows_for_film'):
             return
         try:
@@ -3401,6 +3412,25 @@ class MainWindow(QMainWindow):
             hmi = getattr(self, 'operator_hmi', None)
             if hmi is None:
                 return
+            # wave27: 报警前把当前胶片 path 写入 Host SM
+            if str(state) == 'Alarm':
+                try:
+                    fp = ''
+                    fs = getattr(self, 'filmstrip', None)
+                    if fs is not None:
+                        if hasattr(fs, 'current_path'):
+                            fp = str(fs.current_path() or '').strip()
+                        elif hasattr(fs, 'selected_path'):
+                            fp = str(fs.selected_path() or '').strip()
+                    if not fp:
+                        fp = str(getattr(self, '_filmstrip_compare_path', '') or '').strip()
+                    host = getattr(hmi, '_host_sm', None)
+                    if host is not None and hasattr(host, 'note_film_path') and fp:
+                        host.note_film_path(fp)
+                    if hasattr(hmi, 'note_film_path') and fp:
+                        hmi.note_film_path(fp)
+                except Exception:
+                    pass
             if hasattr(hmi, 'set_host_machine_state'):
                 hmi.set_host_machine_state(state, reason)
             elif getattr(hmi, '_host_sm', None) is not None:

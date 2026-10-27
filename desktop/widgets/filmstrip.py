@@ -1,7 +1,7 @@
 """Local-image filmstrip under the image viewport (VisionMaster 胶片条)."""
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtCore import Qt, QSettings, Signal, QSize
 from PySide6.QtGui import QIcon, QPixmap, QImage
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QListWidget,
@@ -746,6 +746,8 @@ class CompareThumbStrip(QWidget):
         self._paths = []
         self._baseline_paths = []  # wave26: order at set_paths / unlock baseline
         self._order_locked = False
+        self._order_undo_stack = []  # wave27: 复位/重排撤销栈
+        self._order_undo_max = 16
         lay = QVBoxLayout(self)
         lay.setContentsMargins(4, 4, 4, 4)
         lay.setSpacing(4)
@@ -767,6 +769,13 @@ class CompareThumbStrip(QWidget):
         self._reset_btn.setToolTip('复位对比序到进入时顺序')
         self._reset_btn.clicked.connect(self.reset_order)
         head.addWidget(self._reset_btn)
+        self._undo_btn = QPushButton('↶')
+        self._undo_btn.setObjectName('compareThumbUndo')
+        self._undo_btn.setFixedSize(20, 20)
+        self._undo_btn.setToolTip('撤销对比序（复位/重排）')
+        self._undo_btn.setEnabled(False)
+        self._undo_btn.clicked.connect(self.undo_order)
+        head.addWidget(self._undo_btn)
         self._clear_btn = QPushButton('×')
         self._clear_btn.setObjectName('compareThumbClear')
         self._clear_btn.setFixedSize(20, 20)
@@ -807,6 +816,8 @@ class CompareThumbStrip(QWidget):
         self._paths = paths
         if as_baseline:
             self._baseline_paths = list(paths)
+            self._order_undo_stack = []
+            self._sync_undo_btn()
         self._suppress_reorder = True
         self._list.clear()
         if not paths:
@@ -863,6 +874,7 @@ class CompareThumbStrip(QWidget):
             return
         new_paths = self._read_list_paths()
         if new_paths and new_paths != list(self._paths):
+            self._push_order_undo(list(self._paths))
             self._paths = list(new_paths)
             lock_mark = '🔒' if self._order_locked else ''
             self._title.setText(f'对比·{len(self._paths)}{lock_mark}')
@@ -874,7 +886,7 @@ class CompareThumbStrip(QWidget):
     def is_order_locked(self) -> bool:
         return bool(getattr(self, '_order_locked', False))
 
-    def set_order_locked(self, locked: bool):
+    def set_order_locked(self, locked: bool, *, persist: bool = False):
         locked = bool(locked)
         self._order_locked = locked
         btn = getattr(self, '_lock_btn', None)
@@ -886,6 +898,11 @@ class CompareThumbStrip(QWidget):
             except Exception:
                 pass
         self._apply_lock_chrome()
+        if persist:
+            try:
+                self.save_order_lock_pref(locked)
+            except Exception:
+                pass
         try:
             self.lockChanged.emit(locked)
         except Exception:
@@ -894,6 +911,10 @@ class CompareThumbStrip(QWidget):
     def _on_lock_toggled(self, on: bool):
         self._order_locked = bool(on)
         self._apply_lock_chrome()
+        try:
+            self.save_order_lock_pref(self._order_locked)
+        except Exception:
+            pass
         try:
             self.lockChanged.emit(self._order_locked)
         except Exception:
@@ -920,12 +941,13 @@ class CompareThumbStrip(QWidget):
             self._title.setText(f'对比·{n}{lock_mark}')
 
     def reset_order(self):
-        """wave26: 复位到进入对比时的基线序."""
+        """wave26/27: 复位到进入对比时的基线序（先压入撤销栈）."""
         base = list(getattr(self, '_baseline_paths', None) or [])
         if not base:
             return False
         if base == list(self._paths):
             return False
+        self._push_order_undo(list(self._paths))
         active = ''
         try:
             row = self._list.currentRow()
@@ -940,8 +962,80 @@ class CompareThumbStrip(QWidget):
             pass
         return True
 
+    def _push_order_undo(self, paths):
+        paths = [str(x) for x in (paths or []) if str(x).strip()]
+        if not paths:
+            return
+        stack = getattr(self, '_order_undo_stack', None)
+        if stack is None:
+            self._order_undo_stack = []
+            stack = self._order_undo_stack
+        if stack and stack[-1] == paths:
+            return
+        stack.append(list(paths))
+        max_n = int(getattr(self, '_order_undo_max', 16) or 16)
+        if len(stack) > max_n:
+            del stack[:-max_n]
+        self._sync_undo_btn()
+
+    def _sync_undo_btn(self):
+        btn = getattr(self, '_undo_btn', None)
+        if btn is None:
+            return
+        n = len(getattr(self, '_order_undo_stack', None) or [])
+        btn.setEnabled(n > 0)
+        btn.setToolTip(f'撤销对比序（{n}）' if n else '撤销对比序（空）')
+
+    def undo_order(self) -> bool:
+        """wave27: 弹出撤销栈恢复上一对比序."""
+        stack = getattr(self, '_order_undo_stack', None) or []
+        if not stack:
+            return False
+        prev = stack.pop()
+        self._sync_undo_btn()
+        if not prev or prev == list(self._paths):
+            return False
+        active = ''
+        try:
+            row = self._list.currentRow()
+            if 0 <= row < len(self._paths):
+                active = self._paths[row]
+        except Exception:
+            active = ''
+        self.set_paths(prev, active=active or (prev[0] if prev else ''), as_baseline=False)
+        try:
+            self.pathsReordered.emit(list(self._paths))
+        except Exception:
+            pass
+        return True
+
+    def order_undo_depth(self) -> int:
+        return len(getattr(self, '_order_undo_stack', None) or [])
+
     def baseline_paths(self):
         return list(getattr(self, '_baseline_paths', None) or [])
+
+    # --- wave27: lock QSettings 持久 ---
+    @staticmethod
+    def _compare_settings():
+        return QSettings('SIEANS', 'VisionDesktop')
+
+    def load_order_lock_pref(self) -> bool:
+        try:
+            raw = self._compare_settings().value('film/compareOrderLocked', False)
+            locked = str(raw).strip().lower() in ('1', 'true', 'yes')
+        except Exception:
+            locked = False
+        self.set_order_locked(locked)
+        return locked
+
+    def save_order_lock_pref(self, locked: bool | None = None):
+        if locked is None:
+            locked = self.is_order_locked()
+        try:
+            self._compare_settings().setValue('film/compareOrderLocked', bool(locked))
+        except Exception:
+            pass
 
     def _on_rows_moved(self, *args):
         self._emit_reorder_if_changed()

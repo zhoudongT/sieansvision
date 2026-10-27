@@ -71,6 +71,7 @@ class HostStateMachineWidget(QWidget):
         self._alarm_timer.timeout.connect(self._on_alarm_timeout)
         self._alarm_history = []  # list[{ts, reason, cleared}]
         self._alarm_history_max = 40
+        self._current_film_path = ''  # wave27: 运行报警自动带 filmPath
         self._liaison_events = []  # wave22: 联调条 [{ts, kind, code, text}]
         self._liaison_events_max = 12
 
@@ -160,7 +161,10 @@ class HostStateMachineWidget(QWidget):
         self._paint_badge()
         self._sync_auto_buttons()
         if state == 'Alarm' and prev != 'Alarm':
-            self._record_alarm(reason or '报警')
+            self._record_alarm(
+                reason or '报警',
+                film_path=getattr(self, '_current_film_path', '') or '',
+            )
             self._arm_alarm_timeout()
         elif state != 'Alarm':
             self._cancel_alarm_timeout()
@@ -672,7 +676,18 @@ class HostStateMachineWidget(QWidget):
             ('讯 info', 'info'),
         ):
             self._alarm_sev_filter.addItem(lab, key)
-        self._alarm_sev_filter.currentIndexChanged.connect(lambda *_: self._refresh_alarm_history_ui())
+        # wave27: 严重度筛持久
+        try:
+            saved_sev = str(self._host_settings().value('host/alarmSevFilter', 'all') or 'all').lower()
+        except Exception:
+            saved_sev = 'all'
+        if saved_sev in ('warn',):
+            saved_sev = 'warning'
+        for i in range(self._alarm_sev_filter.count()):
+            if str(self._alarm_sev_filter.itemData(i) or '') == saved_sev:
+                self._alarm_sev_filter.setCurrentIndex(i)
+                break
+        self._alarm_sev_filter.currentIndexChanged.connect(self._on_alarm_sev_filter_changed)
         filt_row.addWidget(self._alarm_sev_filter)
         lay.addLayout(filt_row)
         self._alarm_list = QListWidget()
@@ -726,6 +741,9 @@ class HostStateMachineWidget(QWidget):
             'background:#1c2a3a;color:#9ec9f0;border:1px solid #3a5a7a;'
             'border-radius:3px;padding:2px 6px;font-size:10px;font-weight:700;'
         )
+        self._liaison_window_badge.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._liaison_window_badge.setToolTip('单击循环切换联调时段')
+        self._liaison_window_badge.mousePressEvent = lambda e: self._on_liaison_badge_clicked(e)
         row.addWidget(self._liaison_window_badge)
         self._sync_liaison_window_badge()
         b_lia_copy = QPushButton('复制联调CSV')
@@ -848,7 +866,8 @@ class HostStateMachineWidget(QWidget):
             else:
                 lab = f'近{sec // 3600}时'
         badge.setText(f'⏱ {lab}')
-        badge.setToolTip(f'联调 CSV 时段：{lab}（{sec}s）' if sec else f'联调 CSV 时段：{lab}')
+        base_tip = f'联调 CSV 时段：{lab}（{sec}s）' if sec else f'联调 CSV 时段：{lab}'
+        badge.setToolTip(base_tip + ' · 单击循环切换')
         if sec <= 0:
             badge.setStyleSheet(
                 'background:#2a2c30;color:#9aa0a6;border:1px solid #3a3d42;'
@@ -859,6 +878,30 @@ class HostStateMachineWidget(QWidget):
                 'background:#1c2a3a;color:#9ec9f0;border:1px solid #6eb6ff;'
                 'border-radius:3px;padding:2px 6px;font-size:10px;font-weight:700;'
             )
+
+    def _on_liaison_badge_clicked(self, event=None):
+        """wave27: 联调徽章单击循环切窗."""
+        try:
+            if event is not None and hasattr(event, 'button'):
+                if event.button() not in (Qt.MouseButton.LeftButton,):
+                    return
+        except Exception:
+            pass
+        return self.cycle_liaison_window()
+
+    def cycle_liaison_window(self) -> int:
+        """wave27: 循环全部→5分→15分→1时→24时→全部；返回新 sec."""
+        combo = getattr(self, '_liaison_window', None)
+        if combo is None or combo.count() <= 0:
+            return self.liaison_window_sec()
+        nxt = (combo.currentIndex() + 1) % combo.count()
+        combo.setCurrentIndex(nxt)
+        sec = self.liaison_window_sec()
+        try:
+            self._log_line(f'联调徽章切窗 · {combo.currentText()}')
+        except Exception:
+            pass
+        return sec
 
     def set_liaison_window_sec(self, sec: int, *, persist: bool = True):
         combo = getattr(self, '_liaison_window', None)
@@ -1054,8 +1097,8 @@ class HostStateMachineWidget(QWidget):
             pass
         return True
 
-    def set_alarm_severity_filter(self, key: str = 'all') -> bool:
-        """wave26: 设严重度筛（spark / 外部）."""
+    def set_alarm_severity_filter(self, key: str = 'all', *, persist: bool = True) -> bool:
+        """wave26/27: 设严重度筛（spark / 外部）；可持久."""
         combo = getattr(self, '_alarm_sev_filter', None)
         if combo is None:
             return False
@@ -1068,8 +1111,29 @@ class HostStateMachineWidget(QWidget):
                     combo.setCurrentIndex(i)
                 else:
                     self._refresh_alarm_history_ui()
+                if persist:
+                    self._save_alarm_sev_filter_pref(key)
                 return True
         return False
+
+    def _on_alarm_sev_filter_changed(self, *_):
+        try:
+            self._refresh_alarm_history_ui()
+        except Exception:
+            pass
+        try:
+            self._save_alarm_sev_filter_pref(self.alarm_severity_filter())
+        except Exception:
+            pass
+
+    def _save_alarm_sev_filter_pref(self, key: str = 'all'):
+        key = str(key or 'all').strip().lower()
+        if key in ('warn',):
+            key = 'warning'
+        try:
+            self._host_settings().setValue('host/alarmSevFilter', key)
+        except Exception:
+            pass
 
     def alarm_severity_filter(self) -> str:
         combo = getattr(self, '_alarm_sev_filter', None)
@@ -1213,6 +1277,13 @@ class HostStateMachineWidget(QWidget):
         if any(k in r for k in ('清除', 'clear', '试跑')):
             return 'info'
         return 'info'
+
+    def note_film_path(self, path: str = ''):
+        """wave27: 记住当前胶片 path，供运行报警自动写入 filmPath."""
+        self._current_film_path = str(path or '').strip()
+
+    def current_film_path(self) -> str:
+        return str(getattr(self, '_current_film_path', '') or '')
 
     def _record_alarm(self, reason: str = '', *, film_path: str = ''):
         reason_s = str(reason or '报警')

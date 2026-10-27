@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㉗ · 对比锁序持久 · 运行报警filmPath · 严重度筛持久 · 徽章切窗 · 复位撤销栈 · 2026-10-28】
+
+- **对比锁序 QSettings 持久**：`film/compareOrderLocked`；`load_order_lock_pref` / `save_order_lock_pref`；MW 启动加载；锁钮切换即时写回。
+- **运行报警自动带 filmPath**：Host SM `note_film_path`；`set_state(Alarm)` → `_record_alarm(..., film_path=)`；MW 报警同步前从胶片 `current_path` 注入。
+- **严重度筛持久**：`host/alarmSevFilter`；打开恢复；combo / spark / `set_alarm_severity_filter` 写回。
+- **联调徽章单击切窗**：`cycle_liaison_window` 循环 全部→5分→15分→1时→24时；徽章手型+tip。
+- **胶片复位撤销栈**：重排/复位先压栈；↶ `undo_order`（深≤16）；新基线清空栈。
+- **冒烟**：`smoke-wave27-lockpersist-alarmfilm-sevpersist-badgecycle-undostack-e2e`（另回归 wave26）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆㉖ · 侧栏锁定/复位 · 联调时段徽章 · 高亮双击胶片 · UPH常用还原 · spark筛严重度 · 2026-10-28】
 
 - **侧栏对比序锁定/复位**：`CompareThumbStrip` 🔓/🔒 禁止拖拽；↺ 复位到进入对比时的 `_baseline_paths`；`lockChanged` / `reset_order`。
