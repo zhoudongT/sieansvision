@@ -121,6 +121,20 @@ class Document(QObject):
             self.project = deepcopy(self.history[self.index])
             self.changed.emit()
 
+    def jump_history(self, target_index):
+        """Jump undo stack to target_index in one shot (labelled history menu)."""
+        hist = list(getattr(self, 'history', None) or [])
+        if not hist:
+            return
+        ti = int(target_index)
+        if ti < 0 or ti >= len(hist):
+            return
+        if ti == self.index:
+            return
+        self.index = ti
+        self.project = deepcopy(hist[self.index])
+        self.changed.emit()
+
     def add(self, definition, position=None, parent='source'):
         p = deepcopy(self.project)
         pos = position or dict(x=300, y=160 + len(p['steps']) * 110)

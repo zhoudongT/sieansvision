@@ -7,7 +7,7 @@ from PySide6.QtCore import QSize, Qt, QMimeData, QByteArray, QBuffer, QIODevice,
 from PySide6.QtGui import QAction, QKeySequence, QDrag, QPixmap, QImage, QPainter, QColor, QFont
 from PySide6.QtWidgets import (QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QSplitter,QTreeWidget,QTreeWidgetItem,
     QLineEdit,QToolBar,QLabel,QPushButton,QFileDialog,QMessageBox,QTabWidget,QPlainTextEdit,QGraphicsView,QGraphicsScene,
-    QStackedWidget,QInputDialog,QSpinBox,QDialog,QDialogButtonBox,QFormLayout,QComboBox,QMenu)
+    QStackedWidget,QInputDialog,QSpinBox,QDialog,QDialogButtonBox,QFormLayout,QComboBox,QMenu,QListWidget,QListWidgetItem)
 from desktop.model import Document,empty_project
 from desktop.graph import FlowScene,FlowView,Node
 from desktop.catalog import all_definitions,definition_for
@@ -116,8 +116,11 @@ class MainWindow(QMainWindow):
         self._jump_skip_persist_action.setCheckable(True)
         settings_menu.addAction(self._jump_skip_persist_action)
         settings_menu.addAction(self.action('清除已记住的跳层跳过…', self._clear_persisted_jump_skip))
+        settings_menu.addAction(self.action('编辑已记住的跳层跳过…', self._edit_jump_skip_keys))
         tools_menu.addAction(self.action('全局触发…',self.open_global_triggers))
         self.undo_action=self.action('撤销',self._undo_with_fold_tip,'Ctrl+Z');self.redo_action=self.action('重做',self._redo_with_fold_tip,'Ctrl+Y')
+        self._undo_history_menu=QMenu(self);self._undo_history_menu.aboutToShow.connect(self._populate_undo_history_menu)
+        self.undo_action.setMenu(self._undo_history_menu)
         for a in [self.undo_action,self.redo_action]:edit.addAction(a)
         edit.addAction(self.action('复制模块',self.copy_nodes,'Ctrl+Shift+C'));edit.addAction(self.action('粘贴模块',lambda:self.document.paste() if not self.busy else None,'Ctrl+Shift+V'))
         toolbar=QToolBar('工程与运行');toolbar.setObjectName('mainToolBar');toolbar.setMovable(False);toolbar.setIconSize(QSize(16,16));toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon);self.addToolBar(toolbar)
@@ -289,6 +292,8 @@ class MainWindow(QMainWindow):
         root_split.addWidget(bottom);root_split.setSizes([700,220]);root_split.setChildrenCollapsible(False)
 
         self.wb_status=WorkbenchStatusBar(self);self.setStatusBar(self.wb_status)
+        self.wb_status.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.wb_status.customContextMenuRequested.connect(self._on_status_chip_context_menu)
         view.addAction(self.action('适应流程',self.flow.fit));view.addAction(self.action('适应图像',lambda:(self.input_view.fit(),self.output_view.fit())))
         self.roi_action=self.action('框选所选模块 ROI',self.roi_mode);self.roi_action.setCheckable(True);view.addAction(self.roi_action)
         view.addAction(self.action('清除所选模块 ROI',lambda:self.update_roi(None)))
@@ -377,7 +382,7 @@ class MainWindow(QMainWindow):
                 if s['id'] == nid:
                     s['name'] = name
                     break
-            self.document.commit(proj)
+            self.document.commit(proj, label=f'产线链·{name}')
             added.append(nid)
             parent = nid
             self.selected = nid
@@ -1091,6 +1096,7 @@ class MainWindow(QMainWindow):
             elif hasattr(ov, 'bounds') and not ov.bounds.isEmpty():
                 ov.fit()
         # Filmstrip live thumb (channelled frame + fit tip + actual pad from theme/channel)
+        fit_only = False
         try:
             pad = self._display_actual_pad_color(ch)
             fs = getattr(self, 'filmstrip', None)
@@ -1098,8 +1104,9 @@ class MainWindow(QMainWindow):
                 new_frame = bool(image)
                 same_show = (show == getattr(self, '_last_filmstrip_show', object()))
                 has_live = getattr(fs, '_live_src_pixmap', None) is not None
-                # fitMode/pad-only (cover↔actual) without new frame: re-fit cached src
+                # fitMode/pad-only (cover↔actual) without new frame: re-fit cached src (no fancy re-decode)
                 if (not new_frame) and same_show and has_live and show:
+                    fit_only = True
                     if hasattr(fs, 'set_actual_pad_color'):
                         try:
                             fs.set_actual_pad_color(pad, refresh=False)
@@ -1129,26 +1136,33 @@ class MainWindow(QMainWindow):
                     fs.set_actual_pad_color(pad)
         except Exception:
             pass
-        # HMI operator image panes
+        # HMI panes: always sync fitMode; on fit-only skip costly image re-push
+        hmi_image = None if fit_only else (show or None)
         try:
             if hasattr(self, 'operator_hmi') and self.operator_hmi is not None:
                 if hasattr(self.operator_hmi, 'apply_display'):
                     self.operator_hmi.apply_display(
-                        fit_mode=fit, image=show or None, channel=ch,
+                        fit_mode=fit, image=hmi_image, channel=ch,
                     )
                 else:
                     for view in getattr(self.operator_hmi, '_image_views', None) or []:
                         if hasattr(view, 'set_fit_mode'):
                             view.set_fit_mode(fit)
-                        if show:
-                            view.show_data(show)
+                        if hmi_image:
+                            view.show_data(hmi_image)
+                        elif fit and hasattr(view, 'fit'):
+                            try:
+                                if not getattr(view, 'bounds', None).isEmpty():
+                                    view.fit()
+                            except Exception:
+                                pass
         except Exception:
             pass
         # HMI dialog (if open)
         try:
             dialog = (getattr(self, 'dialogs', None) or {}).get('hmi')
             if dialog is not None and hasattr(dialog, 'apply_display'):
-                dialog.apply_display(fit_mode=fit, image=show or None, channel=ch)
+                dialog.apply_display(fit_mode=fit, image=hmi_image, channel=ch)
         except Exception:
             pass
 
@@ -2323,6 +2337,194 @@ class MainWindow(QMainWindow):
                 self.log(str(e))
             except Exception:
                 pass
+
+    def _edit_jump_skip_keys(self):
+        """Settings list editor for remembered nest jump-skip keys."""
+        keys = sorted(str(k) for k in (getattr(self, '_jump_confirm_skip', None) or set()) if str(k).strip())
+        dlg = QDialog(self)
+        dlg.setWindowTitle('已记住的跳层跳过')
+        dlg.resize(480, 320)
+        layout = QVBoxLayout(dlg)
+        layout.addWidget(QLabel('嵌套确认跳过键（可删除单项；确定后写回本会话' +
+                                ('并持久化' if self._jump_skip_persist_enabled() else '') + '）：'))
+        lst = QListWidget(dlg)
+        for k in keys:
+            lst.addItem(QListWidgetItem(k))
+        layout.addWidget(lst)
+        bar = QHBoxLayout()
+        rm = QPushButton('删除所选')
+        def _rm():
+            for item in lst.selectedItems():
+                lst.takeItem(lst.row(item))
+        rm.clicked.connect(_rm)
+        clr = QPushButton('全部清除')
+        clr.clicked.connect(lst.clear)
+        bar.addWidget(rm)
+        bar.addWidget(clr)
+        bar.addStretch(1)
+        layout.addLayout(bar)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        layout.addWidget(buttons)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        new_keys = set()
+        for i in range(lst.count()):
+            text = (lst.item(i).text() or '').strip()
+            if text:
+                new_keys.add(text)
+        self._jump_confirm_skip = new_keys
+        try:
+            if self._jump_skip_persist_enabled():
+                self._settings().setValue('jumpConfirmSkipKeys', sorted(new_keys))
+            self.log(f'已更新跳层跳过列表：{len(new_keys)} 项')
+        except Exception as e:
+            try:
+                self.log(str(e))
+            except Exception:
+                pass
+
+    def _on_status_chip_context_menu(self, pos):
+        """Status-bar right-click: peek chip queue / drop selected tips."""
+        wb = getattr(self, 'wb_status', None)
+        if wb is None:
+            return
+        menu = QMenu(wb)
+        chip = getattr(self, '_canvas_status_chip', None)
+        cur = ''
+        try:
+            if chip is not None and chip.isVisible():
+                cur = (chip.text() or '').strip()
+        except Exception:
+            cur = ''
+        if cur:
+            short = cur if len(cur) <= 42 else (cur[:42] + '…')
+            head = menu.addAction(f'当前：{short}')
+            head.setEnabled(False)
+            act = menu.addAction('关闭当前提示')
+            act.triggered.connect(self._dismiss_canvas_status_chip)
+            menu.addSeparator()
+        q = list(getattr(self, '_canvas_chip_queue', None) or [])
+        if q:
+            peek = menu.addMenu(f'排队中（{len(q)}）')
+            for i, (msg, _ms) in enumerate(q):
+                short = msg if len(msg) <= 36 else (msg[:36] + '…')
+                sub = peek.addMenu(f'{i + 1}. {short}')
+                drop = sub.addAction('丢弃此条')
+                drop.triggered.connect(lambda _=False, idx=i: self._drop_chip_queue_item(idx))
+            clr = menu.addAction('清空排队')
+            clr.triggered.connect(self._clear_chip_queue)
+        else:
+            empty = menu.addAction('排队为空')
+            empty.setEnabled(False)
+        try:
+            menu.exec(wb.mapToGlobal(pos))
+        except Exception:
+            pass
+
+    def _drop_chip_queue_item(self, index):
+        q = getattr(self, '_canvas_chip_queue', None)
+        if not isinstance(q, list):
+            return
+        try:
+            i = int(index)
+        except (TypeError, ValueError):
+            return
+        if 0 <= i < len(q):
+            q.pop(i)
+            try:
+                chip = getattr(self, '_canvas_status_chip', None)
+                if chip is not None and chip.isVisible():
+                    n = len(q)
+                    tip = '点击/Esc 关闭 · 多条折叠提示排队显示 · 单条最长 6s'
+                    if n:
+                        tip = f'点击/Esc 关闭 · 另有 {n} 条排队'
+                    chip.setToolTip(tip)
+            except Exception:
+                pass
+            try:
+                self.log(f'已丢弃排队提示 #{i + 1}（剩余 {len(q)}）')
+            except Exception:
+                pass
+
+    def _clear_chip_queue(self):
+        self._canvas_chip_queue = []
+        try:
+            chip = getattr(self, '_canvas_status_chip', None)
+            if chip is not None and chip.isVisible():
+                chip.setToolTip('点击/Esc 关闭 · 多条折叠提示排队显示 · 单条最长 6s')
+        except Exception:
+            pass
+        try:
+            self.log('已清空画布提示排队')
+        except Exception:
+            pass
+
+    def _populate_undo_history_menu(self):
+        """Dropdown of last N labelled history tips under 撤销."""
+        menu = getattr(self, '_undo_history_menu', None)
+        if menu is None:
+            return
+        menu.clear()
+        labels = list(getattr(self.document, 'history_labels', None) or [])
+        idx = int(getattr(self.document, 'index', 0) or 0)
+        n_max = int(getattr(self, '_undo_history_menu_n', 12) or 12)
+        entries = []
+        for k in range(idx, 0, -1):
+            lab = ''
+            if k < len(labels):
+                lab = (labels[k] or '').strip()
+            if not lab:
+                lab = f'步骤 #{k}'
+            entries.append((k, lab))
+            if len(entries) >= n_max:
+                break
+        if not entries:
+            a = menu.addAction('（无可撤销历史）')
+            a.setEnabled(False)
+            return
+        for k, lab in entries:
+            act = menu.addAction(f'撤销「{lab}」')
+            act.setToolTip(f'回到该步之前（历史 #{k - 1}）')
+            act.triggered.connect(
+                lambda _=False, target=k - 1, tip=lab: self._undo_to_history_index(target, tip))
+
+    def _undo_to_history_index(self, target_index, tip_label=''):
+        """Jump undo stack to target tip (labelled history menu)."""
+        before = int(getattr(self.document, 'index', 0) or 0)
+        try:
+            ti = int(target_index)
+        except (TypeError, ValueError):
+            return
+        if ti < 0 or ti >= before:
+            return
+        if hasattr(self.document, 'jump_history'):
+            self.document.jump_history(ti)
+        else:
+            while int(getattr(self.document, 'index', 0) or 0) > ti:
+                self.document.undo()
+        after = int(getattr(self.document, 'index', 0) or 0)
+        if before == after:
+            return
+        msg = f'已撤销：{tip_label}' if tip_label else f'已撤销到历史 #{after}'
+        try:
+            self.log(msg)
+        except Exception:
+            pass
+        try:
+            self._show_canvas_status_chip(msg)
+        except Exception:
+            pass
+        try:
+            self._maybe_log_fold_cross(before, after, 'undo')
+        except Exception:
+            pass
+        try:
+            self._refresh_undo_redo_labels()
+        except Exception:
+            pass
 
     def _clear_jump_confirm_skip(self, nest_key=None, *, force=False):
         """Clear session jump-confirm skip on leave nest / project reload.

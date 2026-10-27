@@ -28,6 +28,7 @@ CHAIN_OP_MAP = [
     ('format_data', 'format_data'),
     ('send_data', 'send_data'),
     ('receive_data', 'receive_data'),
+    ('display', 'display'),
 ]
 
 
@@ -57,6 +58,7 @@ DEFAULT_CHAIN = [
     {'step': '偏差', 'op': 'var_calc', 'vars': 'dx, dy'},
     {'step': '最终移动量', 'op': 'var_calc', 'vars': 'MoveX, MoveY'},
     {'step': '发送上位机', 'op': 'send_data / format_data', 'vars': ''},
+    {'step': '结果显示', 'op': 'display', 'vars': ''},
 ]
 
 
