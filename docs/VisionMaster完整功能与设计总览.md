@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊭ · 导引带pin徽章/上限 · 撤销条hex吸管 · PNG日期格式 · 热同步A↔B对调 · 脉冲gap抖动 · 2026-10-28】
+
+- **导引带最近色板 pin badge + max-pin cap**：置顶色块显示 📌 + 金边；独立 pinned 列表；上限 1–6（默认 3）FIFO 挤出；右键已钉显示「取消置顶」。
+- **撤销条色阶 hex eyedropper**：自定义 hex 行旁「吸管」；`QColorDialog` 拾色写 hi 并切 custom；smoke 可用 `_stale_prune_undo_eyedropper_no_dialog`。
+- **PNG `{datetime}` format picker**：iso/compact/date/slash/cn 预设芯片；`resolve`/`live strip`/对话框预览按所选 strftime；文件名安全替换。
+- **热同步 A↔B swap**：菜单「A ↔ B 对调」交换当前色阶与对比预设并重绘双条。
+- **脉冲 gap random jitter**：0–500ms 抖动滑条；循环周期 = 脉冲 + gap + `randint(0,jitter)`；落盘。
+- **冒烟**：`smoke-wave64-guidepinbadge-hexeye-pngdtfmt-abswap-gapjitter-e2e`（另回归 wave63/62/61）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊬ · 导引带色板右键clear/pin · 撤销条色阶hex · PNG{datetime}live · 热同步A/B · 脉冲gap芯片 · 2026-10-28】
 
 - **导引带最近色板右键 clear/pin**：色块右键钉住到首位 / 清除此色 / 清空全部；`pin`/`remove` API。

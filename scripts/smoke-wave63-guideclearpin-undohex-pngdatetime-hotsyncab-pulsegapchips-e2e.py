@@ -118,9 +118,11 @@ def main():
     assert host._show_snap_guide_recent_swatch_context_menu('#aa66ff') is True
     menu_ctx = host._last_snap_guide_recent_swatch_context_menu
     assert menu_ctx is not None
+    # wave64+: already-pinned swatch shows unpin (not pin)
     pins = [a for a in menu_ctx.actions() if a.property('isSnapGuideRecentPin')]
+    unpins = [a for a in menu_ctx.actions() if a.property('isSnapGuideRecentUnpin')]
     rms = [a for a in menu_ctx.actions() if a.property('isSnapGuideRecentRemove')]
-    assert len(pins) == 1 and len(rms) == 1
+    assert (len(pins) == 1 or len(unpins) == 1) and len(rms) == 1
     # rebuild palette has context wiring
     host.remember_merge_diff_fail_hist_drop_snap_guide_recent_color('#112233')
     menu_g = host._build_merge_diff_fail_hist_drop_snap_guide_menu()

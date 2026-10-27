@@ -62,6 +62,7 @@ def main():
     s.setValue('host/mergeDiffFailHistDropSnapGuideCustomHex', '#3ecf8e')
     s.setValue('host/mergeDiffFailHistDropSnapGuideRecentColors', [])
     s.setValue('host/mergeDiffFailHistDropPulsePreviewLoopGapMs', 120)
+    s.setValue('host/mergeDiffFailHistDropPulsePreviewLoopGapJitterMs', 0)
     s.setValue('host/toastCurvePngExportDir', '')
     s.setValue('host/toastCurvePngRecentExports', [])
     s.setValue('host/toastCurvePngNameTemplate', 'tip-anim-{easing}-{ts}.png')
@@ -191,6 +192,9 @@ def main():
     # smoke path stops loop after arm flag; may have armed then stopped
     # force arm check
     host.set_merge_diff_fail_hist_drop_pulse_preview_loop(True)
+    # wave64+: jitter may be left from prior runs; zero for exact pulse+gap
+    if hasattr(host, 'set_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_ms'):
+        host.set_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_ms(0)
     assert host._arm_merge_diff_fail_hist_drop_pulse_preview_loop(lambda: None) is True
     assert getattr(host, '_last_merge_diff_fail_hist_drop_pulse_preview_loop_ms', 0) == 200 + 300
     host._stop_merge_diff_fail_hist_drop_pulse_preview_loop()

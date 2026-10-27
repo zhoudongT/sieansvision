@@ -1184,6 +1184,52 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             self._merge_diff_fail_hist_drop_pulse_preview_loop_gap_ms = 120
         self._toast_curve_png_project_autofill = True
+        # wave64: 导引带 pin 清单 / 上限
+        try:
+            _pins = self._host_settings().value(
+                'host/mergeDiffFailHistDropSnapGuideRecentPinned', [])
+            if not isinstance(_pins, list):
+                _pins = []
+            cleaned_p = []
+            for x in _pins:
+                hx = str(x or '').strip()
+                if not hx:
+                    continue
+                if not hx.startswith('#'):
+                    hx = '#' + hx
+                try:
+                    c = QColor(hx)
+                    if c.isValid():
+                        cleaned_p.append(c.name())
+                except Exception:
+                    pass
+            self._merge_diff_fail_hist_drop_snap_guide_recent_pinned = cleaned_p[:6]
+        except Exception:
+            self._merge_diff_fail_hist_drop_snap_guide_recent_pinned = []
+        try:
+            _mp = int(self._host_settings().value(
+                'host/mergeDiffFailHistDropSnapGuideRecentMaxPin', 3) or 3)
+            self._merge_diff_fail_hist_drop_snap_guide_recent_max_pin = max(1, min(6, _mp))
+        except Exception:
+            self._merge_diff_fail_hist_drop_snap_guide_recent_max_pin = 3
+        # wave64: PNG datetime format
+        try:
+            _df = str(self._host_settings().value(
+                'host/toastCurvePngDatetimeFormat',
+                '%Y-%m-%d_%H-%M-%S') or '%Y-%m-%d_%H-%M-%S').strip()
+            if not _df or '%' not in _df:
+                _df = '%Y-%m-%d_%H-%M-%S'
+            self._toast_curve_png_datetime_format = _df
+        except Exception:
+            self._toast_curve_png_datetime_format = '%Y-%m-%d_%H-%M-%S'
+        # wave64: pulse gap jitter
+        try:
+            _jit = int(self._host_settings().value(
+                'host/mergeDiffFailHistDropPulsePreviewLoopGapJitterMs', 0) or 0)
+            self._merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_ms = max(
+                0, min(500, _jit))
+        except Exception:
+            self._merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_ms = 0
         # wave63: 热同步色阶 A/B 对比
         try:
             _cmp = str(self._host_settings().value(
@@ -6364,6 +6410,28 @@ class HostStateMachineWidget(QWidget):
             pass
         return name
 
+    def swap_stale_prune_undo_color_scale_ab(self, *, persist: bool = True) -> tuple:
+        """wave64: 热同步色阶 A↔B 对调."""
+        a = self.stale_prune_undo_color_scale_preset()
+        b = self.stale_prune_undo_color_scale_compare_preset()
+        self.set_stale_prune_undo_color_scale_preset(b, persist=persist)
+        self.set_stale_prune_undo_color_scale_compare_preset(a, persist=persist)
+        try:
+            self._paint_undo_color_scale_compare_bars()
+        except Exception:
+            pass
+        try:
+            self.refresh_undo_color_scale_hot_sync_menu()
+        except Exception:
+            pass
+        self._last_stale_prune_undo_color_scale_ab_swapped = (b, a)
+        try:
+            self._flash_host_toast(
+                f'色阶 A↔B · {b} ↔ {a}', kind='ok', ms=900)
+        except Exception:
+            pass
+        return (b, a)
+
     def _chunk_color_for_preset(self, preset: str, ratio: float = 1.0) -> str:
         """wave63: 按指定预设采样 chunk 色（不改当前预设）."""
         preset = str(preset or 'traffic').strip().lower()
@@ -6700,6 +6768,13 @@ class HostStateMachineWidget(QWidget):
                     lambda *_a, nn=key: (
                         self.set_stale_prune_undo_color_scale_compare_preset(nn)))
                 menu.addAction(act)
+            act_swap = QAction('A ↔ B 对调', menu)
+            act_swap.setProperty('isUndoColorScaleAbSwap', True)
+            act_swap.setProperty('isUndoColorScaleHotSync', True)
+            act_swap.triggered.connect(
+                lambda *_: self.swap_stale_prune_undo_color_scale_ab())
+            menu.addAction(act_swap)
+            self._last_undo_color_scale_ab_swap_action = act_swap
             menu.addSeparator()
         except Exception:
             pass
@@ -7010,6 +7085,62 @@ class HostStateMachineWidget(QWidget):
             pass
         return out
 
+    def pick_stale_prune_undo_color_custom_hex_eyedropper(
+            self, which: str = 'hi', *, persist: bool = True) -> str:
+        """wave64: 色阶 hex 吸管（QColorDialog / 烟雾路径）."""
+        which = str(which or 'hi').strip().lower()
+        if which not in ('hi', 'mid', 'lo'):
+            which = 'hi'
+        cur = self.stale_prune_undo_color_custom_rgb()
+        start = str(cur.get(which, '#3ecf8e'))
+        picked = ''
+        if getattr(self, '_stale_prune_undo_eyedropper_no_dialog', False):
+            picked = str(getattr(
+                self, '_stale_prune_undo_eyedropper_smoke', '') or '#ee44aa').strip()
+        else:
+            try:
+                qc = QColorDialog.getColor(
+                    QColor(start), self, f'吸管 · {which}')
+                if qc is not None and qc.isValid():
+                    picked = qc.name()
+            except Exception:
+                picked = ''
+        if not picked:
+            self._last_stale_prune_undo_color_eyedropper = ''
+            return ''
+        if not picked.startswith('#'):
+            picked = '#' + picked
+        try:
+            c = QColor(picked)
+            if c.isValid():
+                picked = c.name()
+            else:
+                self._last_stale_prune_undo_color_eyedropper = ''
+                return ''
+        except Exception:
+            self._last_stale_prune_undo_color_eyedropper = ''
+            return ''
+        self.set_stale_prune_undo_color_custom_hex(
+            picked, which=which, persist=persist)
+        self._last_stale_prune_undo_color_eyedropper = picked
+        self._last_stale_prune_undo_color_eyedropper_which = which
+        try:
+            edit = getattr(self, '_last_undo_color_scale_custom_hex_edit', None)
+            if edit is not None:
+                edit.setText(picked)
+        except Exception:
+            pass
+        try:
+            self._paint_undo_color_scale_preview_bar()
+        except Exception:
+            pass
+        try:
+            self._flash_host_toast(
+                f'吸管 · {which} · {picked}', kind='ok', ms=1000)
+        except Exception:
+            pass
+        return picked
+
     def _make_undo_color_scale_custom_hex_entry(self, parent=None):
         """wave63: 菜单内嵌自定义 hex 行（hi 快捷 / 逗号 all）."""
         wrap = QWidget(parent or self)
@@ -7033,6 +7164,12 @@ class HostStateMachineWidget(QWidget):
         btn.setProperty('isUndoColorScaleCustomHexApply', True)
         btn.setFixedHeight(20)
         btn.setStyleSheet('font-size:10px;padding:0 6px;')
+        btn_eye = QPushButton('吸管', wrap)
+        btn_eye.setObjectName('hostUndoColorScaleCustomHexEyedropper')
+        btn_eye.setProperty('isUndoColorScaleCustomHexEyedropper', True)
+        btn_eye.setFixedHeight(20)
+        btn_eye.setStyleSheet('font-size:10px;padding:0 6px;')
+        btn_eye.setToolTip('从取色盘吸取 hi 色')
 
         def _apply(*_a):
             raw = edit.text().strip()
@@ -7051,12 +7188,27 @@ class HostStateMachineWidget(QWidget):
             except Exception:
                 pass
 
+        def _eye(*_a):
+            got = self.pick_stale_prune_undo_color_custom_hex_eyedropper('hi')
+            if got:
+                try:
+                    edit.setText(got)
+                except Exception:
+                    pass
+                try:
+                    self.refresh_undo_color_scale_hot_sync_menu()
+                except Exception:
+                    pass
+
         btn.clicked.connect(_apply)
+        btn_eye.clicked.connect(_eye)
         edit.returnPressed.connect(_apply)
         lay.addWidget(lab)
         lay.addWidget(edit, 1)
+        lay.addWidget(btn_eye)
         lay.addWidget(btn)
         self._last_undo_color_scale_custom_hex_edit = edit
+        self._last_undo_color_scale_custom_hex_eyedropper = btn_eye
         self._last_undo_color_scale_custom_hex_entry = wrap
         return wrap
 
@@ -8587,9 +8739,107 @@ class HostStateMachineWidget(QWidget):
         self._last_merge_diff_fail_hist_drop_snap_guide_recent_removed = hexv
         return list(cur)
 
+    def merge_diff_fail_hist_drop_snap_guide_recent_pinned(self) -> list:
+        """wave64: 导引带已钉住色清单."""
+        raw = getattr(
+            self, '_merge_diff_fail_hist_drop_snap_guide_recent_pinned', None)
+        if not isinstance(raw, list):
+            raw = []
+            self._merge_diff_fail_hist_drop_snap_guide_recent_pinned = raw
+        out = []
+        for x in raw:
+            hx = str(x or '').strip()
+            if not hx:
+                continue
+            if not hx.startswith('#'):
+                hx = '#' + hx
+            try:
+                c = QColor(hx)
+                if c.isValid():
+                    out.append(c.name())
+            except Exception:
+                pass
+        cap = self.merge_diff_fail_hist_drop_snap_guide_recent_max_pin()
+        return out[:cap]
+
+    def merge_diff_fail_hist_drop_snap_guide_recent_max_pin(self) -> int:
+        """wave64: 导引带 pin 上限 1–6（默认 3）."""
+        try:
+            v = int(getattr(
+                self, '_merge_diff_fail_hist_drop_snap_guide_recent_max_pin', 3
+            ) or 3)
+        except Exception:
+            v = 3
+        return max(1, min(6, v))
+
+    def set_merge_diff_fail_hist_drop_snap_guide_recent_max_pin(
+            self, n: int = 3, *, persist: bool = True) -> int:
+        """wave64: 设置 pin 上限；超限裁剪."""
+        try:
+            v = int(n)
+        except Exception:
+            v = 3
+        v = max(1, min(6, v))
+        self._merge_diff_fail_hist_drop_snap_guide_recent_max_pin = v
+        pins = list(self.merge_diff_fail_hist_drop_snap_guide_recent_pinned())[:v]
+        self._merge_diff_fail_hist_drop_snap_guide_recent_pinned = pins
+        if persist:
+            try:
+                s = self._host_settings()
+                s.setValue('host/mergeDiffFailHistDropSnapGuideRecentMaxPin', int(v))
+                s.setValue(
+                    'host/mergeDiffFailHistDropSnapGuideRecentPinned', list(pins))
+            except Exception:
+                pass
+        self._last_merge_diff_fail_hist_drop_snap_guide_recent_max_pin = v
+        return v
+
+    def _persist_snap_guide_recent_pinned(self) -> list:
+        pins = self.merge_diff_fail_hist_drop_snap_guide_recent_pinned()
+        try:
+            self._host_settings().setValue(
+                'host/mergeDiffFailHistDropSnapGuideRecentPinned', list(pins))
+        except Exception:
+            pass
+        return list(pins)
+
+    def unpin_merge_diff_fail_hist_drop_snap_guide_recent_color(
+            self, hexv: str = '', *, persist: bool = True) -> list:
+        """wave64: 取消钉住."""
+        hexv = str(hexv or '').strip()
+        if hexv and not hexv.startswith('#'):
+            hexv = '#' + hexv
+        try:
+            qc = QColor(hexv)
+            if qc.isValid():
+                hexv = qc.name()
+        except Exception:
+            pass
+        pins = [c for c in self.merge_diff_fail_hist_drop_snap_guide_recent_pinned()
+                if c != hexv]
+        self._merge_diff_fail_hist_drop_snap_guide_recent_pinned = pins
+        if persist:
+            self._persist_snap_guide_recent_pinned()
+        self._last_merge_diff_fail_hist_drop_snap_guide_recent_unpinned = hexv
+        return list(pins)
+
+    def is_merge_diff_fail_hist_drop_snap_guide_recent_pinned(
+            self, hexv: str = '') -> bool:
+        """wave64: 是否已钉住."""
+        hexv = str(hexv or '').strip()
+        if hexv and not hexv.startswith('#'):
+            hexv = '#' + hexv
+        try:
+            qc = QColor(hexv)
+            if qc.isValid():
+                hexv = qc.name()
+        except Exception:
+            pass
+        return hexv in self.merge_diff_fail_hist_drop_snap_guide_recent_pinned()
+
     def pin_merge_diff_fail_hist_drop_snap_guide_recent_color(
             self, hexv: str = '', *, persist: bool = True) -> list:
-        """wave63: 钉住导引带最近色到首位."""
+        """wave63–64: 钉住到首位（受 max-pin cap；维护 pin badge 清单）."""
         hexv = str(hexv or '').strip()
         if not hexv:
             return self.merge_diff_fail_hist_drop_snap_guide_recent_colors()
@@ -8609,12 +8859,28 @@ class HostStateMachineWidget(QWidget):
                 cur = self.merge_diff_fail_hist_drop_snap_guide_recent_colors()
             except Exception:
                 return list(cur)
-        cur = [c for c in cur if c != hexv]
-        cur.insert(0, hexv)
-        cur = cur[:6]
+        cap = self.merge_diff_fail_hist_drop_snap_guide_recent_max_pin()
+        pins = [c for c in self.merge_diff_fail_hist_drop_snap_guide_recent_pinned()
+                if c != hexv]
+        pins.insert(0, hexv)
+        if len(pins) > cap:
+            dropped = pins[cap:]
+            pins = pins[:cap]
+            self._last_merge_diff_fail_hist_drop_snap_guide_recent_pin_capped = True
+            self._last_merge_diff_fail_hist_drop_snap_guide_recent_pin_dropped = list(
+                dropped)
+        else:
+            self._last_merge_diff_fail_hist_drop_snap_guide_recent_pin_capped = False
+            self._last_merge_diff_fail_hist_drop_snap_guide_recent_pin_dropped = []
+        self._merge_diff_fail_hist_drop_snap_guide_recent_pinned = pins
+        unpinned = [c for c in cur if c not in pins]
+        order = (list(pins) + unpinned)[:6]
         got = self.reorder_merge_diff_fail_hist_drop_snap_guide_recent_colors(
-            cur, persist=persist)
+            order, persist=persist)
+        if persist:
+            self._persist_snap_guide_recent_pinned()
         self._last_merge_diff_fail_hist_drop_snap_guide_recent_pinned = hexv
+        self._last_merge_diff_fail_hist_drop_snap_guide_recent_pins = list(pins)
         return got
 
     def _show_snap_guide_recent_swatch_context_menu(
@@ -8624,12 +8890,23 @@ class HostStateMachineWidget(QWidget):
         try:
             menu = QMenu(self)
             menu.setObjectName('hostSnapGuideRecentSwatchContextMenu')
-            act_pin = QAction(f'钉住到首位 · {hexv}', menu)
-            act_pin.setProperty('isSnapGuideRecentPin', True)
-            act_pin.setData(hexv)
-            act_pin.triggered.connect(
-                lambda *_a, hh=hexv: (
-                    self.pin_merge_diff_fail_hist_drop_snap_guide_recent_color(hh)))
+            already = self.is_merge_diff_fail_hist_drop_snap_guide_recent_pinned(hexv)
+            if already:
+                act_pin = QAction(f'取消钉住 · {hexv}', menu)
+                act_pin.setProperty('isSnapGuideRecentUnpin', True)
+                act_pin.setData(hexv)
+                act_pin.triggered.connect(
+                    lambda *_a, hh=hexv: (
+                        self.unpin_merge_diff_fail_hist_drop_snap_guide_recent_color(hh)))
+            else:
+                cap = self.merge_diff_fail_hist_drop_snap_guide_recent_max_pin()
+                n = len(self.merge_diff_fail_hist_drop_snap_guide_recent_pinned())
+                act_pin = QAction(f'钉住到首位 · {hexv}（{n}/{cap}）', menu)
+                act_pin.setProperty('isSnapGuideRecentPin', True)
+                act_pin.setData(hexv)
+                act_pin.triggered.connect(
+                    lambda *_a, hh=hexv: (
+                        self.pin_merge_diff_fail_hist_drop_snap_guide_recent_color(hh)))
             menu.addAction(act_pin)
             act_rm = QAction(f'清除此色 · {hexv}', menu)
             act_rm.setProperty('isSnapGuideRecentRemove', True)
@@ -8830,10 +9107,20 @@ class HostStateMachineWidget(QWidget):
                     btn.setFixedSize(18, 18)
                     btn.setProperty('isSnapGuideRecentSwatch', True)
                     btn.setProperty('snapGuideRecentHex', hx)
-                    btn.setToolTip(f'{hx} · 拖拽排序')
+                    _pinned = self.is_merge_diff_fail_hist_drop_snap_guide_recent_pinned(hx)
+                    btn.setProperty('snapGuideRecentPinned', bool(_pinned))
+                    btn.setToolTip(
+                        f'{hx} · 拖拽排序' + (' · 📌已钉' if _pinned else ''))
                     btn.setCursor(Qt.CursorShape.OpenHandCursor)
-                    btn.setStyleSheet(
-                        f'background:{hx};border:1px solid #3a3d42;border-radius:2px;')
+                    if _pinned:
+                        btn.setText('📌')
+                        btn.setStyleSheet(
+                            f'background:{hx};border:2px solid #f0c040;'
+                            'border-radius:2px;font-size:8px;padding:0;color:#1e2126;')
+                    else:
+                        btn.setText('')
+                        btn.setStyleSheet(
+                            f'background:{hx};border:1px solid #3a3d42;border-radius:2px;')
 
                     def _press(e, b=btn, hh=hx):
                         self._snap_guide_recent_drag_hex = hh
@@ -8935,7 +9222,10 @@ class HostStateMachineWidget(QWidget):
                     btn.customContextMenuRequested.connect(
                         lambda pos, b=btn, hh=hx: self._show_snap_guide_recent_swatch_context_menu(
                             hh, global_pos=b.mapToGlobal(pos), btn=b))
-                    btn.setToolTip(f'{hx} · 拖拽排序 · 右键钉住/清除')
+                    _p2 = self.is_merge_diff_fail_hist_drop_snap_guide_recent_pinned(hx)
+                    btn.setToolTip(
+                        f'{hx} · 拖拽排序 · 右键钉住/清除'
+                        + (' · 📌已钉' if _p2 else ''))
                     lay_r.addWidget(btn)
                     self._snap_guide_recent_drag_btns.append(btn)
                 lay_r.addStretch(1)
@@ -9113,6 +9403,36 @@ class HostStateMachineWidget(QWidget):
         self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_chip = got
         return got
 
+    def merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_ms(self) -> int:
+        """wave64: 脉冲循环间隔随机抖动上限 0–500ms."""
+        try:
+            v = int(getattr(
+                self, '_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_ms', 0
+            ) or 0)
+        except Exception:
+            v = 0
+        return max(0, min(500, v))
+
+    def set_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_ms(
+            self, ms: int = 0, *, persist: bool = True) -> int:
+        """wave64: 设置间隔抖动 0–500ms."""
+        try:
+            v = int(ms)
+        except Exception:
+            v = 0
+        v = max(0, min(500, v))
+        self._merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_ms = v
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/mergeDiffFailHistDropPulsePreviewLoopGapJitterMs', int(v))
+            except Exception:
+                pass
+        self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_ms = v
+        self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_persisted = (
+            bool(persist))
+        return v
+
     def merge_diff_fail_hist_drop_pulse_preview_loop(self) -> bool:
         """wave61: 脉冲预览是否循环播放."""
         return bool(getattr(
@@ -9143,12 +9463,16 @@ class HostStateMachineWidget(QWidget):
         return True
 
     def _arm_merge_diff_fail_hist_drop_pulse_preview_loop(self, play_fn=None) -> bool:
-        """wave61–62: 按当前时长+可调间隔再触发."""
+        """wave61–64: 按当前时长+可调间隔(+随机抖动)再触发."""
         if not self.merge_diff_fail_hist_drop_pulse_preview_loop():
             return False
         try:
-            ms = (int(self.merge_diff_fail_hist_drop_pulse_ms())
-                  + int(self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_ms()))
+            import random as _rnd
+            gap = int(self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_ms())
+            jit = int(self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_ms())
+            extra = _rnd.randint(0, jit) if jit > 0 else 0
+            self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_roll = extra
+            ms = (int(self.merge_diff_fail_hist_drop_pulse_ms()) + gap + extra)
             t = getattr(self, '_merge_diff_fail_hist_drop_pulse_preview_loop_timer', None)
             if t is None:
                 t = QTimer(self)
@@ -9287,6 +9611,42 @@ class HostStateMachineWidget(QWidget):
             lay_chips.addStretch(1)
             lay.addWidget(wrap_chips)
             self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_chips = gap_chip_btns
+            # wave64: gap random jitter
+            wrap_jit = QWidget(dlg)
+            wrap_jit.setObjectName('hostMergeDiffFailHistDropPulsePreviewLoopGapJitter')
+            lay_jit = QHBoxLayout(wrap_jit)
+            lay_jit.setContentsMargins(0, 0, 0, 0)
+            lay_jit.setSpacing(6)
+            lab_jit = QLabel('间隔抖动', wrap_jit)
+            lab_jit.setStyleSheet('color:#9aa7b5;font-size:11px;')
+            sl_jit = QSlider(Qt.Orientation.Horizontal, wrap_jit)
+            sl_jit.setObjectName('hostMergeDiffFailHistDropPulsePreviewLoopGapJitterSlider')
+            sl_jit.setRange(0, 500)
+            sl_jit.setSingleStep(10)
+            sl_jit.setPageStep(50)
+            sl_jit.setValue(
+                self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_ms())
+            val_jit = QLabel(f'±{sl_jit.value()}ms', wrap_jit)
+            val_jit.setObjectName(
+                'hostMergeDiffFailHistDropPulsePreviewLoopGapJitterVal')
+            val_jit.setFixedWidth(52)
+            val_jit.setStyleSheet('color:#c8d2dc;font-size:11px;')
+
+            def _on_jit(v, vl=val_jit):
+                self.set_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_ms(
+                    int(v), persist=True)
+                try:
+                    vl.setText(f'±{int(v)}ms')
+                except Exception:
+                    pass
+
+            sl_jit.valueChanged.connect(_on_jit)
+            lay_jit.addWidget(lab_jit)
+            lay_jit.addWidget(sl_jit, 1)
+            lay_jit.addWidget(val_jit)
+            lay.addWidget(wrap_jit)
+            self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_slider = sl_jit
+            self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_val = val_jit
 
             def _on_gap2(v, vl=val_gap, chips=gap_chip_btns):
                 self.set_merge_diff_fail_hist_drop_pulse_preview_loop_gap_ms(
@@ -11540,6 +11900,55 @@ class HostStateMachineWidget(QWidget):
         self._last_toast_curve_png_name_template = v
         return v
 
+    def toast_curve_png_datetime_format(self) -> str:
+        """wave64: PNG {datetime} 格式（strftime）."""
+        v = str(getattr(
+            self, '_toast_curve_png_datetime_format', '%Y-%m-%d_%H-%M-%S'
+        ) or '%Y-%m-%d_%H-%M-%S').strip()
+        if not v or '%' not in v:
+            v = '%Y-%m-%d_%H-%M-%S'
+        return v
+
+    def set_toast_curve_png_datetime_format(
+            self, fmt: str = '%Y-%m-%d_%H-%M-%S', *, persist: bool = True) -> str:
+        """wave64: 设置 {datetime} 格式."""
+        presets = {
+            'iso': '%Y-%m-%d_%H-%M-%S',
+            'compact': '%Y%m%d%H%M%S',
+            'date': '%Y-%m-%d',
+            'slash': '%Y-%m-%d/%H-%M-%S',
+            'cn': '%Y年%m月%d日_%H时%M分',
+        }
+        v = str(fmt or '').strip()
+        if v in presets:
+            v = presets[v]
+        if not v or '%' not in v:
+            v = '%Y-%m-%d_%H-%M-%S'
+        # filename-safe: reject path seps that aren't in format result handling
+        self._toast_curve_png_datetime_format = v
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/toastCurvePngDatetimeFormat', v)
+            except Exception:
+                pass
+        self._last_toast_curve_png_datetime_format = v
+        try:
+            self.refresh_toast_curve_png_datetime_live_strip()
+        except Exception:
+            pass
+        return v
+
+    def toast_curve_png_datetime_format_presets(self) -> list:
+        """wave64: 格式预设清单 [(key, fmt, lab), ...]."""
+        return [
+            ('iso', '%Y-%m-%d_%H-%M-%S', 'ISO'),
+            ('compact', '%Y%m%d%H%M%S', '紧凑'),
+            ('date', '%Y-%m-%d', '仅日期'),
+            ('slash', '%Y-%m-%d/%H-%M-%S', '斜杠'),
+            ('cn', '%Y年%m月%d日_%H时%M分', '中文'),
+        ]
+
     def resolve_toast_curve_png_name(
             self, *, easing: str = None, name: str = 'tip-anim',
             when=None) -> str:
@@ -11563,7 +11972,13 @@ class HostStateMachineWidget(QWidget):
         station = ''.join(
             ch if ch.isalnum() or ch in '-_.' else '_'
             for ch in self.toast_curve_png_station_name())
-        dt = when.strftime('%Y-%m-%d_%H-%M-%S')
+        try:
+            dt = when.strftime(self.toast_curve_png_datetime_format())
+        except Exception:
+            dt = when.strftime('%Y-%m-%d_%H-%M-%S')
+        # filename-safe datetime
+        dt = (dt.replace('/', '-').replace('\\', '-')
+              .replace(':', '-').replace(' ', '_'))
         out = tmpl.replace('{ts}', ts).replace('{date}', date)
         out = out.replace('{datetime}', dt)
         out = out.replace('{easing}', ez_safe).replace('{name}', name_safe)
@@ -11590,7 +12005,12 @@ class HostStateMachineWidget(QWidget):
             name = self.resolve_toast_curve_png_name()
         finally:
             self._toast_curve_png_name_template = old
-        dt = _dt.now().strftime('%Y-%m-%d_%H-%M-%S')
+        try:
+            dt = _dt.now().strftime(self.toast_curve_png_datetime_format())
+        except Exception:
+            dt = _dt.now().strftime('%Y-%m-%d_%H-%M-%S')
+        dt = (dt.replace('/', '-').replace('\\', '-')
+              .replace(':', '-').replace(' ', '_'))
         text = f'⏱ live · {{datetime}}={dt}  →  {name}'
         if strip is not None:
             try:
@@ -11657,6 +12077,51 @@ class HostStateMachineWidget(QWidget):
             live.setToolTip('实时展开 {datetime} / {ts}（每秒刷新）')
             lay.addWidget(live)
             self._last_toast_curve_png_datetime_live_strip = live
+            # wave64: datetime format picker chips
+            wrap_fmt = QWidget(dlg)
+            wrap_fmt.setObjectName('hostToastCurvePngDatetimeFormatPicker')
+            lay_fmt = QHBoxLayout(wrap_fmt)
+            lay_fmt.setContentsMargins(0, 0, 0, 0)
+            lay_fmt.setSpacing(4)
+            lab_fmt = QLabel('{datetime}格式', wrap_fmt)
+            lab_fmt.setStyleSheet('color:#9aa7b5;font-size:11px;')
+            lay_fmt.addWidget(lab_fmt)
+            fmt_btns = []
+            cur_fmt = self.toast_curve_png_datetime_format()
+            for key, fmt, labf in self.toast_curve_png_datetime_format_presets():
+                fb = QPushButton(labf, wrap_fmt)
+                fb.setObjectName(f'hostToastCurvePngDatetimeFmt_{key}')
+                fb.setProperty('isToastCurvePngDatetimeFormatChip', True)
+                fb.setProperty('toastCurvePngDatetimeFormatKey', key)
+                fb.setProperty('toastCurvePngDatetimeFormat', fmt)
+                fb.setCheckable(True)
+                fb.setChecked(fmt == cur_fmt)
+                fb.setFixedHeight(20)
+                fb.setStyleSheet('font-size:10px;padding:0 6px;')
+
+                def _pick(ff=fmt, kk=key):
+                    self.set_toast_curve_png_datetime_format(ff, persist=True)
+                    for b2 in list(getattr(
+                            self, '_last_toast_curve_png_datetime_format_chips',
+                            []) or []):
+                        try:
+                            b2.setChecked(
+                                str(b2.property('toastCurvePngDatetimeFormat') or '')
+                                == self.toast_curve_png_datetime_format())
+                        except Exception:
+                            pass
+                    try:
+                        _refresh_prev()
+                    except Exception:
+                        pass
+
+                fb.clicked.connect(lambda *_a, fn=_pick: fn())
+                lay_fmt.addWidget(fb)
+                fmt_btns.append(fb)
+            lay_fmt.addStretch(1)
+            lay.addWidget(wrap_fmt)
+            self._last_toast_curve_png_datetime_format_chips = fmt_btns
+            self._last_toast_curve_png_datetime_format_picker = wrap_fmt
 
             def _refresh_prev(*_a):
                 try:
@@ -11669,7 +12134,12 @@ class HostStateMachineWidget(QWidget):
                     prev.setText(f'预览 · {name}')
                     try:
                         from datetime import datetime as _dt
-                        dt = _dt.now().strftime('%Y-%m-%d_%H-%M-%S')
+                        try:
+                            dt = _dt.now().strftime(self.toast_curve_png_datetime_format())
+                        except Exception:
+                            dt = _dt.now().strftime('%Y-%m-%d_%H-%M-%S')
+                        dt = (dt.replace('/', '-').replace('\\', '-')
+                              .replace(':', '-').replace(' ', '_'))
                         live.setText(f'⏱ live · {{datetime}}={dt}  →  {name}')
                         self._last_toast_curve_png_datetime_live = dt
                         self._last_toast_curve_png_datetime_live_name = name
