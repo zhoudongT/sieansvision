@@ -125,6 +125,18 @@ class FilmstripBar(QWidget):
             return self._paths[self._index]
         return ''
 
+    def set_format_filter_hint(self, text=''):
+        """细妆：胶片条格式过滤提示（ToolTip；不污染取图间隔文案）。"""
+        tip = text or ('本地图像格式过滤：' + ', '.join(sorted(IMAGE_EXTS)))
+        if hasattr(self, 'interval_label') and self.interval_label is not None:
+            base = self.interval_label.toolTip() or ''
+            if '格式' not in base:
+                self.interval_label.setToolTip((base + chr(10) + tip).strip() if base else tip)
+        if hasattr(self, 'empty_hint') and self.empty_hint is not None:
+            msg = self.empty_hint.toolTip() or ''
+            if '格式' not in msg:
+                self.empty_hint.setToolTip(tip)
+
     def set_auto_switch(self, enabled):
         self.auto_switch.setChecked(bool(enabled), animate=False)
 
@@ -171,6 +183,7 @@ class FilmstripBar(QWidget):
         if hasattr(self, 'empty_hint'):
             self.empty_hint.setVisible(len(self._paths) == 0)
             self.thumbs.setVisible(len(self._paths) > 0)
+        self.set_format_filter_hint()
 
     def _refresh_count(self):
         n = len(self._paths)
