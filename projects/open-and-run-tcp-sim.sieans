@@ -1,0 +1,227 @@
+{
+  "version": 1,
+  "id": "open-and-run-tcp-sim",
+  "name": "打开即跑·TCP环回联调",
+  "sourcePosition": {
+    "x": 40,
+    "y": 40
+  },
+  "variables": {
+    "tcpLastRecv": "",
+    "lastCmd": "",
+    "simStatus": "idle"
+  },
+  "sourceConfig": {
+    "mode": "local",
+    "folder": "",
+    "files": []
+  },
+  "steps": [
+    {
+      "id": "s-format",
+      "operation": "format_data",
+      "name": "组PING报文",
+      "params": {
+        "template": "PING",
+        "targetVar": "flow.outPing"
+      },
+      "x": 80,
+      "y": 120
+    },
+    {
+      "id": "s-send",
+      "operation": "send_data",
+      "name": "TCP写出(环回)",
+      "params": {
+        "device": "TcpLoopbackSim",
+        "message": "PING",
+        "channel": "tcp",
+        "variable": "flow.outPing"
+      },
+      "x": 280,
+      "y": 120
+    },
+    {
+      "id": "s-recv",
+      "operation": "receive_data",
+      "name": "TCP读回",
+      "params": {
+        "device": "TcpLoopbackSim",
+        "variable": "flow.tcpLastRecv",
+        "timeoutMs": 2000
+      },
+      "x": 480,
+      "y": 120
+    },
+    {
+      "id": "s-parse",
+      "operation": "protocol_parse",
+      "name": "解析应答",
+      "params": {
+        "sourceVar": "flow.tcpLastRecv",
+        "mode": "delimiter",
+        "delimiter": " ",
+        "fields": [
+          "verb",
+          "arg"
+        ],
+        "targetPrefix": "flow.parsed"
+      },
+      "x": 680,
+      "y": 120
+    },
+    {
+      "id": "s-var",
+      "operation": "var_calc",
+      "name": "回写状态",
+      "params": {
+        "expressions": [
+          {
+            "name": "simStatus",
+            "formula": "'ready'",
+            "type": "string",
+            "init": true
+          }
+        ]
+      },
+      "x": 880,
+      "y": 120
+    }
+  ],
+  "edges": [
+    {
+      "from": "s-format",
+      "to": "s-send"
+    },
+    {
+      "from": "s-send",
+      "to": "s-recv"
+    },
+    {
+      "from": "s-recv",
+      "to": "s-parse"
+    },
+    {
+      "from": "s-parse",
+      "to": "s-var"
+    }
+  ],
+  "commManager": {
+    "devices": [
+      {
+        "id": "local-loop",
+        "name": "LocalLoop",
+        "protocol": "Local Bus",
+        "enabled": true,
+        "host": "",
+        "port": 0
+      },
+      {
+        "id": "tcp-loopback-sim",
+        "name": "TcpLoopbackSim",
+        "protocol": "TCP Client",
+        "enabled": true,
+        "host": "127.0.0.1",
+        "port": 19880,
+        "remark": "桌面环回协议模拟器（desktop.tcp_device_sim）"
+      },
+      {
+        "id": "udp-loopback-sim",
+        "name": "UdpLoopbackSim",
+        "protocol": "UDP",
+        "enabled": true,
+        "host": "127.0.0.1",
+        "port": 19881,
+        "remark": "同模拟器 UDP 口"
+      }
+    ],
+    "recvEvents": [
+      {
+        "device": "TcpLoopbackSim",
+        "message": "",
+        "variable": "flow.tcpLastRecv",
+        "enabled": true
+      },
+      {
+        "device": "LocalLoop",
+        "message": "",
+        "variable": "flow.lastCmd",
+        "enabled": true
+      }
+    ],
+    "sendEvents": [],
+    "heartbeat": {
+      "enabled": false,
+      "intervalMs": 5000,
+      "payload": "HB"
+    },
+    "response": {
+      "enabled": true,
+      "timeoutMs": 1000,
+      "ack": "OK"
+    }
+  },
+  "globalTriggers": {
+    "events": [],
+    "strings": [
+      {
+        "match": "RUN",
+        "partial": true,
+        "commands": [
+          {
+            "type": "执行·单次"
+          }
+        ]
+      },
+      {
+        "match": "CONT",
+        "partial": true,
+        "commands": [
+          {
+            "type": "执行·连续"
+          }
+        ]
+      },
+      {
+        "match": "STOP",
+        "partial": true,
+        "commands": [
+          {
+            "type": "执行·停止"
+          }
+        ]
+      }
+    ]
+  },
+  "runUi": {
+    "split": 2,
+    "placements": [
+      {
+        "name": "图像",
+        "category": "显示"
+      },
+      {
+        "name": "运行控制",
+        "category": "控制"
+      },
+      {
+        "name": "连接状态",
+        "category": "显示"
+      },
+      {
+        "name": "信息提示栏",
+        "category": "显示"
+      },
+      {
+        "name": "OK/NG",
+        "category": "控制"
+      }
+    ],
+    "fixedBars": {
+      "top": true,
+      "camera": "session",
+      "comm": "TcpLoopbackSim"
+    }
+  },
+  "notes": "打开即跑·TCP环回：先在通信管理「TCP 测试」启动环回模拟器，再单次运行或向 :19880 发 RUN。无现场硬件/无 robot SDK。"
+}

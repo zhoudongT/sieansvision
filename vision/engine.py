@@ -129,6 +129,24 @@ def geometry(image, canvas, p, offset):
                 canvas[oy:oy+gray.shape[0], ox:ox+gray.shape[1]][edges > 0] = (0, 210, 80)
             return {'feature': mode, 'edgePixels': int(np.count_nonzero(edges)),
                     'overlay': {'showOverlay': show_ov, 'showFitCurve': show_lines}}
+        # Default: OpenCV multi-caliper line find (UI caliper* knobs). findMethod=hough keeps legacy.
+        find_method = str(p.get('findMethod') or 'caliper').lower()
+        if find_method in ('caliper', 'measure', 'auto', ''):
+            try:
+                from caliper_line import find_lines_caliper
+                cal = find_lines_caliper(
+                    gray, canvas, p, offset=(ox, oy),
+                    show_ov=show_ov, show_calipers=show_ov and _show_flag(p, 'showCalipers', True),
+                    show_pts=show_pts, show_fit=show_lines, show_labels=show_labels,
+                    show_ruler=show_ruler, show_fit_err=show_fit_err,
+                )
+                if cal.get('count', 0) > 0 or find_method != 'auto':
+                    return cal
+            except Exception:
+                if find_method == 'caliper':
+                    raise
+                # auto → fall through to Hough
+                pass
         lines = cv2.HoughLinesP(edges, 1, np.pi/180, int(number(p, 'votes', 40, 1, 10000)),
                                minLineLength=number(p, 'minLength', 40, 1, 10000), maxLineGap=number(p, 'maxGap', 10, 0, 1000))
         reverse = bool(p.get('reverseFind'))
@@ -153,7 +171,7 @@ def geometry(image, canvas, p, offset):
                 cv2.drawMarker(canvas, a, (255, 180, 0), cv2.MARKER_CROSS, 8, 1)
                 cv2.drawMarker(canvas, b, (255, 180, 0), cv2.MARKER_CROSS, 8, 1)
             result.append({'start': a, 'end': b, 'lengthPixels': math.hypot(x2-x1, y2-y1),
-                           'angleDeg': ang})
+                           'angleDeg': ang, 'method': 'hough'})
     elif mode == 'circles':
         min_r = int(number(p, 'minRadius', 5, 0, 10000))
         max_r = int(number(p, 'maxRadius', 200, 0, 10000))

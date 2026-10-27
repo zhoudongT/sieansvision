@@ -72,6 +72,9 @@ def normalize_geometry_params(params=None, feature=None):
     p.setdefault('subPixel', False)   # UI 旗标；引擎不伪称 Halcon 亚像素核
     p.setdefault('cannyLow', 50)
     p.setdefault('cannyHigh', 150)
+    p.setdefault('findMethod', 'caliper')  # caliper | hough | auto
+    p.setdefault('roiPreset', 'full')     # full|center|left|right|top|bottom
+    p.setdefault('maximumResidual', 2.0)
     return p
 
 
@@ -172,6 +175,20 @@ class GeometryFindPanel(QWidget):
         shape.currentIndexChanged.connect(lambda _: self._set_param('roiShape', shape.currentData()))
         form.addRow('ROI 形状', shape)
 
+        preset = QComboBox()
+        for k, lab in (
+            ('full', '全图'),
+            ('center', '中心半幅'),
+            ('left', '左半'),
+            ('right', '右半'),
+            ('top', '上半'),
+            ('bottom', '下半'),
+        ):
+            preset.addItem(lab, k)
+        preset.setCurrentIndex(max(0, preset.findData(self.params.get('roiPreset') or 'full')))
+        preset.currentIndexChanged.connect(lambda _: self._set_param('roiPreset', preset.currentData()))
+        form.addRow('ROI 预设', preset)
+
         pose = OrangeSwitch(bool(self.params.get('followPose', False)))
         pose.toggled.connect(lambda c: self._set_param('followPose', bool(c)))
         form.addRow('位置修正跟随', pose)
@@ -189,6 +206,22 @@ class GeometryFindPanel(QWidget):
         form.setContentsMargins(10, 10, 10, 10)
         form.setSpacing(8)
         feat = self.params.get('feature') or 'lines'
+
+        if feat in ('lines', 'edges'):
+            fm = QComboBox()
+            for k, lab in (
+                ('caliper', '多卡尺边缘拟合'),
+                ('hough', 'Hough 直线'),
+                ('auto', '自动（卡尺失败回退）'),
+            ):
+                fm.addItem(lab, k)
+            fm.setCurrentIndex(max(0, fm.findData(self.params.get('findMethod') or 'caliper')))
+            fm.currentIndexChanged.connect(lambda _: self._set_param('findMethod', fm.currentData()))
+            form.addRow('查找方法', fm)
+            mr = QDoubleSpinBox(); mr.setRange(0.01, 100); mr.setDecimals(2)
+            mr.setValue(float(self.params.get('maximumResidual') or 2.0))
+            mr.valueChanged.connect(lambda v: self._set_param('maximumResidual', float(v)))
+            form.addRow('最大残差(px)', mr)
 
         # —— VM 卡尺级（对齐 p05/p06 运行参数帧）——
         if feat == 'circles':
@@ -326,7 +359,7 @@ class GeometryFindPanel(QWidget):
         inv = OrangeSwitch(bool(self.params.get('invert', False)))
         inv.toggled.connect(lambda c: self._set_param('invert', bool(c)))
         form.addRow('反色', inv)
-        tip = QLabel('卡尺级字段对齐 VM p05/p06；引擎为 OpenCV（滤波/个数/半径），不伪称 Halcon 卡尺核。未选输入源 → N4 红叹号。')
+        tip = QLabel('卡尺级字段已接入引擎多卡尺边缘拟合（OpenCV 强度剖面+稳健拟合，非 Halcon 核）。可切 Hough。未选输入源 → N4 红叹号。')
         tip.setWordWrap(True); tip.setStyleSheet('color:#888;')
         form.addRow(tip)
         return w

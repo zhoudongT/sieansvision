@@ -503,6 +503,25 @@ class CommManagerDialog(QDialog):
         self.tcp_log.setPlaceholderText('测试日志…')
         tcp_lay.addWidget(self.tcp_log, 1)
 
+        # —— 环回设备模拟器（无现场硬件）——
+        sim_row = QHBoxLayout()
+        self.tcp_sim_lamp = QLabel('○ 模拟器')
+        self.tcp_sim_lamp.setToolTip('本地 TCP/UDP 环回协议模拟器（默认 19880/19881）')
+        self.tcp_sim_start = QPushButton('启动环回模拟器')
+        self.tcp_sim_start.setToolTip('监听 127.0.0.1:19880(TCP)/19881(UDP)；PING→PONG；RUN/STOP→ACK')
+        self.tcp_sim_start.clicked.connect(self._tcp_sim_start)
+        self.tcp_sim_stop = QPushButton('停止')
+        self.tcp_sim_stop.clicked.connect(self._tcp_sim_stop)
+        self.tcp_sim_fill = QPushButton('填入模拟器地址')
+        self.tcp_sim_fill.clicked.connect(self._tcp_sim_fill_addr)
+        sim_row.addWidget(self.tcp_sim_lamp)
+        sim_row.addWidget(self.tcp_sim_start)
+        sim_row.addWidget(self.tcp_sim_stop)
+        sim_row.addWidget(self.tcp_sim_fill)
+        sim_row.addStretch(1)
+        tcp_lay.addLayout(sim_row)
+        self._refresh_tcp_sim_lamp()
+
         self.tabs.addTab(tcp, 'TCP 测试')
 
         # --- UDP 测试（薄壳）---
@@ -739,6 +758,70 @@ class CommManagerDialog(QDialog):
         self.tcp_log.appendPlainText(
             f"已填充 {d.get('name')} · {d.get('protocol')} · {d.get('host')}:{d.get('port')}"
         )
+
+
+    def _refresh_tcp_sim_lamp(self):
+        try:
+            from desktop import tcp_device_sim as tds
+            st = tds.status()
+        except Exception:
+            st = {'running': False}
+        if not hasattr(self, 'tcp_sim_lamp'):
+            return
+        if st.get('running'):
+            self.tcp_sim_lamp.setText(f"● 模拟器 :{st.get('tcpPort')}/{st.get('udpPort')}")
+            self.tcp_sim_lamp.setStyleSheet('color:#3dcc6d;font-weight:600;')
+        else:
+            self.tcp_sim_lamp.setText('○ 模拟器')
+            self.tcp_sim_lamp.setStyleSheet('color:#888;')
+
+    def _tcp_sim_start(self):
+        from desktop import tcp_device_sim as tds
+        from datetime import datetime
+        try:
+            st = tds.start()
+            self._refresh_tcp_sim_lamp()
+            host = st.get('host') or '127.0.0.1'
+            port = int(st.get('tcpPort') or 19880)
+            found = False
+            for d in self._devices:
+                if (d.get('protocol') or '') == 'TCP Client' and int(d.get('port') or 0) == port:
+                    found = True
+                    break
+            if not found:
+                self._devices.append(dict(
+                    id='tcp-loopback-sim', name='TcpLoopbackSim', protocol='TCP Client',
+                    enabled=True, host=host, port=port,
+                    remark='环回协议模拟器（无现场硬件）',
+                ))
+                self.device_list.addItem(QListWidgetItem(self._devices[-1]['name']))
+                self._refresh_event_devices()
+                self._refresh_tcp_devices()
+            self.tcp_host.setText(host)
+            self.tcp_port.setValue(port)
+            ts = datetime.now().strftime('%H:%M:%S')
+            self.tcp_log.appendPlainText(
+                f'[{ts}] 环回模拟器已启动 TCP :{port} UDP :{st.get("udpPort")} · PING/RUN/STOP 可用'
+            )
+        except OSError as err:
+            self.tcp_log.appendPlainText(f'启动模拟器失败：{err}')
+            QMessageBox.warning(self, '环回模拟器', str(err))
+
+    def _tcp_sim_stop(self):
+        from desktop import tcp_device_sim as tds
+        from datetime import datetime
+        tds.stop()
+        self._refresh_tcp_sim_lamp()
+        ts = datetime.now().strftime('%H:%M:%S')
+        self.tcp_log.appendPlainText(f'[{ts}] 环回模拟器已停止')
+
+    def _tcp_sim_fill_addr(self):
+        from desktop import tcp_device_sim as tds
+        st = tds.status()
+        self.tcp_host.setText(st.get('host') or '127.0.0.1')
+        self.tcp_port.setValue(int(st.get('tcpPort') or 19880))
+        self.tcp_payload.setText('PING')
+        self.tcp_log.appendPlainText('已填入模拟器地址；可点「发送并读回」或先「启动环回模拟器」')
 
     def _tcp_test_send(self):
         import socket

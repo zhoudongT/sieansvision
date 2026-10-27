@@ -395,9 +395,9 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 - labels EN→CN 扫尾；Group/连续路径 tip；卡尺σ/投影角 UI
 
 ### 外依赖未做（明确不宣称完成）
-- **真机 TCP / 现场设备** 联调（代码路径已接，硬件未验）
-- **云同步 / 远程模板市场后端**
-- **Halcon 卡尺核**（现为 OpenCV 启发式；文档已声明）
+- **真机 TCP / 现场设备** 联调（环回模拟器已接，硬件未验）
+- **真实远端云 / 模板市场后端**（本地站 :19779 已接为替身）
+- **Halcon 卡尺核**（几何直线已接 OpenCV 多卡尺边缘拟合；非 Halcon）
 - **robot / 机械手 SDK**（按 Allen 指示跳过）
 - chrome **人工观感签字**（截图已留档时可人工复核）
 
@@ -417,13 +417,31 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 | labels | EN→CN 扫尾已接 |
 | settings | 已接 |
 | samples | 四行业 UI 壳已接（含印刷字符读码） |
-| Comm | **试收→fire_string_trigger(RUN/CONT) 活路已验**；真机 TCP 需现场设备（非代码缺口） |
+| Comm | 试收触发活路已验；**环回协议模拟器**（:19880）可本机联调；真机 TCP 仍外置 |
 | Host SM | 已接 |
-| 云/市场 | 模板市场本地已接；**云同步**需后端（非本机 UI 缺口） |
-| 算法核 | 卡尺为 OpenCV 启发式（非 Halcon 核）— 文档已声明，非 UI 缺口 |
+| 云/市场 | 模板市场 + **本地云同步站**（:19779 list/publish/sync）已接；真实远端后端仍外置 |
+| 算法核 | 直线查找已接 **多卡尺边缘拟合**（OpenCV）；Halcon 核仍外置 |
 | 扩展插件 | 第三方 plugin 无专用属性页时走通用保留（catalog 回退文案） |
 
+## 【细妆⑨ · 卡尺核深化 · 本地模板云 · TCP环回 · 2026-10-28】
+
+> Allen t196「那么继续开发吧」— 无真机/无 robot SDK；把原「外依赖」中可本机落地的三项推进为可跑代码。
+
+### 已落地（本机可验）
+- **几何直线查找 · 多卡尺边缘拟合**：`vision/caliper_line.py` + `engine.geometry(feature=lines, findMethod=caliper|hough|auto)`；接入卡尺数量/宽/投影长/σ/投影角/极性/边缘类型/残差/最低分/ROI 预设；叠层画卡尺框·边缘点·拟合线·RMS；默认 caliper，可切 Hough。
+- **模板市场本地云同步站**：`desktop/template_market_local.py` HTTP `127.0.0.1:19779`（list/get/publish/sync）；设计器「模板市场」含启动本地站 / 云同步 / 发布当前；seed=`projects/run-ui-templates`，store=`data/.../template-market`。
+- **TCP/UDP 环回协议模拟器**：`desktop/tcp_device_sim.py`（:19880/:19881）；PING→PONG、RUN/STOP→ACK；通信管理「TCP 测试」灯+启动/停止/填入地址；样例 `projects/open-and-run-tcp-sim.sieans`。
+- **冒烟**：`scripts/smoke-caliper-market-tcpsim-e2e.py` → 9 PASS。
+
+### 仍为外依赖（明确不宣称完成）
+- **真机 TCP / 现场设备** 联调（环回模拟器≠现场设备）
+- **真实远端云 / 模板市场后端**（本地站为替身）
+- **Halcon 卡尺核**（现为 OpenCV 强度剖面+稳健拟合；文档已声明）
+- **robot / 机械手 SDK**（按 Allen 指示跳过）
+- chrome **人工观感签字**
+
 ### 进度续⑧ · 2026-10-27 深夜
+
 - chrome：`desktop/toolbar_icons.py` 单色图标；`brandStrip` 分区；ToolTip 全中文
 - HMI：组合框真·栈页（外观灯/尺寸表/拖放约束）；Tab 嵌套源下拉
 - samples：`行业-印刷字符读码.ruitpl.json`

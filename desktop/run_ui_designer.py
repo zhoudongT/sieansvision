@@ -303,7 +303,7 @@ class RunUiDesignerDialog(QDialog):
         save_tpl_btn = QPushButton('保存模板')
         save_tpl_btn.clicked.connect(self._save_template)
         market_btn = QPushButton('模板市场…')
-        market_btn.setToolTip('行业示意模板库（仅 UI 壳，无厂商 SDK）')
+        market_btn.setToolTip('行业模板库 + 本地云同步站（:19779；无真实远端/无厂商 SDK）')
         market_btn.clicked.connect(self._open_template_market)
         bar.addWidget(market_btn)
         vm_btn = QPushButton('VM默认运行壳')
@@ -805,11 +805,13 @@ class RunUiDesignerDialog(QDialog):
 
 
     def _open_template_market(self):
-        """细妆：行业示意模板市场（UI 壳，无厂商 SDK）。"""
+        """行业模板市场 + 本地云同步站（HTTP :19779，无真实远端）。"""
         from PySide6.QtWidgets import (
             QDialog, QVBoxLayout, QListWidget, QListWidgetItem, QDialogButtonBox,
-            QLabel, QHBoxLayout, QPushButton, QMessageBox,
+            QLabel, QHBoxLayout, QPushButton, QMessageBox, QLineEdit,
         )
+        from desktop import template_market_local as tml
+
         folder = self._templates_path()
         folder.mkdir(parents=True, exist_ok=True)
         # Seed industry samples if empty/missing
@@ -891,72 +893,180 @@ class RunUiDesignerDialog(QDialog):
             if not path.exists():
                 path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
 
+        # Local "cloud" store under data dir when available
+        parent = self.parent()
+        data_root = getattr(parent, 'data', None) or getattr(parent, 'data_dir', None)
+        store = Path(data_root) / 'template-market' if data_root else Path('data/native-desktop/template-market')
+        tml.configure(seed_dir=folder, store_dir=store)
+        try:
+            tml.start()
+        except OSError as err:
+            # port busy — still allow file-only browse
+            pass
+
         dlg = QDialog(self)
-        dlg.setWindowTitle('运行界面 · 模板市场')
-        dlg.resize(480, 360)
+        dlg.setWindowTitle('运行界面 · 模板市场（本地云同步）')
+        dlg.resize(560, 420)
         lay = QVBoxLayout(dlg)
-        lay.addWidget(QLabel('行业示意模板（仅 UI 壳 · 无相机/PLC/机器人厂商 SDK）'))
+        st = tml.status()
+        head = QLabel(
+            f'行业示意模板 · 本地站 {st.get("url")}  '
+            f'{"●运行中" if st.get("running") else "○未启动"}（无真实远端后端）'
+        )
+        head.setWordWrap(True)
+        lay.addWidget(head)
+        url_edit = QLineEdit(st.get('url') or 'http://127.0.0.1:19779')
+        url_edit.setPlaceholderText('本地/局域网模板市场 URL')
+        lay.addWidget(url_edit)
         lst = QListWidget()
-        files = sorted(folder.glob('*.ruitpl.json')) + sorted(folder.glob('*.json'))
-        seen = set()
-        for f in files:
-            if f.name in seen:
-                continue
-            seen.add(f.name)
-            try:
-                data = json.loads(f.read_text(encoding='utf-8'))
-                meta = data.get('meta') or {}
-                label = f"{meta.get('name') or f.stem}  ·  {meta.get('scenario') or ''}"
-            except Exception:
-                label = f.stem
-            item = QListWidgetItem(label)
-            item.setData(256, str(f))  # Qt.UserRole
-            lst.addItem(item)
         lay.addWidget(lst, 1)
-        tip = QLabel('双击或「载入选中」应用到当前设计器；可再保存为项目模板。')
+        tip = QLabel('双击或「载入选中」应用；「云同步」拉取本地站列表；「发布当前」上传设计器快照。')
         tip.setStyleSheet('color:#666;font-size:11px;')
         lay.addWidget(tip)
-        bb = QDialogButtonBox()
-        load_btn = bb.addButton('载入选中', QDialogButtonBox.ButtonRole.AcceptRole)
-        bb.addButton(QDialogButtonBox.StandardButton.Close)
-        lay.addWidget(bb)
+
+        def _fill(items):
+            lst.clear()
+            for it in items:
+                if isinstance(it, dict):
+                    label = f"{it.get('title') or it.get('name')}  ·  {it.get('scenario') or ''}  [{it.get('origin') or 'local'}]"
+                    path_or_name = it.get('name')
+                    meta = it
+                else:
+                    # Path
+                    f = Path(it)
+                    try:
+                        data = json.loads(f.read_text(encoding='utf-8'))
+                        meta = data.get('meta') or {}
+                        label = f"{meta.get('name') or f.stem}  ·  {meta.get('scenario') or ''}"
+                    except Exception:
+                        label = f.stem
+                        meta = {}
+                    path_or_name = str(f)
+                item = QListWidgetItem(label)
+                item.setData(256, path_or_name)
+                item.setData(257, meta if isinstance(meta, dict) else {})
+                lst.addItem(item)
+
+        def _refresh_local():
+            files = sorted(folder.glob('*.ruitpl.json')) + sorted(folder.glob('*.json'))
+            seen = set()
+            paths = []
+            for f in files:
+                if f.name in seen:
+                    continue
+                seen.add(f.name)
+                paths.append(f)
+            # merge store
+            if store.exists():
+                for f in sorted(store.glob('*.ruitpl.json')):
+                    if f.name not in seen:
+                        seen.add(f.name)
+                        paths.append(f)
+            _fill(paths)
+
+        def _sync_cloud():
+            base = (url_edit.text() or '').strip() or st.get('url')
+            try:
+                # ensure local server if pointing at default
+                if '127.0.0.1:19779' in base or 'localhost:19779' in base:
+                    try:
+                        tml.start()
+                    except OSError:
+                        pass
+                data = tml.client_sync(base)
+                items = data.get('templates') or []
+                _fill(items)
+                QMessageBox.information(dlg, '云同步', f'已同步 {len(items)} 个模板（本地站）。')
+            except Exception as err:
+                QMessageBox.warning(dlg, '云同步', f'同步失败：{err}\n可仍使用本地文件列表。')
+                _refresh_local()
 
         def _load():
             item = lst.currentItem()
             if not item:
                 QMessageBox.information(dlg, '模板市场', '请先选择模板。')
                 return
-            path = item.data(256)
+            key = item.data(256)
+            data = None
             try:
-                data = json.loads(Path(path).read_text(encoding='utf-8'))
+                path = Path(str(key))
+                if path.is_file():
+                    data = json.loads(path.read_text(encoding='utf-8'))
+                else:
+                    base = (url_edit.text() or '').strip() or st.get('url')
+                    data = tml.client_download(str(key), base)
             except Exception as err:
                 QMessageBox.warning(dlg, '模板市场', f'读取失败：{err}')
                 return
-            # Apply via existing snapshot path when possible
             try:
-                self._apply_snapshot(data) if hasattr(self, '_apply_snapshot') else None
+                if hasattr(self, '_apply_snapshot'):
+                    self._apply_snapshot(data)
             except Exception:
                 pass
             self._template_meta = dict(data.get('meta') or {})
-            # Best-effort placements
-            placements = data.get('placements') or []
-            if placements and hasattr(self, '_place_stub'):
-                for p in placements:
-                    try:
-                        # reuse place if API matches
-                        pass
-                    except Exception:
-                        pass
             QMessageBox.information(
                 dlg, '模板市场',
-                f"已载入示意模板「{self._template_meta.get('name') or Path(path).stem}」。\n"
+                f"已载入示意模板「{self._template_meta.get('name') or key}」。\n"
                 '可继续调整控件与固定栏绑定。',
             )
             dlg.accept()
 
+        def _publish():
+            try:
+                snap = self._snapshot() if hasattr(self, '_snapshot') else {
+                    'meta': dict(getattr(self, '_template_meta', None) or {}),
+                    'format': 'sieans.runUiTemplate',
+                    'version': 1,
+                }
+                meta = dict(snap.get('meta') or getattr(self, '_template_meta', None) or {})
+                if not meta.get('name'):
+                    meta['name'] = '未命名界面'
+                snap['meta'] = meta
+                base = (url_edit.text() or '').strip() or st.get('url')
+                if '127.0.0.1:19779' in base or 'localhost:19779' in base:
+                    try:
+                        tml.start()
+                    except OSError:
+                        pass
+                info = tml.client_publish(snap, base_url=base)
+                _sync_cloud()
+                QMessageBox.information(dlg, '发布', f"已发布到本地站：{info.get('name')}")
+            except Exception as err:
+                QMessageBox.warning(dlg, '发布', f'发布失败：{err}')
+
+        row = QHBoxLayout()
+        btn_sync = QPushButton('云同步')
+        btn_sync.setToolTip('从本地模板站拉取列表（云同步替身）')
+        btn_sync.clicked.connect(_sync_cloud)
+        btn_pub = QPushButton('发布当前')
+        btn_pub.setToolTip('把当前设计器快照 POST 到本地站')
+        btn_pub.clicked.connect(_publish)
+        btn_start = QPushButton('启动本地站')
+        def _ensure():
+            try:
+                info = tml.start()
+                url_edit.setText(info.get('url') or url_edit.text())
+                head.setText(
+                    f'行业示意模板 · 本地站 {info.get("url")}  ●运行中（无真实远端后端）'
+                )
+                QMessageBox.information(dlg, '本地站', f'已启动 {info.get("url")}')
+            except Exception as err:
+                QMessageBox.warning(dlg, '本地站', str(err))
+        btn_start.clicked.connect(_ensure)
+        row.addWidget(btn_start)
+        row.addWidget(btn_sync)
+        row.addWidget(btn_pub)
+        row.addStretch(1)
+        lay.addLayout(row)
+
+        bb = QDialogButtonBox()
+        load_btn = bb.addButton('载入选中', QDialogButtonBox.ButtonRole.AcceptRole)
+        bb.addButton(QDialogButtonBox.StandardButton.Close)
+        lay.addWidget(bb)
         load_btn.clicked.connect(_load)
         lst.itemDoubleClicked.connect(lambda *_: _load())
         bb.rejected.connect(dlg.reject)
+        _refresh_local()
         dlg.exec()
 
 
