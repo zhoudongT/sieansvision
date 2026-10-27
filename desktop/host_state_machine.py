@@ -723,7 +723,7 @@ class HostStateMachineWidget(QWidget):
             bubble.setMinimumWidth(14)
             bubble.setAlignment(Qt.AlignmentFlag.AlignCenter)
             bubble.setCursor(Qt.CursorShape.PointingHandCursor)
-            bubble.setToolTip(f'单击筛 · {lab}')
+            bubble.setToolTip(f'左键筛 · 右键仅看{lab} · 中键清筛')
             bubble.setStyleSheet(
                 'background:#2a2c30;color:#6a7078;border:1px solid #3a3d42;'
                 'border-radius:7px;padding:0 3px;font-size:9px;font-weight:700;'
@@ -817,7 +817,14 @@ class HostStateMachineWidget(QWidget):
             'border-radius:3px;padding:2px 8px;font-size:10px;font-weight:600;'
         )
         self._liaison_toast_history_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._liaison_toast_history_bar.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._liaison_toast_history_bar.setToolTip('单击某档回切联调时段')
+        self._liaison_toast_history_bar.mousePressEvent = (
+            lambda e: self._on_liaison_toast_history_clicked(e)
+        )
         self._liaison_toast_history_bar.hide()
+        # wave31: parallel sec list for click-restore
+        self._liaison_toast_history_secs = []
         try:
             self._liaison_cycle_shortcut = QShortcut(QKeySequence('Alt+L'), self)
             self._liaison_cycle_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
@@ -1015,9 +1022,19 @@ class HostStateMachineWidget(QWidget):
             hist = self._liaison_toast_history
         if lab:
             hist.append(lab)
+            secs = getattr(self, '_liaison_toast_history_secs', None)
+            if secs is None:
+                self._liaison_toast_history_secs = []
+                secs = self._liaison_toast_history_secs
+            try:
+                secs.append(int(self.liaison_window_sec()))
+            except Exception:
+                secs.append(0)
             max_n = int(getattr(self, '_liaison_toast_history_max', 5) or 5)
             if len(hist) > max_n:
                 del hist[:-max_n]
+            if len(secs) > max_n:
+                del secs[:-max_n]
         text = f'Alt+L · 联调 {lab}'.strip()
         toast.setText(text)
         toast.setToolTip(text)
@@ -1039,7 +1056,7 @@ class HostStateMachineWidget(QWidget):
             # newest last: show oldest → newest with arrows
             htext = ' → '.join(hist)
             hbar.setText(f'切窗史 · {htext}')
-            hbar.setToolTip(f'最近 {len(hist)} 次 Alt+L 切窗')
+            hbar.setToolTip(f'最近 {len(hist)} 次 · 单击某档回切')
             hbar.adjustSize()
             try:
                 hw = max(hbar.sizeHint().width() + 8, tw)
@@ -1475,28 +1492,45 @@ class HostStateMachineWidget(QWidget):
         act_copy.triggered.connect(lambda *_: self.copy_alarm_film_path(item))
         menu.addAction(act_copy)
         # wave30: 复制全部 paths
-        act_all = QAction('复制全部 paths', self)
-        all_paths = self._collect_alarm_film_paths()
-        act_all.setEnabled(bool(all_paths))
-        if all_paths:
-            act_all.setToolTip(f'{len(all_paths)} 条唯一 path')
-            act_all.setText(f'复制全部 paths（{len(all_paths)}）')
+        act_all = QAction('复制全部 paths CSV', self)
+        all_rows = self._collect_alarm_film_rows()
+        act_all.setEnabled(bool(all_rows))
+        if all_rows:
+            act_all.setToolTip(f'{len(all_rows)} 条 · ts,severity,path,reason')
+            act_all.setText(f'复制全部 paths CSV（{len(all_rows)}）')
         else:
-            act_all.setText('复制全部 paths（无）')
-        act_all.triggered.connect(lambda *_: self.copy_all_alarm_film_paths())
+            act_all.setText('复制全部 paths CSV（无）')
+        act_all.triggered.connect(lambda *_: self.copy_all_alarm_film_paths(as_csv=True))
         menu.addAction(act_all)
         self._last_alarm_ctx_item = item
         return menu
 
     def _on_sev_bubble_clicked(self, event=None, key: str = 'all'):
-        """wave30: 芯片计数气泡单击 = 切严重度筛."""
+        """wave30–31: 左键筛 / 右键仅看该 sev / 中键清筛."""
+        btn = None
         try:
             if event is not None and hasattr(event, 'button'):
-                if event.button() not in (Qt.MouseButton.LeftButton,):
-                    return
+                btn = event.button()
         except Exception:
-            pass
-        self.set_alarm_severity_filter(key)
+            btn = None
+        if btn is None or btn == Qt.MouseButton.LeftButton:
+            self.set_alarm_severity_filter(key)
+            return
+        if btn == Qt.MouseButton.RightButton:
+            # 仅看该 sev（all 右键仍看全部）
+            self.set_alarm_severity_filter(key if key else 'all')
+            try:
+                self._log_line(f'气泡右键仅看 · {key}')
+            except Exception:
+                pass
+            return
+        if btn == Qt.MouseButton.MiddleButton:
+            self.set_alarm_severity_filter('all')
+            try:
+                self._log_line('气泡中键清筛 · all')
+            except Exception:
+                pass
+            return
 
     def _collect_alarm_film_paths(self) -> list:
         """wave30: 报警历史中去重 filmPath（保序）."""
@@ -1512,22 +1546,97 @@ class HostStateMachineWidget(QWidget):
             out.append(fp)
         return out
 
-    def copy_all_alarm_film_paths(self) -> bool:
-        """wave30: 全部唯一 filmPath → 剪贴板（换行分隔）."""
-        paths = self._collect_alarm_film_paths()
-        if not paths:
+    def _collect_alarm_film_rows(self) -> list:
+        """wave31: 带时间戳/严重度的 path 行（按 path 去重，留首次）."""
+        seen = set()
+        rows = []
+        for entry in list(getattr(self, '_alarm_history', None) or []):
+            if not isinstance(entry, dict):
+                continue
+            fp = str(entry.get('filmPath') or '').strip()
+            if not fp or fp in seen:
+                continue
+            seen.add(fp)
+            rows.append({
+                'ts': str(entry.get('ts') or ''),
+                'severity': str(entry.get('severity') or ''),
+                'path': fp,
+                'reason': str(entry.get('reason') or ''),
+            })
+        return rows
+
+    def copy_all_alarm_film_paths(self, *, as_csv: bool = True) -> bool:
+        """wave30–31: 全部唯一 filmPath → 剪贴板；默认含时间戳 CSV."""
+        rows = self._collect_alarm_film_rows()
+        if not rows:
             try:
                 self._log_line('复制全部 paths · 无胶片 path')
             except Exception:
                 pass
             return False
-        text = chr(10).join(paths)
+        if as_csv:
+            lines = ['ts,severity,path,reason']
+            for r in rows:
+                # minimal CSV escape
+                def esc(v):
+                    s = str(v or '')
+                    if any(c in s for c in ',"\n'):
+                        return '"' + s.replace('"', '""') + '"'
+                    return s
+                lines.append(','.join(esc(r[k]) for k in ('ts', 'severity', 'path', 'reason')))
+            text = chr(10).join(lines)
+        else:
+            text = chr(10).join(r['path'] for r in rows)
         try:
             QApplication.clipboard().setText(text)
-            self._log_line(f'已复制全部胶片 path · {len(paths)}')
+            self._log_line(f'已复制全部胶片 path CSV · {len(rows)}')
         except Exception:
             return False
         return True
+
+    def _on_liaison_toast_history_clicked(self, event=None):
+        """wave31: 单击历史条某档 → 回切联调时段."""
+        try:
+            if event is not None and hasattr(event, 'button'):
+                if event.button() not in (Qt.MouseButton.LeftButton,):
+                    return
+        except Exception:
+            pass
+        hist = list(getattr(self, '_liaison_toast_history', None) or [])
+        secs = list(getattr(self, '_liaison_toast_history_secs', None) or [])
+        if not hist or not secs:
+            return
+        # pick segment by x ratio
+        idx = len(hist) - 1
+        try:
+            hbar = self._liaison_toast_history_bar
+            x = float(event.position().x()) if hasattr(event, 'position') else float(event.x())
+            w = max(1.0, float(hbar.width()))
+            # account for prefix "切窗史 · "
+            prefix = '切窗史 · '
+            # approximate: split evenly across hist entries
+            idx = int(x / w * len(hist))
+            idx = max(0, min(len(hist) - 1, idx))
+        except Exception:
+            idx = len(hist) - 1
+        sec = int(secs[idx]) if idx < len(secs) else int(secs[-1])
+        lab = hist[idx] if idx < len(hist) else hist[-1]
+        self.set_liaison_window_sec(sec, persist=True)
+        try:
+            self._sync_liaison_window_badge()
+        except Exception:
+            pass
+        try:
+            self._log_line(f'切窗史回切 · {lab}')
+            self.setStatusTip(f'切窗史回切 · {lab}')
+        except Exception:
+            pass
+        # flash toast without pushing new history noise? still flash
+        toast = getattr(self, '_liaison_hotkey_toast', None)
+        if toast is not None:
+            toast.setText(f'回切 · {lab}')
+            toast.show()
+            toast.raise_()
 
     def copy_alarm_film_path(self, item=None) -> bool:
         """wave29: 报警条目 filmPath → 剪贴板."""

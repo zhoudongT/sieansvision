@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㉛ · 气泡右/中键 · 长按进度弧 · paths CSV · toast史回切 · 锁徽章双击复位 · 2026-10-28】
+
+- **气泡右键仅看该 sev / 中键清筛**：左键筛；右键强制仅看该档；中键 → `all`。
+- **长按清空进度弧**：`compareThumbUndoClearArc` 覆盖 ⊘，长按期间描橙弧至满后清空。
+- **复制全部 paths CSV**：`ts,severity,path,reason` 头 + 去重行；菜单「复制全部 paths CSV（N）」。
+- **toast 史单击回切**：`hostLiaisonToastHistory` 按点击位置回切对应联调时段（secs 并行表）。
+- **锁序徽章双击**：复位对比序到基线并解锁（单击仍切换；280ms 单击延迟）。
+- **冒烟**：`smoke-wave31-bubblermb-cleararc-pathcsv-histclick-lockdbl-e2e`（另回归 wave30）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆㉚ · 气泡单击筛 · 清空长按确认 · 复制全部paths · Alt+L toast历史 · 锁徽章单击 · 2026-10-28】
 
 - **芯片气泡单击筛**：`hostAlarmSevCount_*` 手型+单击 → `set_alarm_severity_filter`（与芯片条同源）。

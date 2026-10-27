@@ -732,6 +732,37 @@ class FilmstripBar(QWidget):
                 pass
 
 
+
+class _UndoClearProgressArc(QWidget):
+    """wave31: 长按清空进度弧 overlay."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._p = 0.0
+        self.setFixedSize(22, 22)
+        self.setObjectName('compareThumbUndoClearArc')
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.hide()
+
+    def set_progress(self, p: float):
+        self._p = max(0.0, min(1.0, float(p or 0.0)))
+        self.update()
+
+    def paintEvent(self, event):  # noqa: N802
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        # track
+        track = QPen(QColor('#3a3d42'), 2)
+        p.setPen(track)
+        rect = self.rect().adjusted(2, 2, -2, -2)
+        p.drawEllipse(rect)
+        if self._p <= 0:
+            return
+        arc = QPen(QColor('#e0b84a'), 2)
+        p.setPen(arc)
+        # Qt angles: 1/16 degree; 90*16 = top; span clockwise negative
+        p.drawArc(rect, 90 * 16, -int(self._p * 360 * 16))
+
+
 class CompareThumbStrip(QWidget):
     """wave24–26: 多选对比侧栏缩略条（拖拽重排 / 锁定 / 复位）."""
     pathActivated = Signal(str)   # click a thumb → focus that path
@@ -763,7 +794,7 @@ class CompareThumbStrip(QWidget):
         self._lock_btn.setToolTip('锁定对比序（禁止拖拽）')
         self._lock_btn.toggled.connect(self._on_lock_toggled)
         head.addWidget(self._lock_btn)
-        # wave29: 锁序徽章 · wave30: 单击切换锁
+        # wave29–31: 锁序徽章 · 单击切换 · 双击复位并解锁
         self._lock_badge = QLabel('未锁')
         self._lock_badge.setObjectName('compareThumbLockBadge')
         self._lock_badge.setFixedHeight(16)
@@ -773,8 +804,12 @@ class CompareThumbStrip(QWidget):
             'border-radius:3px;padding:0 4px;font-size:9px;font-weight:600;'
         )
         self._lock_badge.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._lock_badge.setToolTip('对比序锁态 · 单击切换')
-        self._lock_badge.mousePressEvent = lambda e: self._on_lock_badge_clicked(e)
+        self._lock_badge.setToolTip('单击切换锁 · 双击复位并解锁')
+        self._lock_badge_click_timer = QTimer(self)
+        self._lock_badge_click_timer.setSingleShot(True)
+        self._lock_badge_click_timer.timeout.connect(self._on_lock_badge_single_click)
+        self._lock_badge.mousePressEvent = lambda e: self._on_lock_badge_press(e)
+        self._lock_badge.mouseDoubleClickEvent = lambda e: self._on_lock_badge_double(e)
         head.addWidget(self._lock_badge)
         self._reset_btn = QPushButton('↺')
         self._reset_btn.setObjectName('compareThumbReset')
@@ -801,7 +836,7 @@ class CompareThumbStrip(QWidget):
         )
         self._undo_depth_badge.setToolTip('撤销栈深度')
         head.addWidget(self._undo_depth_badge)
-        # wave29: 撤销栈清空钮 · wave30: 短按 tip / 长按清空
+        # wave29–31: 撤销清空 · 短按 tip / 长按清空 + 进度弧
         self._undo_clear_btn = QPushButton('⊘')
         self._undo_clear_btn.setObjectName('compareThumbUndoClear')
         self._undo_clear_btn.setFixedSize(20, 20)
@@ -809,12 +844,17 @@ class CompareThumbStrip(QWidget):
         self._undo_clear_btn.setEnabled(False)
         self._undo_clear_long_ms = 650
         self._undo_clear_long_fired = False
+        self._undo_clear_press_ms = 0
         self._undo_clear_timer = QTimer(self)
         self._undo_clear_timer.setSingleShot(True)
         self._undo_clear_timer.timeout.connect(self._on_undo_clear_long_press)
+        self._undo_clear_tick = QTimer(self)
+        self._undo_clear_tick.setInterval(40)
+        self._undo_clear_tick.timeout.connect(self._on_undo_clear_tick)
         self._undo_clear_btn.pressed.connect(self._on_undo_clear_pressed)
         self._undo_clear_btn.released.connect(self._on_undo_clear_released)
         head.addWidget(self._undo_clear_btn)
+        self._undo_clear_arc = _UndoClearProgressArc(self)
         self._clear_btn = QPushButton('×')
         self._clear_btn.setObjectName('compareThumbClear')
         self._clear_btn.setFixedSize(20, 20)
@@ -947,29 +987,105 @@ class CompareThumbStrip(QWidget):
         except Exception:
             pass
 
-    def _on_lock_badge_clicked(self, event=None):
-        """wave30: 锁序徽章单击切换锁."""
+    def _on_lock_badge_press(self, event=None):
+        """wave30–31: 单击延迟切换；双击走 double handler."""
         try:
             if event is not None and hasattr(event, 'button'):
                 if event.button() not in (Qt.MouseButton.LeftButton,):
                     return
         except Exception:
             pass
+        timer = getattr(self, '_lock_badge_click_timer', None)
+        if timer is not None:
+            timer.start(280)
+
+    def _on_lock_badge_single_click(self):
+        """wave30: 锁序徽章单击切换锁."""
         new_locked = not bool(getattr(self, '_order_locked', False))
         self.set_order_locked(new_locked, persist=True)
 
+    def _on_lock_badge_clicked(self, event=None):
+        """兼容旧 API / 冒烟：立即切换."""
+        timer = getattr(self, '_lock_badge_click_timer', None)
+        if timer is not None and timer.isActive():
+            timer.stop()
+        self._on_lock_badge_single_click()
+
+    def _on_lock_badge_double(self, event=None):
+        """wave31: 双击 → 复位对比序并解锁."""
+        try:
+            if event is not None and hasattr(event, 'button'):
+                if event.button() not in (Qt.MouseButton.LeftButton,):
+                    return
+        except Exception:
+            pass
+        timer = getattr(self, '_lock_badge_click_timer', None)
+        if timer is not None and timer.isActive():
+            timer.stop()
+        try:
+            self.reset_order()
+        except Exception:
+            pass
+        self.set_order_locked(False, persist=True)
+        lb = getattr(self, '_lock_badge', None)
+        try:
+            if lb is not None:
+                QToolTip.showText(lb.mapToGlobal(QPoint(0, lb.height())), '已复位并解锁', lb)
+        except Exception:
+            pass
+
     def _on_undo_clear_pressed(self):
-        """wave30: 按下开始长按计时."""
+        """wave30–31: 按下开始长按计时 + 进度弧."""
         self._undo_clear_long_fired = False
+        self._undo_clear_press_ms = 0
+        long_ms = int(getattr(self, '_undo_clear_long_ms', 650) or 650)
         timer = getattr(self, '_undo_clear_timer', None)
         if timer is not None:
-            timer.start(int(getattr(self, '_undo_clear_long_ms', 650) or 650))
+            timer.start(long_ms)
+        tick = getattr(self, '_undo_clear_tick', None)
+        if tick is not None:
+            tick.start()
+        self._show_undo_clear_arc(0.0)
+
+    def _on_undo_clear_tick(self):
+        """wave31: 刷新长按进度弧."""
+        long_ms = float(getattr(self, '_undo_clear_long_ms', 650) or 650)
+        self._undo_clear_press_ms = int(getattr(self, '_undo_clear_press_ms', 0) or 0) + int(
+            getattr(self, '_undo_clear_tick', None).interval() if getattr(self, '_undo_clear_tick', None) else 40
+        )
+        p = min(1.0, float(self._undo_clear_press_ms) / max(1.0, long_ms))
+        self._show_undo_clear_arc(p)
+
+    def _show_undo_clear_arc(self, p: float):
+        arc = getattr(self, '_undo_clear_arc', None)
+        btn = getattr(self, '_undo_clear_btn', None)
+        if arc is None or btn is None:
+            return
+        try:
+            # overlay centered on clear button
+            gp = btn.mapTo(self, QPoint(0, 0))
+            arc.move(gp.x() - 1, gp.y() - 1)
+            arc.set_progress(p)
+            arc.show()
+            arc.raise_()
+        except Exception:
+            pass
+
+    def _hide_undo_clear_arc(self):
+        arc = getattr(self, '_undo_clear_arc', None)
+        tick = getattr(self, '_undo_clear_tick', None)
+        if tick is not None and tick.isActive():
+            tick.stop()
+        if arc is not None:
+            arc.set_progress(0.0)
+            arc.hide()
 
     def _on_undo_clear_released(self):
         """wave30: 短按 → 确认 tip；长按已触发则跳过."""
         timer = getattr(self, '_undo_clear_timer', None)
         if timer is not None and timer.isActive():
             timer.stop()
+        self._hide_undo_clear_arc()
         if getattr(self, '_undo_clear_long_fired', False):
             return
         n = len(getattr(self, '_order_undo_stack', None) or [])
@@ -983,9 +1099,11 @@ class CompareThumbStrip(QWidget):
             pass
 
     def _on_undo_clear_long_press(self):
-        """wave30: 长按确认清空."""
+        """wave30–31: 长按确认清空（进度弧满）."""
         self._undo_clear_long_fired = True
+        self._show_undo_clear_arc(1.0)
         ok = self.clear_order_undo()
+        self._hide_undo_clear_arc()
         btn = getattr(self, '_undo_clear_btn', None)
         tip = '已清空撤销栈' if ok else '撤销栈为空'
         try:
@@ -1021,14 +1139,14 @@ class CompareThumbStrip(QWidget):
                     'background:#3a3420;color:#e0b84a;border:1px solid #e0b84a;'
                     'border-radius:3px;padding:0 4px;font-size:9px;font-weight:700;'
                 )
-                lb.setToolTip('对比序已锁定（拖拽禁用；↺ 复位仍可用）· 单击解锁')
+                lb.setToolTip('已锁 · 单击解锁 · 双击复位并解锁')
             else:
                 lb.setText('未锁')
                 lb.setStyleSheet(
                     'background:#2a2c30;color:#6a7078;border:1px solid #3a3d42;'
                     'border-radius:3px;padding:0 4px;font-size:9px;font-weight:600;'
                 )
-                lb.setToolTip('对比序未锁定 · 单击锁定')
+                lb.setToolTip('未锁 · 单击锁定 · 双击复位并解锁')
         # wave28: 锁序时复位仍可用提示
         rbtn = getattr(self, '_reset_btn', None)
         if rbtn is not None:
