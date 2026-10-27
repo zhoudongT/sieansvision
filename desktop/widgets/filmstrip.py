@@ -733,16 +733,19 @@ class FilmstripBar(QWidget):
 
 
 class CompareThumbStrip(QWidget):
-    """wave24/25: 多选对比侧栏缩略条（竖向 ≤6 帧；可拖拽重排对比序）."""
+    """wave24–26: 多选对比侧栏缩略条（拖拽重排 / 锁定 / 复位）."""
     pathActivated = Signal(str)   # click a thumb → focus that path
     clearRequested = Signal()     # clear compare
     pathsReordered = Signal(list)  # wave25: drag reorder → new path order
+    lockChanged = Signal(bool)    # wave26: order lock
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName('compareThumbStrip')
         self.setFixedWidth(96)
         self._paths = []
+        self._baseline_paths = []  # wave26: order at set_paths / unlock baseline
+        self._order_locked = False
         lay = QVBoxLayout(self)
         lay.setContentsMargins(4, 4, 4, 4)
         lay.setSpacing(4)
@@ -751,6 +754,19 @@ class CompareThumbStrip(QWidget):
         self._title.setObjectName('compareThumbTitle')
         self._title.setStyleSheet('color:#9ec9f0;font-size:11px;font-weight:700;')
         head.addWidget(self._title, 1)
+        self._lock_btn = QPushButton('🔓')
+        self._lock_btn.setObjectName('compareThumbLock')
+        self._lock_btn.setFixedSize(20, 20)
+        self._lock_btn.setCheckable(True)
+        self._lock_btn.setToolTip('锁定对比序（禁止拖拽）')
+        self._lock_btn.toggled.connect(self._on_lock_toggled)
+        head.addWidget(self._lock_btn)
+        self._reset_btn = QPushButton('↺')
+        self._reset_btn.setObjectName('compareThumbReset')
+        self._reset_btn.setFixedSize(20, 20)
+        self._reset_btn.setToolTip('复位对比序到进入时顺序')
+        self._reset_btn.clicked.connect(self.reset_order)
+        head.addWidget(self._reset_btn)
         self._clear_btn = QPushButton('×')
         self._clear_btn.setObjectName('compareThumbClear')
         self._clear_btn.setFixedSize(20, 20)
@@ -786,16 +802,20 @@ class CompareThumbStrip(QWidget):
     def paths(self):
         return list(self._paths)
 
-    def set_paths(self, paths, *, active: str = ''):
+    def set_paths(self, paths, *, active: str = '', as_baseline: bool = True):
         paths = [str(x) for x in (paths or []) if str(x).strip()][:6]
         self._paths = paths
+        if as_baseline:
+            self._baseline_paths = list(paths)
         self._suppress_reorder = True
         self._list.clear()
         if not paths:
             self.hide()
             self._title.setText('对比')
+            self._baseline_paths = []
             return
-        self._title.setText(f'对比·{len(paths)}')
+        lock_mark = '🔒' if self._order_locked else ''
+        self._title.setText(f'对比·{len(paths)}{lock_mark}')
         active_row = -1
         for i, fp in enumerate(paths):
             leaf = Path(fp).name
@@ -834,14 +854,94 @@ class CompareThumbStrip(QWidget):
     def _emit_reorder_if_changed(self):
         if getattr(self, '_suppress_reorder', False):
             return
+        if getattr(self, '_order_locked', False):
+            # revert visual order if somehow moved while locked
+            try:
+                self.set_paths(self._paths, active='', as_baseline=False)
+            except Exception:
+                pass
+            return
         new_paths = self._read_list_paths()
         if new_paths and new_paths != list(self._paths):
             self._paths = list(new_paths)
-            self._title.setText(f'对比·{len(self._paths)}')
+            lock_mark = '🔒' if self._order_locked else ''
+            self._title.setText(f'对比·{len(self._paths)}{lock_mark}')
             try:
                 self.pathsReordered.emit(list(self._paths))
             except Exception:
                 pass
+
+    def is_order_locked(self) -> bool:
+        return bool(getattr(self, '_order_locked', False))
+
+    def set_order_locked(self, locked: bool):
+        locked = bool(locked)
+        self._order_locked = locked
+        btn = getattr(self, '_lock_btn', None)
+        if btn is not None:
+            try:
+                btn.blockSignals(True)
+                btn.setChecked(locked)
+                btn.blockSignals(False)
+            except Exception:
+                pass
+        self._apply_lock_chrome()
+        try:
+            self.lockChanged.emit(locked)
+        except Exception:
+            pass
+
+    def _on_lock_toggled(self, on: bool):
+        self._order_locked = bool(on)
+        self._apply_lock_chrome()
+        try:
+            self.lockChanged.emit(self._order_locked)
+        except Exception:
+            pass
+
+    def _apply_lock_chrome(self):
+        locked = bool(getattr(self, '_order_locked', False))
+        btn = getattr(self, '_lock_btn', None)
+        if btn is not None:
+            btn.setText('🔒' if locked else '🔓')
+            btn.setToolTip('已锁定对比序（点击解锁）' if locked else '锁定对比序（禁止拖拽）')
+        try:
+            if locked:
+                self._list.setDragDropMode(QAbstractItemView.DragDropMode.NoDragDrop)
+                self._list.setMovement(QListWidget.Movement.Static)
+            else:
+                self._list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+                self._list.setMovement(QListWidget.Movement.Snap)
+        except Exception:
+            pass
+        lock_mark = '🔒' if locked else ''
+        n = len(self._paths)
+        if n:
+            self._title.setText(f'对比·{n}{lock_mark}')
+
+    def reset_order(self):
+        """wave26: 复位到进入对比时的基线序."""
+        base = list(getattr(self, '_baseline_paths', None) or [])
+        if not base:
+            return False
+        if base == list(self._paths):
+            return False
+        active = ''
+        try:
+            row = self._list.currentRow()
+            if 0 <= row < len(self._paths):
+                active = self._paths[row]
+        except Exception:
+            active = ''
+        self.set_paths(base, active=active or (base[0] if base else ''), as_baseline=False)
+        try:
+            self.pathsReordered.emit(list(self._paths))
+        except Exception:
+            pass
+        return True
+
+    def baseline_paths(self):
+        return list(getattr(self, '_baseline_paths', None) or [])
 
     def _on_rows_moved(self, *args):
         self._emit_reorder_if_changed()

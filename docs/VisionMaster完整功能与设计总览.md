@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㉖ · 侧栏锁定/复位 · 联调时段徽章 · 高亮双击胶片 · UPH常用还原 · spark筛严重度 · 2026-10-28】
+
+- **侧栏对比序锁定/复位**：`CompareThumbStrip` 🔓/🔒 禁止拖拽；↺ 复位到进入对比时的 `_baseline_paths`；`lockChanged` / `reset_order`。
+- **联调时段徽章**：`hostLiaisonWindowBadge` 随 combo 同步「⏱ 近15分」等；全部时灰态。
+- **高亮首条双击定位胶片**：跳失败码可带 `film_path`；列表项 UserRole 存 entry/`filmPath`；双击 → `alarmFilmLocateRequested` → HMI `filmLocateRequested`；`note_film_path` 记最近胶片。
+- **UPH 常用一键还原**：`prodUphRestoreRecent`「常用」→ `prod/uphPresetLast`（否则 recent[0]）。
+- **spark 单击筛严重度**：循环 all→error→warning→info；`hostAlarmSevFilter` 同步；列表按 severity 过滤。
+- **冒烟**：`smoke-wave26-lockreset-liaisonbadge-alarmfilm-uphrestore-sparksev-e2e`（另回归 wave25）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆㉕ · 侧栏拖拽重排 · 联调时段持久 · 跳后高亮首条 · UPH快捷记忆 · Alarm spark染色 · 2026-10-28】
 
 - **侧栏缩略拖拽重排对比序**：`CompareThumbStrip` InternalMove；`pathsReordered` → MW 更新 `_filmstrip_compare_paths` 并刷新叠层色序。

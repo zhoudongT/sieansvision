@@ -2296,7 +2296,14 @@ class MainWindow(QMainWindow):
     def _on_filmstrip_path_for_hmi(self, path):
         """细妆⑳：胶片选中 → 结果表反查高亮匹配行。"""
         hmi = getattr(self, 'operator_hmi', None)
-        if hmi is None or not hasattr(hmi, 'highlight_rows_for_film'):
+        if hmi is None:
+            return
+        try:
+            if hasattr(hmi, 'note_film_path'):
+                hmi.note_film_path(path or '')
+        except Exception:
+            pass
+        if not hasattr(hmi, 'highlight_rows_for_film'):
             return
         try:
             fs = getattr(self, 'filmstrip', None)

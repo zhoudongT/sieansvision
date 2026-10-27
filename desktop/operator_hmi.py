@@ -270,6 +270,14 @@ class ProductionStatsPanel(QWidget):
             b.clicked.connect(lambda *_a, n=preset: self.set_uph_window(n))
             uph_row.addWidget(b)
             self._uph_preset_btns.append(b)
+        # wave26: 一键还原常用 UPH
+        self._uph_restore_btn = QPushButton('常用')
+        self._uph_restore_btn.setObjectName('prodUphRestoreRecent')
+        self._uph_restore_btn.setFixedWidth(36)
+        self._uph_restore_btn.setMaximumHeight(22)
+        self._uph_restore_btn.setToolTip('一键还原最近常用 UPH 窗口')
+        self._uph_restore_btn.clicked.connect(self.restore_uph_preset_recent)
+        uph_row.addWidget(self._uph_restore_btn)
         self._sync_uph_preset_chrome()
         root.addLayout(uph_row)
 
@@ -595,9 +603,34 @@ class ProductionStatsPanel(QWidget):
         self._sync_uph_preset_chrome()
 
     def _sync_uph_preset_chrome(self):
-        """wave24/25: highlight active UPH preset; mark recent shortcuts."""
+        """wave24–26: highlight active UPH preset; mark recent; enable 常用."""
         cur = self.uph_window()
         recent = self._load_uph_preset_recent()
+        btn_r = getattr(self, '_uph_restore_btn', None)
+        if btn_r is not None:
+            has = bool(recent) or False
+            try:
+                last = self._uph_settings().value('prod/uphPresetLast', None)
+                if last is not None and int(last) in (8, 16, 24, 32, 48):
+                    has = True
+                    btn_r.setToolTip(f'一键还原常用 UPH → {int(last)}')
+                elif recent:
+                    btn_r.setToolTip(f'一键还原常用 UPH → {recent[0]}')
+                else:
+                    btn_r.setToolTip('一键还原最近常用 UPH 窗口（暂无记忆）')
+            except Exception:
+                pass
+            btn_r.setEnabled(bool(has))
+            if has:
+                btn_r.setStyleSheet(
+                    'background:#1c2a3a;color:#9ec9f0;border:1px solid #6eb6ff;'
+                    'border-radius:2px;font-size:10px;font-weight:700;padding:1px;'
+                )
+            else:
+                btn_r.setStyleSheet(
+                    'background:#2a2c30;color:#6a7078;border:1px solid #3a3d42;'
+                    'border-radius:2px;font-size:10px;padding:1px;'
+                )
         for b in getattr(self, '_uph_preset_btns', None) or []:
             try:
                 n = int(b.text() or 0)
@@ -687,6 +720,31 @@ class ProductionStatsPanel(QWidget):
     def uph_preset_recent(self) -> list:
         """Public snapshot for smoke / HMI."""
         return self._load_uph_preset_recent()
+
+    def restore_uph_preset_recent(self) -> bool:
+        """wave26: 一键还原常用 UPH（优先 Last，否则 recent[0]）."""
+        n = None
+        try:
+            last = self._uph_settings().value('prod/uphPresetLast', None)
+            if last is not None:
+                n = int(last)
+        except Exception:
+            n = None
+        if n not in (8, 16, 24, 32, 48):
+            recent = self._load_uph_preset_recent()
+            n = recent[0] if recent else None
+        if n not in (8, 16, 24, 32, 48):
+            try:
+                self.append_log('UPH 常用还原 · 无记忆')
+            except Exception:
+                pass
+            return False
+        self.set_uph_window(int(n))
+        try:
+            self.append_log(f'UPH 常用还原 · {n}')
+        except Exception:
+            pass
+        return True
 
     def _on_uph_window_changed(self, value: int):
         self.set_uph_window(value)
@@ -1304,6 +1362,11 @@ class OperatorHmiView(QWidget):
         try:
             # wave23: 联调条 → 固定栏短闪
             host.liaisonPushed.connect(self._on_liaison_pushed)
+        except Exception:
+            pass
+        try:
+            # wave26: 报警高亮首条双击 → 胶片定位
+            host.alarmFilmLocateRequested.connect(self.filmLocateRequested.emit)
         except Exception:
             pass
         try:
@@ -2388,8 +2451,12 @@ class OperatorHmiView(QWidget):
             return
         self.jump_fail_code_to_alarm()
 
+    def note_film_path(self, path: str = ''):
+        """wave26: remember last film path for alarm→胶片定位."""
+        self._last_film_path = str(path or '').strip()
+
     def jump_fail_code_to_alarm(self, code: str = ''):
-        """wave24: 换型失败码 → Host SM 报警历史一键跳."""
+        """wave24/26: 换型失败码 → Host SM 报警历史一键跳（可带胶片 path）."""
         code = str(code or getattr(self, '_fail_code_last', '') or '').strip()
         if not code:
             # parse from badge text "⚠ CODE"
@@ -2403,8 +2470,27 @@ class OperatorHmiView(QWidget):
             except Exception:
                 pass
             return False
+        # wave26: 带上当前/最近胶片 path，供高亮首条双击定位
+        film_path = ''
         try:
-            host.jump_to_alarm_for_code(code, keyword=code)
+            film_path = str(getattr(self, '_last_film_path', '') or '').strip()
+        except Exception:
+            film_path = ''
+        if not film_path:
+            try:
+                # result list first row UserRole filmPath if present
+                lst = getattr(self, '_list', None)
+                if lst is not None and lst.count() > 0:
+                    it = lst.item(0)
+                    data = it.data(Qt.ItemDataRole.UserRole) if it is not None else None
+                    if isinstance(data, dict):
+                        film_path = str(data.get('filmPath') or data.get('path') or '').strip()
+                    elif isinstance(data, str):
+                        film_path = data.strip()
+            except Exception:
+                pass
+        try:
+            host.jump_to_alarm_for_code(code, keyword=code, film_path=film_path)
         except Exception as err:
             try:
                 self.append_log(f'跳报警历史失败：{err}')
