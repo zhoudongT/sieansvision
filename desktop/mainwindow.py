@@ -1501,6 +1501,18 @@ class MainWindow(QMainWindow):
         else:
             self.engine_label.setText('● 引擎就绪 · 依赖告警')
 
+
+    def _note_camera_session(self, state=None, status=None, **_kw):
+        """Cache camera session for fixed-bar live chrome (非阻塞)."""
+        text = str(state or status or '').strip()
+        self._camera_session_cache = dict(state=text or 'unknown', status=status)
+        if text:
+            self._last_camera_status_hint = text[:24]
+        try:
+            self._refresh_fixed_bar_device_status()
+        except Exception:
+            pass
+
     def maybe_warm_camera(self):
         if self.busy or not self.engine_ready:return
         step=next((s for s in self.document.project.get('steps',[])
@@ -1514,10 +1526,10 @@ class MainWindow(QMainWindow):
         def done(status):
             state=status.get('state') if isinstance(status,dict) else None
             if state=='running':
-                self.log('相机会话已预热，首次「运行流程」将直接取帧')
+                self.log('相机会话已预热，首次「运行流程」将直接取帧'); self._note_camera_session(state='会话运行中')
                 self.wb_status.push_log('相机会话运行中 · 可直接运行流程')
             else:
-                self.log('相机会话状态：'+str(state or status))
+                self.log('相机会话状态：'+str(state or status)); self._note_camera_session(state=state, status=status)
         def failed_msg(msg):
             # soft — do not block platform
             self.log('相机预热未成功（可稍后在「设备与模型→相机」连接）：'+str(msg))
@@ -2695,8 +2707,17 @@ class MainWindow(QMainWindow):
                 raw = (badge.text() or '').strip() or (badge.toolTip() or '').split('—')[0].strip()
                 if raw:
                     comm_txt = raw[:20]
-            # Prefer last known camera hint from status chrome / log, else keep bind label
+            # Prefer live session poll (non-blocking cached), else last hint
             cam_hint = getattr(self, '_last_camera_status_hint', None)
+            try:
+                backend = getattr(self, 'backend', None)
+                if backend is not None and hasattr(backend, 'request'):
+                    # Soft status — do not wait long; use cached if request helper supports it
+                    st = getattr(self, '_camera_session_cache', None)
+                    if isinstance(st, dict) and st.get('state'):
+                        cam_hint = str(st.get('state') or cam_hint or '')
+            except Exception:
+                pass
             kw = {}
             fb = dict(getattr(hmi, '_fixed_bars_cache', None) or {})
             if cam_hint:

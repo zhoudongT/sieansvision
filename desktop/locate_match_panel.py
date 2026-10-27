@@ -9,7 +9,8 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTabWidget,
     QFormLayout, QLineEdit, QComboBox, QDoubleSpinBox, QSpinBox,
-    QScrollArea, QFrame, QFileDialog, QCheckBox,
+    QScrollArea, QFrame, QFileDialog, QCheckBox, QDialog, QDialogButtonBox,
+    QSlider,
 )
 
 from desktop.widgets.switch import OrangeSwitch
@@ -84,9 +85,91 @@ def normalize_locate_params(params=None):
     p.setdefault('scaleEnable', True)
     p.setdefault('pyramidLevels', 4)
     p.setdefault('featureScale', 3.0)   # VM 模板配置·特征尺度
+    p.setdefault('contrastThreshold', 30)
+    p.setdefault('brushSize', 8)
     p.setdefault('thresholdMode', 'auto')  # auto | manual
     _rebuild_scales(p)
     return p
+
+
+
+class TemplateEditorDialog(QDialog):
+    """VM 式模板配置子窗：对比度阈值 / 画笔大小 / 特征尺度（设计态参数壳）。"""
+
+    def __init__(self, params=None, parent=None, *, gray=False):
+        super().__init__(parent)
+        self.setWindowTitle('灰度模板编辑' if gray else '特征模板编辑')
+        self.setModal(True)
+        self.resize(380, 280)
+        self._params = dict(params or {})
+        root = QVBoxLayout(self)
+        tip = QLabel(
+            '对标 VisionMaster 模板配置子窗：对比度阈值与画笔大小写入模块参数；'
+            '全画布描摹仍后续迭代。'
+        )
+        tip.setWordWrap(True)
+        tip.setStyleSheet('color:#555;font-size:11px;')
+        root.addWidget(tip)
+        form = QFormLayout()
+        self.contrast = QSpinBox()
+        self.contrast.setRange(0, 255)
+        self.contrast.setValue(int(self._params.get('contrastThreshold') or 30))
+        form.addRow('对比度阈值', self.contrast)
+        self.brush = QSpinBox()
+        self.brush.setRange(1, 64)
+        self.brush.setValue(int(self._params.get('brushSize') or 8))
+        form.addRow('画笔大小(px)', self.brush)
+        self.feat = QDoubleSpinBox()
+        self.feat.setRange(0.1, 20.0)
+        self.feat.setDecimals(2)
+        self.feat.setSingleStep(0.1)
+        self.feat.setValue(float(self._params.get('featureScale') or 3.0))
+        form.addRow('特征尺度', self.feat)
+        if gray:
+            self.gray_lv = QSpinBox()
+            self.gray_lv.setRange(2, 256)
+            self.gray_lv.setValue(int(self._params.get('grayLevel') or 8))
+            form.addRow('灰度级数', self.gray_lv)
+        else:
+            self.gray_lv = None
+        preview = QLabel('▢▢▢▢  画笔预览（示意）')
+        preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview.setStyleSheet(
+            'background:#1a1a1a;color:#9ad;border:1px dashed #456;padding:24px;font-size:18px;'
+        )
+        root.addLayout(form)
+        root.addWidget(preview, 1)
+        self._brush_slider = QSlider(Qt.Orientation.Horizontal)
+        self._brush_slider.setRange(1, 64)
+        self._brush_slider.setValue(self.brush.value())
+        self._brush_slider.valueChanged.connect(self.brush.setValue)
+        self.brush.valueChanged.connect(self._brush_slider.setValue)
+
+        def _upd_preview(v):
+            n = max(1, min(16, int(v) // 4))
+            preview.setText(('●' * n) + f'  brush={int(v)}px')
+        self.brush.valueChanged.connect(_upd_preview)
+        _upd_preview(self.brush.value())
+        root.addWidget(QLabel('画笔'))
+        root.addWidget(self._brush_slider)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        root.addWidget(buttons)
+
+    def result_params(self):
+        out = {
+            'contrastThreshold': int(self.contrast.value()),
+            'brushSize': int(self.brush.value()),
+            'featureScale': float(self.feat.value()),
+            'hasTemplate': True,
+            'templateReady': True,
+        }
+        if self.gray_lv is not None:
+            out['grayLevel'] = int(self.gray_lv.value())
+        return out
 
 
 class LocateMatchPanel(QWidget):
@@ -265,7 +348,7 @@ class LocateMatchPanel(QWidget):
 
         tip = QLabel(
             'VisionMaster「灰度模板」：创建 / 载入灰度模板。' if (self.params.get('matchMode') == 'gray') else 'VisionMaster「特征模板」：创建 / 载入 / 编辑模板；对比度阈值与画笔在模板配置子窗。'
-            '此处落地载入路径与就绪标志（算法模板编辑器后续迭代）。'
+            '创建模板… 打开对比度/画笔子窗；全画布描摹后续迭代。'
         )
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#555;')
@@ -292,14 +375,15 @@ class LocateMatchPanel(QWidget):
                 self._set_param('hasTemplate', True)
 
         def _mark():
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.information(
-                self, '创建模板',
-                '模板编辑子窗（对比度阈值 / 画笔）后续迭代。\n'
-                '本步将模板标记为已就绪，便于流程跑通与红叹号清除。',
-            )
-            self._set_param('hasTemplate', True)
-            self._set_param('templateReady', True)
+            gray = (self.params.get('matchMode') == 'gray')
+            dlg = TemplateEditorDialog(self.params, self, gray=gray)
+            if dlg.exec() != QDialog.DialogCode.Accepted:
+                return
+            for k, v in dlg.result_params().items():
+                self._set_param(k, v)
+            if not str(self.params.get('templatePath') or '').strip():
+                self._set_param('templatePath', '(editor-created)')
+                path_edit.setText('(editor-created)')
             status.setText('模板状态：已就绪（已创建/载入）')
             status.setStyleSheet('font-weight:600;color:#2e7d32;')
 
