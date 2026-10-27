@@ -90,6 +90,7 @@ class PropertyFloat(QDialog):
         self._source_dirty = False
         self._step_baseline = None  # snapshot at show_step for Esc/✕/取消 discard
         self._step_dirty = False
+        self._close_via_action = None  # 'ok' | 'cancel' | None (WM/✕ routed cancel)
         self.setStyleSheet(PROPERTY_FLOAT_QSS)
 
     def mousePressEvent(self, event):
@@ -168,11 +169,12 @@ class PropertyFloat(QDialog):
         self._source_baseline = None
         self._step_dirty = False
         self._step_baseline = None
+        self._close_via_action = 'ok'
         self._sync_host_filmstrip()
         self.close()
 
-    def _on_cancel_close(self):
-        """取消 / Esc / ✕：discard unsaved draft → restore baseline (source or step)."""
+    def _discard_draft_if_dirty(self):
+        """Shared Esc / ✕ / 取消 / reject / closeEvent discard."""
         if self._source_form is not None and self._source_dirty and self._source_baseline is not None:
             try:
                 self.sourceChanged.emit(deepcopy(self._source_baseline))
@@ -191,6 +193,11 @@ class PropertyFloat(QDialog):
         self._source_baseline = None
         self._step_dirty = False
         self._step_baseline = None
+
+    def _on_cancel_close(self):
+        """取消 / Esc / ✕：discard unsaved draft → restore baseline (source or step)."""
+        self._discard_draft_if_dirty()
+        self._close_via_action = 'cancel'
         self._sync_host_filmstrip()
         self.close()
 
@@ -200,6 +207,21 @@ class PropertyFloat(QDialog):
     def reject(self):
         # Esc → discard path (QDialog default)
         self._on_cancel_close()
+
+    def closeEvent(self, event):
+        """Title ✕ already wired; any other close (WM) also discard unless 确定."""
+        if self._close_via_action != 'ok':
+            # Idempotent if cancel already discarded
+            try:
+                self._discard_draft_if_dirty()
+            except Exception:
+                pass
+            self._close_via_action = self._close_via_action or 'cancel'
+        try:
+            self._sync_host_filmstrip()
+        except Exception:
+            pass
+        super().closeEvent(event)
 
     def hideEvent(self, event):
         # Soft-disable stays applied (OK committed or cancel restored) without re-show_source

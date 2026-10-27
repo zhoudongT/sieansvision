@@ -440,29 +440,45 @@ class GroupParamPanel(QWidget):
 
 
 class GroupBreadcrumb(QFrame):
-    """嵌套进组时的顶栏：流程 › 组合模块 · 返回"""
+    """嵌套进组时的顶栏：流程 › 组合模块 · 返回；段可点跳层退出。"""
     exitGroup = Signal()
+    jumpExit = Signal(int)  # target remaining stack depth (0=主流程)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName('groupBreadcrumb')
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(8, 4, 8, 4)
+        self._lay = QHBoxLayout(self)
+        self._lay.setContentsMargins(8, 4, 8, 4)
+        self._lay.setSpacing(2)
+        self._segs_host = QWidget()
+        self._segs_lay = QHBoxLayout(self._segs_host)
+        self._segs_lay.setContentsMargins(0, 0, 0, 0)
+        self._segs_lay.setSpacing(2)
+        self._lay.addWidget(self._segs_host, 1)
+        # legacy single-label kept for smoke/compat reads
         self.label = QLabel('组合模块')
         self.label.setStyleSheet(f'color:{TEXT};font-weight:600;font-size:12px;')
-        lay.addWidget(self.label, 1)
+        self.label.setVisible(False)
+        self._lay.addWidget(self.label)
         back = QPushButton('返回上层')
         back.setObjectName('primaryButton')
         back.clicked.connect(self.exitGroup.emit)
-        lay.addWidget(back)
+        self._lay.addWidget(back)
         self.setStyleSheet(
             f'QFrame#groupBreadcrumb{{background:{CARD};border:1px solid {LINE};border-radius:2px;}}'
+            f'QPushButton#crumbSeg{{background:transparent;border:none;color:{TEXT};'
+            f'font-weight:600;font-size:12px;padding:2px 4px;text-align:left;}}'
+            f'QPushButton#crumbSeg:hover{{color:{ACCENT};text-decoration:underline;}}'
+            f'QPushButton#crumbSeg:disabled{{color:{TEXT};font-weight:700;}}'
+            f'QLabel#crumbSep{{color:{TEXT};font-size:12px;padding:0 2px;}}'
         )
+        self._parts = []
 
     def set_path(self, flow_name, group_name=None, *, parts=None):
-        """Breadcrumb: 主流程 › G1 › G2 …（嵌套编辑）.
+        """Breadcrumb: 主流程 › G1 › G2 …（嵌套编辑）. Clickable jump to ancestor.
 
         Accepts legacy (flow_name, group_name) or parts=['主流程','G1','G2'].
+        Clicking segment i jumps to remaining depth i (0=主流程).
         """
         if parts:
             segs = [str(p).strip() for p in parts if str(p).strip()]
@@ -470,9 +486,43 @@ class GroupBreadcrumb(QFrame):
             segs = [str(flow_name or '主流程').strip()]
             if group_name:
                 segs.append(str(group_name).strip())
+        if not segs:
+            segs = ['主流程']
+        self._parts = list(segs)
+        # Rebuild clickable segments
+        while self._segs_lay.count():
+            item = self._segs_lay.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        last = len(segs) - 1
+        for i, name in enumerate(segs):
+            if i > 0:
+                sep = QLabel('›')
+                sep.setObjectName('crumbSep')
+                self._segs_lay.addWidget(sep)
+            btn = QPushButton(name)
+            btn.setObjectName('crumbSeg')
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            is_current = (i == last)
+            btn.setEnabled(not is_current)
+            # target remaining depth = i (主流程→0, first group→1, …)
+            depth = i
+            if is_current:
+                btn.setToolTip(f'当前：{" / ".join(segs)}（嵌套编辑）')
+            else:
+                tip = '返回主流程' if depth == 0 else f'跳至「{name}」层（退出 {last - depth} 层）'
+                btn.setToolTip(tip + ' · 撤销/重做链随退出折叠保留')
+                btn.clicked.connect(lambda *_ , d=depth: self.jumpExit.emit(d))
+            self._segs_lay.addWidget(btn)
+        hint = QLabel('（嵌套编辑）')
+        hint.setObjectName('crumbSep')
+        self._segs_lay.addWidget(hint)
+        self._segs_lay.addStretch(1)
+        # Keep legacy label text in sync
         if len(segs) <= 1:
             text = (segs[0] if segs else '主流程') + '（嵌套编辑）'
         else:
             text = '  ›  '.join(segs) + '（嵌套编辑）'
         self.label.setText(text)
-        self.setToolTip(' / '.join(segs))
+        self.setToolTip(' / '.join(segs) + ' · 点击祖先段可跳层退出')

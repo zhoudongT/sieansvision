@@ -295,6 +295,22 @@ class FilmstripBar(QWidget):
             tip = '连续运行 / 运行全部共用：暂停/继续切图调度（可中途改间隔）'
         self.pause_btn.setToolTip(tip)
 
+    def set_live_display(self, data_url, fit_mode=None):
+        """Push Display result + remember fitMode tip on current thumb."""
+        if fit_mode in ('contain', 'cover', 'actual'):
+            self._live_fit_mode = fit_mode
+        self.set_live_result(data_url)
+        try:
+            row = self.thumbs.currentRow() if hasattr(self, 'thumbs') else -1
+            item = self.thumbs.item(row) if row >= 0 else None
+            if item is not None and fit_mode:
+                tip = item.toolTip() or ''
+                tag = f'· fitMode={fit_mode}'
+                if tag not in tip:
+                    item.setToolTip((tip + '\n' + tag).strip())
+        except Exception:
+            pass
+
     def set_live_result(self, data_url):
         """Push display/engine annotatedImage onto current filmstrip thumb (live preview)."""
         if not data_url or not hasattr(self, 'thumbs'):

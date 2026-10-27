@@ -41,7 +41,7 @@ class MainWindow(QMainWindow):
         self.backend.ready.connect(self.engine_online);self.backend.result.connect(self.engine_result)
         self.backend.error.connect(self.engine_error);self.backend.stopped.connect(self.engine_closed)
         if hasattr(self.backend,'progress'):self.backend.progress.connect(self.progress)
-        self.continuous=False;self._continuous_paused=False;self.run_all_filmstrip=False;self._run_target=None;self.rail_category='';self.property_float=None;self._group_stack=[];self._group_breadcrumb=None;self._pending_trigger_cmds=[];self._pending_after_continuous=[];self._comm_listener=None
+        self.continuous=False;self._continuous_paused=False;self.run_all_filmstrip=False;self._run_target=None;self.rail_category='';self.property_float=None;self._group_stack=[];self._group_breadcrumb=None;self._pending_trigger_cmds=[];self._pending_after_continuous=[];self._comm_listener=None;self._nest_fold_marks=[];self._undo_index_before=None
         self.app_mode='design'  # design | run
         self.showing_all_flows=False
         self._left_pane=None;self._center_stack=None;self.run_mode_pane=None
@@ -112,7 +112,7 @@ class MainWindow(QMainWindow):
         settings_menu.addAction(self.action('设计态 / 运行模式…',self.toggle_app_mode))
         settings_menu.addAction(self.action('全局触发…',self.open_global_triggers))
         tools_menu.addAction(self.action('全局触发…',self.open_global_triggers))
-        self.undo_action=self.action('撤销',self.document.undo,'Ctrl+Z');self.redo_action=self.action('重做',self.document.redo,'Ctrl+Y')
+        self.undo_action=self.action('撤销',self._undo_with_fold_tip,'Ctrl+Z');self.redo_action=self.action('重做',self._redo_with_fold_tip,'Ctrl+Y')
         for a in [self.undo_action,self.redo_action]:edit.addAction(a)
         edit.addAction(self.action('复制模块',self.copy_nodes,'Ctrl+Shift+C'));edit.addAction(self.action('粘贴模块',lambda:self.document.paste() if not self.busy else None,'Ctrl+Shift+V'))
         toolbar=QToolBar('工程与运行');toolbar.setObjectName('mainToolBar');toolbar.setMovable(False);toolbar.setIconSize(QSize(16,16));toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon);self.addToolBar(toolbar)
@@ -188,7 +188,7 @@ class MainWindow(QMainWindow):
         self.project_name=QLineEdit(self.document.project['name']);self.project_name.setAccessibleName('方案名称');self.project_name.setPlaceholderText('方案名称');self.project_name.editingFinished.connect(self.rename_project)
         name_row.addWidget(QLabel('方案'),0)
         name_row.addWidget(self.project_name,1)
-        for label,callback in [('自动排列',self.document.layout),('适应',lambda:self.flow.fit()),('撤销',self.document.undo),('重做',self.document.redo)]:
+        for label,callback in [('自动排列',self.document.layout),('适应',lambda:self.flow.fit()),('撤销',self._undo_with_fold_tip),('重做',self._redo_with_fold_tip)]:
             b=QPushButton(label);b.clicked.connect(lambda checked=False,cb=callback:self.guard(cb) if not self.busy else None);name_row.addWidget(b)
         fl.addLayout(name_row)
         self.scene=FlowScene(self.document);self.flow=FlowView(self.scene)
@@ -197,6 +197,8 @@ class MainWindow(QMainWindow):
         self._group_breadcrumb=GroupBreadcrumb()
         self._group_breadcrumb.setVisible(False)
         self._group_breadcrumb.exitGroup.connect(self.exit_group_module)
+        if hasattr(self._group_breadcrumb, 'jumpExit'):
+            self._group_breadcrumb.jumpExit.connect(self.jump_exit_group_to)
         canvas_host=QWidget();chl=QVBoxLayout(canvas_host);chl.setContentsMargins(0,0,0,0);chl.addWidget(self._group_breadcrumb);chl.addWidget(self.flow,1)
         self.minimap=MiniMap(self.scene,self.flow,canvas_host)
         self._canvas_host=canvas_host
@@ -976,15 +978,10 @@ class MainWindow(QMainWindow):
         return fallback or '', fallback_id
 
     def _apply_display_to_result_pane(self, step=None, image=None):
-        """Live-apply Display fitMode/channel on 模块结果 pane."""
-        if not hasattr(self, 'output_view'):
-            return
+        """Live-apply Display fitMode/channel on 模块结果 + HMI panes + filmstrip thumb."""
         step = step or {}
         params = step.get('params') or {}
         fit = params.get('fitMode') or 'contain'
-        if hasattr(self.output_view, 'set_fit_mode'):
-            self.output_view.set_fit_mode(fit)
-        # Cache engine/annotated frame for live channel toggling
         if image:
             self._last_display_image = image
         src = image or getattr(self, '_last_display_image', None) or ''
@@ -995,12 +992,47 @@ class MainWindow(QMainWindow):
                 show = self._client_channel_preview(src, ch) or src
             except Exception:
                 show = src
-        if show and (image or ch not in (None, '', 'auto')):
-            self.output_view.show_data(show)
-            if hasattr(self, 'images'):
-                self.images.setCurrentIndex(1)
-        elif not self.output_view.bounds.isEmpty():
-            self.output_view.fit()
+        # 模块结果 pane
+        if hasattr(self, 'output_view'):
+            if hasattr(self.output_view, 'set_fit_mode'):
+                self.output_view.set_fit_mode(fit)
+            if show and (image or ch not in (None, '', 'auto')):
+                self.output_view.show_data(show)
+                if hasattr(self, 'images'):
+                    self.images.setCurrentIndex(1)
+            elif not self.output_view.bounds.isEmpty():
+                self.output_view.fit()
+        # Filmstrip live thumb (channelled frame + fit tip)
+        try:
+            if show and hasattr(self, 'filmstrip'):
+                if hasattr(self.filmstrip, 'set_live_display'):
+                    self.filmstrip.set_live_display(show, fit_mode=fit)
+                elif hasattr(self.filmstrip, 'set_live_result'):
+                    self.filmstrip.set_live_result(show)
+        except Exception:
+            pass
+        # HMI operator image panes
+        try:
+            if hasattr(self, 'operator_hmi') and self.operator_hmi is not None:
+                if hasattr(self.operator_hmi, 'apply_display'):
+                    self.operator_hmi.apply_display(
+                        fit_mode=fit, image=show or None, channel=ch,
+                    )
+                else:
+                    for view in getattr(self.operator_hmi, '_image_views', None) or []:
+                        if hasattr(view, 'set_fit_mode'):
+                            view.set_fit_mode(fit)
+                        if show:
+                            view.show_data(show)
+        except Exception:
+            pass
+        # HMI dialog (if open)
+        try:
+            dialog = (getattr(self, 'dialogs', None) or {}).get('hmi')
+            if dialog is not None and hasattr(dialog, 'apply_display'):
+                dialog.apply_display(fit_mode=fit, image=show or None, channel=ch)
+        except Exception:
+            pass
 
     def _client_channel_preview(self, data_url, channel):
         """Live channel preview (cv2) without engine re-run; returns new data-url or None."""
@@ -1038,17 +1070,19 @@ class MainWindow(QMainWindow):
         names={s['id']:s.get('name',s['operation']) for s in self.document.project['steps']}
         self.results.set_results([{**r,'name':names.get(r['id'],r['id'])} for r in records]);self.scene.show_results(records)
         annotated_live, ann_sid = self._pick_annotated_with_step(records)
+        _disp_applied = False
         if annotated_live:
             disp_step = next((s for s in (self.document.project.get('steps') or []) if s.get('id')==ann_sid), None)
             if disp_step and disp_step.get('operation')=='display':
                 self._apply_display_to_result_pane(disp_step, image=annotated_live)
+                _disp_applied = True
             else:
                 self.output_view.show_data(annotated_live);self.images.setCurrentIndex(1)
-            try:
-                if hasattr(self,'filmstrip') and hasattr(self.filmstrip,'set_live_result'):
-                    self.filmstrip.set_live_result(annotated_live)
-            except Exception:
-                pass
+                try:
+                    if hasattr(self,'filmstrip') and hasattr(self.filmstrip,'set_live_result'):
+                        self.filmstrip.set_live_result(annotated_live)
+                except Exception:
+                    pass
         for record in reversed(records):
             cloud=record.get('output',{}).get('cloud')
             if cloud:self.cloud_view.set_cloud(cloud);self.images.setCurrentIndex(2);break
@@ -1087,6 +1121,11 @@ class MainWindow(QMainWindow):
             try:
                 annotated=self._pick_annotated_image(records) or ''
                 self.operator_hmi.set_runtime(result, image=self.image, annotated=annotated)
+                # Re-apply Display fit/channel after set_runtime so HMI panes keep live mode
+                if _disp_applied:
+                    disp_step = next((s for s in (self.document.project.get('steps') or []) if s.get('id')==ann_sid), None)
+                    if disp_step:
+                        self._apply_display_to_result_pane(disp_step, image=annotated_live)
             except Exception:
                 pass
         text={'completed':'运行完成','cancelled':'已停止','failed':'运行失败'}.get(result.get('state'),result.get('state','未知'))
@@ -1901,6 +1940,19 @@ class MainWindow(QMainWindow):
             self.document.index = new_index
             if frame.get('outer_saved') is not None:
                 self.document.saved = frame['outer_saved']
+            # Fold boundary: pre-enter tip index `idx` — undo/redo across logs a tip
+            try:
+                marks = list(getattr(self, '_nest_fold_marks', None) or [])
+                marks.append({
+                    'index': int(idx),
+                    'name': frame.get('name') or '组合模块',
+                    'tips': max(0, len(hist) - len(base)),
+                    'depth_after': len(self._group_stack),
+                })
+                # Cap
+                self._nest_fold_marks = marks[-32:]
+            except Exception:
+                pass
             self.document.changed.emit()
         else:
             self.document.load(outer)
@@ -1908,6 +1960,81 @@ class MainWindow(QMainWindow):
         self._refresh_group_breadcrumb()
         self.log(f'已退出组合模块「{frame["name"]}」· 剩余深度 {len(self._group_stack)}')
 
+    def jump_exit_group_to(self, target_depth: int = 0):
+        """Breadcrumb jump: exit until stack depth == target (0=主流程). Each exit folds hist."""
+        try:
+            target = max(0, int(target_depth))
+        except Exception:
+            target = 0
+        n = 0
+        while len(self._group_stack or []) > target:
+            before = len(self._group_stack)
+            self.exit_group_module()
+            n += 1
+            if len(self._group_stack) >= before:
+                break  # safety
+            if n > 64:
+                break
+        if n:
+            where = '主流程' if not self._group_stack else (self._group_stack[-1].get('name') or '组合')
+            self.log(f'面包屑跳层：退出 {n} 层 → {where}（撤销/重做链已折叠保留）')
+
+    def _undo_with_fold_tip(self):
+        before = int(getattr(self.document, 'index', 0) or 0)
+        self.document.undo()
+        after = int(getattr(self.document, 'index', 0) or 0)
+        self._maybe_log_fold_cross(before, after, 'undo')
+
+    def _redo_with_fold_tip(self):
+        before = int(getattr(self.document, 'index', 0) or 0)
+        self.document.redo()
+        after = int(getattr(self.document, 'index', 0) or 0)
+        self._maybe_log_fold_cross(before, after, 'redo')
+
+    def _maybe_log_fold_cross(self, before, after, direction):
+        """Status/log when undo/redo crosses a nest exit-fold boundary."""
+        if before == after:
+            return
+        marks = getattr(self, '_nest_fold_marks', None) or []
+        if not marks:
+            return
+        lo, hi = (after, before) if after < before else (before, after)
+        crossed = [m for m in marks if lo <= int(m.get('index', -1)) < hi]
+        # Also: crossing FROM tip side INTO pre-enter means after <= mark.index < before (undo)
+        if not crossed:
+            # Boundary sits at pre-enter index; undo from mark.index+1 → mark.index crosses it
+            for m in marks:
+                bi = int(m.get('index', -1))
+                if direction == 'undo' and before > bi >= after:
+                    crossed.append(m)
+                elif direction == 'redo' and before <= bi < after:
+                    crossed.append(m)
+        if not crossed:
+            return
+        # Dedup by index
+        seen = set()
+        uniq = []
+        for m in crossed:
+            k = int(m.get('index', -1))
+            if k in seen:
+                continue
+            seen.add(k)
+            uniq.append(m)
+        for m in uniq:
+            name = m.get('name') or '组合模块'
+            if direction == 'undo':
+                msg = f'撤销越过嵌套退出折叠点 · 「{name}」进组前快照（重做可回到组内编辑）'
+            else:
+                msg = f'重做越过嵌套退出折叠点 · 「{name}」组内编辑（撤销可回进组前）'
+            try:
+                self.log(msg)
+            except Exception:
+                pass
+            try:
+                if hasattr(self, 'wb_status') and hasattr(self.wb_status, 'set_config'):
+                    self.wb_status.set_config(msg, ok=True)
+            except Exception:
+                pass
 
     def reload_comm_listener(self):
         """Start/refresh live Comm recvEvents listeners (TCP Server/UDP/Serial)."""

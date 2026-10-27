@@ -602,6 +602,20 @@ class OperatorHmiView(QWidget):
                 except Exception:
                     pass
 
+    def apply_display(self, *, fit_mode=None, image=None, channel=None):
+        """Live-apply Display fitMode (+ optional pre-channelled image) on HMI panes."""
+        fit = fit_mode if fit_mode in ('contain', 'cover', 'actual') else None
+        for view in getattr(self, '_image_views', None) or []:
+            try:
+                if fit and hasattr(view, 'set_fit_mode'):
+                    view.set_fit_mode(fit)
+                if image:
+                    view.show_data(image)
+                elif fit and hasattr(view, 'fit') and not getattr(view, 'bounds', None).isEmpty():
+                    view.fit()
+            except Exception:
+                pass
+
     def set_preview_image(self, data):
         """Live / source preview hook (e.g. after capture, before run)."""
         if not data:
