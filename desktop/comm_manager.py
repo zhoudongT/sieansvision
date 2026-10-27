@@ -164,6 +164,10 @@ class _EventTable(QWidget):
             fill.setToolTip('用绑定变量当前值覆盖「报文」列（设计态预览）')
             fill.clicked.connect(self._fill_from_variables)
             bar.addWidget(fill)
+        pick = QPushButton('挑选变量…')
+        pick.setToolTip('从工程流程/全局变量表挑选，写入当前行「变量」列')
+        pick.clicked.connect(self._pick_variable_into_row)
+        bar.addWidget(pick)
         bar.addStretch(1)
         lay.addLayout(bar)
 
@@ -191,6 +195,57 @@ class _EventTable(QWidget):
             QMessageBox.information(self, '接收事件', '已写回：\n' + '\n'.join(written))
         else:
             QMessageBox.information(self, '接收事件', '没有绑定变量的事件行。')
+
+
+    def _pick_variable_into_row(self):
+        """细妆：收发事件表 ← 工程变量名挑选。"""
+        from PySide6.QtWidgets import QInputDialog, QMessageBox
+        dlg = self.window()
+        doc = getattr(dlg, 'document', None) if dlg else None
+        project = getattr(doc, 'project', None) if doc else None
+        if not isinstance(project, dict):
+            # walk parents for document
+            w = self.parent()
+            while w is not None and project is None:
+                doc = getattr(w, 'document', None)
+                if doc is not None and hasattr(doc, 'project'):
+                    project = doc.project
+                    break
+                w = w.parent()
+        names = []
+        if isinstance(project, dict):
+            for k in (project.get('variables') or {}):
+                if k == 'global':
+                    continue
+                names.append(f'flow.{k}')
+            g = project.get('globalVariables') or {}
+            if isinstance(g, dict):
+                for k in g:
+                    names.append(f'global.{k}')
+            nested = (project.get('variables') or {}).get('global')
+            if isinstance(nested, dict):
+                for k in nested:
+                    token = f'global.{k}'
+                    if token not in names:
+                        names.append(token)
+        if not names:
+            names = ['flow.tcpLastRecv', 'flow.udpLastRecv', 'global.triggerPayload']
+            QMessageBox.information(
+                self, '挑选变量',
+                '工程尚无自定义变量，提供常用占位名；也可手改变量列。',
+            )
+        choice, ok = QInputDialog.getItem(self, '挑选变量', '写入当前行变量列', names, 0, True)
+        if not ok or not choice:
+            return
+        r = self.table.currentRow()
+        if r < 0:
+            r = 0
+        if self.table.rowCount() == 0:
+            self._append({})
+            r = 0
+        var_w = self.table.cellWidget(r, 4)
+        if var_w is not None:
+            var_w.setText(choice.strip())
 
     def _fill_from_variables(self):
         doc = getattr(self, '_document', None)

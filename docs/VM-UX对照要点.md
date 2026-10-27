@@ -1053,7 +1053,7 @@ sieans：`config_status.node_needs_bang` + `Node.needs_config` / `run_failed`（
 
 | 域 | 剩余细妆 |
 |----|----------|
-| chrome | 工具栏纯图标人工观感确认；品牌条与 VM 分区像素级对照 |
+| chrome | 状态栏/品牌条 ToolTip 已接；算子纵栏 tip 已对齐；工具栏纯图标人工观感仍可确认 |
 | panels | 模板编辑子窗已接；匹配框/分数/搜索区/全画布描摹开关已接；几何卡尺叠层（拟合曲线/标签/标尺）已接；量测点线标签距离开关已接 |
 | harvest | 主流面板+wave3+脚本输入绑定已接；elapsed 结果显示开关已接 |
 | HMI | 表格/饼图/线图已可视化；固定栏相机会话缓存已接；模板市场+三行业示意已接；容器壳标签已标 |
@@ -1063,9 +1063,13 @@ sieans：`config_status.node_needs_bang` + `Node.needs_config` / `run_failed`（
 | labels | N4 ToolTip 已强化；状态栏/品牌条 ToolTip 已接；中英扫尾可继续 |
 | settings | 运行间隔/流程超时已挂；连续跑路径说明对话框已接 |
 | samples | 三行业运行界面示意模板 + examples/industry-ui-samples.json 已接（无厂商 SDK） |
-| Comm | 通信↔全局触发双向入口已接；变量联调指引已接；收发↔变量表更深仍可走查 |
+| Comm | 通信↔全局触发双向入口已接；变量联调指引已接；事件表「挑选变量」已接 |
 | Host SM | 信息栏→HMI 镜像已接；HMI→Host 已有；报警历史筛选已接 |
 
+
+### 进度续⑤ · 2026-10-27 深夜
+- Comm 事件表「挑选变量…」写入当前行变量列
+- op_rail 纵栏 tip 对齐 VM 纯图标分区
 
 ### 进度续④ · 2026-10-27 深夜
 - measure_geom 结果显示：点/线/标签/距离文字独立开关

@@ -7,7 +7,8 @@ from desktop.theme import ACCENT, TEXT_MUTED
 
 # (category key used in toolbox, tooltip, glyph drawer key)
 RAIL_ITEMS = [
-    ('相机采集', '图像采集', 'camera'),
+    # tip 文案对齐 VM 纵栏分区观感（纯图标 + 中文提示）
+    ('相机采集', '图像采集（相机/本地）', 'camera'),
     ('图像处理', '图像处理', 'image'),
     ('定位与测量', '定位/匹配', 'locate'),
     ('识别', '识别 / OCR', 'ocr'),
@@ -88,7 +89,7 @@ class OperatorRail(QWidget):
         all_btn = QToolButton()
         all_btn.setCheckable(True)
         all_btn.setChecked(True)
-        all_btn.setToolTip('全部算子')
+        all_btn.setToolTip('全部算子 · 对标 VM 左侧纵栏纯图标')
         all_btn.setIcon(_icon('ext', active=True))
         all_btn.setIconSize(QSize(28, 28))
         all_btn.setObjectName('railButton')
