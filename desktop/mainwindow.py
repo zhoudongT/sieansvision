@@ -163,6 +163,9 @@ class MainWindow(QMainWindow):
         self.scene=FlowScene(self.document);self.flow=FlowView(self.scene)
         self.scene.chosen.connect(self.choose_node);self.scene.configure.connect(self.configure_node);self.scene.notice.connect(self.log)
         self.flow.dropped.connect(lambda key,pos:self.guard(lambda:self.add_node(key,pos)))
+        self._group_breadcrumb=GroupBreadcrumb()
+        self._group_breadcrumb.setVisible(False)
+        self._group_breadcrumb.exitGroup.connect(self.exit_group_module)
         canvas_host=QWidget();chl=QVBoxLayout(canvas_host);chl.setContentsMargins(0,0,0,0);chl.addWidget(self._group_breadcrumb);chl.addWidget(self.flow,1)
         self.minimap=MiniMap(self.scene,self.flow,canvas_host)
         self._canvas_host=canvas_host
