@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
     QPlainTextEdit, QGridLayout, QSizePolicy, QLineEdit, QListWidget,
     QTableWidget, QTableWidgetItem, QProgressBar, QHeaderView,
-    QComboBox, QTabWidget, QStackedWidget,
+    QComboBox, QTabWidget, QStackedWidget, QFileDialog, QApplication,
 )
 
 from desktop.image_view import ImageView
@@ -392,7 +392,7 @@ class OperatorHmiView(QWidget):
         self._trend_sparks = []  # QLabel live elapsed spark
         self._trend_ok_sparks = []  # QLabel OK/NG sequence
         self._yield_bars = []  # (bar_ok, bar_ng) tuples
-        self._result_tables = []
+        self._result_history=[]; self._result_tables = []
         self._last_module_name = '流程'  # 结果表「模块」列跟末次步骤名
         self._layout_fp = None
         self._clock_timer = QTimer(self)
@@ -1097,25 +1097,40 @@ class OperatorHmiView(QWidget):
                         judge = 'OK' if oh[0] else 'NG'
             except Exception:
                 pass
-        rows = [
-            ('模块', str(mod_name), judge if judge != '—' else '—'),
-            ('耗时(ms)', str(last_ms), '—'),
-            ('OK计数', str(ok_n), '—'),
-            ('NG计数', str(ng_n), '—'),
-        ]
-        for table in getattr(self, '_result_tables', []) or []:
-            try:
-                for r, row in enumerate(rows):
-                    for c, val in enumerate(row):
-                        item = table.item(r, c)
-                        if item is None:
-                            from PySide6.QtWidgets import QTableWidgetItem
-                            item = QTableWidgetItem(val)
-                            table.setItem(r, c, item)
-                        else:
-                            item.setText(str(val))
-            except Exception:
-                pass
+        # 细妆⑬：追加一行历史（时间/序号/模块/耗时/判定/OK/NG/门限/备注）
+        try:
+            gate = ''
+            fb = getattr(self, '_fixed_bars_cache', None) or {}
+            if isinstance(fb, dict) and fb.get('gateKey'):
+                gate = str(fb.get('gateKey'))
+            # also try variables passGate from last runtime
+            note = ''
+            hist = getattr(self, '_result_history', None)
+            if hist is None:
+                self._result_history = []
+                hist = self._result_history
+            # Only append when we have a real run signal (elapsed or judge)
+            if last_ms != '—' or judge in ('OK', 'NG'):
+                entry = {
+                    'ts': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'seq': len(hist) + 1,
+                    'module': str(mod_name),
+                    'elapsedMs': str(last_ms),
+                    'judge': judge if judge != '—' else '—',
+                    'ok': str(ok_n),
+                    'ng': str(ng_n),
+                    'gate': gate or '—',
+                    'note': note or '—',
+                }
+                # de-dupe identical consecutive (same module+elapsed+judge within same second)
+                if not hist or (hist[-1].get('module'), hist[-1].get('elapsedMs'), hist[-1].get('judge'), hist[-1].get('ts')) != (
+                    entry['module'], entry['elapsedMs'], entry['judge'], entry['ts']):
+                    hist.append(entry)
+                    if len(hist) > 200:
+                        del hist[:-200]
+            self._refresh_result_tables_ui()
+        except Exception:
+            pass
 
     def _on_stats_gate_key(self, key):
         fb = dict(getattr(self, '_fixed_bars_cache', {}) or {})
@@ -1134,6 +1149,76 @@ class OperatorHmiView(QWidget):
             self.runUiChanged.emit({'fixedBars': dict(fb)})
         except Exception:
             pass
+
+    def result_history(self):
+        """Public snapshot for smoke / CSV."""
+        return list(getattr(self, '_result_history', []) or [])
+
+    def result_history_csv(self) -> str:
+        lines = ['timestamp,seq,module,elapsed_ms,judge,ok,ng,gate,note']
+        for e in self.result_history():
+            ts = str(e.get('ts') or '').replace(',', ' ')
+            mod = str(e.get('module') or '').replace('"', "'")
+            note = str(e.get('note') or '').replace('"', "'").replace('\n', ' ')
+            gate = str(e.get('gate') or '').replace('"', "'")
+            lines.append(
+                f'{ts},{e.get("seq","")},{mod},{e.get("elapsedMs","")},{e.get("judge","")},'
+                f'{e.get("ok","")},{e.get("ng","")},"{gate}","{note}"'
+            )
+        return '\n'.join(lines) + ('\n' if lines else '')
+
+    def export_result_table_clipboard(self):
+        try:
+            QApplication.clipboard().setText(self.result_history_csv())
+        except Exception:
+            pass
+
+    def export_result_table_file(self):
+        path, _ = QFileDialog.getSaveFileName(
+            self, '导出结果表', 'hmi-result-table.csv', 'CSV (*.csv);;All (*)')
+        if not path:
+            return
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(self.result_history_csv())
+        except Exception:
+            pass
+
+    def clear_result_history(self):
+        self._result_history = []
+        self._refresh_result_tables_ui()
+
+    def _refresh_result_tables_ui(self):
+        hist = list(getattr(self, '_result_history', []) or [])
+        for table in getattr(self, '_result_tables', []) or []:
+            try:
+                table.setRowCount(0)
+                if not hist:
+                    table.setRowCount(1)
+                    placeholders = ['—', '0', '等待运行', '—', '—', '0', '0', '—', '—']
+                    for c, val in enumerate(placeholders):
+                        table.setItem(0, c, QTableWidgetItem(val))
+                    continue
+                # show newest first
+                rows = list(reversed(hist[-50:]))
+                table.setRowCount(len(rows))
+                for r, e in enumerate(rows):
+                    vals = [
+                        str(e.get('ts') or ''),
+                        str(e.get('seq') or ''),
+                        str(e.get('module') or ''),
+                        str(e.get('elapsedMs') or ''),
+                        str(e.get('judge') or ''),
+                        str(e.get('ok') or ''),
+                        str(e.get('ng') or ''),
+                        str(e.get('gate') or ''),
+                        str(e.get('note') or ''),
+                    ]
+                    for c, val in enumerate(vals):
+                        table.setItem(r, c, QTableWidgetItem(val))
+            except Exception:
+                pass
+
 
     def set_device_chrome(self, *, ip=None, port=None, conn=None):
         """细妆：刷新 HMI「IP地址/端口/连接状态」控件文案。"""
@@ -1517,19 +1602,40 @@ class OperatorHmiView(QWidget):
         # 细妆：表格 / 简单图表可视化（非纯 stub）
         if name in ('表格', '结果表'):
             cell = self._make_cell_frame(name + (f' · {binding}' if binding else ''))
-            table = QTableWidget(4, 3)
-            table.setHorizontalHeaderLabels(['项', '值', '判定'])
+            # 细妆⑬：多列历史结果表 + CSV 导出（时间/序号/模块/耗时/判定/OK/NG/门限/备注）
+            table = QTableWidget(0, 9)
+            table.setHorizontalHeaderLabels(
+                ['时间', '序号', '模块', '耗时(ms)', '判定', 'OK累计', 'NG累计', '门限', '备注']
+            )
             table.horizontalHeader().setStretchLastSection(True)
+            table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
             table.verticalHeader().setVisible(False)
             table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-            demos = [('模块', '等待运行', '—'), ('耗时(ms)', '—', '—'), ('OK计数', '—', '—'), ('NG计数', '—', '—')]
-            for r, row in enumerate(demos):
-                for c, val in enumerate(row):
-                    table.setItem(r, c, QTableWidgetItem(val))
             table.setObjectName('hmiResultTable')
+            table.setMinimumHeight(120)
             self._result_tables = getattr(self, '_result_tables', [])
             self._result_tables.append(table)
+            self._result_history = getattr(self, '_result_history', [])
             cell.layout().addWidget(table, 1)
+            btn_row = QHBoxLayout()
+            b_copy = QPushButton('复制CSV')
+            b_copy.setObjectName('hmiResultCopyCsvBtn')
+            b_copy.setToolTip('复制结果表历史为 CSV')
+            b_copy.clicked.connect(self.export_result_table_clipboard)
+            btn_row.addWidget(b_copy)
+            b_save = QPushButton('导出CSV…')
+            b_save.setObjectName('hmiResultExportCsvBtn')
+            b_save.setToolTip('导出结果表历史 CSV 文件')
+            b_save.clicked.connect(self.export_result_table_file)
+            btn_row.addWidget(b_save)
+            b_clear = QPushButton('清空')
+            b_clear.setObjectName('hmiResultClearBtn')
+            b_clear.clicked.connect(self.clear_result_history)
+            btn_row.addWidget(b_clear)
+            btn_row.addStretch(1)
+            cell.layout().addLayout(btn_row)
+            # seed empty state row
+            self._refresh_result_tables_ui()
             return cell
         if name in ('饼图',):
             cell = self._make_cell_frame(name)

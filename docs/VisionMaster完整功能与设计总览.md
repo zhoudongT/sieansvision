@@ -425,6 +425,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+
+## 【细妆⑬ · 产线配方换型 · 多卡尺ROI编辑 · 结果表CSV · Comm验收壳 · 2026-10-28】
+
+- **产线配方 / 一键换型**：`desktop/recipe_library.py` + `recipe_switch_dialog.py`；本方案 `project.recipes[]` 参数快照保存/套用（按算子+名称匹配）；工程库/模板/打开即跑整案换型；菜单「工具→产线配方/换型…」+ 工具栏「配方」；生产任务面板 tip。
+- **ROI 多卡尺编辑器**：`desktop/caliper_roi_editor.py` — 画布拖拽 ROI 四角 + 卡尺探针即时预览（数量/宽/投影长/角/搜索方向）；几何面板「多卡尺 ROI 编辑器…」写入 `roi` + `caliper*`（roiPreset=draw）。非 Halcon。
+- **HMI 结果表加深**：9 列历史（时间/序号/模块/耗时/判定/OK/NG/门限/备注）+ 复制CSV / 导出CSV / 清空；跟末次步骤名与生产统计。
+- **真机 Comm 验收壳**：`desktop/comm_acceptance_dialog.py` — PING/STATUS/HELP/GET/SET/VARS/MEAS/JSON 清单干跑（默认环回 :19880，Host/Port 可改）；导出报告 CSV；无现场硬件宣称 / 无 robot SDK。
+- **Smokes**：`smoke-recipe-switch-e2e` / `smoke-caliper-roi-editor-e2e` / `smoke-hmi-result-table-csv-e2e` / `smoke-comm-acceptance-e2e`。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆⑫ · 卡尺→几何测量链 · Comm 协议深化 · 结果表末步名 · 2026-10-28】
 
 - **打开即跑 · 卡尺→几何测量**：`projects/open-and-run-caliper-measure.sieans`（预处理→caliper→line_intersect→point_line_distance→门限）；菜单/打开示例/README 已登记。

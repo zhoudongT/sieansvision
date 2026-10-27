@@ -362,6 +362,12 @@ class GeometryFindPanel(QWidget):
         tip = QLabel('卡尺级字段已接入引擎多卡尺边缘拟合（OpenCV；非 Halcon）。边缘类型=全部+最大个数>1 → 多直线分带；可切 Hough。未选输入源 → N4 红叹号。')
         tip.setWordWrap(True); tip.setStyleSheet('color:#888;')
         form.addRow(tip)
+        if feat in ('lines', 'edges'):
+            btn = QPushButton('多卡尺 ROI 编辑器…')
+            btn.setObjectName('caliperRoiEditorBtn')
+            btn.setToolTip('交互式拖拽 ROI + 卡尺探针预览（写入 roi / caliper*）')
+            btn.clicked.connect(self._open_caliper_roi_editor)
+            form.addRow(btn)
         return w
 
     def _result_tab(self):

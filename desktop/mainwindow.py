@@ -110,10 +110,13 @@ class MainWindow(QMainWindow):
         devices.addAction(self.action('清除点云输入',self.clear_cloud))
         devices.addAction(self.action('相机管理…',self.open_camera_manager))
         devices.addAction(self.action('通信管理…',self.open_comm_manager))
+        devices.addAction(self.action('真机 Comm 验收壳…',self.open_comm_acceptance))
         tools_menu.addAction(self.action('运行界面设计',self.open_run_ui_designer))
         tools_menu.addAction(self.action('一键套用上位机运行壳',self.apply_host_run_ui_template))
         tools_menu.addAction(self.action('应用上位机状态机模板',self.apply_host_run_ui_template))
         tools_menu.addAction(self.action('插入生产任务建议链…',self.apply_production_demo_chain))
+        tools_menu.addAction(self.action('产线配方 / 换型…',self.open_recipe_switch))
+        tools_menu.addAction(self.action('真机 Comm 验收壳…',self.open_comm_acceptance))
         tools_menu.addAction(self.action('运行画面编辑（经典）',lambda:self.open_panel('hmi')))
         settings_menu.addAction(self.action('设计态 / 运行模式…',self.toggle_app_mode))
         settings_menu.addAction(self.action('全局触发…',self.open_global_triggers))
@@ -174,6 +177,8 @@ class MainWindow(QMainWindow):
         apply_toolbar_action(self.cam_mgr_action, 'camera'); toolbar.addAction(self.cam_mgr_action)
         a_comm = self.action('通信', self.open_comm_manager)
         apply_toolbar_action(a_comm, 'comm'); toolbar.addAction(a_comm)
+        a_recipe = self.action('配方', self.open_recipe_switch)
+        apply_toolbar_action(a_recipe, 'recipe'); toolbar.addAction(a_recipe)
         a_host = self.action('上位机', self.apply_host_run_ui_template)
         apply_toolbar_action(a_host, 'host'); toolbar.addAction(a_host)
         a_chain = self.action('产线链', self.apply_production_demo_chain)
@@ -3359,6 +3364,34 @@ class MainWindow(QMainWindow):
             self.log(f'注入STOP失败：{err}')
 
     # ---- Wave2 通信管理 / B4 全局触发壳 ----
+    def open_recipe_switch(self):
+        """细妆⑬：产线配方 / 一键换型（本方案快照 + 工程库整案）."""
+        from desktop.recipe_switch_dialog import RecipeSwitchDialog
+        dlg = RecipeSwitchDialog(self.document, self.root, self)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        def _on_applied(stats):
+            self.log(f"换型完成 · {stats.get('name')} · 写入{stats.get('applied')} 跳过{stats.get('skipped')}")
+            self.document.changed.emit()
+            self.refresh_parameters()
+            self.scene.rebuild()
+        def _on_scheme(proj):
+            try:
+                self.guard(lambda: self.use_project(proj))
+                self.log(f"工程库换型已加载 · {proj.get('name') or ''}")
+            except Exception as err:
+                self.log(f'工程库换型失败：{err}')
+        dlg.recipeApplied.connect(_on_applied)
+        dlg.schemeLoaded.connect(_on_scheme)
+        dlg.recipesChanged.connect(lambda: self.log('配方库已更新'))
+        dlg.exec()
+
+    def open_comm_acceptance(self):
+        """细妆⑬：真机 Comm 验收壳（默认环回干跑，Host/Port 可改真机）."""
+        from desktop.comm_acceptance_dialog import CommAcceptanceDialog
+        dlg = CommAcceptanceDialog(self, default_host='127.0.0.1', default_port=19880)
+        dlg.exec()
+
+
     def open_comm_manager(self):
         """Wave2: 通信管理窗（VM p=10）."""
         from desktop.comm_manager import CommManagerDialog

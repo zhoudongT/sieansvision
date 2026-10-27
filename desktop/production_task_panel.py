@@ -232,6 +232,9 @@ class ProductionTaskPanel(QWidget):
         recipe.setPlaceholderText('配方/方案名')
         recipe.textChanged.connect(lambda t: self._set('recipe', t))
         form.addRow('配方/方案', recipe)
+        tip_r = QLabel('完整换型请用菜单 工具→产线配方/换型（保存快照 / 一键套用 / 工程库）')
+        tip_r.setWordWrap(True); tip_r.setStyleSheet('color:#888;font-size:11px;')
+        form.addRow(tip_r)
 
         scope = QComboBox()
         for k, lab in (('global', '全局'), ('flow', '流程')):

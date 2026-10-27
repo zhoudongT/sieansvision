@@ -68,6 +68,15 @@ def mono_icon(kind: str, size: int = 18, color: str | None = None, accent: bool 
         p.drawRoundedRect(QRectF(m, m, s - 2 * m, s - 2 * m - 4), 1.5, 1.5)
         p.drawLine(QPointF(s / 2, s - m - 4), QPointF(s / 2, s - m))
         p.drawLine(QPointF(m + 3, s - m), QPointF(s - m - 3, s - m))
+    elif kind == 'recipe':
+        # clipboard / tag — 配方换型
+        p.drawRoundedRect(QRectF(m + 1, m, s - 2 * m - 2, s - 2 * m), 1.5, 1.5)
+        p.drawLine(QPointF(m + 4, m + 5), QPointF(s - m - 4, m + 5))
+        p.drawLine(QPointF(m + 4, m + 9), QPointF(s - m - 6, m + 9))
+        p.drawLine(QPointF(m + 4, m + 13), QPointF(s - m - 5, m + 13))
+        p.setBrush(ink)
+        p.drawEllipse(QRectF(s - m - 5, m + 2, 3.5, 3.5))
+        p.setBrush(Qt.BrushStyle.NoBrush)
     elif kind == 'chain':
         # link
         p.drawRoundedRect(QRectF(m, m + 4, 7, 5), 2, 2)
@@ -150,6 +159,7 @@ TOOLBAR_SPEC = {
     'return_demo': ('return', '返回原工程'),
     'camera': ('camera', '相机管理'),
     'comm': ('comm', '通信管理（设备 / 收发 / 心跳）'),
+    'recipe': ('recipe', '产线配方 / 一键换型'),
     'host': ('host', '一键套用上位机运行壳'),
     'chain': ('chain', '插入生产任务建议链'),
     'var': ('var', '全局 / 流程变量'),

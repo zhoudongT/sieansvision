@@ -97,3 +97,10 @@ node scripts/smoke-ninepoint-comm-alarmexport-e2e.cjs
 
 ## open-and-run-tcp-sim.sieans
 打开即跑 · TCP 环回联调。先在通信管理「TCP 测试」启动环回模拟器(:19880)，再单次或发 RUN。无现场硬件。
+
+## 细妆⑬ 相关入口
+
+- 工具 → **产线配方 / 换型**：对本方案参数快照一键换型，或从本目录/模板整案加载。
+- 几何直线查找 → **多卡尺 ROI 编辑器**：画布拖 ROI + 卡尺预览。
+- 工具 → **真机 Comm 验收壳**：对环回 :19880 干跑协议清单（可改 Host/Port）。
+- HMI **结果表**：多列历史 + 导出 CSV。
