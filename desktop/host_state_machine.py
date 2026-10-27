@@ -765,13 +765,24 @@ class HostStateMachineWidget(QWidget):
         self._alarm_sev_pin_badge.setMinimumWidth(18)
         self._alarm_sev_pin_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._alarm_sev_pin_badge.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._alarm_sev_pin_badge.setToolTip('钉住徽章 · 单击取消钉 · Alt+P 切换')
+        self._alarm_sev_pin_badge.setToolTip('钉住徽章 · 悬停见解钉 tip · 单击取消钉 · Alt+P')
         self._alarm_sev_pin_badge.setStyleSheet(
-            'background:transparent;color:#f0c040;border:none;font-size:11px;font-weight:700;'
+            'background:transparent;color:#f0c040;border:1px solid transparent;'
+            'border-radius:3px;font-size:11px;font-weight:700;padding:0 3px;'
         )
         self._alarm_sev_pin_badge.mousePressEvent = (
             lambda e: self._on_sev_pin_badge_clicked(e)
         )
+        self._alarm_sev_pin_badge.enterEvent = (
+            lambda e: self._on_sev_pin_badge_enter(e)
+        )
+        self._alarm_sev_pin_badge.leaveEvent = (
+            lambda e: self._on_sev_pin_badge_leave(e)
+        )
+        self._sev_pin_badge_pulse_on = False
+        self._sev_pin_badge_pulse_timer = QTimer(self)
+        self._sev_pin_badge_pulse_timer.setInterval(280)
+        self._sev_pin_badge_pulse_timer.timeout.connect(self._on_sev_pin_badge_pulse)
         self._alarm_sev_pin_badge.hide()
         chip_row.addWidget(self._alarm_sev_pin_badge)
         chip_hint = QLabel('芯片')
@@ -849,7 +860,13 @@ class HostStateMachineWidget(QWidget):
         # wave29: Alt+L 全局态提示 — overlay on host (not tab-bound)
         # wave30: toast 历史条（最近 N 次切窗）
         self._liaison_toast_history = []
+        # wave34: 容量可配（3–12，默认 5）
         self._liaison_toast_history_max = 5
+        try:
+            raw_cap = int(self._host_settings().value('host/liaisonToastHistMax', 5) or 5)
+            self._liaison_toast_history_max = max(3, min(12, raw_cap))
+        except Exception:
+            self._liaison_toast_history_max = 5
         self._liaison_hotkey_toast = QLabel(self)
         self._liaison_hotkey_toast.setObjectName('hostLiaisonHotkeyToast')
         self._liaison_hotkey_toast.setStyleSheet(
@@ -866,7 +883,9 @@ class HostStateMachineWidget(QWidget):
         )
         self._liaison_toast_history_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._liaison_toast_history_bar.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._liaison_toast_history_bar.setToolTip('单击某档回切 · 右键清空 · 容量见 tip')
+        self._liaison_toast_history_bar.setToolTip(
+            f'单击回切 · 右键清空 · 中键调容量（当前 {self._liaison_toast_history_max}）'
+        )
         self._liaison_toast_history_bar.mousePressEvent = (
             lambda e: self._on_liaison_toast_history_clicked(e)
         )
@@ -1106,7 +1125,7 @@ class HostStateMachineWidget(QWidget):
             hbar.setText(f'切窗史 · {htext}')
             max_n = int(getattr(self, '_liaison_toast_history_max', 5) or 5)
             hbar.setToolTip(
-                f'容量 {len(hist)}/{max_n} · 单击某档回切 · 右键清空史'
+                f'容量 {len(hist)}/{max_n} · 单击回切 · 右键清空 · 中键调容量'
             )
             hbar.adjustSize()
             try:
@@ -1148,6 +1167,86 @@ class HostStateMachineWidget(QWidget):
         used = len(getattr(self, '_liaison_toast_history', None) or [])
         max_n = int(getattr(self, '_liaison_toast_history_max', 5) or 5)
         return (used, max_n)
+
+    def set_liaison_toast_history_max(self, n: int, *, persist: bool = True) -> int:
+        """wave34: 配置 toast 切窗史容量（3–12）."""
+        n = max(3, min(12, int(n or 5)))
+        self._liaison_toast_history_max = n
+        hist = getattr(self, '_liaison_toast_history', None)
+        secs = getattr(self, '_liaison_toast_history_secs', None)
+        if hist is not None and len(hist) > n:
+            del hist[:-n]
+        if secs is not None and len(secs) > n:
+            del secs[:-n]
+        if persist:
+            try:
+                self._host_settings().setValue('host/liaisonToastHistMax', n)
+            except Exception:
+                pass
+        hbar = getattr(self, '_liaison_toast_history_bar', None)
+        if hbar is not None:
+            used = len(hist or [])
+            try:
+                hbar.setToolTip(
+                    f'容量 {used}/{n} · 单击回切 · 右键清空 · 中键调容量'
+                )
+            except Exception:
+                pass
+        return n
+
+    def cycle_liaison_toast_history_max(self) -> int:
+        """wave34: 中键循环容量 3/5/8/12."""
+        presets = (3, 5, 8, 12)
+        cur = int(getattr(self, '_liaison_toast_history_max', 5) or 5)
+        try:
+            nxt = presets[(presets.index(cur) + 1) % len(presets)]
+        except ValueError:
+            nxt = 5
+        return self.set_liaison_toast_history_max(nxt)
+
+    def _flash_host_toast(self, text: str = '', *, ms: int = 1800, kind: str = 'ok') -> bool:
+        """wave34: 通用主机短 toast（不推切窗史）."""
+        toast = getattr(self, '_liaison_hotkey_toast', None)
+        if toast is None:
+            return False
+        text = (text or '').strip()
+        if not text:
+            return False
+        styles = {
+            'ok': (
+                'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                'border-radius:3px;padding:4px 10px;font-size:11px;font-weight:700;'
+            ),
+            'pin': (
+                'background:#3a3420;color:#f0c040;border:1px solid #f0c040;'
+                'border-radius:3px;padding:4px 10px;font-size:11px;font-weight:700;'
+            ),
+            'info': (
+                'background:#1c2a3a;color:#9ec9f0;border:1px solid #3a5a7a;'
+                'border-radius:3px;padding:4px 10px;font-size:11px;font-weight:700;'
+            ),
+        }
+        try:
+            toast.setStyleSheet(styles.get(kind, styles['ok']))
+            toast.setText(text)
+            toast.setToolTip(text)
+            toast.adjustSize()
+            tw = max(toast.sizeHint().width() + 8, 140)
+            th = max(toast.sizeHint().height() + 4, 22)
+            x = max(8, (self.width() - tw) // 2)
+            toast.setGeometry(x, 8, tw, th)
+            toast.raise_()
+            toast.show()
+        except Exception:
+            return False
+        timer = getattr(self, '_liaison_hotkey_toast_timer', None)
+        if timer is None:
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(self._hide_liaison_hotkey_toast)
+            self._liaison_hotkey_toast_timer = timer
+        timer.start(int(ms or 1800))
+        return True
 
     def set_liaison_window_sec(self, sec: int, *, persist: bool = True):
         combo = getattr(self, '_liaison_window', None)
@@ -1718,15 +1817,19 @@ class HostStateMachineWidget(QWidget):
         return True
 
     def _on_sev_pin_hotkey(self):
-        """wave33: Alt+P 切换钉住当前严重度筛."""
+        """wave33–34: Alt+P 切换钉住 + toast 反馈."""
         if getattr(self, '_alarm_sev_pinned', False):
             self.pin_alarm_severity_filter(False)
+            msg = 'Alt+P · 取消钉住'
         else:
             self.pin_alarm_severity_filter(True, key=self.alarm_severity_filter())
+            msg = f'Alt+P · 钉住 {self._alarm_sev_pinned_key}'
         try:
-            self._log_line(
-                f'Alt+P · {"钉住 " + self._alarm_sev_pinned_key if self._alarm_sev_pinned else "取消钉住"}'
-            )
+            self._log_line(msg)
+        except Exception:
+            pass
+        try:
+            self._flash_host_toast(msg, kind='pin')
         except Exception:
             pass
 
@@ -1740,6 +1843,69 @@ class HostStateMachineWidget(QWidget):
             pass
         if getattr(self, '_alarm_sev_pinned', False):
             self.pin_alarm_severity_filter(False)
+            try:
+                self._flash_host_toast('徽章 · 取消钉住', kind='pin')
+            except Exception:
+                pass
+
+    def _on_sev_pin_badge_enter(self, event=None):
+        """wave34: 悬停解钉 tip + 脉冲动画."""
+        badge = getattr(self, '_alarm_sev_pin_badge', None)
+        if badge is None or not getattr(self, '_alarm_sev_pinned', False):
+            return
+        try:
+            QToolTip.showText(
+                badge.mapToGlobal(QPoint(0, badge.height())),
+                '单击解钉 · Alt+P',
+                badge,
+            )
+        except Exception:
+            pass
+        self._sev_pin_badge_pulse_on = False
+        timer = getattr(self, '_sev_pin_badge_pulse_timer', None)
+        if timer is not None and not timer.isActive():
+            timer.start()
+        self._on_sev_pin_badge_pulse()
+
+    def _on_sev_pin_badge_leave(self, event=None):
+        """wave34: 离开停止脉冲."""
+        timer = getattr(self, '_sev_pin_badge_pulse_timer', None)
+        if timer is not None and timer.isActive():
+            timer.stop()
+        badge = getattr(self, '_alarm_sev_pin_badge', None)
+        if badge is not None:
+            try:
+                badge.setStyleSheet(
+                    'background:transparent;color:#f0c040;border:1px solid transparent;'
+                    'border-radius:3px;font-size:11px;font-weight:700;padding:0 3px;'
+                )
+            except Exception:
+                pass
+        try:
+            QToolTip.hideText()
+        except Exception:
+            pass
+
+    def _on_sev_pin_badge_pulse(self):
+        """wave34: 悬停脉冲边框."""
+        badge = getattr(self, '_alarm_sev_pin_badge', None)
+        if badge is None:
+            return
+        on = not bool(getattr(self, '_sev_pin_badge_pulse_on', False))
+        self._sev_pin_badge_pulse_on = on
+        try:
+            if on:
+                badge.setStyleSheet(
+                    'background:#3a3420;color:#ffe08a;border:1px solid #f0c040;'
+                    'border-radius:3px;font-size:11px;font-weight:700;padding:0 3px;'
+                )
+            else:
+                badge.setStyleSheet(
+                    'background:transparent;color:#f0c040;border:1px solid #806020;'
+                    'border-radius:3px;font-size:11px;font-weight:700;padding:0 3px;'
+                )
+        except Exception:
+            pass
 
     def _on_sev_bubble_clicked(self, event=None, key: str = 'all'):
         """兼容冒烟/旧 API：按键路由到 press（无 release）."""
@@ -1896,9 +2062,23 @@ class HostStateMachineWidget(QWidget):
             except Exception:
                 pass
             self._log_line(f'已另存胶片 path CSV · {len(rows)} · {path}')
+            try:
+                from pathlib import Path as _P2
+                name = _P2(path).name
+            except Exception:
+                name = path
+            try:
+                self._flash_host_toast(
+                    f'已另存 CSV · {len(rows)} · {name}', kind='ok')
+            except Exception:
+                pass
         except Exception as err:
             try:
                 self._log_line(f'另存失败：{err}')
+            except Exception:
+                pass
+            try:
+                self._flash_host_toast(f'另存失败 · {err}', kind='info')
             except Exception:
                 pass
             return ''
@@ -1926,11 +2106,19 @@ class HostStateMachineWidget(QWidget):
         return True
 
     def _on_liaison_toast_history_clicked(self, event=None):
-        """wave31–32: 左键回切时段 · 右键清空史."""
+        """wave31–34: 左键回切 · 右键清空 · 中键调容量."""
         try:
             if event is not None and hasattr(event, 'button'):
                 if event.button() == Qt.MouseButton.RightButton:
                     self.clear_liaison_toast_history()
+                    return
+                if event.button() == Qt.MouseButton.MiddleButton:
+                    n = self.cycle_liaison_toast_history_max()
+                    try:
+                        self._flash_host_toast(f'切窗史容量 → {n}', kind='info')
+                        self._log_line(f'切窗史容量 → {n}')
+                    except Exception:
+                        pass
                     return
                 if event.button() not in (Qt.MouseButton.LeftButton,):
                     return

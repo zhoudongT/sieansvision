@@ -56,6 +56,7 @@ def main():
     s = QSettings('SIEANS', 'VisionDesktop')
     s.setValue('host/alarmSevFilter', 'all')
     s.setValue('host/alarmSevPinned', '')
+    s.setValue('host/liaisonToastHistMax', 5)
     s.sync()
     host = HostStateMachineWidget(compact=True)
     host.show()

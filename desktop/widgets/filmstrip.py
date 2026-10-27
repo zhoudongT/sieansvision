@@ -1311,17 +1311,21 @@ class CompareThumbStrip(QWidget):
             pass
 
     def _build_undo_clear_preset_menu(self):
-        """wave33: 400/650/1000/1500 时长预设菜单."""
+        """wave33–34: 时长预设菜单；标记默认 650ms."""
         presets = (400, 650, 1000, 1500)
+        default_ms = 650
         cur = self.undo_clear_long_ms()
         menu = QMenu(self)
         menu.setObjectName('compareThumbUndoClearPresetMenu')
         for ms in presets:
             lab = f'{ms} ms'
+            if ms == default_ms:
+                lab = f'{lab}（默认）'
             if ms == cur:
                 lab = f'✓ {lab}'
             act = QAction(lab, self)
             act.setData(ms)
+            act.setProperty('isDefault', ms == default_ms)
             act.triggered.connect(lambda *_a, m=ms: self._apply_undo_clear_preset(m))
             menu.addAction(act)
         return menu

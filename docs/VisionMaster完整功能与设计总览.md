@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㉞ · pin悬停解钉动画 · CSV另存toast · 容量可配 · 预设标默认 · Alt+P toast · 2026-10-28】
+
+- **pin badge 悬停解钉 tip 动画**：悬停 `hostAlarmSevPinBadge` → tip「单击解钉」+ 金边脉冲（`_sev_pin_badge_pulse_timer`）；离开关闭。
+- **CSV 另存后 toast**：`save_all_alarm_film_paths_csv` 成功 → `_flash_host_toast`「已另存 CSV · N · 文件名」；失败亦 toast。
+- **toast-hist 容量可配**：`host/liaisonToastHistMax`（3/5/8/12）；中键循环；`set_liaison_toast_history_max` / `cycle_liaison_toast_history_max`；tip 显示容量与中键提示。
+- **preset 菜单标记默认**：⊘ 右键菜单 650 标「（默认）」+ `isDefault`；当前项仍 ✓。
+- **Alt+P toast 反馈**：钉住/取消钉时 `_flash_host_toast`「已钉住 · {key}」/「已取消钉住」。
+- **冒烟**：`smoke-wave34-pinhover-csvtoast-histcap-presetdefault-ptoast-e2e`（另回归 wave33）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆㉝ · pin徽章 · CSV另存记目录 · toast容量tip · 时长预设菜单 · Alt+P钉住 · 2026-10-28】
 
 - **pin badge on sev chip**：钉住时芯片文案加 📌、金边；行尾 `hostAlarmSevPinBadge` 显示 📌档，单击取消钉。
