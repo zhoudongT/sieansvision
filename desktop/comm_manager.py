@@ -1,7 +1,7 @@
 """通信管理 — VisionMaster p=10 统一设备/收发/心跳壳.
 
 集中配置通讯设备（TCP/UDP/串口/MQTT/Modbus…）；流程内收发算子可引用设备名。
-持久化到 project.commManager；运行侧仍走既有 industrial / socket 算子。
+持久化到 project.commManager；流程 send/receive_data 经引擎 lib/comm-bus（Local Bus / TCP·UDP socket）。
 """
 from copy import deepcopy
 import socket
@@ -80,7 +80,7 @@ def read_project_variable(project, raw_ref, default=''):
 
 
 PROTOCOLS = [
-    'TCP Client', 'TCP Server', 'UDP', 'Serial', 'MQTT', 'Modbus TCP', 'Modbus RTU', 'OPC UA', 'S7',
+    'Local Bus', 'TCP Client', 'TCP Server', 'UDP', 'Serial', 'MQTT', 'Modbus TCP', 'Modbus RTU', 'OPC UA', 'S7',
 ]
 
 
@@ -103,6 +103,21 @@ def ensure_comm_manager(project):
     cm.setdefault('sendEvents', [])
     cm.setdefault('heartbeat', dict(enabled=False, intervalMs=5000, payload='HB'))
     cm.setdefault('response', dict(enabled=False, timeoutMs=3000, ack='OK'))
+    # Seed LocalLoop so send/receive_data can demo without external peers.
+    devices = cm.get('devices')
+    if isinstance(devices, list):
+        names = {(d.get('name') or '') for d in devices if isinstance(d, dict)}
+        if 'LocalLoop' not in names and not devices:
+            devices.append(dict(
+                name='LocalLoop', protocol='Local Bus', host='', port=0,
+                enabled=True, remark='进程内事件总线（桌面演示；流程 send↔receive 同进程互通）',
+            ))
+        elif 'LocalLoop' not in names:
+            # Prefer keeping user devices; still offer LocalLoop at front for demos
+            devices.insert(0, dict(
+                name='LocalLoop', protocol='Local Bus', host='', port=0,
+                enabled=True, remark='进程内事件总线（桌面演示）',
+            ))
     return cm
 
 
@@ -274,7 +289,7 @@ class CommManagerDialog(QDialog):
         root.addWidget(title)
         hint = QLabel(
             '对齐 VisionMaster「通信管理」：集中配置设备与收发事件；'
-            '流程中的 TCP/串口/MQTT/Modbus 算子可引用此处设备名。配置随方案保存。'
+            '流程中的「发送/接收数据」与 TCP/串口算子可引用此处设备名；Local Bus=进程内事件总线（同流程 send↔recv）。配置随方案保存。'
         )
         hint.setObjectName('dialogHint')
         hint.setWordWrap(True)

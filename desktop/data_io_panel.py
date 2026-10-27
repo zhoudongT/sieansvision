@@ -14,6 +14,12 @@ from desktop.widgets.switch import OrangeSwitch
 
 
 def _devices(project):
+    if isinstance(project, dict):
+        try:
+            from desktop.comm_manager import ensure_comm_manager
+            ensure_comm_manager(project)
+        except Exception:
+            pass
     cm = (project or {}).get('commManager') or {}
     devices = cm.get('devices') or cm.get('deviceList') or []
     out = []
@@ -89,7 +95,8 @@ class DataIoPanel(QWidget):
         title = '发送数据' if self.op == 'send_data' else '接收数据'
         hint = QLabel(
             f'对齐 VisionMaster「{title}」：绑定通信管理中的设备；'
-            '未选设备时红叹号。实际收发依赖通信后端（设计态可完整配置）。'
+            '未选设备时红叹号。运行时走引擎 Comm 事件总线：'
+            'Local Bus 进程内队列；TCP/UDP 走 socket（不通则回显模拟）。'
         )
         hint.setWordWrap(True)
         hint.setStyleSheet('color:#666;padding:8px 10px 4px;')
@@ -202,7 +209,7 @@ class DataIoPanel(QWidget):
             crlf.toggled.connect(lambda c: self._set_param('appendCrLf', bool(c)))
             form.addRow('追加 CRLF', crlf)
 
-        tip = QLabel('可在「工具 → 通信管理」中维护设备列表。')
+        tip = QLabel('可在「工具 → 通信管理」中维护设备；默认 LocalLoop=进程内总线。')
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
         return w
@@ -212,9 +219,9 @@ class DataIoPanel(QWidget):
         form = QFormLayout(w)
         form.setContentsMargins(10, 10, 10, 10)
         if self.op == 'receive_data':
-            tip = QLabel('运行结果：payload / bytes / device / status。')
+            tip = QLabel('运行结果：payload / bytes / device / status / path（inprocess|tcp|udp|echo）。')
         else:
-            tip = QLabel('运行结果：sent / bytes / device / status。')
+            tip = QLabel('运行结果：sent / bytes / device / status / path（inprocess|tcp|udp-simulator）。')
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)

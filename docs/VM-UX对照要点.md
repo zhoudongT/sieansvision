@@ -909,6 +909,13 @@ Tab 组合（不同课略有出入，改造应都支持）：
 
 
 
+## 【2026-10-27 续】引擎 Comm 事件总线
+
+- **`lib/comm-bus.cjs`**：`send_data` / `receive_data` 运行时走进程内队列（Local Bus / LocalLoop）；TCP/UDP 设备优先真实 socket，不通则回显模拟并把 echo 再入队。
+- **CommManager**：协议增「Local Bus」；空设备列表自动种 `LocalLoop`；收发事件变量写回在 receive 路径同步。
+- **runtime**：`receive_data`/`send_data` 改为 `await` 总线（可取消）；同步 flow-control 桩仅保留兼容说明。
+- 仍无机械手 SDK；桌面 demo 同流程 send→receive 即可互通。
+
 ## 【2026-10-27 续】Comm 变量写回 · 上位机一键套用
 
 - **CommManager**：TCP/UDP/串口测试读回 → flow/global 变量（`flow.x`/`global.x` 或作用域下拉）；接收事件「模拟写回」；发送事件「从变量填报文」；testPrefs 记住上次变量。
