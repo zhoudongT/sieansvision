@@ -426,6 +426,16 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆65 · pin频率预设导入冲突预览/一键合并 · 忽略名单合并策略快捷/冲突旁标 · DST复检批量/导出筛选结果 · A/B默认槽改绑冲突检测/最近快捷史 · jitter闪完音效/旁标闪完计数清零 · 2026-10-28】
+
+- **pin 频率预设导入冲突预览/一键合并**：`preview_…_badge_freq_import_conflicts`（name 重叠 / ms 不一致）；`merge_…_badge_freq_import`（replace|merge|prefer_incoming|prefer_existing）；角标菜单「导入冲突预览… / 一键合并导入…」。
+- **忽略名单合并策略快捷/冲突旁标**：`…_merge_strategy_shortcut`（默认 Ctrl+Alt+M）；`cycle_…_merge_strategy`；`refresh_…_merge_strategy_conflict_badge`（角色键重叠旁标）；忽略菜单「策略快捷 / 冲突旁标」。
+- **DST 复检批量/导出筛选结果**：`recheck_…_conflict_history_batch`；`export_…_conflict_history_filtered`；历史菜单「批量复检 / 导出筛选…」。
+- **A/B 默认槽改绑冲突检测/最近快捷史**：`detect_…_default_slot_shortcut_conflicts`；`list_/remember_…_default_slot_shortcut_history`；改绑对话框检测冲突并记史；槽位对话框 smoke 含 `shortcut_history`。
+- **jitter 闪完音效/旁标闪完计数清零**：`…_flash_done_sound`（`QApplication.beep`）；`…_flash_done_clear_count`（闪完后置 flash_count=1）；旁标菜单「闪完音效 / 闪完清零计次」。
+- **验证**：`scripts/smoke-wave97-…-e2e.py` 6/6；regress wave96 6/6。非硬件约 **~93.5%**。
+
+
 ## 【细妆64 · pin频率预设改名/另存当前ms为档 · 忽略名单导入分组JSON/角色合并策略 · DST冲突历史点选复检/按which筛 · A/B默认槽快捷可改绑/启动开关 · jitter闪完toast文案可配/仅末次提示 · 2026-10-28】
 
 - **pin 频率预设改名/另存当前 ms 为档**：`rename_…_badge_freq_preset`；`save_…_badge_freq_preset_as`；角标菜单「改名… / 另存当前为档…」。
