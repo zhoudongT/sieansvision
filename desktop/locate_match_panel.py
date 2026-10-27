@@ -41,6 +41,12 @@ def normalize_locate_params(params=None):
     p.setdefault('scoreType', 'ncc')      # ncc | sad
     p.setdefault('subPixel', True)
     p.setdefault('timeoutMs', 3000)
+    p.setdefault('scaleStart', 1.0)
+    p.setdefault('scaleEnd', 1.0)
+    p.setdefault('scaleStep', 0.1)
+    p.setdefault('contrast', 20)
+    p.setdefault('maxOverlap', 0.5)
+    p.setdefault('sortBy', 'score')
     return p
 
 
@@ -214,6 +220,7 @@ class LocateMatchPanel(QWidget):
         def _mark():
             self._set_param('hasTemplate', True)
             status.setText('模板状态：已就绪（已创建/载入）')
+            status.setStyleSheet('font-weight:600;color:#2e7d32;')
 
         def _clear():
             path_edit.clear()
@@ -221,6 +228,7 @@ class LocateMatchPanel(QWidget):
             self.params['hasTemplate'] = False
             self.params['templateReady'] = False
             status.setText('模板状态：未配置')
+            status.setStyleSheet('font-weight:600;color:#c62828;')
             self._emit()
 
         load_btn.clicked.connect(_load)
@@ -297,7 +305,37 @@ class LocateMatchPanel(QWidget):
             timeout.valueChanged.connect(lambda v: self._set_param('timeoutMs', int(v)))
             form.addRow('超时(ms)', timeout)
 
-        tip = QLabel('对应 VM「运行参数」：分数/个数/角度；灰度模式另含级数/评分/亚像素/超时。')
+        s0 = QDoubleSpinBox(); s0.setRange(0.1, 5.0); s0.setDecimals(3); s0.setSingleStep(0.05)
+        s0.setValue(float(self.params.get('scaleStart') or 1.0))
+        s0.valueChanged.connect(lambda v: self._set_param('scaleStart', float(v)))
+        form.addRow('起始缩放', s0)
+        s1 = QDoubleSpinBox(); s1.setRange(0.1, 5.0); s1.setDecimals(3); s1.setSingleStep(0.05)
+        s1.setValue(float(self.params.get('scaleEnd') or 1.0))
+        s1.valueChanged.connect(lambda v: self._set_param('scaleEnd', float(v)))
+        form.addRow('终止缩放', s1)
+        ss = QDoubleSpinBox(); ss.setRange(0.01, 1.0); ss.setDecimals(3)
+        ss.setValue(float(self.params.get('scaleStep') or 0.1))
+        ss.valueChanged.connect(lambda v: self._set_param('scaleStep', float(v)))
+        form.addRow('缩放步长', ss)
+        ov = QDoubleSpinBox(); ov.setRange(0, 1); ov.setDecimals(2)
+        ov.setValue(float(self.params.get('maxOverlap') or 0.5))
+        ov.valueChanged.connect(lambda v: self._set_param('maxOverlap', float(v)))
+        form.addRow('最大重叠', ov)
+        sort = QComboBox()
+        for k, lab in (('score', '按分数'), ('x', '按 X'), ('y', '按 Y')):
+            sort.addItem(lab, k)
+        sort.setCurrentIndex(max(0, sort.findData(self.params.get('sortBy') or 'score')))
+        sort.currentIndexChanged.connect(lambda _: self._set_param('sortBy', sort.currentData()))
+        form.addRow('排序方式', sort)
+        if (self.params.get('matchMode') or 'fast') == 'fast':
+            ct = QSpinBox(); ct.setRange(0, 255); ct.setValue(int(self.params.get('contrast') or 20))
+            ct.valueChanged.connect(lambda v: self._set_param('contrast', int(v)))
+            form.addRow('对比度阈值', ct)
+            timeout = QSpinBox(); timeout.setRange(0, 60000)
+            timeout.setValue(int(self.params.get('timeoutMs') or 3000))
+            timeout.valueChanged.connect(lambda v: self._set_param('timeoutMs', int(v)))
+            form.addRow('超时(ms)', timeout)
+        tip = QLabel('对应 VM「运行参数」：分数/个数/角度/缩放；灰度另含级数/评分/亚像素。')
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)

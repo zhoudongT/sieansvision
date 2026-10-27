@@ -146,6 +146,27 @@ class ImageSourceForm(QWidget):
                 pass
         cfg = self._cfg
 
+        from desktop.config_status import source_incomplete
+        self._cfg_warn = QLabel()
+        self._cfg_warn.setObjectName('incompleteBanner')
+        self._cfg_warn.setWordWrap(True)
+        if source_incomplete(cfg):
+            mode = cfg.get('mode') or 'local'
+            if mode == 'local':
+                tip = '⚠ 组件参数未配置完整：请在下方胶片条添加本地图像（或点 + / 📁）。'
+            elif mode == 'camera':
+                tip = '⚠ 组件参数未配置完整：请选择关联相机（📷 打开相机管理）。'
+            else:
+                tip = '⚠ 组件参数未配置完整：请在相机管理中连接 SDK 设备。'
+            self._cfg_warn.setText(tip)
+            self._cfg_warn.setStyleSheet('color:#c62828;background:#ffebee;padding:6px 8px;border-radius:3px;')
+            self._cfg_warn.setVisible(True)
+        else:
+            self._cfg_warn.setText('组件配置完成')
+            self._cfg_warn.setStyleSheet('color:#2e7d32;padding:4px 8px;')
+            self._cfg_warn.setVisible(True)
+        self.root.addWidget(self._cfg_warn)
+
         basic = QGroupBox('基本参数')
         basic.setObjectName('propertySection')
         form = QFormLayout(basic)
@@ -212,6 +233,8 @@ class ImageSourceForm(QWidget):
         cam_wrap = QWidget()
         cam_wrap.setLayout(cam_row)
         cam_form.addRow('关联相机', cam_wrap)
+        self.camera_combo.currentIndexChanged.connect(
+            lambda: self._audit('cameraId', self.camera_combo.currentData() or ''))
         _dspin(cam_form, '控制曝光', cfg.get('exposure', 0.0), 0, 1e9,
                lambda v: self._audit('exposure', float(v)))
         _dspin(cam_form, '控制增益', cfg.get('gain', 0.0), 0, 1e6,
@@ -242,6 +265,8 @@ class ImageSourceForm(QWidget):
         sdk_wrap = QWidget()
         sdk_wrap.setLayout(sdk_row)
         sdk_layout.addWidget(sdk_wrap)
+        self.sdk_camera.currentIndexChanged.connect(
+            lambda: self._audit('cameraId', self.sdk_camera.currentData() or ''))
         tip = QLabel('外部进程 SyncRun 注入仍为后续扩展；当前主路径为 GenTL 会话取图。')
         tip.setWordWrap(True)
         tip.setObjectName('dialogHint')

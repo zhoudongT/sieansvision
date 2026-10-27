@@ -21,6 +21,7 @@ from desktop.theme import WORKBENCH_QSS
 from desktop.widgets import OperatorRail, FilmstripBar, MiniMap, WorkbenchStatusBar, FlowTabBar, AllFlowsPanel, OrangeSwitch
 from desktop.property_float import PropertyFloat
 from desktop.group_module import GroupBreadcrumb, normalize_group_params, group_bindings_ready, default_group_inner
+from desktop.config_status import project_incomplete_summary, node_needs_bang
 from desktop.image_source import normalize_source
 from desktop import scheme as flow_scheme
 from desktop.operator_hmi import OperatorHmiView
@@ -219,6 +220,7 @@ class MainWindow(QMainWindow):
         self.filmstrip.pathSelected.connect(self.load_filmstrip_path)
         self.filmstrip.listChanged.connect(self.filmstrip_list_changed)
         self.filmstrip.autoSwitchChanged.connect(self.filmstrip_auto_changed)
+        self.filmstrip.stopAtLastChanged.connect(self.filmstrip_stop_at_last_changed)
         self.filmstrip.runAllRequested.connect(self.run_all_images)
         rl.addWidget(self.filmstrip)
         # Keep ParameterPanel as hidden fallback for programmatic refresh; property float is primary
@@ -398,6 +400,7 @@ class MainWindow(QMainWindow):
         paths=list(p['sourceConfig'].get('images') or [])
         self.filmstrip.set_paths(paths, int(p['sourceConfig'].get('currentIndex') or 0))
         self.filmstrip.set_auto_switch(bool(p['sourceConfig'].get('autoSwitch')))
+        self.filmstrip.set_stop_at_last(bool(p['sourceConfig'].get('stopAtLast')))
         self.filmstrip.setVisible(p['sourceConfig'].get('mode','local')=='local')
         self.guard(lambda:self.document.commit(p))
 
@@ -420,6 +423,31 @@ class MainWindow(QMainWindow):
         p=deepcopy(self.document.project);p['steps']=[step if s['id']==step['id'] else s for s in p['steps']]
         self.guard(lambda:self.document.commit(p))
 
+    
+    def refresh_config_status(self):
+        """N4: 状态栏「组件参数未配置完整」与画布红叹号同源。"""
+        if not hasattr(self, 'wb_status'):
+            return
+        try:
+            ok, msg, bad = project_incomplete_summary(self.document.project)
+        except Exception:
+            ok, msg, bad = True, '组件配置完成', []
+        self.wb_status.set_config(msg, ok=ok)
+        if not ok and bad:
+            # tip names for first few
+            names = []
+            p = self.document.project
+            for sid in bad[:3]:
+                if sid == 'source':
+                    names.append('图像源')
+                else:
+                    step = next((s for s in (p.get('steps') or []) if s.get('id') == sid), None)
+                    names.append((step or {}).get('name') or sid)
+            more = '…' if len(bad) > 3 else ''
+            self.wb_status.config_label.setToolTip('未配置：' + '、'.join(names) + more)
+        else:
+            self.wb_status.config_label.setToolTip('')
+
     def document_changed(self):
         p=self.document.project
         try:flow_scheme.ensure_scheme(p)
@@ -435,11 +463,17 @@ class MainWindow(QMainWindow):
         if hasattr(self,'filmstrip'):
             self.filmstrip.thumbs.blockSignals(True)
             self.filmstrip.auto_switch.blockSignals(True)
+            if hasattr(self.filmstrip,'stop_at_last'):
+                self.filmstrip.stop_at_last.blockSignals(True)
             self.filmstrip.set_paths(list(cfg.get('images') or []), int(cfg.get('currentIndex') or 0))
             self.filmstrip.set_auto_switch(bool(cfg.get('autoSwitch')))
+            self.filmstrip.set_stop_at_last(bool(cfg.get('stopAtLast')))
             self.filmstrip.thumbs.blockSignals(False)
             self.filmstrip.auto_switch.blockSignals(False)
+            if hasattr(self.filmstrip,'stop_at_last'):
+                self.filmstrip.stop_at_last.blockSignals(False)
             self.filmstrip.setVisible(cfg.get('mode','local')=='local' and self.app_mode=='design')
+        self.refresh_config_status()
         if self.app_mode=='run' and hasattr(self,'operator_hmi'):
             self.operator_hmi.reload_layout(p)
 
@@ -763,7 +797,9 @@ class MainWindow(QMainWindow):
         tool_ms=round(elapsed*0.15,2) if elapsed else 0
         algo_ms=round(elapsed*0.75,2) if elapsed else 0
         self.wb_status.set_timing(process_ms, tool_ms, algo_ms)
-        self.wb_status.set_config('组件配置完成', ok=result.get('state')!='failed')
+        self.refresh_config_status()
+        if result.get('state')=='failed':
+            self.wb_status.set_config('运行失败 · 见日志', ok=False)
         # A5: update active flow card stats
         try:
             p=self.document.project
@@ -948,6 +984,14 @@ class MainWindow(QMainWindow):
         p['sourceConfig']=cfg
         self.guard(lambda:self.document.commit(p))
         self.log(f'添加模块: 流程1.图像源1 · 本地图 {len(paths)} 张' if paths else '图像源本地列表已清空')
+
+    def filmstrip_stop_at_last_changed(self, enabled):
+        if self.busy:return
+        p=deepcopy(self.document.project)
+        cfg=normalize_source(p.get('sourceConfig'))
+        cfg['stopAtLast']=bool(enabled)
+        p['sourceConfig']=cfg
+        self.guard(lambda:self.document.commit(p))
 
     def filmstrip_auto_changed(self, enabled):
         if self.busy:return

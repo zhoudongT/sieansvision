@@ -233,6 +233,17 @@ class GlobalTriggersDialog(QDialog):
         self.tabs.addTab(self.event_table, '事件触发')
         self.tabs.addTab(self.string_table, '字符串触发')
         root.addWidget(self.tabs, 1)
+        test = QHBoxLayout()
+        test.addWidget(QLabel('试匹配（字符串）'))
+        self.test_input = QLineEdit()
+        self.test_input.setPlaceholderText('粘贴收到的报文…')
+        test.addWidget(self.test_input, 1)
+        test_btn = QPushButton('试匹配')
+        test_btn.clicked.connect(self._test_match)
+        test.addWidget(test_btn)
+        self.test_result = QLabel('')
+        test.addWidget(self.test_result)
+        root.addLayout(test)
 
         bar = QHBoxLayout()
         save = QPushButton('确定')
@@ -248,6 +259,19 @@ class GlobalTriggersDialog(QDialog):
         gt = ensure_triggers(deepcopy(document.project))
         self.event_table.set_rows(gt.get('events') or [])
         self.string_table.set_rows(gt.get('strings') or [])
+
+    def _test_match(self):
+        text = self.test_input.text()
+        hits = []
+        for i, row in enumerate(self.string_table.rows(), 1):
+            if _TriggerTable.match_string(text, row):
+                hits.append(f"#{i}→{row.get('commandType') or '?'}")
+        if hits:
+            self.test_result.setText('命中：' + '，'.join(hits))
+            self.test_result.setStyleSheet('color:#2e7d32;font-weight:600;')
+        else:
+            self.test_result.setText('无命中')
+            self.test_result.setStyleSheet('color:#c62828;')
 
     def accept_save(self):
         p = deepcopy(self.document.project)

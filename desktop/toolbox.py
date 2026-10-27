@@ -91,7 +91,7 @@ def operator_icon(key, definition, size=28):
 
 class TileDelegate(QStyledItemDelegate):
     """Compact industrial tiles — flatter, tighter than marketing cards."""
-    CELL_W, CELL_H = 76, 62
+    CELL_W, CELL_H = 72, 58
 
     def paint(self, painter, option, index):
         painter.save()
@@ -110,13 +110,13 @@ class TileDelegate(QStyledItemDelegate):
         painter.drawRoundedRect(QRectF(rect), 2, 2)
         icon = index.data(Qt.ItemDataRole.DecorationRole)
         if icon:
-            icon.paint(painter, rect.center().x() - 14, rect.top() + 4, 28, 28)
+            icon.paint(painter, rect.center().x() - 12, rect.top() + 3, 24, 24)
         font = QFont(option.font)
         font.setPixelSize(10)
         font.setWeight(QFont.Weight.Normal)
         painter.setFont(font)
         painter.setPen(QColor('#d8d8d8'))
-        text_rect = rect.adjusted(3, 34, -3, -2)
+        text_rect = rect.adjusted(2, 30, -2, -1)
         painter.setClipRect(text_rect)
         painter.drawText(
             text_rect,
@@ -141,7 +141,7 @@ class OperatorTiles(QListWidget):
         self.setWrapping(True)
         self.setWordWrap(True)
         self.setIconSize(QSize(28, 28))
-        self.setGridSize(QSize(76, 62))
+        self.setGridSize(QSize(72, 58))
         self.setSpacing(0)
         self.setDragEnabled(True)
         self.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
@@ -165,8 +165,8 @@ class OperatorTiles(QListWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        columns = max(1, self.viewport().width() // 76)
-        height = math.ceil(self.count() / columns) * 62 + 4
+        columns = max(1, self.viewport().width() // 72)
+        height = math.ceil(self.count() / columns) * 58 + 4
         if self.height() != height:
             self.setFixedHeight(height)
 

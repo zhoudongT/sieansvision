@@ -114,6 +114,29 @@ def step_incomplete(step, project=None) -> bool:
         return not str(params.get('code') or '').strip()
     if op == 'production_task':
         return not str(params.get('taskName') or '').strip()
+    if op == 'preprocess':
+        return not bool(step.get('imageFrom'))
+    if op == 'defects':
+        return not (bool(step.get('imageFrom')) and (
+            params.get('referencePath') or params.get('hasReference') or step.get('reference')
+        ))
+    if op == 'barcode':
+        return not bool(step.get('imageFrom'))
+    if op == 'yolo':
+        return not (bool(step.get('imageFrom')) and str(params.get('model') or '').strip())
+    if op == 'delay':
+        return False  # defaults are valid
+    if op == 'branch_merge':
+        return False
+    if op == 'loop':
+        return not str(params.get('subflowId') or params.get('targetFlow') or '').strip()
+    if op == 'subflow':
+        return not str(params.get('subflowId') or '').strip()
+    if op in ('camera_capture',):
+        return not bool(params.get('deviceId') or params.get('cameraId'))
+    # generic image ops: bang if no imageFrom when they consume images
+    if op in ('fixture', 'caliper', 'blob', 'ocr'):
+        return not bool(step.get('imageFrom'))
     return False
 
 
@@ -123,3 +146,19 @@ def node_needs_bang(project, node_id: str) -> bool:
         return source_incomplete(project.get('sourceConfig'))
     step = next((s for s in (project.get('steps') or []) if s.get('id') == node_id), None)
     return step_incomplete(step, project)
+
+
+def project_incomplete_summary(project) -> tuple:
+    """Return (ok: bool, message: str, incomplete_ids: list)."""
+    project = project or {}
+    bad = []
+    if node_needs_bang(project, 'source'):
+        bad.append('source')
+    for step in project.get('steps') or []:
+        sid = step.get('id')
+        if sid and node_needs_bang(project, sid):
+            bad.append(sid)
+    if not bad:
+        return True, '组件配置完成', []
+    n = len(bad)
+    return False, f'组件参数未配置完整（{n}）', bad

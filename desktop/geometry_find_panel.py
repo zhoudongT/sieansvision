@@ -49,6 +49,10 @@ def normalize_geometry_params(params=None, feature=None):
     p.setdefault('judgeEnable', False)
     p.setdefault('judgeMin', 0.0)
     p.setdefault('judgeMax', 99999.0)
+    p.setdefault('searchDir', 'left_right')
+    p.setdefault('caliperCount', 10)
+    p.setdefault('cannyLow', 50)
+    p.setdefault('cannyHigh', 150)
     return p
 
 
@@ -213,9 +217,28 @@ class GeometryFindPanel(QWidget):
             ang.valueChanged.connect(lambda v: self._set_param('angleTolerance', float(v)))
             form.addRow('角度容差 (°)', ang)
 
+        sd = QComboBox()
+        for k, lab in (('left_right', '左→右'), ('right_left', '右→左'), ('top_bottom', '上→下'), ('bottom_top', '下→上')):
+            sd.addItem(lab, k)
+        sd.setCurrentIndex(max(0, sd.findData(self.params.get('searchDir') or 'left_right')))
+        sd.currentIndexChanged.connect(lambda _: self._set_param('searchDir', sd.currentData()))
+        form.addRow('搜索方向', sd)
+        cc = QSpinBox(); cc.setRange(1, 200); cc.setValue(int(self.params.get('caliperCount') or 10))
+        cc.valueChanged.connect(lambda v: self._set_param('caliperCount', int(v)))
+        form.addRow('卡尺数量', cc)
+        if feat in ('lines', 'edges'):
+            cl = QSpinBox(); cl.setRange(0, 255); cl.setValue(int(self.params.get('cannyLow') or 50))
+            cl.valueChanged.connect(lambda v: self._set_param('cannyLow', int(v)))
+            form.addRow('Canny 低', cl)
+            ch = QSpinBox(); ch.setRange(0, 255); ch.setValue(int(self.params.get('cannyHigh') or 150))
+            ch.valueChanged.connect(lambda v: self._set_param('cannyHigh', int(v)))
+            form.addRow('Canny 高', ch)
         inv = OrangeSwitch(bool(self.params.get('invert', False)))
         inv.toggled.connect(lambda c: self._set_param('invert', bool(c)))
         form.addRow('反色', inv)
+        tip = QLabel('未选输入源时画布显示红叹号（N4）。')
+        tip.setWordWrap(True); tip.setStyleSheet('color:#888;')
+        form.addRow(tip)
         return w
 
     def _result_tab(self):

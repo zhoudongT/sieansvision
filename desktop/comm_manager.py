@@ -299,7 +299,66 @@ class CommManagerDialog(QDialog):
         self.tcp_log.setReadOnly(True)
         self.tcp_log.setPlaceholderText('测试日志…')
         tcp_lay.addWidget(self.tcp_log, 1)
+
         self.tabs.addTab(tcp, 'TCP 测试')
+
+        # --- UDP 测试（薄壳）---
+        udp = QWidget()
+        udp_lay = QVBoxLayout(udp)
+        udp_lay.setContentsMargins(12, 12, 12, 12)
+        udp_lay.addWidget(QLabel('向目标主机发 UDP 报文并等待短时回包（设计态连通性）。'))
+        uform = QFormLayout()
+        self.udp_host = QLineEdit('127.0.0.1')
+        self.udp_port = QSpinBox(); self.udp_port.setRange(1, 65535); self.udp_port.setValue(9001)
+        self.udp_payload = QLineEdit('PING')
+        self.udp_timeout = QSpinBox(); self.udp_timeout.setRange(100, 10000); self.udp_timeout.setValue(1500)
+        self.udp_timeout.setSuffix(' ms')
+        uform.addRow('主机', self.udp_host)
+        uform.addRow('端口', self.udp_port)
+        uform.addRow('发送', self.udp_payload)
+        uform.addRow('超时', self.udp_timeout)
+        udp_lay.addLayout(uform)
+        urow = QHBoxLayout()
+        self.udp_send_btn = QPushButton('发送 UDP')
+        self.udp_send_btn.setObjectName('primaryButton')
+        self.udp_send_btn.clicked.connect(self._udp_test_send)
+        urow.addStretch(1); urow.addWidget(self.udp_send_btn)
+        udp_lay.addLayout(urow)
+        self.udp_log = QPlainTextEdit(); self.udp_log.setReadOnly(True)
+        udp_lay.addWidget(self.udp_log, 1)
+        self.tabs.addTab(udp, 'UDP 测试')
+
+        # --- 串口测试（薄壳；无 pyserial 时提示）---
+        ser = QWidget()
+        ser_lay = QVBoxLayout(ser)
+        ser_lay.setContentsMargins(12, 12, 12, 12)
+        ser_lay.addWidget(QLabel('串口写一行并读回。设备管理中协议选 Serial，主机/路径填 /dev/ttyUSB0 或 COMx。'))
+        sform = QFormLayout()
+        self.ser_port = QLineEdit('/dev/ttyUSB0')
+        self.ser_baud = QComboBox()
+        for b in (9600, 19200, 38400, 57600, 115200, 230400):
+            self.ser_baud.addItem(str(b), b)
+        self.ser_baud.setCurrentIndex(4)
+        self.ser_payload = QLineEdit('PING')
+        self.ser_timeout = QSpinBox(); self.ser_timeout.setRange(100, 10000); self.ser_timeout.setValue(2000)
+        self.ser_timeout.setSuffix(' ms')
+        sform.addRow('端口路径', self.ser_port)
+        sform.addRow('波特率', self.ser_baud)
+        sform.addRow('发送', self.ser_payload)
+        sform.addRow('超时', self.ser_timeout)
+        ser_lay.addLayout(sform)
+        srow = QHBoxLayout()
+        self.ser_fill_btn = QPushButton('从 Serial 设备填充')
+        self.ser_fill_btn.clicked.connect(self._ser_fill_from_device)
+        self.ser_send_btn = QPushButton('发送并读回')
+        self.ser_send_btn.setObjectName('primaryButton')
+        self.ser_send_btn.clicked.connect(self._ser_test_send)
+        srow.addWidget(self.ser_fill_btn); srow.addStretch(1); srow.addWidget(self.ser_send_btn)
+        ser_lay.addLayout(srow)
+        self.ser_log = QPlainTextEdit(); self.ser_log.setReadOnly(True)
+        ser_lay.addWidget(self.ser_log, 1)
+        self.tabs.addTab(ser, '串口测试')
+
 
 
         bar = QHBoxLayout()
@@ -483,6 +542,56 @@ class CommManagerDialog(QDialog):
                     self.tcp_log.appendPlainText(f'[{ts}] 已写入变量 {var}')
         except Exception as err:
             self.tcp_log.appendPlainText(f'[{ts}] 失败：{err}')
+
+
+    def _udp_test_send(self):
+        import socket
+        host = (self.udp_host.text() or '').strip() or '127.0.0.1'
+        port = int(self.udp_port.value())
+        payload = (self.udp_payload.text() or '').encode('utf-8', errors='replace')
+        timeout = max(0.1, float(self.udp_timeout.value()) / 1000.0)
+        self.udp_log.appendPlainText(f'→ UDP {host}:{port}  {payload!r}')
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(timeout)
+            sock.sendto(payload, (host, port))
+            try:
+                data, addr = sock.recvfrom(4096)
+                self.udp_log.appendPlainText(f'← from {addr[0]}:{addr[1]}  {data!r}')
+            except socket.timeout:
+                self.udp_log.appendPlainText('← (超时无回包，已发出)')
+            finally:
+                sock.close()
+        except Exception as exc:
+            self.udp_log.appendPlainText(f'✗ {exc}')
+
+    def _ser_fill_from_device(self):
+        for d in self._devices:
+            if 'Serial' in str(d.get('protocol') or ''):
+                self.ser_port.setText(str(d.get('host') or d.get('path') or ''))
+                return
+        self.ser_log.appendPlainText('设备列表中无 Serial 设备')
+
+    def _ser_test_send(self):
+        path = (self.ser_port.text() or '').strip()
+        baud = int(self.ser_baud.currentData() or 115200)
+        raw = self.ser_payload.text() or ''
+        payload = (raw + chr(10)).encode('utf-8', errors='replace')
+        timeout = max(0.1, float(self.ser_timeout.value()) / 1000.0)
+        self.ser_log.appendPlainText(f'→ {path} @{baud}  {payload!r}')
+        try:
+            import serial as pyserial
+        except ImportError:
+            self.ser_log.appendPlainText('✗ 未安装 pyserial；配置仍可保存供流程引用设备名')
+            return
+        try:
+            with pyserial.Serial(path, baudrate=baud, timeout=timeout) as ser:
+                ser.write(payload)
+                data = ser.read(4096)
+                self.ser_log.appendPlainText(f'← {data!r}' if data else '← (无数据)')
+        except Exception as exc:
+            self.ser_log.appendPlainText(f'✗ {exc}')
+
 
     def accept_save(self):
         # Flush current form into devices list

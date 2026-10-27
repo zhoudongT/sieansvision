@@ -106,7 +106,12 @@ class PropertyFloat(QDialog):
     def show_source(self, config, title='0 图像源'):
         self._node_id = 'source'
         self._clear_body()
-        self.title.setText(title)
+        try:
+            from desktop.config_status import source_incomplete
+            bang = source_incomplete(config)
+        except Exception:
+            bang = False
+        self.title.setText(('⚠ ' if bang else '') + title)
         form = ImageSourceForm(config)
         form.changed.connect(self.sourceChanged.emit)
         form.openCameraManager.connect(self.openCameraManager.emit)
@@ -119,7 +124,13 @@ class PropertyFloat(QDialog):
         self._node_id = step['id'] if step else None
         self._clear_body()
         name = (definition or {}).get('name') or (step or {}).get('name') or '模块'
-        self.title.setText(f'{index} {name}')
+        bang = False
+        try:
+            from desktop.config_status import step_incomplete
+            bang = step_incomplete(step, project)
+        except Exception:
+            bang = False
+        self.title.setText(('⚠ ' if bang else '') + f'{index} {name}')
         # B3: 组合模块专用四 Tab 面板
         if step and step.get('operation') == 'group':
             from desktop.group_module import GroupParamPanel, normalize_group_params

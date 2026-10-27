@@ -19,6 +19,7 @@ class FilmstripBar(QWidget):
     imageSelected = Signal(str)          # data-url or file path load request via path
     pathSelected = Signal(str)           # absolute path
     autoSwitchChanged = Signal(bool)
+    stopAtLastChanged = Signal(bool)
     runAllRequested = Signal()
     listChanged = Signal(list)           # paths
 
@@ -39,6 +40,10 @@ class FilmstripBar(QWidget):
         self.auto_switch = OrangeSwitch(False)
         self.auto_switch.toggled.connect(self.autoSwitchChanged.emit)
         bar.addWidget(self.auto_switch)
+        bar.addWidget(QLabel('最后一张停止'))
+        self.stop_at_last = OrangeSwitch(False)
+        self.stop_at_last.toggled.connect(self.stopAtLastChanged.emit)
+        bar.addWidget(self.stop_at_last)
         self.run_all = QPushButton('运行全部')
         self.run_all.setObjectName('filmstripRun')
         self.run_all.clicked.connect(self.runAllRequested.emit)
@@ -75,6 +80,11 @@ class FilmstripBar(QWidget):
         self.thumbs.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.thumbs.currentRowChanged.connect(self._row_changed)
         root.addWidget(self.thumbs)
+        self.empty_hint = QLabel('未添加图像 — 点 + 或 📁 导入；本地模式下节点会显示红叹号直至添加。')
+        self.empty_hint.setObjectName('filmstripEmpty')
+        self.empty_hint.setStyleSheet('color:#c62828;font-size:11px;padding:0 2px;')
+        self.empty_hint.setWordWrap(True)
+        root.addWidget(self.empty_hint)
         self.set_paths([], 0)
 
     def paths(self):
@@ -90,6 +100,9 @@ class FilmstripBar(QWidget):
 
     def set_auto_switch(self, enabled):
         self.auto_switch.setChecked(bool(enabled), animate=False)
+
+    def set_stop_at_last(self, enabled):
+        self.stop_at_last.setChecked(bool(enabled), animate=False)
 
     def set_paths(self, paths, index=0):
         self._paths = [str(p) for p in paths]
@@ -109,6 +122,9 @@ class FilmstripBar(QWidget):
             self.thumbs.setCurrentRow(self._index)
         self.thumbs.blockSignals(False)
         self._refresh_count()
+        if hasattr(self, 'empty_hint'):
+            self.empty_hint.setVisible(len(self._paths) == 0)
+            self.thumbs.setVisible(len(self._paths) > 0)
 
     def _refresh_count(self):
         n = len(self._paths)
