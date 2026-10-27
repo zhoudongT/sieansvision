@@ -307,12 +307,12 @@
     ],
     "sendEvents": [],
     "heartbeat": {
-      "enabled": false,
+      "enabled": true,
       "intervalMs": 5000,
       "payload": "HB"
     },
     "response": {
-      "enabled": false,
+      "enabled": true,
       "timeoutMs": 3000,
       "ack": "OK"
     }

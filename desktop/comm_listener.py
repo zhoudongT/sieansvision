@@ -1,12 +1,13 @@
-"""Live Comm recvEvents listener — TCP Server / UDP / LocalBus inbox → fire_string_trigger.
+"""Live Comm recvEvents listener — TCP Server / UDP / Serial / LocalBus → fire_string_trigger.
 
-Beyond CommManager「试收」: binds sockets for enabled TCP Server / UDP devices and
-forwards payloads into project variables (recvEvents) + MainWindow.fire_string_trigger.
+Also ticks CommManager heartbeat (outbound keepalive) and auto-acks TCP clients when
+response.enabled. Beyond CommManager「试收」: binds sockets for enabled devices.
 """
 from __future__ import annotations
 
 import socket
 import threading
+import time
 from copy import deepcopy
 
 from PySide6.QtCore import QObject, Signal, Slot, QTimer
@@ -20,6 +21,8 @@ class CommRecvListener(QObject):
 
     received = Signal(str, str)  # device_name, payload_text
     status = Signal(str)
+    listeningChanged = Signal(bool, str)  # active, summary
+    heartbeatTick = Signal(str)  # payload sent this tick
 
     def __init__(self, host=None, parent=None):
         super().__init__(parent)
@@ -31,12 +34,31 @@ class CommRecvListener(QObject):
         self._serial_threads = []
         self._device_map = {}  # name -> device dict
         self._recv_events = []
+        self._heartbeat = dict(enabled=False, intervalMs=5000, payload='HB')
+        self._response = dict(enabled=False, timeoutMs=3000, ack='OK')
+        self._hb_timer = QTimer(self)
+        self._hb_timer.timeout.connect(self._on_heartbeat)
+        self._started = []
+        self._listening = False
+        self._last_hb_ms = 0
         self.received.connect(self._on_received)
 
     def set_host(self, host):
         self._host = host
 
+    @property
+    def listening(self):
+        return bool(self._listening)
+
+    @property
+    def started_summary(self):
+        return list(self._started)
+
     def stop(self):
+        try:
+            self._hb_timer.stop()
+        except Exception:
+            pass
         self._serial_stop.set()
         for th in self._serial_threads:
             try:
@@ -63,14 +85,31 @@ class CommRecvListener(QObject):
             except Exception:
                 pass
         self._clients = []
+        was = self._listening
+        self._listening = False
+        self._started = []
+        if was:
+            self.listeningChanged.emit(False, '监听·关')
 
     def reload(self, project):
-        """(Re)bind listeners from project.commManager."""
+        """(Re)bind listeners from project.commManager + start heartbeat if enabled."""
         self.stop()
         cm = ensure_comm_manager(deepcopy(project) if isinstance(project, dict) else {})
         devices = [d for d in (cm.get('devices') or []) if isinstance(d, dict) and d.get('enabled', True)]
         self._device_map = {(d.get('name') or ''): d for d in devices if d.get('name')}
         self._recv_events = [e for e in (cm.get('recvEvents') or []) if isinstance(e, dict)]
+        hb = cm.get('heartbeat') if isinstance(cm.get('heartbeat'), dict) else {}
+        resp = cm.get('response') if isinstance(cm.get('response'), dict) else {}
+        self._heartbeat = dict(
+            enabled=bool(hb.get('enabled', False)),
+            intervalMs=max(200, int(hb.get('intervalMs') or 5000)),
+            payload=str(hb.get('payload') if hb.get('payload') is not None else 'HB'),
+        )
+        self._response = dict(
+            enabled=bool(resp.get('enabled', False)),
+            timeoutMs=max(100, int(resp.get('timeoutMs') or 3000)),
+            ack=str(resp.get('ack') if resp.get('ack') is not None else 'OK'),
+        )
         started = []
         for d in devices:
             name = d.get('name') or ''
@@ -91,14 +130,56 @@ class CommRecvListener(QObject):
                 if path and self._start_serial(name, path, int(d.get('baud') or d.get('baudrate') or 115200)):
                     started.append(f'Serial {name} {path}')
             # Local Bus: no socket; use push_local() / inject
-        msg = '通信监听：' + ('、'.join(started) if started else '无 TCP Server/UDP/Serial 需监听')
+        self._started = started
+        self._listening = bool(started) or True  # LocalBus always available after reload
+        if self._heartbeat.get('enabled'):
+            interval = int(self._heartbeat.get('intervalMs') or 5000)
+            self._hb_timer.start(interval)
+            started.append(f'心跳 {interval}ms')
+            # immediate first tick so UI shows life
+            QTimer.singleShot(0, self._on_heartbeat)
+        summary = '、'.join(started) if started else 'LocalBus 就绪'
+        msg = '通信监听：' + summary
         self.status.emit(msg)
+        badge = f'监听·开 ({len(self._started)}路)' if self._started else '监听·LocalBus'
+        if self._heartbeat.get('enabled'):
+            badge += ' · HB'
+        if self._response.get('enabled'):
+            badge += ' · ACK'
+        self.listeningChanged.emit(True, badge)
         return started
 
     def push_local(self, device_name, payload):
         """In-process Local Bus / toolbar inject path into the same recv pipeline."""
         text = '' if payload is None else str(payload)
         self.received.emit(str(device_name or 'LocalLoop'), text)
+
+    def _on_heartbeat(self):
+        payload = str(self._heartbeat.get('payload') or 'HB')
+        self._last_hb_ms = int(time.time() * 1000)
+        # Write flow.heartbeatTick variable (best-effort, no fire_string — avoid RUN loops)
+        host = self._host
+        try:
+            if host is not None and hasattr(host, 'document'):
+                # In-place write — no commit (heartbeat must not spam undo history)
+                proj = host.document.project
+                write_project_variable(proj, 'flow.heartbeatTick', payload)
+                write_project_variable(proj, 'flow.heartbeatAt', str(self._last_hb_ms))
+        except Exception:
+            pass
+        # Keepalive to connected TCP clients
+        sent = 0
+        blob = (payload + '\n').encode('utf-8', errors='replace')
+        for c in list(self._clients):
+            try:
+                if c.state() == QTcpSocket.SocketState.ConnectedState:
+                    c.write(blob)
+                    sent += 1
+            except Exception:
+                pass
+        # Status tick (rate-limit log via signal only)
+        self.heartbeatTick.emit(payload)
+        self.status.emit(f'心跳 · {payload}' + (f' → {sent}客户端' if sent else ''))
 
     def _start_tcp_server(self, device_name, host, port):
         server = QTcpServer(self)
@@ -119,7 +200,6 @@ class CommRecvListener(QObject):
             if not parsed.isNull():
                 addr = parsed
         if not server.listen(addr, port):
-            # retry localhost only
             if not server.listen(QHostAddress.SpecialAddress.LocalHost, port):
                 self.status.emit(f'TCP Server {device_name}:{port} 监听失败：{server.errorString()}')
                 return False
@@ -135,6 +215,13 @@ class CommRecvListener(QObject):
             text = line.strip('\r\n')
             if text != '':
                 self.received.emit(device_name, text)
+                # Auto-ack when response.enabled
+                if self._response.get('enabled'):
+                    try:
+                        ack = str(self._response.get('ack') or 'OK')
+                        client.write((ack + '\n').encode('utf-8', errors='replace'))
+                    except Exception:
+                        pass
 
     def _drop_client(self, client):
         try:
@@ -149,13 +236,22 @@ class CommRecvListener(QObject):
         def on_ready():
             while sock.hasPendingDatagrams():
                 size = sock.pendingDatagramSize()
-                data, _addr, _port = sock.readDatagram(size)
+                data, addr, rport = sock.readDatagram(size)
                 try:
                     text = bytes(data).decode('utf-8', errors='replace').strip('\r\n')
                 except Exception:
                     continue
                 if text != '':
                     self.received.emit(device_name, text)
+                    if self._response.get('enabled') and addr is not None:
+                        try:
+                            ack = str(self._response.get('ack') or 'OK')
+                            sock.writeDatagram(
+                                (ack + '\n').encode('utf-8', errors='replace'),
+                                addr, rport,
+                            )
+                        except Exception:
+                            pass
 
         sock.readyRead.connect(on_ready)
         addr = QHostAddress.SpecialAddress.AnyIPv4
@@ -188,7 +284,6 @@ class CommRecvListener(QObject):
                                     line, buf = buf.split(sep, 1)
                                     line = line.strip('\r\n')
                                     if line:
-                                        # marshal to Qt thread
                                         self.received.emit(device_name, line)
                                     break
             except Exception:

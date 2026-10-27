@@ -7,7 +7,7 @@ from copy import deepcopy
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QTabWidget, QFormLayout, QLineEdit,
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTabWidget, QFormLayout, QLineEdit, QPushButton,
     QComboBox, QDoubleSpinBox, QScrollArea, QFrame, QCheckBox,
 )
 
@@ -62,6 +62,21 @@ class PoseCorrectPanel(QWidget):
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setWidget(inner)
         return scroll
+
+    def _insert_upstream_field(self):
+        from desktop.upstream_field_picker import pick_upstream_field, host_last_result
+        picked = pick_upstream_field(
+            self, self.project, step_id=self.step.get('id'),
+            last_result=host_last_result(self),
+        )
+        if not picked:
+            return
+        nid, field, _token = picked
+        self._bind_id.setText(nid)
+        self._bind_field.setText(field)
+        self._set_param('bindStepId', nid)
+        self._set_param('bindField', field)
+        self._set_param('fixtureSource', 'bind')
 
     def _emit(self):
         self.step['params'] = deepcopy(self.params)
@@ -156,11 +171,19 @@ class PoseCorrectPanel(QWidget):
         bind_id = QLineEdit(str(self.params.get('bindStepId') or ''))
         bind_id.setPlaceholderText('上游步骤 id（绑定模式）')
         bind_id.editingFinished.connect(lambda: self._set_param('bindStepId', bind_id.text().strip()))
+        self._bind_id = bind_id
         form.addRow('绑定步骤', bind_id)
 
+        bind_row = QHBoxLayout()
         bind_field = QLineEdit(str(self.params.get('bindField') or 'matches[0]'))
         bind_field.editingFinished.connect(lambda: self._set_param('bindField', bind_field.text().strip()))
-        form.addRow('绑定字段', bind_field)
+        self._bind_field = bind_field
+        pick = QPushButton('插入上游字段')
+        pick.setToolTip('挑选上游模块与字段，写入绑定步骤/字段')
+        pick.clicked.connect(self._insert_upstream_field)
+        bind_row.addWidget(bind_field, 1)
+        bind_row.addWidget(pick)
+        form.addRow('绑定字段', bind_row)
         return w
 
     def _out_tab(self):

@@ -75,6 +75,18 @@ class DistortCorrectPanel(QWidget):
         scroll.setWidget(inner)
         return scroll
 
+    def _insert_upstream_field(self):
+        from desktop.upstream_field_picker import pick_upstream_field, host_last_result
+        picked = pick_upstream_field(
+            self, self.project, step_id=self.step.get('id'),
+            last_result=host_last_result(self),
+        )
+        if not picked:
+            return
+        _nid, _field, token = picked
+        self._upstream_ref.setText(token)
+        self._set_param('upstreamRef', token)
+
     def _emit(self):
         self.step['params'] = deepcopy(self.params)
         self.changed.emit(deepcopy(self.step))
@@ -150,7 +162,19 @@ class DistortCorrectPanel(QWidget):
         en.toggled.connect(lambda c: self._set_param('enabled', bool(c)))
         form.addRow('启用矫正', en)
 
-        tip = QLabel('未配置标定文件且非手动系数时，画布显示红叹号。')
+        uref_row = QHBoxLayout()
+        self._upstream_ref = QLineEdit(str(self.params.get('upstreamRef') or ''))
+        self._upstream_ref.setPlaceholderText('results.<模块>.字段 — 点击挑选')
+        self._upstream_ref.editingFinished.connect(
+            lambda: self._set_param('upstreamRef', self._upstream_ref.text().strip())
+        )
+        uref_btn = QPushButton('插入上游字段')
+        uref_btn.clicked.connect(self._insert_upstream_field)
+        uref_row.addWidget(self._upstream_ref, 1)
+        uref_row.addWidget(uref_btn)
+        form.addRow('上游参考', uref_row)
+
+        tip = QLabel('未配置标定文件且非手动系数时，画布显示红叹号。可用「插入上游字段」订阅上游结果。')
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)

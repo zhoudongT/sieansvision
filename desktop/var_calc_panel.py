@@ -190,33 +190,14 @@ class VarCalcPanel(QWidget):
 
     def _insert_upstream_field(self):
         """Specialized-panel field picker: insert results.<id>.<field> into expression."""
-        from PySide6.QtWidgets import QInputDialog, QMessageBox
-        host = self.window()
-        last_result = getattr(host, 'last_result', None) if host else None
-        steps = list(self.project.get('steps') or [])
-        # Exclude self
-        sid = self.step.get('id')
-        upstream = [s for s in steps if s.get('id') and s.get('id') != sid]
-        if not upstream:
-            QMessageBox.information(self, '上游字段', '当前流程没有其他模块可供挑选。')
+        from desktop.upstream_field_picker import pick_upstream_field, host_last_result
+        picked = pick_upstream_field(
+            self, self.project, step_id=self.step.get('id'),
+            last_result=host_last_result(self),
+        )
+        if not picked:
             return
-        labels = [f"{i+1} {s.get('name') or s.get('operation') or s['id']}" for i, s in enumerate(upstream)]
-        choice, ok = QInputDialog.getItem(self, '上游模块', '选择模块', labels, 0, False)
-        if not ok or not choice:
-            return
-        idx = labels.index(choice)
-        node = upstream[idx]
-        try:
-            from desktop.forms import result_field_index
-            fi = result_field_index(last_result, [node])
-            fields = fi.get(node['id']) or ['ok', 'value', 'status']
-        except Exception:
-            fields = ['ok', 'value', 'status', 'payload', 'count']
-        field, ok = QInputDialog.getItem(self, '上游字段', f"模块 {node.get('name') or node['id']} 的字段", fields, 0, True)
-        if not ok or not field:
-            return
-        token = f"results.{node['id']}.{field}"
-        # Prefer selected row expression column
+        _nid, _field, token = picked
         r = self.table.currentRow()
         if r < 0:
             r = 0 if self.table.rowCount() else -1

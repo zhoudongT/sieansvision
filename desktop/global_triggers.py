@@ -12,6 +12,8 @@ COMMAND_TYPES = [
     '界面链接',
     '参数配置',
     '复位',
+    '注入·RUN',
+    '注入·STOP',
     '方案保存',
     '方案另存',
     '执行·单次',
@@ -48,6 +50,10 @@ def ensure_triggers(project):
 
 # Seed / English action → dialog COMMAND_TYPES
 ACTION_TO_COMMAND = {
+    '注入 RUN': '注入·RUN',
+    '注入 STOP': '注入·STOP',
+    '注入RUN': '注入·RUN',
+    '注入STOP': '注入·STOP',
     'run': '执行·单次',
     'run_once': '执行·单次',
     'once': '执行·单次',

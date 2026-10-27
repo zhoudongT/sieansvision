@@ -41,7 +41,7 @@ class MainWindow(QMainWindow):
         self.backend.ready.connect(self.engine_online);self.backend.result.connect(self.engine_result)
         self.backend.error.connect(self.engine_error);self.backend.stopped.connect(self.engine_closed)
         if hasattr(self.backend,'progress'):self.backend.progress.connect(self.progress)
-        self.continuous=False;self.run_all_filmstrip=False;self._run_target=None;self.rail_category='';self.property_float=None;self._group_stack=[];self._group_breadcrumb=None;self._pending_trigger_cmds=[];self._comm_listener=None
+        self.continuous=False;self.run_all_filmstrip=False;self._run_target=None;self.rail_category='';self.property_float=None;self._group_stack=[];self._group_breadcrumb=None;self._pending_trigger_cmds=[];self._pending_after_continuous=[];self._comm_listener=None
         self.app_mode='design'  # design | run
         self.showing_all_flows=False
         self._left_pane=None;self._center_stack=None;self.run_mode_pane=None
@@ -129,6 +129,7 @@ class MainWindow(QMainWindow):
         a_var=self.action('变量',lambda:self.open_panel('variables'));a_var.setToolTip('全局 / 流程变量');toolbar.addAction(a_var)
         a_trig=self.action('触发',self.open_global_triggers);a_trig.setToolTip('全局触发（字符串 / 事件）');toolbar.addAction(a_trig)
         a_inj=self.action('注入RUN',lambda:self.guard(self.inject_run_trigger));a_inj.setToolTip('一键注入字符串 RUN → 全局触发（不打开对话框）');toolbar.addAction(a_inj)
+        a_inj_stop=self.action('注入STOP',lambda:self.guard(self.inject_stop_trigger));a_inj_stop.setToolTip('一键注入字符串 STOP → 全局触发');toolbar.addAction(a_inj_stop)
         toolbar.addSeparator()
         self.run_action=self.action('▶ 单次',self.run_once,'Ctrl+Return');self.run_action.setToolTip('单次执行流程 (Ctrl+Return)');toolbar.addAction(self.run_action)
         self.cont_action=self.action('↻ 连续',self.run_continuous);self.cont_action.setToolTip('连续执行');toolbar.addAction(self.cont_action)
@@ -145,6 +146,10 @@ class MainWindow(QMainWindow):
         self.mode_badge=QLabel('设计态');self.mode_badge.setObjectName('modeBadge');self.mode_badge.setProperty('runMode','false')
         toolbar.addWidget(self.mode_badge)
         toolbar.addSeparator();self.engine_label=QLabel('引擎启动中');toolbar.addWidget(self.engine_label)
+        self.comm_listen_badge=QLabel('监听·—');self.comm_listen_badge.setObjectName('commListenBadge')
+        self.comm_listen_badge.setStyleSheet('color:#888;padding:0 8px;font-size:11px;')
+        self.comm_listen_badge.setToolTip('通信监听状态（TCP/UDP/Serial + 心跳）')
+        toolbar.addWidget(self.comm_listen_badge)
 
         # ===== Five-region shell: left(rail+lib) | center flow | right image =====
         root_split=QSplitter(Qt.Orientation.Vertical);self.setCentralWidget(root_split)
@@ -747,9 +752,22 @@ class MainWindow(QMainWindow):
         self.continuous=True;self.run_all_filmstrip=False;self._run_target=None;self.log('连续运行已启动');self.run()
 
     def stop_run(self):
+        was_continuous = bool(self.continuous)
         self.continuous=False;self.run_all_filmstrip=False;self._run_target=None
         self.request('stop',{},lambda _:None)
         self.wb_status.push_log('已请求停止')
+        if was_continuous:
+            self._flush_after_continuous()
+
+    def _flush_after_continuous(self):
+        """Chain non-run commands that followed 执行·连续 once continuous ends."""
+        pending = list(getattr(self, '_pending_after_continuous', None) or [])
+        self._pending_after_continuous = []
+        if not pending:
+            return
+        self.log(f'连续后链式 · 续派 {len(pending)} 条')
+        QTimer.singleShot(0, lambda p=pending: self.guard(
+            lambda: self._dispatch_global_triggers(p, reason='连续后链式')))
 
     def run_module_continuous(self,node_id):
         # B2: 模块级连续执行 — 与全局连续分离，保留 target
@@ -877,7 +895,11 @@ class MainWindow(QMainWindow):
             except Exception as err:
                 self.log(f'全局触发派发异常：{err}')
         if state=='cancelled':
-            self.continuous=False;self.run_all_filmstrip=False;self._run_target=None;return
+            was_c = bool(self.continuous)
+            self.continuous=False;self.run_all_filmstrip=False;self._run_target=None
+            if was_c:
+                self._flush_after_continuous()
+            return
         if self.run_all_filmstrip and state=='completed':
             if self.filmstrip.advance():
                 QTimer.singleShot(self._filmstrip_advance_delay_ms(), lambda:self.guard(self.run))
@@ -900,7 +922,8 @@ class MainWindow(QMainWindow):
                 if self.filmstrip.advance():
                     QTimer.singleShot(self._filmstrip_advance_delay_ms(), lambda:self.guard(lambda:self.run(None)));return
                 if cfg.get('stopAtLast'):
-                    self.continuous=False;self._run_target=None;self.log('已到最后一张，连续运行停止');return
+                    self.continuous=False;self._run_target=None;self.log('已到最后一张，连续运行停止')
+                    self._flush_after_continuous();return
             delay=self._active_run_interval_ms()
             QTimer.singleShot(delay, lambda t=target: self.guard(lambda:self.run(t)) if self.continuous else None)
 
@@ -1486,14 +1509,46 @@ class MainWindow(QMainWindow):
             from desktop.comm_listener import CommRecvListener
             if self._comm_listener is None:
                 self._comm_listener = CommRecvListener(host=self, parent=self)
-                self._comm_listener.status.connect(lambda m: self.log(m))
+                self._comm_listener.status.connect(self._on_comm_listener_status)
+                self._comm_listener.listeningChanged.connect(self._on_comm_listening_changed)
+                self._comm_listener.heartbeatTick.connect(self._on_comm_heartbeat_tick)
             else:
                 self._comm_listener.set_host(self)
             started = self._comm_listener.reload(self.document.project)
             if started:
                 self.log('通信监听已启动：' + '、'.join(started))
+            elif hasattr(self, 'comm_listen_badge'):
+                # LocalBus-only still shows ready
+                pass
         except Exception as err:
             self.log(f'通信监听启动失败：{err}')
+            if hasattr(self, 'comm_listen_badge'):
+                self.comm_listen_badge.setText('监听·失败')
+                self.comm_listen_badge.setStyleSheet('color:#e07070;padding:0 8px;font-size:11px;')
+
+    def _on_comm_listener_status(self, message):
+        msg = str(message or '')
+        if msg.startswith('心跳'):
+            return  # badge handles live tick; avoid log flood
+        self.log(msg)
+
+    def _on_comm_listening_changed(self, active, summary):
+        if not hasattr(self, 'comm_listen_badge'):
+            return
+        text = str(summary or ('监听·开' if active else '监听·关'))
+        self.comm_listen_badge.setText(text)
+        color = '#5ecf8a' if active else '#888'
+        self.comm_listen_badge.setStyleSheet(f'color:{color};padding:0 8px;font-size:11px;font-weight:600;')
+        self.comm_listen_badge.setToolTip(text)
+
+    def _on_comm_heartbeat_tick(self, payload):
+        if not hasattr(self, 'comm_listen_badge'):
+            return
+        base = self.comm_listen_badge.text().split(' · tick')[0]
+        if not base.startswith('监听'):
+            base = '监听·开'
+        self.comm_listen_badge.setText(f'{base} · tick')
+        self.comm_listen_badge.setToolTip(f'最近心跳：{payload}')
 
     def inject_run_trigger(self):
         """Toolbar one-shot: inject string RUN without opening 全局触发 dialog."""
@@ -1507,6 +1562,18 @@ class MainWindow(QMainWindow):
                 self.log('注入RUN：无匹配的字符串触发（请在全局触发中配置 RUN → 执行·单次）')
         except Exception as err:
             self.log(f'注入RUN失败：{err}')
+
+    def inject_stop_trigger(self):
+        """Toolbar / HMI: inject string STOP → 全局触发（通常绑定 执行·停止）."""
+        try:
+            if self._comm_listener is not None:
+                self._comm_listener.push_local('LocalLoop', 'STOP')
+                return
+            ok = bool(self.fire_string_trigger('STOP', reason='工具栏注入STOP'))
+            if not ok:
+                self.log('注入STOP：无匹配的字符串触发（请在全局触发中配置 STOP → 执行·停止）')
+        except Exception as err:
+            self.log(f'注入STOP失败：{err}')
 
     # ---- Wave2 通信管理 / B4 全局触发壳 ----
     def open_comm_manager(self):
@@ -1603,8 +1670,22 @@ class MainWindow(QMainWindow):
                 self.run_once()
                 return
             if ctype == '执行·连续':
-                self._pending_trigger_cmds = []  # continuous owns the loop
+                # Policy: stash non-run cmds to flush after continuous stops
+                rest = list(cmds[i + 1:])
+                run_types = {'执行·单次', '执行', '执行·连续', '执行·继续'}
+                after = []
+                for c in rest:
+                    raw_t = (c or {}).get('type') or ''
+                    ct = ACTION_TO_COMMAND.get(raw_t) or raw_t
+                    if ct not in run_types:
+                        after.append(c)
+                self._pending_after_continuous = after
+                self._pending_trigger_cmds = []
                 self.run_continuous(); return
+            if ctype in ('注入·RUN', '字符串·注入RUN'):
+                self.inject_run_trigger(); continue
+            if ctype in ('注入·STOP', '字符串·注入STOP'):
+                self.inject_stop_trigger(); continue
             if ctype == '执行·停止':
                 self._pending_trigger_cmds = []
                 self.stop_run(); continue

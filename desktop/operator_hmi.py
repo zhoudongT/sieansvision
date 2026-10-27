@@ -38,6 +38,12 @@ DEFAULT_CONT_COMMANDS = [
 DEFAULT_STOP_COMMANDS = [
     dict(type='执行·停止', config=''),
 ]
+DEFAULT_INJECT_RUN_COMMANDS = [
+    dict(type='注入·RUN', config=''),
+]
+DEFAULT_INJECT_STOP_COMMANDS = [
+    dict(type='注入·STOP', config=''),
+]
 
 
 def _split_rows_cols(split: str):
@@ -289,6 +295,8 @@ class OperatorHmiView(QWidget):
             ('▶ 单次', DEFAULT_RUN_COMMANDS, True),
             ('↻ 连续', DEFAULT_CONT_COMMANDS, False),
             ('■ 停止', DEFAULT_STOP_COMMANDS, False),
+            ('注入 RUN', DEFAULT_INJECT_RUN_COMMANDS, False),
+            ('注入 STOP', DEFAULT_INJECT_STOP_COMMANDS, False),
         ):
             btn = QPushButton(label)
             if primary:
@@ -655,6 +663,8 @@ class OperatorHmiView(QWidget):
                 ('▶ 单次', commands or DEFAULT_RUN_COMMANDS, True),
                 ('↻ 连续', DEFAULT_CONT_COMMANDS, False),
                 ('■ 停止', DEFAULT_STOP_COMMANDS, False),
+                ('注入 RUN', DEFAULT_INJECT_RUN_COMMANDS, False),
+                ('注入 STOP', DEFAULT_INJECT_STOP_COMMANDS, False),
             ]
             # If designer configured multi-commands on 运行控制, first button uses them
             if commands:
