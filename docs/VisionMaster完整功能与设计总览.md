@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊮ · pin拖序+计数角标 · eyedropper mid/lo · PNG自定义strftime · A/B锁定 · 脉冲jitter分布/种子 · 2026-10-28】
+
+- **pin 列表内拖序 + 计数角标**：`reorder_…_pinned`；钉住色块显示 `📌{序}`；「最近 · 📌n/cap」角标；钉内拖放同步 pinned 序。
+- **eyedropper mid/lo**：自定义 hex 行「吸hi / 吸mid / 吸lo」三分吸；写入对应档并切 custom。
+- **PNG 自定义 strftime**：「自定义…」芯片 + `prompt_…_custom_strftime`；校验后落盘；非预设标 is_custom。
+- **热同步 A/B 锁定**：🔒 开关；锁定时禁用对调并 toast；QSettings 布尔稳健解析。
+- **脉冲 jitter 分布/种子**：uniform / triangular / gauss；种子 0=系统随机、>0 可复现；预览窗芯片+旋钮。
+- **冒烟**：`smoke-wave65-pinreorder-eyemidlo-pngcustom-ablock-jitterdist-e2e`（另回归 wave64/63/62）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊭ · 导引带pin徽章/上限 · 撤销条hex吸管 · PNG日期格式 · 热同步A↔B对调 · 脉冲gap抖动 · 2026-10-28】
 
 - **导引带最近色板 pin badge + max-pin cap**：置顶色块显示 📌 + 金边；独立 pinned 列表；上限 1–6（默认 3）FIFO 挤出；右键已钉显示「取消置顶」。

@@ -55,6 +55,7 @@ def main():
     s.setValue('host/toastHistCapTipAnimEasing', 'OutCubic')
     s.setValue('host/stalePruneUndoColorScale', 'traffic')
     s.setValue('host/stalePruneUndoColorScaleCompare', 'cool')
+    s.setValue('host/stalePruneUndoColorScaleAbLock', False)
     s.setValue('host/stalePruneUndoColorCustomAlpha', 160)
     s.setValue('host/stalePruneUndoColorCustomAlphaStep', 10)
     s.setValue('host/mergeDiffBatchFailHistory', [])
@@ -128,7 +129,8 @@ def main():
     btns = getattr(host, '_snap_guide_recent_drag_btns', [])
     pinned_btns = [b for b in btns if b.property('snapGuideRecentPinned')]
     assert len(pinned_btns) >= 1
-    assert any(b.text() == '📌' for b in pinned_btns)
+    # wave65+: badge text is 📌{index}
+    assert any((b.text() or '').startswith('📌') for b in pinned_btns)
     # unpin
     host.unpin_merge_diff_fail_hist_drop_snap_guide_recent_color('#66ffaa')
     assert not host.is_merge_diff_fail_hist_drop_snap_guide_recent_pinned('#66ffaa')
@@ -198,6 +200,8 @@ def main():
     ok('PNG {datetime} format picker')
 
     # --- 4. A↔B swap ---
+    if hasattr(host, 'set_stale_prune_undo_color_scale_ab_lock'):
+        host.set_stale_prune_undo_color_scale_ab_lock(False)
     host.set_stale_prune_undo_color_scale_preset('traffic')
     host.set_stale_prune_undo_color_scale_compare_preset('sunset')
     swapped = host.swap_stale_prune_undo_color_scale_ab()
