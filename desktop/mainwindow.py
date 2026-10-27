@@ -96,6 +96,7 @@ class MainWindow(QMainWindow):
         devices.addAction(self.action('导入点云',self.open_cloud));devices.addAction(self.action('设置参考点云',lambda:self.open_cloud(True)))
         devices.addAction(self.action('清除点云输入',self.clear_cloud))
         devices.addAction(self.action('相机管理…',self.open_camera_manager))
+        devices.addAction(self.action('通信管理…',self.open_comm_manager))
         tools_menu.addAction(self.action('运行界面设计',self.open_run_ui_designer))
         tools_menu.addAction(self.action('运行画面编辑（经典）',lambda:self.open_panel('hmi')))
         settings_menu.addAction(self.action('设计态 / 运行模式…',self.toggle_app_mode))
@@ -112,6 +113,7 @@ class MainWindow(QMainWindow):
         self.demo_action=self.action('演示工程',self.open_demo_library);toolbar.addAction(self.demo_action)
         self.return_demo_action=self.action('返回原工程',self.restore_demo);self.return_demo_action.setVisible(False);toolbar.addAction(self.return_demo_action);toolbar.addSeparator()
         self.cam_mgr_action=self.action('📷 相机',self.open_camera_manager);toolbar.addAction(self.cam_mgr_action)
+        toolbar.addAction(self.action('通信',self.open_comm_manager))
         toolbar.addAction(self.action('var',lambda:self.open_panel('variables')))
         toolbar.addAction(self.action('触发',self.open_global_triggers))
         toolbar.addSeparator()
@@ -1316,7 +1318,14 @@ class MainWindow(QMainWindow):
             self._group_breadcrumb.setVisible(False)
         self.log(f'已退出组合模块「{frame["name"]}」')
 
-    # ---- B4 全局触发壳 ----
+    # ---- Wave2 通信管理 / B4 全局触发壳 ----
+    def open_comm_manager(self):
+        """Wave2: 通信管理窗（VM p=10）."""
+        from desktop.comm_manager import CommManagerDialog
+        dlg = CommManagerDialog(self.document, self)
+        if dlg.exec():
+            self.log('通信管理已更新')
+
     def open_global_triggers(self):
         from desktop.global_triggers import GlobalTriggersDialog
         # Dialog 内部 commit；此处仅打开
