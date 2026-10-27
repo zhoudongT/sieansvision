@@ -872,9 +872,19 @@ def default_host_run_ui():
             {'name': '上位机状态机', 'page': 1, 'cell': 1, 'category': '基础'},
         ],
         'controls': {
-            '图像': {'commands': [], 'binding': ''},
-            '上位机状态机': {'commands': [], 'binding': ''},
+            '图像': {'commands': [], 'binding': 'source'},
+            '上位机状态机': {
+                'commands': [
+                    {'type': '执行·连续', 'config': ''},
+                    {'type': '执行·停止', 'config': ''},
+                ],
+                'binding': 'host',
+            },
         },
-        'fixedBars': {'top': False, 'bottom': True, 'left': False, 'right': False,
-                      'cameraBind': '未绑定', 'commBind': 'TCP.连接状态'},
+        'fixedBars': {
+            'top': False, 'bottom': True, 'left': False, 'right': False,
+            'cameraBind': '未绑定', 'commBind': 'TCP.连接状态',
+            'showRunStatus': True, 'showOkNg': True,
+        },
+        'meta': {'template': 'host_state_machine', 'version': 1},
     }

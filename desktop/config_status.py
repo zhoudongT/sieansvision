@@ -102,7 +102,7 @@ def step_incomplete(step, project=None) -> bool:
         return not str(params.get('sourceVar') or '').strip()
     if op == 'text_save':
         return not str(params.get('path') or '').strip()
-    if op in ('geometry', 'rect_find'):
+    if op in ('geometry', 'rect_find', 'measure', 'caliper'):
         return not bool(step.get('imageFrom'))
     if op in ('line_intersect', 'point_distance', 'point_line_distance'):
         if (params.get('mode') or 'bind') == 'manual':

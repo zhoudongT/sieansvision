@@ -99,7 +99,9 @@ class MainWindow(QMainWindow):
         devices.addAction(self.action('相机管理…',self.open_camera_manager))
         devices.addAction(self.action('通信管理…',self.open_comm_manager))
         tools_menu.addAction(self.action('运行界面设计',self.open_run_ui_designer))
+        tools_menu.addAction(self.action('一键套用上位机运行壳',self.apply_host_run_ui_template))
         tools_menu.addAction(self.action('应用上位机状态机模板',self.apply_host_run_ui_template))
+        tools_menu.addAction(self.action('插入生产任务建议链…',self.apply_production_demo_chain))
         tools_menu.addAction(self.action('运行画面编辑（经典）',lambda:self.open_panel('hmi')))
         settings_menu.addAction(self.action('设计态 / 运行模式…',self.toggle_app_mode))
         settings_menu.addAction(self.action('全局触发…',self.open_global_triggers))
@@ -116,6 +118,8 @@ class MainWindow(QMainWindow):
         self.return_demo_action=self.action('返回原工程',self.restore_demo);self.return_demo_action.setVisible(False);toolbar.addAction(self.return_demo_action);toolbar.addSeparator()
         self.cam_mgr_action=self.action('📷 相机',self.open_camera_manager);toolbar.addAction(self.cam_mgr_action)
         toolbar.addAction(self.action('通信',self.open_comm_manager))
+        toolbar.addAction(self.action('上位机',self.apply_host_run_ui_template))
+        toolbar.addAction(self.action('产线链',self.apply_production_demo_chain))
         toolbar.addAction(self.action('var',lambda:self.open_panel('variables')))
         toolbar.addAction(self.action('触发',self.open_global_triggers))
         toolbar.addSeparator()
@@ -1487,15 +1491,67 @@ class MainWindow(QMainWindow):
             self.log(f'未接线触发命令：{ctype}' + (f' · {cfg}' if cfg else ''))
 
     def apply_host_run_ui_template(self):
-        """Install p41–43 上位机 layout into project.runUi (local)."""
+        """Install p41–43 上位机 layout; optional switch to run mode (one-click shell)."""
         from desktop.run_ui_designer import default_host_run_ui
         from copy import deepcopy
+        from PySide6.QtWidgets import QMessageBox
+        box = QMessageBox(self)
+        box.setWindowTitle('上位机运行壳')
+        box.setText('一键套用 VisionMaster 式上位机运行界面（图像 + 状态机）。\n无机械手 SDK。')
+        box.setInformativeText('将写入 project.runUi，并可切换到运行模式预览。')
+        apply_btn = box.addButton('套用模板', QMessageBox.ButtonRole.AcceptRole)
+        apply_run = box.addButton('套用并切运行态', QMessageBox.ButtonRole.ActionRole)
+        cancel = box.addButton('取消', QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is cancel or clicked is None:
+            return
         p = deepcopy(self.document.project)
         p['runUi'] = default_host_run_ui()
         self.document.commit(p)
         if hasattr(self, 'operator_hmi'):
             self.operator_hmi.reload_layout(self.document.project)
         self.log('已应用上位机状态机运行界面模板（图像+状态机）')
+        if clicked is apply_run:
+            if getattr(self, 'app_mode', 'design') != 'run':
+                self.guard(lambda: self.toggle_app_mode())
+            self.log('已切换运行态 · 上位机壳可见')
+
+    def apply_production_demo_chain(self):
+        """Tools menu: insert production_task node then apply DEFAULT_CHAIN (p40)."""
+        from copy import deepcopy
+        from desktop.production_task_panel import DEFAULT_CHAIN, chain_to_operations, normalize_production_task_params
+        from PySide6.QtWidgets import QMessageBox
+        if self.busy:
+            raise ValueError('运行中不可改流程')
+        ops = chain_to_operations(DEFAULT_CHAIN)
+        if not ops:
+            self.log('建议链为空'); return
+        ans = QMessageBox.question(
+            self, '生产任务建议链',
+            f'将插入「生产任务」模块，并按建议链添加 {len(ops)} 个算子节点。\n'
+            '无机械手 SDK；发送上位机仅走既有通讯算子。\n继续？',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if ans != QMessageBox.StandardButton.Yes:
+            return
+        # Ensure production_task node exists / add one
+        if 'production_task' in self.definitions:
+            nid = self.document.add(self.definitions['production_task'], parent=self.selected or 'source')
+            proj = deepcopy(self.document.project)
+            for s in proj['steps']:
+                if s['id'] == nid:
+                    s['name'] = '生产任务1'
+                    s['params'] = normalize_production_task_params({
+                        'taskName': 'DemoTask',
+                        'recipe': 'default',
+                        'chain': deepcopy(DEFAULT_CHAIN),
+                    })
+                    break
+            self.document.commit(proj)
+            self.selected = nid
+        self.apply_production_chain(ops)
 
     def open_run_ui_designer(self):
         if self.dialogs.get('run_ui'):

@@ -908,6 +908,13 @@ Tab 组合（不同课略有出入，改造应都支持）：
 ---
 
 
+
+## 【2026-10-27 续】Comm 变量写回 · 上位机一键套用
+
+- **CommManager**：TCP/UDP/串口测试读回 → flow/global 变量（`flow.x`/`global.x` 或作用域下拉）；接收事件「模拟写回」；发送事件「从变量填报文」；testPrefs 记住上次变量。
+- **上位机一键**：工具栏「上位机」/ 工具菜单「一键套用上位机运行壳」写 `runUi`（图像+状态机），可选切运行态；「产线链」插入 production_task + DEFAULT_CHAIN。
+- 仍无机械手 SDK；Comm↔引擎运行态事件总线仍可再深。
+
 ## 【2026-10-27 续】属性密度 · 条件/分支 · wave3 · 浮窗壳
 
 - **条件 / 分支**：规则表与路径表加「启用」列、↑↓ 排序；比较符补 starts_with/ends_with/regex/empty/not_empty；结果显示摘要。

@@ -18,6 +18,67 @@ from PySide6.QtWidgets import (
 
 from desktop.widgets.switch import OrangeSwitch
 
+
+def parse_var_ref(raw):
+    """Parse 'flow.xxx' / 'global.xxx' / 'g.xxx' / bare → (scope, name). Default scope=flow."""
+    text = (raw or '').strip()
+    if not text:
+        return 'flow', ''
+    lower = text.lower()
+    for prefix, scope in (('flow.', 'flow'), ('global.', 'global'), ('g.', 'global')):
+        if lower.startswith(prefix):
+            return scope, text[len(prefix):].strip()
+    return 'flow', text
+
+
+def write_project_variable(project, raw_ref, value):
+    """Design-time write into project.variables (flow) or project.globalVariables.
+    Also mirrors into variables['global'] if that nested dict already exists.
+    Returns (scope, name) or (None, '') if empty ref.
+    """
+    scope, name = parse_var_ref(raw_ref)
+    if not name:
+        return None, ''
+    project = project if isinstance(project, dict) else {}
+    variables = project.setdefault('variables', {})
+    if not isinstance(variables, dict):
+        variables = {}
+        project['variables'] = variables
+    if scope == 'global':
+        gvars = project.setdefault('globalVariables', {})
+        if not isinstance(gvars, dict):
+            gvars = {}
+            project['globalVariables'] = gvars
+        gvars[name] = value
+        if isinstance(variables.get('global'), dict):
+            variables['global'][name] = value
+        # also stamp a marker so Variables dialog can see persist hint
+        persist = project.setdefault('variablePersist', {})
+        if isinstance(persist, dict) and name not in persist:
+            persist[name] = True
+    else:
+        variables[name] = value
+    return scope, name
+
+
+def read_project_variable(project, raw_ref, default=''):
+    scope, name = parse_var_ref(raw_ref)
+    if not name:
+        return default
+    project = project or {}
+    variables = project.get('variables') or {}
+    if scope == 'global':
+        gvars = project.get('globalVariables') or {}
+        if isinstance(gvars, dict) and name in gvars:
+            return gvars[name]
+        if isinstance(variables.get('global'), dict) and name in variables['global']:
+            return variables['global'][name]
+        return default
+    if isinstance(variables, dict) and name in variables:
+        return variables[name]
+    return default
+
+
 PROTOCOLS = [
     'TCP Client', 'TCP Server', 'UDP', 'Serial', 'MQTT', 'Modbus TCP', 'Modbus RTU', 'OPC UA', 'S7',
 ]
@@ -78,8 +139,61 @@ class _EventTable(QWidget):
         add = QPushButton('添加')
         add.clicked.connect(lambda: self._append({}))
         bar.addWidget(add)
+        if var_role == 'write':
+            sim = QPushButton('模拟写回变量')
+            sim.setToolTip('把「报文」列写入绑定的流程/全局变量（设计态联调）')
+            sim.clicked.connect(self._simulate_writeback)
+            bar.addWidget(sim)
+        else:
+            fill = QPushButton('从变量填报文')
+            fill.setToolTip('用绑定变量当前值覆盖「报文」列（设计态预览）')
+            fill.clicked.connect(self._fill_from_variables)
+            bar.addWidget(fill)
         bar.addStretch(1)
         lay.addLayout(bar)
+
+
+    def bind_document(self, document):
+        self._document = document
+
+    def _simulate_writeback(self):
+        doc = getattr(self, '_document', None)
+        if doc is None:
+            QMessageBox.information(self, '接收事件', '无工程文档，无法写变量。')
+            return
+        written = []
+        p = deepcopy(doc.project)
+        for row in self.rows():
+            var = (row.get('variable') or '').strip()
+            if not var:
+                continue
+            msg = row.get('message') or row.get('topic') or ''
+            scope, name = write_project_variable(p, var, msg)
+            if name:
+                written.append(f'{scope}.{name}')
+        if written:
+            doc.commit(p)
+            QMessageBox.information(self, '接收事件', '已写回：\n' + '\n'.join(written))
+        else:
+            QMessageBox.information(self, '接收事件', '没有绑定变量的事件行。')
+
+    def _fill_from_variables(self):
+        doc = getattr(self, '_document', None)
+        if doc is None:
+            return
+        p = doc.project or {}
+        for r in range(self.table.rowCount()):
+            var_w = self.table.cellWidget(r, 4)
+            msg_w = self.table.cellWidget(r, 3)
+            if not var_w or not msg_w:
+                continue
+            ref = var_w.text().strip()
+            if not ref:
+                continue
+            val = read_project_variable(p, ref, '')
+            if val is None:
+                continue
+            msg_w.setText(str(val))
 
     def set_rows(self, rows, devices=None):
         self._devices = list(devices or [])
@@ -226,6 +340,8 @@ class CommManagerDialog(QDialog):
         # --- 接收 / 发送事件 ---
         self.recv_table = _EventTable(var_role='write')
         self.send_table = _EventTable(var_role='read')
+        self.recv_table.bind_document(self.document)
+        self.send_table.bind_document(self.document)
         self.tabs.addTab(self.recv_table, '接收事件')
         self.tabs.addTab(self.send_table, '发送事件')
 
@@ -291,8 +407,12 @@ class CommManagerDialog(QDialog):
         tcp_lay.addLayout(row)
         vrow = QHBoxLayout()
         vrow.addWidget(QLabel('读回写变量'))
+        self.tcp_var_scope = QComboBox()
+        self.tcp_var_scope.addItem('流程', 'flow')
+        self.tcp_var_scope.addItem('全局', 'global')
         self.tcp_var_edit = QLineEdit()
-        self.tcp_var_edit.setPlaceholderText('可选，如 tcpLastRecv')
+        self.tcp_var_edit.setPlaceholderText('可选，如 tcpLastRecv 或 flow.xxx')
+        vrow.addWidget(self.tcp_var_scope)
         vrow.addWidget(self.tcp_var_edit, 1)
         tcp_lay.addLayout(vrow)
         self.tcp_log = QPlainTextEdit()
@@ -324,6 +444,16 @@ class CommManagerDialog(QDialog):
         self.udp_send_btn.clicked.connect(self._udp_test_send)
         urow.addStretch(1); urow.addWidget(self.udp_send_btn)
         udp_lay.addLayout(urow)
+        uv = QHBoxLayout()
+        uv.addWidget(QLabel('读回写变量'))
+        self.udp_var_scope = QComboBox()
+        self.udp_var_scope.addItem('流程', 'flow')
+        self.udp_var_scope.addItem('全局', 'global')
+        self.udp_var_edit = QLineEdit()
+        self.udp_var_edit.setPlaceholderText('可选，如 udpLastRecv')
+        uv.addWidget(self.udp_var_scope)
+        uv.addWidget(self.udp_var_edit, 1)
+        udp_lay.addLayout(uv)
         self.udp_log = QPlainTextEdit(); self.udp_log.setReadOnly(True)
         udp_lay.addWidget(self.udp_log, 1)
         self.tabs.addTab(udp, 'UDP 测试')
@@ -355,6 +485,16 @@ class CommManagerDialog(QDialog):
         self.ser_send_btn.clicked.connect(self._ser_test_send)
         srow.addWidget(self.ser_fill_btn); srow.addStretch(1); srow.addWidget(self.ser_send_btn)
         ser_lay.addLayout(srow)
+        sv = QHBoxLayout()
+        sv.addWidget(QLabel('读回写变量'))
+        self.ser_var_scope = QComboBox()
+        self.ser_var_scope.addItem('流程', 'flow')
+        self.ser_var_scope.addItem('全局', 'global')
+        self.ser_var_edit = QLineEdit()
+        self.ser_var_edit.setPlaceholderText('可选，如 serLastRecv')
+        sv.addWidget(self.ser_var_scope)
+        sv.addWidget(self.ser_var_edit, 1)
+        ser_lay.addLayout(sv)
         self.ser_log = QPlainTextEdit(); self.ser_log.setReadOnly(True)
         ser_lay.addWidget(self.ser_log, 1)
         self.tabs.addTab(ser, '串口测试')
@@ -386,6 +526,21 @@ class CommManagerDialog(QDialog):
         names = [d.get('name') or '' for d in self._devices]
         self.recv_table.set_rows(cm.get('recvEvents') or [], names)
         self.send_table.set_rows(cm.get('sendEvents') or [], names)
+        prefs = cm.get('testPrefs') or {}
+        last = str(prefs.get('lastVar') or '')
+        if last:
+            scope, name = parse_var_ref(last)
+            for edit, sc in (
+                (getattr(self, 'tcp_var_edit', None), getattr(self, 'tcp_var_scope', None)),
+                (getattr(self, 'udp_var_edit', None), getattr(self, 'udp_var_scope', None)),
+                (getattr(self, 'ser_var_edit', None), getattr(self, 'ser_var_scope', None)),
+            ):
+                if edit is not None and not edit.text().strip():
+                    edit.setText(name)
+                if sc is not None:
+                    i = sc.findData(scope)
+                    if i >= 0:
+                        sc.setCurrentIndex(i)
         hb = cm.get('heartbeat') or {}
         self.hb_enabled.setChecked(bool(hb.get('enabled')))
         self.hb_interval.setValue(int(hb.get('intervalMs') or 5000))
@@ -529,41 +684,37 @@ class CommManagerDialog(QDialog):
                     pass
                 text = buf.decode('utf-8', errors='replace')
                 self.tcp_log.appendPlainText(f'[{ts}] ← {text!r} ({len(buf)} bytes)')
-                var = (self.tcp_var_edit.text() or '').strip()
-                if var and hasattr(self, 'document'):
-                    p = deepcopy(self.document.project)
-                    variables = p.setdefault('variables', {})
-                    # store under global dict if nested, else flat
-                    if isinstance(variables.get('global'), dict):
-                        variables['global'][var] = text
-                    else:
-                        variables[var] = text
-                    self.document.commit(p)
-                    self.tcp_log.appendPlainText(f'[{ts}] 已写入变量 {var}')
+                self._commit_test_writeback(self.tcp_var_edit, self.tcp_var_scope, text, self.tcp_log, ts)
         except Exception as err:
             self.tcp_log.appendPlainText(f'[{ts}] 失败：{err}')
 
 
     def _udp_test_send(self):
         import socket
+        from datetime import datetime
         host = (self.udp_host.text() or '').strip() or '127.0.0.1'
         port = int(self.udp_port.value())
         payload = (self.udp_payload.text() or '').encode('utf-8', errors='replace')
         timeout = max(0.1, float(self.udp_timeout.value()) / 1000.0)
-        self.udp_log.appendPlainText(f'→ UDP {host}:{port}  {payload!r}')
+        ts = datetime.now().strftime('%H:%M:%S')
+        self.udp_log.appendPlainText(f'[{ts}] → UDP {host}:{port}  {payload!r}')
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.settimeout(timeout)
             sock.sendto(payload, (host, port))
+            text = ''
             try:
                 data, addr = sock.recvfrom(4096)
-                self.udp_log.appendPlainText(f'← from {addr[0]}:{addr[1]}  {data!r}')
+                text = data.decode('utf-8', errors='replace')
+                self.udp_log.appendPlainText(f'[{ts}] ← from {addr[0]}:{addr[1]}  {text!r}')
             except socket.timeout:
-                self.udp_log.appendPlainText('← (超时无回包，已发出)')
+                self.udp_log.appendPlainText(f'[{ts}] ← (超时无回包，已发出)')
             finally:
                 sock.close()
+            if text:
+                self._commit_test_writeback(self.udp_var_edit, self.udp_var_scope, text, self.udp_log, ts)
         except Exception as exc:
-            self.udp_log.appendPlainText(f'✗ {exc}')
+            self.udp_log.appendPlainText(f'[{ts}] ✗ {exc}')
 
     def _ser_fill_from_device(self):
         for d in self._devices:
@@ -588,10 +739,36 @@ class CommManagerDialog(QDialog):
             with pyserial.Serial(path, baudrate=baud, timeout=timeout) as ser:
                 ser.write(payload)
                 data = ser.read(4096)
-                self.ser_log.appendPlainText(f'← {data!r}' if data else '← (无数据)')
+                text = data.decode('utf-8', errors='replace') if data else ''
+                self.ser_log.appendPlainText(f'← {text!r}' if data else '← (无数据)')
+                if text:
+                    self._commit_test_writeback(self.ser_var_edit, self.ser_var_scope, text, self.ser_log, '')
         except Exception as exc:
             self.ser_log.appendPlainText(f'✗ {exc}')
 
+
+
+    def _commit_test_writeback(self, var_edit, scope_combo, text, log_widget, ts=''):
+        """Write test reply into flow/global vars; honor scope combo or flow./global. prefix."""
+        raw = (var_edit.text() or '').strip() if var_edit else ''
+        if not raw or not hasattr(self, 'document'):
+            return
+        # If user typed bare name, prefix with combo scope
+        if '.' not in raw and scope_combo is not None:
+            scope = scope_combo.currentData() or 'flow'
+            raw = f'{scope}.{raw}'
+        p = deepcopy(self.document.project)
+        scope, name = write_project_variable(p, raw, text)
+        if not name:
+            return
+        # remember prefs
+        cm = ensure_comm_manager(p)
+        prefs = cm.setdefault('testPrefs', {})
+        prefs['lastVar'] = raw
+        prefs['lastScope'] = scope
+        self.document.commit(p)
+        prefix = f'[{ts}] ' if ts else ''
+        log_widget.appendPlainText(f'{prefix}已写入变量 {scope}.{name}')
 
     def accept_save(self):
         # Flush current form into devices list
