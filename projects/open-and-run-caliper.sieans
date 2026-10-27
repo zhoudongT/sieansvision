@@ -1,0 +1,261 @@
+{
+  "version": 2,
+  "id": "6adbabe0dfce48a9",
+  "name": "打开即跑 · 卡尺直线多边缘",
+  "steps": [
+    {
+      "id": "88437751b6394bfd",
+      "operation": "preprocess",
+      "name": "图像预处理",
+      "params": {
+        "method": "grayscale",
+        "threshold": 127,
+        "kernel": 3,
+        "cannyLow": 50,
+        "cannyHigh": 150,
+        "invert": false,
+        "blur": 1
+      },
+      "position": {
+        "x": 300,
+        "y": 140
+      },
+      "imageFrom": "source"
+    },
+    {
+      "id": "a511881928374398",
+      "operation": "geometry",
+      "name": "卡尺直线查找",
+      "params": {
+        "feature": "lines",
+        "findMethod": "caliper",
+        "roiPreset": "center",
+        "caliperCount": 16,
+        "caliperWidth": 18,
+        "caliperLength": 220,
+        "caliperSigma": 1.0,
+        "caliperProjAngle": 0.0,
+        "edgeType": "all",
+        "edgePolarity": "any",
+        "edgeThreshold": 25,
+        "searchDir": "left_right",
+        "maxCount": 3,
+        "minScore": 0.35,
+        "minLength": 40,
+        "maximumResidual": 3.0,
+        "rejectPoints": 1,
+        "showOverlay": true,
+        "showPoints": true,
+        "showCalipers": true,
+        "showFitCurve": true,
+        "showFitError": true,
+        "showLabels": true,
+        "showRuler": true,
+        "subPixel": true,
+        "filterSize": 1
+      },
+      "position": {
+        "x": 300,
+        "y": 280
+      },
+      "imageFrom": "88437751b6394bfd"
+    },
+    {
+      "id": "27c967e55b544739",
+      "operation": "var_calc",
+      "name": "卡尺门限·OK/NG",
+      "params": {
+        "scope": "flow",
+        "expressions": [
+          {
+            "name": "lineCount",
+            "expression": "geometry_count",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "lineScore",
+            "expression": "geometry_score",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "lineRms",
+            "expression": "geometry_rms",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "passGate",
+            "expression": "lineCount > 0 && lineScore >= 0.35",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          }
+        ]
+      },
+      "position": {
+        "x": 300,
+        "y": 420
+      },
+      "imageFrom": "a511881928374398"
+    }
+  ],
+  "edges": [
+    {
+      "id": "6237c71fabb74651",
+      "from": "source",
+      "to": "88437751b6394bfd",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "2ad837b3feef4aff",
+      "from": "88437751b6394bfd",
+      "to": "a511881928374398",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "e81f29d2401947fc",
+      "from": "a511881928374398",
+      "to": "27c967e55b544739",
+      "fromPort": "bottom",
+      "toPort": "top"
+    }
+  ],
+  "sourcePosition": {
+    "x": 300,
+    "y": 40
+  },
+  "variables": {},
+  "sourceConfig": {
+    "mode": "local",
+    "pixelFormat": "RGB24",
+    "intervalMs": 0,
+    "saveInSolution": false,
+    "showImageName": true,
+    "snStart": 0,
+    "imageCache": 0,
+    "outputMono8": false,
+    "stitchEnable": false,
+    "stitchStartY": 0,
+    "stitchHeight": 0,
+    "stitchClearOnTrigger": false,
+    "autoSwitch": false,
+    "stopAtLast": true,
+    "charFilterEnable": false,
+    "inputChar": "",
+    "triggerChar": "",
+    "cameraId": "",
+    "cameraParams": {},
+    "exposure": 0.0,
+    "gain": 0.0,
+    "images": [
+      "/home/allen/文档/sieansvision/public/vision/samples/caliper-line.png",
+      "/home/allen/文档/sieansvision/public/vision/samples/caliper-vertical-only.png",
+      "/home/allen/文档/sieansvision/public/vision/samples/caliper-width-pass.png",
+      "/home/allen/文档/sieansvision/public/vision/samples/caliper-corner.png"
+    ],
+    "currentIndex": 0
+  },
+  "globalTriggers": {
+    "events": [],
+    "strings": [
+      {
+        "match": "RUN",
+        "partial": true,
+        "commands": [
+          {
+            "type": "执行·单次"
+          }
+        ]
+      },
+      {
+        "match": "CONT",
+        "partial": true,
+        "commands": [
+          {
+            "type": "执行·连续"
+          }
+        ]
+      },
+      {
+        "match": "STOP",
+        "partial": true,
+        "commands": [
+          {
+            "type": "执行·停止"
+          }
+        ]
+      }
+    ]
+  },
+  "runUi": {
+    "split": "4",
+    "placements": [
+      {
+        "name": "图像",
+        "page": 3,
+        "cell": 0,
+        "category": "基础"
+      },
+      {
+        "name": "OK/NG",
+        "page": 3,
+        "cell": 1,
+        "category": "基础"
+      },
+      {
+        "name": "运行控制",
+        "page": 3,
+        "cell": 2,
+        "category": "基础"
+      },
+      {
+        "name": "生产统计",
+        "page": 3,
+        "cell": 3,
+        "category": "图表"
+      }
+    ],
+    "controls": {
+      "图像": {
+        "commands": [],
+        "binding": ""
+      },
+      "OK/NG": {
+        "commands": [],
+        "binding": "passGate"
+      },
+      "运行控制": {
+        "commands": [
+          {
+            "type": "执行·单次"
+          },
+          {
+            "type": "执行·停止"
+          }
+        ],
+        "binding": ""
+      },
+      "生产统计": {
+        "commands": [],
+        "binding": "passGate"
+      }
+    },
+    "fixedBars": {
+      "bottom": true,
+      "gateKey": "passGate",
+      "showCounters": true
+    },
+    "meta": {
+      "title": "卡尺直线 · 打开即跑",
+      "industry": "measure"
+    }
+  },
+  "notes": "【打开即跑 · 卡尺】caliper-line 等样张。▶ 单次：预处理→多卡尺直线(边缘类型=全部,maxCount=3)→门限。\n看叠层：卡尺框·边缘点·多直线·rms；变量 lineCount/lineScore/lineRms/passGate。\n联调：全局触发 RUN/CONT/STOP；模板市场可云同步本机站 :19779。无 Halcon / 无现场硬件。"
+}

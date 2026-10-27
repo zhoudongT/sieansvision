@@ -61,3 +61,9 @@ node scripts/smoke-ninepoint-comm-alarmexport-e2e.cjs
 ## 不要做
 
 - 不 push、不接机器人 SDK、不改 HIK 品牌标识。
+
+## open-and-run-caliper.sieans
+打开即跑 · 卡尺直线多边缘。样张 `caliper-line.png` 等；流程：预处理 → geometry(lines, findMethod=caliper, edgeType=all, maxCount=3) → 门限(lineCount/lineScore/lineRms/passGate)。叠层含卡尺框·多直线·rms。全局触发 RUN/CONT/STOP。无 Halcon / 无现场硬件。
+
+## open-and-run-tcp-sim.sieans
+打开即跑 · TCP 环回联调。先在通信管理「TCP 测试」启动环回模拟器(:19880)，再单次或发 RUN。无现场硬件。

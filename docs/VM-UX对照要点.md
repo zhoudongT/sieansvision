@@ -1085,7 +1085,7 @@ sieans：`config_status.node_needs_bang` + `Node.needs_config` / `run_failed`（
 | Comm | **试收→fire_string_trigger(RUN/CONT) 活路已验**；真机 TCP 需现场设备（非代码缺口） |
 | Host SM | 已接 |
 | 云/市场 | 模板市场本地已接；**云同步**需后端（非本机 UI 缺口） |
-| 算法核 | 卡尺为 OpenCV 启发式（非 Halcon 核）— 文档已声明，非 UI 缺口 |
+| 算法核 | 多卡尺+多边缘分带已接（OpenCV）；Halcon 核仍外置 |
 | 扩展插件 | 第三方 plugin 无专用属性页时走通用保留（catalog 回退文案） |
 
 ### 进度续⑧ · 2026-10-27 深夜

@@ -359,7 +359,7 @@ class GeometryFindPanel(QWidget):
         inv = OrangeSwitch(bool(self.params.get('invert', False)))
         inv.toggled.connect(lambda c: self._set_param('invert', bool(c)))
         form.addRow('反色', inv)
-        tip = QLabel('卡尺级字段已接入引擎多卡尺边缘拟合（OpenCV 强度剖面+稳健拟合，非 Halcon 核）。可切 Hough。未选输入源 → N4 红叹号。')
+        tip = QLabel('卡尺级字段已接入引擎多卡尺边缘拟合（OpenCV；非 Halcon）。边缘类型=全部+最大个数>1 → 多直线分带；可切 Hough。未选输入源 → N4 红叹号。')
         tip.setWordWrap(True); tip.setStyleSheet('color:#888;')
         form.addRow(tip)
         return w
@@ -402,12 +402,23 @@ class GeometryFindPanel(QWidget):
         jmax = QDoubleSpinBox(); jmax.setRange(-1e9, 1e9); jmax.setValue(float(self.params.get('judgeMax') or 99999))
         jmax.valueChanged.connect(lambda v: self._set_param('judgeMax', float(v)))
         form.addRow('判断上限', jmax)
-        tip = QLabel('直线：起点/终点/角度；圆：中心/半径；矩形：中心/宽高/角度。引擎沿用 geometry。')
+        tip = QLabel('直线：起点/终点/角度/score/rms；圆：中心/半径；矩形：中心/宽高/角度。引擎沿用 geometry。')
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
-        tip = QLabel('叠层开关已接入引擎实绘（关则不画线/点/标签）。')
+        tip = QLabel('叠层开关已接入引擎实绘（关则不画线/点/标签）。开启「显示拟合误差」可在叠层标注 rms。')
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
+
+        # 结果诊断字段说明（运行后由引擎 residualsSummary / diagnostic 回填到结果面板）
+        diag = QLabel(
+            '诊断字段：diagnostic · score · rmsPixels · inlierCount · residualsSummary[]\n'
+            '多直线：边缘类型=全部 + 最大个数>1 → 按扫描轴分带拟合；不足时残差剥离补线。\n'
+            '各线含 lineIndex / score / rmsPixels / lengthPixels / angleDeg。'
+        )
+        diag.setWordWrap(True)
+        diag.setObjectName('geometryDiagHint')
+        diag.setStyleSheet('color:#9ab;font-size:11px;padding:4px 0;')
+        form.addRow('结果诊断', diag)
         return w

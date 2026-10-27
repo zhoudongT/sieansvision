@@ -1351,7 +1351,7 @@ class OperatorHmiView(QWidget):
             return cell
         if name in ('多数据线图', '线图阵列'):
             cell = self._make_cell_frame(name)
-            tip = QLabel('曲线示意：周期耗时 / 判定序列（引擎时序后续加深）')
+            tip = QLabel('曲线示意：周期耗时 / 判定序列（跟 productionStats / elapsed；触发 RUN 后刷新）')
             tip.setWordWrap(True)
             tip.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
             spark = QLabel('▁▂▃▅▄▆▇▅▄▃▂▁  ·  实时趋势示意')
@@ -1449,7 +1449,7 @@ class OperatorHmiView(QWidget):
             return cell
         if name == '子界面':
             cell = self._make_cell_frame(name)
-            tip = QLabel('嵌套子界面壳：标题栏 + 判定灯 + 内嵌分区')
+            tip = QLabel('嵌套子界面：标题栏 + 判定灯 + 内嵌分区；可再放组合框栈/Tab/连接灯')
             tip.setWordWrap(True)
             tip.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
             inner = QFrame()

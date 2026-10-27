@@ -272,73 +272,196 @@ def find_lines_caliper(gray: np.ndarray, canvas, p: dict, offset=(0, 0),
     out_items = []
     fit_meta = None
     diagnostic = '未检出足够边缘点'
+    min_length = float(p.get('minLength') or 0)
 
-    if len(valid_rows) >= 3:
-        pts = np.array(edge_points, dtype=np.float64)
+    def _item_from_fit(fitted, src_rows, band_idx=1):
+        mask = fitted['inlierMask']
+        for r, keep, res in zip(src_rows, mask, fitted['residuals']):
+            r['inlier'] = bool(keep) if band_idx == 1 else (bool(keep) or r.get('inlier', False))
+            r['residualPixels'] = float(res)
+            if keep:
+                r['lineIndex'] = band_idx
+            elif band_idx == 1 and not keep:
+                r['reason'] = '偏离拟合直线'
+        inlier_ratio = fitted['inlierCount'] / max(count, 1)
+        rms_score = max(0.0, 1.0 - fitted['rmsPixels'] / max(max_residual * 2, 1e-6))
+        line_score = float(0.6 * inlier_ratio + 0.4 * rms_score)
+        start = fitted['start']
+        end = fitted['end']
+        ang = fitted['angleDeg']
+        if ang_norm:
+            ang = ang % 180.0
+        length = math.hypot(end[0] - start[0], end[1] - start[1])
+        if min_length > 0 and length < min_length:
+            return None, f'长度过短 ({length:.1f}<{min_length:.1f})'
+        if line_score < min_score:
+            return None, f'分数过低 ({line_score:.3f}<{min_score:.3f})'
+        item = {
+            'start': [float(start[0]), float(start[1])],
+            'end': [float(end[0]), float(end[1])],
+            'lengthPixels': float(length),
+            'angleDeg': float(ang),
+            'score': line_score,
+            'rmsPixels': fitted['rmsPixels'],
+            'inlierCount': fitted['inlierCount'],
+            'edgePoints': [[float(r['edgeX']), float(r['edgeY'])] for r, k in zip(src_rows, mask) if k],
+            'method': 'caliper',
+            'lineIndex': band_idx,
+        }
+        return item, '卡尺直线拟合通过'
+
+    def _draw_item(item, color=(0, 210, 80)):
+        if not (show_ov and show_fit and canvas is not None):
+            return
+        a = tuple(map(int, np.round(item['start'])))
+        b = tuple(map(int, np.round(item['end'])))
+        cv2.line(canvas, a, b, color, 2, cv2.LINE_AA)
+        if show_labels:
+            mid = ((a[0] + b[0]) // 2, (a[1] + b[1]) // 2)
+            cv2.putText(canvas, f"{item.get('lineIndex', 1)} s={item['score']:.2f}", mid,
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
+        if show_fit_err:
+            cv2.putText(canvas, f"rms={item['rmsPixels']:.2f}",
+                        (a[0] + 4, a[1] + 14), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 180, 0), 1, cv2.LINE_AA)
+        if show_ruler:
+            cv2.drawMarker(canvas, a, (255, 180, 0), cv2.MARKER_CROSS, 8, 1)
+            cv2.drawMarker(canvas, b, (255, 180, 0), cv2.MARKER_CROSS, 8, 1)
+
+    # --- band candidates from multi-edge (edgeType=all) ---
+    band_point_sets = []  # list of list[row-like dicts with edgeX/edgeY]
+    if edge_type == 'all' and max_count > 1:
+        # Cluster by scan position: each probe's allEdges → assign to nearest band seed
+        raw = []  # (scan_pos, x, y, probe)
+        for r in valid_rows:
+            for e in (r.get('allEdges') or [{'x': r['edgeX'], 'y': r['edgeY']}]):
+                # reconstruct approx scan pos relative to probe center along scan
+                dx = e['x'] - r['probeCenterX']
+                dy = e['y'] - r['probeCenterY']
+                spos = float(dx * scan[0] + dy * scan[1])
+                raw.append((spos, float(e['x']), float(e['y']), r['probe']))
+        if raw:
+            raw.sort(key=lambda t: t[0])
+            # greedy gap clustering along scan axis
+            gap = max(3.0, cal_len * 0.08, max_residual * 2)
+            clusters = []
+            cur = [raw[0]]
+            for pt in raw[1:]:
+                if abs(pt[0] - cur[-1][0]) <= gap:
+                    cur.append(pt)
+                else:
+                    clusters.append(cur)
+                    cur = [pt]
+            clusters.append(cur)
+            # keep clusters that span enough distinct probes
+            for cl in clusters:
+                probes = {t[3] for t in cl}
+                if len(probes) < 3:
+                    continue
+                # one point per probe (median scan in cluster for that probe)
+                by_probe = {}
+                for spos, x, y, pr in cl:
+                    by_probe.setdefault(pr, []).append((spos, x, y))
+                pts_rows = []
+                for pr, lst in by_probe.items():
+                    lst.sort(key=lambda t: t[0])
+                    mid = lst[len(lst) // 2]
+                    pts_rows.append({'edgeX': mid[1], 'edgeY': mid[2], 'probe': pr, 'inlier': False})
+                if len(pts_rows) >= 3:
+                    band_point_sets.append(pts_rows)
+
+    if not band_point_sets:
+        # single primary set from valid_rows
+        if len(valid_rows) >= 3:
+            band_point_sets = [[{'edgeX': r['edgeX'], 'edgeY': r['edgeY'], 'probe': r['probe'],
+                                'inlier': False, '_src': r} for r in valid_rows]]
+
+    # Fit each band; then residual-peel more lines if maxCount still open
+    palette = [
+        (0, 210, 80), (0, 180, 255), (255, 160, 40), (200, 80, 255),
+        (80, 220, 200), (220, 220, 60),
+    ]
+    used_point_keys = set()
+    band_idx = 0
+    last_diag = diagnostic
+    for pts_rows in band_point_sets:
+        if len(out_items) >= max_count:
+            break
+        # skip points already claimed by a prior line
+        free = [r for r in pts_rows if (round(r['edgeX'], 2), round(r['edgeY'], 2)) not in used_point_keys]
+        if len(free) < 3:
+            continue
+        pts = np.array([[r['edgeX'], r['edgeY']] for r in free], dtype=np.float64)
         fitted = _fit_line(pts, cross, max_residual, reject_extra=reject_extra)
-        if fitted is not None:
+        if fitted is None:
+            last_diag = '拟合有效点不足'
+            continue
+        # map residuals onto original valid_rows when primary
+        src_for_meta = free
+        if band_idx == 0 and '_src' in (free[0] if free else {}):
+            # sync onto original valid_rows for primary diagnostics
+            src_for_meta = []
+            for r in free:
+                src = r.get('_src')
+                src_for_meta.append(src if src is not None else r)
+        item, diag = _item_from_fit(fitted, src_for_meta, band_idx=band_idx + 1)
+        last_diag = diag
+        if item is None:
+            continue
+        if band_idx == 0:
             fit_meta = fitted
-            mask = fitted['inlierMask']
-            for r, keep, res in zip(valid_rows, mask, fitted['residuals']):
-                r['inlier'] = bool(keep)
-                r['residualPixels'] = float(res)
-                if not keep:
-                    r['reason'] = '偏离拟合直线'
-            # score: inlier ratio * soft rms score
-            inlier_ratio = fitted['inlierCount'] / max(count, 1)
-            rms_score = max(0.0, 1.0 - fitted['rmsPixels'] / max(max_residual * 2, 1e-6))
-            line_score = float(0.6 * inlier_ratio + 0.4 * rms_score)
-            start = fitted['start']
-            end = fitted['end']
-            ang = fitted['angleDeg']
-            if ang_norm:
-                ang = ang % 180.0
-            length = math.hypot(end[0] - start[0], end[1] - start[1])
-            item = {
-                'start': [float(start[0]), float(start[1])],
-                'end': [float(end[0]), float(end[1])],
-                'lengthPixels': float(length),
-                'angleDeg': float(ang),
-                'score': line_score,
-                'rmsPixels': fitted['rmsPixels'],
-                'inlierCount': fitted['inlierCount'],
-                'edgePoints': [[float(r['edgeX']), float(r['edgeY'])] for r, k in zip(valid_rows, mask) if k],
-                'method': 'caliper',
-            }
-            if line_score >= min_score:
-                out_items.append(item)
-                diagnostic = '卡尺直线拟合通过'
-            else:
-                diagnostic = f'分数过低 ({line_score:.3f}<{min_score:.3f})'
-            # draw fit
-            if show_ov and show_fit and canvas is not None and out_items:
-                a = tuple(map(int, np.round(start)))
-                b = tuple(map(int, np.round(end)))
-                cv2.line(canvas, a, b, (0, 210, 80), 2, cv2.LINE_AA)
-                if show_labels:
-                    mid = ((a[0] + b[0]) // 2, (a[1] + b[1]) // 2)
-                    cv2.putText(canvas, f'1 s={line_score:.2f}', mid,
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 210, 80), 1, cv2.LINE_AA)
-                if show_fit_err:
-                    cv2.putText(canvas, f'rms={fitted["rmsPixels"]:.2f}',
-                                (a[0] + 4, a[1] + 14), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 180, 0), 1, cv2.LINE_AA)
-                if show_ruler:
-                    cv2.drawMarker(canvas, a, (255, 180, 0), cv2.MARKER_CROSS, 8, 1)
-                    cv2.drawMarker(canvas, b, (255, 180, 0), cv2.MARKER_CROSS, 8, 1)
-        else:
-            diagnostic = '拟合有效点不足'
-    else:
-        diagnostic = f'有效边缘点不足 ({len(valid_rows)}/3)'
+        out_items.append(item)
+        _draw_item(item, palette[band_idx % len(palette)])
+        for r, keep in zip(free, fitted['inlierMask']):
+            if keep:
+                used_point_keys.add((round(r['edgeX'], 2), round(r['edgeY'], 2)))
+        band_idx += 1
 
-    # draw edge points
+    # Residual peel: if still need more lines and we have leftover primary points
+    if len(out_items) < max_count and len(valid_rows) >= 6:
+        remain = [r for r in valid_rows
+                  if (round(r['edgeX'], 2), round(r['edgeY'], 2)) not in used_point_keys]
+        peel_guard = 0
+        while len(out_items) < max_count and len(remain) >= 3 and peel_guard < max_count:
+            peel_guard += 1
+            pts = np.array([[r['edgeX'], r['edgeY']] for r in remain], dtype=np.float64)
+            fitted = _fit_line(pts, cross, max_residual, reject_extra=reject_extra)
+            if fitted is None or fitted['inlierCount'] < 3:
+                break
+            item, diag = _item_from_fit(fitted, remain, band_idx=len(out_items) + 1)
+            last_diag = diag
+            if item is None:
+                break
+            out_items.append(item)
+            _draw_item(item, palette[len(out_items) % len(palette)])
+            mask = fitted['inlierMask']
+            for r, keep in zip(remain, mask):
+                if keep:
+                    used_point_keys.add((round(r['edgeX'], 2), round(r['edgeY'], 2)))
+            remain = [r for r, keep in zip(remain, mask) if not keep]
+
+    if out_items:
+        diagnostic = f'卡尺检出 {len(out_items)} 条直线' if len(out_items) > 1 else last_diag
+    else:
+        diagnostic = last_diag if len(valid_rows) >= 3 else f'有效边缘点不足 ({len(valid_rows)}/3)'
+
+    # draw edge points (inlier / multi-line index / outlier)
     if show_ov and show_pts and canvas is not None:
         for r in valid_rows:
-            color = (60, 210, 60) if r.get('inlier') else (40, 40, 230)
-            if not r.get('inlier') and fit_meta is None:
+            li = int(r.get('lineIndex') or 0)
+            if li > 0:
+                color = palette[(li - 1) % len(palette)]
+            elif r.get('inlier'):
+                color = (60, 210, 60)
+            elif fit_meta is None:
                 color = (0, 165, 255)
+            else:
+                color = (40, 40, 230)
             cv2.circle(canvas, (round(r['edgeX']), round(r['edgeY'])), 3, color, -1, cv2.LINE_AA)
+            # secondary edges from edgeType=all
+            if edge_type == 'all':
+                for e in (r.get('allEdges') or [])[1:]:
+                    cv2.circle(canvas, (round(e['x']), round(e['y'])), 2, (180, 180, 40), -1, cv2.LINE_AA)
 
-    # multi-line: if edgeType=all and maxCount>1, try clustering by residual bands — soft: just return primary for now
     out_items = out_items[:max_count]
 
     return {
@@ -351,9 +474,17 @@ def find_lines_caliper(gray: np.ndarray, canvas, p: dict, offset=(0, 0),
         'probes': rows,
         'probeCount': count,
         'detectedCount': len(valid_rows),
-        'rmsPixels': fit_meta['rmsPixels'] if fit_meta else None,
-        'inlierCount': fit_meta['inlierCount'] if fit_meta else 0,
+        'rmsPixels': (out_items[0]['rmsPixels'] if out_items else (fit_meta['rmsPixels'] if fit_meta else None)),
+        'rms': (out_items[0]['rmsPixels'] if out_items else (fit_meta['rmsPixels'] if fit_meta else None)),
+        'inlierCount': sum(it.get('inlierCount', 0) for it in out_items) if out_items else (fit_meta['inlierCount'] if fit_meta else 0),
         'score': out_items[0]['score'] if out_items else 0.0,
+        'scores': [it.get('score', 0.0) for it in out_items],
+        'residualsSummary': [
+            {'lineIndex': it.get('lineIndex', i + 1), 'rmsPixels': it.get('rmsPixels'),
+             'score': it.get('score'), 'inlierCount': it.get('inlierCount'),
+             'lengthPixels': it.get('lengthPixels'), 'angleDeg': it.get('angleDeg')}
+            for i, it in enumerate(out_items)
+        ],
         'diagnostic': diagnostic,
         'overlay': {
             'showOverlay': show_ov,

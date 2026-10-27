@@ -416,14 +416,29 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 | nest/Group | 引擎展开 tip 已接 |
 | labels | EN→CN 扫尾已接 |
 | settings | 已接 |
-| samples | 四行业 UI 壳已接（含印刷字符读码） |
+| samples | 四行业 UI 壳 + **打开即跑卡尺/测量/TCP环回** 已接 |
 | Comm | 试收触发活路已验；**环回协议模拟器**（:19880）可本机联调；真机 TCP 仍外置 |
 | Host SM | 已接 |
 | 云/市场 | 模板市场 + **本地云同步站**（:19779 list/publish/sync）已接；真实远端后端仍外置 |
-| 算法核 | 直线查找已接 **多卡尺边缘拟合**（OpenCV）；Halcon 核仍外置 |
+| 算法核 | 直线 **多卡尺+多边缘分带**（OpenCV）；Halcon 核仍外置 |
 | 扩展插件 | 第三方 plugin 无专用属性页时走通用保留（catalog 回退文案） |
 
+## 【细妆⑩ · 多卡尺多边缘 · 打开即跑卡尺 · 诊断字段 · 2026-10-28】
+
+> Allen t196/t191 连续自驱 — 无真机；把 ⑨ 仍薄的多边缘/样例/诊断/触发文案收实。
+
+### 已落地
+- **多直线分带拟合**：`caliper_line` 在 `edgeType=all` + `maxCount>1` 时按扫描轴分带；不足时残差剥离补线；叠层分色 + `residualsSummary`（score/rms/inliers/angle/length）。
+- **结果诊断 UI**：几何面板「结果显示」诊断字段说明；`flow-control` 注入 `geometry_rms`（rmsPixels）/ `_angle` / `_length` / `_inliers`。
+- **打开即跑 · 卡尺**：`projects/open-and-run-caliper.sieans`（预处理→多卡尺直线→门限）；菜单/打开示例/README 已登记（含 measure/tcp-sim）。
+- **HMI/触发细妆**：嵌套壳 tip；全局触发文案接 TCP 环回 :19880。
+- **冒烟**：`scripts/smoke-caliper-multi-sample-e2e.py` → 8 PASS。
+
+### 仍为外依赖
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆⑨ · 卡尺核深化 · 本地模板云 · TCP环回 · 2026-10-28】
+
 
 > Allen t196「那么继续开发吧」— 无真机/无 robot SDK；把原「外依赖」中可本机落地的三项推进为可跑代码。
 
