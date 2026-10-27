@@ -362,10 +362,26 @@ class FilmstripBar(QWidget):
         y = max(0, (scaled.height() - th) // 2)
         return scaled.copy(x, y, tw, th)
 
-    def set_live_display(self, data_url, fit_mode=None):
+    def set_actual_pad_color(self, color):
+        """Override actual-mode letterbox pad (theme / Display channel). None → CANVAS."""
+        from PySide6.QtGui import QColor
+        if color is None or color == '':
+            self._actual_pad_color = None
+            return
+        if isinstance(color, QColor):
+            self._actual_pad_color = QColor(color)
+        else:
+            self._actual_pad_color = QColor(str(color))
+
+    def set_live_display(self, data_url, fit_mode=None, pad_color=None):
         """Push Display result + honor fitMode crop on current thumb."""
         if fit_mode in ('contain', 'cover', 'actual'):
             self._live_fit_mode = fit_mode
+        if pad_color is not None:
+            try:
+                self.set_actual_pad_color(pad_color)
+            except Exception:
+                pass
         self.set_live_result(data_url, fit_mode=fit_mode or getattr(self, '_live_fit_mode', None))
         try:
             row = self.thumbs.currentRow() if hasattr(self, 'thumbs') else -1

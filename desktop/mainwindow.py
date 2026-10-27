@@ -41,7 +41,7 @@ class MainWindow(QMainWindow):
         self.backend.ready.connect(self.engine_online);self.backend.result.connect(self.engine_result)
         self.backend.error.connect(self.engine_error);self.backend.stopped.connect(self.engine_closed)
         if hasattr(self.backend,'progress'):self.backend.progress.connect(self.progress)
-        self.continuous=False;self._continuous_paused=False;self.run_all_filmstrip=False;self._run_target=None;self.rail_category='';self.property_float=None;self._group_stack=[];self._group_breadcrumb=None;self._pending_trigger_cmds=[];self._pending_after_continuous=[];self._comm_listener=None;self._nest_fold_marks=[];self._undo_index_before=None
+        self.continuous=False;self._continuous_paused=False;self.run_all_filmstrip=False;self._run_target=None;self.rail_category='';self.property_float=None;self._group_stack=[];self._group_breadcrumb=None;self._pending_trigger_cmds=[];self._pending_after_continuous=[];self._comm_listener=None;self._nest_fold_marks=[];self._undo_index_before=None;self._canvas_chip_queue=[];self._jump_confirm_skip=set()
         self.app_mode='design'  # design | run
         self.showing_all_flows=False
         self._left_pane=None;self._center_stack=None;self.run_mode_pane=None
@@ -215,7 +215,11 @@ class MainWindow(QMainWindow):
         )
         self._canvas_chip_timer = QTimer(self)
         self._canvas_chip_timer.setSingleShot(True)
-        self._canvas_chip_timer.timeout.connect(lambda: self._canvas_status_chip.setVisible(False))
+        self._canvas_chip_timer.timeout.connect(self._advance_canvas_status_chip)
+        self._canvas_status_chip.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._canvas_status_chip.setToolTip('点击关闭 · 多条折叠提示排队显示')
+        self._canvas_status_chip.installEventFilter(self)
+        self._canvas_chip_queue = []
         # A5: 全流程 panel in stack with canvas
         self.all_flows_panel=AllFlowsPanel()
         self.all_flows_panel.runOnce.connect(self.run_flow_once)
@@ -413,6 +417,8 @@ class MainWindow(QMainWindow):
             self.property_float.openCameraManager.connect(self.open_camera_manager)
             self.property_float.enterGroup.connect(self.enter_group_module)
             self.property_float.applyProductionChain.connect(lambda ops: self.guard(lambda: self.apply_production_chain(ops)))
+            if hasattr(self.property_float, 'hybridCommitted'):
+                self.property_float.hybridCommitted.connect(self.update_hybrid_commit)
         return self.property_float
 
     def open_property_float(self,node_id):
@@ -485,7 +491,43 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-    
+    def update_hybrid_commit(self, payload):
+        """Atomic PropertyFloat hybrid OK: source+step in ONE document.commit (single undo tip)."""
+        if self.busy:
+            return
+        payload = payload or {}
+        src = payload.get('source')
+        step = payload.get('step')
+        if src is None and step is None:
+            return
+        p = deepcopy(self.document.project)
+        if src is not None:
+            p['sourceConfig'] = normalize_source(src)
+            try:
+                paths = list(p['sourceConfig'].get('images') or [])
+                self.filmstrip.set_paths(paths, int(p['sourceConfig'].get('currentIndex') or 0), root=self.root)
+                self.filmstrip.set_auto_switch(bool(p['sourceConfig'].get('autoSwitch')))
+                self.filmstrip.set_stop_at_last(bool(p['sourceConfig'].get('stopAtLast')))
+            except Exception:
+                pass
+        if step is not None and step.get('id'):
+            p['steps'] = [step if s['id'] == step['id'] else s for s in p['steps']]
+        self.guard(lambda: self.document.commit(p))
+        try:
+            self._sync_filmstrip_visibility()
+            self._sync_filmstrip_interval_hint()
+        except Exception:
+            pass
+        try:
+            if (step or {}).get('operation') == 'display':
+                self._apply_display_to_result_pane(step)
+        except Exception:
+            pass
+        try:
+            self.log('混合属性已原子提交（图像源+模块 · 单条撤销）')
+        except Exception:
+            pass
+
     def refresh_config_status(self):
         """N4: 状态栏「组件参数未配置完整」与画布红叹号同源。"""
         if not hasattr(self, 'wb_status'):
@@ -1015,13 +1057,23 @@ class MainWindow(QMainWindow):
                     self.images.setCurrentIndex(1)
             elif not self.output_view.bounds.isEmpty():
                 self.output_view.fit()
-        # Filmstrip live thumb (channelled frame + fit tip)
+        # Filmstrip live thumb (channelled frame + fit tip + actual pad from theme/channel)
         try:
+            pad = self._display_actual_pad_color(ch)
             if show and hasattr(self, 'filmstrip'):
                 if hasattr(self.filmstrip, 'set_live_display'):
-                    self.filmstrip.set_live_display(show, fit_mode=fit)
+                    try:
+                        self.filmstrip.set_live_display(show, fit_mode=fit, pad_color=pad)
+                    except TypeError:
+                        if hasattr(self.filmstrip, 'set_actual_pad_color'):
+                            self.filmstrip.set_actual_pad_color(pad)
+                        self.filmstrip.set_live_display(show, fit_mode=fit)
                 elif hasattr(self.filmstrip, 'set_live_result'):
+                    if hasattr(self.filmstrip, 'set_actual_pad_color'):
+                        self.filmstrip.set_actual_pad_color(pad)
                     self.filmstrip.set_live_result(show)
+            elif hasattr(self, 'filmstrip') and hasattr(self.filmstrip, 'set_actual_pad_color'):
+                self.filmstrip.set_actual_pad_color(pad)
         except Exception:
             pass
         # HMI operator image panes
@@ -1046,6 +1098,29 @@ class MainWindow(QMainWindow):
                 dialog.apply_display(fit_mode=fit, image=show or None, channel=ch)
         except Exception:
             pass
+
+    def _display_actual_pad_color(self, channel=None):
+        """Filmstrip actual-mode letterbox pad from Display channel / theme."""
+        try:
+            from desktop.theme import CANVAS, BG, CARD, ACCENT_DEEP
+        except Exception:
+            CANVAS, BG, CARD, ACCENT_DEEP = '#2d2f33', '#2a2c30', '#3a3d42', '#c45f18'
+        ch = (channel or 'auto')
+        if isinstance(ch, str):
+            ch = ch.lower().strip()
+        else:
+            ch = 'auto'
+        if ch == 'gray':
+            return BG
+        if ch == 'r':
+            return '#3a2222'
+        if ch == 'g':
+            return '#223a22'
+        if ch == 'b':
+            return '#22223a'
+        if ch in ('auto', '', None):
+            return CANVAS
+        return CARD
 
     def _client_channel_preview(self, data_url, channel):
         """Live channel preview (cv2) without engine re-run; returns new data-url or None."""
@@ -1314,6 +1389,15 @@ class MainWindow(QMainWindow):
                 self._place_canvas_status_chip()
             except Exception:
                 pass
+        # Chip click-to-dismiss (advances queue)
+        if obj is getattr(self, '_canvas_status_chip', None):
+            if event.type() in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease):
+                if event.type() == QEvent.Type.MouseButtonRelease:
+                    try:
+                        self._dismiss_canvas_status_chip()
+                    except Exception:
+                        pass
+                return True
         return super().eventFilter(obj, event)
 
     def _place_minimap(self):
@@ -1987,6 +2071,50 @@ class MainWindow(QMainWindow):
         self._refresh_group_breadcrumb()
         self.log(f'已退出组合模块「{frame["name"]}」· 剩余深度 {len(self._group_stack)}')
 
+    def _confirm_jump_exit(self, reason, levels, nest_key, cancel_why=''):
+        """Ask before breadcrumb jump; session-remember via checkbox → _jump_confirm_skip.
+
+        Returns True to proceed with jump. Stub-friendly for smokes.
+        """
+        skip = getattr(self, '_jump_confirm_skip', None)
+        if skip is None:
+            self._jump_confirm_skip = set()
+            skip = self._jump_confirm_skip
+        if nest_key in skip:
+            try:
+                self.log(f'跳层确认已跳过（本会话记住）：{nest_key}')
+            except Exception:
+                pass
+            return True
+        from PySide6.QtWidgets import QCheckBox
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle('跳层退出确认')
+        box.setText(
+            f'当前嵌套：{reason}。\n'
+            f'跳层退出 {levels} 层会折叠撤销/重做链到上层，未保存编辑将随退出合并。\n\n仍要跳层？'
+        )
+        box.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        box.setDefaultButton(QMessageBox.StandardButton.No)
+        cb = QCheckBox('本会话不再询问此嵌套')
+        box.setCheckBox(cb)
+        ans = box.exec()
+        if cb.isChecked() and ans == QMessageBox.StandardButton.Yes:
+            skip.add(nest_key)
+            try:
+                self.log(f'本会话跳过嵌套跳层确认：{nest_key}')
+            except Exception:
+                pass
+        if ans != QMessageBox.StandardButton.Yes:
+            try:
+                self.log(f'已取消面包屑跳层（{cancel_why or "用户取消"}）')
+            except Exception:
+                pass
+            return False
+        return True
+
     def jump_exit_group_to(self, target_depth: int = 0):
         """Breadcrumb jump: exit until stack depth == target (0=主流程). Each exit folds hist."""
         try:
@@ -2008,6 +2136,15 @@ class MainWindow(QMainWindow):
             except Exception:
                 nest_dirty = self.document.project != getattr(self.document, 'saved', None)
             levels = depth - target
+            # Session skip key: stack node_ids from target..tip (this nest path)
+            nest_key = '/'.join(
+                str(fr.get('node_id') or fr.get('name') or i)
+                for i, fr in enumerate(self._group_stack[target:])
+            ) or f'depth:{depth}->{target}'
+            skip = getattr(self, '_jump_confirm_skip', None)
+            if skip is None:
+                self._jump_confirm_skip = set()
+                skip = self._jump_confirm_skip
             if (mid_redo or nest_dirty) and levels >= 1:
                 bits = []
                 if mid_redo:
@@ -2016,22 +2153,15 @@ class MainWindow(QMainWindow):
                 if nest_dirty:
                     bits.append('嵌套内有未保存编辑（相对进组快照 / outer_saved）')
                 reason = '；'.join(bits) if bits else '嵌套状态未落定'
-                ans = QMessageBox.question(
-                    self,
-                    '跳层退出确认',
-                    f'当前嵌套：{reason}。\n'
-                    f'跳层退出 {levels} 层会折叠撤销/重做链到上层，未保存编辑将随退出合并。\n\n仍要跳层？',
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No,
+                why = (
+                    '保留嵌套中段重做' if mid_redo and not nest_dirty else
+                    '保留未保存嵌套编辑' if nest_dirty and not mid_redo else
+                    '保留嵌套重做与未保存编辑'
                 )
-                if ans != QMessageBox.StandardButton.Yes:
-                    why = (
-                        '保留嵌套中段重做' if mid_redo and not nest_dirty else
-                        '保留未保存嵌套编辑' if nest_dirty and not mid_redo else
-                        '保留嵌套重做与未保存编辑'
-                    )
-                    self.log(f'已取消面包屑跳层（{why}）')
+                if not self._confirm_jump_exit(reason, levels, nest_key, why):
                     return
+        except Exception:
+            pass
         except Exception:
             pass
         n = 0
@@ -2131,17 +2261,64 @@ class MainWindow(QMainWindow):
         chip.move(x, y)
         chip.raise_()
 
-    def _show_canvas_status_chip(self, message, ms=3200):
-        """Transient chip over canvas (fold-boundary / nest tips), not only log/wb_status."""
+    def _dismiss_canvas_status_chip(self):
+        """Click/API dismiss current chip; advance queue if more fold tips pending."""
+        timer = getattr(self, '_canvas_chip_timer', None)
+        if timer is not None:
+            timer.stop()
+        self._advance_canvas_status_chip()
+
+    def _advance_canvas_status_chip(self):
+        """Timer/click: show next queued tip or hide."""
+        chip = getattr(self, '_canvas_status_chip', None)
+        queue = getattr(self, '_canvas_chip_queue', None)
+        if queue is None:
+            self._canvas_chip_queue = []
+            queue = self._canvas_chip_queue
+        if queue:
+            msg, ms = queue.pop(0)
+            self._show_canvas_status_chip(msg, ms=ms, _from_queue=True)
+            return
+        if chip is not None:
+            chip.setVisible(False)
+            chip.setText('')
+
+    def _show_canvas_status_chip(self, message, ms=3200, *, _from_queue=False):
+        """Transient chip over canvas; queues when already showing (multi fold tips)."""
         chip = getattr(self, '_canvas_status_chip', None)
         host = getattr(self, '_canvas_host', None)
         if chip is None or host is None:
             return
         text = str(message or '').strip()
         if not text:
-            chip.setVisible(False)
+            if not _from_queue:
+                self._dismiss_canvas_status_chip()
+            return
+        # Queue when a chip is already visible (don't clobber mid-tip)
+        if (not _from_queue) and chip.isVisible() and (chip.text() or '').strip():
+            q = getattr(self, '_canvas_chip_queue', None)
+            if q is None:
+                self._canvas_chip_queue = []
+                q = self._canvas_chip_queue
+            q.append((text, int(ms) if ms else 3200))
+            # Cap queue; keep newest
+            if len(q) > 8:
+                del q[:-8]
+            # Hint remaining count on current chip tooltip
+            try:
+                chip.setToolTip(f'点击关闭 · 另有 {len(q)} 条排队')
+            except Exception:
+                pass
             return
         chip.setText(text)
+        qn = len(getattr(self, '_canvas_chip_queue', None) or [])
+        try:
+            tip = '点击关闭 · 多条折叠提示排队显示'
+            if qn:
+                tip = f'点击关闭 · 另有 {qn} 条排队'
+            chip.setToolTip(tip)
+        except Exception:
+            pass
         chip.setVisible(True)
         self._place_canvas_status_chip()
         timer = getattr(self, '_canvas_chip_timer', None)

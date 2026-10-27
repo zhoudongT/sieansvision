@@ -22,6 +22,7 @@ class PropertyFloat(QDialog):
     openCameraManager = Signal()
     applyProductionChain = Signal(list)
     enterGroup = Signal(object)  # node_id
+    hybridCommitted = Signal(object)  # {source, step} atomic OK (single undo tip)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -150,14 +151,51 @@ class PropertyFloat(QDialog):
     def _on_ok_close(self):
         # Commit current form/panel — explicit 确定 path
         form = getattr(self, '_source_form', None)
+        panel = getattr(self, '_panel', None)
+        # Hybrid: both source form + step panel → one atomic emit (single undo tip)
+        if form is not None and panel is not None:
+            src = None
+            step = None
+            try:
+                if hasattr(form, 'config'):
+                    src = form.config()
+            except Exception:
+                src = None
+            try:
+                step = getattr(panel, 'step', None) or getattr(self, '_last_step', None)
+                if step is not None:
+                    step = deepcopy(step)
+            except Exception:
+                step = None
+            try:
+                self.hybridCommitted.emit({'source': src, 'step': step})
+            except Exception:
+                # Fallback: sequential emits (may create 2 undo tips)
+                try:
+                    if src is not None:
+                        self.sourceChanged.emit(src)
+                except Exception:
+                    pass
+                try:
+                    if step is not None:
+                        self.changed.emit(step)
+                except Exception:
+                    pass
+            self._source_dirty = False
+            self._source_baseline = None
+            self._step_dirty = False
+            self._step_baseline = None
+            self._close_via_action = 'ok'
+            self._sync_host_filmstrip()
+            self.close()
+            return
         if form is not None:
             try:
                 if hasattr(form, 'config'):
                     self.sourceChanged.emit(form.config())
             except Exception:
                 pass
-        panel = getattr(self, '_panel', None)
-        if panel is not None and self._source_form is None:
+        if panel is not None and form is None:
             # Flush latest step from panel if it exposes .step
             try:
                 step = getattr(panel, 'step', None) or getattr(self, '_last_step', None)
@@ -250,7 +288,7 @@ class PropertyFloat(QDialog):
         op = (step or {}).get('operation') or ''
         cat = (definition or {}).get('category') or ''
         sub = (cat + ' · ' + op) if op else cat
-        sub = ((sub + ' · ') if sub else '') + '图像源+模块 · 确定提交 / Esc·✕·取消放弃二者'
+        sub = ((sub + ' · ') if sub else '') + '图像源+模块 · 确定原子提交(单条撤销) / Esc·✕·取消放弃二者'
         self._set_chrome(f'{index} {name} · 混合', sub)
         # Source form (compact)
         form = ImageSourceForm(config)

@@ -134,15 +134,6 @@ def main():
 
     # ----- 2) Jump confirm on nest dirty (unsaved vs outer_saved) -----
     confirms = []
-    real_q = QMessageBox.question
-
-    def stub_q(*a, **k):
-        title = a[1] if len(a) > 1 else k.get('title', '')
-        text = a[2] if len(a) > 2 else k.get('text', '')
-        confirms.append({'title': str(title), 'text': str(text)})
-        return QMessageBox.StandardButton.No
-
-    QMessageBox.question = staticmethod(stub_q)
 
     class Doc:
         def __init__(self):
@@ -190,10 +181,20 @@ def main():
         jump_exit_group_to = MainWindow.jump_exit_group_to
         _place_canvas_status_chip = MainWindow._place_canvas_status_chip
         _show_canvas_status_chip = MainWindow._show_canvas_status_chip
+        _dismiss_canvas_status_chip = MainWindow._dismiss_canvas_status_chip
+        _advance_canvas_status_chip = MainWindow._advance_canvas_status_chip
         _group_breadcrumb_parts = MainWindow._group_breadcrumb_parts
+        def _confirm_jump_exit(self, reason, levels, nest_key, cancel_why=''):
+            confirms.append({'title': '跳层退出确认', 'text': reason, 'key': nest_key})
+            try:
+                self.log(f'已取消面包屑跳层（{cancel_why or "用户取消"}）')
+            except Exception:
+                pass
+            return False
 
     # Dirty nest tip (no mid-redo): should confirm
     host = Host()
+    host._jump_confirm_skip = set()
     host.document.project = deepcopy(host.document.project)
     host.document.project['name'] = 'DIRTY'
     # saved still enter baseline → modified True; history tip == only entry (no mid-redo)
@@ -211,6 +212,7 @@ def main():
     # Clean nest + no mid-redo → no confirm
     confirms.clear()
     host2 = Host()
+    host2._jump_confirm_skip = set()
     host2.logs.clear()
     # not modified
     ok('clean not modified', not host2.document.modified())
@@ -218,7 +220,6 @@ def main():
     ok('clean nest jump no confirm', not confirms, confirms)
     ok('clean nest exits', len(host2._group_stack) == 0)
 
-    QMessageBox.question = real_q
 
     # ----- 1) Canvas chip auto-reposition -----
     host3 = Host()

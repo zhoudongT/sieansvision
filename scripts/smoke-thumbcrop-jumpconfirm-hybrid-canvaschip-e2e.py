@@ -90,13 +90,6 @@ def main():
 
     # ----- 2) Jump confirm mid-redo -----
     confirms = []
-    real_q = QMessageBox.question
-
-    def fake_q(parent, title, text, *a, **k):
-        confirms.append({'title': title, 'text': text})
-        return QMessageBox.StandardButton.No  # cancel jump
-
-    QMessageBox.question = staticmethod(fake_q)
 
     class NestDoc:
         class _Sig:
@@ -152,11 +145,23 @@ def main():
         jump_exit_group_to = MainWindow.jump_exit_group_to
         _place_canvas_status_chip = MainWindow._place_canvas_status_chip
         _show_canvas_status_chip = MainWindow._show_canvas_status_chip
+        _dismiss_canvas_status_chip = MainWindow._dismiss_canvas_status_chip
+        _advance_canvas_status_chip = MainWindow._advance_canvas_status_chip
         _undo_with_fold_tip = MainWindow._undo_with_fold_tip
         _redo_with_fold_tip = MainWindow._redo_with_fold_tip
         _maybe_log_fold_cross = MainWindow._maybe_log_fold_cross
+        _jump_confirm_skip = None  # set per instance
+        def _confirm_jump_exit(self, reason, levels, nest_key, cancel_why=''):
+            confirms.append({'title': '跳层退出确认', 'text': reason, 'levels': levels, 'key': nest_key})
+            # Default cancel (No)
+            try:
+                self.log(f'已取消面包屑跳层（{cancel_why or "用户取消"}）')
+            except Exception:
+                pass
+            return False
 
     host = Host()
+    host._jump_confirm_skip = set()
     host.document.history = [nest0, nest1, nest2]
     host.document.index = 1  # mid-redo (tip is 2)
     host.document.project = deepcopy(nest1)
@@ -167,13 +172,12 @@ def main():
 
     # Accept Yes and ensure exit proceeds
     confirms.clear()
-    QMessageBox.question = staticmethod(
-        lambda *a, **k: QMessageBox.StandardButton.Yes
-    )
+    def yes_confirm(self, reason, levels, nest_key, cancel_why=''):
+        confirms.append({'title': '跳层退出确认', 'text': reason, 'key': nest_key})
+        return True
+    host._confirm_jump_exit = yes_confirm.__get__(host, Host)
     host.jump_exit_group_to(0)
     ok('mid-redo Yes exits to root', len(host._group_stack) == 0)
-
-    QMessageBox.question = real_q
 
     # ----- 3) Hybrid discard both -----
     pf = PropertyFloat()
@@ -202,6 +206,7 @@ def main():
     host2._canvas_status_chip.setVisible(False)
     host2._canvas_chip_timer = QTimer()
     host2._canvas_chip_timer.setSingleShot(True)
+    host2._canvas_chip_queue = []
     host2._nest_fold_marks = [{'index': 0, 'name': 'G1', 'tips': 2, 'depth_after': 0}]
     host2.document.history = [outer, deepcopy(outer), deepcopy(outer)]
     host2.document.index = 2
