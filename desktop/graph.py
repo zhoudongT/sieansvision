@@ -160,7 +160,6 @@ class Node(QGraphicsObject):
             )
         if change==QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged and self.scene():
             self.scene().update_edges()
-            self.scene().expand_for_item(self)
         return super().itemChange(change,value)
 
     def mouseReleaseEvent(self,event):
@@ -258,17 +257,16 @@ class FlowScene(QGraphicsScene):
                 item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
         for e in p['edges']:
             item=Edge(e,self);self.addItem(item);self.edges.append(item)
-        self.setSceneRect(self.itemsBoundingRect().adjusted(-80,-80,160,160));self.blockSignals(False)
-
-    def expand_for_item(self, item):
-        """Grow sceneRect so a dragged node can reach the view's top/edges and stay findable."""
-        if item is None:
-            return
-        margin = 120
-        needed = item.sceneBoundingRect().adjusted(-margin, -margin, margin, margin)
-        current = self.sceneRect()
-        if current.isNull() or not current.contains(needed):
-            self.setSceneRect(current.united(needed) if not current.isNull() else needed)
+        # Stable world-sized sceneRect (not itemsBoundingRect). Growing/shrinking the
+        # rect while dragging — as 4f55066 did via expand_for_item — shifts QGraphicsView
+        # alignment/scroll and makes undragged siblings appear to teleport on screen.
+        # Soft WORLD_MIN/MAX clamps still let nodes reach the canvas top; fit()/minimap
+        # frame itemsBoundingRect, so the large rect does not change navigation UX.
+        self.setSceneRect(QRectF(
+            Node.WORLD_MIN, Node.WORLD_MIN,
+            Node.WORLD_MAX - Node.WORLD_MIN, Node.WORLD_MAX - Node.WORLD_MIN,
+        ))
+        self.blockSignals(False)
 
     def selection_changed(self):
         nodes=[n.node_id for n in self.selectedItems() if isinstance(n,Node)]

@@ -81,6 +81,25 @@ class NativeGraphGestures(unittest.TestCase):
         self.drag(origin,origin+QPoint(55,0));app.processEvents()
         self.assertGreater(self.doc.project['steps'][0]['position']['x'],80)
 
+    def test_dragging_one_node_does_not_teleport_sibling(self):
+        """Two operators: move A; B scene+viewport stay put (no sceneRect jump)."""
+        # Place B away from A; record both scene and viewport positions.
+        self.scene.nodes[self.b].setPos(280, 360)
+        self.scene.save_positions(); app.processEvents()
+        nb = self.scene.nodes[self.b]
+        b_scene = QPointF(nb.pos())
+        b_vp = self.view.mapFromScene(nb.scenePos())
+        na = self.scene.nodes[self.a]
+        # Drag A toward the canvas top (the path that used to grow sceneRect).
+        origin = self.view.mapFromScene(na.scenePos() + QPointF(70, 14))
+        self.drag(origin, origin + QPoint(40, -180)); app.processEvents()
+        nb = self.scene.nodes[self.b]
+        self.assertEqual(nb.pos(), b_scene)
+        self.assertEqual(self.view.mapFromScene(nb.scenePos()), b_vp)
+        # Dragged node itself still moved, and may sit above y=0 (4f55066).
+        self.assertNotEqual(self.scene.nodes[self.a].pos(), QPointF(80, 160))
+        self.assertLessEqual(self.scene.nodes[self.a].y(), 160)
+
     def test_toolbox_mime_drop_creates_operator_node(self):
         """算子库 MIME drop on FlowView must emit key+position for add_node."""
         got=[]
