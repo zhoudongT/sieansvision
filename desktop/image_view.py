@@ -42,8 +42,20 @@ class ImageView(QGraphicsView):
 
     def show_data(self, data):
         pixmap = QPixmap()
-        if data:
-            pixmap.loadFromData(base64.b64decode(data.split(',', 1)[-1]))
+        if data and isinstance(data, str):
+            try:
+                raw = data.split(',', 1)[-1]
+                pixmap.loadFromData(base64.b64decode(raw, validate=False))
+            except Exception:
+                pixmap = QPixmap()
+        if not pixmap.isNull():
+            image = pixmap.toImage()
+            if image.format() not in (
+                image.Format.Format_RGB32,
+                image.Format.Format_ARGB32,
+                image.Format.Format_ARGB32_Premultiplied,
+            ):
+                pixmap = QPixmap.fromImage(image.convertToFormat(image.Format.Format_RGB32))
         self.scene().clear()
         self.overlay = None
         self.bounds = QRectF()
@@ -76,8 +88,20 @@ class ImageView(QGraphicsView):
             self.overlay.setZValue(10)
 
     def fit(self):
-        if not self.bounds.isEmpty():
+        if not self.bounds.isEmpty() and self.viewport().width() >= 2 and self.viewport().height() >= 2:
             self.fitInView(self.bounds, Qt.AspectRatioMode.KeepAspectRatio)
+            self.viewport().update()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self.bounds.isEmpty():
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, self.fit)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if not self.bounds.isEmpty():
+            self.fit()
 
     def wheelEvent(self, event):
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:

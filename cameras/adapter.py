@@ -442,6 +442,10 @@ def pack_frame(result, p, started):
     info.setdefault('timestamp', datetime.now(timezone.utc).isoformat())
     if image.dtype != np.uint8 or image.ndim not in (2, 3) or image.shape[0] * image.shape[1] > MAX_PIXELS:
         raise ValueError('相机帧必须为不超过 1600 万像素的 8 位图像')
+    # Mono8/16→BGR so Qt QPixmap / 全局图像 always paint a visible full-frame RGB PNG
+    # (grayscale PNG is valid but some preview paths showed a black 1:1 crop).
+    if image.ndim == 2:
+        image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
     ok, encoded = cv2.imencode('.png', image)
     if not ok or encoded.size > 12_000_000:
         raise ValueError('相机帧编码失败或超过 12 MB')

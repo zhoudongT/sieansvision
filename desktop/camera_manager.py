@@ -137,6 +137,8 @@ class CameraManagerDialog(_RpcDialog):
         grab.clicked.connect(self._push_frame)
         pv.addWidget(grab)
         right.addTab(preview_page, '预览')
+        self._right_tabs = right
+        right.currentChanged.connect(self._on_right_tab)
 
         split.addWidget(right)
         split.setSizes([220, 620])
@@ -361,6 +363,15 @@ class CameraManagerDialog(_RpcDialog):
         if self.backend.is_ready and not self._has('camera/session/status'):
             self._request('camera/session/status', {}, self._on_session, kind='status')
 
+    def _on_right_tab(self, _index=None):
+        # Frames often arrive while Preview tab is hidden; Qt fitInView is then a no-op.
+        if getattr(self, '_right_tabs', None) is None:
+            return
+        if self._right_tabs.tabText(self._right_tabs.currentIndex()) != '预览':
+            return
+        if hasattr(self.preview, 'fit_image'):
+            QTimer.singleShot(0, self.preview.fit_image)
+
     def _live_tick(self):
         if self._live_pending or not self.backend.is_ready:
             return
@@ -383,6 +394,10 @@ class CameraManagerDialog(_RpcDialog):
             if image:
                 self._last_frame = deepcopy(frame)
                 self.preview.set_image(image)
+                if hasattr(self.preview, 'fit_image') and self.preview.isVisible():
+                    # Ensure first visible paint is KeepAspectRatio full-frame.
+                    if getattr(self.preview, '_needs_fit', False):
+                        self.preview.fit_image()
                 meta = frame.get('result') or {}
                 w = meta.get('width') or meta.get('Width')
                 h = meta.get('height') or meta.get('Height')

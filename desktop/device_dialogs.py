@@ -117,6 +117,10 @@ class _Preview(QGraphicsView):
 
     Live camera frames update the pixmap item in place — never scene.clear()
     + fitInView every tick (that flash is the main App-side flicker).
+
+    fitInView while the widget is hidden (e.g. CameraManager on「常用参数」tab
+    while GenTL already streams) is a no-op in Qt — transform stays 1:1 and the
+    user later sees only a dark top-left crop (「图像显示不全」). Refit on show.
     """
     box_drawn = Signal(object)
     polygon_drawn = Signal(object)
@@ -125,9 +129,15 @@ class _Preview(QGraphicsView):
         super().__init__()
         self.setScene(QGraphicsScene(self))
         self.setMinimumSize(280, 200)
-        self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.MinimalViewportUpdate)
+        # Live setPixmap same-size updates must dirty the viewport; Minimal can stick black.
+        self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.BoundingRectViewportUpdate)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.pixmap = QPixmap()
         self._pixmap_item = None
+        self._needs_fit = False
         self.records = []
         self.mode = ''
         self.origin = None
@@ -137,17 +147,41 @@ class _Preview(QGraphicsView):
 
     def set_image(self, data):
         try:
-            pixels = base64.b64decode(data.split(',', 1)[1], validate=True)
+            if not data or not isinstance(data, str) or ',' not in data:
+                raise ValueError('图像为空')
+            # validate=False: tolerate whitespace from some JSON bridges
+            pixels = base64.b64decode(data.split(',', 1)[1], validate=False)
             pixmap = QPixmap()
             if not pixmap.loadFromData(pixels):
                 raise ValueError('图像无法解码')
+            # Mono / indexed PNGs: normalize to RGB32 so paint path is consistent.
+            image = pixmap.toImage()
+            if image.format() not in (
+                image.Format.Format_RGB32,
+                image.Format.Format_ARGB32,
+                image.Format.Format_ARGB32_Premultiplied,
+            ):
+                pixmap = QPixmap.fromImage(image.convertToFormat(image.Format.Format_RGB32))
             self._set_pixmap(pixmap)
-        except (ValueError, IndexError):
+        except (ValueError, IndexError, TypeError):
             self.scene().clear()
             self._pixmap_item = None
             self.rubber = None
             self._overlay_items = []
-            self.scene().addText('暂无可显示图像')
+            self.pixmap = QPixmap()
+            tip = self.scene().addText('暂无可显示图像')
+            tip.setDefaultTextColor(QColor('#c8c8c8'))
+            self._needs_fit = False
+
+    def fit_image(self):
+        """KeepAspectRatio so the full frame is visible (not a 1:1 corner crop)."""
+        if self.pixmap.isNull() or self.viewport().width() < 2 or self.viewport().height() < 2:
+            self._needs_fit = not self.pixmap.isNull()
+            return
+        self.setSceneRect(QRectF(self.pixmap.rect()))
+        self.fitInView(self.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        self._needs_fit = False
+        self.viewport().update()
 
     def _set_pixmap(self, pixmap: QPixmap, *, refit: bool | None = None):
         size_changed = self.pixmap.isNull() or pixmap.size() != self.pixmap.size()
@@ -160,15 +194,29 @@ class _Preview(QGraphicsView):
             self._pixmap_item = self.scene().addPixmap(pixmap)
             self._pixmap_item.setZValue(0)
             self.setSceneRect(QRectF(pixmap.rect()))
-            self.fitInView(self.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+            self._needs_fit = True
+            self.fit_image()
         else:
             self._pixmap_item.setPixmap(pixmap)
             if refit is True or (refit is None and size_changed):
-                self.setSceneRect(QRectF(pixmap.rect()))
-                self.fitInView(self.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+                self._needs_fit = True
+                self.fit_image()
+            else:
+                # Same-size live tick: force paint (hidden→shown may have missed updates).
+                self.viewport().update()
+                if self._needs_fit or not self.isVisible():
+                    self._needs_fit = True
+                    if self.isVisible():
+                        self.fit_image()
         # Annotation overlays only when present (training); live camera has none.
         if self.records or self.vertices or self.mode:
             self._redraw_overlays()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self.pixmap.isNull():
+            # Deferred fit: first frames often arrived while this tab/page was hidden.
+            QTimer.singleShot(0, self.fit_image)
 
     def _clear_overlays(self):
         for item in self._overlay_items:
@@ -225,7 +273,7 @@ class _Preview(QGraphicsView):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if not self.pixmap.isNull():
-            self.fitInView(self.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+            self.fit_image()
 
     def _point(self, event):
         p = self.mapToScene(event.position().toPoint())
