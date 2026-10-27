@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆62 · pin角标频率预设档/导出 · 忽略名单按角色分组 · DST冲突历史 · A/B槽位拖拽排序/默认槽 · jitter长按时长可配/旁标闪 · 2026-10-28】
+
+- **pin 角标频率预设档/导出**：`list/set/apply_…_badge_freq_presets`；`export/import_…_badge_freq`（JSON）；角标菜单「频率预设… / 导出·导入」；默认档快/标准/慢。
+- **忽略名单按角色分组**：`list/set_…_conflict_ignore_by_role`；`add/remove_…_ignore_role`；与扁平 ignore 列表双向同步；忽略菜单按角色分区。
+- **DST 冲突历史**：`list/remember/clear_…_reorder_shortcut_conflict_history`；detect 写入；旁标 tip/菜单「冲突历史…」。
+- **A/B 槽位拖拽排序/默认槽**：`reorder_…_preview_layout_slots`（InternalMove）；`set/get_…_default_slot`（★）；对话框拖拽 + 设默认。
+- **jitter 长按时长可配/旁标闪**：`…_long_press_ms` / `set_…` / `show_…_long_press_ms_dialog`；清栈后 `flash_…_undo_depth_lab`；旁标菜单「长按时长…」。
+- **冒烟**：`smoke-wave94-pinsuggestbadgefreqpresets-confirmstratignorebyrole-dstconflicthist-abprevslotsreorderdefault-jitterlongpressflash-e2e`（另回归 wave93）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆61 · pin筛选预设角标右键清零/频率 · 冲突忽略名单菜单管理/导入导出 · DST冲突旁标橙/跳过 · A/B槽位对话框UI/快捷切换 · jitter撤栈深度长按清/冲突检测 · 2026-10-28】
 
 - **pin 筛选预设角标右键清零/频率**：`clear_…_reorder_badge` / `…_badge_freq_ms` / `set_…_badge_freq_ms` / `show_…_reorder_badge_context_menu`；flash 用 freq_ms；预设菜单「排序角标…」。
