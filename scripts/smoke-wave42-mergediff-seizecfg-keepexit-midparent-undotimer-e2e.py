@@ -83,16 +83,20 @@ def main():
     diff = getattr(host, '_last_merge_diff', {})
     assert str(dirs[0]) in (diff.get('conflict') or [])
     assert str(dirs[2]) in (diff.get('new') or [])
-    shown['n'] = 0
+    # wave43: interactive dialog (no exec in smoke) or text fallback
+    host._merge_diff_no_exec = True
     assert host.show_last_merge_diff()
-    assert shown['n'] == 1
-    assert 'diff' in shown['title'].lower() or '合并' in shown['title']
-    assert '新增' in shown['body'] and '冲突' in shown['body']
     assert getattr(host, '_last_merge_diff_shown', False)
-    # toast click path
+    assert getattr(host, '_last_merge_diff_list', None) is not None
+    # text fallback still works
     shown['n'] = 0
-    host._on_host_toast_clicked()
+    assert host.show_last_merge_diff(interactive=False)
     assert shown['n'] == 1
+    assert '新增' in shown['body'] and '冲突' in shown['body']
+    # toast click → interactive no-exec
+    host._merge_diff_no_exec = True
+    host._on_host_toast_clicked()
+    assert getattr(host, '_last_merge_diff_shown', False)
     ok('合并 tip 点开 diff 清单')
 
     # --- 2. seize color/sound configurable ---

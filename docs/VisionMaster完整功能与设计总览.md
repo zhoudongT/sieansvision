@@ -426,6 +426,17 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊸ · diff清单可点开目录 · 抢占预设色板 · 保持退出确认tip · 中键失败回退本级 · undo进度条 · 2026-10-28】
+
+- **diff 清单可点开目录**：`show_last_merge_diff` 交互对话框（`hostMergeDiffList`）；双击/「打开目录」→ `open_merge_diff_path`；`_merge_diff_no_exec` 供冒烟。
+- **抢占预设色板菜单**：`sev_pin_arc_seize_color_presets` + `_build_sev_pin_arc_seize_color_menu`（白/金/绿/青/粉/橙/红/紫 + 蜂鸣开关）；挂在「最近另存」子菜单。
+- **保持退出确认短 tip**：「✓ 已退出保持 · 数字键将关闭菜单」（`_last_toast_hist_cap_keep_exit_tip`）。
+- **中键失败回退本级**：父目录不可开时回退徽章路径本身并 tip「父目录失败 · 已回退本级」。
+- **undo 进度条可视化**：`hostStalePruneUndoBar` 贴 toast 下方，随倒计时缩短；到期/撤销后隐藏。
+- **冒烟**：`smoke-wave43-diffopen-seizepalette-exittip-midfallback-undobar-e2e`（另回归 wave42/41）。
+
+---
+
 ## 【细妆㊷ · 合并tip点开diff · 抢占音/色可配 · 保持徽标一键退出 · 徽章中键父目录 · undo倒计时失效 · 2026-10-28】
 
 - **合并 tip 点开 diff 清单**：合并 toast 带「点开清单」；`_host_toast_click_action=merge_diff` → `show_last_merge_diff`（新增/冲突/裁剪分类 QMessageBox）；`_last_merge_diff`。
