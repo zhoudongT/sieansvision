@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊴ · 多档JSON导入导出 · 气泡弧同步 · Alt+H数字关 · 复制确认徽章 · 失效清理 · 2026-10-28】
+
+- **多档记忆导出/导入 JSON**：`export`/`import_alarm_film_csv_dirs_json`（file 或文本）；子菜单「导出/导入记忆 JSON…」。
+- **进度弧气泡同步**：`hostSevBubblePinArc` + tick；`sync_sev_bubble_pin_from_chip`；`set_sev_chip_pin_ms/color` 同步气泡时长/色。
+- **Alt+H 数字键直达后自动关**：`toast_hist_cap_menu_key` 1–4 → 3/5/8/12 并 `close`；`_last_toast_hist_cap_closed_by=digit`。
+- **路径回看复制确认徽章**：`hostPathCopyBadge`「✓ 已复制」；`flash_path_copy_badge`。
+- **失效目录灰显/一键清理**：标题「（失效）」；另存禁用；`prune_stale_alarm_film_csv_dirs`。
+- **冒烟**：`smoke-wave39-jsonio-bubblesync-digitclose-copybadge-prune-e2e`（另回归 wave38/37）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆㊳ · 多档置顶拖序 · 进度弧时长/色 · Alt+H键导航 · 开目录tip回看 · 单项删除 · 2026-10-28】
 
 - **多档记忆拖序/置顶**：`promote`/`move`/`reorder_alarm_film_csv_dirs`；最近子菜单每项 → 另存/置顶/删除此项。
