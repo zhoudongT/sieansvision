@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆63 · pin角标频率预设拖拽排序/右键删档 · 忽略名单按角色批量清/导出分组JSON · DST冲突历史菜单浏览/导出/上限 · A/B默认槽启动自动载入/快捷跳默认 · jitter旁标闪色/次数可配/闪完toast · 2026-10-28】
+
+- **pin 角标频率预设拖拽排序/右键删档**：`reorder/delete_…_badge_freq_presets`；`show_…_badge_freq_presets_manage_dialog`（InternalMove）；角标菜单「管理频率预设… / 删频率档」。
+- **忽略名单按角色批量清/导出分组 JSON**：`clear_…_ignore_role`；`export_…_ignore_by_role`（by_role+flat）；忽略菜单「清空角色 / 导出分组 JSON…」。
+- **DST 冲突历史菜单浏览/导出/上限**：`…_conflict_history_limit` / `set_…`；`export_…_conflict_history`；`show_…_conflict_history_menu`；DST 撤栈旁标「冲突历史…」。
+- **A/B 默认槽启动自动载入/快捷跳默认**：`autoload/jump_…_layout_default_slot`；默认快捷 `Ctrl+Alt+D`；槽位对话框「跳默认」；ensure slots 钩 autoload。
+- **jitter 旁标闪色/次数可配/闪完 toast**：`…_flash_color/count/toast`；`flash_…_undo_depth_lab` 多闪；旁标菜单「旁标闪色/闪次/闪完 toast」。
+- **冒烟**：`smoke-wave95-pinsuggestbadgefreqmanagedelete-confirmstratignorroleclear-dstconflicthistmenuexportlimit-abprevdefaultautoloadjump-jitterflashcolorcounttoast-e2e`（另回归 wave94）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆62 · pin角标频率预设档/导出 · 忽略名单按角色分组 · DST冲突历史 · A/B槽位拖拽排序/默认槽 · jitter长按时长可配/旁标闪 · 2026-10-28】
 
 - **pin 角标频率预设档/导出**：`list/set/apply_…_badge_freq_presets`；`export/import_…_badge_freq`（JSON）；角标菜单「频率预设… / 导出·导入」；默认档快/标准/慢。
