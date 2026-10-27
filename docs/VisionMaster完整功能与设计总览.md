@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊳ · pin冲突一键避让 · 吸史拖影半透明/撤序 · DST日历hover日详情 · A/B通道预设快切 · jitter粘贴分布种子回写 · 2026-10-28】
+
+- **pin 冲突一键避让**：`suggest/avoid_…_key_conflicts`；候选键对扫无冲突；菜单「避」+「一键避让」；无冲突则保持。
+- **吸史拖影半透明+撤序**：幽灵 `windowOpacity=0.55`；落序压栈（≤16）；`undo_…_reorder` +「撤序」按钮。
+- **DST 日历 hover 日详情**：`…_dst_day_detail` / `render_…`（日期/☀·标准/UTC偏移/段）；12 月芯片 tip+hover。
+- **A/B 通道预设快切**：`both_full` / `a_only` / `b_only`；`apply/cycle_…_channel_preset`（自动切 both）；菜单 ⚡ 预设。
+- **jitter 粘贴→分布种子回写**：paste 解析 `dist`/`seed`/`jitter_ms` → `set_…`；芯片/旋钮同步；toast 标明回写项。
+- **冒烟**：`smoke-wave70-pinavoid-histundo-dsthover-abpreset-jitterwriteback-e2e`（另回归 wave69/68/67）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊲ · pin快捷冲突提示 · 吸史拖影/落点高亮 · PNG城市DST日历条 · A/B both分通道 · jitter分位剪贴板 · 2026-10-28】
 
 - **pin 快捷冲突提示**：`detect/format_…_max_pin_key_conflicts`；同键 / 保留 Ctrl+C/V/Z… / 其他 QShortcut；改键 toast 警告；「键」按钮 tip+橙字。
