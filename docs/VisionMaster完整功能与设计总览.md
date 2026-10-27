@@ -426,6 +426,17 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊣ · 组头拖拽重排 · Shift区间视觉条 · 曲线PNG剪贴板 · 徽章撤销倒计时条 · undo α/渐变预览 · 2026-10-28】
+
+- **失败历史组头拖拽重排**：列表 InternalMove；组头可拖、子项不可拖；`reorder_merge_diff_batch_fail_history_groups` 持久化顺序。
+- **Shift 连选区间视觉条**：选区 ≥2 时左侧蓝条覆盖 min–max 行；`_update_sev_pin_arc_seize_recent_shift_range_bar`。
+- **曲线 PNG 剪贴板**：小窗「复制剪贴板」；`copy_toast_hist_cap_tip_anim_easing_curve_png_to_clipboard`。
+- **徽章撤销倒计时条**：清历史后显示进度条（贴徽章下）；tick 色阶；左键撤销；`_show/_update/_hide_path_copy_badge_fail_hist_undo_bar`。
+- **undo 色阶 α/渐变预览**：custom 含 α；chunk 用 rgba；`show_stale_prune_undo_color_custom_preview` + α 旋钮实时刷。
+- **冒烟**：`smoke-wave54-groupdrag-shiftrange-curveclip-undobar-alphapreview-e2e`（另回归 wave53/52/51）。
+
+---
+
 ## 【细妆㊢ · 组头计数徽章 · Shift连选提示 · 曲线导出PNG · 徽章撤销倒计时 · undo自定义RGB · 2026-10-28】
 
 - **失败历史组头计数徽章**：日组头圆形数字图标（≥5 红 / ≥2 黄 / 否则蓝）；`_merge_diff_fail_hist_group_count_badge_icon`。

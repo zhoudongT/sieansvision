@@ -195,10 +195,14 @@ def main():
     host._show_stale_prune_undo_bar()
     host._update_stale_prune_undo_bar()
     assert getattr(host, '_last_stale_prune_undo_color_scale_used', '') == 'custom'
-    assert getattr(host, '_last_stale_prune_undo_bar_chunk_color', '') == '#aa1122'
+    chunk = getattr(host, '_last_stale_prune_undo_bar_chunk_color', '')
+    assert (chunk == '#aa1122' or 'aa1122' in chunk.lower().replace('#','').replace(' ','')
+            or '170,17,34' in chunk.replace(' ','') or '170, 17, 34' in chunk)
     host._stale_prune_undo_left_ms = 800
     host._update_stale_prune_undo_bar()
-    assert getattr(host, '_last_stale_prune_undo_bar_chunk_color', '') == '#cc5566'
+    chunk = getattr(host, '_last_stale_prune_undo_bar_chunk_color', '')
+    assert (chunk == '#cc5566' or 'cc5566' in chunk.lower().replace('#','').replace(' ','')
+            or '204,85,102' in chunk.replace(' ','') or '204, 85, 102' in chunk)
     host._stale_prune_undo_custom_rgb_hi = '#010203'
     host._stale_prune_undo_custom_rgb_mid = '#040506'
     host._stale_prune_undo_custom_rgb_lo = '#070809'
