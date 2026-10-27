@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆52 · pin建议多选持久/历史 · 试键撤栈导入冲突策略 · DST TTL自定义档 · A/B回退记忆按流程导出 · jitter排序多级撤栈 · 2026-10-28】
+
+- **pin 建议多选持久/历史**：`persist/load/set_…_suggest_selected`；`list/remember/clear_…_suggest_history`；apply_all_clean / 菜单勾选记入历史；smoke `history`/`restore_history`/`clear_history`。
+- **试键撤栈导入冲突策略**：`get/set_…_import_conflict_strategy`（replace|merge|skip|ask）；`import_…(conflict=…)`；冲突跳过/询问（smoke）；菜单 import 透传 conflict。
+- **DST TTL 自定义档**：`list/persist/add/delete/prompt_add_…_ttl_preset_customs`；`list_…_presets` 合并 ★自定义；菜单「添加自定义档…」；smoke `add_custom`/`delete_custom`。
+- **A/B 回退记忆按流程导出子集**：`export_…_fallback(flows=…)`；`export_…_fallback_for_flow`；payload `subset`/`flows`。
+- **jitter 排序多级撤栈**：reorder 推 `_…_reorder_undo`（深16）；`…_reorder_undo_depth`；`undo_reorder_…(steps=)`；`clear_…_reorder_undo`；兼容单 snap。
+- **冒烟**：`smoke-wave84-pinsuggesthist-confirmconflict-dstcustom-abflowexport-jittermultistack-e2e`（另回归 wave83/82/81）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆51 · pin建议批量应用全选干净键 · 试键撤栈JSON导入 · DST TTL预设档 · A/B回退记忆导入 · jitter排序可撤 · 2026-10-28】
 
 - **pin 建议批量应用全选干净键**：`apply_all_clean_…_cycle_key_suggests`；菜单「全选干净并应用」；smoke/resolve `action=apply_all_clean`。
