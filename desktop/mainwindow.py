@@ -121,6 +121,8 @@ class MainWindow(QMainWindow):
         self.undo_action=self.action('撤销',self._undo_with_fold_tip,'Ctrl+Z');self.redo_action=self.action('重做',self._redo_with_fold_tip,'Ctrl+Y')
         self._undo_history_menu=QMenu(self);self._undo_history_menu.aboutToShow.connect(self._populate_undo_history_menu)
         self.undo_action.setMenu(self._undo_history_menu)
+        self._redo_history_menu=QMenu(self);self._redo_history_menu.aboutToShow.connect(self._populate_redo_history_menu)
+        self.redo_action.setMenu(self._redo_history_menu)
         for a in [self.undo_action,self.redo_action]:edit.addAction(a)
         edit.addAction(self.action('复制模块',self.copy_nodes,'Ctrl+Shift+C'));edit.addAction(self.action('粘贴模块',lambda:self.document.paste() if not self.busy else None,'Ctrl+Shift+V'))
         toolbar=QToolBar('工程与运行');toolbar.setObjectName('mainToolBar');toolbar.setMovable(False);toolbar.setIconSize(QSize(16,16));toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon);self.addToolBar(toolbar)
@@ -879,7 +881,13 @@ class MainWindow(QMainWindow):
                 dialog.setEnabled(not busy)
 
     def run_once(self):
-        self.continuous=False;self.run_all_filmstrip=False;self._run_target=None;self.run()
+        self.continuous=False;self.run_all_filmstrip=False;self._run_target=None
+        try:
+            self._set_keep_host_running(False)
+            self._sync_host_sm_state('Running', '单次执行')
+        except Exception:
+            pass
+        self.run()
 
     def run_continuous(self):
         if self.busy or not self.engine_ready:return
@@ -893,6 +901,11 @@ class MainWindow(QMainWindow):
                     self.filmstrip.set_continuous_controls_enabled(True)
                 if hasattr(self.filmstrip, 'set_continuous_paused'):
                     self.filmstrip.set_continuous_paused(False)
+        except Exception:
+            pass
+        try:
+            self._set_keep_host_running(True)
+            self._sync_host_sm_state('Running', '连续运行')
         except Exception:
             pass
         self.log('连续运行已启动');self.run()
@@ -913,6 +926,11 @@ class MainWindow(QMainWindow):
             pass
         self.request('stop',{},lambda _:None)
         self.wb_status.push_log('已请求停止')
+        try:
+            self._set_keep_host_running(False)
+            self._sync_host_sm_state('Stopped', '停止')
+        except Exception:
+            pass
         if was_continuous:
             self._flush_after_continuous()
 
@@ -950,6 +968,10 @@ class MainWindow(QMainWindow):
             pass
         kind = '运行全部' if self.run_all_filmstrip and not self.continuous else '连续运行'
         self.log(f'{kind}已暂停（可改间隔后继续）')
+        try:
+            self._sync_host_sm_state('Paused', kind)
+        except Exception:
+            pass
 
     def resume_continuous(self):
         """Resume paused ContinuousRun / 运行全部; schedule next tick if not busy."""
@@ -968,6 +990,11 @@ class MainWindow(QMainWindow):
             pass
         kind = '运行全部' if self.run_all_filmstrip and not self.continuous else '连续运行'
         self.log(f'{kind}已继续')
+        try:
+            self._set_keep_host_running(True)
+            self._sync_host_sm_state('Running', f'{kind}·继续')
+        except Exception:
+            pass
         if was and not self.busy:
             from PySide6.QtCore import QTimer
             delay = self._filmstrip_advance_delay_ms()
@@ -1255,6 +1282,11 @@ class MainWindow(QMainWindow):
         self.refresh_config_status()
         if result.get('state')=='failed':
             self.wb_status.set_config('运行失败 · 见日志', ok=False)
+            try:
+                self._set_keep_host_running(False)
+                self._sync_host_sm_state('Alarm', result.get('error') or '运行失败')
+            except Exception:
+                pass
         # A5: update active flow card stats
         try:
             p=self.document.project
@@ -1306,6 +1338,11 @@ class MainWindow(QMainWindow):
         if state=='cancelled':
             was_c = bool(self.continuous)
             self.continuous=False;self.run_all_filmstrip=False;self._run_target=None
+            try:
+                self._set_keep_host_running(False)
+                self._sync_host_sm_state('Stopped', '已取消')
+            except Exception:
+                pass
             if was_c:
                 self._flush_after_continuous()
             return
@@ -1329,10 +1366,21 @@ class MainWindow(QMainWindow):
                 except Exception:
                     pass
                 self.log('运行全部完成')
+                try:
+                    self._set_keep_host_running(False)
+                    self._sync_host_sm_state('Idle', '运行全部完成')
+                except Exception:
+                    pass
             return
         if state in ('failed', 'cancelled'):
             self._pending_trigger_cmds = []
         elif state == 'completed' and not self.continuous and not self.run_all_filmstrip:
+            try:
+                self._set_keep_host_running(False)
+                # sync_from_runtime via set_runtime already → Idle; reinforce chrome
+                self._sync_host_sm_state('Idle', '单次完成')
+            except Exception:
+                pass
             pending = list(getattr(self, '_pending_trigger_cmds', None) or [])
             self._pending_trigger_cmds = []
             if pending:
@@ -1350,6 +1398,11 @@ class MainWindow(QMainWindow):
                     QTimer.singleShot(self._filmstrip_advance_delay_ms(), lambda:self.guard(lambda:self.run(None) if self.continuous and not getattr(self,'_continuous_paused',False) else None));return
                 if cfg.get('stopAtLast'):
                     self.continuous=False;self._continuous_paused=False;self._run_target=None;self.log('已到最后一张，连续运行停止')
+                    try:
+                        self._set_keep_host_running(False)
+                        self._sync_host_sm_state('Idle', '连续·末张停止')
+                    except Exception:
+                        pass
                     try:
                         if hasattr(self,'filmstrip') and hasattr(self.filmstrip,'set_continuous_paused'):
                             self.filmstrip.set_continuous_paused(False)
@@ -2526,6 +2579,92 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+    def _populate_redo_history_menu(self):
+        """Dropdown of next N labelled history tips under 重做 (mirror undo)."""
+        menu = getattr(self, '_redo_history_menu', None)
+        if menu is None:
+            return
+        menu.clear()
+        labels = list(getattr(self.document, 'history_labels', None) or [])
+        idx = int(getattr(self.document, 'index', 0) or 0)
+        n_max = int(getattr(self, '_undo_history_menu_n', 12) or 12)
+        entries = []
+        for k in range(idx + 1, len(getattr(self.document, 'history', None) or [])):
+            lab = ''
+            if k < len(labels):
+                lab = (labels[k] or '').strip()
+            if not lab:
+                lab = f'步骤 #{k}'
+            entries.append((k, lab))
+            if len(entries) >= n_max:
+                break
+        if not entries:
+            a = menu.addAction('（无可重做历史）')
+            a.setEnabled(False)
+            return
+        for k, lab in entries:
+            act = menu.addAction(f'重做「{lab}」')
+            act.setToolTip(f'前进到该步（历史 #{k}）')
+            act.triggered.connect(
+                lambda _=False, target=k, tip=lab: self._redo_to_history_index(target, tip))
+
+    def _redo_to_history_index(self, target_index, tip_label=''):
+        """Jump redo stack forward to labelled tip."""
+        before = int(getattr(self.document, 'index', 0) or 0)
+        hist_len = len(getattr(self.document, 'history', None) or [])
+        try:
+            ti = int(target_index)
+        except (TypeError, ValueError):
+            return
+        if ti <= before or ti >= hist_len:
+            return
+        if hasattr(self.document, 'jump_history'):
+            self.document.jump_history(ti)
+        else:
+            while int(getattr(self.document, 'index', 0) or 0) < ti:
+                self.document.redo()
+        after = int(getattr(self.document, 'index', 0) or 0)
+        if before == after:
+            return
+        msg = f'已重做：{tip_label}' if tip_label else f'已重做到历史 #{after}'
+        try:
+            self.log(msg)
+        except Exception:
+            pass
+        try:
+            self._show_canvas_status_chip(msg)
+        except Exception:
+            pass
+        try:
+            self._maybe_log_fold_cross(before, after, 'redo')
+        except Exception:
+            pass
+        try:
+            self._refresh_undo_redo_labels()
+        except Exception:
+            pass
+
+    def _sync_host_sm_state(self, state, reason=''):
+        """Push Idle/Running/Paused/Alarm/Stopped into OperatorHmiView / HostStateMachine."""
+        try:
+            hmi = getattr(self, 'operator_hmi', None)
+            if hmi is None:
+                return
+            if hasattr(hmi, 'set_host_machine_state'):
+                hmi.set_host_machine_state(state, reason)
+            elif getattr(hmi, '_host_sm', None) is not None:
+                hmi._host_sm.set_state(state, reason)
+        except Exception:
+            pass
+
+    def _set_keep_host_running(self, keep):
+        try:
+            hmi = getattr(self, 'operator_hmi', None)
+            if hmi is not None and hasattr(hmi, 'set_keep_host_running'):
+                hmi.set_keep_host_running(keep)
+        except Exception:
+            pass
+
     def _clear_jump_confirm_skip(self, nest_key=None, *, force=False):
         """Clear session jump-confirm skip on leave nest / project reload.
 
@@ -2908,20 +3047,59 @@ class MainWindow(QMainWindow):
             return
         text = str(summary or ('监听·开' if active else '监听·关'))
         self._last_listen_badge = text
+        self._hb_tick_count = 0
         self.comm_listen_badge.setText(text)
         color = '#5ecf8a' if active else '#888'
         self.comm_listen_badge.setStyleSheet(f'color:{color};padding:0 8px;font-size:11px;font-weight:600;')
-        self.comm_listen_badge.setToolTip(text + ' — 点击打开通信管理')
+        tip = text + ' — 点击打开通信管理'
+        try:
+            hb = getattr(getattr(self, '_comm_listener', None), '_heartbeat', None) or {}
+            if active and hb.get('enabled'):
+                tip += f'\n心跳已启用 · 间隔 {int(hb.get("intervalMs") or 5000)}ms · 载荷 {hb.get("payload") or "HB"}'
+        except Exception:
+            pass
+        self.comm_listen_badge.setToolTip(tip)
 
     def _on_comm_heartbeat_tick(self, payload):
         if not hasattr(self, 'comm_listen_badge'):
             return
-        base = (self._last_listen_badge or self.comm_listen_badge.text()).split(' · tick')[0]
+        # Preserve listen summary; strip prior tick/pulse markers
+        base = self._last_listen_badge or '监听·开'
+        for sep in (' · ♥', ' · tick', ' · HB×'):
+            if sep in base:
+                base = base.split(sep)[0]
+        base = base.strip() or '监听·开'
         if not base.startswith('监听'):
             base = '监听·开'
-        text = f'{base} · tick'
+        pl = str(payload or 'HB').strip() or 'HB'
+        self._hb_tick_count = int(getattr(self, '_hb_tick_count', 0) or 0) + 1
+        n = self._hb_tick_count
+        short = pl if len(pl) <= 8 else (pl[:7] + '…')
+        text = f'{base} · ♥{short}'
+        if n > 1:
+            text = f'{base} · ♥{short}×{n}'
         self.comm_listen_badge.setText(text)
-        self.comm_listen_badge.setToolTip(f'最近心跳：{payload} — 点击打开通信管理')
+        # Pulse: bright green then settle
+        self.comm_listen_badge.setStyleSheet(
+            'color:#7dffb0;padding:0 8px;font-size:11px;font-weight:700;'
+            'background:#1a3a2a;border-radius:3px;'
+        )
+        interval = ''
+        try:
+            hb = getattr(getattr(self, '_comm_listener', None), '_heartbeat', None) or {}
+            interval = f'{int(hb.get("intervalMs") or 0)}ms' if hb else ''
+        except Exception:
+            interval = ''
+        tip = f'心跳 #{n} · 载荷 {pl}'
+        if interval:
+            tip += f' · 间隔 {interval}'
+        tip += ' — 点击打开通信管理'
+        self.comm_listen_badge.setToolTip(tip)
+        # Settle pulse after 350ms
+        try:
+            QTimer.singleShot(350, self._settle_comm_hb_badge)
+        except Exception:
+            pass
         # Live-patch open Variables dialog for flow.heartbeatTick
         try:
             dlg = (self.dialogs or {}).get('variables')
@@ -2929,6 +3107,16 @@ class MainWindow(QMainWindow):
                 dlg.live_patch_flow_var('heartbeatTick', payload)
                 dlg.live_patch_flow_var('heartbeatAt', str(
                     getattr(self._comm_listener, '_last_hb_ms', '') or ''))
+        except Exception:
+            pass
+
+    def _settle_comm_hb_badge(self):
+        if not hasattr(self, 'comm_listen_badge'):
+            return
+        try:
+            self.comm_listen_badge.setStyleSheet(
+                'color:#5ecf8a;padding:0 8px;font-size:11px;font-weight:600;'
+            )
         except Exception:
             pass
 
@@ -3072,20 +3260,22 @@ class MainWindow(QMainWindow):
                 self._pending_trigger_cmds = []
                 self.stop_run(); continue
             if ctype == '执行·暂停':
-                self.stop_run()
-                if hasattr(self, 'operator_hmi') and getattr(self.operator_hmi, '_host_sm', None):
-                    self.operator_hmi._host_sm.set_state('Paused', '触发·暂停')
+                # Soft-pause continuous/run-all; host SM → Paused
+                if self.continuous or self.run_all_filmstrip:
+                    self.pause_continuous()
+                else:
+                    self._sync_host_sm_state('Paused', cfg or '触发·暂停')
                 continue
             if ctype == '执行·继续':
                 self._pending_trigger_cmds = []
+                if getattr(self, '_continuous_paused', False) and (self.continuous or self.run_all_filmstrip):
+                    self.resume_continuous(); return
                 self.run_continuous(); return
             if ctype == '状态·报警':
-                if hasattr(self, 'operator_hmi') and getattr(self.operator_hmi, '_host_sm', None):
-                    self.operator_hmi._host_sm.set_state('Alarm', cfg or '触发')
+                self._sync_host_sm_state('Alarm', cfg or '触发')
                 self.log('状态·报警'); continue
             if ctype == '状态·清除报警':
-                if hasattr(self, 'operator_hmi') and getattr(self.operator_hmi, '_host_sm', None):
-                    self.operator_hmi._host_sm.set_state('Idle', '清除报警')
+                self._sync_host_sm_state('Idle', '清除报警')
                 continue
             if ctype == '方案保存':
                 self.save_project(); continue

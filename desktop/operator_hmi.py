@@ -321,6 +321,7 @@ class OperatorHmiView(QWidget):
         self._state_badge.setObjectName('modeBadge')
         self._state_badge.setProperty('runMode', 'true')
         header.addWidget(self._state_badge)
+        self._host_state = 'Idle'
         b = QPushButton('运行界面设计')
         b.clicked.connect(self.designRequested.emit)
         header.addWidget(b)
@@ -329,6 +330,29 @@ class OperatorHmiView(QWidget):
         b.clicked.connect(self.backToDesign.emit)
         header.addWidget(b)
         root.addLayout(header)
+
+        # Visible Idle/Run/Pause/Alarm/Stop chrome (p41–43)
+        self._state_rail = QWidget()
+        self._state_rail.setObjectName('hostStateRail')
+        rail = QHBoxLayout(self._state_rail)
+        rail.setContentsMargins(0, 0, 0, 2)
+        rail.setSpacing(4)
+        self._state_rail_labels = {}
+        try:
+            from desktop.host_state_machine import STATES, STATE_ZH
+        except Exception:
+            STATES = ('Idle', 'Running', 'Paused', 'Alarm', 'Stopped')
+            STATE_ZH = {s: s for s in STATES}
+        for st in STATES:
+            lab = QLabel(STATE_ZH.get(st, st))
+            lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lab.setMinimumWidth(52)
+            lab.setProperty('hostState', st)
+            self._state_rail_labels[st] = lab
+            rail.addWidget(lab)
+        rail.addStretch(1)
+        root.addWidget(self._state_rail)
+        self._paint_machine_chrome('Idle')
 
         self._hint = QLabel('')
         self._hint.setObjectName('dialogHint')
@@ -541,9 +565,22 @@ class OperatorHmiView(QWidget):
         host = getattr(self, '_host_sm', None)
         if host is not None:
             try:
-                host.sync_from_runtime(result)
+                keep = bool(getattr(self, '_keep_host_running', False))
+                host.sync_from_runtime(result, keep_running=keep)
+                self._paint_machine_chrome(getattr(host, 'state', None) or self._host_state)
             except Exception:
                 pass
+        elif state in ('completed', 'failed', 'cancelled', 'running', 'pending'):
+            # No embedded SM — still mirror chrome from engine state
+            mapped = {
+                'completed': 'Idle',
+                'failed': 'Alarm',
+                'cancelled': 'Stopped',
+                'running': 'Running',
+                'pending': 'Running',
+            }.get(state)
+            if mapped:
+                self._paint_machine_chrome(mapped)
 
         # Production counters / history / alarm
         if state in ('completed', 'failed'):
@@ -643,6 +680,94 @@ class OperatorHmiView(QWidget):
         if host is not None:
             try:
                 host.append_info(str(message))
+            except Exception:
+                pass
+
+    def _wire_host_sm(self, host):
+        """Connect HostStateMachineWidget → triggerCommands + chrome mirror."""
+        self._host_sm = host
+        try:
+            host.triggerCommands.connect(self.triggerCommands.emit)
+        except Exception:
+            pass
+        try:
+            host.stateChanged.connect(self._on_host_state_changed)
+        except Exception:
+            pass
+        try:
+            self._paint_machine_chrome(getattr(host, 'state', None) or 'Idle')
+        except Exception:
+            pass
+
+    def set_host_machine_state(self, state: str, reason: str = ''):
+        """MainWindow / triggers push Idle|Running|Paused|Alarm|Stopped."""
+        host = getattr(self, '_host_sm', None)
+        if host is not None and hasattr(host, 'set_state'):
+            try:
+                host.set_state(state, reason)
+                return
+            except Exception:
+                pass
+        self._paint_machine_chrome(state)
+
+    def set_keep_host_running(self, keep: bool):
+        """Continuous / run-all active → cycle completes stay Running on SM."""
+        self._keep_host_running = bool(keep)
+
+    def _on_host_state_changed(self, state: str):
+        self._paint_machine_chrome(state)
+
+    def _paint_machine_chrome(self, state: str):
+        """Header badge + Idle/Run/Pause/Alarm/Stop rail + 运行状态 labels."""
+        try:
+            from desktop.host_state_machine import STATE_ZH, STATE_COLOR, STATES
+        except Exception:
+            STATE_ZH = {
+                'Idle': '空闲', 'Running': '运行中', 'Paused': '已暂停',
+                'Alarm': '报警', 'Stopped': '已停止',
+            }
+            STATE_COLOR = {
+                'Idle': ('#2a3340', '#8a9bb0'),
+                'Running': ('#1c3a2a', '#3ecf8e'),
+                'Paused': ('#3a3420', '#e0b84a'),
+                'Alarm': ('#3a1c1c', '#e35d6a'),
+                'Stopped': ('#2a3340', '#8a9bb0'),
+            }
+            STATES = tuple(STATE_ZH.keys())
+        st = state if state in STATE_ZH else (state or 'Idle')
+        if st not in STATE_ZH:
+            st = 'Idle'
+        self._host_state = st
+        zh = STATE_ZH[st]
+        bg, fg = STATE_COLOR.get(st, STATE_COLOR['Idle'])
+        badge = getattr(self, '_state_badge', None)
+        if badge is not None:
+            badge.setText(zh)
+            badge.setStyleSheet(
+                f'background:{bg};color:{fg};border:1px solid {fg};'
+                f'border-radius:3px;padding:3px 10px;font-weight:700;font-size:12px;'
+            )
+            badge.setToolTip(f'上位机状态：{zh} ({st})')
+        for key, lab in (getattr(self, '_state_rail_labels', None) or {}).items():
+            active = key == st
+            abg, afg = STATE_COLOR.get(key, STATE_COLOR['Idle'])
+            if active:
+                lab.setStyleSheet(
+                    f'background:{abg};color:{afg};border:1px solid {afg};'
+                    f'border-radius:3px;padding:3px 6px;font-weight:700;font-size:11px;'
+                )
+            else:
+                lab.setStyleSheet(
+                    'background:transparent;color:#5a6a7a;border:1px solid #2a3340;'
+                    'border-radius:3px;padding:3px 6px;font-size:11px;'
+                )
+        for lab in getattr(self, '_run_status_labels', None) or []:
+            try:
+                lab.setText(zh)
+                lab.setStyleSheet(
+                    f'color:{fg};font-size:13px;font-weight:600;padding:8px;'
+                    f'background:{bg};border-radius:3px;'
+                )
             except Exception:
                 pass
 
@@ -770,8 +895,7 @@ class OperatorHmiView(QWidget):
 
         from desktop.host_state_machine import HostStateMachineWidget
         host = HostStateMachineWidget(compact=True)
-        host.triggerCommands.connect(self.triggerCommands.emit)
-        self._host_sm = host
+        self._wire_host_sm(host)
         self._grid_layout.addWidget(host, 0, 1)
         self._grid_layout.setColumnStretch(1, 2)
 
@@ -943,8 +1067,7 @@ class OperatorHmiView(QWidget):
         if name in ('上位机状态机', '状态机面板', '上位机'):
             from desktop.host_state_machine import HostStateMachineWidget
             host = HostStateMachineWidget(compact=False)
-            host.triggerCommands.connect(self.triggerCommands.emit)
-            self._host_sm = host
+            self._wire_host_sm(host)
             return host
 
         # p41 host-chrome stubs (no robot SDK)

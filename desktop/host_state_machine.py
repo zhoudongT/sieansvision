@@ -109,8 +109,11 @@ class HostStateMachineWidget(QWidget):
                 msg += f' · {reason}'
             self._log_line(msg)
 
-    def sync_from_runtime(self, result: dict | None):
-        """Map engine job state → host state (without fighting Pause/Alarm)."""
+    def sync_from_runtime(self, result: dict | None, *, keep_running: bool = False):
+        """Map engine job state → host state (without fighting Pause/Alarm).
+
+        keep_running: continuous/run-all still active — cycle completed stays Running.
+        """
         result = result or {}
         st = result.get('state')
         if self._state == 'Paused' and st not in ('completed', 'failed', 'cancelled'):
@@ -119,6 +122,12 @@ class HostStateMachineWidget(QWidget):
             if st == 'failed':
                 return
         if st == 'completed':
+            # Continuous production: stay Running across cycles (only Stop→Stopped)
+            if keep_running or self._state == 'Running':
+                elapsed = result.get('elapsedMs')
+                tip = f'周期完成 · {elapsed} ms' if elapsed is not None else '周期完成'
+                self._log_line(tip)
+                return
             self.set_state('Idle', '流程完成')
         elif st == 'failed':
             self.set_state('Alarm', str(result.get('error') or '流程失败'))
@@ -259,7 +268,7 @@ class HostStateMachineWidget(QWidget):
         lay.addLayout(alarm_row)
 
         tip = QLabel(
-            '「开始」→ 执行·连续；「停止」→ 执行·停止。'
+            '「开始」→ 连续；「暂停/继续」→ 软暂停；「停止」→ 硬停止。'
             '九点/旋转标定模式仅切换 UI 上下文（无厂商标定 SDK）。'
         )
         tip.setWordWrap(True)
@@ -363,14 +372,14 @@ class HostStateMachineWidget(QWidget):
         if self._state != 'Running':
             return
         self.set_state('Paused', mode)
-        # Soft pause: stop continuous without clearing
-        self.triggerCommands.emit([dict(type='执行·停止', config=f'pause:{mode}')])
+        # Soft pause continuous (MainWindow.pause_continuous) — not hard stop
+        self.triggerCommands.emit([dict(type='执行·暂停', config=f'pause:{mode}')])
 
     def _auto_resume(self, mode: str):
         if self._state != 'Paused':
             return
         self.set_state('Running', f'{mode} · 继续')
-        self.triggerCommands.emit([dict(type='执行·连续', config=mode)])
+        self.triggerCommands.emit([dict(type='执行·继续', config=mode)])
 
     def _auto_stop(self, mode: str):
         self.set_state('Stopped', mode)
