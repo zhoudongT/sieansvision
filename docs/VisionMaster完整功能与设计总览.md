@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊳ · 多档置顶拖序 · 进度弧时长/色 · Alt+H键导航 · 开目录tip回看 · 单项删除 · 2026-10-28】
+
+- **多档记忆拖序/置顶**：`promote`/`move`/`reorder_alarm_film_csv_dirs`；最近子菜单每项 → 另存/置顶/删除此项。
+- **进度弧可配时长/色**：`host/sevChipPinMs` 300/550/800；`host/sevChipPinArcColor`；`set`/`cycle`。
+- **Alt+H Esc/方向键导航**：`navigate_toast_hist_cap_menu` / `toast_hist_cap_menu_key`；eventFilter Esc 关闭、↑↓ 移焦、回车触发。
+- **开目录 tip 可点回看路径**：成功 tip 绑路径 → 单击 `review_host_toast_path`（全路径 tip + 剪贴板）；再点开目录。
+- **最近另存单项删除**：`remove_alarm_film_csv_dir`；菜单「删除此项」（非整清）。
+- **冒烟**：`smoke-wave38-promote-pinms-harnav-reviewpath-rmslot-e2e`（另回归 wave37/36）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆㊲ · 多档上限可配 · Alt+H焦点键选 · 长按落钉进度弧 · 开目录成功tip · 最近另存清档 · 2026-10-28】
 
 - **多档记忆上限可配**：`host/alarmFilmCsvDirsMax`（3/5/8）；`set`/`cycle`/`_apply`；超限裁剪；子菜单「记忆上限」。

@@ -56,10 +56,11 @@ ALARM_CLEAR_ZH = {
 
 
 class _SevChipPinProgressArc(QWidget):
-    """wave37: 芯片长按落钉进度弧 overlay."""
+    """wave37–38: 芯片长按落钉进度弧 overlay；色可配."""
     def __init__(self, parent=None):
         super().__init__(parent)
         self._p = 0.0
+        self._color = '#f0c040'
         self.setFixedSize(24, 24)
         self.setObjectName('hostSevChipPinArc')
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
@@ -68,6 +69,16 @@ class _SevChipPinProgressArc(QWidget):
     def set_progress(self, p: float):
         self._p = max(0.0, min(1.0, float(p or 0.0)))
         self.update()
+
+    def set_color(self, color: str):
+        c = str(color or '').strip() or '#f0c040'
+        if not c.startswith('#'):
+            c = '#' + c
+        self._color = c
+        self.update()
+
+    def color(self) -> str:
+        return str(getattr(self, '_color', '#f0c040') or '#f0c040')
 
     def paintEvent(self, event):  # noqa: N802
         p = QPainter(self)
@@ -78,7 +89,7 @@ class _SevChipPinProgressArc(QWidget):
         p.drawEllipse(rect)
         if self._p <= 0:
             return
-        arc = QPen(QColor('#f0c040'), 2)
+        arc = QPen(QColor(self.color()), 2)
         p.setPen(arc)
         p.drawArc(rect, 90 * 16, -int(self._p * 360 * 16))
 
@@ -853,18 +864,35 @@ class HostStateMachineWidget(QWidget):
             self._toast_hist_cap_shortcut.activated.connect(self._on_toast_hist_cap_hotkey)
         except Exception:
             self._toast_hist_cap_shortcut = None
-        # wave36–37: chip 长按落钉计时 + 进度弧
+        # wave36–38: chip 长按落钉计时 + 进度弧（时长/色可配）
         self._sev_chip_pin_timer = QTimer(self)
         self._sev_chip_pin_timer.setSingleShot(True)
         self._sev_chip_pin_timer.timeout.connect(self._on_sev_chip_long_press)
         self._sev_chip_pin_key = None
         self._sev_chip_long_fired = False
         self._sev_chip_pin_ms = 550
+        try:
+            raw_ms = int(self._host_settings().value('host/sevChipPinMs', 550) or 550)
+            if raw_ms not in (300, 550, 800):
+                # clamp to nearest preset
+                raw_ms = min((300, 550, 800), key=lambda x: abs(x - raw_ms))
+            self._sev_chip_pin_ms = int(raw_ms)
+        except Exception:
+            self._sev_chip_pin_ms = 550
         self._sev_chip_pin_press_ms = 0
         self._sev_chip_pin_tick = QTimer(self)
         self._sev_chip_pin_tick.setInterval(40)
         self._sev_chip_pin_tick.timeout.connect(self._on_sev_chip_pin_tick)
         self._sev_chip_pin_arc = _SevChipPinProgressArc(self)
+        try:
+            raw_c = str(self._host_settings().value('host/sevChipPinArcColor', '#f0c040') or '#f0c040').strip()
+            if raw_c and not raw_c.startswith('#'):
+                raw_c = '#' + raw_c
+            self._sev_chip_pin_arc.set_color(raw_c or '#f0c040')
+        except Exception:
+            pass
+        self._host_toast_click_action = 'open'  # wave38: open | review
+        self._host_toast_review_path = ''
         # wave37: 多档另存上限可配
         self._alarm_film_csv_dirs_max = 5
         try:
@@ -1389,20 +1417,23 @@ class HostStateMachineWidget(QWidget):
                     pass
 
     def _flash_open_dir_ok_tip(self, directory: str = '', *, soft: bool = False):
-        """wave37: 开目录成功 tip（与失败区分；soft=系统未真正打开）."""
+        """wave37–38: 开目录成功 tip；绑定路径，可点回看."""
+        directory = str(directory or '').strip()
         try:
             from pathlib import Path as _P
             name = _P(directory).name or str(directory)
         except Exception:
             name = str(directory or '')
         if soft:
-            msg = f'目录已就绪 · {name}（系统未打开）'
+            msg = f'目录已就绪 · {name}（系统未打开）· 单击回看路径'
             kind = 'info'
         else:
-            msg = f'已打开目录 · {name}'
+            msg = f'已打开目录 · {name} · 单击回看路径'
             kind = 'ok'
+        self._host_toast_review_path = directory
+        self._host_toast_click_action = 'review' if directory else 'open'
         try:
-            self._flash_host_toast(msg, kind=kind, ms=2200)
+            self._flash_host_toast(msg, kind=kind, ms=2800, open_path=directory)
         except Exception:
             pass
         try:
@@ -1412,24 +1443,74 @@ class HostStateMachineWidget(QWidget):
         toast = getattr(self, '_liaison_hotkey_toast', None)
         if toast is not None:
             try:
+                tip = f'{msg}\n{directory}' if directory else msg
                 QToolTip.showText(
                     toast.mapToGlobal(QPoint(0, toast.height())),
-                    msg,
+                    tip,
                     toast,
                     toast.rect(),
-                    2200,
+                    2800,
                 )
             except Exception:
                 pass
 
+    def review_host_toast_path(self) -> str:
+        """wave38: 回看 toast 绑定路径（全路径 tip）；返回路径."""
+        path = str(
+            getattr(self, '_host_toast_review_path', '')
+            or getattr(self, '_host_toast_open_path', '')
+            or ''
+        ).strip()
+        if not path:
+            try:
+                self._flash_host_toast('无绑定路径可回看', kind='info', ms=1600)
+            except Exception:
+                pass
+            return ''
+        short = path if len(path) <= 64 else ('…' + path[-60:])
+        msg = f'路径回看 · {short}'
+        # after review, next click opens
+        self._host_toast_click_action = 'open'
+        self._host_toast_open_path = path
+        self._host_toast_review_path = path
+        try:
+            self._flash_host_toast(msg, kind='info', ms=3200, open_path=path)
+            self._log_line(f'路径回看 · {path}')
+        except Exception:
+            pass
+        toast = getattr(self, '_liaison_hotkey_toast', None)
+        if toast is not None:
+            try:
+                QToolTip.showText(
+                    toast.mapToGlobal(QPoint(0, toast.height())),
+                    path,
+                    toast,
+                    toast.rect(),
+                    3200,
+                )
+            except Exception:
+                pass
+        # clipboard for convenience
+        try:
+            clip = QApplication.clipboard()
+            if clip is not None:
+                clip.setText(path)
+        except Exception:
+            pass
+        return path
+
     def _on_host_toast_clicked(self, event=None):
-        """wave35–36: CSV toast 单击开目录；失败 tip."""
+        """wave35–38: CSV/开目录 tip 单击；回看或开目录."""
         try:
             if event is not None and hasattr(event, 'button'):
                 if event.button() not in (Qt.MouseButton.LeftButton,):
                     return
         except Exception:
             pass
+        action = str(getattr(self, '_host_toast_click_action', 'open') or 'open')
+        if action == 'review':
+            self.review_host_toast_path()
+            return
         self.open_host_toast_path()
 
     def open_host_toast_path(self) -> str:
@@ -1934,7 +2015,7 @@ class HostStateMachineWidget(QWidget):
             act_save.setText('另存 paths CSV…（无）')
         act_save.triggered.connect(lambda *_: self.save_all_alarm_film_paths_csv())
         menu.addAction(act_save)
-        # wave36–37: 多档另存记忆子菜单 · 上限可配 · 清档
+        # wave36–38: 多档另存 · 置顶/删单项 · 上限 · 清档
         recent = self.alarm_film_csv_dirs()
         sub = QMenu('最近另存目录', menu)
         if recent:
@@ -1944,14 +2025,34 @@ class HostStateMachineWidget(QWidget):
                     lab = _P(d).name or d
                 except Exception:
                     lab = d
-                act_r = QAction(f'{i+1}. {lab}', sub)
-                act_r.setToolTip(d)
-                act_r.setData(d)
-                act_r.setEnabled(bool(all_rows))
-                act_r.triggered.connect(
+                item_m = QMenu(f'{i+1}. {lab}', sub)
+                item_m.setToolTip(d)
+                act_save = QAction('另存到此目录', item_m)
+                act_save.setData(d)
+                act_save.setProperty('isRecentSave', True)
+                act_save.setEnabled(bool(all_rows))
+                act_save.setToolTip(d)
+                act_save.triggered.connect(
                     lambda *_a, dd=d: self.save_all_alarm_film_paths_csv_to_dir(dd)
                 )
-                sub.addAction(act_r)
+                item_m.addAction(act_save)
+                act_top = QAction('置顶', item_m)
+                act_top.setData(d)
+                act_top.setProperty('isRecentPromote', True)
+                act_top.setEnabled(i > 0)
+                act_top.triggered.connect(
+                    lambda *_a, dd=d: self.promote_alarm_film_csv_dir(dd)
+                )
+                item_m.addAction(act_top)
+                act_del = QAction('删除此项', item_m)
+                act_del.setData(d)
+                act_del.setProperty('isRecentRemove', True)
+                act_del.setObjectName('hostAlarmFilmCsvDirRemove')
+                act_del.triggered.connect(
+                    lambda *_a, dd=d: self.remove_alarm_film_csv_dir(dd)
+                )
+                item_m.addAction(act_del)
+                sub.addMenu(item_m)
             sub.addSeparator()
         else:
             act_empty = QAction('（无最近目录）', sub)
@@ -2557,6 +2658,138 @@ class HostStateMachineWidget(QWidget):
             pass
         return True
 
+    def remove_alarm_film_csv_dir(self, directory: str) -> list:
+        """wave38: 最近另存单项删除."""
+        directory = str(directory or '').strip()
+        dirs = [d for d in self.alarm_film_csv_dirs() if d != directory]
+        try:
+            self._host_settings().setValue('host/alarmFilmCsvDirs', dirs)
+            self._host_settings().setValue('host/alarmFilmCsvDir', dirs[0] if dirs else '')
+        except Exception:
+            pass
+        try:
+            from pathlib import Path as _P
+            lab = _P(directory).name if directory else ''
+        except Exception:
+            lab = directory
+        try:
+            self._log_line(f'最近另存已删单项 · {lab or directory}')
+            self._flash_host_toast(f'已删单项 · {lab or directory}', kind='info')
+        except Exception:
+            pass
+        return list(dirs)
+
+    def promote_alarm_film_csv_dir(self, directory: str) -> list:
+        """wave38: 多档记忆置顶."""
+        directory = str(directory or '').strip()
+        if not directory:
+            return self.alarm_film_csv_dirs()
+        dirs = self.alarm_film_csv_dirs()
+        if directory not in dirs:
+            return dirs
+        dirs = [directory] + [d for d in dirs if d != directory]
+        try:
+            self._host_settings().setValue('host/alarmFilmCsvDirs', dirs)
+            self._host_settings().setValue('host/alarmFilmCsvDir', dirs[0])
+        except Exception:
+            pass
+        try:
+            from pathlib import Path as _P
+            lab = _P(directory).name or directory
+        except Exception:
+            lab = directory
+        try:
+            self._log_line(f'最近另存已置顶 · {lab}')
+            self._flash_host_toast(f'已置顶 · {lab}', kind='ok')
+        except Exception:
+            pass
+        return list(dirs)
+
+    def move_alarm_film_csv_dir(self, from_idx: int, to_idx: int) -> list:
+        """wave38: 多档记忆拖序（按下标移动）."""
+        dirs = list(self.alarm_film_csv_dirs())
+        n = len(dirs)
+        if n == 0:
+            return dirs
+        fi = max(0, min(n - 1, int(from_idx)))
+        ti = max(0, min(n - 1, int(to_idx)))
+        if fi == ti:
+            return dirs
+        item = dirs.pop(fi)
+        dirs.insert(ti, item)
+        return self.reorder_alarm_film_csv_dirs(dirs)
+
+    def reorder_alarm_film_csv_dirs(self, order) -> list:
+        """wave38: 按给定顺序重排多档记忆（去重保序，裁剪上限）."""
+        max_n = self.alarm_film_csv_dirs_max()
+        seen = []
+        for d in list(order or []):
+            s = str(d or '').strip()
+            if s and s not in seen:
+                seen.append(s)
+            if len(seen) >= max_n:
+                break
+        # keep any existing not in new order (append)
+        for d in self.alarm_film_csv_dirs(max_n=max_n):
+            if d not in seen and len(seen) < max_n:
+                seen.append(d)
+        try:
+            self._host_settings().setValue('host/alarmFilmCsvDirs', seen)
+            self._host_settings().setValue('host/alarmFilmCsvDir', seen[0] if seen else '')
+        except Exception:
+            pass
+        return list(seen)
+
+    def sev_chip_pin_ms(self) -> int:
+        """wave38: 长按落钉时长 ms."""
+        return int(getattr(self, '_sev_chip_pin_ms', 550) or 550)
+
+    def set_sev_chip_pin_ms(self, ms: int, *, persist: bool = True) -> int:
+        """wave38: 配置长按落钉时长（预设 300/550/800）."""
+        ms = int(ms or 550)
+        presets = (300, 550, 800)
+        if ms not in presets:
+            ms = min(presets, key=lambda x: abs(x - ms))
+        self._sev_chip_pin_ms = ms
+        if persist:
+            try:
+                self._host_settings().setValue('host/sevChipPinMs', ms)
+            except Exception:
+                pass
+        return ms
+
+    def cycle_sev_chip_pin_ms(self) -> int:
+        """wave38: 循环长按时长 300/550/800."""
+        presets = (300, 550, 800)
+        cur = self.sev_chip_pin_ms()
+        try:
+            nxt = presets[(presets.index(cur) + 1) % len(presets)]
+        except ValueError:
+            nxt = 550
+        return self.set_sev_chip_pin_ms(nxt)
+
+    def sev_chip_pin_arc_color(self) -> str:
+        """wave38: 进度弧颜色."""
+        arc = getattr(self, '_sev_chip_pin_arc', None)
+        if arc is not None and hasattr(arc, 'color'):
+            return arc.color()
+        return '#f0c040'
+
+    def set_sev_chip_pin_arc_color(self, color: str, *, persist: bool = True) -> str:
+        """wave38: 配置进度弧颜色."""
+        c = str(color or '').strip() or '#f0c040'
+        if not c.startswith('#'):
+            c = '#' + c
+        arc = getattr(self, '_sev_chip_pin_arc', None)
+        if arc is not None and hasattr(arc, 'set_color'):
+            arc.set_color(c)
+        if persist:
+            try:
+                self._host_settings().setValue('host/sevChipPinArcColor', c)
+            except Exception:
+                pass
+        return c
+
     def alarm_film_csv_dirs(self, *, max_n: int = None) -> list:
         """wave36–37: 多档另存目录记忆（新→旧，最多 max_n）."""
         if max_n is None:
@@ -2746,7 +2979,7 @@ class HostStateMachineWidget(QWidget):
         return menu
 
     def _focus_toast_hist_cap_menu(self, menu: QMenu):
-        """wave37: 容量菜单焦点落在当前项，便于键选."""
+        """wave37–38: 容量菜单焦点落在当前项；装 Esc/方向键导航."""
         if menu is None:
             return None
         cur = int(getattr(self, '_liaison_toast_history_max', 5) or 5)
@@ -2767,7 +3000,140 @@ class HostStateMachineWidget(QWidget):
             except Exception:
                 pass
         self._last_toast_hist_cap_focus = focus
+        self._install_toast_hist_cap_menu_nav(menu)
         return focus
+
+    def _toast_hist_cap_selectable_actions(self, menu: QMenu):
+        """wave38: 容量菜单可选（非分隔）项."""
+        out = []
+        if menu is None:
+            return out
+        for act in menu.actions():
+            try:
+                if act.isSeparator():
+                    continue
+                if not act.isEnabled():
+                    continue
+                out.append(act)
+            except Exception:
+                continue
+        return out
+
+    def navigate_toast_hist_cap_menu(self, menu: QMenu = None, delta: int = 1):
+        """wave38: 方向键导航容量菜单；返回新焦点 action."""
+        menu = menu or getattr(self, '_last_toast_hist_cap_menu', None)
+        if menu is None:
+            return None
+        acts = self._toast_hist_cap_selectable_actions(menu)
+        if not acts:
+            return None
+        cur = menu.activeAction()
+        try:
+            idx = acts.index(cur) if cur in acts else 0
+        except ValueError:
+            idx = 0
+        nxt = acts[(idx + int(delta or 0)) % len(acts)]
+        try:
+            menu.setActiveAction(nxt)
+        except Exception:
+            pass
+        self._last_toast_hist_cap_focus = nxt
+        return nxt
+
+    def toast_hist_cap_menu_key(self, key, menu: QMenu = None):
+        """wave38: Esc 关闭 / Up Down 导航 / Return 触发；供 smoke 与 eventFilter."""
+        from PySide6.QtCore import Qt as _Qt
+        menu = menu or getattr(self, '_last_toast_hist_cap_menu', None)
+        if menu is None:
+            return None
+        # normalize key
+        try:
+            k = int(key)
+        except Exception:
+            k = key
+        if k in (_Qt.Key.Key_Escape, getattr(_Qt, 'Key_Escape', 16777216)):
+            try:
+                menu.close()
+            except Exception:
+                pass
+            self._last_toast_hist_cap_closed_by = 'esc'
+            return 'esc'
+        if k in (_Qt.Key.Key_Up, getattr(_Qt, 'Key_Up', 16777235)):
+            act = self.navigate_toast_hist_cap_menu(menu, -1)
+            return act
+        if k in (_Qt.Key.Key_Down, getattr(_Qt, 'Key_Down', 16777237)):
+            act = self.navigate_toast_hist_cap_menu(menu, 1)
+            return act
+        if k in (
+            _Qt.Key.Key_Return, _Qt.Key.Key_Enter,
+            getattr(_Qt, 'Key_Return', 16777220),
+            getattr(_Qt, 'Key_Enter', 16777221),
+        ):
+            act = menu.activeAction()
+            if act is not None and act.isEnabled():
+                try:
+                    act.trigger()
+                except Exception:
+                    pass
+            try:
+                menu.close()
+            except Exception:
+                pass
+            return act
+        return None
+
+    def _install_toast_hist_cap_menu_nav(self, menu: QMenu):
+        """wave38: 给容量菜单装 key 导航（Esc/方向/回车）."""
+        if menu is None:
+            return
+        # avoid double-install
+        if getattr(menu, '_sieans_cap_nav', False):
+            return
+        try:
+            menu._sieans_cap_nav = True
+        except Exception:
+            pass
+
+        def _filter(obj, event):
+            try:
+                from PySide6.QtCore import QEvent
+                if event.type() == QEvent.Type.KeyPress:
+                    key = event.key()
+                    result = self.toast_hist_cap_menu_key(key, menu)
+                    if result is not None:
+                        return True
+            except Exception:
+                pass
+            return False
+
+        try:
+            menu.installEventFilter(self)
+            # store bound filter via attribute; host eventFilter dispatches
+            self._toast_hist_cap_nav_menu = menu
+        except Exception:
+            pass
+        # also accept shortcuts on menu itself
+        try:
+            menu.setProperty('sieansCapNav', True)
+        except Exception:
+            pass
+
+    def eventFilter(self, obj, event):  # noqa: N802
+        """wave38: 容量菜单 Esc/方向键；其它交给基类."""
+        try:
+            from PySide6.QtCore import QEvent
+            nav_menu = getattr(self, '_toast_hist_cap_nav_menu', None)
+            if nav_menu is not None and obj is nav_menu:
+                if event.type() == QEvent.Type.KeyPress:
+                    result = self.toast_hist_cap_menu_key(event.key(), nav_menu)
+                    if result is not None:
+                        return True
+        except Exception:
+            pass
+        try:
+            return super().eventFilter(obj, event)
+        except Exception:
+            return False
 
     def _on_toast_hist_cap_hotkey(self):
         """wave36–37: Alt+H → 容量菜单（焦点键选当前项）."""
