@@ -9052,18 +9052,36 @@ class HostStateMachineWidget(QWidget):
             badge = getattr(self, '_ab_trial_fallback_import_conflict_preview_layout_default_slot_shortcut_rollback_repreview_count_badge', None)
             if badge is None:
                 badge = self.ensure_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_preview_layout_default_slot_shortcut_history_rollback_conflicts_repreview_count_badge()
+            status_prop = None
+            status_prop_ok = False
+            flash_ms_prop = None
+            flash_ms_prop_ok = False
             if badge is not None and tip:
                 badge.setToolTip(tip)
             if badge is not None:
                 badge.setProperty('repreviewCountBadgeStatus', status)
                 badge.setProperty('repreviewCountBadgeFlashMs', int(v))
+                status_prop = badge.property('repreviewCountBadgeStatus')
+                flash_ms_prop = badge.property('repreviewCountBadgeFlashMs')
+                status_prop_ok = (str(status_prop) == status)
+                try:
+                    flash_ms_prop_ok = (int(flash_ms_prop) == int(v))
+                except Exception:
+                    flash_ms_prop_ok = False
         except Exception:
-            pass
+            status_prop = None
+            status_prop_ok = False
+            flash_ms_prop = None
+            flash_ms_prop_ok = False
         try:
             self._last_ab_trial_fallback_import_conflict_preview_layout_default_slot_shortcut_rollback_repreview_status = status
+            self._last_ab_trial_fallback_import_conflict_preview_layout_default_slot_shortcut_rollback_repreview_status_prop = status_prop
+            self._last_ab_trial_fallback_import_conflict_preview_layout_default_slot_shortcut_rollback_repreview_status_prop_ok = bool(status_prop_ok)
+            self._last_ab_trial_fallback_import_conflict_preview_layout_default_slot_shortcut_rollback_repreview_flash_ms_prop = flash_ms_prop
+            self._last_ab_trial_fallback_import_conflict_preview_layout_default_slot_shortcut_rollback_repreview_flash_ms_prop_ok = bool(flash_ms_prop_ok)
         except Exception:
             pass
-        out = {'ok': True, 'ms': int(v), 'persist': bool(persist), 'tip_refreshed': tip_refreshed, 'tip': tip, 'status': status, 'status_prop': status}
+        out = {'ok': True, 'ms': int(v), 'persist': bool(persist), 'tip_refreshed': tip_refreshed, 'tip': tip, 'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok), 'flash_ms_prop': flash_ms_prop, 'flash_ms_prop_ok': bool(flash_ms_prop_ok)}
         self._last_ab_trial_fallback_import_conflict_preview_layout_default_slot_shortcut_rollback_repreview_flash_ms_set = dict(out)
         return out
 
@@ -14500,18 +14518,36 @@ class HostStateMachineWidget(QWidget):
             badge = getattr(self, '_ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_hist_badge', None)
             if badge is None:
                 badge = self.ensure_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_history_badge()
+            status_prop = None
+            status_prop_ok = False
+            flash_ms_prop = None
+            flash_ms_prop_ok = False
             if badge is not None and tip:
                 badge.setToolTip(tip)
             if badge is not None:
                 badge.setProperty('batchRemoveUndoToastHistoryBadgeStatus', status)
                 badge.setProperty('batchRemoveUndoToastHistoryBadgeFlashMs', int(v))
+                status_prop = badge.property('batchRemoveUndoToastHistoryBadgeStatus')
+                flash_ms_prop = badge.property('batchRemoveUndoToastHistoryBadgeFlashMs')
+                status_prop_ok = (str(status_prop) == status)
+                try:
+                    flash_ms_prop_ok = (int(flash_ms_prop) == int(v))
+                except Exception:
+                    flash_ms_prop_ok = False
         except Exception:
-            pass
+            status_prop = None
+            status_prop_ok = False
+            flash_ms_prop = None
+            flash_ms_prop_ok = False
         try:
             self._last_ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_hist_badge_status = status
+            self._last_ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_hist_badge_status_prop = status_prop
+            self._last_ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_hist_badge_status_prop_ok = bool(status_prop_ok)
+            self._last_ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_hist_badge_flash_ms_prop = flash_ms_prop
+            self._last_ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_hist_badge_flash_ms_prop_ok = bool(flash_ms_prop_ok)
         except Exception:
             pass
-        out = {'ok': True, 'ms': int(v), 'persist': bool(persist), 'tip_refreshed': tip_refreshed, 'tip': tip, 'status': status, 'status_prop': status}
+        out = {'ok': True, 'ms': int(v), 'persist': bool(persist), 'tip_refreshed': tip_refreshed, 'tip': tip, 'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok), 'flash_ms_prop': flash_ms_prop, 'flash_ms_prop_ok': bool(flash_ms_prop_ok)}
         self._last_ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_hist_badge_flash_ms_set = dict(out)
         return out
 
@@ -21830,6 +21866,10 @@ class HostStateMachineWidget(QWidget):
         status = f'闪标档：{int(flash_ms)}ms'
         status_prop = None
         status_prop_ok = False
+        tip_prop = None
+        tip_prop_ok = False
+        flash_ms_prop = None
+        flash_ms_prop_ok = False
         try:
             badge = getattr(self, '_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge', None)
             if badge is None:
@@ -21837,16 +21877,32 @@ class HostStateMachineWidget(QWidget):
             if badge is not None:
                 badge.setProperty('jumpDeltaBadgeStatus', status)
                 badge.setProperty('jumpDeltaBadgeFlashMs', int(flash_ms))
+                badge.setProperty('jumpDeltaBadgeHoverTip', tip)
                 status_prop = badge.property('jumpDeltaBadgeStatus')
+                flash_ms_prop = badge.property('jumpDeltaBadgeFlashMs')
+                tip_prop = badge.property('jumpDeltaBadgeHoverTip')
                 status_prop_ok = (str(status_prop) == status)
+                try:
+                    flash_ms_prop_ok = (int(flash_ms_prop) == int(flash_ms))
+                except Exception:
+                    flash_ms_prop_ok = False
+                tip_prop_ok = (str(tip_prop) == tip)
         except Exception:
             status_prop = None
             status_prop_ok = False
+            tip_prop = None
+            tip_prop_ok = False
+            flash_ms_prop = None
+            flash_ms_prop_ok = False
         self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_hover_tip = tip
         self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_status = status
         self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_flash_ms_shown = int(flash_ms)
         self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_status_prop = status_prop
         self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_status_prop_ok = bool(status_prop_ok)
+        self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_tip_prop = tip_prop
+        self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_tip_prop_ok = bool(tip_prop_ok)
+        self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_flash_ms_prop = flash_ms_prop
+        self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_flash_ms_prop_ok = bool(flash_ms_prop_ok)
         return tip
 
 
@@ -21983,23 +22039,43 @@ class HostStateMachineWidget(QWidget):
                 badge = self.ensure_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key_suggest_history_filter_query_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge()
             status_prop = None
             status_prop_ok = False
+            tip_prop = None
+            tip_prop_ok = False
+            flash_ms_prop = None
+            flash_ms_prop_ok = False
             if badge is not None and tip:
                 badge.setToolTip(tip)
             if badge is not None:
                 badge.setProperty('jumpDeltaBadgeStatus', status)
                 badge.setProperty('jumpDeltaBadgeFlashMs', int(v))
+                badge.setProperty('jumpDeltaBadgeHoverTip', tip)
                 status_prop = badge.property('jumpDeltaBadgeStatus')
+                flash_ms_prop = badge.property('jumpDeltaBadgeFlashMs')
+                tip_prop = badge.property('jumpDeltaBadgeHoverTip')
                 status_prop_ok = (str(status_prop) == status)
+                try:
+                    flash_ms_prop_ok = (int(flash_ms_prop) == int(v))
+                except Exception:
+                    flash_ms_prop_ok = False
+                tip_prop_ok = (str(tip_prop) == tip)
         except Exception:
             status_prop = None
             status_prop_ok = False
+            tip_prop = None
+            tip_prop_ok = False
+            flash_ms_prop = None
+            flash_ms_prop_ok = False
         try:
             self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_status = status
             self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_status_prop = status_prop
             self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_status_prop_ok = bool(status_prop_ok)
+            self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_tip_prop = tip_prop
+            self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_tip_prop_ok = bool(tip_prop_ok)
+            self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_flash_ms_prop = flash_ms_prop
+            self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_flash_ms_prop_ok = bool(flash_ms_prop_ok)
         except Exception:
             pass
-        out = {'ok': True, 'ms': v, 'tip_refreshed': tip_refreshed, 'tip': tip, 'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok)}
+        out = {'ok': True, 'ms': v, 'tip_refreshed': tip_refreshed, 'tip': tip, 'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok), 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok), 'flash_ms_prop': flash_ms_prop, 'flash_ms_prop_ok': bool(flash_ms_prop_ok)}
         self._last_cycle_key_suggest_history_filter_presets_reorder_badge_freq_import_merge_undo_stack_preview_bar_jump_delta_badge_flash_ms_set = dict(out)
         return out
 
@@ -26212,18 +26288,36 @@ class HostStateMachineWidget(QWidget):
             badge = getattr(self, '_jitter_flash_done_sound_volume_mute_badge_bar_wheel_step_badge', None)
             if badge is None:
                 badge = self.ensure_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_preset_customs_reorder_undo_depth_lab_flash_done_sound_volume_mute_badge_bar_wheel_step_badge()
+            status_prop = None
+            status_prop_ok = False
+            flash_ms_prop = None
+            flash_ms_prop_ok = False
             if badge is not None and tip:
                 badge.setToolTip(tip)
             if badge is not None:
                 badge.setProperty('wheelStepBadgeStatus', status)
                 badge.setProperty('wheelStepBadgeFlashMs', int(v))
+                status_prop = badge.property('wheelStepBadgeStatus')
+                flash_ms_prop = badge.property('wheelStepBadgeFlashMs')
+                status_prop_ok = (str(status_prop) == status)
+                try:
+                    flash_ms_prop_ok = (int(flash_ms_prop) == int(v))
+                except Exception:
+                    flash_ms_prop_ok = False
         except Exception:
-            pass
+            status_prop = None
+            status_prop_ok = False
+            flash_ms_prop = None
+            flash_ms_prop_ok = False
         try:
             self._last_jitter_flash_done_sound_volume_mute_badge_bar_wheel_step_badge_status = status
+            self._last_jitter_flash_done_sound_volume_mute_badge_bar_wheel_step_badge_status_prop = status_prop
+            self._last_jitter_flash_done_sound_volume_mute_badge_bar_wheel_step_badge_status_prop_ok = bool(status_prop_ok)
+            self._last_jitter_flash_done_sound_volume_mute_badge_bar_wheel_step_badge_flash_ms_prop = flash_ms_prop
+            self._last_jitter_flash_done_sound_volume_mute_badge_bar_wheel_step_badge_flash_ms_prop_ok = bool(flash_ms_prop_ok)
         except Exception:
             pass
-        out = {'ok': True, 'ms': int(v), 'persist': bool(persist), 'tip_refreshed': tip_refreshed, 'tip': tip, 'status': status, 'status_prop': status}
+        out = {'ok': True, 'ms': int(v), 'persist': bool(persist), 'tip_refreshed': tip_refreshed, 'tip': tip, 'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok), 'flash_ms_prop': flash_ms_prop, 'flash_ms_prop_ok': bool(flash_ms_prop_ok)}
         self._last_jitter_flash_done_sound_volume_mute_badge_bar_wheel_step_badge_flash_ms_set = dict(out)
         return out
 
@@ -33352,8 +33446,55 @@ class HostStateMachineWidget(QWidget):
             act_ml.triggered.connect(lambda *_ , m=ml: self.set_strategy_badge_hover_tip_max_len(m, persist=True))
             sub_ml.addAction(act_ml)
             tip_len_actions.append(str(ml))
+        strategy_prop = None
+        strategy_prop_ok = False
+        tip_max_len_prop = None
+        tip_max_len_prop_ok = False
+        last_toast_brief = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_toast_brief', None)
+        if last_toast_brief is None:
+            last_toast_brief = '无'
+        last_toast_brief_prop = None
+        last_toast_brief_prop_ok = False
+        try:
+            badge = getattr(self, '_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge', None)
+            if badge is None:
+                badge = self.ensure_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge()
+            if badge is not None:
+                badge.setProperty('dstImportStrategyBadgeStrategy', str(cur))
+                badge.setProperty('dstImportStrategyBadgeHoverTipMaxLen', int(cur_ml))
+                badge.setProperty('dstImportStrategyBadgeLastToastBrief', str(last_toast_brief))
+                strategy_prop = badge.property('dstImportStrategyBadgeStrategy')
+                tip_max_len_prop = badge.property('dstImportStrategyBadgeHoverTipMaxLen')
+                last_toast_brief_prop = badge.property('dstImportStrategyBadgeLastToastBrief')
+                strategy_prop_ok = (str(strategy_prop) == str(cur))
+                try:
+                    tip_max_len_prop_ok = (int(tip_max_len_prop) == int(cur_ml))
+                except Exception:
+                    tip_max_len_prop_ok = False
+                last_toast_brief_prop_ok = (str(last_toast_brief_prop) == str(last_toast_brief))
+        except Exception:
+            strategy_prop = None
+            strategy_prop_ok = False
+            tip_max_len_prop = None
+            tip_max_len_prop_ok = False
+            last_toast_brief_prop = None
+            last_toast_brief_prop_ok = False
+        try:
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_strategy_prop = strategy_prop
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_strategy_prop_ok = bool(strategy_prop_ok)
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_tip_max_len_prop_ok = bool(tip_max_len_prop_ok)
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_toast_brief_prop_ok = bool(last_toast_brief_prop_ok)
+        except Exception:
+            pass
+        _menu_sync = {
+            'strategy_prop': strategy_prop, 'strategy_prop_ok': bool(strategy_prop_ok),
+            'tip_max_len_prop': tip_max_len_prop, 'tip_max_len_prop_ok': bool(tip_max_len_prop_ok),
+            'last_toast_brief': str(last_toast_brief), 'last_toast_brief_prop': last_toast_brief_prop,
+            'last_toast_brief_prop_ok': bool(last_toast_brief_prop_ok),
+        }
         if getattr(self, '_dst_reorder_shortcut_conflict_history_menu_no_exec', False) or getattr(self, '_dst_reorder_shortcut_conflict_quiet', False):
             out = {'ok': True, 'shown': False, 'strategy': cur, 'actions': ['merge', 'overwrite', 'toggle', 'copy', 'copy_orig_len', 'tip_max_len'], 'tip_max_len': int(cur_ml), 'tip_max_len_presets': tip_len_actions}
+            out.update(_menu_sync)
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu = dict(out)
             return out
         try:
@@ -33361,9 +33502,11 @@ class HostStateMachineWidget(QWidget):
             menu.exec(pos)
         except Exception as e:
             out = {'ok': False, 'reason': str(e), 'strategy': cur}
+            out.update(_menu_sync)
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu = dict(out)
             return out
         out = {'ok': True, 'shown': True, 'strategy': cur, 'actions': ['merge', 'overwrite', 'toggle', 'copy', 'copy_orig_len', 'tip_max_len'], 'tip_max_len': int(cur_ml), 'tip_max_len_presets': tip_len_actions}
+        out.update(_menu_sync)
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu = dict(out)
         return out
 
