@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㉝ · pin徽章 · CSV另存记目录 · toast容量tip · 时长预设菜单 · Alt+P钉住 · 2026-10-28】
+
+- **pin badge on sev chip**：钉住时芯片文案加 📌、金边；行尾 `hostAlarmSevPinBadge` 显示 📌档，单击取消钉。
+- **CSV 另存 remember dir**：`host/alarmFilmCsvDir`；对话框默认进上次目录，成功另存后更新。
+- **toast-hist capacity tip**：历史条 tip 显示 `容量 used/max`（默认 5）+ 回切/清空提示。
+- **undo-clear 预设菜单**：⊘ 右键弹出 400/650/1000/1500 菜单（✓ 当前），非仅循环。
+- **sev pin hotkey**：`Alt+P` 钉住/取消当前严重度筛。
+- **冒烟**：`smoke-wave33-pinbadge-csvdir-histcap-presetmenu-pinhotkey-e2e`（另回归 wave32）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆㉜ · 气泡长按钉住 · 进度弧可配时长 · CSV另存/cleared · toast史右键清空 · 锁双击可撤销 · 2026-10-28】
 
 - **气泡长按钉住 sev 筛**：左键短按筛；长按钉住（`host/alarmSevPinned`）；钉住后非 force 拒切换；再长按同键或中键取消钉。

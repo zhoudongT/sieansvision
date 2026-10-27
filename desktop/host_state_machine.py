@@ -758,10 +758,34 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             pass
         chip_row.addStretch(1)
+        # wave33: pin badge on sev chip row
+        self._alarm_sev_pin_badge = QLabel('')
+        self._alarm_sev_pin_badge.setObjectName('hostAlarmSevPinBadge')
+        self._alarm_sev_pin_badge.setFixedHeight(18)
+        self._alarm_sev_pin_badge.setMinimumWidth(18)
+        self._alarm_sev_pin_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._alarm_sev_pin_badge.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._alarm_sev_pin_badge.setToolTip('钉住徽章 · 单击取消钉 · Alt+P 切换')
+        self._alarm_sev_pin_badge.setStyleSheet(
+            'background:transparent;color:#f0c040;border:none;font-size:11px;font-weight:700;'
+        )
+        self._alarm_sev_pin_badge.mousePressEvent = (
+            lambda e: self._on_sev_pin_badge_clicked(e)
+        )
+        self._alarm_sev_pin_badge.hide()
+        chip_row.addWidget(self._alarm_sev_pin_badge)
         chip_hint = QLabel('芯片')
         chip_hint.setStyleSheet(f'color:{TEXT_MUTED};font-size:10px;')
+        chip_hint.setToolTip('严重度芯片 · 气泡长按钉住 · Alt+P')
         chip_row.addWidget(chip_hint)
         lay.addLayout(chip_row)
+        # wave33: Alt+P 钉住/取消当前 sev
+        try:
+            self._sev_pin_shortcut = QShortcut(QKeySequence('Alt+P'), self)
+            self._sev_pin_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            self._sev_pin_shortcut.activated.connect(self._on_sev_pin_hotkey)
+        except Exception:
+            self._sev_pin_shortcut = None
         self._sync_alarm_sev_chips()
         self._alarm_list = QListWidget()
         self._alarm_list.setObjectName('hostAlarmHistoryList')
@@ -842,7 +866,7 @@ class HostStateMachineWidget(QWidget):
         )
         self._liaison_toast_history_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._liaison_toast_history_bar.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._liaison_toast_history_bar.setToolTip('单击某档回切联调时段 · 右键清空史')
+        self._liaison_toast_history_bar.setToolTip('单击某档回切 · 右键清空 · 容量见 tip')
         self._liaison_toast_history_bar.mousePressEvent = (
             lambda e: self._on_liaison_toast_history_clicked(e)
         )
@@ -1080,7 +1104,10 @@ class HostStateMachineWidget(QWidget):
             # newest last: show oldest → newest with arrows
             htext = ' → '.join(hist)
             hbar.setText(f'切窗史 · {htext}')
-            hbar.setToolTip(f'最近 {len(hist)} 次 · 单击某档回切')
+            max_n = int(getattr(self, '_liaison_toast_history_max', 5) or 5)
+            hbar.setToolTip(
+                f'容量 {len(hist)}/{max_n} · 单击某档回切 · 右键清空史'
+            )
             hbar.adjustSize()
             try:
                 hw = max(hbar.sizeHint().width() + 8, tw)
@@ -1115,6 +1142,12 @@ class HostStateMachineWidget(QWidget):
     def liaison_toast_history(self):
         """wave30: 最近 N 次 Alt+L 切窗标签."""
         return list(getattr(self, '_liaison_toast_history', None) or [])
+
+    def liaison_toast_history_capacity(self) -> tuple:
+        """wave33: (used, max) for toast hist capacity tip."""
+        used = len(getattr(self, '_liaison_toast_history', None) or [])
+        max_n = int(getattr(self, '_liaison_toast_history_max', 5) or 5)
+        return (used, max_n)
 
     def set_liaison_window_sec(self, sec: int, *, persist: bool = True):
         combo = getattr(self, '_liaison_window', None)
@@ -1395,22 +1428,35 @@ class HostStateMachineWidget(QWidget):
             bg, fg, bd = styles.get(key, styles['all'])
             n = int(counts.get(key, 0) or 0)
             base = labels.get(key, key)
+            pinned = bool(getattr(self, '_alarm_sev_pinned', False))
+            pinned_key = str(getattr(self, '_alarm_sev_pinned_key', '') or '')
+            pin_here = pinned and pinned_key == key
             try:
-                b.setText(base)
+                # wave33: pin badge glyph on sev chip
+                b.setText(('📌' + base) if pin_here else base)
             except Exception:
                 pass
-            if on:
+            if pin_here:
+                b.setChecked(True)
+                b.setStyleSheet(
+                    f'background:{bg};color:{fg};border:2px solid #f0c040;'
+                    f'border-radius:3px;font-size:10px;font-weight:700;padding:1px 4px;'
+                )
+                b.setToolTip(f'严重度筛 · {base} · 已钉住（Alt+P / 徽章取消）')
+            elif on:
                 b.setChecked(True)
                 b.setStyleSheet(
                     f'background:{bg};color:{fg};border:1px solid {bd};'
                     f'border-radius:3px;font-size:10px;font-weight:700;padding:1px 4px;'
                 )
+                b.setToolTip(f'严重度筛 · {base} · Alt+P 钉住')
             else:
                 b.setChecked(False)
                 b.setStyleSheet(
                     'background:#2a2c30;color:#6a7078;border:1px solid #3a3d42;'
                     'border-radius:3px;font-size:10px;padding:1px 4px;'
                 )
+                b.setToolTip(f'严重度筛 · {base} · Alt+P 钉住')
             bubble = bubbles.get(key)
             if bubble is not None:
                 bubble.setText(str(n))
@@ -1438,6 +1484,20 @@ class HostStateMachineWidget(QWidget):
                         'background:#2a2c30;color:#6a7078;border:1px solid #3a3d42;'
                         'border-radius:7px;padding:0 3px;font-size:9px;font-weight:700;'
                     )
+        # wave33: pin badge widget
+        badge = getattr(self, '_alarm_sev_pin_badge', None)
+        if badge is not None:
+            pinned = bool(getattr(self, '_alarm_sev_pinned', False))
+            pk = str(getattr(self, '_alarm_sev_pinned_key', '') or '')
+            if pinned and pk:
+                lab = (getattr(self, '_alarm_sev_chip_labels', None) or {}).get(pk, pk)
+                badge.setText(f'📌{lab}')
+                badge.setToolTip(f'已钉住 · {lab} · 单击取消 · Alt+P')
+                badge.show()
+            else:
+                badge.setText('')
+                badge.setToolTip('钉住徽章 · Alt+P 钉住当前筛')
+                badge.hide()
 
     def alarm_severity_filter(self) -> str:
         combo = getattr(self, '_alarm_sev_filter', None)
@@ -1657,6 +1717,30 @@ class HostStateMachineWidget(QWidget):
             pass
         return True
 
+    def _on_sev_pin_hotkey(self):
+        """wave33: Alt+P 切换钉住当前严重度筛."""
+        if getattr(self, '_alarm_sev_pinned', False):
+            self.pin_alarm_severity_filter(False)
+        else:
+            self.pin_alarm_severity_filter(True, key=self.alarm_severity_filter())
+        try:
+            self._log_line(
+                f'Alt+P · {"钉住 " + self._alarm_sev_pinned_key if self._alarm_sev_pinned else "取消钉住"}'
+            )
+        except Exception:
+            pass
+
+    def _on_sev_pin_badge_clicked(self, event=None):
+        """wave33: 钉住徽章单击取消钉."""
+        try:
+            if event is not None and hasattr(event, 'button'):
+                if event.button() not in (Qt.MouseButton.LeftButton,):
+                    return
+        except Exception:
+            pass
+        if getattr(self, '_alarm_sev_pinned', False):
+            self.pin_alarm_severity_filter(False)
+
     def _on_sev_bubble_clicked(self, event=None, key: str = 'all'):
         """兼容冒烟/旧 API：按键路由到 press（无 release）."""
         self._on_sev_bubble_press(event, key)
@@ -1756,8 +1840,27 @@ class HostStateMachineWidget(QWidget):
                 'ts', 'cleared', 'cleared_at', 'severity', 'path', 'reason')))
         return chr(10).join(lines)
 
+    def alarm_film_csv_dir(self) -> str:
+        """wave33: 上次另存目录."""
+        try:
+            raw = str(self._host_settings().value('host/alarmFilmCsvDir', '') or '').strip()
+        except Exception:
+            raw = ''
+        return raw
+
+    def set_alarm_film_csv_dir(self, directory: str) -> str:
+        """Persist last CSV save directory."""
+        directory = str(directory or '').strip()
+        if not directory:
+            return ''
+        try:
+            self._host_settings().setValue('host/alarmFilmCsvDir', directory)
+        except Exception:
+            pass
+        return directory
+
     def save_all_alarm_film_paths_csv(self, path: str = '') -> str:
-        """wave32: 另存全部 filmPath CSV 文件；空 path 则弹对话框."""
+        """wave32–33: 另存全部 filmPath CSV；空 path 弹对话框并记住目录."""
         rows = self._collect_alarm_film_rows()
         if not rows:
             try:
@@ -1766,8 +1869,16 @@ class HostStateMachineWidget(QWidget):
                 pass
             return ''
         if not path:
+            from pathlib import Path as _P
+            remembered = self.alarm_film_csv_dir()
+            start = 'alarm-film-paths.csv'
+            if remembered:
+                try:
+                    start = str(_P(remembered) / 'alarm-film-paths.csv')
+                except Exception:
+                    start = 'alarm-film-paths.csv'
             path, _ = QFileDialog.getSaveFileName(
-                self, '另存胶片 paths CSV', 'alarm-film-paths.csv',
+                self, '另存胶片 paths CSV', start,
                 'CSV (*.csv);;All (*)')
         if not path:
             return ''
@@ -1777,6 +1888,13 @@ class HostStateMachineWidget(QWidget):
                 f.write(text)
                 if not text.endswith(chr(10)):
                     f.write(chr(10))
+            # remember parent dir
+            try:
+                from pathlib import Path as _P
+                parent = str(_P(path).resolve().parent)
+                self.set_alarm_film_csv_dir(parent)
+            except Exception:
+                pass
             self._log_line(f'已另存胶片 path CSV · {len(rows)} · {path}')
         except Exception as err:
             try:

@@ -56,7 +56,11 @@ def main():
     assert strip.undo_clear_long_ms() in (400, 650, 1000, 1500) or strip.undo_clear_long_ms() >= 300
     strip.set_undo_clear_long_ms(1000, persist=False)
     assert strip.undo_clear_long_ms() == 1000
-    strip._on_undo_clear_ctx()  # cycle
+    # wave33: ctx opens preset menu; use apply / no_exec for smoke
+    if hasattr(strip, '_apply_undo_clear_preset'):
+        strip._apply_undo_clear_preset(1500)
+    else:
+        strip._on_undo_clear_ctx()
     assert strip.undo_clear_long_ms() == 1500
     strip.set_undo_clear_long_ms(650, persist=False)
     tip = strip._undo_clear_btn.toolTip() or ''

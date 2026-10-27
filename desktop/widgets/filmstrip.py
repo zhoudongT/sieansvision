@@ -2,11 +2,11 @@
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QSettings, Signal, QSize, QTimer, QEvent, QPoint
-from PySide6.QtGui import QIcon, QPixmap, QImage
+from PySide6.QtGui import QIcon, QPixmap, QImage, QAction
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QListWidget,
     QListWidgetItem, QAbstractItemView, QFileDialog, QMessageBox, QComboBox,
-    QScrollArea, QFrame, QToolTip,
+    QScrollArea, QFrame, QToolTip, QMenu,
 )
 
 from .switch import OrangeSwitch
@@ -1284,7 +1284,7 @@ class CompareThumbStrip(QWidget):
         btn = getattr(self, '_undo_clear_btn', None)
         if btn is not None:
             n = len(getattr(self, '_order_undo_stack', None) or [])
-            btn.setToolTip(f'短按提示 · 长按清空（{ms}ms）· 右键调时长' + (f' · 栈{n}' if n else ''))
+            btn.setToolTip(f'短按提示 · 长按清空（{ms}ms）· 右键选时长' + (f' · 栈{n}' if n else ''))
         if persist:
             try:
                 self._compare_settings().setValue('film/undoClearLongMs', ms)
@@ -1296,21 +1296,45 @@ class CompareThumbStrip(QWidget):
         return int(getattr(self, '_undo_clear_long_ms', 650) or 650)
 
     def _on_undo_clear_ctx(self, pos=None):
-        """wave32: 右键循环长按时长 400/650/1000/1500."""
+        """wave32–33: 右键弹出时长预设菜单（非仅循环）."""
+        menu = self._build_undo_clear_preset_menu()
+        btn = getattr(self, '_undo_clear_btn', None)
+        if menu is None or btn is None:
+            return
+        if getattr(self, '_undo_clear_ctx_no_exec', False):
+            self._last_undo_clear_ctx_menu = menu
+            return menu
+        try:
+            gp = btn.mapToGlobal(pos) if pos is not None else btn.mapToGlobal(QPoint(0, btn.height()))
+            menu.exec(gp)
+        except Exception:
+            pass
+
+    def _build_undo_clear_preset_menu(self):
+        """wave33: 400/650/1000/1500 时长预设菜单."""
         presets = (400, 650, 1000, 1500)
         cur = self.undo_clear_long_ms()
-        try:
-            idx = presets.index(cur)
-            nxt = presets[(idx + 1) % len(presets)]
-        except ValueError:
-            nxt = 650
-        self.set_undo_clear_long_ms(nxt)
+        menu = QMenu(self)
+        menu.setObjectName('compareThumbUndoClearPresetMenu')
+        for ms in presets:
+            lab = f'{ms} ms'
+            if ms == cur:
+                lab = f'✓ {lab}'
+            act = QAction(lab, self)
+            act.setData(ms)
+            act.triggered.connect(lambda *_a, m=ms: self._apply_undo_clear_preset(m))
+            menu.addAction(act)
+        return menu
+
+    def _apply_undo_clear_preset(self, ms: int):
+        """Apply duration preset and tip."""
+        self.set_undo_clear_long_ms(int(ms))
         btn = getattr(self, '_undo_clear_btn', None)
         try:
             if btn is not None:
                 QToolTip.showText(
                     btn.mapToGlobal(QPoint(0, btn.height())),
-                    f'长按时长 → {nxt}ms',
+                    f'长按时长 → {int(ms)}ms',
                     btn,
                 )
         except Exception:
