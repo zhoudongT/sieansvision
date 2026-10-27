@@ -426,6 +426,19 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆64 · pin频率预设改名/另存当前ms为档 · 忽略名单导入分组JSON/角色合并策略 · DST冲突历史点选复检/按which筛 · A/B默认槽快捷可改绑/启动开关 · jitter闪完toast文案可配/仅末次提示 · 2026-10-28】
+
+- **pin 频率预设改名/另存当前 ms 为档**：`rename_…_badge_freq_preset`；`save_…_badge_freq_preset_as`；角标菜单「改名… / 另存当前为档…」。
+- **忽略名单导入分组 JSON/角色合并策略**：`…_ignore_by_role_merge_strategy`（replace|merge|prefer_incoming|prefer_existing）；`import_…_ignore_by_role`；忽略菜单「导入分组 JSON… / 合并策略」。
+- **DST 冲突历史点选复检/按 which 筛**：`…_conflict_history_which_filter`；`list_…_conflict_history_filtered`；`recheck_…_conflict_history_entry`；历史菜单「按 which 筛 / 复检 · …」。
+- **A/B 默认槽快捷可改绑/启动开关**：`…_default_slot_autoload_enabled`；`show_…_default_slot_shortcut_rebind_dialog`；槽位对话框「改绑跳默认… / 启动载入开|关」；autoload 尊重开关。
+- **jitter 闪完 toast 文案可配/仅末次提示**：`…_flash_toast_text`（`{times}/{color}`）；`…_flash_toast_last_only`；旁标菜单「闪完文案… / 仅末次提示」；`flash_…` 按开关 toast。
+- **冒烟**：`smoke-wave96-pinsuggestbadgefreqrenamesaveas-confirmstratignoreimportbyrolemerge-dstconflicthistrecheckwhich-abprevdefaultrebindautoloadtoggle-jitterflashtoasttextlastonly-e2e`（另回归 wave95）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+- **非硬件粗估**：~93%。
+
+---
+
 ## 【细妆63 · pin角标频率预设拖拽排序/右键删档 · 忽略名单按角色批量清/导出分组JSON · DST冲突历史菜单浏览/导出/上限 · A/B默认槽启动自动载入/快捷跳默认 · jitter旁标闪色/次数可配/闪完toast · 2026-10-28】
 
 - **pin 角标频率预设拖拽排序/右键删档**：`reorder/delete_…_badge_freq_presets`；`show_…_badge_freq_presets_manage_dialog`（InternalMove）；角标菜单「管理频率预设… / 删频率档」。
