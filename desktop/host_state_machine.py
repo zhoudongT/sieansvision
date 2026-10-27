@@ -6916,6 +6916,110 @@ class HostStateMachineWidget(QWidget):
 
 
 
+
+    def current_flow_key_for_ab_trial(self) -> str:
+        """wave78: 当前流程键（工程名）供试算源按流程记忆."""
+        try:
+            key = str(self.current_project_name_for_png() or 'default').strip() or 'default'
+        except Exception:
+            key = str(getattr(self, '_toast_curve_png_project_name', 'default') or 'default')
+        key = ''.join(ch if ch.isalnum() or ch in '-_.' else '_' for ch in key) or 'default'
+        self._last_ab_trial_flow_key = key
+        return key
+
+    def load_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial_map(
+            self) -> dict:
+        """wave78: 读取试算源按流程映射."""
+        cur = getattr(
+            self,
+            '_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial_by_flow',
+            None)
+        if isinstance(cur, dict):
+            return dict(cur)
+        raw = {}
+        try:
+            import json as _json
+            raw_s = self._host_settings().value(
+                'host/stalePruneUndoColorScaleAbMirrorChannelPresetImportConflictSourceTrialByFlow',
+                '{}')
+            if isinstance(raw_s, dict):
+                raw = dict(raw_s)
+            else:
+                raw = _json.loads(str(raw_s or '{}') or '{}')
+        except Exception:
+            raw = {}
+        out = {}
+        for k, v in (raw or {}).items():
+            kk = str(k or '').strip() or 'default'
+            vv = str(v or '').strip().lower()
+            if vv not in ('team', 'local', 'clipboard', 'remote', 'file', 'disk', 'clip', 'paste', ''):
+                vv = ''
+            out[kk] = vv
+        self._stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial_by_flow = dict(out)
+        return dict(out)
+
+    def persist_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial_map(
+            self, mapping=None) -> dict:
+        """wave78: 持久化试算源按流程映射."""
+        if mapping is None:
+            mapping = self.load_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial_map()
+        out = {}
+        for k, v in (mapping or {}).items():
+            kk = str(k or '').strip() or 'default'
+            vv = str(v or '').strip().lower()
+            if vv not in ('team', 'local', 'clipboard', 'remote', 'file', 'disk', 'clip', 'paste', ''):
+                vv = ''
+            out[kk] = vv
+        self._stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial_by_flow = dict(out)
+        try:
+            import json as _json
+            self._host_settings().setValue(
+                'host/stalePruneUndoColorScaleAbMirrorChannelPresetImportConflictSourceTrialByFlow',
+                _json.dumps(out, ensure_ascii=False))
+        except Exception:
+            pass
+        self._last_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial_by_flow = dict(out)
+        return dict(out)
+
+    def load_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial_by_flow(
+            self, flow: str = None) -> str:
+        """wave78: 按流程读取试算源（缺省回落全局）."""
+        fk = str(flow or '').strip() or self.current_flow_key_for_ab_trial()
+        mp = self.load_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial_map()
+        if fk in mp:
+            val = str(mp.get(fk) or '')
+        else:
+            val = self.load_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial()
+        self._last_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial_flow = {
+            'flow': fk, 'source': val,
+        }
+        return val
+
+    def persist_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial_by_flow(
+            self, source: str = None, flow: str = None) -> str:
+        """wave78: 按流程持久化试算源（同时写全局）."""
+        fk = str(flow or '').strip() or self.current_flow_key_for_ab_trial()
+        if source is None:
+            source = getattr(
+                self,
+                '_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial',
+                '') or ''
+        val = str(source or '').strip().lower()
+        if val not in ('team', 'local', 'clipboard', 'remote', 'file', 'disk', 'clip', 'paste', ''):
+            val = ''
+        mp = self.load_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial_map()
+        mp[fk] = val
+        self.persist_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial_map(mp)
+        try:
+            self.persist_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial(val)
+        except Exception:
+            pass
+        self._last_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial_flow_persisted = {
+            'flow': fk, 'source': val,
+        }
+        return val
+
+
     def load_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial(
             self) -> str:
         """wave77: 读取持久化试算源."""
@@ -6977,6 +7081,10 @@ class HostStateMachineWidget(QWidget):
         self._stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial = nxt
         try:
             self.persist_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial(nxt)
+        except Exception:
+            pass
+        try:
+            self.persist_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial_by_flow(nxt)
         except Exception:
             pass
         ex = self.render_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_explain(
@@ -7884,15 +7992,23 @@ class HostStateMachineWidget(QWidget):
                     'isUndoColorScaleAbMirrorChannelPresetImportConflictSourceExplainLab', True)
                 lab_ex.setProperty('abMirrorChannelPresetImportConflictStrategy', _cstr)
                 lab_ex.setStyleSheet(str(_ex.get('css') or ''))
-                # wave77: restore persisted trial source onto bar
+                # wave77–78: restore persisted trial source onto bar（优先按流程）
                 try:
-                    _trial0 = self.load_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial()
+                    try:
+                        _trial0 = self.load_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial_by_flow()
+                        _flow0 = self.current_flow_key_for_ab_trial()
+                    except Exception:
+                        _trial0 = self.load_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_trial()
+                        _flow0 = ''
                     if _trial0:
                         _ex = self.render_stale_prune_undo_color_scale_ab_mirror_channel_preset_import_conflict_source_explain(
                             source=_trial0)
-                        lab_ex.setText(str(_ex.get('text') or '') + f' · 记{_trial0}')
+                        _suf = f' · 记{_trial0}' + (f'@{_flow0}' if _flow0 else '')
+                        lab_ex.setText(str(_ex.get('text') or '') + _suf)
                         lab_ex.setProperty(
                             'abMirrorChannelPresetImportConflictTrialSource', _trial0)
+                        lab_ex.setProperty(
+                            'abMirrorChannelPresetImportConflictTrialFlow', _flow0)
                         lab_ex.setStyleSheet('color:#f0a020;font-size:10px;padding:2px 6px;')
                 except Exception:
                     pass
@@ -8825,6 +8941,47 @@ class HostStateMachineWidget(QWidget):
         return list(out)
 
 
+
+    def confirm_trial_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate(
+            self, *, persist: bool = True) -> dict:
+        """wave78: 确认悬停试键（应用最近 trial tip 的撤/重键）."""
+        trial = dict(getattr(
+            self,
+            '_last_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_trial',
+            {}) or {})
+        u = str(trial.get('undo') or '').strip()
+        r = str(trial.get('redo') or '').strip()
+        if not u or not r:
+            self._last_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirmed = {
+                'applied': False, 'reason': 'no_trial',
+            }
+            try:
+                self._flash_host_toast('试键 · 无悬停候选可确认', kind='warn', ms=900)
+            except Exception:
+                pass
+            return {'applied': False, 'undo': u, 'redo': r}
+        try:
+            self.set_stale_prune_undo_eyedropper_history_order_shortcuts(
+                u, r, persist=persist, rebind=True, warn=False)
+            applied = True
+        except Exception:
+            applied = False
+        out = {
+            'applied': bool(applied), 'undo': u, 'redo': r,
+            'clean': bool(trial.get('clean')),
+            'conflicts': list(trial.get('conflicts') or []),
+            'tip': str(trial.get('tip') or ''),
+        }
+        self._last_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirmed = dict(out)
+        try:
+            self._flash_host_toast(
+                f'试键已确认 · 撤 {u} / 重 {r}',
+                kind='ok' if applied else 'warn', ms=1100)
+        except Exception:
+            pass
+        return dict(out)
+
+
     def trial_tip_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate(
             self, undo_key: str = '', redo_key: str = '', *, index: int = -1) -> str:
         """wave77: 吸史候选悬停试键 tip（不改键）."""
@@ -8880,6 +9037,11 @@ class HostStateMachineWidget(QWidget):
                     row['undo'], row['redo'], persist=persist, rebind=True, warn=False)
                 self._last_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_menu['applied'] = row
                 return 1
+            if getattr(self, '_eyedropper_history_order_shortcut_fix_menu_smoke_confirm_trial', False):
+                out = self.confirm_trial_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate(
+                    persist=persist)
+                self._last_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_menu['confirmed'] = out
+                return 1 if out.get('applied') else 0
             return 0
         cands = self.list_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidates()
         menu = QMenu(self)
@@ -8926,6 +9088,12 @@ class HostStateMachineWidget(QWidget):
                 pass
             menu.addAction(act)
         menu.addSeparator()
+        act_confirm = QAction('确认悬停试键', menu)
+        act_confirm.setProperty('isUndoEyedropperHistoryOrderShortcutFixConfirmTrial', True)
+        act_confirm.triggered.connect(
+            lambda *_: self.confirm_trial_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate(
+                persist=persist))
+        menu.addAction(act_confirm)
         act_auto = QAction('一键建议改键', menu)
         act_auto.triggered.connect(
             lambda *_: self.fix_stale_prune_undo_eyedropper_history_order_shortcut_conflicts(
@@ -11806,6 +11974,184 @@ class HostStateMachineWidget(QWidget):
         return dict(out)
 
 
+
+    def merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_locked(
+            self) -> bool:
+        """wave78: 色标冲突色预览是否锁定."""
+        return bool(getattr(
+            self,
+            '_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_locked',
+            False))
+
+    def set_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_locked(
+            self, locked: bool = True) -> bool:
+        """wave78: 设定色标冲突色预览锁定."""
+        v = bool(locked)
+        self._merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_locked = v
+        self._last_snap_guide_recent_max_pin_avoid_compare_bar_undo_swatch_conflict_preview_locked = v
+        try:
+            self._refresh_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_ui()
+        except Exception:
+            pass
+        try:
+            tip = '色标预览 · 已锁定' if v else '色标预览 · 已解锁'
+            self._flash_host_toast(tip, kind='ok' if not v else 'warn', ms=800)
+        except Exception:
+            pass
+        return v
+
+    def toggle_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_lock(
+            self) -> bool:
+        """wave78: 切换色标冲突色预览锁定."""
+        cur = self.merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_locked()
+        return self.set_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_locked(
+            not cur)
+
+    def merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key(
+            self) -> str:
+        """wave78: 色标冲突色预览轮换快捷键（默认 Ctrl+Shift+P）."""
+        key = str(getattr(
+            self,
+            '_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key',
+            None) or '').strip()
+        if not key:
+            try:
+                key = str(self._host_settings().value(
+                    'host/mergeDiffFailHistDropSnapGuideRecentMaxPinAvoidCompareBarUndoSwatchConflictPreviewCycleKey',
+                    'Ctrl+Shift+P') or 'Ctrl+Shift+P').strip()
+            except Exception:
+                key = 'Ctrl+Shift+P'
+        return key or 'Ctrl+Shift+P'
+
+    def set_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key(
+            self, key: str = 'Ctrl+Shift+P', *, persist: bool = True) -> str:
+        """wave78: 设定色标冲突色预览轮换快捷键."""
+        k = str(key or 'Ctrl+Shift+P').strip() or 'Ctrl+Shift+P'
+        self._merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key = k
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/mergeDiffFailHistDropSnapGuideRecentMaxPinAvoidCompareBarUndoSwatchConflictPreviewCycleKey', k)
+            except Exception:
+                pass
+        try:
+            self._ensure_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_shortcut(
+                force=True)
+        except Exception:
+            pass
+        return k
+
+    def _ensure_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_shortcut(
+            self, force: bool = False) -> bool:
+        """wave78: 绑定色标冲突色预览轮换快捷键."""
+        key = self.merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key()
+        ok = True
+        try:
+            sc = getattr(
+                self,
+                '_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_shortcut',
+                None)
+            if sc is None or force:
+                if sc is not None:
+                    try:
+                        sc.setParent(None)
+                        sc.deleteLater()
+                    except Exception:
+                        pass
+                sc = QShortcut(QKeySequence(key), self)
+                sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+                sc.activated.connect(
+                    lambda: self.cycle_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview(
+                        force=True))
+                self._merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_shortcut = sc
+            else:
+                try:
+                    sc.setKey(QKeySequence(key))
+                except Exception:
+                    pass
+        except Exception:
+            self._merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_shortcut = None
+            ok = False
+        self._last_snap_guide_recent_max_pin_avoid_compare_bar_undo_swatch_conflict_preview_shortcut_ok = ok
+        self._last_snap_guide_recent_max_pin_avoid_compare_bar_undo_swatch_conflict_preview_shortcut_key = key
+        return ok
+
+    def show_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_menu(
+            self, global_pos=None) -> str:
+        """wave78: 色标冲突色预览右键菜单（模式+锁定）."""
+        cur = self.merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_mode()
+        locked = self.merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_locked()
+        if getattr(self, '_swatch_conflict_preview_menu_no_exec', False):
+            smoke = getattr(self, '_swatch_conflict_preview_menu_smoke', None)
+            out = cur
+            if isinstance(smoke, dict):
+                action = str(smoke.get('action') or '')
+                if action == 'lock':
+                    self.set_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_locked(True)
+                    out = 'lock'
+                elif action == 'unlock':
+                    self.set_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_locked(False)
+                    out = 'unlock'
+                elif action == 'toggle_lock':
+                    self.toggle_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_lock()
+                    out = 'toggle_lock'
+                elif action in ('auto', 'conflict', 'clean', 'swap'):
+                    self.set_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_mode(action)
+                    out = action
+                elif action == 'cycle':
+                    bar = self.cycle_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview(
+                        force=True)
+                    out = str(bar.get('conflict_preview_mode') or cur)
+            self._last_snap_guide_recent_max_pin_avoid_compare_bar_undo_swatch_conflict_preview_menu = {
+                'mode': cur, 'locked': locked, 'executed': False, 'result': out,
+            }
+            return out
+        menu = QMenu(self)
+        menu.setObjectName('hostSnapGuideRecentMaxPinAvoidCompareBarUndoSwatchConflictPreviewMenu')
+        menu.setProperty('isSnapGuideRecentMaxPinAvoidCompareBarUndoSwatchConflictPreviewMenu', True)
+        labels = {
+            'auto': '自动', 'conflict': '强制冲突色', 'clean': '强制干净色', 'swap': '对调现/恢复',
+        }
+        for m, lab in labels.items():
+            act = QAction(('● ' if m == cur else '○ ') + lab, menu)
+            act.setCheckable(True)
+            act.setChecked(m == cur)
+            act.setProperty('isSnapGuideRecentMaxPinAvoidCompareBarUndoSwatchConflictPreviewMode', True)
+            act.setProperty('snapGuideRecentMaxPinAvoidCompareBarUndoSwatchConflictPreviewMode', m)
+            act.triggered.connect(
+                lambda *_a, mm=m: self.set_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_mode(mm))
+            menu.addAction(act)
+        menu.addSeparator()
+        act_lock = QAction('锁定预览' if not locked else '解锁预览', menu)
+        act_lock.setCheckable(True)
+        act_lock.setChecked(locked)
+        act_lock.setProperty('isSnapGuideRecentMaxPinAvoidCompareBarUndoSwatchConflictPreviewLock', True)
+        act_lock.triggered.connect(
+            lambda *_: self.toggle_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_lock())
+        menu.addAction(act_lock)
+        cyc_key = self.merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key()
+        act_cyc = QAction(f'轮换预览 · {cyc_key}', menu)
+        act_cyc.setShortcut(QKeySequence(cyc_key))
+        act_cyc.triggered.connect(
+            lambda *_: self.cycle_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview(
+                force=True))
+        menu.addAction(act_cyc)
+        self._last_snap_guide_recent_max_pin_avoid_compare_bar_undo_swatch_conflict_preview_menu = menu
+        try:
+            if global_pos is not None:
+                menu.exec(global_pos)
+            else:
+                w = getattr(
+                    self, '_last_snap_guide_recent_max_pin_avoid_compare_bar_undo_swatch', None)
+                if w is not None and hasattr(w, 'mapToGlobal'):
+                    menu.exec(w.mapToGlobal(w.rect().bottomLeft()))
+                else:
+                    menu.exec()
+        except Exception:
+            pass
+        return self.merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_mode()
+
+
     def merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_mode(
             self) -> str:
         """wave77: 色标冲突色预览模式 auto|conflict|clean|swap."""
@@ -11832,8 +12178,19 @@ class HostStateMachineWidget(QWidget):
         return m
 
     def cycle_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview(
-            self) -> dict:
-        """wave77: 点击色标轮换冲突色预览 auto→conflict→clean→swap→auto."""
+            self, *, force: bool = False) -> dict:
+        """wave77–78: 点击色标轮换冲突色预览 auto→conflict→clean→swap→auto；锁定时需 force/快捷键."""
+        if (not force) and self.merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_locked():
+            bar = self.render_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch()
+            bar = dict(bar)
+            bar['conflict_preview_locked'] = True
+            bar['conflict_preview_tip'] = '色标预览 · 已锁定（右键解锁）'
+            self._last_snap_guide_recent_max_pin_avoid_compare_bar_undo_swatch_conflict_preview = dict(bar)
+            try:
+                self._flash_host_toast('色标预览 · 已锁定', kind='warn', ms=800)
+            except Exception:
+                pass
+            return dict(bar)
         order = ['auto', 'conflict', 'clean', 'swap']
         cur = self.merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_mode()
         try:
@@ -11948,8 +12305,16 @@ class HostStateMachineWidget(QWidget):
                     break
             if bar_lab is not None:
                 bar_lab.setStyleSheet(str(bar.get('css') or ''))
+                _lk = self.merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_locked()
+                _ck = self.merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_cycle_key()
                 bar_lab.setToolTip(
-                    str(bar.get('text') or bar.get('tip') or '') + ' · 点击切冲突色预览')
+                    str(bar.get('text') or bar.get('tip') or '')
+                    + ' · 点击切冲突色预览 · 右键锁定'
+                    + (f' · {_ck}' if _ck else '')
+                    + (' · 已锁' if _lk else ''))
+                bar_lab.setProperty(
+                    'snapGuideRecentMaxPinAvoidCompareBarUndoSwatchConflictPreviewLocked',
+                    bool(_lk))
                 bar_lab.setProperty(
                     'snapGuideRecentMaxPinAvoidCompareBarUndoSwatchConflictPreviewMode',
                     str(bar.get('conflict_preview_mode') or 'auto'))
@@ -12942,7 +13307,18 @@ class HostStateMachineWidget(QWidget):
                     pass
                 def _on_sw_click(e, _w=None):
                     try:
-                        self.cycle_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview()
+                        btn = e.button() if e is not None else None
+                    except Exception:
+                        btn = None
+                    try:
+                        if btn == Qt.MouseButton.RightButton:
+                            try:
+                                gp = e.globalPos() if hasattr(e, 'globalPos') else None
+                            except Exception:
+                                gp = None
+                            self.show_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_menu(gp)
+                        else:
+                            self.cycle_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview()
                         try:
                             e.accept()
                         except Exception:
@@ -12950,6 +13326,10 @@ class HostStateMachineWidget(QWidget):
                     except Exception:
                         pass
                 sw_u_cur.mousePressEvent = _on_sw_click  # type: ignore[method-assign]
+                try:
+                    self._ensure_merge_diff_fail_hist_drop_snap_guide_recent_max_pin_key_avoid_compare_bar_undo_swatch_conflict_preview_shortcut()
+                except Exception:
+                    pass
                 sw_u_arrow = QLabel('⇒', wrap_mp)
                 sw_u_arrow.setObjectName('hostSnapGuideRecentMaxPinAvoidCompareBarUndoSwatchArrow')
                 sw_u_arrow.setFixedSize(12, 12)
@@ -13407,6 +13787,125 @@ class HostStateMachineWidget(QWidget):
 
 
 
+
+    def prompt_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_ms(
+            self, *, persist: bool = True) -> int:
+        """wave78: 对话框配置撤清快照 TTL（ms）."""
+        cur = self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_ms()
+        if getattr(self, '_jitter_clear_undo_ttl_no_dialog', False):
+            smoke = getattr(self, '_jitter_clear_undo_ttl_smoke', None)
+            try:
+                val = int(smoke if smoke is not None else cur)
+                ok = True
+            except Exception:
+                val, ok = cur, False
+        else:
+            val, ok = QInputDialog.getInt(
+                self, '撤清快照超时',
+                '超时自动丢快照（毫秒，0=不超时）:',
+                int(cur), 0, 120000, 500)
+        if not ok:
+            return cur
+        out = self.set_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_ms(
+            val, persist=persist)
+        try:
+            # reschedule if snapshot present
+            if getattr(
+                    self, '_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo',
+                    None):
+                self._schedule_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_expire()
+            self._refresh_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_depth_ui()
+        except Exception:
+            pass
+        try:
+            self._flash_host_toast(f'撤清TTL · {out}ms', kind='ok', ms=900)
+        except Exception:
+            pass
+        self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_prompted = out
+        return out
+
+    def list_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_snapshots(
+            self) -> list:
+        """wave78: 列出撤清快照条目（种子值）."""
+        snap = list(getattr(
+            self, '_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo',
+            []) or [])
+        out = []
+        for i, v in enumerate(snap):
+            out.append({'index': int(i), 'seed': v, 'label': f'#{i} · 种{v}'})
+        self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_snapshots = list(out)
+        return list(out)
+
+    def show_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_snapshot_menu(
+            self, global_pos=None) -> int:
+        """wave78: 旁标点开撤清快照列表（可撤清/丢弃/配TTL）."""
+        snaps = self.list_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_snapshots()
+        ttl = self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_ms()
+        if getattr(self, '_jitter_clear_undo_snapshot_menu_no_exec', False):
+            smoke = getattr(self, '_jitter_clear_undo_snapshot_menu_smoke', None)
+            self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_snapshot_menu = {
+                'snapshots': list(snaps), 'ttl': int(ttl), 'executed': False,
+            }
+            if isinstance(smoke, dict):
+                action = str(smoke.get('action') or '')
+                if action == 'undo_clear':
+                    return int(self.undo_clear_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo() or 0)
+                if action == 'discard':
+                    return int(self.discard_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo(
+                        reason='menu', toast=True) or 0)
+                if action == 'ttl':
+                    return int(self.prompt_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_ms() or 0)
+            return len(snaps)
+        menu = QMenu(self)
+        menu.setObjectName('hostMergeDiffFailHistDropPulsePreviewLoopGapJitterSeedRedoClearUndoSnapshotMenu')
+        menu.setProperty('isMergeDiffFailHistDropPulsePreviewLoopGapJitterSeedRedoClearUndoSnapshotMenu', True)
+        if not snaps:
+            act = QAction('无撤清快照', menu)
+            act.setEnabled(False)
+            menu.addAction(act)
+        else:
+            for row in snaps:
+                act = QAction(str(row.get('label') or f"种{row.get('seed')}"), menu)
+                act.setEnabled(False)
+                act.setProperty('isJitterSeedRedoClearUndoSnapshotItem', True)
+                act.setProperty('jitterSeedRedoClearUndoSnapshotIndex', int(row.get('index') or 0))
+                act.setProperty('jitterSeedRedoClearUndoSnapshotSeed', row.get('seed'))
+                menu.addAction(act)
+        menu.addSeparator()
+        act_undo = QAction(f'撤清恢复 · {len(snaps)}', menu)
+        act_undo.setEnabled(bool(snaps))
+        act_undo.triggered.connect(
+            lambda *_: self.undo_clear_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo())
+        menu.addAction(act_undo)
+        act_disc = QAction('丢弃快照', menu)
+        act_disc.setEnabled(bool(snaps))
+        act_disc.triggered.connect(
+            lambda *_: self.discard_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo(
+                reason='menu', toast=True))
+        menu.addAction(act_disc)
+        act_ttl = QAction(f'配置超时 · {ttl}ms', menu)
+        act_ttl.setProperty('isJitterSeedRedoClearUndoTtlPrompt', True)
+        act_ttl.triggered.connect(
+            lambda *_: self.prompt_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_ms())
+        menu.addAction(act_ttl)
+        self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_snapshot_menu = menu
+        try:
+            if global_pos is not None:
+                menu.exec(global_pos)
+            else:
+                lab = getattr(
+                    self,
+                    '_last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_depth_lab',
+                    None)
+                if lab is not None and hasattr(lab, 'mapToGlobal'):
+                    menu.exec(lab.mapToGlobal(lab.rect().bottomLeft()))
+                else:
+                    menu.exec()
+        except Exception:
+            pass
+        return len(self.list_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_snapshots())
+
+
     def merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_ms(self) -> int:
         """wave77: 撤清快照超时 ms（默认 8000）."""
         try:
@@ -13546,7 +14045,9 @@ class HostStateMachineWidget(QWidget):
                     'color:#f0a020;font-size:10px;' if d > 0 else 'color:#6a7380;font-size:10px;')
                 ttl = self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_ms()
                 lab.setToolTip(
-                    f'撤清快照深度 · {d}' + (f' · {ttl}ms超时' if d > 0 else ''))
+                    f'撤清快照深度 · {d}'
+                    + (f' · {ttl}ms超时' if d > 0 else '')
+                    + ' · 点击开快照列表 · 右键配TTL')
         except Exception:
             pass
         return int(d)
@@ -14721,7 +15222,34 @@ class HostStateMachineWidget(QWidget):
             except Exception:
                 pass
             lab_uclr.setToolTip(
-                f'撤清快照深度 · {_undo_depth}' + (f' · {ttl0}ms超时' if _undo_depth > 0 else ''))
+                f'撤清快照深度 · {_undo_depth}'
+                + (f' · {ttl0}ms超时' if _undo_depth > 0 else '')
+                + ' · 点击开快照列表 · 右键配TTL')
+            try:
+                lab_uclr.setCursor(Qt.CursorShape.PointingHandCursor)
+            except Exception:
+                pass
+            def _on_uclr_click(e, _lab=lab_uclr):
+                try:
+                    btn = e.button() if e is not None else None
+                except Exception:
+                    btn = None
+                try:
+                    if btn == Qt.MouseButton.RightButton:
+                        self.prompt_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_ttl_ms()
+                    else:
+                        try:
+                            gp = e.globalPos() if hasattr(e, 'globalPos') else None
+                        except Exception:
+                            gp = None
+                        self.show_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_seed_redo_clear_undo_snapshot_menu(gp)
+                    try:
+                        e.accept()
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+            lab_uclr.mousePressEvent = _on_uclr_click  # type: ignore[method-assign]
             lay_jd.addWidget(lab_uclr)
             lay.addWidget(wrap_jd)
             self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_jitter_dist_chips = dist_btns
@@ -17713,6 +18241,46 @@ class HostStateMachineWidget(QWidget):
         idxs = list(range(len(recent)))
         return self.set_selected_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent(idxs)
 
+
+    def undo_apply_all_selected_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent(
+            self, *, persist: bool = True) -> tuple:
+        """wave78: 撤销最近一次 DST 全应用（恢复全应用前的年范围）."""
+        stack = list(getattr(
+            self,
+            '_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo',
+            []) or [])
+        if not stack:
+            try:
+                self._flash_host_toast('DST全应用 · 无可撤销', kind='warn', ms=900)
+            except Exception:
+                pass
+            self._last_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undone = {
+                'undone': False, 'undo_depth': 0,
+            }
+            return self.toast_curve_png_datetime_tz_city_dst_calendar_year_range()
+        entry = stack.pop()
+        self._toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo = stack
+        before = entry.get('before')
+        try:
+            a, b = int(before[0]), int(before[1])
+        except Exception:
+            a, b = self.toast_curve_png_datetime_tz_city_dst_calendar_year_range()
+        out = self.set_toast_curve_png_datetime_tz_city_dst_calendar_year_range(
+            a, b, persist=persist)
+        self._last_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undone = {
+            'undone': True, 'before': tuple(before) if before else None,
+            'restored': tuple(out), 'applied': list(entry.get('applied') or []),
+            'undo_depth': len(stack),
+        }
+        try:
+            self._flash_host_toast(
+                f'DST全应用 · 已撤销 · 现{out[0]}–{out[1]} · 栈{len(stack)}',
+                kind='ok', ms=1100)
+        except Exception:
+            pass
+        return out
+
+
     def apply_all_selected_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent(
             self, *, persist: bool = True) -> tuple:
         """wave77: 全应用勾选（快照勾选范围后升序逐条设定，末条生效）."""
@@ -17728,6 +18296,10 @@ class HostStateMachineWidget(QWidget):
         for i in sel:
             if 0 <= i < len(recent):
                 ranges.append(tuple(recent[i][:2]))
+        try:
+            before = self.toast_curve_png_datetime_tz_city_dst_calendar_year_range()
+        except Exception:
+            before = None
         last = None
         applied = []
         for a, b in ranges:
@@ -17744,8 +18316,26 @@ class HostStateMachineWidget(QWidget):
                     continue
         if last is None and ranges:
             last = ranges[-1]
+        if applied and before is not None:
+            stack = list(getattr(
+                self,
+                '_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo',
+                []) or [])
+            stack.append({
+                'before': tuple(before),
+                'applied': list(applied),
+                'after': tuple(last) if last is not None else None,
+            })
+            if len(stack) > 16:
+                stack = stack[-16:]
+            self._toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo = stack
         self._last_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all = {
             'applied': list(applied), 'count': len(applied),
+            'before': tuple(before) if before is not None else None,
+            'undo_depth': len(getattr(
+                self,
+                '_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo',
+                []) or []),
         }
         try:
             self._flash_host_toast(
@@ -17814,6 +18404,9 @@ class HostStateMachineWidget(QWidget):
                 if action == 'apply_all':
                     self.apply_all_selected_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent()
                     return 1
+                if action == 'undo_apply_all':
+                    self.undo_apply_all_selected_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent()
+                    return 1
                 if action == 'clear_sel':
                     self.clear_selected_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent()
                     return 1
@@ -17872,6 +18465,16 @@ class HostStateMachineWidget(QWidget):
         act_app_all.triggered.connect(
             lambda *_: self.apply_all_selected_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent())
         menu.addAction(act_app_all)
+        _uall = len(getattr(
+            self,
+            '_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo',
+            []) or [])
+        act_undo_all = QAction(f'撤销全应用({_uall})' if _uall else '撤销全应用', menu)
+        act_undo_all.setEnabled(_uall > 0)
+        act_undo_all.setProperty('isToastCurvePngDatetimeTzDstYearRangeRecentUndoApplyAll', True)
+        act_undo_all.triggered.connect(
+            lambda *_: self.undo_apply_all_selected_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent())
+        menu.addAction(act_undo_all)
         self._last_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_menu = menu
         try:
             if global_pos is not None:

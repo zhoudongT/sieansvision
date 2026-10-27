@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊻ · pin冲突色预览快捷键/右键锁定 · 吸史悬停tip进试键确认 · DST全应用撤销栈 · A/B试算源按流程记忆 · jitter TTL可配/旁标快照列表 · 2026-10-28】
+
+- **pin 冲突色预览快捷键/右键锁定**：`…_conflict_preview_cycle_key`（默认 Ctrl+Shift+P）+ `_ensure_…_shortcut`；`lock/toggle_…_lock`；右键菜单模式+锁定；锁定时点击不轮换（force/快捷键可）。
+- **吸史悬停 tip 进试键确认**：`confirm_trial_…_fix_candidate`；应用最近悬停 trial；菜单「确认悬停试键」。
+- **DST 全应用后撤销栈**：`apply_all` 推 before；`undo_apply_all_…_recent`；菜单「撤销全应用」。
+- **A/B 试算源按流程记忆**：`current_flow_key_for_ab_trial`；`load/persist_…_by_flow` + map；trial 同步写流程键。
+- **jitter TTL 可配 / 旁标快照列表**：`prompt_…_ttl_ms`；`list/show_…_snapshot_menu`；旁标点击开列表、右键配 TTL。
+- **冒烟**：`smoke-wave78-pinswlock-histconfirm-dstundostack-abflow-jitterttlcfg-e2e`（另回归 wave77/76/75）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊺ · pin色标点击切冲突色预览 · 吸史候选悬停试键tip · DST全应用/全清 · A/B试算源记忆持久 · jitter撤清深度旁标/超时丢快照 · 2026-10-28】
 
 - **pin 色标点击切冲突色预览**：`cycle/set_…_undo_swatch_conflict_preview`；auto→conflict→clean→swap；色标/条点击轮换。
