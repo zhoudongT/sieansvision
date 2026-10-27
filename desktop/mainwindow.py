@@ -406,6 +406,7 @@ class MainWindow(QMainWindow):
         self.filmstrip.set_auto_switch(bool(p['sourceConfig'].get('autoSwitch')))
         self.filmstrip.set_stop_at_last(bool(p['sourceConfig'].get('stopAtLast')))
         self.filmstrip.setVisible(p['sourceConfig'].get('mode','local')=='local')
+        self._sync_filmstrip_interval_hint()
         self.guard(lambda:self.document.commit(p))
 
     def on_param_audited(self,module,param,old,new):
@@ -477,6 +478,7 @@ class MainWindow(QMainWindow):
             if hasattr(self.filmstrip,'stop_at_last'):
                 self.filmstrip.stop_at_last.blockSignals(False)
             self.filmstrip.setVisible(cfg.get('mode','local')=='local' and self.app_mode=='design')
+            self._sync_filmstrip_interval_hint()
         self.refresh_config_status()
         if self.app_mode=='run' and hasattr(self,'operator_hmi'):
             self.operator_hmi.reload_layout(p)
@@ -768,6 +770,14 @@ class MainWindow(QMainWindow):
         if effective:params['target']=effective
         self.set_busy(True);self.results.set_results([])
         self.log('开始执行' + ('模块 ' + str(effective) if effective else '流程') + '…')
+        if not getattr(self, '_dispatching_triggers', False) and not effective:
+            try:
+                from desktop.global_triggers import collect_event_commands
+                cmds = [c for c in collect_event_commands(self.document.project, '流程开始')
+                        if (c.get('type') or '') not in ('执行·单次', '执行', '执行·连续', '执行·继续')]
+                self._dispatch_global_triggers(cmds, reason='流程开始')
+            except Exception:
+                pass
         try:self.run_request=self.request('run',params,self.finished)
         except Exception:self.set_busy(False);self.continuous=False;self._run_target=None;raise
 
@@ -833,11 +843,28 @@ class MainWindow(QMainWindow):
         text={'completed':'运行完成','cancelled':'已停止','failed':'运行失败'}.get(result.get('state'),result.get('state','未知'))
         self.log(f"{text} · {elapsed} ms"+(' · '+result['error'] if result.get('error') else ''))
         state=result.get('state')
+        # Global triggers: string match on receive_data payloads; event 流程结束/NG
+        if not getattr(self, '_dispatching_triggers', False):
+            try:
+                if state == 'completed':
+                    self._fire_string_triggers_from_results(records)
+                    # 流程结束：连续/运行全部进行中时跳过「再执行」类，避免打断切图
+                    if not self.continuous and not self.run_all_filmstrip:
+                        self._fire_event_triggers('流程结束')
+                    else:
+                        from desktop.global_triggers import collect_event_commands
+                        cmds = [c for c in collect_event_commands(self.document.project, '流程结束')
+                                if (c.get('type') or '') not in ('执行·单次', '执行', '执行·连续', '执行·继续')]
+                        self._dispatch_global_triggers(cmds, reason='流程结束')
+                elif state == 'failed':
+                    self._fire_event_triggers('流程NG')
+            except Exception as err:
+                self.log(f'全局触发派发异常：{err}')
         if state=='cancelled':
             self.continuous=False;self.run_all_filmstrip=False;self._run_target=None;return
         if self.run_all_filmstrip and state=='completed':
             if self.filmstrip.advance():
-                QTimer.singleShot(80, lambda:self.guard(self.run))
+                QTimer.singleShot(self._filmstrip_advance_delay_ms(), lambda:self.guard(self.run))
             else:
                 self.run_all_filmstrip=False;self.log('运行全部完成')
             return
@@ -846,7 +873,7 @@ class MainWindow(QMainWindow):
             target=self._run_target
             if cfg.get('mode')=='local' and self.filmstrip.auto_switch.isChecked() and not target:
                 if self.filmstrip.advance():
-                    QTimer.singleShot(50, lambda:self.guard(lambda:self.run(None)));return
+                    QTimer.singleShot(self._filmstrip_advance_delay_ms(), lambda:self.guard(lambda:self.run(None)));return
                 if cfg.get('stopAtLast'):
                     self.continuous=False;self._run_target=None;self.log('已到最后一张，连续运行停止');return
             delay=self._active_run_interval_ms()
@@ -983,10 +1010,11 @@ class MainWindow(QMainWindow):
         p=deepcopy(self.document.project)
         cfg=normalize_source(p.get('sourceConfig'))
         cfg['images']=list(paths)
-        cfg['currentIndex']=self.filmstrip.current_index()
+        cfg['currentIndex']=self.filmstrip.current_index() if paths else 0
         cfg['mode']='local'
         p['sourceConfig']=cfg
         self.guard(lambda:self.document.commit(p))
+        self._sync_filmstrip_interval_hint()
         self.log(f'添加模块: 流程1.图像源1 · 本地图 {len(paths)} 张' if paths else '图像源本地列表已清空')
 
     def filmstrip_stop_at_last_changed(self, enabled):
@@ -1411,11 +1439,58 @@ class MainWindow(QMainWindow):
 
     def open_global_triggers(self):
         from desktop.global_triggers import GlobalTriggersDialog
-        # Dialog 内部 commit；此处仅打开
-        dlg = GlobalTriggersDialog(self.document, self)
+        dlg = GlobalTriggersDialog(
+            self.document, self,
+            execute_commands=lambda cmds: self.guard(lambda: self._run_hmi_commands(cmds)),
+        )
         if dlg.exec():
             self.log('全局触发已更新')
             self.scene.rebuild()
+
+    def _dispatch_global_triggers(self, commands, reason=''):
+        """Fire global-trigger command list once; re-entrancy guarded."""
+        cmds = list(commands or [])
+        if not cmds:
+            return
+        if getattr(self, '_dispatching_triggers', False):
+            self.log(f'全局触发嵌套跳过（{reason or "busy"}）')
+            return
+        self._dispatching_triggers = True
+        try:
+            label = reason or '触发'
+            types = '、'.join((c.get('type') or '?') for c in cmds[:4])
+            self.log(f'全局触发 · {label} → {types}' + ('…' if len(cmds) > 4 else ''))
+            self._run_hmi_commands(cmds)
+        finally:
+            self._dispatching_triggers = False
+
+    def _fire_event_triggers(self, event_name):
+        from desktop.global_triggers import collect_event_commands
+        cmds = collect_event_commands(self.document.project, event_name)
+        self._dispatch_global_triggers(cmds, reason=event_name)
+
+    def _fire_string_triggers_from_results(self, records):
+        from desktop.global_triggers import collect_string_commands, payloads_from_run_results
+        steps = self.document.project.get('steps') or []
+        payloads = payloads_from_run_results(records, steps)
+        if not payloads:
+            return
+        all_cmds = []
+        for text in payloads:
+            cmds = collect_string_commands(self.document.project, text)
+            if cmds:
+                self.log(f'字符串触发匹配「{text[:48]}」×{len(cmds)}')
+                all_cmds.extend(cmds)
+        # de-dupe by type+config keep order
+        seen = set()
+        uniq = []
+        for c in all_cmds:
+            key = (c.get('type'), c.get('config'))
+            if key in seen:
+                continue
+            seen.add(key)
+            uniq.append(c)
+        self._dispatch_global_triggers(uniq, reason='通信/收数')
 
     def _run_hmi_commands(self, commands):
         """Execute trigger-command list from operator HMI buttons (B5)."""
@@ -1698,6 +1773,26 @@ class MainWindow(QMainWindow):
             return flow_scheme.clamp_run_interval_ms(raw)
         except Exception:
             return 120
+
+    def _filmstrip_advance_delay_ms(self):
+        """胶片条切图间隔：优先 sourceConfig.intervalMs，否则流程连续间隔，最低 50。"""
+        try:
+            cfg = normalize_source(self.document.project.get('sourceConfig'))
+            ms = int(cfg.get('intervalMs') or 0)
+            if ms > 0:
+                return max(50, min(ms, 100000))
+        except Exception:
+            pass
+        return max(50, self._active_run_interval_ms())
+
+    def _sync_filmstrip_interval_hint(self):
+        if not hasattr(self, 'filmstrip'):
+            return
+        try:
+            cfg = normalize_source(self.document.project.get('sourceConfig'))
+            self.filmstrip.set_interval_hint(cfg.get('intervalMs') or 0)
+        except Exception:
+            pass
 
     def about(self):
         QMessageBox.information(self,'SIEANS Vision 视觉检测平台',

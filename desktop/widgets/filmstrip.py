@@ -64,6 +64,14 @@ class FilmstripBar(QWidget):
         self.del_btn.setFixedWidth(32)
         self.del_btn.clicked.connect(self.remove_selected)
         bar.addWidget(self.del_btn)
+        self.clear_btn = QPushButton('清空')
+        self.clear_btn.setToolTip('清空全部本地图')
+        self.clear_btn.clicked.connect(self.clear_all)
+        bar.addWidget(self.clear_btn)
+        self.interval_label = QLabel('')
+        self.interval_label.setObjectName('filmstripInterval')
+        self.interval_label.setStyleSheet('color:#888;font-size:11px;')
+        bar.addWidget(self.interval_label)
         root.addLayout(bar)
         self.thumbs = QListWidget()
         self.thumbs.setObjectName('filmstripThumbs')
@@ -187,6 +195,27 @@ class FilmstripBar(QWidget):
         self.listChanged.emit(self.paths())
         if self._paths:
             self.pathSelected.emit(self.current_path())
+
+    def set_interval_hint(self, ms):
+        """Show 取图间隔 from sourceConfig (0 → hide)."""
+        try:
+            ms = int(ms or 0)
+        except Exception:
+            ms = 0
+        if not hasattr(self, 'interval_label'):
+            return
+        if ms > 0:
+            self.interval_label.setText(f'间隔 {ms} ms')
+            self.interval_label.setVisible(True)
+        else:
+            self.interval_label.setText('')
+            self.interval_label.setVisible(False)
+
+    def clear_all(self):
+        if not self._paths:
+            return
+        self.set_paths([], 0)
+        self.listChanged.emit(self.paths())
 
     def advance(self):
         """Move to next image when 自动切换 is on. Returns False if stopped at end."""

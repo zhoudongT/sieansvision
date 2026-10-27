@@ -909,6 +909,12 @@ Tab 组合（不同课略有出入，改造应都支持）：
 
 
 
+## 【2026-10-27 续】全局触发运行时 + 胶片条
+
+- **全局触发**：流程开始/结束/NG 派发事件命令；`receive_data` 载荷自动匹配字符串触发（部分匹配）；对话框「匹配并执行」；命令类型补暂停/继续/报警。
+- **胶片条**：清空按钮；取图间隔 hint；运行全部/自动切换切图延迟读 `sourceConfig.intervalMs`。
+- 无机械手 SDK。
+
 ## 【2026-10-27 续】引擎 Comm 事件总线
 
 - **`lib/comm-bus.cjs`**：`send_data` / `receive_data` 运行时走进程内队列（Local Bus / LocalLoop）；TCP/UDP 设备优先真实 socket，不通则回显模拟并把 echo 再入队。

@@ -17,6 +17,10 @@ COMMAND_TYPES = [
     '执行·单次',
     '执行·连续',
     '执行·停止',
+    '执行·暂停',
+    '执行·继续',
+    '状态·报警',
+    '状态·清除报警',
     '模块动作',
 ]
 
@@ -40,6 +44,79 @@ def ensure_triggers(project):
     gt.setdefault('events', [])
     gt.setdefault('strings', [])
     return gt
+
+
+def match_string_row(received, row):
+    """Full or partial string match (VM 部分匹配)."""
+    needle = str((row or {}).get('match') or (row or {}).get('event') or '')
+    text = '' if received is None else str(received)
+    if not needle:
+        return False
+    if (row or {}).get('partial', True):
+        return needle in text
+    return needle == text
+
+
+def collect_string_commands(project, received):
+    """Return trigger-command dicts for string rows matching received text."""
+    gt = ensure_triggers(project if isinstance(project, dict) else {})
+    out = []
+    for row in gt.get('strings') or []:
+        if not isinstance(row, dict):
+            continue
+        if match_string_row(received, row):
+            ctype = row.get('commandType') or row.get('command') or ''
+            if ctype:
+                out.append(dict(type=ctype, config=row.get('config') or '', source='string', match=row.get('match') or row.get('event') or ''))
+    return out
+
+
+def collect_event_commands(project, event_name):
+    """Return trigger-command dicts for event rows whose event equals event_name."""
+    name = str(event_name or '').strip()
+    if not name:
+        return []
+    gt = ensure_triggers(project if isinstance(project, dict) else {})
+    out = []
+    for row in gt.get('events') or []:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get('event') or '').strip() == name:
+            ctype = row.get('commandType') or row.get('command') or ''
+            if ctype:
+                out.append(dict(type=ctype, config=row.get('config') or '', source='event', event=name))
+    return out
+
+
+def payloads_from_run_results(records, steps=None):
+    """Collect receive_data payloads from a finished job's results."""
+    by_id = {}
+    for s in steps or []:
+        if isinstance(s, dict) and s.get('id'):
+            by_id[s['id']] = s
+    out = []
+    for rec in records or []:
+        if not isinstance(rec, dict):
+            continue
+        sid = rec.get('id')
+        step = by_id.get(sid) or {}
+        op = step.get('operation') or ''
+        result = (rec.get('output') or {}).get('result') or rec.get('result') or {}
+        if not isinstance(result, dict):
+            continue
+        if op != 'receive_data':
+            continue
+        payload = result.get('payload')
+        if payload is not None and str(payload) != '':
+            out.append(str(payload))
+    seen = set()
+    uniq = []
+    for x in out:
+        if x not in seen:
+            seen.add(x)
+            uniq.append(x)
+    return uniq
+
 
 
 class _TriggerTable(QWidget):
@@ -200,29 +277,23 @@ class _TriggerTable(QWidget):
 
     @staticmethod
     def match_string(received, row):
-        """Runtime helper: full or partial string match (VM 部分匹配)."""
-        needle = str(row.get('match') or row.get('event') or '')
-        text = '' if received is None else str(received)
-        if not needle:
-            return False
-        if row.get('partial', True):
-            return needle in text
-        return needle == text
+        return match_string_row(received, row)
 
 
 class GlobalTriggersDialog(QDialog):
     """设置级全局触发壳：事件触发 / 字符串触发。"""
 
-    def __init__(self, document, parent=None):
+    def __init__(self, document, parent=None, execute_commands=None):
         super().__init__(parent)
         self.document = document
+        self._execute_commands = execute_commands  # optional callable(list[dict])
         self.setWindowTitle('全局触发')
         self.resize(780, 480)
         root = QVBoxLayout(self)
         title = QLabel('全局触发')
         title.setObjectName('dialogTitle')
         root.addWidget(title)
-        hint = QLabel('事件 → 命令 / 字符串触发（支持部分匹配）→ 执行流程。列：序号、触发事件、部分匹配、命令类型、配置、操作。配置随方案保存。')
+        hint = QLabel('事件 → 命令 / 字符串触发（部分匹配）→ 执行流程。运行时：流程开始/结束/NG 派发事件；receive_data 载荷自动匹配字符串触发（常接通信收数）。配置随方案保存。')
         hint.setObjectName('dialogHint')
         hint.setWordWrap(True)
         root.addWidget(hint)
@@ -241,6 +312,11 @@ class GlobalTriggersDialog(QDialog):
         test_btn = QPushButton('试匹配')
         test_btn.clicked.connect(self._test_match)
         test.addWidget(test_btn)
+        run_btn = QPushButton('匹配并执行')
+        run_btn.setObjectName('primaryButton')
+        run_btn.setToolTip('按当前表匹配字符串并立刻派发触发命令（不关窗）')
+        run_btn.clicked.connect(self._test_match_and_run)
+        test.addWidget(run_btn)
         self.test_result = QLabel('')
         test.addWidget(self.test_result)
         root.addLayout(test)
@@ -260,18 +336,40 @@ class GlobalTriggersDialog(QDialog):
         self.event_table.set_rows(gt.get('events') or [])
         self.string_table.set_rows(gt.get('strings') or [])
 
-    def _test_match(self):
-        text = self.test_input.text()
+    def _matched_commands(self, text):
+        cmds = []
         hits = []
         for i, row in enumerate(self.string_table.rows(), 1):
             if _TriggerTable.match_string(text, row):
-                hits.append(f"#{i}→{row.get('commandType') or '?'}")
+                ctype = row.get('commandType') or '?'
+                hits.append(f'#{i}→{ctype}')
+                if row.get('commandType'):
+                    cmds.append(dict(type=row.get('commandType'), config=row.get('config') or '', source='string'))
+        return hits, cmds
+
+    def _test_match(self):
+        text = self.test_input.text()
+        hits, _ = self._matched_commands(text)
         if hits:
             self.test_result.setText('命中：' + '，'.join(hits))
             self.test_result.setStyleSheet('color:#2e7d32;font-weight:600;')
         else:
             self.test_result.setText('无命中')
             self.test_result.setStyleSheet('color:#c62828;')
+
+    def _test_match_and_run(self):
+        text = self.test_input.text()
+        hits, cmds = self._matched_commands(text)
+        if not hits:
+            self.test_result.setText('无命中 · 未执行')
+            self.test_result.setStyleSheet('color:#c62828;')
+            return
+        self.test_result.setText('命中并执行：' + '，'.join(hits))
+        self.test_result.setStyleSheet('color:#2e7d32;font-weight:600;')
+        if self._execute_commands:
+            self._execute_commands(cmds)
+        else:
+            QMessageBox.information(self, '全局触发', '已匹配，但宿主未接执行回调。\n' + '，'.join(hits))
 
     def accept_save(self):
         p = deepcopy(self.document.project)
