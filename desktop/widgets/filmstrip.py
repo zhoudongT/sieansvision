@@ -40,7 +40,7 @@ class FilmstripBar(QWidget):
         self.auto_switch.toggled.connect(self.autoSwitchChanged.emit)
         bar.addWidget(self.auto_switch)
         self.run_all = QPushButton('运行全部')
-        self.run_all.setObjectName('primaryButton')
+        self.run_all.setObjectName('filmstripRun')
         self.run_all.clicked.connect(self.runAllRequested.emit)
         bar.addWidget(self.run_all)
         bar.addStretch(1)

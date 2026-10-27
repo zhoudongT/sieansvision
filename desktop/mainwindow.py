@@ -3,7 +3,7 @@ import base64
 import json
 from copy import deepcopy
 from pathlib import Path
-from PySide6.QtCore import Qt, QMimeData, QByteArray, QBuffer, QIODevice, QTimer, QSettings
+from PySide6.QtCore import QSize, Qt, QMimeData, QByteArray, QBuffer, QIODevice, QTimer, QSettings
 from PySide6.QtGui import QAction, QKeySequence, QDrag, QPixmap, QImage, QPainter, QColor, QFont
 from PySide6.QtWidgets import (QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QSplitter,QTreeWidget,QTreeWidgetItem,
     QLineEdit,QToolBar,QLabel,QPushButton,QFileDialog,QMessageBox,QTabWidget,QPlainTextEdit,QGraphicsView,QGraphicsScene,
@@ -104,9 +104,8 @@ class MainWindow(QMainWindow):
         self.undo_action=self.action('撤销',self.document.undo,'Ctrl+Z');self.redo_action=self.action('重做',self.document.redo,'Ctrl+Y')
         for a in [self.undo_action,self.redo_action]:edit.addAction(a)
         edit.addAction(self.action('复制模块',self.copy_nodes,'Ctrl+Shift+C'));edit.addAction(self.action('粘贴模块',lambda:self.document.paste() if not self.busy else None,'Ctrl+Shift+V'))
-        toolbar=QToolBar('工程与运行');toolbar.setMovable(False);self.addToolBar(toolbar)
-        brand=QLabel('SIEANS VISION');brand.setObjectName('brand');toolbar.addWidget(brand)
-        tag=QLabel('视觉检测平台');tag.setStyleSheet('color:#a8a8a8;font-size:11px;padding-right:8px;');toolbar.addWidget(tag)
+        toolbar=QToolBar('工程与运行');toolbar.setMovable(False);toolbar.setIconSize(QSize(18,18));toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon);self.addToolBar(toolbar)
+        brand=QLabel('SIEANS');brand.setObjectName('brand');brand.setToolTip('SIEANS Vision');toolbar.addWidget(brand)
         for a in [self.open_action,self.save_action]:toolbar.addAction(a)
         self.image_action=self.action('打开图像',self.open_image);toolbar.addAction(self.image_action)
         self.reference_action=self.action('设置参考图',lambda:self.open_image(True));toolbar.addAction(self.reference_action)
@@ -139,15 +138,14 @@ class MainWindow(QMainWindow):
         left=QWidget();left_l=QHBoxLayout(left);left_l.setContentsMargins(0,0,0,0);left_l.setSpacing(0)
         self.op_rail=OperatorRail();self.op_rail.categorySelected.connect(self.filter_rail_category)
         left_l.addWidget(self.op_rail)
-        library=QWidget();library.setObjectName('libraryPane');ll=QVBoxLayout(library);ll.setContentsMargins(10,10,8,8);ll.setSpacing(6)
-        lib_title=QLabel('算子库');lib_title.setObjectName('libraryTitle');ll.addWidget(lib_title)
-        lib_hint=QLabel('分类纵栏 · 搜索 · 拖到画布');lib_hint.setObjectName('libraryHint');ll.addWidget(lib_hint)
-        self.search=QLineEdit();self.search.setObjectName('operatorSearch');self.search.setPlaceholderText('搜索算子名称或类别…');self.search.setClearButtonEnabled(True);ll.addWidget(self.search)
+        library=QWidget();library.setObjectName('libraryPane');ll=QVBoxLayout(library);ll.setContentsMargins(4,4,4,4);ll.setSpacing(4)
+        lib_title=QLabel('算子');lib_title.setObjectName('libraryTitle');ll.addWidget(lib_title)
+        self.search=QLineEdit();self.search.setObjectName('operatorSearch');self.search.setPlaceholderText('搜索…');self.search.setClearButtonEnabled(True);ll.addWidget(self.search)
         self.toolbox=Toolbox();ll.addWidget(self.toolbox, 1)
         self.toolbox.operatorActivated.connect(lambda key:self.guard(lambda:self.add_node(key)))
         self.search.textChanged.connect(self.populate_toolbox)
         left_l.addWidget(library,1)
-        left.setMinimumWidth(280);left.setMaximumWidth(420)
+        left.setMinimumWidth(220);left.setMaximumWidth(320)
         self._left_pane=left
         horizontal.addWidget(left)
 

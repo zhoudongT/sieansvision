@@ -25,7 +25,7 @@ HOVER = '#3d4046'
 SELECTED = '#3d2e1f'
 HEADER = '#232528'
 CANVAS = '#2d2f33'
-CANVAS_DOT = '#3a3d42'
+CANVAS_DOT = '#4e5258'
 RAIL_BG = '#1a1b1d'
 STATUS_BG = '#151617'
 SCROLL = '#55585e'
@@ -197,10 +197,10 @@ QLabel#statusConfig, QLabel#statusTiming, QLabel#statusLog, QLabel#statusVersion
 QLabel#statusConfig[error="true"] {{ color: #e05555; }}
 QLabel#brand {{
   color: {ACCENT};
-  font-size: 15px;
-  font-weight: 700;
-  padding: 2px 8px;
-  font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  padding: 0 6px 0 2px;
 }}
 QScrollBar:vertical {{
   background: transparent; width: 8px; margin: 1px;
@@ -238,22 +238,22 @@ QWidget#libraryPane {{
   border-right: 1px solid {LINE_SOFT};
 }}
 QLabel#libraryTitle {{
-  color: {TEXT};
-  font-size: 13px;
-  font-weight: 700;
-  padding: 2px 2px 0 2px;
+  color: {TEXT_MUTED};
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 2px;
 }}
 QLabel#libraryHint {{
   color: {TEXT_DIM};
-  font-size: 11px;
-  padding: 0 2px 4px 2px;
+  font-size: 10px;
+  padding: 0 2px 2px 2px;
 }}
 QLineEdit#operatorSearch {{
   background: {CARD};
   border: 1px solid {LINE};
   border-radius: 2px;
-  padding: 5px 8px;
-  font-size: 12px;
+  padding: 3px 6px;
+  font-size: 11px;
 }}
 QLineEdit#operatorSearch:focus {{ border: 1px solid {ACCENT}; }}
 
@@ -283,6 +283,21 @@ QWidget#imagePane {{
 QWidget#filmstripBar {{
   background: {HEADER};
   border-top: 1px solid {LINE};
+}}
+QPushButton#filmstripRun {{
+  background: {CARD};
+  color: {TEXT};
+  border: 1px solid {LINE};
+  border-radius: 2px;
+  padding: 2px 10px;
+  min-height: 20px;
+  font-size: 11px;
+  font-weight: 500;
+}}
+QPushButton#filmstripRun:hover {{
+  background: {HOVER};
+  border-color: {ACCENT};
+  color: {ACCENT};
 }}
 QLabel#filmstripCount {{
   color: {TEXT_MUTED};
@@ -499,14 +514,14 @@ Toolbox {{
 }}
 QToolButton#categoryHeader {{
   text-align: left;
-  font-weight: 650;
-  font-size: 12px;
+  font-weight: 600;
+  font-size: 11px;
   color: {TEXT};
   border: 1px solid {LINE_SOFT};
   border-radius: 2px;
-  padding: 6px 8px;
+  padding: 3px 6px;
   background: {CARD};
-  margin: 0 2px;
+  margin: 0 1px;
 }}
 QToolButton#categoryHeader:hover {{
   background: {HOVER};

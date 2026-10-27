@@ -10,63 +10,116 @@ class Port(QGraphicsObject):
     def __init__(self, owner, side, output):
         super().__init__(owner)
         self.node_id, self.side, self.output = owner.node_id, side, output
-        x,y={'top':(110,0),'bottom':(110,owner.height),'left':(0,owner.height/2),'right':(220,owner.height/2)}[side]
-        self.setPos(x,y);self.setZValue(4)
+        w, h = owner.width, owner.height
+        x, y = {
+            'top': (w / 2, 0),
+            'bottom': (w / 2, h),
+            'left': (0, h / 2),
+            'right': (w, h / 2),
+        }[side]
+        self.setPos(x, y)
+        self.setZValue(4)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
-        self.highlight=None
-        kind='图像订阅' if side in ('top','bottom') else '数据/控制';self.setToolTip(('输出' if output else '输入')+' · '+kind+'（'+( '实线=图像订阅' if side in ('top','bottom') else '虚线=数据/控制' )+'）：拖到目标端口；下方模块订阅上方；Esc 取消')
+        self.highlight = None
+        kind = '图像订阅' if side in ('top', 'bottom') else '数据/控制'
+        self.setToolTip(
+            ('输出' if output else '输入') + ' · ' + kind
+            + '（' + ('实线=图像订阅' if side in ('top', 'bottom') else '虚线=数据/控制')
+            + '）：拖到目标端口；下方模块订阅上方；Esc 取消'
+        )
         self.setCursor(Qt.CursorShape.CrossCursor)
 
     def boundingRect(self):
-        return QRectF(-8,-8,16,16)
+        return QRectF(-6, -6, 12, 12)
 
-    def paint(self,painter,option,widget=None):
-        # Halcon-inspired: top/bottom ≈ iconic image chain (cyan); left/right ≈ control/data (amber).
-        base=ACCENT if self.side in ('top','bottom') else WARN
-        color=QColor('#d26345' if self.highlight=='invalid' else '#18a66d' if self.highlight=='valid' else base)
-        painter.setPen(QPen(color,2 if self.highlight else 1.5));painter.setBrush(color if self.output or self.highlight=='valid' else QColor('white'))
-        if self.highlight:painter.drawEllipse(QRectF(-8,-8,16,16))
-        painter.drawEllipse(QRectF(-5,-5,10,10))
+    def paint(self, painter, option, widget=None):
+        # Compact VM-style ports; accent on highlight only.
+        if self.highlight == 'invalid':
+            color = QColor('#d26345')
+        elif self.highlight == 'valid':
+            color = QColor('#18a66d')
+        else:
+            color = QColor(ACCENT if self.side in ('top', 'bottom') else '#b0b0b0')
+        painter.setPen(QPen(color, 1.4 if self.highlight else 1.0))
+        painter.setBrush(color if self.output or self.highlight == 'valid' else QColor('#f5f5f5'))
+        if self.highlight:
+            painter.drawEllipse(QRectF(-6, -6, 12, 12))
+        painter.drawEllipse(QRectF(-3.5, -3.5, 7, 7))
 
-    def mousePressEvent(self,event):
-        if event.button()==Qt.MouseButton.LeftButton:
-            self.scene().port_clicked(self);event.accept()
-        else: super().mousePressEvent(event)
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.scene().port_clicked(self)
+            event.accept()
+        else:
+            super().mousePressEvent(event)
 
 
 class Node(QGraphicsObject):
-    def __init__(self,node_id,label,position,source=False):
+    """VisionMaster-style compact light pill node."""
+    WIDTH = 168
+    HEIGHT = 28
+
+    def __init__(self, node_id, label, position, source=False):
         super().__init__()
-        self.node_id,self.label,self.source=node_id,label,source
-        self.height=44 if source else 80
-        self.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable|QGraphicsItem.GraphicsItemFlag.ItemIsSelectable|QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges)
-        self.setPos(position['x'],position['y']);self.setZValue(2)
-        self.state='图像输入' if source else '等待执行'
-        self.color='#2d9b6c'
-        self.setToolTip(label+'\n拖动移动 · 双击配置 · Ctrl 多选')
-        self.ports={side:Port(self,side,side in ('bottom','right')) for side in (('bottom','right') if source else ('top','left','bottom','right'))}
+        self.node_id, self.label, self.source = node_id, label, source
+        self.width = Node.WIDTH
+        self.height = Node.HEIGHT
+        self.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+            | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+            | QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges
+        )
+        self.setPos(position['x'], position['y'])
+        self.setZValue(2)
+        self.state = '图像输入' if source else '等待执行'
+        self.color = '#2d9b6c'
+        self.setToolTip(label + '\n拖动移动 · 双击配置 · Ctrl 多选')
+        sides = ('bottom', 'right') if source else ('top', 'left', 'bottom', 'right')
+        self.ports = {side: Port(self, side, side in ('bottom', 'right')) for side in sides}
 
     def boundingRect(self):
-        return QRectF(-2,-2,224,self.height+4)
+        return QRectF(-3, -3, self.width + 6, self.height + 6)
 
-    def paint(self,painter,option,widget=None):
+    def paint(self, painter, option, widget=None):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        selected=self.isSelected()
+        selected = self.isSelected()
+        # Light / white pill like VM; source slightly warm.
         if self.source:
-            fill=QColor(SELECTED if selected else '#2f3a28')
-            border=QColor(ACCENT if selected else '#5a8a4a')
+            fill = QColor('#e8e4d4' if not selected else '#f0e8d0')
+            border = QColor(ACCENT if selected else '#c4b896')
         else:
-            fill=QColor(SELECTED if selected else CARD)
-            border=QColor(ACCENT if selected else LINE)
-        painter.setPen(QPen(border,2.4 if selected else 1.4))
+            fill = QColor('#f2f2f2' if not selected else '#fff8f0')
+            border = QColor(ACCENT if selected else '#c8c8c8')
+        pen = QPen(border, 1.8 if selected else 1.1)
+        if selected:
+            pen.setStyle(Qt.PenStyle.DashLine)
+        painter.setPen(pen)
         painter.setBrush(fill)
-        painter.drawRoundedRect(QRectF(0,0,220,self.height),6 if self.source else 2,6 if self.source else 2)
-        painter.setPen(QColor(TEXT));painter.setFont(QFont('Microsoft YaHei UI',9,QFont.Weight.DemiBold))
-        painter.drawText(QRectF(14,6,192,32),Qt.AlignmentFlag.AlignVCenter,painter.fontMetrics().elidedText(self.label,Qt.TextElideMode.ElideRight,190))
-        if not self.source:
-            painter.setPen(QPen(QColor(LINE),1));painter.drawLine(12,42,208,42)
-            painter.setPen(QColor(self.color));painter.setFont(QFont('Microsoft YaHei UI',8))
-            painter.drawText(QRectF(14,46,192,28),Qt.AlignmentFlag.AlignVCenter,self.state)
+        painter.drawRoundedRect(QRectF(0, 0, self.width, self.height), 3, 3)
+        # Orange icon badge on the left (status color after run)
+        badge = QRectF(5, 5, 18, 18)
+        painter.setPen(Qt.PenStyle.NoPen)
+        badge_color = ACCENT
+        if not self.source and self.state and not self.state.startswith('等待'):
+            badge_color = self.color or ACCENT
+        painter.setBrush(QColor(badge_color))
+        painter.drawRoundedRect(badge, 2, 2)
+        painter.setPen(QPen(QColor('#ffffff'), 1.4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        if self.source:
+            painter.drawRoundedRect(QRectF(8, 9, 12, 9), 1, 1)
+            painter.drawEllipse(QRectF(11.5, 11, 5, 5))
+        else:
+            painter.drawEllipse(QRectF(9, 9, 10, 10))
+            painter.drawPoint(QPointF(14, 14))
+        # Index + name
+        painter.setPen(QColor('#222222'))
+        painter.setFont(QFont('Microsoft YaHei UI', 9, QFont.Weight.Medium))
+        text_rect = QRectF(28, 0, self.width - 34, self.height)
+        painter.drawText(
+            text_rect,
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+            painter.fontMetrics().elidedText(self.label, Qt.TextElideMode.ElideRight, int(text_rect.width())),
+        )
 
     def itemChange(self,change,value):
         if change==QGraphicsItem.GraphicsItemChange.ItemPositionChange:
@@ -104,38 +157,28 @@ class Edge(QGraphicsPathItem):
         path.lineTo(b);self.setPath(path)
 
     def paint(self,painter,option,widget=None):
-        # B1: 实线=图像订阅(imageFrom)；虚线=数据/控制连线；选中橙
+        # VM: solid orange vertical image chain; dashed for side data wires.
         step=next((s for s in self.host.document.project['steps'] if s['id']==self.edge['to']),None)
         is_image_sub = bool(step and step.get('imageFrom')==self.edge['from'])
         side_wire = self.edge.get('fromPort')=='right' or self.edge.get('toPort')=='left'
-        color = QColor(ACCENT if self.isSelected() else (OK if is_image_sub else WARN))
-        p=QPen(color, 2.6 if self.isSelected() else 1.9)
+        color = QColor(ACCENT)
+        p=QPen(color, 2.2 if self.isSelected() else 1.6)
         if (not is_image_sub) or side_wire:
             p.setStyle(Qt.PenStyle.DashLine)
         else:
             p.setStyle(Qt.PenStyle.SolidLine)
         self.setPen(p);super().paint(painter,option,widget)
-        end=self.path().pointAtPercent(1);painter.setBrush(p.color())
-        if self.edge.get('toPort','top')=='left':points=[end,end+QPointF(-8,-4),end+QPointF(-8,4)]
-        else:points=[end,end+QPointF(-4,-8),end+QPointF(4,-8)]
+        end=self.path().pointAtPercent(1);painter.setBrush(p.color());painter.setPen(Qt.PenStyle.NoPen)
+        if self.edge.get('toPort','top')=='left':
+            points=[end,end+QPointF(-7,-3.5),end+QPointF(-7,3.5)]
+        else:
+            points=[end,end+QPointF(-3.5,-7),end+QPointF(3.5,-7)]
         painter.drawPolygon(QPolygonF(points))
-        # 线序角标：上游序号 → 下游序号
-        proj=self.host.document.project
-        index_map={'source':0}
-        for i,s in enumerate(proj.get('steps') or [], start=1):
-            index_map[s['id']]=i
-        a_i=index_map.get(self.edge['from'], '?')
-        b_i=index_map.get(self.edge['to'], '?')
-        mid=self.path().pointAtPercent(.5)
-        badge=f'{a_i}→{b_i}'
-        if is_image_sub:
-            badge += ' ·图'
-        painter.setPen(QColor(TEXT_MUTED))
-        painter.setFont(QFont('Microsoft YaHei UI', 8))
-        painter.drawText(mid+QPointF(8, -4), badge)
         when=self.edge.get('when','always')
         if when not in ('always','success'):
-            painter.setPen(QColor(TEXT_MUTED));painter.drawText(mid+QPointF(6,12),{'true':'成立','false':'不成立','error':'失败'}.get(when,when))
+            mid=self.path().pointAtPercent(.5)
+            painter.setPen(QColor(TEXT_MUTED));painter.setFont(QFont('Microsoft YaHei UI', 8))
+            painter.drawText(mid+QPointF(6,4),{'true':'成立','false':'不成立','error':'失败'}.get(when,when))
 
 
 class FlowScene(QGraphicsScene):
@@ -168,7 +211,7 @@ class FlowScene(QGraphicsScene):
                 label=f'0 {label}'
             else:
                 label=f'{i} {label}'
-            item=Node(n['id'],label,n.get('position',dict(x=60,y=40+i*130)),i==0)
+            item=Node(n['id'],label,n.get('position',dict(x=60,y=40+i*56)),i==0)
             item.setToolTip(label+'\n序号 '+str(i)+' · 拖动移动 · 双击配置 · 端口拖拽订阅（下方←上方）')
             self.addItem(item);self.nodes[n['id']]=item
             if n['id'] in ids:item.setSelected(True)
@@ -255,11 +298,12 @@ class FlowScene(QGraphicsScene):
 
     def drawBackground(self,painter,rect):
         painter.fillRect(rect,QColor(CANVAS))
-        painter.setPen(QPen(QColor(CANVAS_DOT),1))
-        left=int(rect.left()/20)*20;top=int(rect.top()/20)*20
+        painter.setPen(QPen(QColor(CANVAS_DOT),1.2))
+        step=16
+        left=int(rect.left()/step)*step;top=int(rect.top()/step)*step
         # VisionMaster-style dotted grid
-        for x in range(left,int(rect.right())+20,20):
-            for y in range(top,int(rect.bottom())+20,20):
+        for x in range(left,int(rect.right())+step,step):
+            for y in range(top,int(rect.bottom())+step,step):
                 painter.drawPoint(x,y)
 
 

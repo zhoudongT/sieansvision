@@ -11,22 +11,25 @@ from PySide6.QtWidgets import (
 from desktop.theme import ACCENT, category_color, TOOLBOX_QSS
 
 
-def operator_icon(key, definition, size=88):
+def operator_icon(key, definition, size=28):
+    """Compact industrial glyph for toolbox density (VM-like)."""
     name = (key + ' ' + definition['name']).lower()
     accent = QColor(category_color(definition.get('category', '')))
-    soft = QColor(accent)
-    soft.setAlpha(28)
     pixmap = QPixmap(size, size)
-    pixmap.setDevicePixelRatio(2)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    # Flat dark tile behind glyph
     painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(soft if soft.alpha() else QColor('#2b333d'))
-    painter.drawRoundedRect(QRectF(1, 1, 42, 42), 11, 11)
+    soft = QColor(accent); soft.setAlpha(28)
+    painter.setBrush(soft if soft.alpha() else QColor('#2a2e34'))
+    painter.drawRoundedRect(QRectF(0.5, 0.5, size - 1, size - 1), 2, 2)
     painter.setBrush(Qt.BrushStyle.NoBrush)
-    painter.setPen(QPen(accent if accent.isValid() else QColor('#008fb9'), 1.9, Qt.PenStyle.SolidLine,
+    painter.setPen(QPen(accent if accent.isValid() else QColor('#e67a2e'), 1.4, Qt.PenStyle.SolidLine,
                         Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+    # Draw glyphs in 0..44 space scaled into size
+    scale = size / 44.0
+    painter.scale(scale, scale)
 
     def line(x, y, xx, yy):
         painter.drawLine(QPointF(x, y), QPointF(xx, yy))
@@ -36,35 +39,21 @@ def operator_icon(key, definition, size=88):
             painter.fillRect(QRectF(x, 12, width, 20), accent)
     elif any(word in name for word in ('ocr', '文字', '字符')):
         painter.drawRoundedRect(QRectF(10, 10, 24, 24), 3, 3)
-        line(14, 18, 30, 18)
-        line(14, 24, 26, 24)
-        line(14, 30, 28, 30)
+        line(14, 18, 30, 18); line(14, 24, 26, 24); line(14, 30, 28, 30)
     elif any(word in name for word in ('相机', 'camera', '采集')):
         painter.drawRoundedRect(QRectF(9, 14, 26, 18), 3, 3)
         painter.drawEllipse(QRectF(16, 17, 12, 12))
         painter.drawRoundedRect(QRectF(28, 10, 7, 5), 1, 1)
     elif any(word in name for word in ('延时', 'delay')):
-        painter.drawEllipse(QRectF(10, 10, 24, 24))
-        line(22, 15, 22, 22)
-        line(22, 22, 28, 26)
+        painter.drawEllipse(QRectF(10, 10, 24, 24)); line(22, 15, 22, 22); line(22, 22, 28, 26)
     elif any(word in name for word in ('条件', '汇合', 'condition', 'merge')):
         painter.drawPolygon(QPolygonF([QPointF(22, 8), QPointF(32, 18), QPointF(22, 28), QPointF(12, 18)]))
-        line(12, 18, 7, 18)
-        line(7, 18, 7, 35)
-        line(32, 18, 37, 18)
-        line(37, 18, 37, 35)
+        line(12, 18, 7, 18); line(7, 18, 7, 35); line(32, 18, 37, 18); line(37, 18, 37, 35)
     elif any(word in name for word in ('3d', '点云', '体积')):
-        painter.drawPolygon(QPolygonF([
-            QPointF(22, 7), QPointF(35, 14), QPointF(35, 30),
-            QPointF(22, 37), QPointF(9, 30), QPointF(9, 14),
-        ]))
-        line(9, 14, 22, 22)
-        line(35, 14, 22, 22)
-        line(22, 22, 22, 37)
+        painter.drawPolygon(QPolygonF([QPointF(22, 7), QPointF(35, 14), QPointF(35, 30), QPointF(22, 37), QPointF(9, 30), QPointF(9, 14)]))
+        line(9, 14, 22, 22); line(35, 14, 22, 22); line(22, 22, 22, 37)
     elif any(word in name for word in ('圆', 'circle')):
-        painter.drawEllipse(QRectF(11, 11, 22, 22))
-        line(7, 22, 37, 22)
-        line(22, 7, 22, 37)
+        painter.drawEllipse(QRectF(11, 11, 22, 22)); line(7, 22, 37, 22); line(22, 7, 22, 37)
     elif any(word in name for word in ('标定', '棋盘', 'intrinsics', 'calibr')):
         for row in range(4):
             for column in range(4):
@@ -78,76 +67,56 @@ def operator_icon(key, definition, size=88):
         line(18, 9, 18, 35)
     elif any(word in name for word in ('yolo', '识别', '定位', 'locate', 'fixture', '模板')):
         for x, y, sx, sy in ((9, 9, 1, 1), (35, 9, -1, 1), (9, 35, 1, -1), (35, 35, -1, -1)):
-            line(x, y, x + sx * 7, y)
-            line(x, y, x, y + sy * 7)
-        painter.drawEllipse(QRectF(16, 16, 12, 12))
-        line(22, 13, 22, 31)
-        line(13, 22, 31, 22)
+            line(x, y, x + sx * 7, y); line(x, y, x, y + sy * 7)
+        painter.drawEllipse(QRectF(16, 16, 12, 12)); line(22, 13, 22, 31); line(13, 22, 31, 22)
     elif any(word in name for word in ('差异', '缺陷', 'defect')):
-        painter.drawRect(QRectF(9, 10, 26, 24))
-        line(24, 12, 18, 22)
-        line(18, 22, 26, 23)
-        line(26, 23, 20, 32)
+        painter.drawRect(QRectF(9, 10, 26, 24)); line(24, 12, 18, 22); line(18, 22, 26, 23); line(26, 23, 20, 32)
     elif any(word in name for word in ('测', '几何', 'geometry', 'caliper', '尺寸')):
-        line(10, 13, 34, 13)
-        line(10, 10, 10, 31)
-        line(34, 10, 34, 31)
-        line(10, 29, 34, 29)
+        line(10, 13, 34, 13); line(10, 10, 10, 31); line(34, 10, 34, 31); line(10, 29, 34, 29)
         for x in (16, 22, 28):
             line(x, 13, x, 18)
     elif any(word in name for word in ('modbus', 'mqtt', 'opc', 's7', 'tcp', 'udp', '串口', '通信', 'plc')):
-        painter.drawEllipse(QRectF(8, 18, 8, 8))
-        painter.drawEllipse(QRectF(28, 18, 8, 8))
-        line(16, 22, 28, 22)
-        line(12, 14, 12, 18)
-        line(32, 14, 32, 18)
+        painter.drawEllipse(QRectF(8, 18, 8, 8)); painter.drawEllipse(QRectF(28, 18, 8, 8))
+        line(16, 22, 28, 22); line(12, 14, 12, 18); line(32, 14, 32, 18)
     elif any(word in name for word in ('预处理', 'preprocess', '滤波', 'filter')):
         painter.drawRoundedRect(QRectF(9, 12, 26, 20), 3, 3)
-        painter.drawPolyline(QPolygonF([
-            QPointF(12, 26), QPointF(18, 18), QPointF(23, 24), QPointF(30, 15), QPointF(34, 20),
-        ]))
+        painter.drawPolyline(QPolygonF([QPointF(12, 26), QPointF(18, 18), QPointF(23, 24), QPointF(30, 15), QPointF(34, 20)]))
     else:
         painter.drawRoundedRect(QRectF(8, 10, 28, 24), 3, 3)
         painter.drawEllipse(QRectF(13, 14, 5, 5))
-        painter.drawPolyline(QPolygonF([
-            QPointF(10, 31), QPointF(19, 22), QPointF(24, 27), QPointF(30, 19), QPointF(35, 25),
-        ]))
+        painter.drawPolyline(QPolygonF([QPointF(10, 31), QPointF(19, 22), QPointF(24, 27), QPointF(30, 19), QPointF(35, 25)]))
     painter.end()
     return QIcon(pixmap)
 
 
 class TileDelegate(QStyledItemDelegate):
+    """Compact industrial tiles — flatter, tighter than marketing cards."""
+    CELL_W, CELL_H = 76, 62
+
     def paint(self, painter, option, index):
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        rect = option.rect.adjusted(4, 4, -4, -4)
+        rect = option.rect.adjusted(2, 2, -2, -2)
         selected = bool(option.state & QStyle.StateFlag.State_Selected)
         hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)
-        # Soft card
         if selected:
-            fill, border, bw = QColor('#3a2a1c'), QColor('#e67a2e'), 1.6
+            fill, border, bw = QColor('#3a2a1c'), QColor('#e67a2e'), 1.3
         elif hovered:
-            fill, border, bw = QColor('#2f3844'), QColor('#e67a2e'), 1.2
+            fill, border, bw = QColor('#323840'), QColor('#e67a2e'), 1.0
         else:
-            fill, border, bw = QColor('#2b333d'), QColor('#3a4552'), 1.0
+            fill, border, bw = QColor('#2a2e34'), QColor('#3a4048'), 1.0
         painter.setBrush(fill)
         painter.setPen(QPen(border, bw))
-        painter.drawRoundedRect(QRectF(rect), 9, 9)
-        # Top accent hairline
-        accent = index.data(Qt.ItemDataRole.UserRole + 1)
-        if accent:
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(accent))
-            painter.drawRoundedRect(QRectF(rect.left() + 10, rect.top() + 1, rect.width() - 20, 3), 1.5, 1.5)
+        painter.drawRoundedRect(QRectF(rect), 2, 2)
         icon = index.data(Qt.ItemDataRole.DecorationRole)
         if icon:
-            icon.paint(painter, rect.center().x() - 22, rect.top() + 10, 44, 44)
+            icon.paint(painter, rect.center().x() - 14, rect.top() + 4, 28, 28)
         font = QFont(option.font)
-        font.setPixelSize(11)
-        font.setWeight(QFont.Weight.Medium)
+        font.setPixelSize(10)
+        font.setWeight(QFont.Weight.Normal)
         painter.setFont(font)
-        painter.setPen(QColor('#e8edf2'))
-        text_rect = rect.adjusted(5, 56, -5, -4)
+        painter.setPen(QColor('#d8d8d8'))
+        text_rect = rect.adjusted(3, 34, -3, -2)
         painter.setClipRect(text_rect)
         painter.drawText(
             text_rect,
@@ -157,7 +126,7 @@ class TileDelegate(QStyledItemDelegate):
         painter.restore()
 
     def sizeHint(self, option, index):
-        return QSize(108, 104)
+        return QSize(self.CELL_W, self.CELL_H)
 
 
 class OperatorTiles(QListWidget):
@@ -171,8 +140,8 @@ class OperatorTiles(QListWidget):
         self.setMovement(QListWidget.Movement.Static)
         self.setWrapping(True)
         self.setWordWrap(True)
-        self.setIconSize(QSize(44, 44))
-        self.setGridSize(QSize(108, 104))
+        self.setIconSize(QSize(28, 28))
+        self.setGridSize(QSize(76, 62))
         self.setSpacing(0)
         self.setDragEnabled(True)
         self.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
@@ -184,8 +153,8 @@ class OperatorTiles(QListWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        columns = max(1, self.viewport().width() // 108)
-        height = math.ceil(self.count() / columns) * 104 + 4
+        columns = max(1, self.viewport().width() // 76)
+        height = math.ceil(self.count() / columns) * 62 + 4
         if self.height() != height:
             self.setFixedHeight(height)
 
@@ -197,7 +166,7 @@ class OperatorTiles(QListWidget):
         mime.setData('application/x-sieans-operator', item.data(Qt.ItemDataRole.UserRole).encode())
         drag = QDrag(self)
         drag.setMimeData(mime)
-        pix = item.icon().pixmap(48, 48)
+        pix = item.icon().pixmap(28, 28)
         drag.setPixmap(pix)
         drag.setHotSpot(pix.rect().center())
         self.setCursor(Qt.CursorShape.ClosedHandCursor)
@@ -215,7 +184,7 @@ class Toolbox(QScrollArea):
         self.collapsed = set()
         self.groups = []
         self.setWidgetResizable(True)
-        self.setMinimumWidth(260)
+        self.setMinimumWidth(200)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setFrameShape(QScrollArea.Shape.NoFrame)
         self.setStyleSheet(TOOLBOX_QSS)
@@ -233,8 +202,8 @@ class Toolbox(QScrollArea):
             old.deleteLater()
         content = QWidget()
         layout = QVBoxLayout(content)
-        layout.setContentsMargins(4, 2, 4, 8)
-        layout.setSpacing(8)
+        layout.setContentsMargins(2, 2, 2, 6)
+        layout.setSpacing(4)
         self.groups = []
         # Prefer a stable industrial order
         order = [
@@ -286,7 +255,7 @@ class Toolbox(QScrollArea):
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(empty)
         else:
-            foot = QLabel('拖拽卡片到流程画布 · 双击快速添加')
+            foot = QLabel('拖入画布 · 双击添加')
             foot.setObjectName('emptyOps')
             foot.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(foot)
