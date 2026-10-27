@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆51 · pin建议批量应用全选干净键 · 试键撤栈JSON导入 · DST TTL预设档 · A/B回退记忆导入 · jitter排序可撤 · 2026-10-28】
+
+- **pin 建议批量应用全选干净键**：`apply_all_clean_…_cycle_key_suggests`；菜单「全选干净并应用」；smoke/resolve `action=apply_all_clean`。
+- **试键撤栈 JSON 导入**：`import_…_confirm_undo`（replace/merge）；菜单「导入撤栈 JSON」；smoke `action=import`。
+- **DST TTL 预设档**：`list/apply_…_clear_undo_ttl_preset(s)`；`show_…_ttl_preset_menu`（0/3/8/15/30/60s + 自定义）。
+- **A/B 回退记忆导入**：`import_…_fallback`（merge/replace）；校验 source 白名单。
+- **jitter 排序可撤**：reorder 记 snap；`undo_reorder_…_customs`；菜单「撤销排序」；smoke `ttl_reorder_undo`。
+- **冒烟**：`smoke-wave83-pinapplyall-histundoimport-dstttlpreset-abfallbackimp-jitterreorderundo-e2e`（另回归 wave82/81/80）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊿ · pin建议键候选菜单多选 · 试键撤栈导出/清空可撤 · DST撤清TTL · A/B回退记忆清/导出 · jitter自定义拖拽排序 · 2026-10-28】
 
 - **pin 建议键候选菜单多选**：`show_…_cycle_key_suggest_menu`（勾选多项→应用首选/仅记录）；`…_suggest_selected`；resolve `action=menu`。
