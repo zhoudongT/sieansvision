@@ -665,6 +665,35 @@ class OperatorHmiView(QWidget):
                 except Exception:
                     pass
 
+
+        try:
+            # 细妆：固定栏实况 OK/NG · 计数
+            okng = '—'
+            counters = None
+            for lamp in getattr(self, '_status_lamps', []) or []:
+                try:
+                    st = getattr(lamp, 'state', None) or getattr(lamp, '_state', None)
+                    if st:
+                        okng = str(st).upper()
+                        break
+                except Exception:
+                    pass
+            for panel in getattr(self, '_stats_panels', []) or []:
+                try:
+                    ok_n = getattr(panel, 'ok_count', None)
+                    ng_n = getattr(panel, 'ng_count', None)
+                    if callable(ok_n):
+                        ok_n = ok_n()
+                    if callable(ng_n):
+                        ng_n = ng_n()
+                    if ok_n is not None and ng_n is not None:
+                        counters = f'OK {ok_n} / NG {ng_n}'
+                        break
+                except Exception:
+                    pass
+            self.update_fixed_bar_live(okng=okng, counters=counters)
+        except Exception:
+            pass
     def apply_display(self, *, fit_mode=None, image=None, channel=None):
         """Live-apply Display fitMode (+ optional pre-channelled image) on HMI panes."""
         fit = fit_mode if fit_mode in ('contain', 'cover', 'actual') else None
@@ -882,12 +911,40 @@ class OperatorHmiView(QWidget):
         except Exception:
             pass
 
+    def update_fixed_bar_live(self, *, run_status=None, okng=None, counters=None, camera=None, comm=None):
+        """Refresh fixed-bar chrome with live run/OKNG/counters (细妆 · 固定栏实况)."""
+        if run_status is not None:
+            self._live_run_status = str(run_status)
+        if okng is not None:
+            self._live_okng = str(okng)
+        if counters is not None:
+            self._live_counters = str(counters)
+        fb = dict(getattr(self, '_fixed_bars_cache', None) or {})
+        if camera is not None:
+            fb['cameraBind'] = camera
+        if comm is not None:
+            fb['commBind'] = comm
+        try:
+            self._apply_fixed_bars(fb)
+        except Exception:
+            pass
+
+
     def _apply_fixed_bars(self, fb: dict):
         self._fixed_bars_cache = dict(fb or {})
         cam = fb.get('cameraBind') or CAMERA_BIND_OPTIONS[0]
         comm = fb.get('commBind') or COMM_BIND_OPTIONS[0]
         gate = (fb.get('gateKey') or '').strip()
         tip = f'相机:{cam} · 通讯:{comm}' + (f' · 判定门:flow.{gate}' if gate else '')
+        extras = []
+        if fb.get('showRunStatus', True):
+            extras.append(f'状态:{getattr(self, "_live_run_status", "空闲")}')
+        if fb.get('showOkNg', True):
+            extras.append(f'判定:{getattr(self, "_live_okng", "—")}')
+        if fb.get('showCounters'):
+            extras.append(f'计数:{getattr(self, "_live_counters", "0/0")}')
+        if extras:
+            tip = tip + ' · ' + ' · '.join(extras)
         for panel in getattr(self, '_stats_panels', []) or []:
             try:
                 if gate and not panel.gate_key():

@@ -1,7 +1,7 @@
 {
   "version": 2,
   "id": "071255d8a8554ca6",
-  "name": "打开即跑 · 九点标定",
+  "name": "打开即跑 · 九点标定 OK/NG",
   "steps": [
     {
       "id": "7ecf5e4659c9417a",
@@ -90,13 +90,63 @@
         "x": 300,
         "y": 160
       }
+    },
+    {
+      "id": "e81e35deff8e4e48",
+      "operation": "var_calc",
+      "name": "残差门限·OK/NG",
+      "params": {
+        "scope": "flow",
+        "expressions": [
+          {
+            "name": "calibRms",
+            "expression": "nine_point_rms",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "calibPoints",
+            "expression": "nine_point_count",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "calibOk",
+            "expression": "nine_point_ok",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "passGate",
+            "expression": "nine_point_ok > 0 && nine_point_count >= 9 && nine_point_rms < 0.5",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          }
+        ]
+      },
+      "position": {
+        "x": 300,
+        "y": 300
+      },
+      "imageFrom": "7ecf5e4659c9417a"
     }
   ],
   "edges": [
     {
-      "id": "41db676081434b30",
+      "id": "f3da90332c6a4cbe",
       "from": "source",
       "to": "7ecf5e4659c9417a",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "6fa707d8bba54729",
+      "from": "7ecf5e4659c9417a",
+      "to": "e81e35deff8e4e48",
       "fromPort": "bottom",
       "toPort": "top"
     }
@@ -134,19 +184,31 @@
     "currentIndex": 0
   },
   "runUi": {
-    "split": "2",
+    "split": "4",
     "placements": [
       {
         "name": "图像",
-        "page": 1,
+        "page": 3,
         "cell": 0,
         "category": "基础"
       },
       {
-        "name": "上位机状态机",
-        "page": 1,
+        "name": "OK/NG",
+        "page": 3,
         "cell": 1,
         "category": "基础"
+      },
+      {
+        "name": "运行控制",
+        "page": 3,
+        "cell": 2,
+        "category": "基础"
+      },
+      {
+        "name": "生产统计",
+        "page": 3,
+        "cell": 3,
+        "category": "图表"
       }
     ],
     "controls": {
@@ -154,8 +216,16 @@
         "commands": [],
         "binding": "source"
       },
-      "上位机状态机": {
+      "OK/NG": {
+        "commands": [],
+        "binding": ""
+      },
+      "运行控制": {
         "commands": [
+          {
+            "type": "执行·单次",
+            "config": ""
+          },
           {
             "type": "执行·连续",
             "config": ""
@@ -165,7 +235,11 @@
             "config": ""
           }
         ],
-        "binding": "host"
+        "binding": ""
+      },
+      "生产统计": {
+        "commands": [],
+        "binding": "stats"
       }
     },
     "fixedBars": {
@@ -176,12 +250,15 @@
       "cameraBind": "未绑定",
       "commBind": "TCP.连接状态",
       "showRunStatus": true,
-      "showOkNg": true
+      "showOkNg": true,
+      "showCounters": true,
+      "showHistory": true
     },
     "meta": {
-      "template": "host_state_machine",
-      "version": 1
+      "template": "open_and_run_ninepoint",
+      "version": 2,
+      "openAndRun": true
     }
   },
-  "notes": "【打开即跑 · 标定】内置 9 组 pixel/world 点对，▶ 单次仿射（无机械手 SDK）。"
+  "notes": "【打开即跑 · 九点】内置 9 组 pixel/world。▶ 单次仿射→残差门限：calibRms/calibPoints/calibOk → passGate(ok且9点且rms<0.5)。无机械手 SDK。"
 }

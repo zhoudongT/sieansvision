@@ -13,7 +13,7 @@ from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
     QTabWidget, QFormLayout, QLineEdit, QGroupBox, QPlainTextEdit,
-    QGridLayout, QSizePolicy, QComboBox, QDoubleSpinBox, QSpinBox, QListWidget,
+    QGridLayout, QSizePolicy, QComboBox, QDoubleSpinBox, QSpinBox, QListWidget, QFileDialog, QApplication,
 )
 
 from desktop.theme import TEXT, TEXT_MUTED, TEXT_DIM, OK, PANEL, LINE
@@ -615,6 +615,16 @@ class HostStateMachineWidget(QWidget):
         b_clear.setObjectName('hostAlarmHistoryClearBtn')
         b_clear.clicked.connect(self.clear_alarm_history)
         row.addWidget(b_clear)
+        b_copy = QPushButton('复制CSV')
+        b_copy.setObjectName('hostAlarmHistoryCopyBtn')
+        b_copy.setToolTip('复制报警历史为 CSV 到剪贴板')
+        b_copy.clicked.connect(self.export_alarm_history_clipboard)
+        row.addWidget(b_copy)
+        b_save = QPushButton('导出…')
+        b_save.setObjectName('hostAlarmHistoryExportBtn')
+        b_save.setToolTip('导出报警历史 CSV 文件')
+        b_save.clicked.connect(self.export_alarm_history_file)
+        row.addWidget(b_save)
         self._alarm_hist_count = QLabel('0 条')
         self._alarm_hist_count.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
         row.addWidget(self._alarm_hist_count)
@@ -625,6 +635,37 @@ class HostStateMachineWidget(QWidget):
     def alarm_history(self):
         """Public snapshot for smoke / HMI."""
         return list(self._alarm_history)
+
+    def alarm_history_csv(self) -> str:
+        """CSV text for clipboard / file export."""
+        lines = ['timestamp,cleared,reason']
+        for e in self._alarm_history:
+            ts = str(e.get('ts') or '').replace(',', ' ')
+            cleared = '1' if e.get('cleared') else '0'
+            reason = str(e.get('reason') or '').replace('"', "'").replace('\n', ' ')
+            lines.append(f'{ts},{cleared},"{reason}"')
+        return '\n'.join(lines) + ('\n' if lines else '')
+
+    def export_alarm_history_clipboard(self):
+        csv = self.alarm_history_csv()
+        try:
+            QApplication.clipboard().setText(csv)
+            self._log_line(f'报警历史已复制 CSV · {len(self._alarm_history)} 条')
+        except Exception as err:
+            self._log_line(f'复制失败：{err}')
+
+    def export_alarm_history_file(self):
+        path, _ = QFileDialog.getSaveFileName(
+            self, '导出报警历史', 'alarm-history.csv', 'CSV (*.csv);;All (*)')
+        if not path:
+            return
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(self.alarm_history_csv())
+            self._log_line(f'报警历史已导出 · {path}')
+        except Exception as err:
+            self._log_line(f'导出失败：{err}')
+
 
     def clear_alarm_history(self):
         self._alarm_history.clear()

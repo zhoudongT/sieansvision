@@ -20,12 +20,13 @@
 | `open-and-run-measure.sieans` | ▶ 单次：预处理→圆查找→尺寸测量→门限；有圆且有测量则 OK |
 | `open-and-run-barcode.sieans` | ▶ 单次条码/二维码；解码串进结果（样张 `codes.png`） |
 | `open-and-run-defects.sieans` | ▶ 单次参考图缺陷；差异区 + OK/NG 语义 |
-| `open-and-run-ninepoint.sieans` | 打开看九点参数表；运行写标定结果变量（无厂商标定 SDK） |
+| `open-and-run-ninepoint.sieans` | ▶ 单次：九点标定→残差门限；`calibRms`/`calibPoints`/`passGate`；OK/NG×4（无厂商标定 SDK） |
 | `open-and-run-script.sieans` | ▶ 单次脚本模块；脚本输出写入变量 |
 | `open-and-run-format-protocol.sieans` | LocalBus send→recv→parse→format→`passGate`；flow.recvData/formatted |
+| `open-and-run-comm-multiproto.sieans` | LocalBus 主路径 + TCP Client/UDP 写出（模拟回退）；OK/NG；无机器人 SDK |
 | `open-and-run-format-protocol-demo.sieans` | 无 send：demoPayload 注入→parse→format→`passGate` |
 | `open-and-run-group-comm.sieans` | Group+Comm；Listen 徽章、`RUN`/`STOP`、HB→变量 |
-| `default-platform.sieans` | 默认产线壳：图源 + HMI 生产统计 + Comm；打开即 HMI |
+| `default-platform.sieans` | 默认产线壳：图源 + **上位机状态机**运行壳 + Comm；底栏 OK/NG；打开即 HMI |
 | `mv-camera-ocr.sieans` | 相机/OCR；需 GenTL 相机或离线帧 |
 
 模板（非双击主推，可「从模板新建」）：`templates/measure-chain.sieans`、`defect-inspection.sieans`、`blank-inspection.sieans`、`mv-gentl-ocr.sieans`。
@@ -46,6 +47,14 @@
 ```bash
 node scripts/smoke-locate-measure-alarmhist-e2e.cjs
 ```
+
+## 九点 + Comm 多协议 + 报警导出
+
+```bash
+node scripts/smoke-ninepoint-comm-alarmexport-e2e.cjs
+```
+
+期望：ninepoint `passGate=1`；comm multiproto LocalBus `passGate=1`；Alarm 历史复制/导出按钮存在。
 
 期望：locate 工程 `passGate=1` 且 pose 绑定成功；measure 工程 `passGate=1`。
 

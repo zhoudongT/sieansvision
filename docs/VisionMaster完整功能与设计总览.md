@@ -351,3 +351,13 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 *本文是「看完视频后的功能+设计总览」，供产品对齐与 sieans 深化排期；算法数值与厂商协议以现场 SDK 为准，sieans 侧不宣称机械手/旋转标定 SDK 已实现。*
 
 > 2026-10-27：打开即跑默认工程 + 打开/运行自动载入源图 + 运行态生产统计（OK/NG/历史/报警/暂停）已落地，engine-host 样张链 E2E 通过。
+
+## 【2026-10-27 深夜】九点 OK/NG · Comm 多协议 · 报警导出 · 细妆续
+
+- **九点打开即跑**：`open-and-run-ninepoint.sieans` → nine_point→var_calc；注入 `nine_point_rms/_count/_ok`；`passGate`（点数≥9 且 rms<0.5）；runUi OK/NG×4。
+- **Comm 多协议样例**：`open-and-run-comm-multiproto.sieans` — LocalBus 主路径 + TCP Client/UDP 写出（socket 模拟回退）；冒烟 PASS。
+- **报警历史导出**：上位机状态机「复制CSV」「导出…」（`alarm_history_csv`）。
+- **细妆**：九点属性「验证示意」三步 Tab；`script` 红叹号；`default-platform` 默认壳=图像+上位机状态机；固定栏实况（状态/判定/计数）。
+- **冒烟**：`node scripts/smoke-ninepoint-comm-alarmexport-e2e.cjs` → 18 PASS。
+- **不做**：无 push、无机械手 SDK、无 HIK logo。
+

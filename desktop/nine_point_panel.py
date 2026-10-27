@@ -72,6 +72,7 @@ class NinePointPanel(QWidget):
         root.addWidget(self.tabs, 1)
         self.tabs.addTab(self._wrap(self._basic_tab()), '基本参数')
         self.tabs.addTab(self._wrap(self._result_tab()), '结果显示')
+        self.tabs.addTab(self._wrap(self._verify_tab()), '验证示意')
 
     def _wrap(self, inner):
         scroll = QScrollArea()
@@ -260,6 +261,38 @@ class NinePointPanel(QWidget):
         self.params['points'] = [_empty_row(i) for i in range(9)]
         self._reload_table()
         self._emit()
+
+    def _verify_tab(self):
+        """P3 九点验证 UI 三步示意（无臂测）：采点 → 求解 → 验残差."""
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(10, 10, 10, 10)
+        title = QLabel('九点标定验证 · 三步示意（无机械手 SDK）')
+        title.setStyleSheet('font-weight:600;font-size:13px;')
+        lay.addWidget(title)
+        steps = [
+            ('① 采点', '在「基本参数」填满至少 9 组 pixel↔world；可用「填充 3×3 示意」生成格子，再改世界坐标。'),
+            ('② 求解', '▶ 单次运行九点模块：引擎拟合仿射/相似变换，写出 transform / rms / usedPoints。'),
+            ('③ 验残差', '看「结果显示」与流程变量 nine_point_rms / _count / _ok；门限示例：点数≥9 且 rms<0.5 → passGate。'),
+        ]
+        for head, body in steps:
+            box = QLabel(f'<b>{head}</b><br/>{body}')
+            box.setWordWrap(True)
+            box.setStyleSheet(
+                'background:#f7f8fa;border:1px solid #dde1e6;border-radius:6px;'
+                'padding:10px 12px;margin:4px 0;color:#333;'
+            )
+            lay.addWidget(box)
+        foot = QLabel(
+            '对照 VM p36 叙事；现场手臂测点不在本产品范围。打开即跑样例 '
+            '<code>open-and-run-ninepoint.sieans</code> 已带 OK/NG。'
+        )
+        foot.setWordWrap(True)
+        foot.setStyleSheet('color:#666;padding-top:8px;')
+        lay.addWidget(foot)
+        lay.addStretch(1)
+        return w
+
 
     def _fill_grid(self):
         # 3x3 pixel grid demo at 100px spacing centered around 0

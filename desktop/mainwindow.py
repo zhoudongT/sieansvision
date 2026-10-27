@@ -111,6 +111,8 @@ class MainWindow(QMainWindow):
         tools_menu.addAction(self.action('运行画面编辑（经典）',lambda:self.open_panel('hmi')))
         settings_menu.addAction(self.action('设计态 / 运行模式…',self.toggle_app_mode))
         settings_menu.addAction(self.action('全局触发…',self.open_global_triggers))
+        settings_menu.addAction(self.action('通信管理…',self.open_comm_manager))
+        settings_menu.addAction(self.action('一键套用上位机运行壳…',self.apply_host_run_ui_template))
         self._jump_skip_persist_action = self.action(
             '跨会话记住跳层确认跳过', self._toggle_jump_skip_persist)
         self._jump_skip_persist_action.setCheckable(True)
@@ -2671,6 +2673,16 @@ class MainWindow(QMainWindow):
                 hmi.set_host_machine_state(state, reason)
             elif getattr(hmi, '_host_sm', None) is not None:
                 hmi._host_sm.set_state(state, reason)
+        except Exception:
+            pass
+
+        try:
+            hmi = getattr(self, 'operator_hmi', None) or getattr(self, 'hmi', None)
+            if hmi is None:
+                hmi = getattr(getattr(self, 'run_view', None), '_hmi', None)
+            if hmi is not None and hasattr(hmi, 'update_fixed_bar_live'):
+                zh = {'Idle': '空闲', 'Running': '运行', 'Paused': '暂停', 'Alarm': '报警', 'Stopped': '停止'}.get(state, state)
+                hmi.update_fixed_bar_live(run_status=zh)
         except Exception:
             pass
 

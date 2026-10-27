@@ -980,9 +980,11 @@ sieans：`config_status.node_needs_bang` + `Node.needs_config` / `run_failed`（
 - 运行界面设计器仍为 P0/P1 大项（分栏、固定栏、触发命令、OK/NG）。
 - 全局触发：字符串表 + 部分匹配 + 执行流程；常接通讯收数。sieans 尚未做表壳。
 
-### 本批未实现但已记缺口
+### 本批未实现但已记缺口（2026-10-27 深夜校正）
 
-位置修正（p=9）、灰度匹配模式（p=8）、通讯管理统一窗（p=10）、条件规则表（p=18）、HMI/全局触发（p=28–30）。
+~~位置修正 / 灰度匹配 / 通讯管理统一窗 / 条件规则表 / HMI·全局触发~~ — 壳已落地（pose_correct 三 Tab、locate gray 模式、通信管理窗、条件规则表、全局触发表、运行界面设计器）。
+
+**仍待细妆**：HMI 控件 1:1 可视化与真机走查、工具栏/算子库密度人工观感、固定栏相机实况、模板市场/云同步、Group 引擎展开与触发实执、卡尺级几何全参数、N4 全算子穷尽启发式。
 
 ### 帧索引（JGTech）
 
@@ -1014,3 +1016,13 @@ sieans：`config_status.node_needs_bang` + `Node.needs_config` / `run_failed`（
 - **稳定性**：修复 `variables_dialog.render` 中 `notes` → `self.notes` NameError（打开工程即崩）。
 
 - **缺陷 / 条码 / 脚本样例**：`open-and-run-defects`（差分 count=2）、`open-and-run-barcode`（codes.png→2）、`open-and-run-script`（allowScripts 下 Python 回写）。均已 engine-host E2E。
+
+## 【2026-10-27 深夜】九点 OK/NG · Comm 多协议 · 报警导出 · 细妆续
+
+- **九点打开即跑**：`open-and-run-ninepoint.sieans` → nine_point→var_calc；注入 `nine_point_rms/_count/_ok`；`passGate`（点数≥9 且 rms<0.5）；runUi OK/NG×4。
+- **Comm 多协议样例**：`open-and-run-comm-multiproto.sieans` — LocalBus 主路径 + TCP Client/UDP 写出（socket 模拟回退）；冒烟 PASS。
+- **报警历史导出**：上位机状态机「复制CSV」「导出…」（`alarm_history_csv`）。
+- **细妆**：九点属性「验证示意」三步 Tab；`script` 红叹号；`default-platform` 默认壳=图像+上位机状态机；固定栏实况（状态/判定/计数）。
+- **冒烟**：`node scripts/smoke-ninepoint-comm-alarmexport-e2e.cjs` → 18 PASS。
+- **不做**：无 push、无机械手 SDK、无 HIK logo。
+

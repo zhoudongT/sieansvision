@@ -364,3 +364,12 @@
 
 Geometry/Locate 运行参数对齐 p05/p06/p07 帧字段密度（边缘类型/滤波/卡尺宽/剔除/扇环/全部搜索/极性/级数等）；引擎 OpenCV 软用，无假 Halcon。工具栏轻抛光。**暂停等 Allen 试用反馈。**
 
+## 【2026-10-27 深夜】九点 OK/NG · Comm 多协议 · 报警导出 · 细妆续
+
+- **九点打开即跑**：`open-and-run-ninepoint.sieans` → nine_point→var_calc；注入 `nine_point_rms/_count/_ok`；`passGate`（点数≥9 且 rms<0.5）；runUi OK/NG×4。
+- **Comm 多协议样例**：`open-and-run-comm-multiproto.sieans` — LocalBus 主路径 + TCP Client/UDP 写出（socket 模拟回退）；冒烟 PASS。
+- **报警历史导出**：上位机状态机「复制CSV」「导出…」（`alarm_history_csv`）。
+- **细妆**：九点属性「验证示意」三步 Tab；`script` 红叹号；`default-platform` 默认壳=图像+上位机状态机；固定栏实况（状态/判定/计数）。
+- **冒烟**：`node scripts/smoke-ninepoint-comm-alarmexport-e2e.cjs` → 18 PASS。
+- **不做**：无 push、无机械手 SDK、无 HIK logo。
+

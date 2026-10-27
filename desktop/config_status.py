@@ -112,6 +112,8 @@ def step_incomplete(step, project=None) -> bool:
         return not any(str(params.get(k) or '').strip() for k in keys)
     if op == 'csharp_script':
         return not str(params.get('code') or '').strip()
+    if op == 'script':
+        return not str(params.get('code') or params.get('script') or '').strip()
     if op == 'production_task':
         return not str(params.get('taskName') or '').strip()
     if op == 'preprocess':
