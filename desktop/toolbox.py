@@ -22,7 +22,7 @@ def operator_icon(key, definition, size=88):
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(soft if soft.alpha() else QColor('#e5f4fb'))
+    painter.setBrush(soft if soft.alpha() else QColor('#2b333d'))
     painter.drawRoundedRect(QRectF(1, 1, 42, 42), 11, 11)
     painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.setPen(QPen(accent if accent.isValid() else QColor('#008fb9'), 1.9, Qt.PenStyle.SolidLine,
@@ -125,11 +125,11 @@ class TileDelegate(QStyledItemDelegate):
         hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)
         # Soft card
         if selected:
-            fill, border, bw = QColor('#d9f0f8'), QColor('#0a8eb8'), 1.6
+            fill, border, bw = QColor('#3a2a1c'), QColor('#e67a2e'), 1.6
         elif hovered:
-            fill, border, bw = QColor('#f0faff'), QColor('#7cc8df'), 1.2
+            fill, border, bw = QColor('#2f3844'), QColor('#e67a2e'), 1.2
         else:
-            fill, border, bw = QColor('#ffffff'), QColor('#d5e3ed'), 1.0
+            fill, border, bw = QColor('#2b333d'), QColor('#3a4552'), 1.0
         painter.setBrush(fill)
         painter.setPen(QPen(border, bw))
         painter.drawRoundedRect(QRectF(rect), 9, 9)
@@ -146,7 +146,7 @@ class TileDelegate(QStyledItemDelegate):
         font.setPixelSize(11)
         font.setWeight(QFont.Weight.Medium)
         painter.setFont(font)
-        painter.setPen(QColor('#1a3550'))
+        painter.setPen(QColor('#e8edf2'))
         text_rect = rect.adjusted(5, 56, -5, -4)
         painter.setClipRect(text_rect)
         painter.drawText(

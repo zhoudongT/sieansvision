@@ -9,8 +9,11 @@ def uid():
 
 
 def empty_project():
+    from desktop.image_source import DEFAULT_SOURCE
+    from copy import deepcopy as _dc
     return dict(version=2, id=uid(), name='未命名工程', steps=[], edges=[],
-                sourcePosition=dict(x=300, y=40), variables={})
+                sourcePosition=dict(x=300, y=40), variables={},
+                sourceConfig=_dc(DEFAULT_SOURCE))
 
 
 class Document(QObject):
@@ -30,7 +33,11 @@ class Document(QObject):
 
     def load(self, project):
         self.validate(project)
-        self.project = deepcopy(project)
+        project = deepcopy(project)
+        if 'sourceConfig' not in project:
+            from desktop.image_source import DEFAULT_SOURCE
+            project['sourceConfig'] = deepcopy(DEFAULT_SOURCE)
+        self.project = project
         self.history, self.index = [deepcopy(project)], 0
         self.saved, self.clipboard = deepcopy(project), None
         self.changed.emit()

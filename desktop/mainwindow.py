@@ -17,6 +17,9 @@ from desktop.image_view import ImageView
 from desktop.cloud_view import CloudView
 
 from desktop.theme import WORKBENCH_QSS
+from desktop.widgets import OperatorRail, FilmstripBar, MiniMap, WorkbenchStatusBar
+from desktop.property_float import PropertyFloat
+from desktop.image_source import normalize_source
 STYLE = WORKBENCH_QSS
 
 
@@ -33,8 +36,10 @@ class MainWindow(QMainWindow):
         self.backend.ready.connect(self.engine_online);self.backend.result.connect(self.engine_result)
         self.backend.error.connect(self.engine_error);self.backend.stopped.connect(self.engine_closed)
         if hasattr(self.backend,'progress'):self.backend.progress.connect(self.progress)
+        self.continuous=False;self.run_all_filmstrip=False;self.rail_category='';self.property_float=None
         self.build_ui();self.document.changed.connect(self.document_changed);self.populate_toolbox()
-        self.document_changed();self.statusBar().showMessage('正在启动本机算法引擎…' if start_engine else '离线编辑')
+        self.document_changed()
+        self.wb_status.push_log('正在启动本机算法引擎…' if start_engine else '离线编辑')
         if start_engine:QTimer.singleShot(0,lambda:self.backend.start(self.root,self.data))
 
     def action(self,title,callback,shortcut=None):
@@ -66,56 +71,106 @@ class MainWindow(QMainWindow):
         work.addAction(self.action('导入 Python 脚本文件',self.import_script));work.addAction(self.script_action)
         devices.addAction(self.action('导入点云',self.open_cloud));devices.addAction(self.action('设置参考点云',lambda:self.open_cloud(True)))
         devices.addAction(self.action('清除点云输入',self.clear_cloud))
+        devices.addAction(self.action('相机管理…',self.open_camera_manager))
         self.undo_action=self.action('撤销',self.document.undo,'Ctrl+Z');self.redo_action=self.action('重做',self.document.redo,'Ctrl+Y')
         for a in [self.undo_action,self.redo_action]:edit.addAction(a)
         edit.addAction(self.action('复制模块',self.copy_nodes,'Ctrl+Shift+C'));edit.addAction(self.action('粘贴模块',lambda:self.document.paste() if not self.busy else None,'Ctrl+Shift+V'))
         toolbar=QToolBar('工程与运行');toolbar.setMovable(False);self.addToolBar(toolbar)
         brand=QLabel('SIEANS VISION');brand.setObjectName('brand');toolbar.addWidget(brand)
-        tag=QLabel('视觉检测平台');tag.setStyleSheet('color:#5a7a90;font-size:12px;padding-right:10px;');toolbar.addWidget(tag)
+        tag=QLabel('视觉检测平台');tag.setStyleSheet('color:#9aa7b5;font-size:12px;padding-right:10px;');toolbar.addWidget(tag)
         for a in [self.open_action,self.save_action]:toolbar.addAction(a)
         self.image_action=self.action('打开图像',self.open_image);toolbar.addAction(self.image_action)
         self.reference_action=self.action('设置参考图',lambda:self.open_image(True));toolbar.addAction(self.reference_action)
         self.demo_action=self.action('演示工程',self.open_demo_library);toolbar.addAction(self.demo_action)
         self.return_demo_action=self.action('返回原工程',self.restore_demo);self.return_demo_action.setVisible(False);toolbar.addAction(self.return_demo_action);toolbar.addSeparator()
-        self.run_action=self.action('▶ 运行流程',self.run,'Ctrl+Return');toolbar.addAction(self.run_action)
+        self.cam_mgr_action=self.action('📷 相机',self.open_camera_manager);toolbar.addAction(self.cam_mgr_action)
+        toolbar.addAction(self.action('var',lambda:self.open_panel('variables')))
+        toolbar.addSeparator()
+        self.run_action=self.action('▶ 单次',self.run_once,'Ctrl+Return');toolbar.addAction(self.run_action)
+        self.cont_action=self.action('↻ 连续',self.run_continuous);toolbar.addAction(self.cont_action)
+        self.stop_action=self.action('■ 停止',self.stop_run);toolbar.addAction(self.stop_action)
         self.run_selected_action=self.action('执行所选',lambda:self.run(self.selected));toolbar.addAction(self.run_selected_action)
-        self.stop_action=self.action('■ 停止',lambda:self.request('stop',{},lambda _:None));toolbar.addAction(self.stop_action)
         toolbar.addSeparator();self.engine_label=QLabel('引擎启动中');toolbar.addWidget(self.engine_label)
-        horizontal=QSplitter(Qt.Orientation.Horizontal);self.setCentralWidget(horizontal)
+
+        # ===== Five-region shell: left(rail+lib) | center flow | right image =====
+        root_split=QSplitter(Qt.Orientation.Vertical);self.setCentralWidget(root_split)
+        horizontal=QSplitter(Qt.Orientation.Horizontal)
+
+        left=QWidget();left_l=QHBoxLayout(left);left_l.setContentsMargins(0,0,0,0);left_l.setSpacing(0)
+        self.op_rail=OperatorRail();self.op_rail.categorySelected.connect(self.filter_rail_category)
+        left_l.addWidget(self.op_rail)
         library=QWidget();library.setObjectName('libraryPane');ll=QVBoxLayout(library);ll.setContentsMargins(10,10,8,8);ll.setSpacing(6)
         lib_title=QLabel('算子库');lib_title.setObjectName('libraryTitle');ll.addWidget(lib_title)
-        lib_hint=QLabel('按分类浏览 · 搜索过滤 · 拖到画布');lib_hint.setObjectName('libraryHint');ll.addWidget(lib_hint)
+        lib_hint=QLabel('分类纵栏 · 搜索 · 拖到画布');lib_hint.setObjectName('libraryHint');ll.addWidget(lib_hint)
         self.search=QLineEdit();self.search.setObjectName('operatorSearch');self.search.setPlaceholderText('搜索算子名称或类别…');self.search.setClearButtonEnabled(True);ll.addWidget(self.search)
         self.toolbox=Toolbox();ll.addWidget(self.toolbox, 1)
         self.toolbox.operatorActivated.connect(lambda key:self.guard(lambda:self.add_node(key)))
         self.search.textChanged.connect(self.populate_toolbox)
-        horizontal.addWidget(library)
-        flow=QWidget();fl=QVBoxLayout(flow);fl.setContentsMargins(0,6,0,0)
+        left_l.addWidget(library,1)
+        left.setMinimumWidth(280);left.setMaximumWidth(420)
+        horizontal.addWidget(left)
+
+        flow=QWidget();flow.setObjectName('flowPane');fl=QVBoxLayout(flow);fl.setContentsMargins(0,0,0,0);fl.setSpacing(0)
         self.demo_notice=QLabel();self.demo_notice.setWordWrap(True);self.demo_notice.setTextFormat(Qt.TextFormat.PlainText)
-        self.demo_notice.setStyleSheet('background:#e8f6fb;color:#0b6e99;padding:10px 12px;border:1px solid #b7d9ea;border-radius:8px;');self.demo_notice.hide();fl.addWidget(self.demo_notice)
-        self.project_name=QLineEdit(self.document.project['name']);self.project_name.setAccessibleName('工程名称');self.project_name.editingFinished.connect(self.rename_project);fl.addWidget(self.project_name)
-        bar=QHBoxLayout();fl.addLayout(bar)
+        self.demo_notice.setStyleSheet('background:#2b333d;color:#9ecfe0;padding:10px 12px;border:1px solid #3a4552;border-radius:6px;margin:6px;');self.demo_notice.hide();fl.addWidget(self.demo_notice)
+        name_row=QHBoxLayout();name_row.setContentsMargins(8,4,8,4);name_row.setSpacing(6)
+        self.flow_tabs=QTabWidget();self.flow_tabs.setDocumentMode(True)
+        self.project_name=QLineEdit(self.document.project['name']);self.project_name.setAccessibleName('工程名称');self.project_name.editingFinished.connect(self.rename_project)
+        name_row.addWidget(QLabel('流程1'),0)
+        name_row.addWidget(self.project_name,1)
+        for label,callback in [('自动排列',self.document.layout),('适应',lambda:self.flow.fit()),('撤销',self.document.undo),('重做',self.document.redo)]:
+            b=QPushButton(label);b.clicked.connect(lambda checked=False,cb=callback:self.guard(cb) if not self.busy else None);name_row.addWidget(b)
+        run_flow=QPushButton('▶');run_flow.setToolTip('运行当前流程');run_flow.setObjectName('primaryButton');run_flow.clicked.connect(lambda:self.guard(self.run_once) if not self.busy else None)
+        name_row.addWidget(run_flow)
+        plus=QPushButton('+');plus.setFixedWidth(28);plus.setToolTip('新建流程（P1）');plus.setEnabled(False)
+        name_row.addWidget(plus)
+        fl.addLayout(name_row)
         self.scene=FlowScene(self.document);self.flow=FlowView(self.scene)
         self.scene.chosen.connect(self.choose_node);self.scene.configure.connect(self.configure_node);self.scene.notice.connect(self.log)
         self.flow.dropped.connect(lambda key,pos:self.guard(lambda:self.add_node(key,pos)))
-        for label,callback in [('自动排列',self.document.layout),('适应',self.flow.fit),('撤销',self.document.undo),('重做',self.document.redo)]:
-            b=QPushButton(label);b.clicked.connect(lambda checked=False,cb=callback:self.guard(cb) if not self.busy else None);bar.addWidget(b)
-        fl.addWidget(self.flow);fl.addWidget(QLabel('端口间拖拽连线 / 依次点击 · Esc 取消 · Ctrl+滚轮缩放'))
+        canvas_host=QWidget();chl=QVBoxLayout(canvas_host);chl.setContentsMargins(0,0,0,0);chl.addWidget(self.flow)
+        self.minimap=MiniMap(self.scene,self.flow,canvas_host)
+        self._canvas_host=canvas_host
+        canvas_host.installEventFilter(self)
+        fl.addWidget(canvas_host,1)
+        hint=QLabel('双击节点打开属性浮窗 · 端口拖拽连线 · Esc 取消 · Ctrl+滚轮缩放')
+        hint.setStyleSheet('color:#6b7684;padding:4px 8px;');fl.addWidget(hint)
         horizontal.addWidget(flow)
-        self.parameters=ParameterPanel();self.parameters.setMinimumWidth(340);self.parameters.setMaximumWidth(460);self.parameters.changed.connect(self.update_step);horizontal.addWidget(self.parameters)
-        right=QSplitter(Qt.Orientation.Vertical);self.images=QTabWidget();self.input_view=ImageView();self.output_view=ImageView()
-        self.images.addTab(self.input_view,'输入图像');self.images.addTab(self.output_view,'处理结果');right.addWidget(self.images)
+
+        # Right: image | filmstrip (module-result lives in bottom)
+        right=QWidget();right.setObjectName('imagePane');rl=QVBoxLayout(right);rl.setContentsMargins(0,0,0,0);rl.setSpacing(0)
+        self.images=QTabWidget();self.input_view=ImageView();self.output_view=ImageView()
+        self.images.addTab(self.input_view,'图像');self.images.addTab(self.output_view,'模块结果')
         self.cloud_view=CloudView();self.images.addTab(self.cloud_view,'3D 点云');self.input_view.roi_changed.connect(self.update_roi)
         depth_page=QWidget();depth_layout=QVBoxLayout(depth_page);self.depth_view=ImageView();self.depth_caption=QLabel('尚无深度数据')
         self.depth_caption.setWordWrap(True);depth_layout.addWidget(self.depth_view,1);depth_layout.addWidget(self.depth_caption);self.images.addTab(depth_page,'深度图')
+        rl.addWidget(self.images,1)
+        self.filmstrip=FilmstripBar()
+        self.filmstrip.pathSelected.connect(self.load_filmstrip_path)
+        self.filmstrip.listChanged.connect(self.filmstrip_list_changed)
+        self.filmstrip.autoSwitchChanged.connect(self.filmstrip_auto_changed)
+        self.filmstrip.runAllRequested.connect(self.run_all_images)
+        rl.addWidget(self.filmstrip)
+        # Keep ParameterPanel as hidden fallback for programmatic refresh; property float is primary
+        self.parameters=ParameterPanel();self.parameters.hide();self.parameters.changed.connect(self.update_step)
+        horizontal.addWidget(right)
+        horizontal.setSizes([300,560,520]);horizontal.setChildrenCollapsible(False)
+        root_split.addWidget(horizontal)
+
         self.results=ResultPanel();self.logs=QPlainTextEdit();self.logs.setReadOnly(True);self.logs.document().setMaximumBlockCount(200)
         if hasattr(self.results,'image_requested'):self.results.image_requested.connect(self.output_view.show_data)
-        bottom=QTabWidget();bottom.addTab(self.results,'模块结果');bottom.addTab(self.logs,'运行记录');right.addWidget(bottom);right.setSizes([500,230])
-        horizontal.addWidget(right);horizontal.setSizes([290,460,360,520]);horizontal.setChildrenCollapsible(False)
+        bottom=QTabWidget();bottom.addTab(self.results,'当前结果');bottom.addTab(self.logs,'运行记录')
+        help_pad=QPlainTextEdit();help_pad.setReadOnly(True)
+        help_pad.setPlainText('帮助：双击「0 图像源1」配置本地/相机/SDK；工具栏 ▶单次 / ↻连续 / ■停止；胶片条可批量跑本地图。')
+        bottom.addTab(help_pad,'帮助')
+        root_split.addWidget(bottom);root_split.setSizes([700,220]);root_split.setChildrenCollapsible(False)
+
+        self.wb_status=WorkbenchStatusBar(self);self.setStatusBar(self.wb_status)
         view.addAction(self.action('适应流程',self.flow.fit));view.addAction(self.action('适应图像',lambda:(self.input_view.fit(),self.output_view.fit())))
         self.roi_action=self.action('框选所选模块 ROI',self.roi_mode);self.roi_action.setCheckable(True);view.addAction(self.roi_action)
         view.addAction(self.action('清除所选模块 ROI',lambda:self.update_roi(None)))
         self.menuBar().addAction(self.action('桌面版说明',self.about))
+        QTimer.singleShot(0,self._place_minimap)
 
     def guard(self,callback):
         try:callback()
@@ -160,7 +215,15 @@ class MainWindow(QMainWindow):
         if self.closing:self.close()
 
     def populate_toolbox(self):
-        self.toolbox.populate(self.definitions,self.search.text())
+        query=self.search.text()
+        defs=self.definitions
+        if self.rail_category:
+            defs={k:v for k,v in defs.items() if v.get('category')==self.rail_category}
+        self.toolbox.populate(defs,query)
+
+    def filter_rail_category(self, category):
+        self.rail_category=category or ''
+        self.populate_toolbox()
 
     def add_node(self,key,position=None):
         if self.busy or not key:return
@@ -171,8 +234,52 @@ class MainWindow(QMainWindow):
         self.selected=None if node_id=='source' else node_id;self.refresh_parameters()
 
     def configure_node(self,node_id):
-        if node_id=='source':self.guard(self.open_image)
-        else:self.choose_node(node_id);self.parameters.setFocus()
+        self.guard(lambda:self.open_property_float(node_id))
+
+    def ensure_property_float(self):
+        if self.property_float is None:
+            self.property_float=PropertyFloat(self)
+            self.property_float.changed.connect(self.update_step)
+            self.property_float.sourceChanged.connect(self.update_source_config)
+            self.property_float.paramAudited.connect(self.on_param_audited)
+            self.property_float.runModule.connect(lambda nid:self.guard(lambda:self.run(None if nid=='source' else nid)))
+            self.property_float.runModuleContinuous.connect(self.run_module_continuous)
+            self.property_float.openCameraManager.connect(self.open_camera_manager)
+        return self.property_float
+
+    def open_property_float(self,node_id):
+        flo=self.ensure_property_float()
+        if node_id=='source':
+            cfg=normalize_source(self.document.project.get('sourceConfig'))
+            flo.show_source(cfg, title='0 图像源')
+            # sync filmstrip visibility for local mode
+            self.filmstrip.setVisible(cfg.get('mode','local')=='local')
+            return
+        step=next((s for s in self.document.project['steps'] if s['id']==node_id),None)
+        if not step:return
+        self.selected=node_id
+        definition=deepcopy(definition_for(step,self.definitions)) if step else None
+        if step and step.get('operation') in ('subflow','loop') and definition:
+            for field in definition.get('parameters',[]):
+                if field['key']=='subflowId':field['choices']=[dict(value=s['id'],label=s['name']) for s in self.document.project.get('subflows',[])]
+        index=1+next((i for i,s in enumerate(self.document.project['steps']) if s['id']==node_id),0)
+        flo.show_step(step,definition,self.document.project,index=index)
+
+    def update_source_config(self,config):
+        if self.busy:return
+        p=deepcopy(self.document.project)
+        p['sourceConfig']=normalize_source(config)
+        # mirror filmstrip paths / autoSwitch
+        paths=list(p['sourceConfig'].get('images') or [])
+        self.filmstrip.set_paths(paths, int(p['sourceConfig'].get('currentIndex') or 0))
+        self.filmstrip.set_auto_switch(bool(p['sourceConfig'].get('autoSwitch')))
+        self.filmstrip.setVisible(p['sourceConfig'].get('mode','local')=='local')
+        self.guard(lambda:self.document.commit(p))
+
+    def on_param_audited(self,module,param,old,new):
+        flow=self.document.project.get('name') or '流程1'
+        msg=self.wb_status.log_param_change(flow, module, param, old, new)
+        self.logs.appendPlainText(msg)
 
     def refresh_parameters(self):
         step=next((s for s in self.document.project['steps'] if s['id']==self.selected),None)
@@ -195,6 +302,15 @@ class MainWindow(QMainWindow):
         self.project_name.setText(p['name']);self.undo_action.setEnabled(not self.busy and self.document.index>0)
         self.redo_action.setEnabled(not self.busy and self.document.index<len(self.document.history)-1)
         self.refresh_parameters();self.set_busy(self.busy)
+        cfg=normalize_source(p.get('sourceConfig'))
+        if hasattr(self,'filmstrip'):
+            self.filmstrip.thumbs.blockSignals(True)
+            self.filmstrip.auto_switch.blockSignals(True)
+            self.filmstrip.set_paths(list(cfg.get('images') or []), int(cfg.get('currentIndex') or 0))
+            self.filmstrip.set_auto_switch(bool(cfg.get('autoSwitch')))
+            self.filmstrip.thumbs.blockSignals(False)
+            self.filmstrip.auto_switch.blockSignals(False)
+            self.filmstrip.setVisible(cfg.get('mode','local')=='local')
 
     def rename_project(self):
         if self.busy:return
@@ -267,6 +383,16 @@ class MainWindow(QMainWindow):
             step['reference']=data;self.document.commit(p);self.log('已设置所选模块参考图');return
         self.image=data;self.input_view.show_data(data);self.output_view.show_data('');self.results.set_results([]);self.log(f'载入图像 {image.width()} × {image.height()}')
         self.clear_cloud();self.last_result=None;self.refresh_parameters()
+        # keep filmstrip in sync for local source
+        try:
+            resolved=str(path.resolve())
+            p=deepcopy(self.document.project);cfg=normalize_source(p.get('sourceConfig'))
+            images=list(cfg.get('images') or [])
+            if resolved not in images:images.append(resolved)
+            cfg['images']=images;cfg['currentIndex']=images.index(resolved);cfg['mode']='local'
+            p['sourceConfig']=cfg;self.document.commit(p)
+        except Exception:
+            pass
         if self.dialogs.get('hmi'):self.dialogs['hmi'].set_source_image(self.image)
 
     def demo(self):
@@ -365,13 +491,31 @@ class MainWindow(QMainWindow):
     def set_busy(self,busy):
         self.busy=busy;self.flow.setEnabled(not busy);self.parameters.setEnabled(not busy);self.toolbox.setEnabled(not busy);self.project_name.setEnabled(not busy)
         for a in [self.new_action,self.image_action,self.reference_action,self.demo_action]:a.setEnabled(not busy)
-        for a in [self.open_action,self.save_action,self.run_action,self.run_selected_action]:a.setEnabled(self.engine_ready and not busy)
-        self.stop_action.setEnabled(busy);self.undo_action.setEnabled(not busy and self.document.index>0);self.redo_action.setEnabled(not busy and self.document.index+1<len(self.document.history))
+        for a in [self.open_action,self.save_action,self.run_action,self.run_selected_action,self.cont_action]:a.setEnabled(self.engine_ready and not busy)
+        self.stop_action.setEnabled(busy or self.continuous);self.undo_action.setEnabled(not busy and self.document.index>0);self.redo_action.setEnabled(not busy and self.document.index+1<len(self.document.history))
         self.demo_action.setEnabled(self.engine_ready and not busy);self.return_demo_action.setEnabled(not busy and self.demo_backup is not None)
+        if hasattr(self,'filmstrip'):self.filmstrip.setEnabled(not busy)
         for action in self.workspace_actions:action.setEnabled(self.engine_ready and (not busy or action.data() in ('continuous','hmi')))
         for key,dialog in list(self.dialogs.items()):
             if hasattr(dialog,'set_busy'):dialog.set_busy(busy)
             elif key!='login':dialog.setEnabled(not busy)
+
+    def run_once(self):
+        self.continuous=False;self.run_all_filmstrip=False;self.run()
+
+    def run_continuous(self):
+        if self.busy or not self.engine_ready:return
+        self.continuous=True;self.run_all_filmstrip=False;self.log('连续运行已启动');self.run()
+
+    def stop_run(self):
+        self.continuous=False;self.run_all_filmstrip=False
+        self.request('stop',{},lambda _:None)
+        self.wb_status.push_log('已请求停止')
+
+    def run_module_continuous(self,node_id):
+        if node_id=='source':node_id=None
+        self.continuous=True;self.run_all_filmstrip=False
+        self.guard(lambda:self.run(node_id))
 
     def run(self,target=None):
         if self.busy or not self.engine_ready:return
@@ -383,12 +527,12 @@ class MainWindow(QMainWindow):
         if target:params['target']=target
         self.set_busy(True);self.results.set_results([]);self.log('开始执行流程…')
         try:self.run_request=self.request('run',params,self.finished)
-        except Exception:self.set_busy(False);raise
+        except Exception:self.set_busy(False);self.continuous=False;raise
 
     def progress(self,value):
         if value.get('activeStep'):
             step=next((s for s in self.document.project['steps'] if s['id']==value['activeStep']),{})
-            self.statusBar().showMessage('正在执行：'+step.get('name','流程模块'))
+            self.wb_status.push_log('正在执行：'+step.get('name','流程模块'))
         dialog=self.dialogs.get('hmi')
         if dialog:dialog.set_runtime(value,self.image)
 
@@ -409,11 +553,37 @@ class MainWindow(QMainWindow):
             if depth:self.show_depth(depth);break
         dialog=self.dialogs.get('hmi')
         if dialog:dialog.set_runtime(result,self.image)
+        elapsed=result.get('elapsedMs',0) or 0
+        # Approximate VM timing triad from total elapsed
+        process_ms=elapsed
+        tool_ms=round(elapsed*0.15,2) if elapsed else 0
+        algo_ms=round(elapsed*0.75,2) if elapsed else 0
+        self.wb_status.set_timing(process_ms, tool_ms, algo_ms)
+        self.wb_status.set_config('组件配置完成', ok=result.get('state')!='failed')
         text={'completed':'运行完成','cancelled':'已停止','failed':'运行失败'}.get(result.get('state'),result.get('state','未知'))
-        self.log(f"{text} · {result.get('elapsedMs',0)} ms"+(' · '+result['error'] if result.get('error') else ''))
+        self.log(f"{text} · {elapsed} ms"+(' · '+result['error'] if result.get('error') else ''))
+        state=result.get('state')
+        if state=='cancelled':
+            self.continuous=False;self.run_all_filmstrip=False;return
+        if self.run_all_filmstrip and state=='completed':
+            if self.filmstrip.advance():
+                QTimer.singleShot(80, lambda:self.guard(self.run))
+            else:
+                self.run_all_filmstrip=False;self.log('运行全部完成')
+            return
+        if self.continuous and state=='completed':
+            cfg=normalize_source(self.document.project.get('sourceConfig'))
+            if cfg.get('mode')=='local' and self.filmstrip.auto_switch.isChecked():
+                if self.filmstrip.advance():
+                    QTimer.singleShot(50, lambda:self.guard(self.run));return
+                if cfg.get('stopAtLast'):
+                    self.continuous=False;self.log('已到最后一张，连续运行停止');return
+            QTimer.singleShot(120, lambda:self.guard(self.run) if self.continuous else None)
 
     def log(self,message):
-        self.logs.appendPlainText(str(message));self.statusBar().showMessage(str(message))
+        self.logs.appendPlainText(str(message))
+        if hasattr(self,'wb_status'):self.wb_status.push_log(str(message))
+        else:self.statusBar().showMessage(str(message))
 
     def open_template(self, relative):
         if self.busy or not self.engine_ready:return
@@ -455,7 +625,7 @@ class MainWindow(QMainWindow):
         except Exception as error:
             self.log('启动自检未完成：'+str(error));return
         self._health=report
-        self.statusBar().showMessage(report.get('short') or report.get('message','').split('\n')[0])
+        self.wb_status.push_log(report.get('short') or report.get('message','').split('\n')[0])
         self.log(report.get('message',''))
         if report.get('camera_ready'):
             self.engine_label.setText('● 引擎就绪 · 相机在线')
@@ -478,7 +648,7 @@ class MainWindow(QMainWindow):
             state=status.get('state') if isinstance(status,dict) else None
             if state=='running':
                 self.log('相机会话已预热，首次「运行流程」将直接取帧')
-                self.statusBar().showMessage('相机会话运行中 · 可直接运行流程')
+                self.wb_status.push_log('相机会话运行中 · 可直接运行流程')
             else:
                 self.log('相机会话状态：'+str(state or status))
         def failed_msg(msg):
@@ -490,6 +660,85 @@ class MainWindow(QMainWindow):
             self.pending[rid]=done
         except Exception as error:
             failed_msg(error)
+
+    def eventFilter(self, obj, event):
+        from PySide6.QtCore import QEvent
+        if obj is getattr(self,'_canvas_host',None) and event.type()==QEvent.Type.Resize:
+            self._place_minimap()
+        return super().eventFilter(obj, event)
+
+    def _place_minimap(self):
+        host=getattr(self,'_canvas_host',None);mm=getattr(self,'minimap',None)
+        if not host or not mm:return
+        mm.adjustSize()
+        mm.move(max(8, host.width()-mm.width()-12), max(8, host.height()-mm.height()-12))
+        mm.raise_()
+        mm.show()
+
+    def load_filmstrip_path(self, path):
+        if self.busy or not path:return
+        from pathlib import Path as P
+        p=P(path)
+        if not p.is_file():return
+        if p.stat().st_size>12*1024*1024:raise ValueError('图像不能超过 12 MB')
+        raw=p.read_bytes();image=QImage.fromData(raw)
+        if image.isNull() or image.width()*image.height()>16000000:raise ValueError('无效图像，或超过 1600 万像素')
+        data='data:image/'+('jpeg' if p.suffix.lower() in ('.jpg','.jpeg') else p.suffix[1:].lstrip('.') or 'png')+';base64,'+base64.b64encode(raw).decode()
+        self.image=data;self.input_view.show_data(data);self.output_view.show_data('');self.results.set_results([])
+        self.clear_cloud();self.last_result=None
+        # persist currentIndex
+        proj=deepcopy(self.document.project)
+        cfg=normalize_source(proj.get('sourceConfig'))
+        try:cfg['currentIndex']=list(cfg.get('images') or self.filmstrip.paths()).index(str(p.resolve()))
+        except ValueError:cfg['currentIndex']=self.filmstrip.current_index()
+        proj['sourceConfig']=cfg
+        # avoid history spam — soft assign without commit when only index changes during run-all
+        if not self.busy and not self.continuous and not self.run_all_filmstrip:
+            self.document.project=proj  # soft; document_changed not forced
+        self.log(f'胶片条载入 {image.width()} × {image.height()} · {p.name}')
+        if self.dialogs.get('hmi'):self.dialogs['hmi'].set_source_image(self.image)
+
+    def filmstrip_list_changed(self, paths):
+        if self.busy:return
+        p=deepcopy(self.document.project)
+        cfg=normalize_source(p.get('sourceConfig'))
+        cfg['images']=list(paths)
+        cfg['currentIndex']=self.filmstrip.current_index()
+        cfg['mode']='local'
+        p['sourceConfig']=cfg
+        self.guard(lambda:self.document.commit(p))
+        self.log(f'添加模块: 流程1.图像源1 · 本地图 {len(paths)} 张' if paths else '图像源本地列表已清空')
+
+    def filmstrip_auto_changed(self, enabled):
+        if self.busy:return
+        p=deepcopy(self.document.project)
+        cfg=normalize_source(p.get('sourceConfig'))
+        cfg['autoSwitch']=bool(enabled)
+        p['sourceConfig']=cfg
+        self.guard(lambda:self.document.commit(p))
+
+    def run_all_images(self):
+        if self.busy or not self.engine_ready:return
+        if not self.filmstrip.paths():raise ValueError('请先在胶片条添加本地图像')
+        self.continuous=False;self.run_all_filmstrip=True
+        # jump to first
+        self.filmstrip.thumbs.setCurrentRow(0)
+        self.guard(self.run)
+
+    def open_camera_manager(self):
+        if self.busy:return
+        from desktop.camera_manager import CameraManagerDialog
+        dlg=CameraManagerDialog(self)
+        dlg.openFullWorkbench.connect(lambda:self.open_panel('camera'))
+        def accepted(name):
+            p=deepcopy(self.document.project)
+            cfg=normalize_source(p.get('sourceConfig'))
+            cfg['mode']='camera';cfg['cameraId']=name
+            p['sourceConfig']=cfg
+            self.guard(lambda:self.document.commit(p))
+            self.log(f'图像源已关联相机：{name}')
+        dlg.acceptedDevice.connect(accepted)
+        dlg.exec()
 
     def about(self):
         QMessageBox.information(self,'SIEANS Vision 视觉检测平台',
@@ -644,5 +893,5 @@ class MainWindow(QMainWindow):
             event.accept();return
         if not self.closing:
             if not self.confirm_discard(include_original=True):event.ignore();return
-            self.closing=True;self.setEnabled(False);self.statusBar().showMessage('正在停止算法进程…');self.backend.shutdown()
+            self.closing=True;self.setEnabled(False);self.wb_status.push_log('正在停止算法进程…');self.backend.shutdown()
         event.ignore()
