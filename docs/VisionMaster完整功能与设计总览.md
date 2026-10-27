@@ -426,6 +426,16 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆68 · 频率撤销栈按档回退/清空 · 忽略高亮滚入可视 · DST diff导入再应用 · A/B回滚预览冲突列表 · jitter音量旁标条 · 2026-10-28】
+
+- **频率撤销栈按档回退/清空**：`restore_…_undo_stack_at(index)` 恢复指定档并丢弃更新档；`clear_…_undo_stack`；角标菜单「按档回退… / 清空撤销栈」。
+- **忽略高亮自动滚入可视**：`scroll_…_overlap_highlight_into_view`；高亮后自动滚入/激活菜单行；浮动 tip「跳 · key」；菜单「滚入高亮行」。
+- **DST diff 导入再应用**：`import_…_batch_diff(apply=True)` 读导出 JSON 并写入历史；`apply_…_batch_diff` 对 last diff.added 再应用；历史菜单「导入差异… / 再应用差异」。
+- **A/B 回滚预览冲突列表**：`preview_…_rollback_conflicts`；回滚确认框列出冲突 tip；槽对话框「预览冲突」按钮。
+- **jitter 音量旁标条**：`ensure_/refresh_…_volume_mute_badge_bar`（QProgressBar 旁标）；`set_volume`/静音刷新联动；旁标菜单「音量旁标条」。
+- **验证**：`scripts/smoke-wave100-…-e2e.py` 6/6；regress wave99 6/6。非硬件约 **~95%**。
+
+
 ## 【细妆67 · 频率合并撤销栈多级/对比预览 · 重叠跳转高亮名单行 · DST diff导出/一键清新增 · A/B回滚确认+冲突再检 · jitter wav试听/音量 · 2026-10-28】
 
 - **频率合并撤销栈多级/对比预览**：合并前压栈（最多16）；`list_…_import_merge_undo_stack`；`preview_/show_…_undo_compare_preview`（当前 vs 栈项 +/~/-/~）；角标菜单「撤销上次合并 · 栈N / 撤销栈对比预览」。
