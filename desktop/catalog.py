@@ -16,7 +16,7 @@ CORE = [
         field('threshold','二值阈值',default=127,minimum=0,maximum=255),
         field('kernel','核大小（奇数）','integer',3,minimum=1,maximum=51)]),
     dict(operation='geometry', name='几何特征查找', category='定位与测量', parameters=[
-        field('feature','特征','string','contours',choices=choices(('contours','轮廓'),('lines','直线'),('circles','圆'),('edges','边缘'))),
+        field('feature','特征','string','contours',choices=choices(('contours','轮廓'),('lines','直线'),('circles','圆'),('rects','矩形'),('edges','边缘'))),
         field('threshold','阈值',default=127,minimum=0,maximum=255),field('minArea','最小面积',default=50,minimum=1),field('invert','反色','boolean',False)]),
     dict(operation='barcode',name='条码与二维码',category='识别',parameters=[]),
     dict(operation='locate',name='模板匹配定位',category='定位与测量',parameters=[field('matchMode','匹配模式','string','fast',choices=choices(('fast','快速匹配'),('gray','灰度模板匹配'))),field('minScore','最低匹配分数',default=.85,minimum=0,maximum=1),field('maxMatches','最多目标数','integer',1,minimum=1,maximum=50),field('angleStart','起始角度',default=0,minimum=-180,maximum=180),field('angleEnd','终止角度',default=0,minimum=-180,maximum=180),field('angleStep','角度步长',default=10,minimum=1,maximum=180)]),
@@ -39,7 +39,7 @@ def builtin_definitions():
     metadata=json.loads(Path(__file__).with_name('builtin-catalog.json').read_text(encoding='utf-8'))
     definitions={}
     groups={'group':'流程控制','subflow':'流程控制','loop':'流程控制','condition':'流程控制','branch_merge':'流程控制','branch':'流程控制','delay':'流程控制','variables':'变量与数据','var_calc':'变量与数据','format_data':'变量与数据','text_save':'变量与数据','elapsed_stats':'流程控制','receive_data':'工业通信','send_data':'工业通信','protocol_parse':'工业通信','output_image':'图像处理',
-            'preprocess':'图像处理','locate':'定位与测量','pose_correct':'定位与测量','distort_correct':'标定与校正','nine_point':'标定与校正','geometry':'定位与测量','measure':'定位与测量','barcode':'识别','ocr':'识别','defects':'识别','yolo':'识别','yolo_segment':'识别'}
+            'preprocess':'图像处理','locate':'定位与测量','pose_correct':'定位与测量','distort_correct':'标定与校正','nine_point':'标定与校正','geometry':'定位与测量','measure':'定位与测量','line_intersect':'定位与测量','point_distance':'定位与测量','point_line_distance':'定位与测量','csharp_script':'变量与数据','barcode':'识别','ocr':'识别','defects':'识别','yolo':'识别','yolo_segment':'识别'}
     for operation,meta in metadata.items():
         if operation=='plugin':continue
         defaults=deepcopy(meta.get('defaults',{}));parameters=[]
@@ -204,6 +204,70 @@ def builtin_definitions():
         defaults=dict(path='', content='', sourceVar='', append=True, encoding='utf-8', newline=True),
         parameters=[field('path', '文件路径', 'string', ''), field('append', '追加', 'boolean', True)],
         description='文本保存（VM p=25）。',
+    )
+
+
+    # Wave4: 矩形/几何测量 / C#脚本
+    if 'geometry' in definitions:
+        # ensure rects in choices if fields already built from json
+        for f in definitions['geometry'].get('parameters') or []:
+            if f.get('key') == 'feature' and isinstance(f.get('choices'), list):
+                vals = {c.get('value') for c in f['choices']}
+                if 'rects' not in vals:
+                    f['choices'].append(dict(value='rects', label='矩形'))
+        definitions['geometry']['description'] = (
+            (definitions['geometry'].get('description') or '')
+            + '\nWave4：三 Tab 几何查找（直线/圆/矩形/轮廓/边缘）；feature=rects 矩形查找。'
+        )
+
+    definitions['rect_find'] = dict(
+        operation='rect_find', name='矩形查找', category='定位与测量',
+        defaults=dict(feature='rects', roiMode='draw', roiShape='rect', threshold=127, minArea=50,
+                      maxCount=1, angleTolerance=5.0, showOverlay=True),
+        parameters=[field('feature', '特征', 'string', 'rects')],
+        description='矩形查找（VM p=15/集14）：geometry.feature=rects 专用入口。',
+    )
+    definitions['line_intersect'] = dict(
+        operation='line_intersect', name='线与线交点', category='定位与测量',
+        defaults=dict(mode='bind', line1From='', line1Field='lines[0]', line2From='', line2Field='lines[0]',
+                      x1=0.0, y1=0.0, x2=100.0, y2=0.0, x3=50.0, y3=-50.0, x4=50.0, y4=50.0,
+                      unit='px', scale=1.0, showOverlay=True),
+        parameters=[
+            field('mode', '输入模式', 'string', 'bind', choices=choices(('bind', '绑定上游'), ('manual', '手动坐标'))),
+            field('unit', '单位', 'string', 'px'),
+        ],
+        description='线与线交点（VM p=14/集13）：绑定两条直线或四点；运行解析求交。',
+    )
+    definitions['point_distance'] = dict(
+        operation='point_distance', name='点与点距离', category='定位与测量',
+        defaults=dict(mode='bind', point1From='', point1Field='matches[0]', point2From='', point2Field='matches[0]',
+                      x1=0.0, y1=0.0, x2=100.0, y2=0.0, unit='px', scale=1.0, showOverlay=True),
+        parameters=[
+            field('mode', '输入模式', 'string', 'bind', choices=choices(('bind', '绑定上游'), ('manual', '手动坐标'))),
+            field('unit', '单位', 'string', 'px'),
+            field('scale', '像素比例', default=1.0),
+        ],
+        description='点与点距离（VM p=16/集15）：绑定两点或手动坐标。',
+    )
+    definitions['point_line_distance'] = dict(
+        operation='point_line_distance', name='点与线距离', category='定位与测量',
+        defaults=dict(mode='bind', pointFrom='', pointField='matches[0]', lineFrom='', lineField='lines[0]',
+                      px=0.0, py=0.0, x1=0.0, y1=0.0, x2=100.0, y2=0.0, unit='px', scale=1.0, showOverlay=True),
+        parameters=[
+            field('mode', '输入模式', 'string', 'bind', choices=choices(('bind', '绑定上游'), ('manual', '手动坐标'))),
+            field('unit', '单位', 'string', 'px'),
+        ],
+        description='点与线距离（VM p=17/集16）：点到直线垂距。',
+    )
+    definitions['csharp_script'] = dict(
+        operation='csharp_script', name='C#脚本', category='变量与数据',
+        defaults=dict(language='csharp', code='', timeoutMs=5000, entry='Script.Run', references='', arguments={}),
+        parameters=[
+            field('language', '语言', 'string', 'csharp', choices=choices(('csharp', 'C#'), ('python', 'Python示意'))),
+            field('timeoutMs', '超时ms', 'integer', 5000, minimum=100, maximum=120000),
+            field('entry', '入口', 'string', 'Script.Run'),
+        ],
+        description='C# 脚本（VM p=12）：设计态编辑器；本机 C# 标记 unsupported，真实执行请用 script。',
     )
 
     if 'locate' in definitions:

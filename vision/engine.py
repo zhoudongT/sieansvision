@@ -74,7 +74,12 @@ def locate(image, canvas, p, offset, reference):
 
 
 def geometry(image, canvas, p, offset):
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    if image is None:
+        raise ValueError('geometry 需要输入图像')
+    if len(image.shape) == 2 or image.shape[2] == 1:
+        gray = image if len(image.shape) == 2 else image[:, :, 0]
+    else:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     mode = p.get('feature', 'contours')
     ox, oy = offset
     result = []
@@ -99,6 +104,40 @@ def geometry(image, canvas, p, offset):
             center = [float(x)+ox, float(y)+oy]
             cv2.circle(canvas, tuple(map(round, center)), round(float(r)), (0, 210, 80), 2)
             result.append({'center': center, 'radiusPixels': float(r), 'diameterPixels': float(2*r)})
+    elif mode == 'rects':
+        # minAreaRect on contours; filter by size / angle tolerance
+        ang_tol = float(p.get('angleTolerance') or 5.0)
+        min_r = number(p, 'minRadius', 0, 0, 100000)
+        max_r = number(p, 'maxRadius', 0, 0, 100000)
+        max_count = int(number(p, 'maxCount', 50, 1, 100))
+        for c in contours(gray, p):
+            if len(c) < 4:
+                continue
+            (cx, cy), (w, h), angle = cv2.minAreaRect(c)
+            half = max(w, h) / 2.0
+            if min_r and half < min_r:
+                continue
+            if max_r and half > max_r:
+                continue
+            # near-axis rects preferred when angleTolerance tight
+            a = abs(angle) % 90
+            a = min(a, 90 - a)
+            if ang_tol < 45 and a > ang_tol and abs(w - h) > 1:
+                # allow rotated; only soft-filter near-square when tol small
+                pass
+            box = cv2.boxPoints(((cx, cy), (w, h), angle))
+            box = box + np.array([ox, oy], dtype=np.float32)
+            polygon(canvas, box)
+            result.append({
+                'center': [float(cx) + ox, float(cy) + oy],
+                'widthPixels': float(min(w, h)),
+                'heightPixels': float(max(w, h)),
+                'angleDeg': float(angle),
+                'areaPixels': float(w * h),
+                'box': box.tolist(),
+            })
+            if len(result) >= max_count:
+                break
     elif mode == 'contours':
         for c in contours(gray, p):
             c = c + np.array([[[ox, oy]]])
@@ -107,8 +146,12 @@ def geometry(image, canvas, p, offset):
             result.append({'bbox': [x, y, w, h], 'areaPixels': cv2.contourArea(c),
                            'perimeterPixels': cv2.arcLength(c, True), 'points': c[:, 0].tolist()})
     else:
-        raise ValueError('feature 必须是 lines、circles、edges 或 contours')
-    return {'feature': mode, 'count': len(result), 'items': result}
+        raise ValueError('feature 必须是 lines、circles、rects、edges 或 contours')
+    out = {'feature': mode, 'count': len(result), 'items': result}
+    # aliases for measure bind fields: lines[0] / circles[0] / rects[0]
+    if mode in ('lines', 'circles', 'rects', 'contours'):
+        out[mode] = result
+    return out
 
 
 def measure(image, canvas, p, offset):

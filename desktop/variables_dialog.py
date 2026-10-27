@@ -4,9 +4,11 @@ import math
 import re
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDialog, QDialogButtonBox,
     QFormLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QPushButton,
-    QTableWidget, QTableWidgetItem, QTreeWidget, QTreeWidgetItem, QVBoxLayout)
+    QTableWidget, QTableWidgetItem, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
+    QCheckBox)
 
 TYPE_LABELS = {'number': '数值', 'integer': '整数', 'string': '文本', 'boolean': '开关',
                'array': '数组', 'object': '结构体', 'null': '空值', 'number[]': '数值数组',
@@ -190,8 +192,8 @@ class TypedValueDialog(QDialog):
 
 
 class VariableRowDialog(QDialog):
-    def __init__(self, name='', value=None, fixed='', editable_type=True, parent=None):
-        super().__init__(parent); self.setWindowTitle('变量定义 / 当前值'); self.resize(430, 240)
+    def __init__(self, name='', value=None, fixed='', editable_type=True, parent=None, note='', persist=True, show_persist=False):
+        super().__init__(parent); self.setWindowTitle('变量定义 / 当前值'); self.resize(460, 300)
         self.value = deepcopy(value)
         layout = QFormLayout(self)
         self.name = QLineEdit(name); layout.addRow('变量名称', self.name)
@@ -201,6 +203,9 @@ class VariableRowDialog(QDialog):
         layout.addRow('固定类型', self.fixed)
         self.value_button = QPushButton(value_summary(value)); self.value_button.clicked.connect(self.edit_value)
         layout.addRow('变量值', self.value_button)
+        self.note = QLineEdit(note); self.note.setPlaceholderText('备注（可选）'); layout.addRow('备注', self.note)
+        self.persist = QCheckBox('跨运行持久化'); self.persist.setChecked(bool(persist)); self.persist.setVisible(show_persist)
+        if show_persist: layout.addRow('持久', self.persist)
         self.error = QLabel(); self.error.setWordWrap(True); layout.addRow(self.error)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept); buttons.rejected.connect(self.reject); layout.addRow(buttons)
@@ -229,12 +234,15 @@ class VariablesDialog(QDialog):
         row = QHBoxLayout(); layout.addLayout(row)
         self.mode = QComboBox()
         for label, key in [('变量总览', 'overview'), ('工程初始定义', 'initial'), ('运行当前值', 'current')]: self.mode.addItem(label, key)
-        self.scope = QComboBox(); self.search = QLineEdit(); self.search.setPlaceholderText('搜索名称')
-        row.addWidget(self.mode); row.addWidget(self.scope); row.addWidget(self.search, 1)
+        self.scope = QComboBox(); self.search = QLineEdit(); self.search.setPlaceholderText('搜索名称 / 备注')
+        self.global_only = QCheckBox('仅全局')
+        self.global_only.setToolTip('快速过滤全局变量表（VM 全局变量窗习惯）')
+        self.count_label = QLabel('0 项')
+        row.addWidget(self.mode); row.addWidget(self.scope); row.addWidget(self.global_only); row.addWidget(self.search, 1); row.addWidget(self.count_label)
         refresh = QPushButton('重新读取（撤销当前值编辑）'); refresh.clicked.connect(self.refresh); row.addWidget(refresh)
         self.hint = QLabel(); self.hint.setWordWrap(True); layout.addWidget(self.hint)
-        self.table = QTableWidget(0, 6); self.table.setObjectName('variableTable')
-        self.table.setHorizontalHeaderLabels(['作用域', '名称', '固定类型', '工程初始值', '运行当前值', '校验'])
+        self.table = QTableWidget(0, 8); self.table.setObjectName('variableTable')
+        self.table.setHorizontalHeaderLabels(['作用域', '名称', '固定类型', '工程初始值', '运行当前值', '备注', '持久', '校验'])
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -244,13 +252,16 @@ class VariablesDialog(QDialog):
         layout.addWidget(self.table, 1)
         bar = QHBoxLayout(); layout.addLayout(bar)
         self.add_button = QPushButton('新增变量'); self.edit_button = QPushButton('编辑所选'); self.remove_button = QPushButton('删除所选')
-        for button, callback in [(self.add_button, self.add_variable), (self.edit_button, self.edit_variable), (self.remove_button, self.remove_variable)]:
+        self.dup_button = QPushButton('复制变量'); self.copy_name_button = QPushButton('复制名称')
+        for button, callback in [(self.add_button, self.add_variable), (self.edit_button, self.edit_variable),
+                                 (self.dup_button, self.duplicate_variable), (self.copy_name_button, self.copy_selected_name),
+                                 (self.remove_button, self.remove_variable)]:
             button.clicked.connect(callback); bar.addWidget(button)
         bar.addStretch(); self.apply_button = QPushButton('应用'); self.apply_button.clicked.connect(self.apply); bar.addWidget(self.apply_button)
         close = QPushButton('关闭'); close.clicked.connect(self.reject); bar.addWidget(close)
         self.message = QLabel(); self.message.setWordWrap(True); layout.addWidget(self.message)
         self._load_definitions()
-        self.mode.currentIndexChanged.connect(self.render); self.scope.currentIndexChanged.connect(self.render); self.search.textChanged.connect(self.render)
+        self.mode.currentIndexChanged.connect(self.render); self.scope.currentIndexChanged.connect(self.render); self.search.textChanged.connect(self.render); self.global_only.toggled.connect(self.render)
         self.document.changed.connect(self._document_changed)
         self.backend.result.connect(self._result); self.backend.error.connect(self._error)
         self.finished.connect(self._disconnect)
@@ -269,6 +280,10 @@ class VariablesDialog(QDialog):
         for step in p['steps']:
             scope = 'module:' + step['id']; self.labels[scope] = '模块 · ' + step.get('name', step['id'])
             self.initial[scope] = deepcopy(step.get('variables', {})); self.types[scope] = deepcopy(step.get('variableTypes', {}))
+        self.notes = deepcopy(p.get('variableNotes', {}))  # scope -> {name: note}
+        if 'global' not in self.notes: self.notes['global'] = {}
+        if 'flow' not in self.notes: self.notes['flow'] = {}
+        self.persist = deepcopy(p.get('variablePersist', {}))  # global name -> bool
         self.original_initial, self.original_types = deepcopy(self.initial), deepcopy(self.types)
         self.scope.blockSignals(True); self.scope.clear(); self.scope.addItem('全部作用域', '')
         for key, label in self.labels.items(): self.scope.addItem(label, key)
@@ -315,27 +330,39 @@ class VariablesDialog(QDialog):
 
     def render(self, *_):
         mode = self.mode.currentData(); initial = mode == 'initial'; overview = mode == 'overview'
-        self.hint.setText('初始定义随工程保存；全局变量在“运行当前值”管理。' if initial else '值为最近读取的快照。流程与模块类型在“工程初始定义”修改；全局类型随当前值持久保存。')
+        self.hint.setText('初始定义随工程保存；全局变量在“运行当前值”管理。支持备注 / 复制变量 / 仅全局过滤。' if initial else '值为最近读取的快照。全局表支持备注与持久化开关；可用「仅全局」快速过滤。')
         editable = not overview and not self.busy and not self.stale and (initial or self.runtime_draft is not None)
         self.add_button.setEnabled(editable); self.edit_button.setEnabled(not self.stale and (overview or editable)); self.remove_button.setEnabled(editable)
         self.apply_button.setEnabled(editable and not self.pending); self.apply_button.setText('应用初始定义到工程' if initial else '写入当前值')
         self.apply_button.setVisible(not overview)
         self.table.setRowCount(0)
-        for scope, label in self.labels.items():
+        # global appears first in current/overview for VM-like table
+        ordered = list(self.labels.items())
+        if not initial:
+            ordered = sorted(ordered, key=lambda kv: (0 if kv[0] == 'global' else 1, kv[1]))
+        for scope, label in ordered:
+            if self.global_only.isChecked() and scope != 'global': continue
             if self.scope.currentData() and scope != self.scope.currentData(): continue
             if initial and scope == 'global': continue
             initials = self.initial.get(scope, {}); current = self._scope_values(self.runtime_draft, scope)
-            types = (self.runtime_draft or {}).get('globalTypes', {}) if scope == 'global' else self.types[scope]
-            names = list(dict.fromkeys([*initials, *current, *types]))
+            types = (self.runtime_draft or {}).get('globalTypes', {}) if scope == 'global' else self.types.get(scope, {})
+            self.notes.setdefault(scope, {})
+            names = list(dict.fromkeys([*initials, *current, *types, *notes.keys()]))
+            q = self.search.text().lower()
             for name in names:
-                if self.search.text().lower() not in name.lower(): continue
+                note = str((self.notes.get(scope) or {}).get(name) or '')
+                if q and q not in name.lower() and q not in note.lower(): continue
                 value = initials.get(name, MISSING) if initial else current.get(name, MISSING)
                 fixed = types.get(name, ''); state = '动态类型' if not fixed else '符合类型' if value is not MISSING and type_matches(value, fixed) else '缺少值 / 类型不符'
                 row = self.table.rowCount(); self.table.insertRow(row)
                 initial_text = value_summary(initials[name]) if name in initials else '全局持久值' if scope == 'global' else '未定义'
-                for column, text in enumerate([label, name, TYPE_LABELS.get(fixed, '动态'), initial_text, value_summary(current.get(name, MISSING)), state]):
+                persist = '是' if scope == 'global' and self.persist.get(name, True) else ('—' if scope != 'global' else '否')
+                for column, text in enumerate([label, name, TYPE_LABELS.get(fixed, '动态'), initial_text, value_summary(current.get(name, MISSING)), note, persist, state]):
                     item = QTableWidgetItem(text); self.table.setItem(row, column, item)
                 self.table.item(row, 0).setData(Qt.ItemDataRole.UserRole, (scope, name))
+        self.count_label.setText(f'{self.table.rowCount()} 项')
+        editable = not overview and not self.busy and not self.stale and (initial or self.runtime_draft is not None)
+        self.dup_button.setEnabled(editable); self.copy_name_button.setEnabled(self.table.rowCount() > 0)
 
     def _selected(self):
         row = self.table.currentRow()
@@ -361,13 +388,21 @@ class VariablesDialog(QDialog):
     def _edit(self, scope, old):
         if self.busy or self.stale or (self.mode.currentData() == 'current' and self.runtime_draft is None): return
         values, types = self._values_types(scope); can_type = self.mode.currentData() == 'initial' or scope == 'global'
-        dialog = VariableRowDialog(old or '', values.get(old, 0), types.get(old, ''), can_type, self)
+        note = (self.notes.get(scope) or {}).get(old or '', '')
+        dialog = VariableRowDialog(old or '', values.get(old, 0), types.get(old, ''), can_type, self,
+                                   note=note, persist=self.persist.get(old or '', True), show_persist=(scope == 'global'))
         if old and not can_type and old in types: dialog.name.setReadOnly(True)
         if dialog.exec() != QDialog.DialogCode.Accepted: return
         name, kind = dialog.name.text(), dialog.fixed.currentData()
         if name != old and name in values: self.message.setText('同一作用域变量名称不能重复。'); return
-        if old and old != name: values.pop(old, None); types.pop(old, None)
+        if old and old != name:
+            values.pop(old, None); types.pop(old, None)
+            (self.notes.get(scope) or {}).pop(old, None)
+            self.persist.pop(old, None)
         values[name] = deepcopy(dialog.value)
+        self.notes.setdefault(scope, {})[name] = dialog.note.text().strip()
+        if scope == 'global':
+            self.persist[name] = bool(dialog.persist.isChecked())
         if can_type:
             if kind: types[name] = kind
             else: types.pop(name, None)
@@ -384,6 +419,32 @@ class VariablesDialog(QDialog):
         if self.mode.currentData() == 'initial': types.pop(name, None)
         self.render()
 
+    def duplicate_variable(self):
+        if self.busy or self.stale or self.mode.currentData() == 'overview': return
+        selected = self._selected()
+        if not selected: return
+        scope, name = selected
+        values, types = self._values_types(scope)
+        if name not in values and name not in types:
+            self.message.setText('所选行无可复制的值。'); return
+        base = name + '_copy'; cand = base; i = 2
+        while cand in values or cand in types:
+            cand = f'{base}{i}'; i += 1
+        values[cand] = deepcopy(values.get(name, default_value(types.get(name) or 'number')))
+        if name in types: types[cand] = types[name]
+        notes = self.notes.setdefault(scope, {})
+        if name in notes: notes[cand] = notes[name]
+        if scope == 'global' and name in self.persist:
+            self.persist[cand] = self.persist[name]
+        self.message.setText(f'已复制为 {cand}'); self.render()
+
+    def copy_selected_name(self):
+        selected = self._selected()
+        if not selected: return
+        _, name = selected
+        QGuiApplication.clipboard().setText(name)
+        self.message.setText(f'已复制名称：{name}')
+
     def apply(self):
         if self.busy or self.stale or self.pending: return
         try:
@@ -393,6 +454,8 @@ class VariablesDialog(QDialog):
                 for scope, target in [('flow', project), *[('module:' + s['id'], s) for s in project['steps']]]:
                     if self.initial[scope] != self.original_initial[scope]: target['variables'] = deepcopy(self.initial[scope])
                     if self.types[scope] != self.original_types[scope]: target['variableTypes'] = deepcopy(self.types[scope])
+                project['variableNotes'] = deepcopy(self.notes)
+                project['variablePersist'] = deepcopy(self.persist)
                 self._applying = True
                 try: self.document.commit(project)
                 finally: self._applying = False

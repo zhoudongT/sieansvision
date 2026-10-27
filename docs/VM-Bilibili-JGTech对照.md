@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |----|------|
 | 来源 | Bilibili [BV19vUfBVEpp](https://www.bilibili.com/video/BV19vUfBVEpp/) · 65 分页 |
-| 本批已看 | **p=4–11,13,18–25,26–30**（至 Wave3；含新下 p21/22/24/25，约 22 集素材） |
+| 本批已看 | **p=4–17,18–30**（至 Wave4；含 p12 C# / p14–17 几何测量 / p15 矩形；约 27 集素材） |
 | 素材路径 | `docs/vm-bilibili-jgtech/videos/` · `docs/vm-bilibili-jgtech/frames/` |
 | 关键帧策略 | ~1 帧 / 9s（OpenCV；PC 无 ffmpeg/yt-dlp，用 `bin/bili_fetch.py`） |
 | 目标 | 先看视频再改 sieansvision；本文记录 **UI 步骤 / 中文标签 / 已有 vs 缺口** |
@@ -18,14 +18,19 @@
 | p | 标题 | 关键帧目录 | sieans 现状 | 缺口（本批优先级） |
 |---|------|----------|-------------|-------------------|
 | 4 | 图像源 | `frames/p04_…` | `ImageSourceForm` 本地/相机/SDK + 相机管理入口 | 胶片条/自动切换细节、状态栏「未配置完整」文案可再贴 |
-| 5 | 直线查找 | `frames/p05_…` | `geometry` feature=lines | 属性分区/ROI 继承 vs 绘制可增强 |
-| 6 | 圆查找 | `frames/p06_…` | `geometry` feature=circles | 同直线 |
+| 5 | 直线查找 | `frames/p05_…` | **GeometryFindPanel** feature=lines | **Wave4**：三 Tab + ROI/极性/长度间隙/结果显示 |
+| 6 | 圆查找 | `frames/p06_…` | **GeometryFindPanel** feature=circles | **Wave4**：半径范围/分数等同壳 |
 | 7 | **快速模板匹配** | `frames/p07_…` | `locate` 扁平参数 | **四 Tab 壳已落地**（基本参数/特征模板/运行参数/结果显示） |
 | 8 | 灰度模板匹配 | `frames/p08_…` | locate + matchMode | **Wave2**：matchMode gray/fast + 灰度模板 Tab/参数 |
 | 9 | 位置修正 | `frames/p09_…` | **pose_correct** 算子+三 Tab | Wave2 设计态+运行透传 |
 | 10 | 通信管理 | `frames/p10_…` | **通信管理**五 Tab 窗 | Wave2：设备/收发/心跳/响应 |
-| 11 | 收发数据 / 全局变量 | `frames/p11_…` | **receive/send_data** 壳 | Wave3 收发节点；全局变量表仍可加深 |
+| 11 | 收发数据 / 全局变量 | `frames/p11_…` | **receive/send_data** + 变量表 | Wave3 收发；**Wave4** 全局表 UX（备注/持久/仅全局/复制） |
+| 12 | C#脚本 | `frames/p12_…` | **csharp_script** | **Wave4** 设计态编辑器壳；CLR 本机不执行 |
 | 13 | 畸变矫正 | `frames/p13_…` | **distort_correct** | Wave3 三 Tab 壳 + 透传 |
+| 14 | 线与线的交点 | `frames/p14_…` | **line_intersect** | **Wave4** 绑定/手动 + 运行求交 |
+| 15 | 矩形查找 | `frames/p15_…` | **rect_find** → geometry.rects | **Wave4** 三 Tab + minAreaRect 运行 |
+| 16 | 点与点距离 | `frames/p16_…` | **point_distance** | **Wave4** 绑定/手动欧氏距 |
+| 17 | 点与线距离 | `frames/p17_…` | **point_line_distance** | **Wave4** 垂距 |
 | 20 | 平移九点标定 | `frames/p20_…` | **nine_point** | Wave3 九点表 + 仿射估 |
 | 23 | 变量计算 | `frames/p23_…` | **var_calc** | Wave3 表达式表 + 求值 |
 | 27 | 耗时统计 | `frames/p27_…` | **elapsed_stats** | Wave3 起止下拉 + 累计 |
@@ -158,14 +163,40 @@
 - p21 格式化（发出数据）、p22 输出(保存)图像、p24 协议解析、p25 文本保存（下载帧后薄壳已对齐笔记）。
 
 ### 仍可加深
-- 畸变真实 undistort / OpenCV 标定流程；九点 SVD；通信真实收发；输出图像宿主落盘；全局变量表 UX；HMI 控件库；p=1–3、12、14–17、31–65。
+- 畸变真实 undistort / OpenCV 标定流程；九点 SVD；通信真实收发；输出图像宿主落盘；HMI 控件库；直线/圆亚像素与卡尺；C# CLR/真实 script 宿主；p=1–3 入门、p=31–65 行业案例。
 
+
+## Wave4 落地（2026-10-27）
+
+1. **矩形查找** `rect_find` — `GeometryFindPanel` 强制 feature=rects；运行 remap→`geometry` + `vision/engine.py` minAreaRect。
+2. **线与线交点** `line_intersect` — `MeasureGeomPanel` 绑定/手动；`flow-control.lineIntersect` 解析几何。
+3. **点与点距离** `point_distance` / **点与线距离** `point_line_distance` — 同上壳 + 运行欧氏/垂距。
+4. **直线/圆查找属性抛光** — 共用三 Tab：ROI 绘制|继承、跟随位姿、边缘极性、minLength/maxGap、半径范围、角度容差、结果显示/判断。
+5. **全局变量表 UX** — 备注列、持久化列、「仅全局」过滤、复制变量/复制名称；工程字段 `variableNotes` / `variablePersist`。
+6. **C#脚本** `csharp_script` — 设计态代码区（C#/Python 切换）、超时/入口/IO 变量表；运行返回 `unsupported`（无 CLR）；真实执行请用既有 `script`。
+
+### Wave4 分页对照（Bilibili p ↔ 集标题）
+| B站 p | 集内标题 | sieans op |
+|------|----------|-----------|
+| 12 | C#脚本 | csharp_script |
+| 14 | 线与线的交点 | line_intersect |
+| 15 | 矩形查找 | rect_find |
+| 16 | 点与点之间的距离 | point_distance |
+| 17 | 点与线之间的距离 | point_line_distance |
+
+### Wave4 新看 / 下帧
+- 帧已齐：`frames/p12_*`、`p14_*`–`p17_*`（及既有 p05/p06 抛光对照）。
 
 ## 65 集下一步建议顺序
 
-1. 未下未看优先：p=1–3 入门、p=12–17（C#/畸变/几何测量）、p=20–25（九点/变量/协议）、p=27 耗时、p=31–65 行业案例。  
-2. 功能：通信真实后端、畸变/九点算法加深、输出图像落盘、全局变量表、HMI 控件深度、C#/脚本课。  
-3. 点测表更新 Wave2/Wave3 项为 PASS（壳级）。
+1. 未下未看优先：p=1–3 入门；**p=31–65 行业案例**（见下「行业案例策略」）。  
+2. 功能加深：通信真实后端、畸变/九点算法、输出图像落盘、HMI 控件深度、script/CLR 宿主、几何亚像素。  
+3. 点测表更新 Wave2–Wave4 项为 PASS（壳级）。
+
+### 行业案例策略（p=31–65）
+- **建议：深机器人/机械臂/多机联动案例只做目录壳与流程示意，不深接厂商 SDK**（除非 Allen 点名某集要可跑 demo）。
+- 优先壳化：检测/测量/定位类行业流程复用既有 locate/geometry/measure；通信+全局触发串流程。
+- 跳过或极薄：深度 3D 点云拼接、机器人手眼标定全链路、专有 PLC 协议（除非已有 CommManager 设备可挂）。
 
 ---
 

@@ -102,6 +102,16 @@ def step_incomplete(step, project=None) -> bool:
         return not str(params.get('sourceVar') or '').strip()
     if op == 'text_save':
         return not str(params.get('path') or '').strip()
+    if op in ('geometry', 'rect_find'):
+        return not bool(step.get('imageFrom'))
+    if op in ('line_intersect', 'point_distance', 'point_line_distance'):
+        if (params.get('mode') or 'bind') == 'manual':
+            return False
+        # bind mode: at least one source field filled
+        keys = ('line1From', 'line2From', 'point1From', 'point2From', 'pointFrom', 'lineFrom')
+        return not any(str(params.get(k) or '').strip() for k in keys)
+    if op == 'csharp_script':
+        return not str(params.get('code') or '').strip()
     return False
 
 

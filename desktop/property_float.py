@@ -239,6 +239,42 @@ class PropertyFloat(QDialog):
             self.show(); self.raise_(); self.activateWindow()
             return
 
+        # Wave4: 几何查找 / 线线交点·点距 / C#脚本
+        if step and step.get('operation') in ('geometry', 'rect_find'):
+            from desktop.geometry_find_panel import GeometryFindPanel, normalize_geometry_params
+            step = deepcopy(step)
+            force = 'rects' if step.get('operation') == 'rect_find' else None
+            step['params'] = normalize_geometry_params(step.get('params'), feature=force)
+            panel = GeometryFindPanel(step, definition, project, force_feature=force)
+            panel.changed.connect(self._on_step_changed)
+            self.body.addWidget(panel)
+            self._panel = panel
+            self._last_step = deepcopy(step)
+            self.show(); self.raise_(); self.activateWindow()
+            return
+        if step and step.get('operation') in ('line_intersect', 'point_distance', 'point_line_distance'):
+            from desktop.measure_geom_panel import MeasureGeomPanel, normalize_measure_geom_params
+            step = deepcopy(step)
+            step['params'] = normalize_measure_geom_params(step.get('operation'), step.get('params'))
+            panel = MeasureGeomPanel(step, definition, project)
+            panel.changed.connect(self._on_step_changed)
+            self.body.addWidget(panel)
+            self._panel = panel
+            self._last_step = deepcopy(step)
+            self.show(); self.raise_(); self.activateWindow()
+            return
+        if step and step.get('operation') == 'csharp_script':
+            from desktop.csharp_script_panel import CsharpScriptPanel, normalize_csharp_params
+            step = deepcopy(step)
+            step['params'] = normalize_csharp_params(step.get('params'))
+            panel = CsharpScriptPanel(step, definition, project)
+            panel.changed.connect(self._on_step_changed)
+            self.body.addWidget(panel)
+            self._panel = panel
+            self._last_step = deepcopy(step)
+            self.show(); self.raise_(); self.activateWindow()
+            return
+
         # Wave2: 条件分支 / 分支模块 表
         if step and step.get('operation') in ('condition', 'branch'):
             from desktop.condition_branch_panel import (
