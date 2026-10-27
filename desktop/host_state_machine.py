@@ -712,7 +712,9 @@ class HostStateMachineWidget(QWidget):
             b.setMinimumWidth(36)
             b.setMaximumWidth(64)
             b.setToolTip(f'严重度筛 · {lab}')
-            b.clicked.connect(lambda *_a, k=key: self.set_alarm_severity_filter(k))
+            # wave36: 短按筛 · 长按落钉（预览钉可落）
+            b.mousePressEvent = (lambda e, k=key: self._on_sev_chip_press(e, k))
+            b.mouseReleaseEvent = (lambda e, k=key: self._on_sev_chip_release(e, k))
             b.enterEvent = (lambda e, k=key: self._on_sev_chip_enter(e, k))
             b.leaveEvent = (lambda e, k=key: self._on_sev_chip_leave(e, k))
             chip_row.addWidget(b)
@@ -794,16 +796,38 @@ class HostStateMachineWidget(QWidget):
         chip_row.addWidget(self._alarm_sev_pin_badge)
         chip_hint = QLabel('芯片')
         chip_hint.setStyleSheet(f'color:{TEXT_MUTED};font-size:10px;')
-        chip_hint.setToolTip('严重度芯片 · 气泡长按钉住 · Alt+P')
+        chip_hint.setToolTip('严重度芯片 · 悬停预览 · 长按落钉 · Alt+P / Shift+Alt+P')
         chip_row.addWidget(chip_hint)
         lay.addLayout(chip_row)
-        # wave33: Alt+P 钉住/取消当前 sev
+        # wave33–36: Alt+P 钉住/切档 · Shift+Alt+P 回退切档
         try:
             self._sev_pin_shortcut = QShortcut(QKeySequence('Alt+P'), self)
             self._sev_pin_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
             self._sev_pin_shortcut.activated.connect(self._on_sev_pin_hotkey)
         except Exception:
             self._sev_pin_shortcut = None
+        try:
+            self._sev_pin_back_shortcut = QShortcut(QKeySequence('Shift+Alt+P'), self)
+            self._sev_pin_back_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            self._sev_pin_back_shortcut.activated.connect(
+                lambda: self._on_sev_pin_hotkey(reverse=True)
+            )
+        except Exception:
+            self._sev_pin_back_shortcut = None
+        # wave36: Alt+H 容量菜单快捷键
+        try:
+            self._toast_hist_cap_shortcut = QShortcut(QKeySequence('Alt+H'), self)
+            self._toast_hist_cap_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            self._toast_hist_cap_shortcut.activated.connect(self._on_toast_hist_cap_hotkey)
+        except Exception:
+            self._toast_hist_cap_shortcut = None
+        # wave36: chip 长按落钉计时
+        self._sev_chip_pin_timer = QTimer(self)
+        self._sev_chip_pin_timer.setSingleShot(True)
+        self._sev_chip_pin_timer.timeout.connect(self._on_sev_chip_long_press)
+        self._sev_chip_pin_key = None
+        self._sev_chip_long_fired = False
+        self._sev_chip_pin_ms = 550
         self._sync_alarm_sev_chips()
         self._alarm_list = QListWidget()
         self._alarm_list.setObjectName('hostAlarmHistoryList')
@@ -896,7 +920,7 @@ class HostStateMachineWidget(QWidget):
         self._liaison_toast_history_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._liaison_toast_history_bar.setCursor(Qt.CursorShape.PointingHandCursor)
         self._liaison_toast_history_bar.setToolTip(
-            f'单击回切 · 右键容量菜单 · 中键循环（当前 {self._liaison_toast_history_max}）'
+            f'单击回切 · 右键/Alt+H 容量菜单 · 中键循环（当前 {self._liaison_toast_history_max}）'
         )
         self._liaison_toast_history_bar.mousePressEvent = (
             lambda e: self._on_liaison_toast_history_clicked(e)
@@ -1137,7 +1161,7 @@ class HostStateMachineWidget(QWidget):
             hbar.setText(f'切窗史 · {htext}')
             max_n = int(getattr(self, '_liaison_toast_history_max', 5) or 5)
             hbar.setToolTip(
-                f'容量 {len(hist)}/{max_n} · 单击回切 · 右键容量菜单 · 中键循环'
+                f'容量 {len(hist)}/{max_n} · 单击回切 · 右键/Alt+H 容量菜单 · 中键循环'
             )
             hbar.adjustSize()
             try:
@@ -1205,7 +1229,7 @@ class HostStateMachineWidget(QWidget):
             used = len(hist or [])
             try:
                 hbar.setToolTip(
-                    f'容量 {used}/{n} · 单击回切 · 右键容量菜单 · 中键循环'
+                    f'容量 {used}/{n} · 单击回切 · 右键/Alt+H 容量菜单 · 中键循环'
                 )
             except Exception:
                 pass
@@ -1289,49 +1313,81 @@ class HostStateMachineWidget(QWidget):
         timer.start(int(ms or 1800))
         return True
 
+    def _flash_open_dir_fail_tip(self, reason: str = ''):
+        """wave36: 开目录失败 tip / toast."""
+        msg = f'打开目录失败' + (f' · {reason}' if reason else '')
+        try:
+            self._flash_host_toast(msg, kind='info', ms=2400)
+        except Exception:
+            pass
+        try:
+            self._log_line(msg)
+        except Exception:
+            pass
+        toast = getattr(self, '_liaison_hotkey_toast', None)
+        if toast is not None:
+            try:
+                QToolTip.showText(
+                    toast.mapToGlobal(QPoint(0, toast.height())),
+                    msg,
+                    toast,
+                    toast.rect(),
+                    2400,
+                )
+            except Exception:
+                try:
+                    QToolTip.showText(
+                        toast.mapToGlobal(QPoint(0, toast.height())),
+                        msg,
+                        toast,
+                    )
+                except Exception:
+                    pass
+
     def _on_host_toast_clicked(self, event=None):
-        """wave35: CSV toast 单击开目录."""
+        """wave35–36: CSV toast 单击开目录；失败 tip."""
         try:
             if event is not None and hasattr(event, 'button'):
                 if event.button() not in (Qt.MouseButton.LeftButton,):
                     return
         except Exception:
             pass
-        path = str(getattr(self, '_host_toast_open_path', '') or '').strip()
-        if not path:
-            return
-        try:
-            from pathlib import Path as _P
-            p = _P(path)
-            target = p if p.is_dir() else p.parent
-            if not target.exists():
-                return
-            ok = QDesktopServices.openUrl(QUrl.fromLocalFile(str(target.resolve())))
-            if ok:
-                try:
-                    self._log_line(f'已打开目录 · {target}')
-                except Exception:
-                    pass
-        except Exception as err:
-            try:
-                self._log_line(f'打开目录失败 · {err}')
-            except Exception:
-                pass
+        self.open_host_toast_path()
 
     def open_host_toast_path(self) -> str:
-        """wave35: 供冒烟调用 — 打开 toast 绑定目录，返回目录路径."""
+        """wave35–36: 打开 toast 绑定目录；失败 tip；返回目录或 ''."""
         path = str(getattr(self, '_host_toast_open_path', '') or '').strip()
         if not path:
+            self._flash_open_dir_fail_tip('无绑定路径')
             return ''
         try:
             from pathlib import Path as _P
             p = _P(path)
-            target = p if p.is_dir() else p.parent
-            if not target.exists():
+            if p.is_dir():
+                target = p
+            elif p.is_file():
+                target = p.parent
+            elif p.suffix and p.parent.exists():
+                # missing file but parent dir ok
+                target = p.parent
+            else:
+                self._flash_open_dir_fail_tip('目录不存在')
                 return ''
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(target.resolve())))
+            if not target.exists():
+                self._flash_open_dir_fail_tip('目录不存在')
+                return ''
+            ok = QDesktopServices.openUrl(QUrl.fromLocalFile(str(target.resolve())))
+            if not ok:
+                # headless / no platform services — return path but tip soft-fail
+                self._flash_open_dir_fail_tip('系统无法打开')
+                return str(target.resolve())
+            try:
+                self._log_line(f'已打开目录 · {target}')
+            except Exception:
+                pass
             return str(target.resolve())
-        except Exception:
+        except Exception as err:
+            self._flash_open_dir_fail_tip(str(err))
             return ''
 
     def set_liaison_window_sec(self, sec: int, *, persist: bool = True):
@@ -1802,6 +1858,24 @@ class HostStateMachineWidget(QWidget):
             act_save.setText('另存 paths CSV…（无）')
         act_save.triggered.connect(lambda *_: self.save_all_alarm_film_paths_csv())
         menu.addAction(act_save)
+        # wave36: 多档另存记忆子菜单
+        recent = self.alarm_film_csv_dirs()
+        if recent and all_rows:
+            sub = QMenu('最近另存目录', menu)
+            for i, d in enumerate(recent):
+                from pathlib import Path as _P
+                try:
+                    lab = _P(d).name or d
+                except Exception:
+                    lab = d
+                act_r = QAction(f'{i+1}. {lab}', sub)
+                act_r.setToolTip(d)
+                act_r.setData(d)
+                act_r.triggered.connect(
+                    lambda *_a, dd=d: self.save_all_alarm_film_paths_csv_to_dir(dd)
+                )
+                sub.addAction(act_r)
+            menu.addMenu(sub)
         self._last_alarm_ctx_item = item
         return menu
 
@@ -1903,7 +1977,7 @@ class HostStateMachineWidget(QWidget):
         return True
 
     def _on_sev_chip_enter(self, event=None, key: str = 'all'):
-        """wave35: sev chip 悬停预览钉（虚钉样式，不真正钉住）."""
+        """wave35–36: sev chip 悬停预览钉；可长按落钉."""
         key = str(key or 'all').strip().lower()
         self._sev_chip_hover_key = key
         chips = getattr(self, '_alarm_sev_chips', None) or {}
@@ -1929,17 +2003,20 @@ class HostStateMachineWidget(QWidget):
                 f'background:{bg};color:{fg};border:1px dashed #f0c040;'
                 f'border-radius:3px;font-size:10px;font-weight:700;padding:1px 4px;'
             )
-            b.setToolTip(f'悬停预览钉 · {base} · 长按气泡 / Alt+P 钉住')
+            b.setToolTip(f'悬停预览钉 · {base} · 长按落钉 · Alt+P')
             QToolTip.showText(
                 b.mapToGlobal(QPoint(0, b.height())),
-                f'预览钉 · {base}',
+                f'预览钉 · {base} · 长按落钉',
                 b,
             )
         except Exception:
             pass
 
     def _on_sev_chip_leave(self, event=None, key: str = 'all'):
-        """wave35: 离开芯片 → 取消预览钉."""
+        """wave35–36: 离开芯片 → 取消预览钉；停长按计时."""
+        timer = getattr(self, '_sev_chip_pin_timer', None)
+        if timer is not None and timer.isActive():
+            timer.stop()
         if str(getattr(self, '_sev_chip_hover_key', '') or '') == str(key or ''):
             self._sev_chip_hover_key = ''
         try:
@@ -1951,28 +2028,81 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             pass
 
-    def _on_sev_pin_hotkey(self):
-        """wave33–35: Alt+P 钉住；已钉再按切档（循环 sev）+ toast."""
+    def _on_sev_chip_press(self, event=None, key: str = 'all'):
+        """wave36: 芯片按下 — 启动长按落钉计时."""
+        try:
+            if event is not None and hasattr(event, 'button'):
+                if event.button() not in (Qt.MouseButton.LeftButton,):
+                    return
+        except Exception:
+            pass
+        self._sev_chip_pin_key = str(key or 'all')
+        self._sev_chip_long_fired = False
+        timer = getattr(self, '_sev_chip_pin_timer', None)
+        if timer is not None:
+            ms = int(getattr(self, '_sev_chip_pin_ms', 550) or 550)
+            timer.start(ms)
+
+    def _on_sev_chip_release(self, event=None, key: str = 'all'):
+        """wave36: 短按筛档；长按已落钉则跳过."""
+        timer = getattr(self, '_sev_chip_pin_timer', None)
+        if timer is not None and timer.isActive():
+            timer.stop()
+        if getattr(self, '_sev_chip_long_fired', False):
+            return
+        try:
+            if event is not None and hasattr(event, 'button'):
+                if event.button() not in (Qt.MouseButton.LeftButton,):
+                    return
+        except Exception:
+            pass
+        self.set_alarm_severity_filter(key)
+
+    def _on_sev_chip_long_press(self):
+        """wave36: 预览钉长按 → 真正落钉."""
+        self._sev_chip_long_fired = True
+        key = str(getattr(self, '_sev_chip_pin_key', '') or 'all').strip().lower()
+        if key not in ('all', 'error', 'warning', 'info'):
+            key = 'all'
+        self.pin_alarm_severity_filter(True, key=key)
+        try:
+            self.set_alarm_severity_filter(key, force=True)
+        except Exception:
+            pass
+        labels = {'all': '全部', 'error': '错', 'warning': '警', 'info': '讯'}
+        lab = labels.get(key, key)
+        msg = f'长按落钉 · {lab}'
+        try:
+            self._log_line(msg)
+            self._flash_host_toast(msg, kind='pin')
+        except Exception:
+            pass
+
+    def _on_sev_pin_hotkey(self, reverse: bool = False):
+        """wave33–36: Alt+P 钉住/切档；Shift+Alt+P 回退切档 + toast."""
         labels = {'all': '全部', 'error': '错', 'warning': '警', 'info': '讯'}
         order = ['all', 'error', 'warning', 'info']
         if getattr(self, '_alarm_sev_pinned', False):
             cur = str(getattr(self, '_alarm_sev_pinned_key', '') or 'all')
             try:
-                nxt = order[(order.index(cur) + 1) % len(order)]
+                idx = order.index(cur)
+                nxt = order[(idx - 1) % len(order)] if reverse else order[(idx + 1) % len(order)]
             except ValueError:
                 nxt = 'all'
             self.pin_alarm_severity_filter(True, key=nxt)
-            # also force filter to new key
             try:
                 self.set_alarm_severity_filter(nxt, force=True)
             except Exception:
                 pass
             lab = labels.get(nxt, nxt)
-            msg = f'Alt+P · 切档 → {lab}'
+            arrow = '←' if reverse else '→'
+            tag = 'Shift+Alt+P' if reverse else 'Alt+P'
+            msg = f'{tag} · 切档 {arrow} {lab}'
         else:
             self.pin_alarm_severity_filter(True, key=self.alarm_severity_filter())
             lab = labels.get(self._alarm_sev_pinned_key, self._alarm_sev_pinned_key)
-            msg = f'Alt+P · 钉住 {lab}'
+            tag = 'Shift+Alt+P' if reverse else 'Alt+P'
+            msg = f'{tag} · 钉住 {lab}'
         try:
             self._log_line(msg)
         except Exception:
@@ -2210,23 +2340,64 @@ class HostStateMachineWidget(QWidget):
         return chr(10).join(lines)
 
     def alarm_film_csv_dir(self) -> str:
-        """wave33: 上次另存目录."""
+        """wave33–36: 最近另存目录（多档之首）."""
+        dirs = self.alarm_film_csv_dirs()
+        if dirs:
+            return dirs[0]
         try:
             raw = str(self._host_settings().value('host/alarmFilmCsvDir', '') or '').strip()
         except Exception:
             raw = ''
         return raw
 
-    def set_alarm_film_csv_dir(self, directory: str) -> str:
-        """Persist last CSV save directory."""
-        directory = str(directory or '').strip()
-        if not directory:
-            return ''
+    def alarm_film_csv_dirs(self, *, max_n: int = 5) -> list:
+        """wave36: 多档另存目录记忆（新→旧，最多 max_n）."""
+        max_n = max(1, min(8, int(max_n or 5)))
+        out = []
         try:
-            self._host_settings().setValue('host/alarmFilmCsvDir', directory)
+            raw = self._host_settings().value('host/alarmFilmCsvDirs', [])
+            if isinstance(raw, str):
+                # legacy comma / newline
+                parts = [p.strip() for p in raw.replace('\n', ',').split(',') if p.strip()]
+                raw = parts
+            if not isinstance(raw, (list, tuple)):
+                raw = []
+            for d in raw:
+                s = str(d or '').strip()
+                if s and s not in out:
+                    out.append(s)
+                if len(out) >= max_n:
+                    break
+        except Exception:
+            out = []
+        if not out:
+            try:
+                one = str(self._host_settings().value('host/alarmFilmCsvDir', '') or '').strip()
+            except Exception:
+                one = ''
+            if one:
+                out = [one]
+        return out
+
+    def set_alarm_film_csv_dir(self, directory: str) -> str:
+        """Persist last CSV save directory（并推入多档）."""
+        return self.remember_alarm_film_csv_dir(directory)[0] if directory else ''
+
+    def remember_alarm_film_csv_dir(self, directory: str, *, max_n: int = 5) -> list:
+        """wave36: 推入多档另存记忆（去重置顶）."""
+        directory = str(directory or '').strip()
+        max_n = max(1, min(8, int(max_n or 5)))
+        dirs = self.alarm_film_csv_dirs(max_n=max_n)
+        if directory:
+            dirs = [directory] + [d for d in dirs if d != directory]
+            dirs = dirs[:max_n]
+        try:
+            self._host_settings().setValue('host/alarmFilmCsvDirs', dirs)
+            if dirs:
+                self._host_settings().setValue('host/alarmFilmCsvDir', dirs[0])
         except Exception:
             pass
-        return directory
+        return list(dirs)
 
     def save_all_alarm_film_paths_csv(self, path: str = '') -> str:
         """wave32–33: 另存全部 filmPath CSV；空 path 弹对话框并记住目录."""
@@ -2293,6 +2464,23 @@ class HostStateMachineWidget(QWidget):
             return ''
         return path
 
+    def save_all_alarm_film_paths_csv_to_dir(self, directory: str) -> str:
+        """wave36: 另存到指定记忆目录（文件名自动）."""
+        directory = str(directory or '').strip()
+        if not directory:
+            return self.save_all_alarm_film_paths_csv()
+        try:
+            from pathlib import Path as _P
+            from datetime import datetime as _dt
+            _P(directory).mkdir(parents=True, exist_ok=True)
+            name = f"alarm-film-paths-{_dt.now().strftime('%Y%m%d-%H%M%S')}.csv"
+            path = str(_P(directory) / name)
+        except Exception:
+            path = ''
+        if not path:
+            return ''
+        return self.save_all_alarm_film_paths_csv(path)
+
     def clear_liaison_toast_history(self) -> bool:
         """wave32: 清空联调 toast 切窗史."""
         hist = getattr(self, '_liaison_toast_history', None)
@@ -2315,17 +2503,27 @@ class HostStateMachineWidget(QWidget):
         return True
 
     def _build_liaison_toast_capacity_menu(self):
-        """wave35: 切窗史容量右键菜单（3/5/8/12 + 清空）."""
+        """wave35–36: 切窗史容量菜单（3/5/8/12 + 清空）；Alt+H 亦可."""
         menu = QMenu(self)
         cur = int(getattr(self, '_liaison_toast_history_max', 5) or 5)
+        # wave36: 数字快捷 1–4 对应 3/5/8/12（菜单内）
+        key_map = {3: '1', 5: '2', 8: '3', 12: '4'}
         for n in (3, 5, 8, 12):
             mark = '✓ ' if n == cur else ''
             def_mark = '（默认）' if n == 5 else ''
-            act = QAction(f'{mark}容量 {n}{def_mark}', self)
+            sc = key_map.get(n, '')
+            sc_lab = f'  [{sc}]' if sc else ''
+            act = QAction(f'{mark}容量 {n}{def_mark}{sc_lab}', self)
             act.setData(n)
             act.setProperty('isDefault', n == 5)
             act.setCheckable(True)
             act.setChecked(n == cur)
+            if sc:
+                try:
+                    act.setShortcut(QKeySequence(sc))
+                    act.setShortcutVisibleInContextMenu(True)
+                except Exception:
+                    pass
             act.triggered.connect(
                 lambda *_a, nn=n: self._apply_toast_hist_capacity(nn)
             )
@@ -2334,6 +2532,34 @@ class HostStateMachineWidget(QWidget):
         act_clear = QAction('清空切窗史', self)
         act_clear.triggered.connect(self.clear_liaison_toast_history)
         menu.addAction(act_clear)
+        return menu
+
+    def _on_toast_hist_cap_hotkey(self):
+        """wave36: Alt+H → 弹出容量菜单."""
+        menu = self._build_liaison_toast_capacity_menu()
+        if getattr(self, '_toast_hist_cap_menu_no_exec', False):
+            self._last_toast_hist_cap_menu = menu
+            try:
+                self._flash_host_toast('Alt+H · 容量菜单', kind='info', ms=1200)
+            except Exception:
+                pass
+            return menu
+        try:
+            hbar = getattr(self, '_liaison_toast_history_bar', None)
+            if hbar is not None and hbar.isVisible():
+                pos = hbar.mapToGlobal(QPoint(0, hbar.height()))
+            else:
+                pos = self.mapToGlobal(QPoint(max(8, self.width() // 2 - 40), 36))
+            menu.exec(pos)
+        except Exception:
+            try:
+                menu.exec()
+            except Exception:
+                pass
+        try:
+            self._flash_host_toast('Alt+H · 容量菜单', kind='info', ms=1000)
+        except Exception:
+            pass
         return menu
 
     def _apply_toast_hist_capacity(self, n: int):

@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊱ · 容量Alt+H · Shift+Alt+P回退 · 预览钉长按落钉 · 开目录失败tip · CSV多档记忆 · 2026-10-28】
+
+- **容量菜单快捷键**：`Alt+H` 弹出容量菜单；菜单项标 `[1]–[4]`；tip 含 Alt+H。
+- **Shift+Alt+P 回退切档**：已钉时反向循环 all/error/warning/info；toast「切档 ← {档}」。
+- **预览钉长按落钉**：芯片悬停 📍 预览后长按 ~550ms → 真正钉住 + toast「长按落钉」；短按仍筛档。
+- **toast 开目录失败 tip**：无路径/目录不存在/系统无法打开 → `_flash_open_dir_fail_tip`。
+- **CSV 多档另存记忆**：`host/alarmFilmCsvDirs`（最多 5）；`remember_alarm_film_csv_dir`；右键「最近另存目录」子菜单；`save_all_alarm_film_paths_csv_to_dir`。
+- **冒烟**：`smoke-wave36-caphotkey-pback-chiplong-opendfail-csvslots-e2e`（另回归 wave35/34）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆㉟ · CSV toast开目录 · 容量右键菜单 · 解钉tip驻留 · chip悬停预览钉 · Alt+P切档 · 2026-10-28】
 
 - **CSV toast 单击开目录**：另存成功 toast 绑定 `open_path`；单击/`open_host_toast_path` → `QDesktopServices` 打开目录；tip「单击打开目录」。
