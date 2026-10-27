@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㉑ · 结果表双击对比叠层 · 试跑失败Alarm联调 · Comm折叠 · UPH趋势 · 补stamp · 2026-10-28】
+
+- **结果表双击 → 该帧对比叠层**：`cellDoubleClicked` → `filmCompareRequested`（先 `filmLocateRequested`）；`MainWindow._on_hmi_film_compare` 定位胶片后调 `_show_filmstrip_compare_overlays(highlight_path=)`；行 tip「单击定位 · 双击对比叠层」。
+- **变体/测量链试跑失败 → Alarm → 清除恢复联调**：`backfill_after_trial` 在 failed/NG 时置 `_trial_fail_alarm` 并 `_paint_machine_chrome(Alarm)`；清除边沿 `_pulse_alarm_cleared` 文案「✓ 试跑失败已清除 · 联调已恢复」。
+- **Comm 簇折叠分组**：Variables「折叠 commAccept*」勾选；隐藏 `commAccept_<项>` 明细，保留 Pass/Fail/Skip/Overall/At/Host/Port；插入「▼ commAccept* 簇（已折叠 N 项明细）」分组行。
+- **产线 UPH 趋势看板**：`ProductionStatsPanel._uph_hist` + `trend_uph_text` + `prodUphTrend` spark；线图控件同步 `hmiTrendUphSpark`；`_refresh_trend_charts` 推送。
+- **胶片缺 path 人工补 stamp**：结果表「补 stamp」→ `filmStampRequest` → MW 取当前胶片 → `apply_manual_film_stamp(seq,path,index)`。
+- **冒烟**：`smoke-wave21-dblclick-commfold-uph-stamp-e2e`（另回归 film-locate / wave20-vars-alarm-variant）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆⑳ · 结果表↔胶片定位 · commAccept簇滚动 · 试跑回填 · Alarm恢复 · 变体试跑 · 2026-10-28】
 
 - **结果表行点击 ↔ 胶片定位加深**：历史行 stamp `filmPath/filmIndex`（`set_film_stamp` ← finished）；`UserRole` 元数据；`cellClicked` → `filmLocateRequested`；`FilmstripBar.select_path/select_index` 滚入视口；胶片选中反查 `highlight_rows_for_film`。

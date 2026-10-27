@@ -237,8 +237,15 @@ class VariablesDialog(QDialog):
         self.scope = QComboBox(); self.search = QLineEdit(); self.search.setPlaceholderText('搜索名称 / 备注')
         self.global_only = QCheckBox('仅全局')
         self.global_only.setToolTip('快速过滤全局变量表（VM 全局变量窗习惯）')
+        self.fold_comm = QCheckBox('折叠 commAccept*')
+        self.fold_comm.setObjectName('varsFoldCommCluster')
+        self.fold_comm.setToolTip(
+            '折叠分组：隐藏 commAccept_<项> 明细，保留 Pass/Fail/Skip/Overall/At/Host/Port 摘要'
+        )
+        self.fold_comm.setChecked(False)
         self.count_label = QLabel('0 项')
-        row.addWidget(self.mode); row.addWidget(self.scope); row.addWidget(self.global_only); row.addWidget(self.search, 1); row.addWidget(self.count_label)
+        row.addWidget(self.mode); row.addWidget(self.scope); row.addWidget(self.global_only)
+        row.addWidget(self.fold_comm); row.addWidget(self.search, 1); row.addWidget(self.count_label)
         refresh = QPushButton('重新读取（撤销当前值编辑）'); refresh.clicked.connect(self.refresh); row.addWidget(refresh)
         self.hint = QLabel(); self.hint.setWordWrap(True); layout.addWidget(self.hint)
         self.table = QTableWidget(0, 8); self.table.setObjectName('variableTable')
@@ -262,6 +269,7 @@ class VariablesDialog(QDialog):
         self.message = QLabel(); self.message.setWordWrap(True); layout.addWidget(self.message)
         self._load_definitions()
         self.mode.currentIndexChanged.connect(self.render); self.scope.currentIndexChanged.connect(self.render); self.search.textChanged.connect(self.render); self.global_only.toggled.connect(self.render)
+        self.fold_comm.toggled.connect(self.render)
         self.document.changed.connect(self._document_changed)
         self.backend.result.connect(self._result); self.backend.error.connect(self._error)
         self.finished.connect(self._disconnect)
@@ -530,7 +538,36 @@ class VariablesDialog(QDialog):
             self.notes.setdefault(scope, {})
             names = list(dict.fromkeys([*initials, *current, *types, *(self.notes.get(scope) or {}).keys()]))
             q = self.search.text().lower()
+            fold = bool(getattr(self, 'fold_comm', None) and self.fold_comm.isChecked())
+            # wave21: summary keys kept; detail commAccept_<id> folded
+            _COMM_SUMMARY = {
+                'commAcceptPass', 'commAcceptFail', 'commAcceptSkip',
+                'commAcceptOverall', 'commAcceptAt', 'commAcceptHost', 'commAcceptPort',
+            }
+            def _is_comm_detail(n):
+                return str(n).startswith('commAccept_')
+            hidden_n = 0
+            if fold:
+                hidden_n = sum(1 for n in names if _is_comm_detail(n))
+                if hidden_n:
+                    # group header row
+                    grow = self.table.rowCount(); self.table.insertRow(grow)
+                    gtexts = [
+                        label,
+                        f'▼ commAccept* 簇（已折叠 {hidden_n} 项明细）',
+                        '—', '—',
+                        f'摘要保留 Pass/Fail/… · 明细隐藏 {hidden_n}',
+                        '折叠分组', '—', '—',
+                    ]
+                    for column, text in enumerate(gtexts):
+                        item = QTableWidgetItem(text)
+                        if column == 1:
+                            item.setForeground(QBrush(QColor('#9ed9f0')))
+                        self.table.setItem(grow, column, item)
+                    self.table.item(grow, 0).setData(Qt.ItemDataRole.UserRole, (scope, '__commAccept_fold__'))
             for name in names:
+                if fold and _is_comm_detail(name):
+                    continue
                 note = str((self.notes.get(scope) or {}).get(name) or '')
                 if q and q not in name.lower() and q not in note.lower(): continue
                 value = initials.get(name, MISSING) if initial else current.get(name, MISSING)
@@ -541,6 +578,14 @@ class VariablesDialog(QDialog):
                 for column, text in enumerate([label, name, TYPE_LABELS.get(fixed, '动态'), initial_text, value_summary(current.get(name, MISSING)), note, persist, state]):
                     item = QTableWidgetItem(text); self.table.setItem(row, column, item)
                 self.table.item(row, 0).setData(Qt.ItemDataRole.UserRole, (scope, name))
+                if str(name).startswith('commAccept'):
+                    try:
+                        for c in range(self.table.columnCount()):
+                            it = self.table.item(row, c)
+                            if it is not None:
+                                it.setBackground(QBrush(QColor('#1a2a33')))
+                    except Exception:
+                        pass
         self.count_label.setText(f'{self.table.rowCount()} 项')
         editable = not overview and not self.busy and not self.stale and (initial or self.runtime_draft is not None)
         self.dup_button.setEnabled(editable); self.copy_name_button.setEnabled(self.table.rowCount() > 0)

@@ -344,6 +344,14 @@ class MainWindow(QMainWindow):
             self.operator_hmi.filmLocateRequested.connect(
                 lambda payload: self.guard(lambda: self._on_hmi_film_locate(payload))
             )
+        if hasattr(self.operator_hmi, 'filmCompareRequested'):
+            self.operator_hmi.filmCompareRequested.connect(
+                lambda payload: self.guard(lambda: self._on_hmi_film_compare(payload))
+            )
+        if hasattr(self.operator_hmi, 'filmStampRequest'):
+            self.operator_hmi.filmStampRequest.connect(
+                lambda payload: self.guard(lambda: self._on_hmi_film_stamp(payload))
+            )
         self._run_pane=self.operator_hmi
         self.run_mode_image=None  # image panes live inside operator_hmi
         horizontal.addWidget(self.operator_hmi)
@@ -2042,6 +2050,96 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage('结果表行无胶片路径（该次运行未 stamp）', 3000)
             except Exception:
                 pass
+
+    def _on_hmi_film_compare(self, payload):
+        """wave21: 结果表双击 → 定位胶片 + 该帧对比叠层。"""
+        payload = payload or {}
+        if isinstance(payload, str):
+            payload = {'path': payload}
+        path = str(payload.get('path') or '').strip()
+        index = payload.get('index')
+        # first locate (reuse locate helper silently)
+        try:
+            self._on_hmi_film_locate(payload)
+        except Exception:
+            pass
+        # resolve path from filmstrip if only index
+        fs = getattr(self, 'filmstrip', None)
+        if not path and fs is not None and index is not None:
+            try:
+                paths = list(fs.paths() or [])
+                i = int(index)
+                if 0 <= i < len(paths):
+                    path = paths[i]
+            except Exception:
+                pass
+        if not path and fs is not None and hasattr(fs, 'current_path'):
+            try:
+                path = fs.current_path() or ''
+            except Exception:
+                path = ''
+        if not path:
+            try:
+                self.statusBar().showMessage('对比叠层：无胶片路径（可先补 stamp）', 3000)
+            except Exception:
+                pass
+            return
+        try:
+            self._show_filmstrip_compare_overlays(highlight_path=path)
+            self.statusBar().showMessage(
+                f"结果表双击对比叠层 · seq={payload.get('seq') or '—'} · "
+                + Path(path).name,
+                4000,
+            )
+        except Exception as err:
+            try:
+                self.log(f'结果表→对比叠层失败：{err}')
+            except Exception:
+                pass
+
+    def _on_hmi_film_stamp(self, payload):
+        """wave21: 缺 path 行人工补 stamp ← 当前胶片。"""
+        payload = payload or {}
+        hmi = getattr(self, 'operator_hmi', None)
+        if hmi is None or not hasattr(hmi, 'apply_manual_film_stamp'):
+            return
+        fs = getattr(self, 'filmstrip', None)
+        path = ''
+        index = None
+        try:
+            if fs is not None:
+                if hasattr(fs, 'current_path'):
+                    path = fs.current_path() or ''
+                if hasattr(fs, 'current_index'):
+                    index = fs.current_index()
+        except Exception:
+            pass
+        if not path and index is None:
+            try:
+                self.statusBar().showMessage('补 stamp：当前无胶片可选', 3000)
+            except Exception:
+                pass
+            return
+        ok = False
+        try:
+            ok = bool(hmi.apply_manual_film_stamp(
+                seq=payload.get('seq'), path=path, index=index))
+        except Exception as err:
+            try:
+                self.log(f'人工补 stamp 失败：{err}')
+            except Exception:
+                pass
+            return
+        try:
+            leaf = Path(path).name if path else f'#{index}'
+            msg = (
+                f"人工补 stamp · seq={payload.get('seq') or '—'} · {leaf}"
+                if ok else '补 stamp 未写入（无匹配结果行）'
+            )
+            self.statusBar().showMessage(msg, 3500)
+            self.log(msg)
+        except Exception:
+            pass
 
     def _on_filmstrip_path_for_hmi(self, path):
         """细妆⑳：胶片选中 → 结果表反查高亮匹配行。"""

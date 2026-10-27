@@ -141,6 +141,7 @@ class ProductionStatsPanel(QWidget):
         self._history = []  # newest first, max 40
         self._elapsed_hist = []  # newest first ms, max 48 — drives HMI trend spark
         self._ok_hist = []  # newest first bool, max 48 — OK/NG spark
+        self._uph_hist = []  # newest first UPH, max 48 — wave21 UPH trend
         self._gate_key = None  # None → auto probe flow vars
         self._trend_listeners = []  # callables(panel) after record/reset
         root = QVBoxLayout(self)
@@ -228,6 +229,14 @@ class ProductionStatsPanel(QWidget):
         self._uph_lab.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
         self._uph_lab.setToolTip('末次/均耗时 → 估算 UPH（件/小时，按均耗时）')
         root.addWidget(self._uph_lab)
+        self._uph_trend_lab = QLabel('UPH趋势 · · ·  ·  等待')
+        self._uph_trend_lab.setObjectName('prodUphTrend')
+        self._uph_trend_lab.setStyleSheet(
+            f'color:{TEXT_MUTED};font-size:12px;font-family:monospace;'
+            f'background:{CARD};border:1px solid {LINE};border-radius:2px;padding:4px 6px;'
+        )
+        self._uph_trend_lab.setToolTip('产线 UPH 趋势看板（高=更快；按每次均耗时估算件/小时）')
+        root.addWidget(self._uph_trend_lab)
 
         cap = QLabel('最近结果')
         cap.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;font-weight:600;')
@@ -353,6 +362,7 @@ class ProductionStatsPanel(QWidget):
         self._history.clear()
         self._elapsed_hist.clear()
         self._ok_hist.clear()
+        self._uph_hist.clear()
         self._list.clear()
         self.clear_alarm()
         self._refresh_labels()
@@ -394,6 +404,10 @@ class ProductionStatsPanel(QWidget):
         if em is not None and em >= 0:
             self._elapsed_hist.insert(0, em)
             self._elapsed_hist = self._elapsed_hist[:48]
+            avg = sum(self._elapsed_hist) / len(self._elapsed_hist)
+            if avg > 0:
+                self._uph_hist.insert(0, 3600000.0 / avg)
+                self._uph_hist = self._uph_hist[:48]
         self._ok_hist.insert(0, bool(ok))
         self._ok_hist = self._ok_hist[:48]
         self._list.insertItem(0, line)
@@ -430,6 +444,9 @@ class ProductionStatsPanel(QWidget):
                 uph.setText(f'节拍 · 末次 {last:.0f} ms · 均 {avg:.0f} ms  ·  UPH {uph_v:.0f}')
             else:
                 uph.setText('节拍 · —  ·  UPH —')
+        ut = getattr(self, '_uph_trend_lab', None)
+        if ut is not None:
+            ut.setText(self.trend_uph_text())
 
     def ok_count(self):
         return self._ok
@@ -486,6 +503,22 @@ class ProductionStatsPanel(QWidget):
         s = ''.join('▇' if v else '▁' for v in seq)
         return f'{s}  ·  OK序列 (高=OK)'
 
+    def uph_history(self):
+        return list(self._uph_hist)
+
+    def trend_uph_text(self):
+        # wave21 UPH trend board
+        if not self._uph_hist:
+            return 'UPH趋势 · · ·  ·  等待'
+        spark = self.sparkline(self._uph_hist, 24)
+        last = self._uph_hist[0]
+        peak = max(self._uph_hist)
+        avg = sum(self._uph_hist) / len(self._uph_hist)
+        return (
+            f'UPH {spark}  ·  末次 {last:.0f} · 均 {avg:.0f}'
+            f' · 峰 {peak:.0f} · n={len(self._uph_hist)}'
+        )
+
 
 
 class OperatorHmiView(QWidget):
@@ -497,6 +530,8 @@ class OperatorHmiView(QWidget):
     runUiChanged = Signal(object)  # dict patch, e.g. {'fixedBars': {...}}
     pauseToggled = Signal(bool)  # bridge 生产统计 暂停计数 ↔ ContinuousRun / 运行全部
     filmLocateRequested = Signal(object)  # 细妆⑳：结果表行 → 胶片定位 {path,index,seq}
+    filmCompareRequested = Signal(object)  # wave21: dblclick → compare overlay
+    filmStampRequest = Signal(object)  # wave21: missing path → manual stamp
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -517,6 +552,8 @@ class OperatorHmiView(QWidget):
         self._pending_film_stamp = {}  # 细妆⑳：{path,index} stamped into next history row
         self._pending_trial_backfill = False  # 细妆⑳：试跑完成后回填判定/配方徽章
         self._alarm_was_on = False  # 细妆⑳：Alarm→恢复动画边沿
+        self._trial_fail_alarm = False  # wave21: trial-fail Alarm → clear restore
+        self._trend_uph_sparks = []  # wave21 UPH trend labs
         self._film_row_wired = False
         self._layout_fp = None
         self._clock_timer = QTimer(self)
@@ -730,6 +767,7 @@ class OperatorHmiView(QWidget):
         self._stats_panels = []
         self._trend_sparks = []
         self._trend_ok_sparks = []
+        self._trend_uph_sparks = []
         self._yield_bars = []
         self._result_tables = []
         self._gate_spark_labs = []
@@ -1289,6 +1327,14 @@ class OperatorHmiView(QWidget):
                     lab.setText(panel.trend_ok_text())
             except Exception:
                 pass
+        for lab in getattr(self, '_trend_uph_sparks', []) or []:
+            try:
+                if panel is None or not hasattr(panel, 'trend_uph_text'):
+                    lab.setText('UPH趋势 · · ·  ·  等待')
+                else:
+                    lab.setText(panel.trend_uph_text())
+            except Exception:
+                pass
         total = 0
         ok_n = 0
         ng_n = 0
@@ -1624,7 +1670,11 @@ class OperatorHmiView(QWidget):
                             elif e.get('filmIndex') is not None:
                                 tip_bits.append(f"胶片#{e.get('filmIndex')}")
                             if tip_bits:
-                                it.setToolTip('点击定位 · ' + ' · '.join(tip_bits))
+                                it.setToolTip(
+                                    '单击定位 · 双击对比叠层 · ' + ' · '.join(tip_bits)
+                                )
+                            else:
+                                it.setToolTip('缺胶片 path · 双击也可试对比 · 或点「补 stamp」')
                         table.setItem(r, c, it)
             except Exception:
                 pass
@@ -1786,6 +1836,22 @@ class OperatorHmiView(QWidget):
             self.append_log(tip)
         except Exception:
             pass
+        # wave21: trial fail -> Alarm; clear restores 联调
+        failed = (
+            state == 'failed'
+            or str(judge).upper() in ('NG', 'FAIL', '拒')
+        )
+        if failed:
+            self._trial_fail_alarm = True
+            try:
+                self._paint_machine_chrome('Alarm')
+            except Exception:
+                pass
+            try:
+                self.append_log('试跑失败 · Alarm · 请清除报警恢复联调')
+            except Exception:
+                pass
+            tip = tip + ' · 请清除报警恢复联调'
         # ephemeral tip label on strip recipe lab
         strip = getattr(self, '_strip_recipe_lab', None)
         if strip is not None:
@@ -1804,7 +1870,11 @@ class OperatorHmiView(QWidget):
 
     def _pulse_alarm_cleared(self, state: str, zh: str):
         """细妆⑳：离开 Alarm → 固定栏短暂恢复高亮 + 短提示。"""
-        tip = f'✓ 报警已清除 · {zh}'
+        if getattr(self, '_trial_fail_alarm', False):
+            self._trial_fail_alarm = False
+            tip = f'✓ 试跑失败已清除 · 联调已恢复 · {zh}'
+        else:
+            tip = f'✓ 报警已清除 · {zh}'
         try:
             self._live_run_status = zh
             # green restore flash
@@ -1846,47 +1916,163 @@ class OperatorHmiView(QWidget):
         except Exception:
             pass
 
+    def _filtered_result_rows(self):
+        """当前结果表可见行（与 UI 门限/配方筛选一致，newest first）。"""
+        hist = list(reversed(list(getattr(self, '_result_history', []) or [])[-50:]))
+        mode = getattr(self, '_gate_filter_mode', 'all') or 'all'
+        live_recipe = (getattr(self, '_live_recipe', '') or '').strip()
+        recipe_on = bool(getattr(self, '_recipe_filter_active', False)) and live_recipe and live_recipe != '—'
+        rows = hist
+        if mode == 'pass':
+            rows = [e for e in rows if e.get('gatePass') is True
+                    or str(e.get('judge') or '').upper() in ('OK', 'PASS', '通')]
+        elif mode == 'fail':
+            rows = [e for e in rows if e.get('gatePass') is False
+                    or str(e.get('judge') or '').upper() in ('NG', 'FAIL', '拒')]
+        if recipe_on:
+            rows = [e for e in rows if (e.get('recipe') or '').strip() == live_recipe]
+        return rows
+
+    def _result_row_payload(self, row: int):
+        rows = self._filtered_result_rows()
+        if row < 0 or row >= len(rows):
+            return None
+        e = rows[row]
+        return {
+            'path': e.get('filmPath') or '',
+            'index': e.get('filmIndex'),
+            'seq': e.get('seq'),
+            'ts': e.get('ts'),
+            'judge': e.get('judge'),
+            'recipe': e.get('recipe'),
+            'entry': e,
+            'row': row,
+        }
+
     def _on_result_row_clicked(self, row: int, _col: int = 0):
         """细妆⑳：结果表行点击 → 发 filmLocateRequested（胶片定位）。"""
         try:
-            hist = list(reversed(list(getattr(self, '_result_history', []) or [])[-50:]))
-            # apply same filters as UI
-            mode = getattr(self, '_gate_filter_mode', 'all') or 'all'
-            live_recipe = (getattr(self, '_live_recipe', '') or '').strip()
-            recipe_on = bool(getattr(self, '_recipe_filter_active', False)) and live_recipe and live_recipe != '—'
-            rows = hist
-            if mode == 'pass':
-                rows = [e for e in rows if e.get('gatePass') is True
-                        or str(e.get('judge') or '').upper() in ('OK', 'PASS', '通')]
-            elif mode == 'fail':
-                rows = [e for e in rows if e.get('gatePass') is False
-                        or str(e.get('judge') or '').upper() in ('NG', 'FAIL', '拒')]
-            if recipe_on:
-                rows = [e for e in rows if (e.get('recipe') or '').strip() == live_recipe]
-            if row < 0 or row >= len(rows):
+            payload = self._result_row_payload(row)
+            if not payload:
                 return
-            e = rows[row]
-            path = e.get('filmPath') or ''
-            idx = e.get('filmIndex')
-            payload = {
-                'path': path,
-                'index': idx,
-                'seq': e.get('seq'),
-                'ts': e.get('ts'),
-                'judge': e.get('judge'),
-                'recipe': e.get('recipe'),
-            }
+            path = payload.get('path') or ''
+            idx = payload.get('index')
+            slim = {k: payload[k] for k in ('path', 'index', 'seq', 'ts', 'judge', 'recipe')}
             if path or idx is not None:
-                self.filmLocateRequested.emit(payload)
+                self.filmLocateRequested.emit(slim)
                 try:
                     self.append_log(
-                        f"结果表定位胶片 · seq={e.get('seq')} · "
+                        f"结果表定位胶片 · seq={payload.get('seq')} · "
                         f"{Path(path).name if path else f'#{idx}'}"
+                    )
+                except Exception:
+                    pass
+            else:
+                try:
+                    self.append_log(
+                        f"结果表行缺胶片 path · seq={payload.get('seq')} · 可「补 stamp」"
                     )
                 except Exception:
                     pass
         except Exception:
             pass
+
+    def _on_result_row_double_clicked(self, row: int, _col: int = 0):
+        """wave21: 结果表双击 → 定位胶片并打开该帧对比叠层。"""
+        try:
+            payload = self._result_row_payload(row)
+            if not payload:
+                return
+            path = payload.get('path') or ''
+            idx = payload.get('index')
+            slim = {k: payload[k] for k in ('path', 'index', 'seq', 'ts', 'judge', 'recipe')}
+            if path or idx is not None:
+                try:
+                    self.filmLocateRequested.emit(slim)
+                except Exception:
+                    pass
+            self.filmCompareRequested.emit(slim)
+            try:
+                leaf = Path(path).name if path else (f'#{idx}' if idx is not None else '无path')
+                self.append_log(f"结果表双击对比叠层 · seq={payload.get('seq')} · {leaf}")
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def request_manual_film_stamp(self):
+        """wave21: 选中缺 path 行 → 请求 MW 用当前胶片补 stamp。"""
+        try:
+            table = None
+            for t0 in getattr(self, '_result_tables', []) or []:
+                if t0 is not None and t0.currentRow() >= 0:
+                    table = t0
+                    break
+            if table is None and getattr(self, '_result_tables', None):
+                table = self._result_tables[0]
+            if table is None:
+                return False
+            row = table.currentRow()
+            payload = self._result_row_payload(row)
+            if not payload:
+                try:
+                    self.append_log('补 stamp：请先选中结果表行')
+                except Exception:
+                    pass
+                return False
+            if payload.get('path'):
+                try:
+                    self.append_log(
+                        f"补 stamp：seq={payload.get('seq')} 已有 path · "
+                        f"{Path(payload['path']).name}"
+                    )
+                except Exception:
+                    pass
+                return False
+            self.filmStampRequest.emit({
+                'seq': payload.get('seq'),
+                'row': row,
+                'ts': payload.get('ts'),
+            })
+            return True
+        except Exception:
+            return False
+
+    def apply_manual_film_stamp(self, seq=None, path: str = '', index=None):
+        """wave21: MW 回填当前胶片到指定 seq（或最新缺 path 行）。"""
+        path = str(path or '').strip()
+        if not path and index is None:
+            return False
+        hist = list(getattr(self, '_result_history', []) or [])
+        target = None
+        if seq is not None:
+            for e in reversed(hist):
+                if e.get('seq') == seq:
+                    target = e
+                    break
+        if target is None:
+            for e in reversed(hist):
+                if not e.get('filmPath') and e.get('filmIndex') is None:
+                    target = e
+                    break
+        if target is None and hist:
+            target = hist[-1]
+        if target is None:
+            return False
+        if path:
+            target['filmPath'] = path
+        if index is not None:
+            try:
+                target['filmIndex'] = int(index)
+            except Exception:
+                pass
+        self._refresh_result_tables_ui()
+        try:
+            leaf = Path(path).name if path else f'#{index}'
+            self.append_log(f"人工补 stamp · seq={target.get('seq')} · {leaf}")
+        except Exception:
+            pass
+        return True
 
     def highlight_rows_for_film(self, path: str = '', index=None):
         """细妆⑳：胶片选中 → 反查结果表高亮匹配行（双向加深）。"""
@@ -2398,6 +2584,7 @@ class OperatorHmiView(QWidget):
             table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
             try:
                 table.cellClicked.connect(self._on_result_row_clicked)
+                table.cellDoubleClicked.connect(self._on_result_row_double_clicked)
             except Exception:
                 pass
             self._result_tables = getattr(self, '_result_tables', [])
@@ -2444,6 +2631,11 @@ class OperatorHmiView(QWidget):
             b_clear.setObjectName('hmiResultClearBtn')
             b_clear.clicked.connect(self.clear_result_history)
             btn_row.addWidget(b_clear)
+            b_stamp = QPushButton('补 stamp')
+            b_stamp.setObjectName('hmiResultStampBtn')
+            b_stamp.setToolTip('选中缺胶片 path 的结果行，用当前胶片人工补 stamp')
+            b_stamp.clicked.connect(self.request_manual_film_stamp)
+            btn_row.addWidget(b_stamp)
             btn_row.addStretch(1)
             cell.layout().addLayout(btn_row)
             # seed empty state row
@@ -2468,7 +2660,7 @@ class OperatorHmiView(QWidget):
             return cell
         if name in ('多数据线图', '线图阵列'):
             cell = self._make_cell_frame(name)
-            tip = QLabel('趋势：周期耗时 spark + OK/NG 序列（跟生产统计 elapsed；每次 RUN 完成刷新）')
+            tip = QLabel('趋势：周期耗时 spark + OK/NG + UPH（跟生产统计；每次 RUN 完成刷新）')
             tip.setWordWrap(True)
             tip.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
             spark = QLabel(ProductionStatsPanel.sparkline([]))
@@ -2480,13 +2672,24 @@ class OperatorHmiView(QWidget):
             ok_spark.setAlignment(Qt.AlignmentFlag.AlignCenter)
             ok_spark.setObjectName('hmiTrendOkSpark')
             ok_spark.setStyleSheet(f'color:{TEXT_MUTED};font-size:14px;letter-spacing:1px;padding:4px;')
+            uph_spark = QLabel('UPH趋势 · · ·  ·  等待')
+            uph_spark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            uph_spark.setObjectName('hmiTrendUphSpark')
+            uph_spark.setStyleSheet(
+                f'color:#6eb6ff;font-size:13px;font-family:monospace;'
+                f'letter-spacing:1px;padding:4px;'
+            )
+            uph_spark.setToolTip('产线 UPH 趋势看板')
             cell.layout().addWidget(tip)
             cell.layout().addWidget(spark, 1)
             cell.layout().addWidget(ok_spark)
+            cell.layout().addWidget(uph_spark)
             self._trend_sparks = getattr(self, '_trend_sparks', [])
             self._trend_ok_sparks = getattr(self, '_trend_ok_sparks', [])
+            self._trend_uph_sparks = getattr(self, '_trend_uph_sparks', [])
             self._trend_sparks.append(spark)
             self._trend_ok_sparks.append(ok_spark)
+            self._trend_uph_sparks.append(uph_spark)
             return cell
         if name in ('组合框', '参数组合', '文本框组合'):
             cell = self._make_cell_frame(name)
