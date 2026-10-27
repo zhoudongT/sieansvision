@@ -426,6 +426,17 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊶ · 合并冲突计数tip · 共享弧抢占可视化 · 容量保持徽标 · 徽章右键再复制 · 失效清理undo · 2026-10-28】
+
+- **合并导入冲突计数 tip**：`merge_alarm_film_csv_dirs` 记录 conflict/new/trimmed；toast「已合并导入 · N 档 · 冲突x · 新增y · 裁剪z」。
+- **共享弧 owner 互斥抢占可视化**：`claim_sev_pin_arc(owner)` 停前主 tick；抢占时弧闪白 + tip「进度弧抢占 · chip→bubble」；`_last_sev_pin_arc_seize`。
+- **容量菜单「保持」徽标**：keep_open 时菜单顶栏「◉ 保持中 · 数字不关菜单」（`hostToastHistCapKeepBadge` / `isKeepBadge`）；长按触发后可注入已开菜单。
+- **徽章右键再复制路径**：左键仍打开目录；右键 `copy_path_copy_badge_path` → 剪贴板 +「已再复制」。
+- **失效清理 undo**：清理前快照；toast「点此撤销」/`undo_prune` 点击；菜单「撤销上次清理」；`undo_prune_stale_alarm_film_csv_dirs`。
+- **冒烟**：`smoke-wave41-mergeconflict-seize-keepbadge-rmbcopy-pruneundo-e2e`（另回归 wave40/39）。
+
+---
+
 ## 【细妆㊵ · 多档JSON合并导入 · 共享进度弧 · Alt+H长按H保持 · 徽章再点开目录 · 失效清理预览 · 2026-10-28】
 
 - **多档 JSON 合并导入**：右键「最近另存」→「合并导入 JSON…」；去重并集（导入项置前 + 保留旧项，裁剪上限）；「导入记忆 JSON…」仍为覆盖写入。API：`merge_import_alarm_film_csv_dirs_json` / `merge_alarm_film_csv_dirs`；`import_…(merge=True|False)`。
