@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊽ · pin锁角标点击切换+cycle键冲突检测 · 试键撤销深度旁标 · DST深度长按清栈 · A/B载源失败回退提示 · jitter预设自定义/单项恢复动画 · 2026-10-28】
+
+- **pin 锁角标点击切换 + cycle 键冲突检测**：角标左键 `toggle_…_lock`；`detect/format_…_cycle_key_conflicts`（保留键/钉加减/吸史/已有快捷）；`set_…_cycle_key` 记冲突并 toast。
+- **试键撤销深度旁标**：`…_confirm_undo_depth` + `_refresh_…_depth_ui`；改键钮旁数字；点击撤销。
+- **DST 深度长按清栈**：`clear_…_apply_all_undo`；旁标点击撤销、长按（~650ms）清栈。
+- **A/B 载源失败回退提示**：`autoload` 无流程记忆→全局；异常→回退原源并 toast。
+- **jitter 预设自定义 / 单项恢复动画**：`add/prompt_add_…_ttl_preset_custom`；菜单「自定义…」；`_animate_…_snapshot_restore` 旁标闪绿。
+- **冒烟**：`smoke-wave80-pinlockclick-histundodepth-dstlongclear-abfallback-jittercustom-e2e`（另回归 wave79/78/77）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊼ · pin预览锁定态色标角标/快捷改键 · 吸史试键确认可撤销 · DST撤销栈深度旁标 · A/B流程切换自动载源 · jitter快照单项恢复/TTL预设档 · 2026-10-28】
 
 - **pin 预览锁定态色标角标/快捷改键**：`…_lock_badge`「🔒」；`prompt_…_cycle_key`；菜单「改轮换键」；锁定时角标亮橙。
