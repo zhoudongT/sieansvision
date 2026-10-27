@@ -109,7 +109,19 @@ class MeasureGeomPanel(QWidget):
         field = QLineEdit(str(self.params.get(field_key) or default_field))
         field.setPlaceholderText(default_field)
         field.editingFinished.connect(lambda: self._set_param(field_key, field.text().strip() or default_field))
-        form.addRow(label + ' 字段', field)
+        from PySide6.QtWidgets import QHBoxLayout, QPushButton
+        from desktop.upstream_field_picker import fill_line_from_picker
+        frow = QHBoxLayout()
+        pick = QPushButton('插入上游字段')
+        pick.clicked.connect(
+            lambda *_ , e=field, fk=field_key, df=default_field: (
+                fill_line_from_picker(self, self.project, self.step.get('id'), e, self._set_param, fk)
+                or (e.setText(df) if not e.text().strip() else None)
+            )
+        )
+        frow.addWidget(field, 1)
+        frow.addWidget(pick)
+        form.addRow(label + ' 字段', frow)
 
     def _basic_tab(self, title):
         w = QWidget(); form = QFormLayout(w); form.setContentsMargins(10, 10, 10, 10)

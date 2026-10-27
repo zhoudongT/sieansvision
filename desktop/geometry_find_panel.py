@@ -9,6 +9,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QTabWidget, QFormLayout, QLineEdit,
     QComboBox, QDoubleSpinBox, QSpinBox, QScrollArea, QFrame, QCheckBox,
+    QPushButton, QHBoxLayout,
 )
 
 from desktop.widgets.switch import OrangeSwitch
@@ -169,6 +170,12 @@ class GeometryFindPanel(QWidget):
         pose = OrangeSwitch(bool(self.params.get('followPose', False)))
         pose.toggled.connect(lambda c: self._set_param('followPose', bool(c)))
         form.addRow('位置修正跟随', pose)
+
+        from desktop.upstream_field_picker import make_upstream_ref_row
+        uref_row, self._upstream_ref = make_upstream_ref_row(
+            self, self.project, self.step.get('id'), self.params, self._set_param,
+        )
+        form.addRow('上游参考', uref_row)
         return w
 
     def _run_tab(self):

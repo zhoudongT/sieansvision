@@ -149,10 +149,24 @@ class FormatDataPanel(_ShellBase):
         args = QLineEdit(str(self.params.get('args') or ''))
         args.setPlaceholderText('参数列表，逗号分隔或变量名')
         args.editingFinished.connect(lambda: self._set_param('args', args.text().strip()))
-        form.addRow('参数', args)
+        from desktop.upstream_field_picker import fill_line_from_picker
+        _args_row = QHBoxLayout()
+        _args_pick = QPushButton('插入上游字段')
+        _args_pick.clicked.connect(lambda *_: fill_line_from_picker(
+            self, self.project, self.step.get('id'), args, self._set_param, 'args'))
+        _args_row.addWidget(args, 1)
+        _args_row.addWidget(_args_pick)
+        form.addRow('参数', _args_row)
         var = QLineEdit(str(self.params.get('targetVar') or 'formatted'))
         var.editingFinished.connect(lambda: self._set_param('targetVar', var.text().strip() or 'formatted'))
-        form.addRow('目标变量', var)
+        from desktop.upstream_field_picker import fill_line_from_picker
+        _var_row = QHBoxLayout()
+        _var_pick = QPushButton('插入上游字段')
+        _var_pick.clicked.connect(lambda *_: fill_line_from_picker(
+            self, self.project, self.step.get('id'), var, self._set_param, 'targetVar'))
+        _var_row.addWidget(var, 1)
+        _var_row.addWidget(_var_pick)
+        form.addRow('目标变量', _var_row)
         scope = QComboBox()
         for v, lab in (('flow', '流程'), ('global', '全局'), ('module', '模块')):
             scope.addItem(lab, v)
@@ -287,7 +301,14 @@ class ProtocolParsePanel(_ShellBase):
         self._name_row(form, '协议解析')
         src = QLineEdit(str(self.params.get('sourceVar') or 'recvData'))
         src.editingFinished.connect(lambda: self._set_param('sourceVar', src.text().strip()))
-        form.addRow('源变量', src)
+        from desktop.upstream_field_picker import fill_line_from_picker
+        _src_row = QHBoxLayout()
+        _src_pick = QPushButton('插入上游字段')
+        _src_pick.clicked.connect(lambda *_: fill_line_from_picker(
+            self, self.project, self.step.get('id'), src, self._set_param, 'sourceVar'))
+        _src_row.addWidget(src, 1)
+        _src_row.addWidget(_src_pick)
+        form.addRow('源变量', _src_row)
         proto = QComboBox()
         for v, lab in (('delimited', '分隔符'), ('fixed', '定长'), ('json', 'JSON'), ('regex', '正则')):
             proto.addItem(lab, v)
@@ -359,7 +380,14 @@ class TextSavePanel(_ShellBase):
         svar = QLineEdit(str(self.params.get('sourceVar') or ''))
         svar.setPlaceholderText('若填写则优先用变量内容')
         svar.editingFinished.connect(lambda: self._set_param('sourceVar', svar.text().strip()))
-        form.addRow('源变量', svar)
+        from desktop.upstream_field_picker import fill_line_from_picker
+        _svar_row = QHBoxLayout()
+        _svar_pick = QPushButton('插入上游字段')
+        _svar_pick.clicked.connect(lambda *_: fill_line_from_picker(
+            self, self.project, self.step.get('id'), svar, self._set_param, 'sourceVar'))
+        _svar_row.addWidget(svar, 1)
+        _svar_row.addWidget(_svar_pick)
+        form.addRow('源变量', _svar_row)
         ap = OrangeSwitch(bool(self.params.get('append', True)))
         ap.toggled.connect(lambda c: self._set_param('append', bool(c)))
         form.addRow('追加写入', ap)

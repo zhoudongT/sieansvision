@@ -229,7 +229,23 @@ class ConditionBranchPanel(QWidget):
         left = QLineEdit(str(rule.get('left', '') if rule.get('left') is not None else ''))
         left.setPlaceholderText('变量 / 常量')
         left.editingFinished.connect(self._harvest_rules)
-        self.rules_table.setCellWidget(r, 1, left)
+        from desktop.upstream_field_picker import pick_upstream_field
+        left_wrap = QWidget()
+        left_lay = QHBoxLayout(left_wrap)
+        left_lay.setContentsMargins(0, 0, 0, 0)
+        left_lay.setSpacing(2)
+        lpick = QPushButton('↑')
+        lpick.setFixedWidth(28)
+        lpick.setToolTip('插入上游字段')
+        def _pick_left(ed=left):
+            picked = pick_upstream_field(self, self.project, self.step.get('id'))
+            if picked:
+                ed.setText(picked[2] if len(picked) > 2 else str(picked[1]))
+                self._harvest_rules()
+        lpick.clicked.connect(_pick_left)
+        left_lay.addWidget(left, 1)
+        left_lay.addWidget(lpick)
+        self.rules_table.setCellWidget(r, 1, left_wrap)
 
         cmp = QComboBox()
         for val, lab in COMPARISONS:
@@ -243,7 +259,23 @@ class ConditionBranchPanel(QWidget):
         right = QLineEdit(str(rule.get('right', '') if rule.get('right') is not None else ''))
         right.setPlaceholderText('常量 / 变量')
         right.editingFinished.connect(self._harvest_rules)
-        self.rules_table.setCellWidget(r, 3, right)
+        from desktop.upstream_field_picker import pick_upstream_field
+        right_wrap = QWidget()
+        right_lay = QHBoxLayout(right_wrap)
+        right_lay.setContentsMargins(0, 0, 0, 0)
+        right_lay.setSpacing(2)
+        rpick = QPushButton('↑')
+        rpick.setFixedWidth(28)
+        rpick.setToolTip('插入上游字段')
+        def _pick_right(ed=right):
+            picked = pick_upstream_field(self, self.project, self.step.get('id'))
+            if picked:
+                ed.setText(picked[2] if len(picked) > 2 else str(picked[1]))
+                self._harvest_rules()
+        rpick.clicked.connect(_pick_right)
+        right_lay.addWidget(right, 1)
+        right_lay.addWidget(rpick)
+        self.rules_table.setCellWidget(r, 3, right_wrap)
 
         ops = QWidget()
         ol = QHBoxLayout(ops); ol.setContentsMargins(0, 0, 0, 0); ol.setSpacing(2)

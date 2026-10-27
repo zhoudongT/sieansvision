@@ -6,7 +6,7 @@ from copy import deepcopy
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QTabWidget, QFormLayout, QLineEdit,
+    QWidget, QVBoxLayout, QLabel, QTabWidget, QFormLayout, QLineEdit, QHBoxLayout, QPushButton,
     QComboBox, QScrollArea, QFrame, QPlainTextEdit, QSpinBox,
 )
 
@@ -184,7 +184,15 @@ class DataIoPanel(QWidget):
             form.addRow('写入作用域', scope)
             var = QLineEdit(str(self.params.get('targetVar') or 'recvData'))
             var.editingFinished.connect(lambda: self._set_param('targetVar', var.text().strip() or 'recvData'))
-            form.addRow('目标变量', var)
+            from desktop.upstream_field_picker import fill_line_from_picker
+            vrow = QHBoxLayout()
+            vp = QPushButton('插入上游字段')
+            vp.setToolTip('插入上游模块字段 token（亦可手填变量名）')
+            vp.clicked.connect(lambda *_: fill_line_from_picker(
+                self, self.project, self.step.get('id'), var, self._set_param, 'targetVar'))
+            vrow.addWidget(var, 1)
+            vrow.addWidget(vp)
+            form.addRow('目标变量', vrow)
             trig = OrangeSwitch(bool(self.params.get('triggerOnReceive', True)))
             trig.toggled.connect(lambda c: self._set_param('triggerOnReceive', bool(c)))
             form.addRow('收到后触发', trig)
@@ -204,7 +212,15 @@ class DataIoPanel(QWidget):
             svar = QLineEdit(str(self.params.get('sourceVar') or ''))
             svar.setPlaceholderText('变量名（变量模式）')
             svar.editingFinished.connect(lambda: self._set_param('sourceVar', svar.text().strip()))
-            form.addRow('源变量', svar)
+            from desktop.upstream_field_picker import fill_line_from_picker
+            srow = QHBoxLayout()
+            sp = QPushButton('插入上游字段')
+            sp.setToolTip('从上游模块挑选字段写入源变量')
+            sp.clicked.connect(lambda *_: fill_line_from_picker(
+                self, self.project, self.step.get('id'), svar, self._set_param, 'sourceVar'))
+            srow.addWidget(svar, 1)
+            srow.addWidget(sp)
+            form.addRow('源变量', srow)
             crlf = OrangeSwitch(bool(self.params.get('appendCrLf', False)))
             crlf.toggled.connect(lambda c: self._set_param('appendCrLf', bool(c)))
             form.addRow('追加 CRLF', crlf)

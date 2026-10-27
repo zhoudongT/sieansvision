@@ -130,6 +130,10 @@ class ProductionStatsPanel(QWidget):
         reset = QPushButton('清零')
         reset.clicked.connect(self.reset)
         btn_row.addWidget(reset)
+        copy_btn = QPushButton('复制历史')
+        copy_btn.setToolTip('复制最近结果到剪贴板（便于产线交接/对账）')
+        copy_btn.clicked.connect(self._copy_history)
+        btn_row.addWidget(copy_btn)
         btn_row.addStretch(1)
         root.addLayout(btn_row)
 

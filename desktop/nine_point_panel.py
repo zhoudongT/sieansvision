@@ -138,6 +138,12 @@ class NinePointPanel(QWidget):
         method.setCurrentIndex(max(0, method.findData(self.params.get('method') or 'affine')))
         method.currentIndexChanged.connect(lambda _: self._set_param('method', method.currentData()))
         form.addRow('求解方法', method)
+
+        from desktop.upstream_field_picker import make_upstream_ref_row
+        uref_row, self._upstream_ref = make_upstream_ref_row(
+            self, self.project, self.step.get('id'), self.params, self._set_param,
+        )
+        form.addRow('上游参考', uref_row)
         lay.addLayout(form)
 
         self.table = QTableWidget(0, 6)
@@ -176,7 +182,18 @@ class NinePointPanel(QWidget):
         form.addRow(tip)
         out_var = QLineEdit(str(self.params.get('resultVar') or 'calibTransform'))
         out_var.editingFinished.connect(lambda: self._set_param('resultVar', out_var.text().strip() or 'calibTransform'))
-        form.addRow('结果变量', out_var)
+        from desktop.upstream_field_picker import fill_line_from_picker
+        from PySide6.QtWidgets import QHBoxLayout, QPushButton
+        ovrow = QHBoxLayout()
+        ovpick = QPushButton('插入上游字段')
+        ovpick.setToolTip('也可挑选上游字段写入参考；结果变量名仍可手填')
+        ovpick.clicked.connect(
+            lambda *_: fill_line_from_picker(
+                self, self.project, self.step.get('id'), out_var, self._set_param, 'resultVar')
+        )
+        ovrow.addWidget(out_var, 1)
+        ovrow.addWidget(ovpick)
+        form.addRow('结果变量', ovrow)
         tip2 = QLabel('至少填入一组非零像素/世界坐标，否则节点红叹号。无机械手 SDK。')
         tip2.setWordWrap(True)
         tip2.setStyleSheet('color:#888;')
