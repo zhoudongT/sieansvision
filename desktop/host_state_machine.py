@@ -15,7 +15,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QAction, QKeySequence, QShortcut, QDesktopServices,
-    QPainter, QPen, QColor, QIcon,
+    QPainter, QPen, QColor, QIcon, QPixmap,
 )
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QGraphicsOpacityEffect,
     QWidgetAction,
+    QInputDialog,
 )
 
 from desktop.theme import TEXT, TEXT_MUTED, TEXT_DIM, OK, PANEL, LINE
@@ -1830,6 +1831,35 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             return QIcon()
 
+    def _path_copy_badge_fail_history_icon(self, count: int = 0) -> QIcon:
+        """wave50: 失败历史图标；count>0 叠加红点，零时无红点."""
+        base = self._path_copy_badge_menu_icon('history')
+        try:
+            count = int(count or 0)
+        except Exception:
+            count = 0
+        if count <= 0:
+            self._last_path_copy_badge_fail_history_red_dot = False
+            return base
+        try:
+            pm = base.pixmap(16, 16)
+            if pm.isNull():
+                pm = QPixmap(16, 16)
+                pm.fill(QColor(0, 0, 0, 0))
+            else:
+                pm = pm.copy()
+            painter = QPainter(pm)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            painter.setBrush(QColor('#e35d6a'))
+            painter.setPen(QPen(QColor('#3a1c1c'), 1))
+            painter.drawEllipse(9, 0, 7, 7)
+            painter.end()
+            self._last_path_copy_badge_fail_history_red_dot = True
+            return QIcon(pm)
+        except Exception:
+            self._last_path_copy_badge_fail_history_red_dot = False
+            return base
+
     def _build_path_copy_badge_menu(self, parent=None):
         """wave45–47: 徽章菜单 · 再复制 + 中键回退开关 + 图标."""
         menu = QMenu(parent or self)
@@ -1889,23 +1919,31 @@ class HostStateMachineWidget(QWidget):
             'isPathCopyBadgeFailHistoryBadge', bool(fail_n > 0))
         act_hist.setObjectName('hostPathCopyBadgeFailHistoryAct')
         try:
-            act_hist.setIcon(self._path_copy_badge_menu_icon('history'))
+            act_hist.setIcon(
+                self._path_copy_badge_fail_history_icon(fail_n))
             act_hist.setIconVisibleInMenu(True)
         except Exception:
             pass
+        # wave50: 零时隐藏角标（无红点 · 无 ·N）
+        if fail_n <= 0:
+            act_hist.setText('打开历史失败')
+            act_hist.setProperty('isPathCopyBadgeFailHistoryBadge', False)
+            act_hist.setProperty('failHistoryCount', 0)
         try:
             act_hist.setShortcut(QKeySequence('H'))
             act_hist.setShortcutVisibleInContextMenu(True)
         except Exception:
             pass
         act_hist.setToolTip(
-            f'快捷键 H · 打开失败清单历史（{fail_n}）')
+            f'快捷键 H · 打开失败清单历史（{fail_n}）'
+            if fail_n > 0 else '快捷键 H · 打开失败清单历史')
         act_hist.triggered.connect(
             lambda *_: self.show_merge_diff_batch_fail_history())
         menu.addAction(act_hist)
         self._last_path_copy_badge_menu_shortcuts = ('C', 'F', 'H')
         self._last_path_copy_badge_menu_icons = True
         self._last_path_copy_badge_fail_history_count = int(fail_n)
+        self._last_path_copy_badge_fail_history_red_dot = bool(fail_n > 0)
         self._last_path_copy_badge_menu = menu
         return menu
 
@@ -3335,7 +3373,9 @@ class HostStateMachineWidget(QWidget):
             mark = '✓ ' if color == cur else ''
             it = QListWidgetItem(f'{mark}最近  {color}')
             it.setData(Qt.ItemDataRole.UserRole, color)
-            it.setToolTip(f'{color}\n拖拽调序 · 单击应用 · 右键置顶/删除')
+            it.setToolTip(
+                f'{color}\n拖拽调序 · 单击应用 · 右键置顶/删除 · Del删除 · Home置顶'
+            )
             lst.addItem(it)
 
         def _apply_order():
@@ -3407,6 +3447,39 @@ class HostStateMachineWidget(QWidget):
 
         lst.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         lst.customContextMenuRequested.connect(_on_list_context)
+
+        _orig_key = lst.keyPressEvent
+
+        def _on_list_key(event):
+            try:
+                key = event.key()
+            except Exception:
+                return _orig_key(event)
+            it = lst.currentItem()
+            c = ''
+            if it is not None:
+                c = str(it.data(Qt.ItemDataRole.UserRole) or '').strip()
+            if c and key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+                self.clear_sev_pin_arc_seize_recent_color(c)
+                self._last_sev_pin_arc_seize_recent_key_deleted = c
+                _rebuild_parent_menu()
+                try:
+                    event.accept()
+                except Exception:
+                    pass
+                return
+            if c and key == Qt.Key.Key_Home:
+                self.move_sev_pin_arc_seize_recent_color(c, 0)
+                self._last_sev_pin_arc_seize_recent_key_pinned = c
+                _rebuild_parent_menu()
+                try:
+                    event.accept()
+                except Exception:
+                    pass
+                return
+            return _orig_key(event)
+
+        lst.keyPressEvent = _on_list_key
         self._last_sev_pin_arc_seize_recent_drag_list = lst
         return lst
 
@@ -4557,8 +4630,63 @@ class HostStateMachineWidget(QWidget):
             act.triggered.connect(
                 lambda *_a, d=delta: self.adjust_stale_prune_undo_extend_step_ms(d))
             menu.addAction(act)
+        menu.addSeparator()
+        act_custom_step = QAction('自定义步进 ms…', menu)
+        act_custom_step.setProperty('isUndoStepCustom', True)
+        act_custom_step.setObjectName('hostStalePruneUndoStepCustom')
+        act_custom_step.triggered.connect(
+            lambda *_: self.prompt_stale_prune_undo_extend_step_ms())
+        menu.addAction(act_custom_step)
+        act_custom_ext = QAction('自定义延长 ms…', menu)
+        act_custom_ext.setProperty('isUndoExtendCustom', True)
+        act_custom_ext.setObjectName('hostStalePruneUndoExtendCustom')
+        act_custom_ext.triggered.connect(
+            lambda *_: self.prompt_stale_prune_undo_extend_ms())
+        menu.addAction(act_custom_ext)
         self._last_stale_prune_undo_step_menu = menu
         return menu
+
+    def prompt_stale_prune_undo_extend_step_ms(self, ms: int = None) -> int:
+        """wave50: 自定义步进 ms 输入."""
+        cur = self.stale_prune_undo_extend_step_ms()
+        if ms is None and not getattr(
+                self, '_stale_prune_undo_custom_no_dialog', False):
+            try:
+                ms, ok = QInputDialog.getInt(
+                    self, '自定义 undo 步进',
+                    '步进毫秒（0=重置全长）:',
+                    int(cur), 0, 30000, 100)
+                if not ok:
+                    self._last_stale_prune_undo_step_custom = None
+                    return cur
+            except Exception:
+                ms = cur
+        if ms is None:
+            ms = getattr(self, '_stale_prune_undo_custom_step_ms', cur)
+        got = self.set_stale_prune_undo_extend_step_ms(int(ms))
+        self._last_stale_prune_undo_step_custom = got
+        return got
+
+    def prompt_stale_prune_undo_extend_ms(self, ms: int = None) -> int:
+        """wave50: 自定义延长到指定 ms 输入."""
+        left = max(0, int(getattr(self, '_stale_prune_undo_left_ms', 0) or 0))
+        if ms is None and not getattr(
+                self, '_stale_prune_undo_custom_no_dialog', False):
+            try:
+                ms, ok = QInputDialog.getInt(
+                    self, '自定义 undo 延长',
+                    '延长至毫秒:',
+                    max(1500, left), 1500, 30000, 100)
+                if not ok:
+                    self._last_stale_prune_undo_extend_custom = None
+                    return 0
+            except Exception:
+                ms = max(1500, left)
+        if ms is None:
+            ms = getattr(self, '_stale_prune_undo_custom_extend_ms', max(1500, left))
+        got = self.extend_stale_prune_undo(int(ms))
+        self._last_stale_prune_undo_extend_custom = got
+        return got
 
     def extend_stale_prune_undo(self, ms: int = None) -> int:
         """wave47–48: 延长 undo；ms 优先；否则步进可配（0=重置全长）."""
@@ -5407,6 +5535,11 @@ class HostStateMachineWidget(QWidget):
             lay.addLayout(row)
             lst = QListWidget(dlg)
             lst.setObjectName('hostMergeDiffBatchFailHistoryList')
+            try:
+                lst.setSelectionMode(
+                    QAbstractItemView.SelectionMode.ExtendedSelection)
+            except Exception:
+                pass
 
             def _ent_blob(ent):
                 paths = list(ent.get('paths') or [])
@@ -5460,9 +5593,60 @@ class HostStateMachineWidget(QWidget):
                 self._last_merge_diff_batch_fail_n = len(paths)
                 return paths
 
+            def _selected_entries():
+                out = []
+                for it in lst.selectedItems():
+                    ent = it.data(Qt.ItemDataRole.UserRole + 1)
+                    if isinstance(ent, dict):
+                        out.append(ent)
+                    else:
+                        paths = list(it.data(Qt.ItemDataRole.UserRole) or [])
+                        out.append({'ts': '', 'paths': paths})
+                return out
+
+            def _selected_paths_union():
+                seen = set()
+                paths = []
+                for ent in _selected_entries():
+                    for pth in list(ent.get('paths') or []):
+                        pth = str(pth).strip()
+                        if pth and pth not in seen:
+                            seen.add(pth)
+                            paths.append(pth)
+                return paths
+
             def _retry_batch():
                 paths = _load_current()
                 return self.open_merge_diff_paths(paths) if paths else []
+
+            def _retry_selected():
+                paths = _selected_paths_union()
+                if not paths:
+                    try:
+                        self._flash_host_toast('未选中失败批次', kind='info', ms=1200)
+                    except Exception:
+                        pass
+                    self._last_merge_diff_batch_fail_history_multi_retry = []
+                    return []
+                self._last_merge_diff_batch_fail = list(paths)
+                self._last_merge_diff_batch_fail_n = len(paths)
+                out = self.open_merge_diff_paths(paths)
+                self._last_merge_diff_batch_fail_history_multi_retry = list(out)
+                return list(out)
+
+            def _export_selected():
+                ents = _selected_entries()
+                if not ents:
+                    # export all shown if none selected
+                    ents = []
+                    for i in range(lst.count()):
+                        it = lst.item(i)
+                        if it is None:
+                            continue
+                        ent = it.data(Qt.ItemDataRole.UserRole + 1)
+                        if isinstance(ent, dict):
+                            ents.append(ent)
+                return self.export_merge_diff_batch_fail_history(ents)
 
             lst.itemDoubleClicked.connect(lambda it: _load_current(it))
             btns = QDialogButtonBox(
@@ -5471,6 +5655,14 @@ class HostStateMachineWidget(QWidget):
                 '重开该批', QDialogButtonBox.ButtonRole.ActionRole)
             btn_retry.setObjectName('hostMergeDiffBatchFailHistoryRetry')
             btn_retry.clicked.connect(lambda *_: _retry_batch())
+            btn_multi = btns.addButton(
+                '批量重开选中', QDialogButtonBox.ButtonRole.ActionRole)
+            btn_multi.setObjectName('hostMergeDiffBatchFailHistoryMultiRetry')
+            btn_multi.clicked.connect(lambda *_: _retry_selected())
+            btn_export = btns.addButton(
+                '导出选中', QDialogButtonBox.ButtonRole.ActionRole)
+            btn_export.setObjectName('hostMergeDiffBatchFailHistoryExport')
+            btn_export.clicked.connect(lambda *_: _export_selected())
             btn_clear = btns.addButton(
                 '清空历史', QDialogButtonBox.ButtonRole.ActionRole)
             btn_clear.setObjectName('hostMergeDiffBatchFailHistoryClear')
@@ -5480,6 +5672,8 @@ class HostStateMachineWidget(QWidget):
             lay.addWidget(btns)
             self._last_merge_diff_batch_fail_history_dialog = dlg
             self._last_merge_diff_batch_fail_history_list = lst
+            self._last_merge_diff_batch_fail_history_multi_btn = btn_multi
+            self._last_merge_diff_batch_fail_history_export_btn = btn_export
             self._last_merge_diff_batch_fail_history_shown = True
             if getattr(self, '_merge_diff_fail_hist_no_exec', False):
                 return True
@@ -5491,6 +5685,78 @@ class HostStateMachineWidget(QWidget):
                 pass
             return self.show_merge_diff_batch_fail_history(interactive=False)
         return True
+
+    def export_merge_diff_batch_fail_history(
+            self, entries=None, path: str = '', *, interactive: bool = True) -> str:
+        """wave50: 导出失败历史（选中或全部）为 JSON 文本文件."""
+        import json as _json
+        if entries is None:
+            entries = self.sorted_merge_diff_batch_fail_history()
+        entries = list(entries or [])
+        payload = []
+        for ent in entries:
+            if not isinstance(ent, dict):
+                continue
+            payload.append({
+                'ts': str(ent.get('ts') or ''),
+                'paths': [str(p) for p in list(ent.get('paths') or [])],
+            })
+        if not path and interactive and not getattr(
+                self, '_merge_diff_fail_hist_export_no_dialog', False):
+            try:
+                path, _flt = QFileDialog.getSaveFileName(
+                    self, '导出失败清单历史',
+                    'merge-diff-fail-history.json',
+                    'JSON (*.json);;Text (*.txt)')
+            except Exception:
+                path = ''
+        if not path:
+            # non-interactive / smoke: write to temp
+            if getattr(self, '_merge_diff_fail_hist_export_path', None):
+                path = str(self._merge_diff_fail_hist_export_path)
+            else:
+                path = '/tmp/sieans-merge-diff-fail-history.json'
+        try:
+            Path = __import__('pathlib').Path
+            Path(path).write_text(
+                _json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding='utf-8')
+            self._last_merge_diff_batch_fail_history_export_path = str(path)
+            self._last_merge_diff_batch_fail_history_export_n = len(payload)
+            try:
+                self._flash_host_toast(
+                    f'已导出失败历史 · {len(payload)}', kind='ok', ms=1400)
+            except Exception:
+                pass
+            return str(path)
+        except Exception as err:
+            try:
+                self._flash_host_toast(f'导出失败 · {err}', kind='info', ms=1400)
+            except Exception:
+                pass
+            self._last_merge_diff_batch_fail_history_export_path = ''
+            return ''
+
+    def retry_merge_diff_batch_fail_history_selected(
+            self, entries=None) -> list:
+        """wave50: 多选批次路径并集重开."""
+        if entries is None:
+            entries = []
+        seen = set()
+        paths = []
+        for ent in list(entries or []):
+            for pth in list((ent or {}).get('paths') or []):
+                pth = str(pth).strip()
+                if pth and pth not in seen:
+                    seen.add(pth)
+                    paths.append(pth)
+        if not paths:
+            self._last_merge_diff_batch_fail_history_multi_retry = []
+            return []
+        self._last_merge_diff_batch_fail = list(paths)
+        out = self.open_merge_diff_paths(paths)
+        self._last_merge_diff_batch_fail_history_multi_retry = list(out)
+        return list(out)
 
     def retry_merge_diff_batch_fails(self) -> list:
         """wave46: 重开上次批量失败项."""
@@ -6342,7 +6608,32 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             pass
         self._last_toast_hist_cap_tip_anim_easing = name
+        if not getattr(self, '_toast_hist_cap_tip_anim_easing_quiet', False):
+            try:
+                self.preview_toast_hist_cap_tip_anim_easing(name)
+            except Exception:
+                pass
         return name
+
+    def preview_toast_hist_cap_tip_anim_easing(self, name: str = None) -> bool:
+        """wave50: 切换 easing 后预览脉冲 tip."""
+        if name:
+            # ensure curve uses this name even if not yet persisted path
+            prev = getattr(self, '_toast_hist_cap_tip_anim_easing', None)
+            self._toast_hist_cap_tip_anim_easing = str(name)
+        try:
+            self.set_toast_hist_cap_tip_anim_enabled(True)
+        except Exception:
+            pass
+        try:
+            self._flash_host_toast(
+                f'缓动预览 · {self.toast_hist_cap_tip_anim_easing()}',
+                kind='info', ms=700, animate=True)
+            pulsed = bool(getattr(self, '_last_host_toast_pulsed', False))
+        except Exception:
+            pulsed = False
+        self._last_toast_hist_cap_tip_anim_easing_previewed = pulsed
+        return pulsed
 
     def _toast_tip_anim_easing_curve(self) -> QEasingCurve:
         """wave49: 名 → QEasingCurve."""

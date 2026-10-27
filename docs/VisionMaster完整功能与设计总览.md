@@ -426,6 +426,17 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊟ · 失败历史多选重开/导出 · Del/Home置顶 · easing预览 · 徽章红点 · undo自定义ms · 2026-10-28】
+
+- **失败历史多选批量重开/导出**：ExtendedSelection；「批量重开选中」「导出选中」；`export_merge_diff_batch_fail_history` / `retry_merge_diff_batch_fail_history_selected`。
+- **最近色拖拽列表键盘**：Delete/Backspace 删除单项；Home 置顶。
+- **tip easing 预览脉冲**：`preview_toast_hist_cap_tip_anim_easing`；`set_…_easing` 默认触发（quiet 可关）。
+- **徽章角标红点样式**：`_path_copy_badge_fail_history_icon` 叠加红点；count=0 无红点且无「·N」。
+- **undo 预设自定义 ms**：菜单「自定义步进/延长 ms…」+ `prompt_stale_prune_undo_extend_step_ms` / `prompt_stale_prune_undo_extend_ms`。
+- **冒烟**：`smoke-wave50-failmulti-dragkeys-easingpreview-reddot-undocustom-e2e`（另回归 wave49/48/47）。
+
+---
+
 ## 【细妆㊞ · 失败历史排序 · 最近色右键置顶/删除 · tip easing · 徽章失败数角标 · undo步进±1s/±3s · 2026-10-28】
 
 - **失败历史排序切换**：`merge_diff_batch_fail_history_sort_mode` time|path；对话框 `QComboBox`；`sorted_merge_diff_batch_fail_history`。
