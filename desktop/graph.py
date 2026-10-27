@@ -123,9 +123,17 @@ class FlowScene(QGraphicsScene):
 
     def __init__(self,document):
         super().__init__();self.document=document;self.nodes={};self.edges=[];self.link=None;self.link_preview=None
+        self.edit_locked=False
         self.selectionChanged.connect(self.selection_changed)
         document.changed.connect(self.rebuild)
         self.rebuild()
+
+    def set_edit_locked(self, locked):
+        self.edit_locked=bool(locked)
+        if self.edit_locked:
+            self.cancel_link()
+        for node in self.nodes.values():
+            node.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, not self.edit_locked)
 
     def rebuild(self):
         ids={n.node_id for n in self.selectedItems() if isinstance(n,Node)}
@@ -141,6 +149,8 @@ class FlowScene(QGraphicsScene):
             item=Node(n['id'],label,n.get('position',dict(x=60,y=40+i*130)),i==0)
             self.addItem(item);self.nodes[n['id']]=item
             if n['id'] in ids:item.setSelected(True)
+            if self.edit_locked:
+                item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
         for e in p['edges']:
             item=Edge(e,self);self.addItem(item);self.edges.append(item)
         self.setSceneRect(self.itemsBoundingRect().adjusted(-40,-30,160,160));self.blockSignals(False)
@@ -153,6 +163,7 @@ class FlowScene(QGraphicsScene):
         for edge in self.edges:edge.refresh()
 
     def save_positions(self):
+        if self.edit_locked:return
         p=deepcopy(self.document.project)
         for node_id,item in self.nodes.items():
             pos=dict(x=round(item.x()/10)*10,y=round(item.y()/10)*10)
@@ -161,6 +172,8 @@ class FlowScene(QGraphicsScene):
         self.document.commit(p)
 
     def port_clicked(self,port):
+        if self.edit_locked:
+            self.notice.emit('运行模式：画布编辑已锁定');return
         if self.link and self.link[2]!=port.output:self.finish_link(port)
         else:self.start_link(port)
 
@@ -198,6 +211,7 @@ class FlowScene(QGraphicsScene):
         path.lineTo(b);self.link_preview.setPath(path)
 
     def finish_link(self,port):
+        if self.edit_locked:self.cancel_link();return
         origin=self.link
         if origin is None:return
         target=(port.node_id,port.side,port.output) if port else None
@@ -288,12 +302,15 @@ class FlowView(QGraphicsView):
         else:super().wheelEvent(event)
 
     def dragEnterEvent(self,event):
+        if self.scene().edit_locked:event.ignore();return
         if event.mimeData().hasFormat('application/x-sieans-operator'):event.acceptProposedAction()
 
     def dragMoveEvent(self,event):
         if event.mimeData().hasFormat('application/x-sieans-operator'):event.acceptProposedAction()
 
     def dropEvent(self,event):
+        if self.scene().edit_locked:
+            event.ignore();return
         key=bytes(event.mimeData().data('application/x-sieans-operator')).decode('utf-8')
         pos=self.mapToScene(event.position().toPoint())
         self.dropped.emit(key,dict(x=max(0,min(9800,pos.x())),y=max(0,min(9800,pos.y()))));event.acceptProposedAction()
@@ -305,11 +322,15 @@ class FlowView(QGraphicsView):
         else:super().keyPressEvent(event)
 
     def delete_selected(self):
+        if self.scene().edit_locked:
+            self.scene().notice.emit('运行模式：画布编辑已锁定');return
         nodes=[n.node_id for n in self.scene().selectedItems() if isinstance(n,Node) and not n.source]
         edges=[n.edge['id'] for n in self.scene().selectedItems() if isinstance(n,Edge)]
         self.scene().document.remove(nodes,edges)
 
     def contextMenuEvent(self,event):
+        if self.scene().edit_locked:
+            event.accept();return
         self.scene().cancel_link();self._port_press=None
         item=self.itemAt(event.pos())
         if isinstance(item,Port):item=item.parentItem()

@@ -11,9 +11,15 @@ def uid():
 def empty_project():
     from desktop.image_source import DEFAULT_SOURCE
     from copy import deepcopy as _dc
-    return dict(version=2, id=uid(), name='未命名工程', steps=[], edges=[],
+    proj = dict(version=2, id=uid(), name='未命名方案', steps=[], edges=[],
                 sourcePosition=dict(x=300, y=40), variables={},
                 sourceConfig=_dc(DEFAULT_SOURCE))
+    try:
+        from desktop import scheme as flow_scheme
+        flow_scheme.ensure_scheme(proj)
+    except Exception:
+        pass
+    return proj
 
 
 class Document(QObject):
@@ -37,6 +43,11 @@ class Document(QObject):
         if 'sourceConfig' not in project:
             from desktop.image_source import DEFAULT_SOURCE
             project['sourceConfig'] = deepcopy(DEFAULT_SOURCE)
+        try:
+            from desktop import scheme as flow_scheme
+            flow_scheme.ensure_scheme(project)
+        except Exception:
+            pass
         self.project = project
         self.history, self.index = [deepcopy(project)], 0
         self.saved, self.clipboard = deepcopy(project), None

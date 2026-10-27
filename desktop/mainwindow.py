@@ -6,7 +6,8 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QMimeData, QByteArray, QBuffer, QIODevice, QTimer
 from PySide6.QtGui import QAction, QKeySequence, QDrag, QPixmap, QImage, QPainter, QColor, QFont
 from PySide6.QtWidgets import (QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QSplitter,QTreeWidget,QTreeWidgetItem,
-    QLineEdit,QToolBar,QLabel,QPushButton,QFileDialog,QMessageBox,QTabWidget,QPlainTextEdit,QGraphicsView,QGraphicsScene)
+    QLineEdit,QToolBar,QLabel,QPushButton,QFileDialog,QMessageBox,QTabWidget,QPlainTextEdit,QGraphicsView,QGraphicsScene,
+    QStackedWidget,QInputDialog,QSpinBox,QDialog,QDialogButtonBox,QFormLayout,QComboBox)
 from desktop.model import Document,empty_project
 from desktop.graph import FlowScene,FlowView,Node
 from desktop.catalog import all_definitions,definition_for
@@ -17,9 +18,10 @@ from desktop.image_view import ImageView
 from desktop.cloud_view import CloudView
 
 from desktop.theme import WORKBENCH_QSS
-from desktop.widgets import OperatorRail, FilmstripBar, MiniMap, WorkbenchStatusBar
+from desktop.widgets import OperatorRail, FilmstripBar, MiniMap, WorkbenchStatusBar, FlowTabBar, AllFlowsPanel, OrangeSwitch
 from desktop.property_float import PropertyFloat
 from desktop.image_source import normalize_source
+from desktop import scheme as flow_scheme
 STYLE = WORKBENCH_QSS
 
 
@@ -37,6 +39,9 @@ class MainWindow(QMainWindow):
         self.backend.error.connect(self.engine_error);self.backend.stopped.connect(self.engine_closed)
         if hasattr(self.backend,'progress'):self.backend.progress.connect(self.progress)
         self.continuous=False;self.run_all_filmstrip=False;self.rail_category='';self.property_float=None
+        self.app_mode='design'  # design | run
+        self.showing_all_flows=False
+        self._left_pane=None;self._center_stack=None;self.run_mode_pane=None
         self.build_ui();self.document.changed.connect(self.document_changed);self.populate_toolbox()
         self.document_changed()
         self.wb_status.push_log('正在启动本机算法引擎…' if start_engine else '离线编辑')
@@ -49,9 +54,17 @@ class MainWindow(QMainWindow):
 
     def build_ui(self):
         files=self.menuBar().addMenu('文件');edit=self.menuBar().addMenu('编辑');view=self.menuBar().addMenu('视图')
-        self.new_action=self.action('新建工程',self.new_project,'Ctrl+N');self.open_action=self.action('打开工程',self.open_project,'Ctrl+O')
-        self.save_action=self.action('保存工程',self.save_project,'Ctrl+S')
-        for a in [self.new_action,self.open_action,self.save_action]:files.addAction(a)
+        tools_menu=self.menuBar().addMenu('工具');settings_menu=self.menuBar().addMenu('设置')
+        # A4: 方案 .sol vs 流程 .prc
+        self.new_action=self.action('新建方案',self.new_project,'Ctrl+N')
+        self.open_action=self.action('打开方案',self.open_project,'Ctrl+O')
+        self.save_action=self.action('保存方案',self.save_project,'Ctrl+S')
+        self.save_as_action=self.action('方案另存为…',self.save_project_as)
+        for a in [self.new_action,self.open_action,self.save_action,self.save_as_action]:files.addAction(a)
+        files.addSeparator()
+        files.addAction(self.action('导出流程…',self.export_process_prc))
+        files.addAction(self.action('导入流程…',self.import_process_prc))
+        files.addSeparator()
         templates=files.addMenu('从模板新建检测工程')
         for label, relative in [
             ('空白检测工程', 'projects/templates/blank-inspection.sieans'),
@@ -72,6 +85,9 @@ class MainWindow(QMainWindow):
         devices.addAction(self.action('导入点云',self.open_cloud));devices.addAction(self.action('设置参考点云',lambda:self.open_cloud(True)))
         devices.addAction(self.action('清除点云输入',self.clear_cloud))
         devices.addAction(self.action('相机管理…',self.open_camera_manager))
+        tools_menu.addAction(self.action('运行界面设计',self.open_run_ui_designer))
+        tools_menu.addAction(self.action('运行画面编辑（经典）',lambda:self.open_panel('hmi')))
+        settings_menu.addAction(self.action('设计态 / 运行模式…',self.toggle_app_mode))
         self.undo_action=self.action('撤销',self.document.undo,'Ctrl+Z');self.redo_action=self.action('重做',self.document.redo,'Ctrl+Y')
         for a in [self.undo_action,self.redo_action]:edit.addAction(a)
         edit.addAction(self.action('复制模块',self.copy_nodes,'Ctrl+Shift+C'));edit.addAction(self.action('粘贴模块',lambda:self.document.paste() if not self.busy else None,'Ctrl+Shift+V'))
@@ -90,6 +106,16 @@ class MainWindow(QMainWindow):
         self.cont_action=self.action('↻ 连续',self.run_continuous);toolbar.addAction(self.cont_action)
         self.stop_action=self.action('■ 停止',self.stop_run);toolbar.addAction(self.stop_action)
         self.run_selected_action=self.action('执行所选',lambda:self.run(self.selected));toolbar.addAction(self.run_selected_action)
+        toolbar.addSeparator()
+        # A1: 设计态 ↔ 运行模式
+        mode_lab=QLabel('运行模式');mode_lab.setStyleSheet('color:#9aa7b5;padding-left:6px;')
+        toolbar.addWidget(mode_lab)
+        self.mode_switch=OrangeSwitch(False)
+        self.mode_switch.setToolTip('关闭=设计态（可编辑）；打开=运行模式（操作员界面，锁定画布）')
+        self.mode_switch.toggled.connect(self.on_mode_switch)
+        toolbar.addWidget(self.mode_switch)
+        self.mode_badge=QLabel('设计态');self.mode_badge.setObjectName('modeBadge');self.mode_badge.setProperty('runMode','false')
+        toolbar.addWidget(self.mode_badge)
         toolbar.addSeparator();self.engine_label=QLabel('引擎启动中');toolbar.addWidget(self.engine_label)
 
         # ===== Five-region shell: left(rail+lib) | center flow | right image =====
@@ -108,22 +134,27 @@ class MainWindow(QMainWindow):
         self.search.textChanged.connect(self.populate_toolbox)
         left_l.addWidget(library,1)
         left.setMinimumWidth(280);left.setMaximumWidth(420)
+        self._left_pane=left
         horizontal.addWidget(left)
 
         flow=QWidget();flow.setObjectName('flowPane');fl=QVBoxLayout(flow);fl.setContentsMargins(0,0,0,0);fl.setSpacing(0)
         self.demo_notice=QLabel();self.demo_notice.setWordWrap(True);self.demo_notice.setTextFormat(Qt.TextFormat.PlainText)
         self.demo_notice.setStyleSheet('background:#2b333d;color:#9ecfe0;padding:10px 12px;border:1px solid #3a4552;border-radius:6px;margin:6px;');self.demo_notice.hide();fl.addWidget(self.demo_notice)
+        # A2: multi-flow tab bar
+        self.flow_tab_bar=FlowTabBar()
+        self.flow_tab_bar.allFlowsRequested.connect(self.show_all_flows)
+        self.flow_tab_bar.flowSelected.connect(self.select_flow_tab)
+        self.flow_tab_bar.addFlowRequested.connect(lambda:self.guard(self.add_flow_tab))
+        self.flow_tab_bar.runOnceRequested.connect(self.run_flow_once)
+        self.flow_tab_bar.runContinuousRequested.connect(self.run_flow_continuous)
+        self.flow_tab_bar.contextAction.connect(self.flow_tab_context)
+        fl.addWidget(self.flow_tab_bar)
         name_row=QHBoxLayout();name_row.setContentsMargins(8,4,8,4);name_row.setSpacing(6)
-        self.flow_tabs=QTabWidget();self.flow_tabs.setDocumentMode(True)
-        self.project_name=QLineEdit(self.document.project['name']);self.project_name.setAccessibleName('工程名称');self.project_name.editingFinished.connect(self.rename_project)
-        name_row.addWidget(QLabel('流程1'),0)
+        self.project_name=QLineEdit(self.document.project['name']);self.project_name.setAccessibleName('方案名称');self.project_name.setPlaceholderText('方案名称');self.project_name.editingFinished.connect(self.rename_project)
+        name_row.addWidget(QLabel('方案'),0)
         name_row.addWidget(self.project_name,1)
         for label,callback in [('自动排列',self.document.layout),('适应',lambda:self.flow.fit()),('撤销',self.document.undo),('重做',self.document.redo)]:
             b=QPushButton(label);b.clicked.connect(lambda checked=False,cb=callback:self.guard(cb) if not self.busy else None);name_row.addWidget(b)
-        run_flow=QPushButton('▶');run_flow.setToolTip('运行当前流程');run_flow.setObjectName('primaryButton');run_flow.clicked.connect(lambda:self.guard(self.run_once) if not self.busy else None)
-        name_row.addWidget(run_flow)
-        plus=QPushButton('+');plus.setFixedWidth(28);plus.setToolTip('新建流程（P1）');plus.setEnabled(False)
-        name_row.addWidget(plus)
         fl.addLayout(name_row)
         self.scene=FlowScene(self.document);self.flow=FlowView(self.scene)
         self.scene.chosen.connect(self.choose_node);self.scene.configure.connect(self.configure_node);self.scene.notice.connect(self.log)
@@ -132,10 +163,39 @@ class MainWindow(QMainWindow):
         self.minimap=MiniMap(self.scene,self.flow,canvas_host)
         self._canvas_host=canvas_host
         canvas_host.installEventFilter(self)
-        fl.addWidget(canvas_host,1)
-        hint=QLabel('双击节点打开属性浮窗 · 端口拖拽连线 · Esc 取消 · Ctrl+滚轮缩放')
+        # A5: 全流程 panel in stack with canvas
+        self.all_flows_panel=AllFlowsPanel()
+        self.all_flows_panel.runOnce.connect(self.run_flow_once)
+        self.all_flows_panel.runContinuous.connect(self.run_flow_continuous)
+        self.all_flows_panel.openFlow.connect(self.select_flow_tab)
+        self.all_flows_panel.metaChanged.connect(self.on_flow_meta_changed)
+        design_stack=QStackedWidget();self._center_stack=design_stack
+        design_stack.addWidget(canvas_host)          # 0 = single-flow canvas
+        design_stack.addWidget(self.all_flows_panel) # 1 = 全流程
+        fl.addWidget(design_stack,1)
+        hint=QLabel('双击节点打开属性浮窗 · 端口拖拽连线 · Esc 取消 · Ctrl+滚轮缩放 · 右键流程 Tab 可导出/拷贝/间隔/NG停止/超时')
         hint.setStyleSheet('color:#6b7684;padding:4px 8px;');fl.addWidget(hint)
+        self._flow_pane=flow
         horizontal.addWidget(flow)
+
+        # A1 run-mode operator surface (hidden until toggled)
+        run_pane=QWidget();run_pane.setObjectName('runModePane');rl_run=QVBoxLayout(run_pane)
+        run_title=QLabel('运行模式 · 操作员界面')
+        run_title.setObjectName('dialogTitle');rl_run.addWidget(run_title)
+        run_hint=QLabel('画布编辑已锁定；工具箱已隐藏。可执行单次/连续；打开「运行界面设计」定制操作员 HMI。')
+        run_hint.setObjectName('dialogHint');run_hint.setWordWrap(True);rl_run.addWidget(run_hint)
+        run_btns=QHBoxLayout()
+        b=QPushButton('▶ 单次');b.setObjectName('primaryButton');b.clicked.connect(lambda:self.guard(self.run_once));run_btns.addWidget(b)
+        b=QPushButton('↻ 连续');b.clicked.connect(lambda:self.guard(self.run_continuous));run_btns.addWidget(b)
+        b=QPushButton('■ 停止');b.clicked.connect(lambda:self.guard(self.stop_run));run_btns.addWidget(b)
+        b=QPushButton('运行界面设计');b.clicked.connect(lambda:self.guard(self.open_run_ui_designer));run_btns.addWidget(b)
+        b=QPushButton('返回设计态');b.clicked.connect(lambda:self.set_app_mode('design'));run_btns.addWidget(b)
+        run_btns.addStretch(1);rl_run.addLayout(run_btns)
+        self.run_mode_image=None  # filled after image views exist
+        self._run_pane=run_pane
+        self._run_pane_layout=rl_run
+        horizontal.addWidget(run_pane)
+        run_pane.hide()
 
         # Right: image | filmstrip (module-result lives in bottom)
         right=QWidget();right.setObjectName('imagePane');rl=QVBoxLayout(right);rl.setContentsMargins(0,0,0,0);rl.setSpacing(0)
@@ -154,7 +214,13 @@ class MainWindow(QMainWindow):
         # Keep ParameterPanel as hidden fallback for programmatic refresh; property float is primary
         self.parameters=ParameterPanel();self.parameters.hide();self.parameters.changed.connect(self.update_step)
         horizontal.addWidget(right)
-        horizontal.setSizes([300,560,520]);horizontal.setChildrenCollapsible(False)
+        # Embed a live image mirror area into run pane
+        self.run_mode_image=ImageView()
+        self._run_pane_layout.addWidget(self.run_mode_image,1)
+        run_foot=QLabel('运行界面设计器入口：工具 → 运行界面设计（对标 VM4.4）')
+        run_foot.setObjectName('dialogHint');self._run_pane_layout.addWidget(run_foot)
+        horizontal.setSizes([300,560,520,0]);horizontal.setChildrenCollapsible(False)
+        self._main_horizontal=horizontal
         root_split.addWidget(horizontal)
 
         self.results=ResultPanel();self.logs=QPlainTextEdit();self.logs.setReadOnly(True);self.logs.document().setMaximumBlockCount(200)
@@ -170,6 +236,12 @@ class MainWindow(QMainWindow):
         self.roi_action=self.action('框选所选模块 ROI',self.roi_mode);self.roi_action.setCheckable(True);view.addAction(self.roi_action)
         view.addAction(self.action('清除所选模块 ROI',lambda:self.update_roi(None)))
         self.menuBar().addAction(self.action('桌面版说明',self.about))
+        # Ensure multi-flow scheme shell exists even on blank doc
+        try:
+            flow_scheme.ensure_scheme(self.document.project)
+            self.refresh_flow_tabs()
+        except Exception as err:
+            self.log(str(err))
         QTimer.singleShot(0,self._place_minimap)
 
     def guard(self,callback):
@@ -297,11 +369,15 @@ class MainWindow(QMainWindow):
 
     def document_changed(self):
         p=self.document.project
+        try:flow_scheme.ensure_scheme(p)
+        except Exception:pass
         if self.selected not in [s['id'] for s in p['steps']]:self.selected=None
-        self.setWindowTitle(('● ' if self.document.modified else '')+p['name']+' — SIEANS Vision 原生桌面版')
+        mode_tag='运行模式' if self.app_mode=='run' else '设计态'
+        self.setWindowTitle(('● ' if self.document.modified else '')+p['name']+f' — SIEANS Vision · {mode_tag}')
         self.project_name.setText(p['name']);self.undo_action.setEnabled(not self.busy and self.document.index>0)
         self.redo_action.setEnabled(not self.busy and self.document.index<len(self.document.history)-1)
         self.refresh_parameters();self.set_busy(self.busy)
+        if hasattr(self,'flow_tab_bar'):self.refresh_flow_tabs()
         cfg=normalize_source(p.get('sourceConfig'))
         if hasattr(self,'filmstrip'):
             self.filmstrip.thumbs.blockSignals(True)
@@ -310,11 +386,11 @@ class MainWindow(QMainWindow):
             self.filmstrip.set_auto_switch(bool(cfg.get('autoSwitch')))
             self.filmstrip.thumbs.blockSignals(False)
             self.filmstrip.auto_switch.blockSignals(False)
-            self.filmstrip.setVisible(cfg.get('mode','local')=='local')
+            self.filmstrip.setVisible(cfg.get('mode','local')=='local' and self.app_mode=='design')
 
     def rename_project(self):
         if self.busy:return
-        p=deepcopy(self.document.project);p['name']=self.project_name.text().strip() or '未命名工程';self.document.commit(p)
+        p=deepcopy(self.document.project);p['name']=self.project_name.text().strip() or '未命名方案';self.document.commit(p)
 
     def confirm_discard(self,include_original=False):
         original_dirty=include_original and self.demo_backup is not None and self.demo_backup['project']!=self.demo_backup['saved']
@@ -324,14 +400,18 @@ class MainWindow(QMainWindow):
 
     def new_project(self):
         if self.busy or not self.confirm_discard():return
-        self.document.load(empty_project());self.filename=None;self.image='';self.input_view.show_data('');self.output_view.show_data('');self.results.set_results([])
+        proj=empty_project();proj['name']='未命名方案';flow_scheme.ensure_scheme(proj)
+        self.document.load(proj);self.filename=None;self.image='';self.input_view.show_data('');self.output_view.show_data('');self.results.set_results([])
         self.clear_cloud()
-        self.last_result=None
+        self.last_result=None;self.showing_all_flows=False
+        if hasattr(self,'_center_stack'):self._center_stack.setCurrentIndex(0)
+        self.set_app_mode('design')
         self.show_platform_welcome()
 
     def open_project(self):
         if self.busy or not self.engine_ready or not self.confirm_discard():return
-        name,_=QFileDialog.getOpenFileName(self,'打开视觉工程','','SIEANS 工程 (*.sieans *.json)')
+        name,_=QFileDialog.getOpenFileName(self,'打开方案','',
+            'VisionMaster 方案 / SIEANS (*.sol *.sieans *.json);;方案 .sol (*.sol);;SIEANS 工程 (*.sieans);;全部 (*.*)')
         if not name:return
         self.open_project_file(Path(name))
 
@@ -341,30 +421,70 @@ class MainWindow(QMainWindow):
         if path.stat().st_size>32*1024*1024:raise ValueError('工程文件不能超过 32 MB')
         value=json.loads(path.read_text(encoding='utf-8-sig'))
         def loaded(reply):
-            self.document.load(reply['project']);self.filename=path;self.results.set_results([])
+            project=reply['project']
+            # Preserve multi-flow scheme fields stripped by engine normalize
+            for key in ('flows','activeFlowId','flowEdges'):
+                if key in value:project[key]=value[key]
+            flow_scheme.ensure_scheme(project)
+            # Prefer active flow payload on top-level
+            try:flow_scheme.activate_flow(project, project['activeFlowId'])
+            except Exception:pass
+            self.document.load(project);self.filename=path;self.results.set_results([])
             self.image='';self.input_view.show_data('');self.output_view.show_data('');self.flow.fit()
-            self.clear_cloud();self.last_result=None
-            ops=', '.join(s.get('name') or s.get('operation') for s in reply['project'].get('steps',[]))
-            self.log('已打开工程：'+path.name+' · 模块：'+ops+'（含相机采集时无需预先打开图像，直接运行流程）')
-            notes=(reply['project'].get('notes') or '').strip()
+            self.clear_cloud();self.last_result=None;self.showing_all_flows=False
+            if hasattr(self,'_center_stack'):self._center_stack.setCurrentIndex(0)
+            ops=', '.join(s.get('name') or s.get('operation') for s in project.get('steps',[]))
+            nflows=len(project.get('flows') or [])
+            self.log(f'已打开方案：{path.name} · {nflows} 个流程 · 模块：{ops}（含相机采集时无需预先打开图像，直接运行流程）')
+            notes=(project.get('notes') or '').strip()
             if notes:
                 self.demo_notice.setText(notes);self.demo_notice.show()
-            elif not reply['project'].get('steps'):
+            elif not project.get('steps'):
                 self.show_platform_welcome()
             else:
                 self.demo_notice.hide()
+            self.refresh_flow_tabs()
             QTimer.singleShot(300, self.maybe_warm_camera)
         self.request('project/validate',{'project':value},loaded)
 
     def save_project(self):
         if self.busy or not self.engine_ready:return
-        name=str(self.filename) if self.filename else QFileDialog.getSaveFileName(self,'保存视觉工程',self.document.project['name']+'.sieans','SIEANS 工程 (*.sieans)')[0]
+        if self.filename:
+            name=str(self.filename)
+        else:
+            name,_=QFileDialog.getSaveFileName(self,'保存方案',self.document.project['name']+'.sol',
+                '方案 .sol (*.sol);;SIEANS 工程 (*.sieans)')
         if not name:return
-        snapshot=deepcopy(self.document.project)
+        self._write_scheme_file(Path(name))
+
+    def save_project_as(self):
+        if self.busy or not self.engine_ready:return
+        name,_=QFileDialog.getSaveFileName(self,'方案另存为',self.document.project['name']+'.sol',
+            '方案 .sol (*.sol);;SIEANS 工程 (*.sieans)')
+        if not name:return
+        self._write_scheme_file(Path(name))
+
+    def _write_scheme_file(self, destination):
+        snapshot=flow_scheme.scheme_for_disk(self.document.project)
         def saved(reply):
-            destination=Path(name);temporary=destination.with_suffix(destination.suffix+'.tmp')
-            temporary.write_text(json.dumps(reply['project'],ensure_ascii=False,indent=2),encoding='utf-8');temporary.replace(destination)
-            self.filename=destination;self.document.saved=deepcopy(snapshot);self.document_changed();self.log('工程已保存：'+str(destination))
+            # Keep multi-flow fields from client snapshot (normalize strips them)
+            out=deepcopy(snapshot)
+            for key in ('steps','edges','sourcePosition','sourceConfig','variables','variableTypes','subflows','hmi','outputNode','name','id','version'):
+                if key in reply.get('project',{}):
+                    out[key]=reply['project'][key]
+            # Re-sync active into flows after any normalize of top-level
+            try:
+                flow_scheme.ensure_scheme(out)
+                flow_scheme.sync_active_into_flows(out)
+            except Exception:pass
+            temporary=destination.with_suffix(destination.suffix+'.tmp')
+            temporary.write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8');temporary.replace(destination)
+            self.filename=destination;self.document.saved=deepcopy(out)
+            # Keep live doc flows in sync
+            self.document.project['flows']=deepcopy(out.get('flows',[]))
+            self.document.project['activeFlowId']=out.get('activeFlowId')
+            self.document.project['flowEdges']=deepcopy(out.get('flowEdges',[]))
+            self.document_changed();self.log('方案已保存：'+str(destination)+f'（{len(out.get("flows") or [])} 个流程）')
         self.request('project/validate',{'project':snapshot},saved)
 
     def open_image(self,reference=False):
@@ -489,12 +609,20 @@ class MainWindow(QMainWindow):
         self.document.copy([n.node_id for n in self.scene.selectedItems() if isinstance(n,Node) and not n.source])
 
     def set_busy(self,busy):
-        self.busy=busy;self.flow.setEnabled(not busy);self.parameters.setEnabled(not busy);self.toolbox.setEnabled(not busy);self.project_name.setEnabled(not busy)
-        for a in [self.new_action,self.image_action,self.reference_action,self.demo_action]:a.setEnabled(not busy)
+        self.busy=busy
+        design=self.app_mode=='design'
+        # In run mode keep view navigable but graph edit locked via scene.edit_locked
+        self.flow.setEnabled(not busy)
+        self.parameters.setEnabled(not busy and design)
+        self.toolbox.setEnabled(not busy and design)
+        if hasattr(self,'op_rail'):self.op_rail.setEnabled(not busy and design)
+        self.project_name.setEnabled(not busy and design)
+        if hasattr(self,'flow_tab_bar'):self.flow_tab_bar.setEnabled(not busy)
+        for a in [self.new_action,self.image_action,self.reference_action,self.demo_action]:a.setEnabled(not busy and design)
         for a in [self.open_action,self.save_action,self.run_action,self.run_selected_action,self.cont_action]:a.setEnabled(self.engine_ready and not busy)
-        self.stop_action.setEnabled(busy or self.continuous);self.undo_action.setEnabled(not busy and self.document.index>0);self.redo_action.setEnabled(not busy and self.document.index+1<len(self.document.history))
-        self.demo_action.setEnabled(self.engine_ready and not busy);self.return_demo_action.setEnabled(not busy and self.demo_backup is not None)
-        if hasattr(self,'filmstrip'):self.filmstrip.setEnabled(not busy)
+        self.stop_action.setEnabled(busy or self.continuous);self.undo_action.setEnabled(not busy and design and self.document.index>0);self.redo_action.setEnabled(not busy and design and self.document.index+1<len(self.document.history))
+        self.demo_action.setEnabled(self.engine_ready and not busy and design);self.return_demo_action.setEnabled(not busy and self.demo_backup is not None)
+        if hasattr(self,'filmstrip'):self.filmstrip.setEnabled(not busy and design)
         for action in self.workspace_actions:action.setEnabled(self.engine_ready and (not busy or action.data() in ('continuous','hmi')))
         for key,dialog in list(self.dialogs.items()):
             if hasattr(dialog,'set_busy'):dialog.set_busy(busy)
@@ -560,6 +688,29 @@ class MainWindow(QMainWindow):
         algo_ms=round(elapsed*0.75,2) if elapsed else 0
         self.wb_status.set_timing(process_ms, tool_ms, algo_ms)
         self.wb_status.set_config('组件配置完成', ok=result.get('state')!='failed')
+        # A5: update active flow card stats
+        try:
+            p=self.document.project
+            flow_scheme.ensure_scheme(p)
+            flow_scheme.sync_active_into_flows(p)
+            fid=p.get('activeFlowId')
+            for f in p.get('flows') or []:
+                if f.get('id')==fid:
+                    if result.get('state')=='completed':
+                        f['runCount']=int(f.get('runCount') or 0)+1
+                    f['lastElapsedMs']=float(elapsed)
+                    break
+            if hasattr(self,'all_flows_panel') and self.showing_all_flows:
+                self.all_flows_panel.set_flows(p.get('flows') or [])
+        except Exception:
+            pass
+        # Mirror output to run-mode image if present
+        if hasattr(self,'run_mode_image') and self.run_mode_image is not None:
+            try:
+                pix=self.output_view
+                # best-effort: copy last annotated if any was set on output_view
+            except Exception:
+                pass
         text={'completed':'运行完成','cancelled':'已停止','failed':'运行失败'}.get(result.get('state'),result.get('state','未知'))
         self.log(f"{text} · {elapsed} ms"+(' · '+result['error'] if result.get('error') else ''))
         state=result.get('state')
@@ -739,6 +890,223 @@ class MainWindow(QMainWindow):
             self.log(f'图像源已关联相机：{name}')
         dlg.acceptedDevice.connect(accepted)
         dlg.exec()
+
+
+    # ---------- A1–A6: design/run · multi-flow · .prc · 全流程 · 运行界面设计 ----------
+    def refresh_flow_tabs(self):
+        if not hasattr(self,'flow_tab_bar'):return
+        p=self.document.project
+        flow_scheme.ensure_scheme(p)
+        self.flow_tab_bar.set_flows(p.get('flows') or [], p.get('activeFlowId'), self.showing_all_flows)
+        if hasattr(self,'all_flows_panel') and self.showing_all_flows:
+            self.all_flows_panel.set_flows(p.get('flows') or [])
+
+    def show_all_flows(self):
+        if self.busy:return
+        p=deepcopy(self.document.project)
+        flow_scheme.ensure_scheme(p)
+        flow_scheme.sync_active_into_flows(p)
+        self.document.project.update({k:p[k] for k in ('flows','activeFlowId','flowEdges') if k in p})
+        # commit without history noise: write through load-less sync
+        self.document.project['flows']=p['flows']
+        self.showing_all_flows=True
+        if hasattr(self,'_center_stack'):self._center_stack.setCurrentIndex(1)
+        self.all_flows_panel.set_flows(p.get('flows') or [])
+        self.refresh_flow_tabs()
+        self.log('全流程视图')
+
+    def select_flow_tab(self, flow_id):
+        if self.busy:return
+        self.guard(lambda:self._select_flow_tab(flow_id))
+
+    def _select_flow_tab(self, flow_id):
+        p=deepcopy(self.document.project)
+        flow_scheme.activate_flow(p, flow_id)
+        # Prefer commit so scheme.flows stays in history; then align saved if only activeFlowId changed
+        before_saved=deepcopy(self.document.saved)
+        self.document.commit(p)
+        try:
+            flow_scheme.ensure_scheme(before_saved)
+            flow_scheme.sync_active_into_flows(before_saved)
+            cur=flow_scheme.scheme_for_disk(self.document.project)
+            # Tab switch alone should not dirty an otherwise clean scheme
+            saved_flows=[{k:v for k,v in f.items() if k!='cardPosition'} for f in (before_saved.get('flows') or [])]
+            cur_flows=[{k:v for k,v in f.items() if k!='cardPosition'} for f in (cur.get('flows') or [])]
+            if saved_flows==cur_flows and before_saved.get('name')==cur.get('name'):
+                self.document.saved=deepcopy(self.document.project)
+        except Exception:
+            pass
+        self.showing_all_flows=False
+        if hasattr(self,'_center_stack'):self._center_stack.setCurrentIndex(0)
+        self.selected=None;self.refresh_parameters();self.flow.fit()
+        self.refresh_flow_tabs()
+        name=next((f.get('name') for f in self.document.project.get('flows') or [] if f.get('id')==flow_id),'流程')
+        self.log(f'已切换到流程：{name}')
+
+    def add_flow_tab(self):
+        if self.busy:return
+        p=deepcopy(self.document.project)
+        flow=flow_scheme.add_flow(p)
+        flow_scheme.activate_flow(p, flow['id'])
+        self.document.commit(p)
+        self.showing_all_flows=False
+        if hasattr(self,'_center_stack'):self._center_stack.setCurrentIndex(0)
+        self.flow.fit();self.refresh_flow_tabs()
+        self.log(f'已新建流程：{flow.get("name")}')
+
+    def run_flow_once(self, flow_id):
+        def go():
+            if self.document.project.get('activeFlowId')!=flow_id and not self.showing_all_flows:
+                self._select_flow_tab(flow_id)
+            elif self.showing_all_flows or self.document.project.get('activeFlowId')!=flow_id:
+                self._select_flow_tab(flow_id)
+            self.run_once()
+        self.guard(go)
+
+    def run_flow_continuous(self, flow_id):
+        def go():
+            if self.document.project.get('activeFlowId')!=flow_id:
+                self._select_flow_tab(flow_id)
+            self.run_continuous()
+        self.guard(go)
+
+    def on_flow_meta_changed(self, flow_id, meta):
+        if self.busy:return
+        p=deepcopy(self.document.project)
+        flow_scheme.update_flow_meta(p, flow_id, **meta)
+        # keep top-level if active
+        if p.get('activeFlowId')==flow_id:
+            flow_scheme.activate_flow(p, flow_id)
+        self.document.commit(p)
+
+    def flow_tab_context(self, flow_id, action):
+        if self.busy and action not in ('export',):return
+        self.guard(lambda:self._flow_tab_context(flow_id, action))
+
+    def _flow_tab_context(self, flow_id, action):
+        p=deepcopy(self.document.project)
+        flow_scheme.ensure_scheme(p)
+        flow=next((f for f in p['flows'] if f.get('id')==flow_id), None)
+        if not flow:raise ValueError('流程不存在')
+        if action=='export':
+            self.export_process_prc(flow_id);return
+        if action=='copy':
+            flow_scheme.sync_active_into_flows(p)
+            copy=flow_scheme.duplicate_flow(p, flow_id)
+            self.document.commit(p);self.refresh_flow_tabs();self.log(f'已拷贝流程：{copy.get("name")}');return
+        if action=='delete':
+            if len(p.get('flows') or [])<=1:raise ValueError('至少保留一个流程')
+            if QMessageBox.question(self,'删除流程',f'删除「{flow.get("name")}」？',QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No)!=QMessageBox.StandardButton.Yes:
+                return
+            flow_scheme.remove_flow(p, flow_id)
+            self.document.commit(p)
+            self.showing_all_flows=False
+            if hasattr(self,'_center_stack'):self._center_stack.setCurrentIndex(0)
+            self.flow.fit();self.refresh_flow_tabs();self.log('流程已删除');return
+        if action=='rename':
+            name,ok=QInputDialog.getText(self,'重命名', '流程名称', text=flow.get('name') or '')
+            if not ok:return
+            flow_scheme.rename_flow(p, flow_id, name)
+            if p.get('activeFlowId')==flow_id:
+                # name only — top-level name is scheme name, not flow
+                pass
+            self.document.commit(p);self.refresh_flow_tabs();return
+        if action=='interval':
+            cur=int(flow.get('runIntervalMs') or 0)
+            val,ok=QInputDialog.getInt(self,'设置运行间隔','运行间隔时间(ms)',cur,0,100000,1)
+            if not ok:return
+            flow_scheme.update_flow_meta(p, flow_id, runIntervalMs=val)
+            self.document.commit(p);self.log(f'运行间隔：{val} ms');return
+        if action=='stop_on_ng':
+            flow_scheme.update_flow_meta(p, flow_id, stopOnNg=not bool(flow.get('stopOnNg')))
+            self.document.commit(p);self.refresh_flow_tabs()
+            self.log('流程执行NG时停止：'+('开' if not flow.get('stopOnNg') else '关'));return
+        if action=='timeout':
+            cur=int(flow.get('timeoutMs') or 0)
+            val,ok=QInputDialog.getInt(self,'设置流程超时时间','超时时间(ms)，0=不限制',cur,0,3600000,100)
+            if not ok:return
+            flow_scheme.update_flow_meta(p, flow_id, timeoutMs=val)
+            self.document.commit(p);self.log(f'流程超时：{val} ms');return
+
+    def export_process_prc(self, flow_id=None):
+        if self.busy:return
+        p=deepcopy(self.document.project)
+        flow_scheme.ensure_scheme(p);flow_scheme.sync_active_into_flows(p)
+        flows=p.get('flows') or []
+        if not flows:raise ValueError('无流程可导出')
+        if flow_id is None:
+            names=[f.get('name') or '流程' for f in flows]
+            name,ok=QInputDialog.getItem(self,'导出流程','选择要导出的流程',names,0,False)
+            if not ok:return
+            flow_id=flows[names.index(name)]['id']
+        payload=flow_scheme.export_prc(p, flow_id)
+        fname=(payload['flow'].get('name') or '流程')+'.prc'
+        path,_=QFileDialog.getSaveFileName(self,'导出流程',fname,'流程 .prc (*.prc);;JSON (*.json)')
+        if not path:return
+        Path(path).write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding='utf-8')
+        self.log('已导出流程：'+path)
+
+    def import_process_prc(self):
+        if self.busy:return
+        path,_=QFileDialog.getOpenFileName(self,'导入流程','','流程 .prc (*.prc);;JSON (*.json);;全部 (*.*)')
+        if not path:return
+        payload=json.loads(Path(path).read_text(encoding='utf-8-sig'))
+        p=deepcopy(self.document.project)
+        flow=flow_scheme.import_prc(p, payload)
+        self.document.commit(p)
+        self.refresh_flow_tabs()
+        self.log(f'已导入流程：{flow.get("name")}')
+
+    def on_mode_switch(self, checked):
+        self.set_app_mode('run' if checked else 'design')
+
+    def toggle_app_mode(self):
+        self.set_app_mode('design' if self.app_mode=='run' else 'run')
+
+    def set_app_mode(self, mode):
+        mode='run' if mode=='run' else 'design'
+        self.app_mode=mode
+        if hasattr(self,'mode_switch'):
+            self.mode_switch.blockSignals(True)
+            self.mode_switch.setChecked(mode=='run', animate=False)
+            self.mode_switch.blockSignals(False)
+        if hasattr(self,'mode_badge'):
+            self.mode_badge.setText('运行模式' if mode=='run' else '设计态')
+            self.mode_badge.setProperty('runMode','true' if mode=='run' else 'false')
+            self.mode_badge.style().unpolish(self.mode_badge);self.mode_badge.style().polish(self.mode_badge)
+        # Lock graph edit
+        if hasattr(self,'scene'):
+            self.scene.set_edit_locked(mode=='run')
+        # Layout: hide toolbox/rail in run mode; show operator pane
+        if hasattr(self,'_left_pane') and self._left_pane is not None:
+            self._left_pane.setVisible(mode=='design')
+        if hasattr(self,'_flow_pane'):
+            self._flow_pane.setVisible(mode=='design')
+        if hasattr(self,'_run_pane'):
+            self._run_pane.setVisible(mode=='run')
+        if hasattr(self,'_main_horizontal'):
+            if mode=='run':
+                self._main_horizontal.setSizes([0,0,520,640])
+            else:
+                self._main_horizontal.setSizes([300,560,520,0])
+        # Close property float in run mode
+        if mode=='run' and self.property_float:
+            try:self.property_float.close()
+            except Exception:pass
+            self.property_float=None
+        self.set_busy(self.busy)
+        self.document_changed()
+        self.log('已切换到'+('运行模式（画布锁定，操作员界面）' if mode=='run' else '设计态（完整工作台）'))
+
+    def open_run_ui_designer(self):
+        if self.dialogs.get('run_ui'):
+            self.dialogs['run_ui'].show();self.dialogs['run_ui'].raise_();return
+        from desktop.run_ui_designer import RunUiDesignerDialog
+        dlg=RunUiDesignerDialog(self.document,self)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dlg.destroyed.connect(lambda *_:self.dialogs.pop('run_ui',None))
+        self.dialogs['run_ui']=dlg
+        dlg.show()
 
     def about(self):
         QMessageBox.information(self,'SIEANS Vision 视觉检测平台',

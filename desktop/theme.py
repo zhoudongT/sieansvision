@@ -348,6 +348,68 @@ QDialog QLabel#dialogHint {{
 QMessageBox {{
   background: {PANEL};
 }}
+
+/* —— Multi-flow tabs / 全流程 / 运行界面 —— */
+QWidget#flowTabBar {{
+  background: {HEADER};
+  border-bottom: 1px solid {LINE};
+}}
+QPushButton#flowAllButton, QPushButton#flowAddButton, QPushButton#flowTabName, QPushButton#flowTabRun {{
+  background: {CARD};
+  border: 1px solid {LINE};
+  border-radius: 4px;
+  padding: 4px 10px;
+  min-height: 20px;
+}}
+QPushButton#flowAllButton:checked, QPushButton#flowTabName:checked {{
+  background: {SELECTED};
+  color: {ACCENT};
+  border: 1px solid {ACCENT_DEEP};
+  font-weight: 600;
+}}
+QPushButton#flowTabRun {{
+  padding: 4px 6px;
+  color: {TEXT_MUTED};
+}}
+QFrame#flowCard {{
+  background: {CARD};
+  border: 1px solid {LINE};
+  border-radius: 8px;
+  border-top: 3px solid {ACCENT};
+}}
+QLabel#flowCardTitle {{
+  font-weight: 700;
+  font-size: 14px;
+  color: {TEXT};
+}}
+QLabel#flowCardStats {{
+  color: {TEXT_MUTED};
+  font-size: 12px;
+}}
+QWidget#allFlowsPanel {{
+  background: {CANVAS};
+}}
+QWidget#runModePane {{
+  background: {PANEL};
+}}
+QFrame#runPreviewCell {{
+  background: {CARD};
+  border: 1px dashed {LINE};
+  border-radius: 6px;
+}}
+QLabel#modeBadge {{
+  background: {SELECTED};
+  color: {ACCENT};
+  border: 1px solid {ACCENT_DEEP};
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-weight: 700;
+}}
+QLabel#modeBadge[runMode="true"] {{
+  background: #1c3a2a;
+  color: {OK};
+  border: 1px solid {OK};
+}}
 """
 
 TOOLBOX_QSS = f"""

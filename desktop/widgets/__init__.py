@@ -4,7 +4,10 @@ from .filmstrip import FilmstripBar
 from .minimap import MiniMap
 from .op_rail import OperatorRail
 from .status_chrome import WorkbenchStatusBar
+from .flow_tabs import FlowTabBar
+from .all_flows import AllFlowsPanel
 
 __all__ = [
     'OrangeSwitch', 'FilmstripBar', 'MiniMap', 'OperatorRail', 'WorkbenchStatusBar',
+    'FlowTabBar', 'AllFlowsPanel',
 ]
