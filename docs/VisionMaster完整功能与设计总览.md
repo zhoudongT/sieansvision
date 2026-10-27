@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊺ · pin色标点击切冲突色预览 · 吸史候选悬停试键tip · DST全应用/全清 · A/B试算源记忆持久 · jitter撤清深度旁标/超时丢快照 · 2026-10-28】
+
+- **pin 色标点击切冲突色预览**：`cycle/set_…_undo_swatch_conflict_preview`；auto→conflict→clean→swap；色标/条点击轮换。
+- **吸史候选悬停试键 tip**：`trial_tip_…_fix_candidate`；QAction.hovered；不改键；tip「试键 · 撤/重 · 干净」。
+- **DST 多选全应用/全清**：`select_all/clear_selected/apply_all_selected_…_recent`；菜单全选·全清勾选·全应用勾选。
+- **A/B 试算源记忆+持久**：`load/persist_…_source_trial`；QSettings；说明条恢复记源。
+- **jitter 撤清深度旁标/超时丢快照**：`…_clear_undo_depth_ui`；`discard/ttl`；QTimer 到期自动丢；「撤清·N」+旁标。
+- **冒烟**：`smoke-wave77-pinswatchmode-histhover-dstall-abpersist-jitterttl-e2e`（另回归 wave76/75/74）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊹ · pin撤销预览色标条 · 吸史改键候选菜单 · DST最近右键多选 · A/B说明条点源试算 · jitter清栈确认/撤销 · 2026-10-28】
 
 - **pin 撤销预览色标条**：`preview_…_undo` 增 `swatch_current/restore` · `bar_css/bar_text`；`render/_refresh_…_undo_swatch`；对比条旁 ●⇒● 渐变色标。
