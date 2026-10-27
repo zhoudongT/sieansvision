@@ -426,6 +426,17 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊻ · 失败项可点重开 · 最近色拖拽排序 · tip热更动画 · 徽章菜单快捷键 · undo悬停剩余秒 · 2026-10-28】
+
+- **失败项可点重开**：批量 tip「点此重开失败」→ `show_merge_diff_batch_fails`（双击/重开选中/重开全部）；`retry_merge_diff_batch_fails`。
+- **最近色拖拽排序**：`reorder_sev_pin_arc_seize_recent_colors` / `move_…`；菜单「拖拽排序最近色…」→ InternalMove 列表对话框。
+- **tip 热更动画**：`_refresh_toast_hist_cap_keep_exit_tip_action` 热更后 `_pulse_host_toast` 淡入脉冲；`_flash_host_toast(..., animate=True)`。
+- **徽章菜单快捷键**：再复制 `C` · 中键回退开关 `F`（`setShortcutVisibleInContextMenu`）。
+- **undo 悬停剩余秒**：enter 放大同时 `剩余 Ns` tip/条内文案；tick 同步；leave 恢复。
+- **冒烟**：`smoke-wave46-failreopen-recentdrag-tipanim-badgeshortcut-undohoversec-e2e`（另回归 wave45/44/41）。
+
+---
+
 ## 【细妆㊺ · diff批量失败汇总tip · 最近色右键清除 · tip开关热更勾 · 回退开关挂徽章菜单 · undo条悬停放大 · 2026-10-28】
 
 - **diff 批量开失败汇总 tip**：`open_merge_diff_paths` 统计 ok/fail；tip「已开 N · 失败 M · 首败名」；`_last_merge_diff_batch_fail`；quiet 抑单项 tip。
