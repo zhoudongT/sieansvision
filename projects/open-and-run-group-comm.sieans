@@ -240,7 +240,9 @@
     "commPayload": "",
     "recvData": "",
     "recvLen": 0,
-    "commOk": 0
+    "commOk": 0,
+    "heartbeatTick": "HB",
+    "heartbeatAt": "0"
   },
   "sourceConfig": {
     "mode": "local",

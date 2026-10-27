@@ -6,6 +6,7 @@ response.enabled. Beyond CommManager「试收」: binds sockets for enabled devi
 from __future__ import annotations
 
 import socket
+import queue
 import threading
 import time
 from copy import deepcopy
@@ -34,6 +35,9 @@ class CommRecvListener(QObject):
         self._serial_threads = []
         self._device_map = {}  # name -> device dict
         self._recv_events = []
+        self._tcp_client_targets = []  # list[(name, host, port)]
+        self._serial_ports = {}  # device_name -> pyserial.Serial (worker-owned; ack via queue)
+        self._serial_ack_queues = {}  # device_name -> queue.Queue of ack strings
         self._heartbeat = dict(enabled=False, intervalMs=5000, payload='HB')
         self._response = dict(enabled=False, timeoutMs=3000, ack='OK')
         self._hb_timer = QTimer(self)
@@ -85,6 +89,9 @@ class CommRecvListener(QObject):
             except Exception:
                 pass
         self._clients = []
+        self._tcp_client_targets = []
+        self._serial_ack_queues = {}
+        self._serial_ports = {}
         was = self._listening
         self._listening = False
         self._started = []
@@ -111,6 +118,7 @@ class CommRecvListener(QObject):
             ack=str(resp.get('ack') if resp.get('ack') is not None else 'OK'),
         )
         started = []
+        self._tcp_client_targets = []
         for d in devices:
             name = d.get('name') or ''
             proto = str(d.get('protocol') or '')
@@ -122,6 +130,9 @@ class CommRecvListener(QObject):
             if proto == 'TCP Server' and port > 0:
                 if self._start_tcp_server(name, host, port):
                     started.append(f'TCP Server {name} :{port}')
+            elif proto == 'TCP Client' and port > 0:
+                self._tcp_client_targets.append((name, host, port))
+                started.append(f'TCP Client {name} →{host}:{port}')
             elif proto == 'UDP' and port > 0:
                 if self._start_udp(name, host, port):
                     started.append(f'UDP {name} :{port}')
@@ -130,6 +141,14 @@ class CommRecvListener(QObject):
                 if path and self._start_serial(name, path, int(d.get('baud') or d.get('baudrate') or 115200)):
                     started.append(f'Serial {name} {path}')
             # Local Bus: no socket; use push_local() / inject
+        # Seed flow.heartbeatTick so Vars panel can show it immediately
+        if self._heartbeat.get('enabled') and self._host is not None and hasattr(self._host, 'document'):
+            try:
+                write_project_variable(self._host.document.project, 'flow.heartbeatTick',
+                                       str(self._heartbeat.get('payload') or 'HB'))
+                write_project_variable(self._host.document.project, 'flow.heartbeatAt', '0')
+            except Exception:
+                pass
         self._started = started
         self._listening = bool(started) or True  # LocalBus always available after reload
         if self._heartbeat.get('enabled'):
@@ -167,7 +186,7 @@ class CommRecvListener(QObject):
                 write_project_variable(proj, 'flow.heartbeatAt', str(self._last_hb_ms))
         except Exception:
             pass
-        # Keepalive to connected TCP clients
+        # Keepalive to connected TCP Server clients (inbound peers)
         sent = 0
         blob = (payload + '\n').encode('utf-8', errors='replace')
         for c in list(self._clients):
@@ -177,9 +196,32 @@ class CommRecvListener(QObject):
                     sent += 1
             except Exception:
                 pass
+        # Outbound heartbeat to TCP Client devices (short connect-send-close)
+        out_ok = 0
+        for name, host, port in list(self._tcp_client_targets):
+            try:
+                sock = socket.create_connection((host, int(port)), timeout=0.4)
+                try:
+                    sock.sendall(blob)
+                    out_ok += 1
+                finally:
+                    sock.close()
+            except Exception:
+                pass
+        # Serial outbound HB via ack queues (worker writes)
+        for name, q in list(self._serial_ack_queues.items()):
+            try:
+                q.put_nowait(payload)
+            except Exception:
+                pass
         # Status tick (rate-limit log via signal only)
         self.heartbeatTick.emit(payload)
-        self.status.emit(f'心跳 · {payload}' + (f' → {sent}客户端' if sent else ''))
+        detail = []
+        if sent:
+            detail.append(f'{sent}入站客户端')
+        if out_ok:
+            detail.append(f'{out_ok}出站TCP')
+        self.status.emit(f'心跳 · {payload}' + ((' → ' + '、'.join(detail)) if detail else ''))
 
     def _start_tcp_server(self, device_name, host, port):
         server = QTcpServer(self)
@@ -264,6 +306,8 @@ class CommRecvListener(QObject):
 
     def _start_serial(self, device_name, path, baud):
         stop = self._serial_stop
+        ack_q = queue.Queue()
+        self._serial_ack_queues[device_name] = ack_q
 
         def worker():
             try:
@@ -272,8 +316,18 @@ class CommRecvListener(QObject):
                 return
             try:
                 with pyserial.Serial(path, baudrate=baud, timeout=0.5) as ser:
+                    self._serial_ports[device_name] = ser
                     buf = ''
                     while not stop.is_set():
+                        # Drain outbound ACK / heartbeat writes
+                        try:
+                            while True:
+                                msg = ack_q.get_nowait()
+                                ser.write((str(msg) + '\n').encode('utf-8', errors='replace'))
+                        except queue.Empty:
+                            pass
+                        except Exception:
+                            pass
                         chunk = ser.read(256)
                         if not chunk:
                             continue
@@ -285,9 +339,18 @@ class CommRecvListener(QObject):
                                     line = line.strip('\r\n')
                                     if line:
                                         self.received.emit(device_name, line)
+                                        # Serial response ACK
+                                        if self._response.get('enabled'):
+                                            try:
+                                                ack = str(self._response.get('ack') or 'OK')
+                                                ser.write((ack + '\n').encode('utf-8', errors='replace'))
+                                            except Exception:
+                                                pass
                                     break
             except Exception:
                 return
+            finally:
+                self._serial_ports.pop(device_name, None)
 
         th = threading.Thread(target=worker, name=f'sieans-ser-{device_name}', daemon=True)
         th.start()

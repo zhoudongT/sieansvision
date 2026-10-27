@@ -139,7 +139,10 @@
     "x": 300,
     "y": 40
   },
-  "variables": {},
+  "variables": {
+    "heartbeatTick": "HB",
+    "heartbeatAt": "0"
+  },
   "sourceConfig": {
     "mode": "local",
     "pixelFormat": "RGB24",

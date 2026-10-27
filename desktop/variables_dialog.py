@@ -308,6 +308,57 @@ class VariablesDialog(QDialog):
         self.pending[self.backend.request('variables/get', {'project': deepcopy(self.document.project)})] = 'read'
         self.message.setText('正在读取本机运行变量…')
 
+    def live_patch_flow_var(self, name, value):
+        """Live-update a flow variable (e.g. heartbeatTick) without full engine re-read."""
+        name = str(name or '').strip()
+        if not name:
+            return
+        try:
+            variables = self.document.project.setdefault('variables', {})
+            if isinstance(variables, dict):
+                variables[name] = value
+        except Exception:
+            pass
+        self.initial.setdefault('flow', {})[name] = value
+        if self.runtime_draft is None:
+            self.runtime_draft = {'flow': {}, 'global': {}, 'modules': {}, 'revision': 0}
+        flow = self.runtime_draft.setdefault('flow', {})
+        if not isinstance(flow, dict):
+            self.runtime_draft['flow'] = {}
+            flow = self.runtime_draft['flow']
+        flow[name] = value
+        try:
+            summary = value_summary(value)
+        except Exception:
+            summary = str(value)
+        matched = False
+        try:
+            for r in range(self.table.rowCount()):
+                name_item = self.table.item(r, 1)
+                if name_item is None or name_item.text() != name:
+                    continue
+                scope_item = self.table.item(r, 0)
+                scope_txt = scope_item.text() if scope_item else ''
+                if scope_txt and ('流程' not in scope_txt) and scope_txt not in ('flow',):
+                    continue
+                cur = self.table.item(r, 4)
+                if cur is None:
+                    self.table.setItem(r, 4, QTableWidgetItem(summary))
+                else:
+                    cur.setText(summary)
+                matched = True
+                break
+            if not matched and self.mode.currentData() in ('current', 'overview'):
+                self.render()
+            elif matched:
+                self.message.setText(f'实时 · flow.{name} = {summary}')
+        except Exception:
+            try:
+                self.render()
+            except Exception:
+                pass
+
+
     def _result(self, request_id, result):
         tag = self.pending.pop(request_id, None)
         if tag is None or self.stale: return

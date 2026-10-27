@@ -101,29 +101,40 @@ class GroupParamPanel(QWidget):
         root.addWidget(tip)
 
     def _pick_binding(self, key):
-        """Open BindSourceDialog (⛓) — clearer operator IO / property binding UX."""
+        """Prefer shared upstream_field_picker; fall back to BindSourceDialog."""
+        from PySide6.QtWidgets import QInputDialog
+        choice = ''
         try:
-            from desktop.bind_dialog import BindSourceDialog
-            current = self.image_data.text() if key == 'imageData' else self.input_roi.text()
-            dlg = BindSourceDialog(self.project, current=current, group_step=self.step, parent=self)
-            # Also offer VM-style image/ROI labels as quick picks in the dialog list
-            if dlg.exec():
-                choice = dlg.selected or ''
+            from desktop.upstream_field_picker import pick_upstream_field, host_last_result
+            picked = pick_upstream_field(
+                self, self.project, step_id=self.step.get('id'),
+                last_result=host_last_result(self),
+            )
+            if picked:
+                choice = picked[2]
             else:
-                return
+                from desktop.bind_dialog import BindSourceDialog
+                current = self.image_data.text() if key == 'imageData' else self.input_roi.text()
+                dlg = BindSourceDialog(self.project, current=current, group_step=self.step, parent=self)
+                if not dlg.exec():
+                    return
+                choice = dlg.selected or ''
         except Exception:
-            from PySide6.QtWidgets import QInputDialog
-            options = ['', '0 图像源1.图像', '0 图像源1.ImageData', '0 图像源1.ROI']
-            for i, s in enumerate(self.project.get('steps') or [], start=1):
-                name = s.get('name') or s.get('operation') or s['id']
-                options.extend([f'{i} {name}.图像', f'{i} {name}.ROI', f'{i} {name}.Output'])
-            choice, ok = QInputDialog.getItem(self, '订阅绑定', f'选择 {key} 订阅源', options, 0, True)
-            if not ok:
-                return
-        # Map variable path → ImageData/ROI label when user picked a flow var
-        if choice and not any(x in choice for x in ('图像', 'Image', 'ROI', ' ')):
-            # keep raw path (flow.xxx) — engine resolves image from graph input anyway
-            pass
+            try:
+                from desktop.bind_dialog import BindSourceDialog
+                current = self.image_data.text() if key == 'imageData' else self.input_roi.text()
+                dlg = BindSourceDialog(self.project, current=current, group_step=self.step, parent=self)
+                if not dlg.exec():
+                    return
+                choice = dlg.selected or ''
+            except Exception:
+                options = ['', '0 图像源1.图像', '0 图像源1.ImageData', '0 图像源1.ROI']
+                for i, s in enumerate(self.project.get('steps') or [], start=1):
+                    name = s.get('name') or s.get('operation') or s['id']
+                    options.extend([f'{i} {name}.图像', f'{i} {name}.ROI', f'{i} {name}.Output'])
+                choice, ok = QInputDialog.getItem(self, '订阅绑定', f'选择 {key} 订阅源', options, 0, True)
+                if not ok:
+                    return
         if key == 'imageData':
             self.image_data.setText(choice or '0 图像源1.图像')
         else:
@@ -228,24 +239,39 @@ class GroupParamPanel(QWidget):
             return
         current_item = table.item(row, 2)
         current = current_item.text() if current_item else ''
+        choice = ''
         try:
-            from desktop.bind_dialog import BindSourceDialog
-            dlg = BindSourceDialog(self.project, current=current, group_step=self.step, parent=self)
-            if not dlg.exec():
-                return
-            choice = dlg.selected or ''
+            from desktop.upstream_field_picker import pick_upstream_field, host_last_result
+            picked = pick_upstream_field(
+                self, self.project, step_id=self.step.get('id'),
+                last_result=host_last_result(self),
+            )
+            if picked:
+                choice = picked[2]
+            else:
+                from desktop.bind_dialog import BindSourceDialog
+                dlg = BindSourceDialog(self.project, current=current, group_step=self.step, parent=self)
+                if not dlg.exec():
+                    return
+                choice = dlg.selected or ''
         except Exception:
-            options = ['', '0 图像源1.图像', '0 图像源1.ROI', 'flow.passGate', 'flow.circleCount']
-            for i, s in enumerate(self.project.get('steps') or [], start=1):
-                name = s.get('name') or s.get('operation') or s['id']
-                options.extend([f'{i} {name}.图像', f'{i} {name}.ROI', f'{i} {name}.Output'])
-            choice, ok = QInputDialog.getItem(self, '订阅绑定', '选择订阅源', options, 0, True)
-            if not ok:
-                return
+            try:
+                from desktop.bind_dialog import BindSourceDialog
+                dlg = BindSourceDialog(self.project, current=current, group_step=self.step, parent=self)
+                if not dlg.exec():
+                    return
+                choice = dlg.selected or ''
+            except Exception:
+                options = ['', '0 图像源1.图像', '0 图像源1.ROI', 'flow.passGate', 'flow.circleCount']
+                for i, s in enumerate(self.project.get('steps') or [], start=1):
+                    name = s.get('name') or s.get('operation') or s['id']
+                    options.extend([f'{i} {name}.图像', f'{i} {name}.ROI', f'{i} {name}.Output'])
+                choice, ok = QInputDialog.getItem(self, '订阅绑定', '选择订阅源', options, 0, True)
+                if not ok:
+                    return
         table.blockSignals(True)
         table.setItem(row, 2, QTableWidgetItem(choice))
         table.blockSignals(False)
-        # Mirror ImageData / InputROI when editing those named rows
         name_item = table.item(row, 0)
         name = (name_item.text() if name_item else '').strip()
         if kind == 'inputs' and name == 'ImageData':

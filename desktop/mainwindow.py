@@ -148,7 +148,10 @@ class MainWindow(QMainWindow):
         toolbar.addSeparator();self.engine_label=QLabel('引擎启动中');toolbar.addWidget(self.engine_label)
         self.comm_listen_badge=QLabel('监听·—');self.comm_listen_badge.setObjectName('commListenBadge')
         self.comm_listen_badge.setStyleSheet('color:#888;padding:0 8px;font-size:11px;')
-        self.comm_listen_badge.setToolTip('通信监听状态（TCP/UDP/Serial + 心跳）')
+        self.comm_listen_badge.setToolTip('通信监听状态 — 点击打开通信管理')
+        self.comm_listen_badge.setCursor(__import__('PySide6.QtCore', fromlist=['Qt']).Qt.CursorShape.PointingHandCursor)
+        self.comm_listen_badge.mousePressEvent = lambda e: self.guard(self.open_comm_manager)  # noqa: E731
+        self._last_listen_badge = '监听·—'
         toolbar.addWidget(self.comm_listen_badge)
 
         # ===== Five-region shell: left(rail+lib) | center flow | right image =====
@@ -515,6 +518,7 @@ class MainWindow(QMainWindow):
         if hasattr(self,'_center_stack'):self._center_stack.setCurrentIndex(0)
         self.set_app_mode('design')
         self.show_platform_welcome()
+        self.reload_comm_listener()  # persist/refresh listen badge across project switch
 
     def open_project(self):
         if self.busy or not self.engine_ready or not self.confirm_discard():return
@@ -1517,9 +1521,10 @@ class MainWindow(QMainWindow):
             started = self._comm_listener.reload(self.document.project)
             if started:
                 self.log('通信监听已启动：' + '、'.join(started))
-            elif hasattr(self, 'comm_listen_badge'):
-                # LocalBus-only still shows ready
-                pass
+            elif hasattr(self, 'comm_listen_badge') and getattr(self, '_last_listen_badge', None):
+                # Keep prior badge text until listeningChanged fires (project switch)
+                if self.comm_listen_badge.text() in ('监听·—', '监听·关', ''):
+                    self.comm_listen_badge.setText(self._last_listen_badge)
         except Exception as err:
             self.log(f'通信监听启动失败：{err}')
             if hasattr(self, 'comm_listen_badge'):
@@ -1536,19 +1541,30 @@ class MainWindow(QMainWindow):
         if not hasattr(self, 'comm_listen_badge'):
             return
         text = str(summary or ('监听·开' if active else '监听·关'))
+        self._last_listen_badge = text
         self.comm_listen_badge.setText(text)
         color = '#5ecf8a' if active else '#888'
         self.comm_listen_badge.setStyleSheet(f'color:{color};padding:0 8px;font-size:11px;font-weight:600;')
-        self.comm_listen_badge.setToolTip(text)
+        self.comm_listen_badge.setToolTip(text + ' — 点击打开通信管理')
 
     def _on_comm_heartbeat_tick(self, payload):
         if not hasattr(self, 'comm_listen_badge'):
             return
-        base = self.comm_listen_badge.text().split(' · tick')[0]
+        base = (self._last_listen_badge or self.comm_listen_badge.text()).split(' · tick')[0]
         if not base.startswith('监听'):
             base = '监听·开'
-        self.comm_listen_badge.setText(f'{base} · tick')
-        self.comm_listen_badge.setToolTip(f'最近心跳：{payload}')
+        text = f'{base} · tick'
+        self.comm_listen_badge.setText(text)
+        self.comm_listen_badge.setToolTip(f'最近心跳：{payload} — 点击打开通信管理')
+        # Live-patch open Variables dialog for flow.heartbeatTick
+        try:
+            dlg = (self.dialogs or {}).get('variables')
+            if dlg is not None and dlg.isVisible():
+                dlg.live_patch_flow_var('heartbeatTick', payload)
+                dlg.live_patch_flow_var('heartbeatAt', str(
+                    getattr(self._comm_listener, '_last_hb_ms', '') or ''))
+        except Exception:
+            pass
 
     def inject_run_trigger(self):
         """Toolbar one-shot: inject string RUN without opening 全局触发 dialog."""

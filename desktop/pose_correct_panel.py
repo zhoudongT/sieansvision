@@ -77,6 +77,14 @@ class PoseCorrectPanel(QWidget):
         self._set_param('bindStepId', nid)
         self._set_param('bindField', field)
         self._set_param('fixtureSource', 'bind')
+        # Live-update 位姿来源 combo (basic tab) so UI matches params
+        src = getattr(self, '_fixture_src', None)
+        if src is not None:
+            idx = src.findData('bind')
+            if idx >= 0 and src.currentIndex() != idx:
+                src.blockSignals(True)
+                src.setCurrentIndex(idx)
+                src.blockSignals(False)
 
     def _emit(self):
         self.step['params'] = deepcopy(self.params)
@@ -133,6 +141,7 @@ class PoseCorrectPanel(QWidget):
         idx = max(0, src.findData(self.params.get('fixtureSource') or 'auto'))
         src.setCurrentIndex(idx)
         src.currentIndexChanged.connect(lambda _: self._set_param('fixtureSource', src.currentData()))
+        self._fixture_src = src
         form.addRow('位姿来源', src)
 
         follow = OrangeSwitch(bool(self.params.get('followRoi', True)))
