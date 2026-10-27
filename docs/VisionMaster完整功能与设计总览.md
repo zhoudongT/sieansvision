@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊶ · pin对比条点击应用 · 吸史快捷自定义 · DST年范围/本月 · A/B导入冲突策略 · jitter撤种重做栈 · 2026-10-28】
+
+- **pin 对比条点击一键应用**：`apply_…_avoid_compare_bar`；对比条可点（手型光标）；刷新色标/条。
+- **吸史快捷键自定义**：`set/prompt/reset_…_order_shortcuts`；QSettings 持久化；「键…」按钮；`_ensure` 读自定义。
+- **DST 年范围/本月跳回**：`set/get_…_year_range`（默认 1990–2035）；`jump_…_current_month`；「本月」按钮；年切换夹紧。
+- **A/B 导入冲突策略**：overwrite/skip/rename；`import(…, conflict=)`；统计覆/跳/改；菜单冲突策略子项。
+- **jitter 撤种重做栈**：撤种压重做；`redo_…_seed_reshuffle` +「重种」；新重抽清空重做。
+- **冒烟**：`smoke-wave73-pinapply-histkeycfg-dsttoday-abconflict-jitterredo-e2e`（另回归 wave72/71/70）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊵ · pin避让色标对比条 · 吸史重序快捷键 · DST跳月年切换 · A/B自定义预设导出/导入 · jitter重抽历史栈 · 2026-10-28】
 
 - **pin 避让色标对比条**：`render_…_key_avoid_compare_bar`；左当前/右建议渐变条；菜单旁对比条 tip。
