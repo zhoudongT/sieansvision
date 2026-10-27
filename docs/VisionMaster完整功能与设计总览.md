@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊬ · 导引带色板右键clear/pin · 撤销条色阶hex · PNG{datetime}live · 热同步A/B · 脉冲gap芯片 · 2026-10-28】
+
+- **导引带最近色板右键 clear/pin**：色块右键钉住到首位 / 清除此色 / 清空全部；`pin`/`remove` API。
+- **撤销条色阶自定义 hex 入口**：菜单内嵌 hex 行 +「自定义 hex…」；支持 hi 或 hi,mid,lo；热同步菜单同步。
+- **PNG `{datetime}` live preview strip**：命名展开 `{datetime}`；对话框实时预览条每秒刷新；「日期时间」预设。
+- **热同步双条 A/B 对比**：A=当前色阶 / B=对比预设；B 侧勾选热刷。
+- **脉冲 gap persist + preset chips**：0/120/300/500/1000 芯片；滑条与芯片双向同步并落盘。
+- **冒烟**：`smoke-wave63-guideclearpin-undohex-pngdatetime-hotsyncab-pulsegapchips-e2e`（另回归 wave62/61/60）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊫ · 导引带色板拖拽排序 · 撤销条色阶嵌预览 · PNG工程自动填 · 热同步勾选即时刷新 · 脉冲循环间隔 · 2026-10-28】
 
 - **导引带最近色板拖拽排序**：色块可拖拽重排；`reorder`/`move` API 落盘；单击仍应用自定义色。
