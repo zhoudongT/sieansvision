@@ -83,6 +83,7 @@ class MainWindow(QMainWindow):
             ('打开即跑 · 圆查找', 'projects/default-platform.sieans'),
             ('打开即跑 · 模板匹配', 'projects/open-and-run-locate.sieans'),
             ('打开即跑 · 卡尺直线', 'projects/open-and-run-caliper.sieans'),
+            ('打开即跑 · 卡尺→几何测量', 'projects/open-and-run-caliper-measure.sieans'),
             ('打开即跑 · 几何测量', 'projects/open-and-run-measure.sieans'),
             ('打开即跑 · 九点标定', 'projects/open-and-run-ninepoint.sieans'),
             ('打开即跑 · 参考图缺陷', 'projects/open-and-run-defects.sieans'),
@@ -1435,7 +1436,9 @@ class MainWindow(QMainWindow):
         if hasattr(self,'operator_hmi') and self.operator_hmi is not None:
             try:
                 annotated=self._pick_annotated_image(records) or ''
-                self.operator_hmi.set_runtime(result, image=self.image, annotated=annotated)
+                named_recs=[{**r,'name':names.get(r['id'],r.get('name') or r['id'])} for r in records]
+                hmi_result={**result,'results':named_recs}
+                self.operator_hmi.set_runtime(hmi_result, image=self.image, annotated=annotated)
                 # Re-apply Display fit/channel after set_runtime so HMI panes keep live mode
                 if _disp_applied:
                     disp_step = next((s for s in (self.document.project.get('steps') or []) if s.get('id')==ann_sid), None)
@@ -3694,6 +3697,7 @@ class MainWindow(QMainWindow):
             'projects/open-and-run-demo.sieans',
             'projects/open-and-run-locate.sieans',
             'projects/open-and-run-caliper.sieans',
+            'projects/open-and-run-caliper-measure.sieans',
             'projects/open-and-run-measure.sieans',
             'projects/open-and-run-ninepoint.sieans',
             'projects/open-and-run-script.sieans',

@@ -1,20 +1,27 @@
 """TCP / UDP loopback device simulator for Comm 联调 without field hardware.
 
-Protocol (line-oriented, UTF-8, \\n terminated):
-  PING          → PONG
-  RUN / CONT / STOP / PAUSE / RESUME → ACK <CMD>
-  STATUS        → OK READY
-  ECHO <text>   → <text>
-  HELP          → list of verbs
-  anything else → ACK <raw>   (echo-ack so fire_string_trigger can see payload)
+Protocol (line-oriented, UTF-8, newline terminated) — 模拟器，非现场设备:
+  PING                 → PONG
+  RUN/CONT/STOP/PAUSE/RESUME → ACK <CMD>
+  STATUS               → OK READY sim=1 clients=N recv=N
+  ECHO <text>          → <text>
+  HELP                 → list of verbs
+  GET <key>            → VALUE <key>=<v>  (in-memory KV)
+  SET <key> <value>    → ACK SET <key>
+  VARS                 → dump KV as KEY=VAL (or EMPTY)
+  MEAS                 → MEAS {ok,x,y,score,seq,ts,sim} JSON stub (假量测)
+  JSON {...}           → ACK JSON + echo; SET/GET via JSON cmd also
+  anything else        → ACK <raw>  (fire_string_trigger 友好)
 
-Default binds 127.0.0.1:19880 (TCP) and :19881 (UDP) — matches open-and-run-comm-multiproto.
-Does not touch checker :18280 or app :19777.
+Default binds 127.0.0.1:19880 (TCP) and :19881 (UDP).
+Does not touch checker :18280 or app :19777. Never claims real PLC/robot/camera.
 """
 from __future__ import annotations
 
+import json
 import socket
 import threading
+import time
 from datetime import datetime
 from typing import Optional
 
@@ -36,6 +43,8 @@ _state = {
     'last_payload': '',
     'last_at': '',
     'log': [],
+    'kv': {'ok': '1', 'mode': 'sim', 'device': 'TcpLoopbackSim'},
+    'meas_seq': 0,
 }
 
 
@@ -59,20 +68,75 @@ def respond(raw: str) -> str:
     if upper == 'PING':
         return 'PONG'
     if upper == 'STATUS':
-        return 'OK READY'
+        return (
+            f"OK READY sim=1 clients={_state.get('clients', 0)} "
+            f"recv={_state.get('recv_count', 0)} kv={len(_state.get('kv') or {})}"
+        )
     if upper == 'HELP':
-        return 'VERBS: PING STATUS RUN CONT STOP PAUSE RESUME ECHO <text> HELP'
+        return (
+            'VERBS: PING STATUS RUN CONT STOP PAUSE RESUME ECHO <text> '
+            'GET <k> SET <k> <v> VARS MEAS JSON {...} HELP  (sim only, not field HW)'
+        )
     if upper in ('RUN', 'CONT', 'STOP', 'PAUSE', 'RESUME'):
         return f'ACK {upper}'
     if upper.startswith('ECHO '):
         return text[5:]
-    # Pass-through ACK so Comm 试收 → fire_string_trigger(RUN/…) still works
-    # when client sends the trigger word alone we already handled; else wrap.
+    if upper == 'VARS':
+        kv = _state.get('kv') or {}
+        if not kv:
+            return 'EMPTY'
+        return ' '.join(f'{k}={v}' for k, v in sorted(kv.items()))
+    if upper.startswith('GET '):
+        key = text.split(None, 1)[1].strip()
+        if not key:
+            return 'ERR GET needs key'
+        val = (_state.get('kv') or {}).get(key, '')
+        return f'VALUE {key}={val}'
+    if upper.startswith('SET '):
+        rest = text.split(None, 1)[1] if len(text.split(None, 1)) > 1 else ''
+        parts = rest.split(None, 1)
+        if not parts or not parts[0]:
+            return 'ERR SET needs key'
+        key = parts[0]
+        val = parts[1] if len(parts) > 1 else ''
+        _state.setdefault('kv', {})[key] = val
+        return f'ACK SET {key}'
+    if upper == 'MEAS':
+        _state['meas_seq'] = int(_state.get('meas_seq') or 0) + 1
+        seq = _state['meas_seq']
+        payload = {
+            'ok': 1,
+            'x': round(100.0 + (seq % 17) * 0.5, 3),
+            'y': round(200.0 + (seq % 13) * 0.25, 3),
+            'score': round(0.85 + (seq % 10) * 0.01, 3),
+            'seq': seq,
+            'ts': int(time.time()),
+            'sim': True,
+        }
+        return 'MEAS ' + json.dumps(payload, separators=(',', ':'))
+    if upper.startswith('JSON ') or (text.startswith('{') and text.endswith('}')):
+        body = text[5:].strip() if upper.startswith('JSON ') else text
+        try:
+            obj = json.loads(body)
+        except Exception as exc:
+            return f'ERR JSON {exc}'
+        cmd = ''
+        if isinstance(obj, dict):
+            cmd = str(obj.get('cmd') or obj.get('command') or obj.get('op') or '')
+            if cmd.upper() == 'SET' and obj.get('key') is not None:
+                _state.setdefault('kv', {})[str(obj['key'])] = str(obj.get('value', ''))
+            if cmd.upper() == 'GET' and obj.get('key') is not None:
+                k = str(obj['key'])
+                return json.dumps(
+                    {'ok': 1, 'key': k, 'value': (_state.get('kv') or {}).get(k, ''), 'sim': True},
+                    separators=(',', ':'),
+                )
+        echo_cmd = f' cmd={cmd}' if cmd else ''
+        return f'ACK JSON{echo_cmd} ' + json.dumps(obj, separators=(',', ':'), ensure_ascii=False)
     first = text.split()[0].upper()
     if first in ('RUN', 'CONT', 'STOP', 'PAUSE', 'RESUME'):
         return f'ACK {first}'
     return f'ACK {text}'
-
 
 def _handle_client(conn: socket.socket, addr):
     _state['clients'] += 1

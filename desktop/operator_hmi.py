@@ -392,6 +392,8 @@ class OperatorHmiView(QWidget):
         self._trend_sparks = []  # QLabel live elapsed spark
         self._trend_ok_sparks = []  # QLabel OK/NG sequence
         self._yield_bars = []  # (bar_ok, bar_ng) tuples
+        self._result_tables = []
+        self._last_module_name = '流程'  # 结果表「模块」列跟末次步骤名
         self._layout_fp = None
         self._clock_timer = QTimer(self)
         self._clock_timer.setInterval(1000)
@@ -689,6 +691,20 @@ class OperatorHmiView(QWidget):
             }.get(state)
             if mapped:
                 self._paint_machine_chrome(mapped)
+
+        # 结果表「模块」列：跟末次步骤名（非硬编码「流程」）
+        try:
+            recs = list(result.get('results') or [])
+            if recs:
+                last = recs[-1]
+                nm = last.get('name') or last.get('operation') or last.get('id')
+                if not nm:
+                    out = (last.get('output') or {})
+                    nm = out.get('operation') or out.get('name')
+                if nm:
+                    self._last_module_name = str(nm)
+        except Exception:
+            pass
 
         # Production counters / history / alarm
         if state in ('completed', 'failed'):
@@ -1069,8 +1085,20 @@ class OperatorHmiView(QWidget):
                     last_ms = f'{hist[0]:.0f}'
             except Exception:
                 pass
+        mod_name = getattr(self, '_last_module_name', None) or '流程'
+        # 判定列：跟末次 OK/NG 灯（有统计时）
+        judge = '—'
+        if ok_n or ng_n:
+            # 末次：若最近一次 ok_hist 有值
+            try:
+                if panel is not None:
+                    oh = panel.ok_history()
+                    if oh:
+                        judge = 'OK' if oh[0] else 'NG'
+            except Exception:
+                pass
         rows = [
-            ('模块', '流程', '—'),
+            ('模块', str(mod_name), judge if judge != '—' else '—'),
             ('耗时(ms)', str(last_ms), '—'),
             ('OK计数', str(ok_n), '—'),
             ('NG计数', str(ng_n), '—'),
@@ -1494,7 +1522,7 @@ class OperatorHmiView(QWidget):
             table.horizontalHeader().setStretchLastSection(True)
             table.verticalHeader().setVisible(False)
             table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-            demos = [('模块', '—', '—'), ('耗时(ms)', '—', '—'), ('OK计数', '—', '—'), ('NG计数', '—', '—')]
+            demos = [('模块', '等待运行', '—'), ('耗时(ms)', '—', '—'), ('OK计数', '—', '—'), ('NG计数', '—', '—')]
             for r, row in enumerate(demos):
                 for c, val in enumerate(row):
                     table.setItem(r, c, QTableWidgetItem(val))

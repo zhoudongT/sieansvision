@@ -476,6 +476,26 @@ class CommManagerDialog(QDialog):
         form.addRow('主机', self.tcp_host)
         form.addRow('端口', self.tcp_port)
         form.addRow('发送', self.tcp_payload)
+        self.tcp_preset = QComboBox()
+        self.tcp_preset.setObjectName('tcpProtocolPreset')
+        for lab, payload in (
+            ('自定义', ''),
+            ('PING', 'PING'),
+            ('STATUS', 'STATUS'),
+            ('HELP', 'HELP'),
+            ('RUN', 'RUN'),
+            ('STOP', 'STOP'),
+            ('GET ok', 'GET ok'),
+            ('SET ok 1', 'SET ok 1'),
+            ('VARS', 'VARS'),
+            ('MEAS (假量测)', 'MEAS'),
+            ('JSON RUN', '{"cmd":"RUN"}'),
+            ('JSON GET ok', '{"cmd":"GET","key":"ok"}'),
+        ):
+            self.tcp_preset.addItem(lab, payload)
+        self.tcp_preset.setToolTip('环回模拟器协议预设（:19880；非现场设备）。选后填入「发送」。')
+        self.tcp_preset.currentIndexChanged.connect(self._tcp_preset_apply)
+        form.addRow('协议预设', self.tcp_preset)
         form.addRow('超时', self.tcp_timeout)
         tcp_lay.addLayout(form)
         row = QHBoxLayout()
@@ -508,7 +528,7 @@ class CommManagerDialog(QDialog):
         self.tcp_sim_lamp = QLabel('○ 模拟器')
         self.tcp_sim_lamp.setToolTip('本地 TCP/UDP 环回协议模拟器（默认 19880/19881）')
         self.tcp_sim_start = QPushButton('启动环回模拟器')
-        self.tcp_sim_start.setToolTip('监听 127.0.0.1:19880(TCP)/19881(UDP)；PING→PONG；RUN/STOP→ACK')
+        self.tcp_sim_start.setToolTip('监听 127.0.0.1:19880(TCP)/19881(UDP)；PING/GET/SET/VARS/MEAS/JSON；非现场硬件')
         self.tcp_sim_start.clicked.connect(self._tcp_sim_start)
         self.tcp_sim_stop = QPushButton('停止')
         self.tcp_sim_stop.clicked.connect(self._tcp_sim_stop)
@@ -801,7 +821,7 @@ class CommManagerDialog(QDialog):
             self.tcp_port.setValue(port)
             ts = datetime.now().strftime('%H:%M:%S')
             self.tcp_log.appendPlainText(
-                f'[{ts}] 环回模拟器已启动 TCP :{port} UDP :{st.get("udpPort")} · PING/RUN/STOP 可用'
+                f'[{ts}] 环回模拟器已启动 TCP :{port} UDP :{st.get("udpPort")} · PING/GET/SET/VARS/MEAS/JSON（模拟，非现场）'
             )
         except OSError as err:
             self.tcp_log.appendPlainText(f'启动模拟器失败：{err}')
@@ -822,6 +842,63 @@ class CommManagerDialog(QDialog):
         self.tcp_port.setValue(int(st.get('tcpPort') or 19880))
         self.tcp_payload.setText('PING')
         self.tcp_log.appendPlainText('已填入模拟器地址；可点「发送并读回」或先「启动环回模拟器」')
+
+    def _tcp_preset_apply(self, _idx=None):
+        """Fill tcp_payload from protocol preset (sim verbs; not field HW)."""
+        try:
+            payload = self.tcp_preset.currentData()
+        except Exception:
+            payload = None
+        if payload:
+            self.tcp_payload.setText(str(payload))
+
+    @staticmethod
+    def _parse_protocol_writeback_extras(text):
+        """Parse sim protocol replies into extra var writes (no field-HW claim).
+
+        VALUE score=0.91 → [('score','0.91')]
+        MEAS {"ok":1,"x":..} → [('measOk',1),('measX',..),...]
+        bare JSON object → flatten top-level scalars as json_<key>
+        """
+        import json as _json
+        raw = (text or '').strip()
+        if not raw:
+            return []
+        out = []
+        if raw.upper().startswith('VALUE '):
+            body = raw.split(None, 1)[1]
+            if '=' in body:
+                k, v = body.split('=', 1)
+                k = k.strip()
+                if k:
+                    out.append((k, v))
+            return out
+        if raw.upper().startswith('MEAS '):
+            body = raw.split(None, 1)[1].strip()
+            try:
+                obj = _json.loads(body)
+            except Exception:
+                return out
+            if isinstance(obj, dict):
+                mapping = {
+                    'ok': 'measOk', 'x': 'measX', 'y': 'measY',
+                    'score': 'measScore', 'seq': 'measSeq', 'ts': 'measTs',
+                }
+                for src, dst in mapping.items():
+                    if src in obj:
+                        out.append((dst, obj[src]))
+            return out
+        if raw.startswith('{') and raw.endswith('}'):
+            try:
+                obj = _json.loads(raw)
+            except Exception:
+                return out
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    if isinstance(v, (str, int, float, bool)) or v is None:
+                        out.append((f'json_{k}', v if v is not None else ''))
+            return out
+        return out
 
     def _tcp_test_send(self):
         import socket
@@ -950,10 +1027,19 @@ class CommManagerDialog(QDialog):
         prefs = cm.setdefault('testPrefs', {})
         prefs['lastVar'] = raw
         prefs['lastScope'] = scope
+        # 细妆：结构化读回 — VALUE k=v / MEAS JSON / 纯 JSON → 额外写 sibling 字段
+        extras = []
+        try:
+            extras = self._parse_protocol_writeback_extras(text)
+        except Exception:
+            extras = []
+        for ek, ev in extras:
+            write_project_variable(p, f'{scope}.{ek}', ev)
         self.document.commit(p)
         prefix = f'[{ts}] ' if ts else ''
         extra = ' · 已派发字符串触发' if fired else ''
-        log_widget.appendPlainText(f'{prefix}已写入变量 {scope}.{name}{extra}')
+        extra2 = f' · 解析字段 {",".join(k for k,_ in extras)}' if extras else ''
+        log_widget.appendPlainText(f'{prefix}已写入变量 {scope}.{name}{extra}{extra2}')
 
     def accept_save(self):
         # Flush current form into devices list

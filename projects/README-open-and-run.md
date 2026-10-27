@@ -17,6 +17,8 @@
 |------|----------------|
 | `open-and-run-demo.sieans` | ▶ 单次：预处理→圆查找→测量→`passGate`；图像窗叠层 + OK/NG |
 | `open-and-run-locate.sieans` | ▶ 单次：图源→模板匹配→位置修正→分数门限；`passGate`/`matchScore`/`poseX·Y`；OK/NG |
+| `open-and-run-caliper.sieans` | ▶ 卡尺直线多边缘；lineCount/lineScore/lineRms/passGate |
+| `open-and-run-caliper-measure.sieans` | ▶ 卡尺→线线交点→点线距；intersectX/Y·pldDist/passGate |
 | `open-and-run-measure.sieans` | ▶ 单次：预处理→圆查找→尺寸测量→门限；有圆且有测量则 OK |
 | `open-and-run-barcode.sieans` | ▶ 单次条码/二维码；解码串进结果（样张 `codes.png`） |
 | `open-and-run-defects.sieans` | ▶ 单次参考图缺陷；差异区 + OK/NG 语义 |
@@ -35,12 +37,36 @@
 
 定位/位姿/畸变/变量计算/Group I/O、几何查找、几何测量、九点、收发数据、条件分支、FormatData、ProtocolParse、TextSave 等面板支持 **插入上游字段**（`results.<模块id>.字段`）。先跑一轮再点挑选，字段列表会跟最近运行结果对齐。
 
+## 通信协议深化（环回模拟器 · 非现场设备）
+
+通信管理 → **TCP 测试** → 「启动环回模拟器」(:19880/:19881)，再用「协议预设」试发：
+
+| 报文 | 回包（模拟） |
+|------|----------------|
+| `PING` | `PONG` |
+| `STATUS` | `OK READY sim=1 …` |
+| `GET <key>` / `SET <key> <v>` / `VARS` | 内存 KV |
+| `MEAS` | `MEAS {ok,x,y,score,seq,ts,sim}` 假量测 JSON |
+| `JSON {"cmd":"GET","key":"ok"}` | JSON 读写 |
+
+试收写变量时会解析 `VALUE` / `MEAS` / 纯 JSON 到 sibling 字段（如 `measX`）。**不宣称真机 / PLC / 机器人**。
+
+冒烟：`python3 scripts/smoke-comm-protocol-deepen-e2e.py`
+
 ## 通信速验（group-comm / default-platform / format-protocol）
 
 - 工具栏 Listen 徽章：点击打开通信管理；工程切换后徽章状态应保留。
 - LocalBus 冒烟：`python3 scripts/smoke-localbus-run-stop.py`（仓库根）。
 - Format/协议引擎：`node scripts/smoke-format-protocol-engine.cjs`。
 - TCP 示例端口以工程内 Comm 设备为准（常见调试口 `:19777`）。
+
+## 卡尺→几何测量链速验
+
+```bash
+node scripts/smoke-caliper-measure-runtime-e2e.cjs
+```
+
+期望：passGate=1；intersectX/Y·pldDist；geometry.lines≥2。
 
 ## 定位路径速验
 
@@ -61,6 +87,10 @@ node scripts/smoke-ninepoint-comm-alarmexport-e2e.cjs
 ## 不要做
 
 - 不 push、不接机器人 SDK、不改 HIK 品牌标识。
+
+
+## open-and-run-caliper-measure.sieans
+打开即跑 · 卡尺→几何测量链。样张同卡尺；流程：预处理 → geometry(caliper, maxCount=3) → line_intersect(lines[0]×lines[1]) → point_line_distance(交点→lines[2]) → 门限(intersectX/Y·pldDist/passGate)。叠层含交点+垂距。无 Halcon / 无现场硬件。
 
 ## open-and-run-caliper.sieans
 打开即跑 · 卡尺直线多边缘。样张 `caliper-line.png` 等；流程：预处理 → geometry(lines, findMethod=caliper, edgeType=all, maxCount=3) → 门限(lineCount/lineScore/lineRms/passGate)。叠层含卡尺框·多直线·rms。全局触发 RUN/CONT/STOP。无 Halcon / 无现场硬件。

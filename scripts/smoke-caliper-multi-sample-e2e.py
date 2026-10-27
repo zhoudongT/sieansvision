@@ -82,6 +82,7 @@ except Exception as e:
 try:
     mw = (ROOT / 'desktop/mainwindow.py').read_text(encoding='utf-8')
     assert 'open-and-run-caliper.sieans' in mw
+    assert 'open-and-run-caliper-measure.sieans' in mw
     assert 'open-and-run-measure.sieans' in mw
     assert 'open-and-run-tcp-sim.sieans' in mw
     readme = (ROOT / 'projects/README-open-and-run.md').read_text(encoding='utf-8')

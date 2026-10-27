@@ -416,13 +416,27 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 | nest/Group | 引擎展开 tip 已接 |
 | labels | EN→CN 扫尾已接 |
 | settings | 已接 |
-| samples | 四行业 UI 壳 + 打开即跑卡尺/测量/TCP环回；**卡尺 Runtime e2e（live）** 已接 |
+| samples | 四行业 UI 壳 + 打开即跑卡尺/卡尺→几何测量/测量/TCP环回；**卡尺·卡尺测量 Runtime e2e（live）** 已接 |
 | Comm | 试收触发活路已验；**环回协议模拟器**（:19880）可本机联调；真机 TCP 仍外置 |
 | Host SM | 已接 |
 | 云/市场 | 模板市场 + **本地云同步站**（:19779 list/publish/sync）已接；真实远端后端仍外置 |
 | 算法核 | 直线 **多卡尺+多边缘分带**（OpenCV）；Halcon 核仍外置 |
 | 扩展插件 | 第三方 plugin 无专用属性页时走通用保留（catalog 回退文案） |
 
+
+
+## 【细妆⑫ · 卡尺→几何测量链 · Comm 协议深化 · 结果表末步名 · 2026-10-28】
+
+- **打开即跑 · 卡尺→几何测量**：`projects/open-and-run-caliper-measure.sieans`（预处理→caliper→line_intersect→point_line_distance→门限）；菜单/打开示例/README 已登记。
+- **Runtime bind 硬化**：`_pickPoint` 认 `intersectX/Y`·`footX/Y`；`_injectResultScalars` 注入 distance / intersectX·Y / dx·dy → var_calc。
+- **Comm 协议深化（仍为环回模拟，非现场）**：`tcp_device_sim` 增 GET/SET/VARS/MEAS/JSON；通信管理 TCP「协议预设」+ 结构化试收写回（VALUE/MEAS→measX…）。
+- **HMI 结果表**：「模块」列跟末次步骤名（不再硬编码「流程」）；finished 向 HMI 注入命名 records。
+- **插件专用属性页**：跳过（ParameterPanel 已覆盖 plugin arguments；无薄缺口）。
+- **冒烟**：`smoke-caliper-measure-runtime-e2e.cjs`；`smoke-comm-protocol-deepen-e2e.py`；`smoke-hmi-result-table-laststep-e2e.py`。
+
+### 仍外置
+
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
 
 ## 【细妆⑪ · 卡尺 Runtime e2e · measure_geom 绑定 · HMI 趋势计时 · 2026-10-28】
 
