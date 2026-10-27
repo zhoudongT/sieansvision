@@ -3,7 +3,7 @@
   const SOURCE='source';
   const operations=new Set(['preprocess','locate','geometry','measure','barcode','ocr','defects','yolo','yolo_segment','script','variables','cloud_filter','cloud_plane','cloud_cluster','cloud_measure','cloud_height','cloud_register','modbus_read','modbus_write','modbus_wait','s7_read','s7_write','mqtt_publish','mqtt_receive','tcp_exchange','udp_exchange','serial_exchange','opcua_read','opcua_write','opcua_browse','opcua_wait','camera_capture']);
   const copy=value=>JSON.parse(JSON.stringify(value));
-  for(const operation of ['condition','branch_merge','delay','plugin','subflow','loop'])operations.add(operation);
+  for(const operation of ['condition','branch_merge','branch','delay','plugin','subflow','loop','pose_correct','group'])operations.add(operation);
   function normalize(value,nested=false){
     if(!value||![1,2].includes(value.version)||typeof value.name!=='string'||!Array.isArray(value.steps)||value.steps.length>50)throw Error('工程格式无效，最多 50 个算子');
     const p=copy(value),legacy=p.version===1;
@@ -36,7 +36,10 @@
       const pair=JSON.stringify([e.from,e.to]);if(pairs.has(pair))throw Error('存在重复连线');pairs.add(pair);edgeIds.add(e.id);
       e.fromPort=e.fromPort||'bottom';e.toPort=e.toPort||'top';
       if(!['bottom','right'].includes(e.fromPort)||!['top','left'].includes(e.toPort))throw Error('连接端口无效');
-      if(e.when!==undefined&&!['always','true','false','success','error'].includes(e.when))throw Error('连线条件无效');
+      if(e.when!==undefined&&!['always','true','false','success','error'].includes(e.when)){
+        const fromStep=p.steps.find(s=>s.id===e.from);
+        if(!(fromStep&&fromStep.operation==='branch'&&typeof e.when==='string'&&e.when.length>0&&e.when.length<=80))throw Error('连线条件无效');
+      }
       if(['true','false'].includes(e.when)&&p.steps.find(s=>s.id===e.from)?.operation!=='condition')throw Error('条件连线必须从条件判断节点输出');
       if(e.from===SOURCE&&e.when==='error')throw Error('数据源没有算子错误输出');
     }
@@ -111,7 +114,11 @@
       const output=outputs.get(e.from);
       if(e.when==='error')return output.flowError===true;
       if(output.flowError===true)return false;
-      return !e.when||['always','success'].includes(e.when)||output.result.passed===(e.when==='true');
+      if(!e.when||['always','success'].includes(e.when))return true;
+      if(e.when==='true'||e.when==='false')return output.result&&output.result.passed===(e.when==='true');
+      // branch path name / id
+      if(output.result&&(e.when===output.result.pathId||e.when===output.result.pathName))return true;
+      return false;
     });
     return {active,skip:step.operation==='branch_merge'?active.length===0:active.length!==incoming.length};
   }
@@ -125,7 +132,7 @@
   // Recognition operators propagate their input, not their painted overlay.
   async function run(p,source,invoke,{target,onStart=()=>{},onResult=()=>{},cancelled=()=>false}={}){
     const steps=plan(p,target);
-    if(steps.some(s=>['condition','branch_merge','delay','subflow','loop'].includes(s.operation))||p.edges.some(e=>['success','error'].includes(e.when)))throw Error('含流程控制块的工程请使用服务器运行平台执行');
+    if(steps.some(s=>['condition','branch_merge','branch','delay','subflow','loop','pose_correct'].includes(s.operation))||p.edges.some(e=>['success','error'].includes(e.when)))throw Error('含流程控制块的工程请使用服务器运行平台执行');
     const images=new Map([[SOURCE,source]]),outputs=[];
     for(const s of steps){
       if(cancelled())break;
