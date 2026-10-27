@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊱ · pin快捷可改键 · 历史色拖序 · PNG城市夏令时 · A/B镜像双向 · jitter分位表导出 · 2026-10-28】
+
+- **pin 快捷可改键**：`set/reset/prompt_…_max_pin_keys`；默认 `Ctrl+[` / `Ctrl+]` 可改；菜单「键」；force 重建 `QShortcut`。
+- **历史色拖序**：吸史色块 OpenHand 拖拽排序；`reorder/move_…_eyedropper_history`；点击仍应用、右键仍删。
+- **PNG 城市夏令时标记**：预设带 IANA 区；`…_dst_active` / `…_utc_offset_hours`（DST 感知）；芯片名加 ☀（纽约/洛杉矶夏令中）。
+- **A/B 镜像双向**：方向 `a_to_b` / `b_to_a` / `both`（A↔B）；锁定+镜像下双侧互同步；`_ab_mirror_applying` 防环；菜单标 A↔B。
+- **jitter 分位表导出**：stats 含 p0…p100；`quantile_table` / `export_…csv|tsv`；预览窗「导出分位」+ 分位行。
+- **冒烟**：`smoke-wave68-pinrebind-histreorder-pngdst-abboth-jitterquantile-e2e`（另回归 wave67/66/65）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊰ · pin上限键盘快捷 · 历史色右键删 · PNG城市TZ · A/B镜像方向 · jitter箱线均值 · 2026-10-28】
 
 - **pin 上限键盘快捷**：`Ctrl+[` / `Ctrl+]` 与菜单 −/+；`bump_…_max_pin`；旋钮/角标联动。

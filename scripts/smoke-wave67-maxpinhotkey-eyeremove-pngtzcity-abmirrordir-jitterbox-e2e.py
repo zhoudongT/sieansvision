@@ -209,6 +209,9 @@ def main():
     # changing A should NOT move B in b_to_a
     host.set_stale_prune_undo_color_scale_preset('sunset')
     assert host.stale_prune_undo_color_scale_compare_preset() == 'mono'
+    # wave68: toggle cycles a_to_b → b_to_a → both → a_to_b
+    host.toggle_stale_prune_undo_color_scale_ab_mirror_dir()
+    assert host.stale_prune_undo_color_scale_ab_mirror_dir() == 'both'
     host.toggle_stale_prune_undo_color_scale_ab_mirror_dir()
     assert host.stale_prune_undo_color_scale_ab_mirror_dir() == 'a_to_b'
     menu = host._build_undo_color_scale_hot_sync_menu()
