@@ -69,11 +69,10 @@ def main():
     assert '📌' in (badge.text() or '')
     chip = host._alarm_sev_chips['warning']
     assert '📌' in (chip.text() or ''), chip.text()
-    # hotkey again unpins
+    # wave35: hotkey again 切档 (warning→info), still pinned
     host._on_sev_pin_hotkey()
-    assert not host._alarm_sev_pinned
-    assert badge.isHidden() or not (badge.text() or '').strip()
-    # pin again then badge click clears
+    assert host._alarm_sev_pinned and host._alarm_sev_pinned_key == 'info'
+    # badge click still clears
     host.pin_alarm_severity_filter(True, key='error')
     assert '📌' in (host._alarm_sev_chips['error'].text() or '')
     host._on_sev_pin_badge_clicked()

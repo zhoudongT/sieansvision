@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㉟ · CSV toast开目录 · 容量右键菜单 · 解钉tip驻留 · chip悬停预览钉 · Alt+P切档 · 2026-10-28】
+
+- **CSV toast 单击开目录**：另存成功 toast 绑定 `open_path`；单击/`open_host_toast_path` → `QDesktopServices` 打开目录；tip「单击打开目录」。
+- **容量右键菜单**：切窗史右键弹出 3/5/8/12（✓ 当前 · 5 默认）+ 清空；中键仍循环。
+- **pin 徽章解钉确认 tip 驻留**：单击解钉后徽章暂显 ✓ + tip「已解钉 · 原 {档}」驻留 ~2.2s。
+- **sev chip 悬停预览钉**：悬停芯片虚线金边 + 📍 预览（不真正钉住）；离开 `_sync` 还原。
+- **Alt+P 再按切档**：未钉 → 钉住；已钉再按循环 all/error/warning/info 切档 toast；徽章仍解钉。
+- **冒烟**：`smoke-wave35-csvtoastopen-capmenu-pintip-chiphover-pgear-e2e`（另回归 wave34/33）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆㉞ · pin悬停解钉动画 · CSV另存toast · 容量可配 · 预设标默认 · Alt+P toast · 2026-10-28】
 
 - **pin badge 悬停解钉 tip 动画**：悬停 `hostAlarmSevPinBadge` → tip「单击解钉」+ 金边脉冲（`_sev_pin_badge_pulse_timer`）；离开关闭。

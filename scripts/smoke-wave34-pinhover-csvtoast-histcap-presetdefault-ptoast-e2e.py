@@ -93,10 +93,11 @@ def main():
     assert host._alarm_sev_pinned
     toast = host._liaison_hotkey_toast
     assert not toast.isHidden()
-    assert '钉住' in (toast.text() or '') and 'error' in (toast.text() or '')
+    assert '钉住' in (toast.text() or '') and ('错' in (toast.text() or '') or 'error' in (toast.text() or ''))
+    # wave35: 再按切档 (error→warning)
     host._on_sev_pin_hotkey()
-    assert not host._alarm_sev_pinned
-    assert '取消' in (toast.text() or '')
+    assert host._alarm_sev_pinned and host._alarm_sev_pinned_key == 'warning'
+    assert '切档' in (toast.text() or '')
     ok('Alt+P toast feedback')
 
     # --- CSV save toast ---
