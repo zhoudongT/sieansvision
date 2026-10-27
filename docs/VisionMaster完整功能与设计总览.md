@@ -426,6 +426,13 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆91 · 策略菜单 tip_prop 同步 · 档差菜单 tip_prop_ok · 再预览/短史/步进菜单 tip_prop 镜像 · 2026-10-28】
+
+- **DST 策略徽章右键菜单**：同步 `dstImportStrategyBadgeHoverTip`，out/`_menu_sync` 含 `tip` / `tip_prop` / `tip_prop_ok`。
+- **档差菜单**：quiet/shown out 增加 `tip_prop` / `tip_prop_ok`（写回 `jumpDeltaBadgeHoverTip`，对齐 flash_ms 往返）。
+- **再预览 / 撤销短史 / 滚轮步进菜单**：镜像 set_flash tip，out 含 `tip` / `tip_prop` / `tip_prop_ok` + 既有 `flash_ms_prop_ok`。
+- **验证**：`scripts/smoke-wave123-…-e2e.py`；regress wave122。非硬件约 **~99.98%**。
+
 ## 【细妆90 · 再预览/短史/步进 set_flash_ms tip_prop · 右键菜单 flash_ms_prop_ok · 2026-10-28】
 
 - **再预览 / 撤销短史 / 滚轮步进**：`set_*_badge_flash_ms` 同步 `*HoverTip`，out 含 `tip_prop` / `tip_prop_ok`（对齐档差 `jumpDeltaBadgeHoverTip`）。
