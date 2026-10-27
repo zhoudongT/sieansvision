@@ -58,6 +58,8 @@ def main():
     host.show()
     host._toast_hist_cap_keep_exit_tip_quiet = True
     host._toast_hist_cap_tip_anim_easing_quiet = True
+    host._toast_hist_cap_tip_anim_curve_quiet = True
+    host._toast_hist_cap_tip_anim_curve_no_exec = True
 
     tmp = Path('/tmp/sieans-w50s'); tmp.mkdir(exist_ok=True)
     d0 = tmp / 'c0'; d0.mkdir(exist_ok=True)
@@ -123,11 +125,14 @@ def main():
     ev_del = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Delete, Qt.KeyboardModifier.NoModifier)
     drag.keyPressEvent(ev_del)
     assert '#bb0003' not in host.sev_pin_arc_seize_recent_colors()
-    assert getattr(host, '_last_sev_pin_arc_seize_recent_key_deleted', '') == '#bb0003'
+    _del = getattr(host, '_last_sev_pin_arc_seize_recent_key_deleted', '')
+    assert '#bb0003' in (_del if isinstance(_del, (list, tuple)) else [_del])
     ok('最近色拖拽列表 Delete/Home')
 
     # --- 3. tip easing preview pulse ---
     host._toast_hist_cap_tip_anim_easing_quiet = True  # set without auto
+    host._toast_hist_cap_tip_anim_curve_quiet = True
+    host._toast_hist_cap_tip_anim_curve_no_exec = True
     host.set_toast_hist_cap_tip_anim_easing('Linear')
     host.set_toast_hist_cap_tip_anim_enabled(True)
     assert host.preview_toast_hist_cap_tip_anim_easing('Linear') is True
@@ -135,6 +140,8 @@ def main():
     assert getattr(host, '_last_host_toast_pulsed', False) is True
     # auto preview on set when quiet off
     host._toast_hist_cap_tip_anim_easing_quiet = False
+    host._toast_hist_cap_tip_anim_curve_quiet = True
+    host._toast_hist_cap_tip_anim_curve_no_exec = True
     host.set_toast_hist_cap_tip_anim_easing('InOutQuad')
     assert host.toast_hist_cap_tip_anim_easing() == 'InOutQuad'
     assert getattr(host, '_last_toast_hist_cap_tip_anim_easing_previewed', False) is True

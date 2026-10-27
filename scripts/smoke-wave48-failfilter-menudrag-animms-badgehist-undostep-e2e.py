@@ -134,7 +134,8 @@ def main():
     assert len(hist_acts) == 1
     assert hist_acts[0].text().startswith('打开历史失败'), hist_acts[0].text()
     assert not hist_acts[0].icon().isNull()
-    assert getattr(host, '_last_path_copy_badge_menu_shortcuts', ()) == ('C', 'F', 'H')
+    sc = getattr(host, '_last_path_copy_badge_menu_shortcuts', ())
+    assert sc[:3] == ('C', 'F', 'H') and 'H' in sc
     host._merge_diff_fail_hist_no_exec = True
     hist_acts[0].trigger()
     assert getattr(host, '_last_merge_diff_batch_fail_history_shown', False) is True

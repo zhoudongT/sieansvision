@@ -127,6 +127,8 @@ def main():
     # --- 3. tip anim easing ---
     assert host.toast_hist_cap_tip_anim_easing() == 'OutCubic'
     host._toast_hist_cap_tip_anim_easing_quiet = True
+    host._toast_hist_cap_tip_anim_curve_quiet = True
+    host._toast_hist_cap_tip_anim_curve_no_exec = True
     host.set_toast_hist_cap_tip_anim_easing('OutBounce')
     assert host.toast_hist_cap_tip_anim_easing() == 'OutBounce'
     curve = host._toast_tip_anim_easing_curve()

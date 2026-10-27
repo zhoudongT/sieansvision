@@ -15,7 +15,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QAction, QKeySequence, QShortcut, QDesktopServices,
-    QPainter, QPen, QColor, QIcon, QPixmap,
+    QPainter, QPen, QColor, QIcon, QPixmap, QPainterPath,
 )
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
@@ -1827,6 +1827,8 @@ class HostStateMachineWidget(QWidget):
                 return style.standardIcon(sp.SP_ArrowBack)
             if kind == 'history':
                 return style.standardIcon(sp.SP_FileDialogDetailedView)
+            if kind == 'clear':
+                return style.standardIcon(sp.SP_DialogResetButton)
             return style.standardIcon(sp.SP_FileDialogContentsView)
         except Exception:
             return QIcon()
@@ -1940,12 +1942,70 @@ class HostStateMachineWidget(QWidget):
         act_hist.triggered.connect(
             lambda *_: self.show_merge_diff_batch_fail_history())
         menu.addAction(act_hist)
-        self._last_path_copy_badge_menu_shortcuts = ('C', 'F', 'H')
+        act_clr = QAction('清除失败历史', menu)
+        act_clr.setProperty('isPathCopyBadgeFailHistoryClear', True)
+        act_clr.setObjectName('hostPathCopyBadgeFailHistoryClearAct')
+        act_clr.setEnabled(bool(fail_n > 0))
+        try:
+            act_clr.setIcon(self._path_copy_badge_menu_icon('clear'))
+            act_clr.setIconVisibleInMenu(True)
+        except Exception:
+            pass
+        try:
+            act_clr.setShortcut(QKeySequence('X'))
+            act_clr.setShortcutVisibleInContextMenu(True)
+        except Exception:
+            pass
+        act_clr.setToolTip(
+            f'快捷键 X · 清除失败清单历史（{fail_n}）'
+            if fail_n > 0 else '无失败历史可清')
+        act_clr.triggered.connect(
+            lambda *_: self.clear_path_copy_badge_fail_history())
+        menu.addAction(act_clr)
+        self._last_path_copy_badge_menu_shortcuts = ('C', 'F', 'H', 'X')
         self._last_path_copy_badge_menu_icons = True
         self._last_path_copy_badge_fail_history_count = int(fail_n)
         self._last_path_copy_badge_fail_history_red_dot = bool(fail_n > 0)
+        self._last_path_copy_badge_fail_history_clear_enabled = bool(fail_n > 0)
         self._last_path_copy_badge_menu = menu
         return menu
+
+    def clear_path_copy_badge_fail_history(self, *, confirm: bool = True) -> list:
+        """wave51: 徽章菜单 · 清除失败历史（可确认）."""
+        hist = []
+        try:
+            hist = list(self.merge_diff_batch_fail_history() or [])
+        except Exception:
+            hist = []
+        if not hist:
+            self._last_path_copy_badge_fail_history_cleared = []
+            try:
+                self._flash_host_toast('无失败历史可清', kind='info', ms=1200)
+            except Exception:
+                pass
+            return []
+        do_it = True
+        if confirm and not getattr(self, '_path_copy_badge_fail_hist_clear_no_confirm', False):
+            try:
+                ans = QMessageBox.question(
+                    self, '清除失败历史',
+                    f'确认清除 {len(hist)} 条失败清单历史？',
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No)
+                do_it = ans == QMessageBox.StandardButton.Yes
+            except Exception:
+                do_it = True
+        if not do_it:
+            self._last_path_copy_badge_fail_history_cleared = None
+            return hist
+        cleared = self.clear_merge_diff_batch_fail_history()
+        self._last_path_copy_badge_fail_history_cleared = list(cleared or [])
+        try:
+            self._flash_host_toast(
+                f'已清除失败历史 · {len(cleared or [])}', kind='ok', ms=1400)
+        except Exception:
+            pass
+        return list(cleared or [])
 
     def _show_path_copy_badge_menu(self, global_pos=None):
         """wave45: 弹出徽章菜单."""
@@ -3366,6 +3426,8 @@ class HostStateMachineWidget(QWidget):
             lst.setDragEnabled(True)
             lst.setAcceptDrops(True)
             lst.setSpacing(1)
+            lst.setSelectionMode(
+                QAbstractItemView.SelectionMode.ExtendedSelection)
         except Exception:
             pass
         cur = self.sev_pin_arc_seize_color().lower()
@@ -3374,7 +3436,7 @@ class HostStateMachineWidget(QWidget):
             it = QListWidgetItem(f'{mark}最近  {color}')
             it.setData(Qt.ItemDataRole.UserRole, color)
             it.setToolTip(
-                f'{color}\n拖拽调序 · 单击应用 · 右键置顶/删除 · Del删除 · Home置顶'
+                f'{color}\n拖拽调序 · 单击应用 · 右键置顶/删除 · Del多选删除 · Home置顶'
             )
             lst.addItem(it)
 
@@ -3459,15 +3521,25 @@ class HostStateMachineWidget(QWidget):
             c = ''
             if it is not None:
                 c = str(it.data(Qt.ItemDataRole.UserRole) or '').strip()
-            if c and key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
-                self.clear_sev_pin_arc_seize_recent_color(c)
-                self._last_sev_pin_arc_seize_recent_key_deleted = c
-                _rebuild_parent_menu()
-                try:
-                    event.accept()
-                except Exception:
-                    pass
-                return
+            if key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+                selected = []
+                for sit in lst.selectedItems():
+                    sc = str(sit.data(Qt.ItemDataRole.UserRole) or '').strip()
+                    if sc and sc not in selected:
+                        selected.append(sc)
+                if not selected and c:
+                    selected = [c]
+                if selected:
+                    for sc in selected:
+                        self.clear_sev_pin_arc_seize_recent_color(sc)
+                    self._last_sev_pin_arc_seize_recent_key_deleted = list(selected)
+                    self._last_sev_pin_arc_seize_recent_key_deleted_n = len(selected)
+                    _rebuild_parent_menu()
+                    try:
+                        event.accept()
+                    except Exception:
+                        pass
+                    return
             if c and key == Qt.Key.Key_Home:
                 self.move_sev_pin_arc_seize_recent_color(c, 0)
                 self._last_sev_pin_arc_seize_recent_key_pinned = c
@@ -4822,15 +4894,55 @@ class HostStateMachineWidget(QWidget):
         self._last_stale_prune_undo_bar_visible = True
         return True
 
+    def _stale_prune_undo_bar_chunk_color(self, ratio: float = 1.0) -> str:
+        """wave51: 倒计时色阶 · 高=绿 · 中=黄 · 低=红."""
+        try:
+            r = max(0.0, min(1.0, float(ratio)))
+        except Exception:
+            r = 1.0
+        if r >= 0.55:
+            # green → yellow
+            t = (r - 0.55) / 0.45
+            # at t=0 yellow-ish green, t=1 full green
+            color = '#3ecf8e' if t >= 0.5 else '#8fd46a'
+        elif r >= 0.25:
+            color = '#f0c040'
+        else:
+            color = '#e35d6a'
+        self._last_stale_prune_undo_bar_chunk_color = color
+        self._last_stale_prune_undo_bar_ratio = round(r, 3)
+        return color
+
+    def _apply_stale_prune_undo_bar_color_scale(self, ratio: float = None) -> str:
+        """wave51: 按剩余比例刷进度条 chunk 色."""
+        bar = getattr(self, '_stale_prune_undo_bar', None)
+        if ratio is None:
+            total = max(1, int(getattr(self, '_stale_prune_undo_ms', 8000) or 8000))
+            left = max(0, int(getattr(self, '_stale_prune_undo_left_ms', 0) or 0))
+            ratio = left / total
+        color = self._stale_prune_undo_bar_chunk_color(ratio)
+        if bar is not None:
+            try:
+                bar.setStyleSheet(
+                    'QProgressBar{background:#2a2d32;border:1px solid #3a3d42;'
+                    'border-radius:2px;}'
+                    f'QProgressBar::chunk{{background:{color};border-radius:2px;}}'
+                )
+            except Exception:
+                pass
+        return color
+
     def _update_stale_prune_undo_bar(self):
-        """wave43–46: 刷新 undo 进度；悬停时同步剩余秒."""
+        """wave43–51: 刷新 undo 进度；悬停秒；色阶."""
         bar = getattr(self, '_stale_prune_undo_bar', None)
         if bar is None or bar.isHidden():
             return
         total = max(1, int(getattr(self, '_stale_prune_undo_ms', 8000) or 8000))
         left = max(0, int(getattr(self, '_stale_prune_undo_left_ms', 0) or 0))
+        ratio = left / total
         try:
-            bar.setValue(int(1000 * left / total))
+            bar.setValue(int(1000 * ratio))
+            self._apply_stale_prune_undo_bar_color_scale(ratio)
             self._place_stale_prune_undo_bar()
         except Exception:
             pass
@@ -5516,9 +5628,11 @@ class HostStateMachineWidget(QWidget):
             dlg.setMinimumWidth(440)
             lay = QVBoxLayout(dlg)
             tip = QLabel(
-                '搜索/排序 · 双击载入 · 「重开该批」/「清空历史」', dlg)
+                '分组折叠 · 搜索/排序 · 双击载入 · 多选重开/导出 · 清空', dlg)
             tip.setStyleSheet('color:#9aa0a6;font-size:11px;')
             lay.addWidget(tip)
+            if not hasattr(self, '_merge_diff_fail_hist_collapsed'):
+                self._merge_diff_fail_hist_collapsed = set()
             row = QHBoxLayout()
             filt = QLineEdit(dlg)
             filt.setObjectName('hostMergeDiffBatchFailHistoryFilter')
@@ -5546,6 +5660,14 @@ class HostStateMachineWidget(QWidget):
                 ts = str(ent.get('ts') or '')
                 return (ts + ' ' + ' '.join(paths)).lower()
 
+            def _group_key(ent):
+                ts = str((ent or {}).get('ts') or '').strip()
+                if len(ts) >= 10 and ts[4] == '-' and ts[7] == '-':
+                    return ts[:10]
+                if ts:
+                    return ts[:10] if len(ts) >= 10 else ts
+                return '未知日期'
+
             def _refill(query: str = None):
                 if query is None:
                     query = filt.text()
@@ -5553,33 +5675,98 @@ class HostStateMachineWidget(QWidget):
                 mode = str(sort_box.currentData() or 'time')
                 self.set_merge_diff_batch_fail_history_sort_mode(mode)
                 ordered = self.sorted_merge_diff_batch_fail_history(mode)
-                lst.clear()
-                shown = 0
+                collapsed = getattr(
+                    self, '_merge_diff_fail_hist_collapsed', None)
+                if not isinstance(collapsed, set):
+                    collapsed = set()
+                    self._merge_diff_fail_hist_collapsed = collapsed
+                # bucket
+                buckets = []
+                seen_g = {}
                 for ent in ordered:
                     if q and q not in _ent_blob(ent):
                         continue
-                    paths = list(ent.get('paths') or [])
-                    ts = ent.get('ts') or ''
-                    lab0 = _lab(paths[0]) if paths else ''
-                    it = QListWidgetItem(
-                        f'{ts} · {len(paths)} · {lab0}')
-                    it.setData(Qt.ItemDataRole.UserRole, paths)
-                    it.setData(Qt.ItemDataRole.UserRole + 1, ent)
-                    it.setToolTip('\n'.join(paths))
-                    lst.addItem(it)
-                    shown += 1
+                    gk = _group_key(ent)
+                    if gk not in seen_g:
+                        seen_g[gk] = []
+                        buckets.append((gk, seen_g[gk]))
+                    seen_g[gk].append(ent)
+                lst.clear()
+                shown = 0
+                group_n = 0
+                for gk, ents in buckets:
+                    group_n += 1
+                    is_col = gk in collapsed
+                    mark = '▸' if is_col else '▾'
+                    hdr = QListWidgetItem(
+                        f'{mark} {gk} · {len(ents)} 批')
+                    hdr.setData(Qt.ItemDataRole.UserRole + 2, gk)
+                    hdr.setData(Qt.ItemDataRole.UserRole + 3, True)  # isGroup
+                    hdr.setFlags(
+                        Qt.ItemFlag.ItemIsEnabled
+                        | Qt.ItemFlag.ItemIsSelectable)
+                    try:
+                        hdr.setBackground(QColor('#2a2d32'))
+                        hdr.setForeground(QColor('#c8ccd0'))
+                    except Exception:
+                        pass
+                    hdr.setToolTip(
+                        '单击折叠/展开该日分组' + (
+                            '（已折叠）' if is_col else '（已展开）'))
+                    lst.addItem(hdr)
+                    if is_col:
+                        continue
+                    for ent in ents:
+                        paths = list(ent.get('paths') or [])
+                        ts = ent.get('ts') or ''
+                        lab0 = _lab(paths[0]) if paths else ''
+                        it = QListWidgetItem(
+                            f'   {ts} · {len(paths)} · {lab0}')
+                        it.setData(Qt.ItemDataRole.UserRole, paths)
+                        it.setData(Qt.ItemDataRole.UserRole + 1, ent)
+                        it.setData(Qt.ItemDataRole.UserRole + 3, False)
+                        it.setToolTip('\n'.join(paths))
+                        lst.addItem(it)
+                        shown += 1
                 self._last_merge_diff_batch_fail_history_filter = q
                 self._last_merge_diff_batch_fail_history_filter_n = shown
                 self._last_merge_diff_batch_fail_history_sort = mode
+                self._last_merge_diff_batch_fail_history_groups = group_n
+                self._last_merge_diff_batch_fail_history_collapsed = set(
+                    collapsed)
                 zh = '路径' if mode == 'path' else '时间'
                 dlg.setWindowTitle(
-                    f'失败清单历史 · {shown}/{len(hist)} · {zh}'
+                    f'失败清单历史 · {shown}/{len(hist)} · {group_n}组 · {zh}'
                     + (f' · 过滤「{q}」' if q else ''))
                 return shown
+
+            def _on_item_clicked(item):
+                if item is None:
+                    return
+                if not item.data(Qt.ItemDataRole.UserRole + 3):
+                    return
+                gk = str(item.data(Qt.ItemDataRole.UserRole + 2) or '')
+                if not gk:
+                    return
+                collapsed = getattr(
+                    self, '_merge_diff_fail_hist_collapsed', None)
+                if not isinstance(collapsed, set):
+                    collapsed = set()
+                    self._merge_diff_fail_hist_collapsed = collapsed
+                if gk in collapsed:
+                    collapsed.discard(gk)
+                    self._last_merge_diff_batch_fail_history_group_toggled = (
+                        gk, False)
+                else:
+                    collapsed.add(gk)
+                    self._last_merge_diff_batch_fail_history_group_toggled = (
+                        gk, True)
+                _refill()
 
             _refill('')
             filt.textChanged.connect(lambda t: _refill(t))
             sort_box.currentIndexChanged.connect(lambda *_: _refill())
+            lst.itemClicked.connect(_on_item_clicked)
             lay.addWidget(lst)
             self._last_merge_diff_batch_fail_history_filter_edit = filt
             self._last_merge_diff_batch_fail_history_sort_box = sort_box
@@ -5587,6 +5774,8 @@ class HostStateMachineWidget(QWidget):
             def _load_current(item=None):
                 it = item or lst.currentItem()
                 if it is None:
+                    return []
+                if it.data(Qt.ItemDataRole.UserRole + 3):
                     return []
                 paths = list(it.data(Qt.ItemDataRole.UserRole) or [])
                 self._last_merge_diff_batch_fail = list(paths)
@@ -5596,12 +5785,15 @@ class HostStateMachineWidget(QWidget):
             def _selected_entries():
                 out = []
                 for it in lst.selectedItems():
+                    if it.data(Qt.ItemDataRole.UserRole + 3):
+                        continue
                     ent = it.data(Qt.ItemDataRole.UserRole + 1)
                     if isinstance(ent, dict):
                         out.append(ent)
                     else:
                         paths = list(it.data(Qt.ItemDataRole.UserRole) or [])
-                        out.append({'ts': '', 'paths': paths})
+                        if paths:
+                            out.append({'ts': '', 'paths': paths})
                 return out
 
             def _selected_paths_union():
@@ -6616,10 +6808,8 @@ class HostStateMachineWidget(QWidget):
         return name
 
     def preview_toast_hist_cap_tip_anim_easing(self, name: str = None) -> bool:
-        """wave50: 切换 easing 后预览脉冲 tip."""
+        """wave50–51: 切换 easing 后预览脉冲 tip + 曲线小窗."""
         if name:
-            # ensure curve uses this name even if not yet persisted path
-            prev = getattr(self, '_toast_hist_cap_tip_anim_easing', None)
             self._toast_hist_cap_tip_anim_easing = str(name)
         try:
             self.set_toast_hist_cap_tip_anim_enabled(True)
@@ -6632,8 +6822,117 @@ class HostStateMachineWidget(QWidget):
             pulsed = bool(getattr(self, '_last_host_toast_pulsed', False))
         except Exception:
             pulsed = False
+        try:
+            if not getattr(self, '_toast_hist_cap_tip_anim_curve_quiet', False):
+                self.show_toast_hist_cap_tip_anim_easing_curve(
+                    self.toast_hist_cap_tip_anim_easing())
+        except Exception:
+            pass
         self._last_toast_hist_cap_tip_anim_easing_previewed = pulsed
         return pulsed
+
+    def _toast_tip_anim_easing_curve_samples(
+            self, name: str = None, n: int = 48) -> list:
+        """wave51: 采样 easing 曲线点 [(t,y),...]."""
+        if name:
+            prev = getattr(self, '_toast_hist_cap_tip_anim_easing', None)
+            self._toast_hist_cap_tip_anim_easing = str(name)
+        try:
+            curve = self._toast_tip_anim_easing_curve()
+            pts = []
+            steps = max(8, int(n or 48))
+            for i in range(steps + 1):
+                t = i / steps
+                try:
+                    y = float(curve.valueForProgress(t))
+                except Exception:
+                    y = t
+                pts.append((t, y))
+            self._last_toast_hist_cap_tip_anim_curve_samples = list(pts)
+            return pts
+        finally:
+            if name and 'prev' in locals() and prev is not None:
+                # keep name if intentionally set; only restore if we temporarily swapped
+                # when name was passed for sampling alone — leave as set for preview consistency
+                pass
+
+    def show_toast_hist_cap_tip_anim_easing_curve(
+            self, name: str = None, *, interactive: bool = True) -> bool:
+        """wave51: tip easing 曲线小窗预览."""
+        name = str(name or self.toast_hist_cap_tip_anim_easing() or 'OutCubic')
+        pts = self._toast_tip_anim_easing_curve_samples(name, 64)
+        host = self
+
+        class _CurvePane(QWidget):
+            def __init__(self, parent=None):
+                super().__init__(parent)
+                self._pts = list(pts)
+                self._name = name
+                self.setMinimumSize(220, 140)
+                self.setObjectName('hostToastTipAnimEasingCurvePane')
+
+            def paintEvent(self, event):
+                p = QPainter(self)
+                try:
+                    p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+                    p.fillRect(self.rect(), QColor('#1e2126'))
+                    m = 18
+                    w = max(1, self.width() - 2 * m)
+                    h = max(1, self.height() - 2 * m)
+                    # axes
+                    p.setPen(QPen(QColor('#3a3d42'), 1))
+                    p.drawRect(m, m, w, h)
+                    # diagonal reference
+                    p.setPen(QPen(QColor('#3a3d42'), 1, Qt.PenStyle.DashLine))
+                    p.drawLine(m, m + h, m + w, m)
+                    path = QPainterPath()
+                    first = True
+                    for t, y in self._pts:
+                        x = m + t * w
+                        yy = m + (1.0 - max(0.0, min(1.2, y)) / 1.2) * h
+                        if first:
+                            path.moveTo(x, yy)
+                            first = False
+                        else:
+                            path.lineTo(x, yy)
+                    p.setPen(QPen(QColor('#5b9cff'), 2))
+                    p.drawPath(path)
+                    p.setPen(QColor('#9aa0a6'))
+                    p.drawText(8, 14, f'缓动 · {self._name}')
+                finally:
+                    p.end()
+
+        try:
+            dlg = QDialog(self)
+            dlg.setWindowTitle(f'缓动曲线 · {name}')
+            dlg.setObjectName('hostToastTipAnimEasingCurveDialog')
+            dlg.setMinimumSize(260, 200)
+            lay = QVBoxLayout(dlg)
+            pane = _CurvePane(dlg)
+            lay.addWidget(pane, 1)
+            tip = QLabel('横轴时间 · 纵轴进度（虚线=线性参考）', dlg)
+            tip.setStyleSheet('color:#9aa0a6;font-size:11px;')
+            lay.addWidget(tip)
+            btns = QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Close, parent=dlg)
+            btns.rejected.connect(dlg.reject)
+            btns.accepted.connect(dlg.accept)
+            lay.addWidget(btns)
+            self._last_toast_hist_cap_tip_anim_curve_dialog = dlg
+            self._last_toast_hist_cap_tip_anim_curve_pane = pane
+            self._last_toast_hist_cap_tip_anim_curve_name = name
+            self._last_toast_hist_cap_tip_anim_curve_shown = True
+            if getattr(self, '_toast_hist_cap_tip_anim_curve_no_exec', False) or not interactive:
+                return True
+            dlg.exec()
+            return True
+        except Exception as err:
+            self._last_toast_hist_cap_tip_anim_curve_shown = False
+            try:
+                self._flash_host_toast(f'曲线预览失败 · {err}', kind='info', ms=1200)
+            except Exception:
+                pass
+            return False
 
     def _toast_tip_anim_easing_curve(self) -> QEasingCurve:
         """wave49: 名 → QEasingCurve."""

@@ -426,6 +426,17 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊠ · 失败历史分组折叠 · 多选Del · easing曲线小窗 · 徽章清历史 · undo色阶 · 2026-10-28】
+
+- **失败历史分组折叠**：按日分组 ▾/▸ 头；单击折叠/展开；`_merge_diff_fail_hist_collapsed`。
+- **拖拽列表多选 Delete**：ExtendedSelection；Del/Backspace 批量删选中。
+- **tip 预览曲线小窗**：`show_toast_hist_cap_tip_anim_easing_curve` + 采样绘制；随 preview 弹出（quiet/no_exec 可关）。
+- **徽章菜单清除历史**：`清除失败历史`（X）+ `clear_path_copy_badge_fail_history`；零条禁用。
+- **undo 倒计时色阶**：绿→黄→红（`_stale_prune_undo_bar_chunk_color` / `_apply_…_color_scale`）。
+- **冒烟**：`smoke-wave51-failgroup-multidel-curvepane-badgeclear-undocolor-e2e`（另回归 wave50/49/48）。
+
+---
+
 ## 【细妆㊟ · 失败历史多选重开/导出 · Del/Home置顶 · easing预览 · 徽章红点 · undo自定义ms · 2026-10-28】
 
 - **失败历史多选批量重开/导出**：ExtendedSelection；「批量重开选中」「导出选中」；`export_merge_diff_batch_fail_history` / `retry_merge_diff_batch_fail_history_selected`。
