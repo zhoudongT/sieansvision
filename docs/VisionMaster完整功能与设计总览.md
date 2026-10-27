@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆53 · pin建议历史子菜单UI · 导入冲突策略菜单切换 · DST自定义编辑/删项UI · A/B回退按流程导入/冲突 · jitter排序重做栈 · 2026-10-28】
+
+- **pin 建议历史子菜单 UI**：菜单「历史 · N」；`restore_…_suggest_history(index)`；条目恢复勾选/应用首选；「清空历史」；仅记录所选亦记入历史。
+- **导入冲突策略菜单切换**：试键撤栈菜单「导入冲突 · {策略}」可勾选 replace|merge|skip|ask；空栈亦可导入；smoke `set_conflict`/`get_conflict`。
+- **DST 自定义编辑/删项 UI**：菜单 ✏/🗑；`edit_…`/`prompt_edit_…_ttl_preset_custom`；smoke `edit_custom`。
+- **A/B 回退按流程导入/冲突**：`import_…(flows=, conflict=)`；`get/set_…_import_conflict_strategy`；`import_…_for_flow`；skip/ask/merge/replace。
+- **jitter 排序重做栈**：undo 推 `_…_reorder_redo`；`redo_reorder_…(steps=)`；`…_reorder_redo_depth`；新排序清 redo；菜单「重做排序 · N」。
+- **冒烟**：`smoke-wave85-pinsuggesthistmenu-confirmstratmenu-dstedit-abflowimp-jitterredo-e2e`（另回归 wave84/83/82）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆52 · pin建议多选持久/历史 · 试键撤栈导入冲突策略 · DST TTL自定义档 · A/B回退记忆按流程导出 · jitter排序多级撤栈 · 2026-10-28】
 
 - **pin 建议多选持久/历史**：`persist/load/set_…_suggest_selected`；`list/remember/clear_…_suggest_history`；apply_all_clean / 菜单勾选记入历史；smoke `history`/`restore_history`/`clear_history`。
