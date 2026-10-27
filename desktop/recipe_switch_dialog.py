@@ -186,6 +186,17 @@ class RecipeSwitchDialog(QDialog):
         b_load.setStyleSheet('QPushButton{background:#e87722;color:#111;font-weight:600;padding:6px 14px;}')
         b_load.clicked.connect(self._load_library)
         row.addWidget(b_load)
+        b_meas = QPushButton('测量链 · 换型→试跑')
+        b_meas.setObjectName('recipeMeasureChainTrialBtn')
+        b_meas.setToolTip(
+            '一键选中 open-and-run-caliper-measure（或 measure）整案，'
+            '并勾选「切运行态 + 单次试跑」后加载'
+        )
+        b_meas.setStyleSheet(
+            'QPushButton{background:#2a4a3a;color:#9ed9a8;font-weight:700;padding:6px 12px;}'
+        )
+        b_meas.clicked.connect(self._load_measure_chain_trial)
+        row.addWidget(b_meas)
         row.addStretch(1)
         lay.addLayout(row)
         return w
@@ -477,6 +488,48 @@ class RecipeSwitchDialog(QDialog):
         self.document.commit(p)
         self.refresh()
         self.recipesChanged.emit()
+
+    def _load_measure_chain_trial(self):
+        """细妆⑲：工程库一键选中测量链并强制 enterRun+trialOnce."""
+        prefer = (
+            'open-and-run-caliper-measure',
+            'open-and-run-measure',
+            'caliper-measure',
+        )
+        hit = None
+        for i in range(self._lib_list.count()):
+            it = self._lib_list.item(i)
+            tip = (it.toolTip() or '') + ' ' + (it.text() or '')
+            low = tip.lower().replace('\\', '/')
+            for key in prefer:
+                if key in low:
+                    hit = it
+                    break
+            if hit is not None:
+                break
+        if hit is None:
+            QMessageBox.warning(
+                self, '测量链',
+                '工程库未找到 open-and-run-caliper-measure / measure 模板。',
+            )
+            return
+        self._lib_list.setCurrentItem(hit)
+        # force post-apply loop flags
+        try:
+            self._chk_enter_run.setChecked(True)
+            self._chk_trial_once.setChecked(True)
+        except Exception:
+            pass
+        self._pending_scheme_trial = True
+        self._load_library()
+
+    def post_apply_flags(self):
+        """Public: enterRun/trialOnce from dialog checkboxes (细妆⑲)."""
+        return {
+            'enterRun': bool(getattr(self, '_chk_enter_run', None) and self._chk_enter_run.isChecked()),
+            'trialOnce': bool(getattr(self, '_chk_trial_once', None) and self._chk_trial_once.isChecked())
+                         or bool(getattr(self, '_pending_scheme_trial', False)),
+        }
 
     def _load_library(self):
         it = self._lib_list.currentItem()

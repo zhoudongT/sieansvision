@@ -426,6 +426,14 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆⑲ · 结果表配方联动 · Comm→变量高亮 · 换型试跑 · Alarm栏 · 2026-10-28】
+
+- **结果表 / 胶片 ↔ 配方徽章联动加深**：结果表第 10 列「配方」；历史行 stamp `_live_recipe/_live_variant`；CSV 含 recipe/variant；点击配方徽章或「配方筛选」按当前配方过滤；strip 配方标签显示「筛选中」。
+- **Comm dump → Variables 即时高亮**：`VariablesDialog.highlight_written_keys`；`live_patch_flow_var` 同步闪行；验收「一键写入变量」经 `MainWindow.highlight_variables_keys` 打开/聚焦三级变量并高亮 keys。
+- **打开即跑测量链 · 一键「换型→试跑」**：工具菜单「一键「换型→试跑」·测量链」→ `open_measure_chain_trial`（caliper-measure / measure 模板 + enterRun+trialOnce）；配方对话框工程库「测量链 · 换型→试跑」按钮；工程库换型尊重对话框 enterRun/trialOnce。
+- **Host SM Alarm ↔ 固定栏色联动 polish（代码级，非人工签字）**：`_paint_machine_chrome(Alarm)` 重刷固定栏；Alarm 主导色 + tip「⚠ 报警」；离开 Alarm 清 `_live_host_alarm`。
+- **冒烟**：`smoke-hmi-recipe-result-filter-e2e` / `smoke-vars-highlight-commdump-e2e` / `smoke-measure-chain-trial-alarmbar-e2e`。
+
 ## 【细妆⑱ · 运行态chrome收束 · 配方换型闭环 · Comm验收落盘 · 2026-10-28】
 
 - **运行模式 chrome 观感收束（代码级，非人工签字）**：`StatusLamp` NG 边沿闪烁；HMI 头栏/底条 `配方徽章`；固定栏结构化 chip（📷相机│📡通讯│门│配方│●状态│◆判定│＃计数）并按 OK/NG/Alarm 变色；默认运行条分组分隔 + 配方标签；`set_recipe_chrome` / `update_fixed_bar_live` 驱动灯与栏。

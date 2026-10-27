@@ -4,7 +4,7 @@ import math
 import re
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QGuiApplication, QColor, QBrush
 from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDialog, QDialogButtonBox,
     QFormLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QPushButton,
     QTableWidget, QTableWidgetItem, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
@@ -347,9 +347,17 @@ class VariablesDialog(QDialog):
                 else:
                     cur.setText(summary)
                 matched = True
+                try:
+                    self.highlight_written_keys([f'flow.{name}'], duration_ms=1600)
+                except Exception:
+                    pass
                 break
             if not matched and self.mode.currentData() in ('current', 'overview'):
                 self.render()
+                try:
+                    self.highlight_written_keys([f'flow.{name}'], duration_ms=1600)
+                except Exception:
+                    pass
             elif matched:
                 self.message.setText(f'实时 · flow.{name} = {summary}')
         except Exception:
@@ -358,6 +366,92 @@ class VariablesDialog(QDialog):
             except Exception:
                 pass
 
+
+    def highlight_written_keys(self, keys, *, duration_ms=2200):
+        """细妆⑲：Comm dump / 实时写回 → Variables 面板行即时高亮.
+
+        keys: iterable of 'flow.name' / 'global.name' / bare name (assumed flow).
+        """
+        if not keys:
+            return
+        wanted = set()
+        for k in keys:
+            s = str(k or '').strip()
+            if not s:
+                continue
+            if '.' in s:
+                scope, name = s.split('.', 1)
+            else:
+                scope, name = 'flow', s
+            wanted.add((scope, name))
+            wanted.add(('', name))  # bare match by name
+        if not wanted:
+            return
+        # prefer current/overview so runtime column is visible
+        try:
+            mode = self.mode.currentData()
+            if mode not in ('current', 'overview'):
+                for i in range(self.mode.count()):
+                    if self.mode.itemData(i) in ('current', 'overview'):
+                        self.mode.setCurrentIndex(i)
+                        break
+        except Exception:
+            pass
+        hi = QColor('#2a4a2a')
+        hi_fg = QColor('#b8f0c4')
+        matched_rows = []
+        try:
+            for r in range(self.table.rowCount()):
+                name_item = self.table.item(r, 1)
+                scope_item = self.table.item(r, 0)
+                if name_item is None:
+                    continue
+                name = name_item.text()
+                scope_txt = scope_item.text() if scope_item else ''
+                scope_key = 'flow'
+                if '全局' in scope_txt or scope_txt == 'global':
+                    scope_key = 'global'
+                elif '模块' in scope_txt:
+                    scope_key = 'module'
+                hit = (scope_key, name) in wanted or ('', name) in wanted or ('flow', name) in wanted
+                if not hit:
+                    # also accept bare flow.xxx in wanted by name alone when scope is 流程
+                    if ('流程' in scope_txt or scope_txt in ('flow', '')) and any(n == name for _, n in wanted):
+                        hit = True
+                if not hit:
+                    continue
+                matched_rows.append(r)
+                for c in range(self.table.columnCount()):
+                    it = self.table.item(r, c)
+                    if it is None:
+                        it = QTableWidgetItem('')
+                        self.table.setItem(r, c, it)
+                    it.setBackground(QBrush(hi))
+                    it.setForeground(QBrush(hi_fg))
+                try:
+                    self.table.selectRow(r)
+                    self.table.scrollToItem(self.table.item(r, 1))
+                except Exception:
+                    pass
+        except Exception:
+            return
+        if matched_rows:
+            self.message.setText(
+                f'即时高亮 · 写入 {len(matched_rows)} 行（{duration_ms}ms）'
+            )
+            # clear highlight after duration
+            def _clear(rows=list(matched_rows)):
+                try:
+                    for r in rows:
+                        for c in range(self.table.columnCount()):
+                            it = self.table.item(r, c)
+                            if it is None:
+                                continue
+                            it.setBackground(QBrush())
+                            it.setForeground(QBrush())
+                except Exception:
+                    pass
+            QTimer.singleShot(max(400, int(duration_ms)), _clear)
 
     def _result(self, request_id, result):
         tag = self.pending.pop(request_id, None)

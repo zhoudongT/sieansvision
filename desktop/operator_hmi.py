@@ -510,6 +510,7 @@ class OperatorHmiView(QWidget):
         self._trend_ok_sparks = []  # QLabel OK/NG sequence
         self._yield_bars = []  # (bar_ok, bar_ng) tuples
         self._result_history=[]; self._result_tables = []; self._gate_hist=[]; self._gate_spark_labs=[]; self._gate_filter_mode='all'  # all|pass|fail
+        self._recipe_filter_labs = []; self._recipe_filter_active = False
         self._last_module_name = '流程'  # 结果表「模块」列跟末次步骤名
         self._layout_fp = None
         self._clock_timer = QTimer(self)
@@ -531,7 +532,10 @@ class OperatorHmiView(QWidget):
             f'background:{CARD};color:{TEXT_MUTED};border:1px solid {LINE};'
             f'border-radius:3px;padding:3px 8px;font-size:11px;font-weight:600;'
         )
-        self._recipe_badge.setToolTip('当前产线配方 / 产品变体（套用后自动刷新）')
+        self._recipe_badge.setToolTip('当前产线配方 / 产品变体。点击：结果表按本配方筛选开/关')
+        self._recipe_badge.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._recipe_badge.mousePressEvent = lambda e: self._toggle_recipe_filter()
+        self._recipe_filter_active = False
         header.addWidget(self._recipe_badge)
         header.addStretch(1)
         self._state_badge = QLabel('空闲')
@@ -1188,6 +1192,14 @@ class OperatorHmiView(QWidget):
                 host.set_production_snapshot(ok_n, ng_n, host_state=st)
             except Exception:
                 pass
+        # 细妆⑲：Host SM Alarm ↔ 固定栏色联动（代码级 polish，非人工签字）
+        try:
+            self._live_host_alarm = (st == 'Alarm')
+            if st == 'Alarm':
+                self._live_run_status = zh  # 报警
+            self._apply_fixed_bars(getattr(self, '_fixed_bars_cache', None) or {})
+        except Exception:
+            pass
 
     def push_production_snapshot(self):
         """Call after stats.record so Host SM strip tracks OK/NG live."""
@@ -1348,6 +1360,9 @@ class OperatorHmiView(QWidget):
                         else False if str(judge or '').upper() in ('NG', 'FAIL', '拒')
                         else None
                     ),
+                    # 细妆⑲：配方徽章联动
+                    'recipe': getattr(self, '_live_recipe', '') or '',
+                    'variant': getattr(self, '_live_variant', '') or '',
                 }
                 # de-dupe identical consecutive (same module+elapsed+judge within same second)
                 if not hist or (hist[-1].get('module'), hist[-1].get('elapsedMs'), hist[-1].get('judge'), hist[-1].get('ts')) != (
@@ -1382,15 +1397,17 @@ class OperatorHmiView(QWidget):
         return list(getattr(self, '_result_history', []) or [])
 
     def result_history_csv(self) -> str:
-        lines = ['timestamp,seq,module,elapsed_ms,judge,ok,ng,gate,note']
+        lines = ['timestamp,seq,module,elapsed_ms,judge,ok,ng,gate,note,recipe,variant']
         for e in self.result_history():
             ts = str(e.get('ts') or '').replace(',', ' ')
             mod = str(e.get('module') or '').replace('"', "'")
             note = str(e.get('note') or '').replace('"', "'").replace('\n', ' ')
             gate = str(e.get('gate') or '').replace('"', "'")
+            recipe = str(e.get('recipe') or '').replace('"', "'")
+            variant = str(e.get('variant') or '').replace('"', "'")
             lines.append(
                 f'{ts},{e.get("seq","")},{mod},{e.get("elapsedMs","")},{e.get("judge","")},'
-                f'{e.get("ok","")},{e.get("ng","")},"{gate}","{note}"'
+                f'{e.get("ok","")},{e.get("ng","")},"{gate}","{note}","{recipe}","{variant}"'
             )
         return '\n'.join(lines) + ('\n' if lines else '')
 
@@ -1517,16 +1534,24 @@ class OperatorHmiView(QWidget):
 
     def _refresh_result_tables_ui(self):
         hist = list(getattr(self, '_result_history', []) or [])
+        live_recipe = (getattr(self, '_live_recipe', '') or '').strip()
+        recipe_on = bool(getattr(self, '_recipe_filter_active', False)) and live_recipe and live_recipe != '—'
         for table in getattr(self, '_result_tables', []) or []:
             try:
+                # 细妆⑲：ensure 配方 column exists
+                if table.columnCount() < 10:
+                    table.setColumnCount(10)
+                    table.setHorizontalHeaderLabels(
+                        ['时间', '序号', '模块', '耗时(ms)', '判定', 'OK累计', 'NG累计', '门限', '备注', '配方']
+                    )
                 table.setRowCount(0)
                 if not hist:
                     table.setRowCount(1)
-                    placeholders = ['—', '0', '等待运行', '—', '—', '0', '0', '—', '—']
+                    placeholders = ['—', '0', '等待运行', '—', '—', '0', '0', '—', '—', '—']
                     for c, val in enumerate(placeholders):
                         table.setItem(0, c, QTableWidgetItem(val))
                     continue
-                # show newest first; 细妆⑯：gate filter window
+                # show newest first; 细妆⑯：gate filter window; 细妆⑲：配方筛选
                 rows = list(reversed(hist[-50:]))
                 mode = getattr(self, '_gate_filter_mode', 'all') or 'all'
                 if mode == 'pass':
@@ -1535,15 +1560,22 @@ class OperatorHmiView(QWidget):
                 elif mode == 'fail':
                     rows = [e for e in rows if e.get('gatePass') is False
                             or str(e.get('judge') or '').upper() in ('NG', 'FAIL', '拒')]
+                if recipe_on:
+                    rows = [e for e in rows if (e.get('recipe') or '').strip() == live_recipe]
                 if not rows:
                     table.setRowCount(1)
                     tip = {'all': '无记录', 'pass': '无通窗口', 'fail': '无拒窗口'}.get(mode, '无记录')
-                    placeholders = ['—', '0', tip, '—', '—', '0', '0', '—', '—']
+                    if recipe_on:
+                        tip = f'无配方「{live_recipe}」记录'
+                    placeholders = ['—', '0', tip, '—', '—', '0', '0', '—', '—', live_recipe or '—']
                     for c, val in enumerate(placeholders):
                         table.setItem(0, c, QTableWidgetItem(val))
                     continue
                 table.setRowCount(len(rows))
                 for r, e in enumerate(rows):
+                    recipe_txt = str(e.get('recipe') or '') or '—'
+                    if e.get('variant'):
+                        recipe_txt = f"{recipe_txt}/{e.get('variant')}"
                     vals = [
                         str(e.get('ts') or ''),
                         str(e.get('seq') or ''),
@@ -1554,9 +1586,75 @@ class OperatorHmiView(QWidget):
                         str(e.get('ng') or ''),
                         str(e.get('gate') or ''),
                         str(e.get('note') or ''),
+                        recipe_txt,
                     ]
                     for c, val in enumerate(vals):
                         table.setItem(r, c, QTableWidgetItem(val))
+            except Exception:
+                pass
+        self._refresh_recipe_filter_labs()
+
+    def _toggle_recipe_filter(self):
+        """细妆⑲：配方徽章 / 配方筛选标签 → 结果表按当前配方开/关."""
+        live = (getattr(self, '_live_recipe', '') or '').strip()
+        if not live or live == '—':
+            self._recipe_filter_active = False
+        else:
+            self._recipe_filter_active = not bool(getattr(self, '_recipe_filter_active', False))
+        self._refresh_recipe_filter_labs()
+        self._refresh_result_tables_ui()
+        # also nudge filmstrip caption if present
+        try:
+            self._sync_filmstrip_recipe_hint()
+        except Exception:
+            pass
+
+    def _refresh_recipe_filter_labs(self):
+        on = bool(getattr(self, '_recipe_filter_active', False))
+        live = (getattr(self, '_live_recipe', '') or '').strip() or '—'
+        for lab in getattr(self, '_recipe_filter_labs', []) or []:
+            try:
+                if on:
+                    lab.setText(f'配方筛选 · {live}')
+                    lab.setStyleSheet(
+                        f'color:#9ed9a8;background:#2a3a2a;border:1px solid #3ecf8e;'
+                        f'border-radius:2px;font-size:10px;padding:1px 4px;'
+                    )
+                else:
+                    lab.setText('配方筛选')
+                    lab.setStyleSheet(f'color:{TEXT_MUTED};font-size:10px;padding:1px 4px;')
+            except Exception:
+                pass
+        badge = getattr(self, '_recipe_badge', None)
+        if badge is not None and live and live != '—':
+            try:
+                if on:
+                    badge.setStyleSheet(
+                        f'background:#1e3a28;color:#b8f0c4;border:2px solid #3ecf8e;'
+                        f'border-radius:3px;padding:3px 8px;font-size:11px;font-weight:700;'
+                    )
+            except Exception:
+                pass
+
+    def _sync_filmstrip_recipe_hint(self):
+        """细妆⑲：胶片条 / strip 配方标签跟筛选态同步."""
+        on = bool(getattr(self, '_recipe_filter_active', False))
+        live = (getattr(self, '_live_recipe', '') or '').strip()
+        strip = getattr(self, '_strip_recipe_lab', None)
+        if strip is not None:
+            try:
+                base = f'配方 {live or "—"}'
+                var = getattr(self, '_live_variant', '') or ''
+                if var:
+                    base += f'/{var}'
+                if on and live and live != '—':
+                    strip.setText(base + ' · 筛选中')
+                    strip.setStyleSheet(
+                        f'color:#9ed9a8;font-size:10px;font-weight:700;padding:1px 4px;'
+                    )
+                else:
+                    strip.setText(base)
+                    strip.setStyleSheet(f'color:{TEXT_MUTED};font-size:10px;padding:1px 4px;')
             except Exception:
                 pass
 
@@ -1604,6 +1702,13 @@ class OperatorHmiView(QWidget):
         # re-paint fixed bars so tip includes recipe
         try:
             self._apply_fixed_bars(getattr(self, '_fixed_bars_cache', None) or {})
+        except Exception:
+            pass
+        # 细妆⑲：换型后刷新结果表筛选态 / 胶片提示
+        try:
+            self._refresh_recipe_filter_labs()
+            self._sync_filmstrip_recipe_hint()
+            self._refresh_result_tables_ui()
         except Exception:
             pass
 
@@ -1663,7 +1768,13 @@ class OperatorHmiView(QWidget):
         bar_bg, bar_fg, bar_bd = CARD, TEXT_MUTED, LINE
         low = str(okng).strip().upper()
         host = getattr(self, '_host_state', 'Idle')
-        if host == 'Alarm' or low in ('NG', 'FAIL', '不良', '拒'):
+        alarm_on = host == 'Alarm' or bool(getattr(self, '_live_host_alarm', False))
+        if alarm_on:
+            # Alarm dominates OK/NG paint so fixed bars mirror Host SM rail
+            bar_bg, bar_fg, bar_bd = '#3a1c1c', '#ffb4b4', '#e35d6a'
+            if '⚠' not in tip:
+                tip = f'⚠ 报警  │  {tip}' if tip else '⚠ 报警'
+        elif low in ('NG', 'FAIL', '不良', '拒'):
             bar_bg, bar_fg, bar_bd = '#3a1c1c', '#ffb4b4', '#e35d6a'
         elif low in ('OK', 'PASS', '良', '通过') or host == 'Running':
             bar_bg, bar_fg, bar_bd = '#1c3a2a', '#9ed9a8', '#3ecf8e'
@@ -2017,9 +2128,9 @@ class OperatorHmiView(QWidget):
         if name in ('表格', '结果表'):
             cell = self._make_cell_frame(name + (f' · {binding}' if binding else ''))
             # 细妆⑬：多列历史结果表 + CSV 导出（时间/序号/模块/耗时/判定/OK/NG/门限/备注）
-            table = QTableWidget(0, 9)
+            table = QTableWidget(0, 10)
             table.setHorizontalHeaderLabels(
-                ['时间', '序号', '模块', '耗时(ms)', '判定', 'OK累计', 'NG累计', '门限', '备注']
+                ['时间', '序号', '模块', '耗时(ms)', '判定', 'OK累计', 'NG累计', '门限', '备注', '配方']
             )
             table.horizontalHeader().setStretchLastSection(True)
             table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
@@ -2043,7 +2154,18 @@ class OperatorHmiView(QWidget):
             spark_lab.mousePressEvent = self._make_gate_spark_click_handler(spark_lab)
             self._gate_spark_labs = getattr(self, '_gate_spark_labs', [])
             self._gate_spark_labs.append(spark_lab)
-            cell.layout().addWidget(spark_lab)
+            filt_row = QHBoxLayout(); filt_row.setSpacing(6)
+            filt_row.addWidget(spark_lab, 1)
+            lab_rf = QLabel('配方筛选')
+            lab_rf.setObjectName('hmiRecipeFilterLab')
+            lab_rf.setCursor(Qt.CursorShape.PointingHandCursor)
+            lab_rf.setStyleSheet(f'color:{TEXT_MUTED};font-size:10px;padding:1px 4px;')
+            lab_rf.setToolTip('只看当前配方徽章对应的判定行（再点取消）；与顶部配方徽章联动')
+            lab_rf.mousePressEvent = (lambda e: self._toggle_recipe_filter())
+            filt_row.addWidget(lab_rf)
+            self._recipe_filter_labs = getattr(self, '_recipe_filter_labs', [])
+            self._recipe_filter_labs.append(lab_rf)
+            cell.layout().addLayout(filt_row)
             cell.layout().addWidget(table, 1)
             btn_row = QHBoxLayout()
             b_copy = QPushButton('复制CSV')

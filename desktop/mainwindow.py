@@ -116,6 +116,7 @@ class MainWindow(QMainWindow):
         tools_menu.addAction(self.action('应用上位机状态机模板',self.apply_host_run_ui_template))
         tools_menu.addAction(self.action('插入生产任务建议链…',self.apply_production_demo_chain))
         tools_menu.addAction(self.action('产线配方 / 换型…',self.open_recipe_switch))
+        tools_menu.addAction(self.action('一键「换型→试跑」·测量链',self.open_measure_chain_trial))
         tools_menu.addAction(self.action('真机 Comm 验收壳…',self.open_comm_acceptance))
         tools_menu.addAction(self.action('运行画面编辑（经典）',lambda:self.open_panel('hmi')))
         settings_menu.addAction(self.action('设计态 / 运行模式…',self.toggle_app_mode))
@@ -3746,10 +3747,16 @@ class MainWindow(QMainWindow):
                 self.log(f"工程库换型已加载 · {proj.get('name') or ''}")
                 try:
                     from desktop import recipe_library as rl
+                    flags = {}
+                    try:
+                        flags = dlg.post_apply_flags() if hasattr(dlg, 'post_apply_flags') else {}
+                    except Exception:
+                        flags = {}
                     self.sync_after_recipe_apply({
                         'name': rl.active_recipe_name(proj) or proj.get('name') or '',
                         'variant': str(proj.get('activeRecipeVariant') or ''),
-                        'enterRun': False,
+                        'enterRun': bool(flags.get('enterRun')),
+                        'trialOnce': bool(flags.get('trialOnce')),
                     })
                 except Exception:
                     pass
@@ -3759,6 +3766,109 @@ class MainWindow(QMainWindow):
         dlg.schemeLoaded.connect(_on_scheme)
         dlg.recipesChanged.connect(lambda: (self.log('配方库已更新'), self.refresh_variant_chip()))
         dlg.exec()
+
+    def highlight_variables_keys(self, keys):
+        """细妆⑲：Comm dump → 打开/聚焦 Variables 并对写入 keys 即时高亮."""
+        keys = list(keys or [])
+        if not keys:
+            return
+        try:
+            self.open_panel('variables')
+        except Exception:
+            pass
+        dlg = (getattr(self, 'dialogs', None) or {}).get('variables')
+        if dlg is None:
+            return
+        try:
+            dlg.show(); dlg.raise_()
+        except Exception:
+            pass
+        # wait a tick so table has rendered after open
+        def _hi():
+            try:
+                if hasattr(dlg, 'highlight_written_keys'):
+                    dlg.highlight_written_keys(keys)
+                # also live-patch runtime draft from project.variables for visibility
+                if hasattr(dlg, 'live_patch_flow_var'):
+                    flow = (getattr(self.document, 'project', None) or {}).get('variables') or {}
+                    for k in keys:
+                        name = k.split('.', 1)[-1] if '.' in k else k
+                        if name in flow:
+                            try:
+                                dlg.live_patch_flow_var(name, flow[name])
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+        try:
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(120, _hi)
+        except Exception:
+            _hi()
+
+    def open_measure_chain_trial(self):
+        """细妆⑲：打开即跑测量链（卡尺→几何）一键「换型→试跑」入口.
+
+        Loads projects/open-and-run-caliper-measure.sieans as new unsaved project,
+        then enterRun + trialOnce via sync_after_recipe_apply.
+        """
+        if self.busy or not self.engine_ready:
+            self.log('测量链换型试跑：引擎忙或未就绪')
+            return
+        if not self.confirm_discard():
+            return
+        rel = 'projects/open-and-run-caliper-measure.sieans'
+        path = (self.root / rel).resolve()
+        if not path.is_file():
+            # fallback to measure-only
+            rel = 'projects/open-and-run-measure.sieans'
+            path = (self.root / rel).resolve()
+        if not path.is_file():
+            QMessageBox.warning(self, '换型→试跑', f'找不到测量链模板：{rel}')
+            return
+        import json as _json
+        value = _json.loads(path.read_text(encoding='utf-8-sig'))
+        value['id'] = __import__('uuid').uuid4().hex
+        value['name'] = value.get('name') or path.stem
+
+        def loaded(reply):
+            self.document.load(reply['project'])
+            self.filename = None
+            self.results.set_results([])
+            self.image = ''; self.input_view.show_data(''); self.output_view.show_data(''); self.flow.fit()
+            self.clear_cloud(); self.last_result = None
+            notes = (reply['project'].get('notes') or '').strip()
+            if notes:
+                self.demo_notice.setText(notes); self.demo_notice.show()
+            else:
+                self.demo_notice.hide()
+            self.log(f'测量链换型 · 已载入模板 {reply["project"]["name"]} → 试跑')
+            # recipe chrome name from project / active recipe
+            try:
+                from desktop import recipe_library as rl
+                rname = rl.active_recipe_name(reply['project']) or reply['project'].get('name') or '测量链'
+                variant = str(reply['project'].get('activeRecipeVariant') or '')
+            except Exception:
+                rname = reply['project'].get('name') or '测量链'
+                variant = ''
+            try:
+                self.sync_after_recipe_apply({
+                    'name': rname,
+                    'variant': variant,
+                    'applied': 0,
+                    'skipped': 0,
+                    'enterRun': True,
+                    'trialOnce': True,
+                })
+            except Exception as err:
+                self.log(f'测量链换型试跑闭环失败：{err}')
+            try:
+                self.statusBar().showMessage(
+                    f'一键换型→试跑 · {rname}' + (f'/{variant}' if variant else ''), 6000)
+            except Exception:
+                pass
+
+        self.request('project/validate', {'project': value}, loaded)
 
     def open_comm_acceptance(self):
         """细妆⑬：真机 Comm 验收壳（默认环回干跑，Host/Port 可改真机）."""

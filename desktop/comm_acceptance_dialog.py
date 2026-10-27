@@ -387,6 +387,32 @@ class CommAcceptanceDialog(QDialog):
                 )
         except Exception:
             pass
+        # 细妆⑲：Variables 面板即时高亮刚写入的 keys
+        try:
+            keys = list(stats.get('keys') or [])
+            if w is not None and keys and hasattr(w, 'highlight_variables_keys'):
+                w.highlight_variables_keys(keys)
+            elif w is not None and keys:
+                # fallback: open variables dialog then highlight
+                dlg = None
+                try:
+                    dlg = (getattr(w, 'dialogs', None) or {}).get('variables')
+                except Exception:
+                    dlg = None
+                if dlg is None and hasattr(w, 'open_dialog'):
+                    try:
+                        w.open_dialog('variables')
+                        dlg = (getattr(w, 'dialogs', None) or {}).get('variables')
+                    except Exception:
+                        dlg = None
+                if dlg is not None and hasattr(dlg, 'highlight_written_keys'):
+                    try:
+                        dlg.show(); dlg.raise_()
+                    except Exception:
+                        pass
+                    dlg.highlight_written_keys(keys)
+        except Exception:
+            pass
         QMessageBox.information(self, '变量已落盘', msg)
 
     def _bootstrap_last(self):
