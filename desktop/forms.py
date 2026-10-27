@@ -623,18 +623,25 @@ class ParameterPanel(QWidget):
         self.image_from.setObjectName('imageFrom')
         self.image_from.addItem('（无图像输入）', None)
         incoming = {e['from'] for e in project.get('edges', []) if e.get('to') == step['id']}
-        names = {s['id']: s.get('name', s['id']) for s in project.get('steps', [])}
-        names['source'] = '图像 / 点云源'
-        for node in sorted(incoming):
-            label = names.get(node, node)
-            prefix = '源 · ' if node == 'source' else '上游 · '
-            self.image_from.addItem(prefix + label, node)
+        # B1: VM 订阅格式「序号 模块名.端口」，如 0 图像源1.图像
+        index_map = {'source': 0}
+        names = {'source': '图像源1'}
+        for i, s in enumerate(project.get('steps', []), start=1):
+            index_map[s['id']] = i
+            names[s['id']] = s.get('name', s['id'])
+        def _sub_label(node_id, port='图像'):
+            idx = index_map.get(node_id, '?')
+            return f"{idx} {names.get(node_id, node_id)}.{port}"
+        # Prefer topo / y order for dropdown clarity
+        ordered = sorted(incoming, key=lambda n: (index_map.get(n, 999), n))
+        for node in ordered:
+            self.image_from.addItem(_sub_label(node, '图像'), node)
         current = step.get('imageFrom')
         if current and self.image_from.findData(current) < 0:
-            self.image_from.addItem('已断开的来源：' + current, current)
+            self.image_from.addItem('已断开：' + _sub_label(current), current)
         self.image_from.setCurrentIndex(max(0, self.image_from.findData(current)))
         self.image_from.currentIndexChanged.connect(lambda _: self._set_top('imageFrom', self.image_from.currentData()))
-        image_form.addRow('图像 / 点云来源', self.image_from)
+        image_form.addRow('输入源', self.image_from)
         page.addWidget(image_box)
 
         nodes = _upstream(project, step['id'])

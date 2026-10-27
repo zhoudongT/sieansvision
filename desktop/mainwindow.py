@@ -20,6 +20,7 @@ from desktop.cloud_view import CloudView
 from desktop.theme import WORKBENCH_QSS
 from desktop.widgets import OperatorRail, FilmstripBar, MiniMap, WorkbenchStatusBar, FlowTabBar, AllFlowsPanel, OrangeSwitch
 from desktop.property_float import PropertyFloat
+from desktop.group_module import GroupBreadcrumb, normalize_group_params, group_bindings_ready, default_group_inner
 from desktop.image_source import normalize_source
 from desktop import scheme as flow_scheme
 STYLE = WORKBENCH_QSS
@@ -38,7 +39,7 @@ class MainWindow(QMainWindow):
         self.backend.ready.connect(self.engine_online);self.backend.result.connect(self.engine_result)
         self.backend.error.connect(self.engine_error);self.backend.stopped.connect(self.engine_closed)
         if hasattr(self.backend,'progress'):self.backend.progress.connect(self.progress)
-        self.continuous=False;self.run_all_filmstrip=False;self.rail_category='';self.property_float=None
+        self.continuous=False;self.run_all_filmstrip=False;self._run_target=None;self.rail_category='';self.property_float=None;self._group_stack=[];self._group_breadcrumb=None
         self.app_mode='design'  # design | run
         self.showing_all_flows=False
         self._left_pane=None;self._center_stack=None;self.run_mode_pane=None
@@ -88,6 +89,8 @@ class MainWindow(QMainWindow):
         tools_menu.addAction(self.action('运行界面设计',self.open_run_ui_designer))
         tools_menu.addAction(self.action('运行画面编辑（经典）',lambda:self.open_panel('hmi')))
         settings_menu.addAction(self.action('设计态 / 运行模式…',self.toggle_app_mode))
+        settings_menu.addAction(self.action('全局触发…',self.open_global_triggers))
+        tools_menu.addAction(self.action('全局触发…',self.open_global_triggers))
         self.undo_action=self.action('撤销',self.document.undo,'Ctrl+Z');self.redo_action=self.action('重做',self.document.redo,'Ctrl+Y')
         for a in [self.undo_action,self.redo_action]:edit.addAction(a)
         edit.addAction(self.action('复制模块',self.copy_nodes,'Ctrl+Shift+C'));edit.addAction(self.action('粘贴模块',lambda:self.document.paste() if not self.busy else None,'Ctrl+Shift+V'))
@@ -101,6 +104,7 @@ class MainWindow(QMainWindow):
         self.return_demo_action=self.action('返回原工程',self.restore_demo);self.return_demo_action.setVisible(False);toolbar.addAction(self.return_demo_action);toolbar.addSeparator()
         self.cam_mgr_action=self.action('📷 相机',self.open_camera_manager);toolbar.addAction(self.cam_mgr_action)
         toolbar.addAction(self.action('var',lambda:self.open_panel('variables')))
+        toolbar.addAction(self.action('触发',self.open_global_triggers))
         toolbar.addSeparator()
         self.run_action=self.action('▶ 单次',self.run_once,'Ctrl+Return');toolbar.addAction(self.run_action)
         self.cont_action=self.action('↻ 连续',self.run_continuous);toolbar.addAction(self.cont_action)
@@ -159,7 +163,7 @@ class MainWindow(QMainWindow):
         self.scene=FlowScene(self.document);self.flow=FlowView(self.scene)
         self.scene.chosen.connect(self.choose_node);self.scene.configure.connect(self.configure_node);self.scene.notice.connect(self.log)
         self.flow.dropped.connect(lambda key,pos:self.guard(lambda:self.add_node(key,pos)))
-        canvas_host=QWidget();chl=QVBoxLayout(canvas_host);chl.setContentsMargins(0,0,0,0);chl.addWidget(self.flow)
+        canvas_host=QWidget();chl=QVBoxLayout(canvas_host);chl.setContentsMargins(0,0,0,0);chl.addWidget(self._group_breadcrumb);chl.addWidget(self.flow,1)
         self.minimap=MiniMap(self.scene,self.flow,canvas_host)
         self._canvas_host=canvas_host
         canvas_host.installEventFilter(self)
@@ -300,12 +304,24 @@ class MainWindow(QMainWindow):
     def add_node(self,key,position=None):
         if self.busy or not key:return
         self.selected=self.document.add(self.definitions[key],position,parent=self.selected or 'source')
+        # B3: 组合模块默认参数（ImageData / InputROI / 循环壳）
+        if key=='group' or (self.definitions.get(key) or {}).get('operation')=='group':
+            p=deepcopy(self.document.project)
+            for s in p['steps']:
+                if s['id']==self.selected:
+                    s['params']=normalize_group_params(s.get('params')); break
+            self.document.commit(p)
         self.scene.clearSelection();self.scene.nodes[self.selected].setSelected(True);self.refresh_parameters()
 
     def choose_node(self,node_id):
         self.selected=None if node_id=='source' else node_id;self.refresh_parameters()
 
     def configure_node(self,node_id):
+        # B3: 组合模块双击 → 进入嵌套画布；其它模块仍开属性浮窗
+        if node_id and node_id != 'source':
+            step = next((s for s in self.document.project.get('steps', []) if s.get('id') == node_id), None)
+            if step and step.get('operation') == 'group':
+                self.guard(lambda: self.enter_group_module(node_id)); return
         self.guard(lambda:self.open_property_float(node_id))
 
     def ensure_property_float(self):
@@ -317,6 +333,7 @@ class MainWindow(QMainWindow):
             self.property_float.runModule.connect(lambda nid:self.guard(lambda:self.run(None if nid=='source' else nid)))
             self.property_float.runModuleContinuous.connect(self.run_module_continuous)
             self.property_float.openCameraManager.connect(self.open_camera_manager)
+            self.property_float.enterGroup.connect(self.enter_group_module)
         return self.property_float
 
     def open_property_float(self,node_id):
@@ -629,33 +646,43 @@ class MainWindow(QMainWindow):
             elif key!='login':dialog.setEnabled(not busy)
 
     def run_once(self):
-        self.continuous=False;self.run_all_filmstrip=False;self.run()
+        self.continuous=False;self.run_all_filmstrip=False;self._run_target=None;self.run()
 
     def run_continuous(self):
         if self.busy or not self.engine_ready:return
-        self.continuous=True;self.run_all_filmstrip=False;self.log('连续运行已启动');self.run()
+        self.continuous=True;self.run_all_filmstrip=False;self._run_target=None;self.log('连续运行已启动');self.run()
 
     def stop_run(self):
-        self.continuous=False;self.run_all_filmstrip=False
+        self.continuous=False;self.run_all_filmstrip=False;self._run_target=None
         self.request('stop',{},lambda _:None)
         self.wb_status.push_log('已请求停止')
 
     def run_module_continuous(self,node_id):
+        # B2: 模块级连续执行 — 与全局连续分离，保留 target
         if node_id=='source':node_id=None
-        self.continuous=True;self.run_all_filmstrip=False
+        self.continuous=True;self.run_all_filmstrip=False;self._run_target=node_id
+        self.log('模块连续执行已启动' + (f' · {node_id}' if node_id else ''))
         self.guard(lambda:self.run(node_id))
 
     def run(self,target=None):
         if self.busy or not self.engine_ready:return
-        if not self.document.project['steps']:raise ValueError('请先添加流程模块')
+        # 允许仅跑图像源/空链时给出提示；有 target 时至少需要该模块
+        if not self.document.project['steps'] and target is None and not self._group_stack:
+            raise ValueError('请先添加流程模块')
+        if target is not None:
+            self._run_target=target
+        elif not self.continuous:
+            self._run_target=None
+        effective=target if target is not None else (self._run_target if self.continuous else None)
         params=dict(project=deepcopy(self.document.project),image=self.image,allowScripts=self.script_action.isChecked())
         self.script_action.setChecked(False)
         if self.cloud:params['cloud']=self.cloud
         if self.depth:params['depth']=self.depth
-        if target:params['target']=target
-        self.set_busy(True);self.results.set_results([]);self.log('开始执行流程…')
+        if effective:params['target']=effective
+        self.set_busy(True);self.results.set_results([])
+        self.log('开始执行' + ('模块 ' + str(effective) if effective else '流程') + '…')
         try:self.run_request=self.request('run',params,self.finished)
-        except Exception:self.set_busy(False);self.continuous=False;raise
+        except Exception:self.set_busy(False);self.continuous=False;self._run_target=None;raise
 
     def progress(self,value):
         if value.get('activeStep'):
@@ -715,7 +742,7 @@ class MainWindow(QMainWindow):
         self.log(f"{text} · {elapsed} ms"+(' · '+result['error'] if result.get('error') else ''))
         state=result.get('state')
         if state=='cancelled':
-            self.continuous=False;self.run_all_filmstrip=False;return
+            self.continuous=False;self.run_all_filmstrip=False;self._run_target=None;return
         if self.run_all_filmstrip and state=='completed':
             if self.filmstrip.advance():
                 QTimer.singleShot(80, lambda:self.guard(self.run))
@@ -724,12 +751,13 @@ class MainWindow(QMainWindow):
             return
         if self.continuous and state=='completed':
             cfg=normalize_source(self.document.project.get('sourceConfig'))
-            if cfg.get('mode')=='local' and self.filmstrip.auto_switch.isChecked():
+            target=self._run_target
+            if cfg.get('mode')=='local' and self.filmstrip.auto_switch.isChecked() and not target:
                 if self.filmstrip.advance():
-                    QTimer.singleShot(50, lambda:self.guard(self.run));return
+                    QTimer.singleShot(50, lambda:self.guard(lambda:self.run(None)));return
                 if cfg.get('stopAtLast'):
-                    self.continuous=False;self.log('已到最后一张，连续运行停止');return
-            QTimer.singleShot(120, lambda:self.guard(self.run) if self.continuous else None)
+                    self.continuous=False;self._run_target=None;self.log('已到最后一张，连续运行停止');return
+            QTimer.singleShot(120, lambda t=target: self.guard(lambda:self.run(t)) if self.continuous else None)
 
     def log(self,message):
         self.logs.appendPlainText(str(message))
@@ -1097,6 +1125,80 @@ class MainWindow(QMainWindow):
         self.set_busy(self.busy)
         self.document_changed()
         self.log('已切换到'+('运行模式（画布锁定，操作员界面）' if mode=='run' else '设计态（完整工作台）'))
+
+
+    # ---- B3 组合模块：进入 / 退出嵌套画布 ----
+    def enter_group_module(self, node_id):
+        step = next((s for s in self.document.project.get('steps', []) if s.get('id') == node_id), None)
+        if not step or step.get('operation') != 'group':
+            self.log('仅组合模块可进入'); return
+        from copy import deepcopy
+        params = normalize_group_params(step.get('params'))
+        step['params'] = params
+        if not group_bindings_ready(params):
+            self.log('提示：进组前建议绑定 ImageData / InputROI（属性浮窗 · 输入设置）')
+        inner = params.get('inner') or default_group_inner()
+        params['inner'] = inner
+        # 先把当前外层写入 history，再切换视图
+        self.document.commit(deepcopy(self.document.project))
+        self._group_stack.append({
+            'node_id': node_id,
+            'name': step.get('name') or '组合模块',
+            'outer_project': deepcopy(self.document.project),
+        })
+        view_project = deepcopy(self.document.project)
+        view_project['steps'] = deepcopy(inner.get('steps') or [])
+        view_project['edges'] = deepcopy(inner.get('edges') or [])
+        view_project['sourcePosition'] = deepcopy(inner.get('sourcePosition') or dict(x=300, y=40))
+        view_project['name'] = f'{self.document.project.get("name","方案")} / {step.get("name") or "组合模块"}'
+        # 软切换：不走 validate 的完整 load（内层可为空）
+        self.document.project = view_project
+        self.selected = None
+        self.scene.rebuild()
+        self.document_changed()
+        self._group_breadcrumb.set_path('主流程', step.get('name') or '组合模块')
+        self._group_breadcrumb.setVisible(True)
+        self.log(f'已进入组合模块「{step.get("name") or node_id}」· ImageData/InputROI 绑定可在属性中配置')
+
+    def exit_group_module(self):
+        if not self._group_stack:
+            self._group_breadcrumb.setVisible(False); return
+        from copy import deepcopy
+        frame = self._group_stack.pop()
+        inner_steps = deepcopy(self.document.project.get('steps') or [])
+        inner_edges = deepcopy(self.document.project.get('edges') or [])
+        inner_sp = deepcopy(self.document.project.get('sourcePosition') or dict(x=300, y=40))
+        outer = frame['outer_project']
+        for s in outer.get('steps', []):
+            if s.get('id') == frame['node_id'] and s.get('operation') == 'group':
+                params = normalize_group_params(s.get('params'))
+                params['inner'] = {
+                    'steps': inner_steps,
+                    'edges': inner_edges,
+                    'sourcePosition': inner_sp,
+                    'localVariables': (s.get('params') or {}).get('inner', {}).get('localVariables') or {},
+                }
+                s['params'] = params
+                break
+        self.document.load(outer)
+        # load 已 emit changed → document_changed + 需 rebuild
+        self.scene.rebuild()
+        if self._group_stack:
+            top = self._group_stack[-1]
+            self._group_breadcrumb.set_path('主流程', top['name'])
+            self._group_breadcrumb.setVisible(True)
+        else:
+            self._group_breadcrumb.setVisible(False)
+        self.log(f'已退出组合模块「{frame["name"]}」')
+
+    # ---- B4 全局触发壳 ----
+    def open_global_triggers(self):
+        from desktop.global_triggers import GlobalTriggersDialog
+        # Dialog 内部 commit；此处仅打开
+        dlg = GlobalTriggersDialog(self.document, self)
+        if dlg.exec():
+            self.log('全局触发已更新')
+            self.scene.rebuild()
 
     def open_run_ui_designer(self):
         if self.dialogs.get('run_ui'):

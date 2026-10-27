@@ -13,7 +13,7 @@ class Port(QGraphicsObject):
         self.setPos(x,y);self.setZValue(4)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
         self.highlight=None
-        kind='图像链路' if side in ('top','bottom') else '数据/控制';self.setToolTip(('输出' if output else '输入')+' · '+kind+'：拖到另一端口连接，或依次点击；Esc 取消')
+        kind='图像订阅' if side in ('top','bottom') else '数据/控制';self.setToolTip(('输出' if output else '输入')+' · '+kind+'（'+( '实线=图像订阅' if side in ('top','bottom') else '虚线=数据/控制' )+'）：拖到目标端口；下方模块订阅上方；Esc 取消')
         self.setCursor(Qt.CursorShape.CrossCursor)
 
     def boundingRect(self):
@@ -88,7 +88,7 @@ class Edge(QGraphicsPathItem):
         super().__init__();self.edge=edge;self.host=scene
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
         self.setZValue(0);self.refresh()
-        self.setToolTip('连接：'+edge.get('when','always')+' · 选中后 Delete 删除')
+        self.setToolTip('连线/订阅：'+edge.get('when','always')+' · 实线=图像订阅 虚线=数据控制 · 角标为模块序号 · Delete 删除')
 
     def refresh(self):
         origin=self.host.nodes.get(self.edge['from']);target=self.host.nodes.get(self.edge['to'])
@@ -103,17 +103,38 @@ class Edge(QGraphicsPathItem):
         path.lineTo(b);self.setPath(path)
 
     def paint(self,painter,option,widget=None):
-        p=QPen(QColor('#e67a2e' if self.isSelected() else '#3a9a6c'),2.5 if self.isSelected() else 1.8)
+        # B1: 实线=图像订阅(imageFrom)；虚线=数据/控制连线；选中橙
         step=next((s for s in self.host.document.project['steps'] if s['id']==self.edge['to']),None)
-        if step and step.get('imageFrom')!=self.edge['from']:p.setStyle(Qt.PenStyle.DashLine)
+        is_image_sub = bool(step and step.get('imageFrom')==self.edge['from'])
+        side_wire = self.edge.get('fromPort')=='right' or self.edge.get('toPort')=='left'
+        color = QColor('#e67a2e' if self.isSelected() else ('#3a9a6c' if is_image_sub else '#d4a017'))
+        p=QPen(color, 2.6 if self.isSelected() else 1.9)
+        if (not is_image_sub) or side_wire:
+            p.setStyle(Qt.PenStyle.DashLine)
+        else:
+            p.setStyle(Qt.PenStyle.SolidLine)
         self.setPen(p);super().paint(painter,option,widget)
         end=self.path().pointAtPercent(1);painter.setBrush(p.color())
         if self.edge.get('toPort','top')=='left':points=[end,end+QPointF(-8,-4),end+QPointF(-8,4)]
         else:points=[end,end+QPointF(-4,-8),end+QPointF(4,-8)]
         painter.drawPolygon(QPolygonF(points))
+        # 线序角标：上游序号 → 下游序号
+        proj=self.host.document.project
+        index_map={'source':0}
+        for i,s in enumerate(proj.get('steps') or [], start=1):
+            index_map[s['id']]=i
+        a_i=index_map.get(self.edge['from'], '?')
+        b_i=index_map.get(self.edge['to'], '?')
+        mid=self.path().pointAtPercent(.5)
+        badge=f'{a_i}→{b_i}'
+        if is_image_sub:
+            badge += ' ·图'
+        painter.setPen(QColor('#c8d0d8'))
+        painter.setFont(QFont('Microsoft YaHei UI', 8))
+        painter.drawText(mid+QPointF(8, -4), badge)
         when=self.edge.get('when','always')
         if when not in ('always','success'):
-            painter.setPen(QColor('#9aa7b5'));painter.drawText(self.path().pointAtPercent(.5)+QPointF(6,-6),{'true':'成立','false':'不成立','error':'失败'}.get(when,when))
+            painter.setPen(QColor('#9aa7b5'));painter.drawText(mid+QPointF(6,12),{'true':'成立','false':'不成立','error':'失败'}.get(when,when))
 
 
 class FlowScene(QGraphicsScene):
@@ -147,6 +168,7 @@ class FlowScene(QGraphicsScene):
             else:
                 label=f'{i} {label}'
             item=Node(n['id'],label,n.get('position',dict(x=60,y=40+i*130)),i==0)
+            item.setToolTip(label+'\n序号 '+str(i)+' · 拖动移动 · 双击配置 · 端口拖拽订阅（下方←上方）')
             self.addItem(item);self.nodes[n['id']]=item
             if n['id'] in ids:item.setSelected(True)
             if self.edit_locked:

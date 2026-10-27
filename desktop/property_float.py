@@ -59,6 +59,7 @@ class PropertyFloat(QDialog):
     runModuleContinuous = Signal(object)
     paramAudited = Signal(str, str, object, object)
     openCameraManager = Signal()
+    enterGroup = Signal(object)  # node_id
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -157,6 +158,19 @@ class PropertyFloat(QDialog):
         self._clear_body()
         name = (definition or {}).get('name') or (step or {}).get('name') or '模块'
         self.title.setText(f'{index} {name}')
+        # B3: 组合模块专用四 Tab 面板
+        if step and step.get('operation') == 'group':
+            from desktop.group_module import GroupParamPanel, normalize_group_params
+            step = deepcopy(step)
+            step['params'] = normalize_group_params(step.get('params'))
+            panel = GroupParamPanel(step, project)
+            panel.changed.connect(self._on_step_changed)
+            panel.enterGroup.connect(lambda: self.enterGroup.emit(self._node_id))
+            self.body.addWidget(panel)
+            self._panel = panel
+            self._last_step = deepcopy(step)
+            self.show(); self.raise_(); self.activateWindow()
+            return
         panel = ParameterPanel()
         panel.setStyleSheet('QWidget#propertyPanel{background:#f5f7fa;border:0;}')
         panel.set_step(step, definition, project)

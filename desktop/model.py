@@ -118,10 +118,22 @@ class Document(QObject):
 
     def connect(self, origin, target, from_port='bottom', to_port='top'):
         p = deepcopy(self.project)
+        # B1: 订阅线序 — 下方模块才能订阅上方（按画布 Y；同源链允许）
+        def _pos(node_id):
+            if node_id == 'source':
+                return p.get('sourcePosition') or dict(x=0, y=0)
+            step = next((s for s in p['steps'] if s['id'] == node_id), None)
+            return (step or {}).get('position') or dict(x=0, y=0)
+        oy, ty = _pos(origin).get('y', 0), _pos(target).get('y', 0)
+        if ty + 8 < oy and from_port in ('bottom', 'right') and to_port in ('top', 'left'):
+            raise ValueError('订阅线序：下方模块才能订阅上方模块输出（请将目标模块放到上游下方）')
         p['edges'].append(dict(id=uid(), **{'from': origin, 'to': target}, fromPort=from_port, toPort=to_port))
         node = next(s for s in p['steps'] if s['id'] == target)
-        if not node.get('imageFrom'):
-            node['imageFrom'] = origin
+        # 图像端口连线默认建立 imageFrom 订阅；侧向数据口不覆盖已有图像订阅
+        if from_port in ('bottom', 'top') or not node.get('imageFrom'):
+            if from_port != 'right' or not node.get('imageFrom'):
+                if from_port in ('bottom',) or not node.get('imageFrom'):
+                    node['imageFrom'] = origin
         self.commit(p)
 
     def remove(self, nodes=(), edges=()):

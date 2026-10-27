@@ -1,16 +1,15 @@
-"""运行界面设计器骨架 — 对标 VM4.4 运行界面设计入口。
+"""运行界面设计器 — 对标 VM4.4；P1 含按钮多触发命令 + 数据源订阅 stub。"""
+from copy import deepcopy
 
-控件库四类 / 布局分割 / 固定栏 / 预览·导出占位。完整绑定与触发命令见后续批次。
-"""
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget,
     QListWidgetItem, QSplitter, QWidget, QComboBox, QFrame, QTabWidget,
-    QTreeWidget, QTreeWidgetItem, QMessageBox, QCheckBox, QGroupBox,
-    QFormLayout, QToolBar, QSizePolicy, QStackedWidget,
+    QMessageBox, QCheckBox, QGroupBox, QFormLayout, QToolBar, QStackedWidget,
+    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QLineEdit,
 )
-from desktop.widgets.switch import OrangeSwitch
 
+from desktop.widgets.switch import OrangeSwitch
 
 CONTROL_LIBRARY = {
     '基础': [
@@ -24,15 +23,134 @@ CONTROL_LIBRARY = {
 
 SPLIT_PRESETS = ['1', '2', '3', '4', '6', '8', '9', '自定义']
 
+TRIGGER_COMMAND_TYPES = [
+    '界面链接',
+    '参数配置',
+    '复位',
+    '方案保存',
+    '方案另存',
+    '执行·单次',
+    '执行·连续',
+    '执行·停止',
+    '模块动作',
+]
+
+UI_LINK_TARGETS = ['全局相机', '通讯', '变量', '日志', '综合配置']
+
+
+class TriggerCommandsEditor(QWidget):
+    """B5: 按钮可配多条命令，自上而下顺序执行。"""
+    changed = Signal(list)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        head = QLabel('触发命令（多条 · 自上而下）')
+        head.setStyleSheet('font-weight:600;')
+        lay.addWidget(head)
+        self.table = QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels(['序号', '命令类型', '配置'])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        lay.addWidget(self.table, 1)
+        bar = QHBoxLayout()
+        for text, slot in (('添加', self.add_row), ('上移', lambda: self._move(-1)),
+                           ('下移', lambda: self._move(1)), ('删除', self._remove)):
+            b = QPushButton(text)
+            b.clicked.connect(slot)
+            bar.addWidget(b)
+        bar.addStretch(1)
+        lay.addLayout(bar)
+
+    def set_commands(self, commands):
+        self.table.setRowCount(0)
+        for cmd in commands or []:
+            self._append(cmd)
+        if self.table.rowCount() == 0:
+            self.add_row()
+
+    def _append(self, cmd=None):
+        cmd = cmd or {}
+        r = self.table.rowCount()
+        self.table.insertRow(r)
+        seq = QTableWidgetItem(str(r + 1))
+        seq.setFlags(seq.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        self.table.setItem(r, 0, seq)
+        combo = QComboBox()
+        combo.addItems(TRIGGER_COMMAND_TYPES)
+        cur = cmd.get('type') or TRIGGER_COMMAND_TYPES[0]
+        i = combo.findText(cur)
+        combo.setCurrentIndex(i if i >= 0 else 0)
+        combo.currentIndexChanged.connect(lambda *_: self._emit())
+        self.table.setCellWidget(r, 1, combo)
+        cfg = QLineEdit(str(cmd.get('config') or ''))
+        if (cmd.get('type') or '').startswith('界面'):
+            cfg.setPlaceholderText(' / '.join(UI_LINK_TARGETS))
+        elif '模块' in (cmd.get('type') or ''):
+            cfg.setPlaceholderText('模块动作：流程名.模块名')
+        else:
+            cfg.setPlaceholderText('配置参数…')
+        cfg.textChanged.connect(lambda *_: self._emit())
+        self.table.setCellWidget(r, 2, cfg)
+        self._renumber()
+
+    def add_row(self):
+        self._append({'type': '执行·单次', 'config': ''})
+        self._emit()
+
+    def _remove(self):
+        r = self.table.currentRow()
+        if r >= 0:
+            self.table.removeRow(r)
+            self._renumber()
+            self._emit()
+
+    def _move(self, delta):
+        r = self.table.currentRow()
+        t = r + delta
+        if r < 0 or t < 0 or t >= self.table.rowCount():
+            return
+        data = self.commands()
+        data[r], data[t] = data[t], data[r]
+        self.set_commands(data)
+        self.table.selectRow(t)
+        self._emit()
+
+    def _renumber(self):
+        for r in range(self.table.rowCount()):
+            item = self.table.item(r, 0)
+            if item is None:
+                item = QTableWidgetItem()
+                self.table.setItem(r, 0, item)
+            item.setText(str(r + 1))
+
+    def commands(self):
+        out = []
+        for r in range(self.table.rowCount()):
+            combo = self.table.cellWidget(r, 1)
+            cfg = self.table.cellWidget(r, 2)
+            out.append(dict(
+                type=combo.currentText() if combo else '',
+                config=cfg.text() if cfg else '',
+            ))
+        return out
+
+    def _emit(self):
+        self.changed.emit(self.commands())
+
 
 class RunUiDesignerDialog(QDialog):
-    """独立「运行界面设计」窗口骨架。"""
+    """独立「运行界面设计」窗口：控件库 / 分割 / 固定栏 / 触发命令 / 订阅。"""
     previewRequested = Signal()
     exportRequested = Signal()
 
     def __init__(self, document=None, parent=None):
         super().__init__(parent)
         self.document = document
+        self._control_state = {}  # name -> {binding, commands}
+        self._current_control = None
         self.setWindowTitle('运行界面设计')
         self.resize(1280, 820)
         self.setMinimumSize(960, 640)
@@ -40,7 +158,6 @@ class RunUiDesignerDialog(QDialog):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # Top bar
         bar = QToolBar()
         bar.setMovable(False)
         title = QLabel('  运行界面设计')
@@ -71,7 +188,6 @@ class RunUiDesignerDialog(QDialog):
         body = QSplitter(Qt.Orientation.Horizontal)
         root.addWidget(body, 1)
 
-        # Left: control library
         left = QWidget()
         left.setObjectName('libraryPane')
         left.setMinimumWidth(220)
@@ -90,13 +206,12 @@ class RunUiDesignerDialog(QDialog):
                 QListWidgetItem(name, lst)
             self.lib_tabs.addTab(lst, cat)
         ll.addWidget(self.lib_tabs, 1)
-        tip = QLabel('拖入预览区（本批为骨架：点选列出控件名）')
+        tip = QLabel('点选控件编辑属性；按钮可配多条触发命令；⛓ 绑定局部变量。')
         tip.setObjectName('dialogHint')
         tip.setWordWrap(True)
         ll.addWidget(tip)
         body.addWidget(left)
 
-        # Center: split preview
         center = QWidget()
         center.setObjectName('flowPane')
         cl = QVBoxLayout(center)
@@ -110,11 +225,10 @@ class RunUiDesignerDialog(QDialog):
         self.split_combo.currentIndexChanged.connect(self._on_split)
         body.addWidget(center)
 
-        # Right: fixed bars + props
         right = QWidget()
         right.setObjectName('imagePane')
-        right.setMinimumWidth(240)
-        right.setMaximumWidth(340)
+        right.setMinimumWidth(280)
+        right.setMaximumWidth(400)
         rl = QVBoxLayout(right)
         rt = QLabel('固定栏选择')
         rt.setObjectName('panelTitle')
@@ -142,35 +256,48 @@ class RunUiDesignerDialog(QDialog):
         pf = QFormLayout(props)
         self.prop_name = QLabel('—')
         pf.addRow(QLabel('控件'), self.prop_name)
-        pf.addRow(QLabel('数据源'), QLabel('可订阅流程输出 / 局部变量'))
-        pf.addRow(QLabel('触发命令'), QLabel('多条命令自上而下（P1）'))
+
+        bind_row = QWidget()
+        br = QHBoxLayout(bind_row)
+        br.setContentsMargins(0, 0, 0, 0)
+        self.prop_binding = QLineEdit()
+        self.prop_binding.setPlaceholderText('数据源：流程输出 / 局部变量')
+        self.prop_binding.setReadOnly(True)
+        bind_btn = QPushButton('⛓')
+        bind_btn.setFixedWidth(32)
+        bind_btn.setToolTip('订阅局部变量 / 流程输出')
+        bind_btn.clicked.connect(self._open_bind)
+        br.addWidget(self.prop_binding, 1)
+        br.addWidget(bind_btn)
+        pf.addRow(QLabel('数据源'), bind_row)
         rl.addWidget(props)
-        rl.addStretch(1)
+
+        self.trigger_editor = TriggerCommandsEditor()
+        self.trigger_editor.setEnabled(False)
+        self.trigger_editor.changed.connect(self._on_commands_changed)
+        rl.addWidget(self.trigger_editor, 1)
+
         body.addWidget(right)
+        body.setSizes([260, 680, 320])
 
-        body.setSizes([260, 720, 280])
-
-        # Wire list selection → prop
         for i in range(self.lib_tabs.count()):
             lst = self.lib_tabs.widget(i)
             lst.currentTextChanged.connect(self._pick_control)
 
-        foot = QLabel('  预览 / 导出为占位；完整 HMI 仍可用「工程管理 → 运行画面编辑」。本设计器对标 VM4.4 入口与信息架构。')
+        foot = QLabel('  B5 按钮多触发命令 / B6 ⛓ 局部变量订阅已接入；预览·导出仍为骨架。完整 HMI 亦可走「工程管理 → 运行画面编辑」。')
         foot.setObjectName('dialogHint')
         foot.setWordWrap(True)
         root.addWidget(foot)
 
+        # Restore saved designer stub from project if any
+        if document is not None:
+            ui = (document.project or {}).get('runUi') or {}
+            self._control_state = deepcopy(ui.get('controls') or {})
+
     def _build_split_pages(self):
-        # Build simple grid previews for 1/2/3/4/6/8/9
         layouts = {
-            0: [(1, 1)],
-            1: [(1, 2)],
-            2: [(1, 3)],
-            3: [(2, 2)],
-            4: [(2, 3)],
-            5: [(2, 4)],
-            6: [(3, 3)],
-            7: [(2, 2)],  # 自定义 — same as 4 for shell
+            0: [(1, 1)], 1: [(1, 2)], 2: [(1, 3)], 3: [(2, 2)],
+            4: [(2, 3)], 5: [(2, 4)], 6: [(3, 3)], 7: [(2, 2)],
         }
         for idx, cells in layouts.items():
             page = QWidget()
@@ -197,17 +324,79 @@ class RunUiDesignerDialog(QDialog):
                     row.addWidget(cell, 1)
                     cell_i += 1
                 grid_host.addLayout(row, 1)
-            # Fixed bar chrome placeholders
             self.preview_stack.addWidget(page)
-        self._chrome = {}
 
     def _on_split(self, index):
         self.preview_stack.setCurrentIndex(max(0, min(index, self.preview_stack.count() - 1)))
         self.preview_label.setText(f'运行界面预览 · {SPLIT_PRESETS[index]} 分屏')
 
+    def _ensure_state(self, name):
+        st = self._control_state.setdefault(name, dict(binding='', commands=[]))
+        st.setdefault('binding', '')
+        st.setdefault('commands', [])
+        return st
+
     def _pick_control(self, name):
-        if name:
-            self.prop_name.setText(name)
+        if not name:
+            return
+        self._current_control = name
+        self.prop_name.setText(name)
+        st = self._ensure_state(name)
+        self.prop_binding.setText(st.get('binding') or '')
+        is_button = name in ('按钮', '运行控制', '开关控制')
+        self.trigger_editor.setEnabled(is_button)
+        if is_button:
+            cmds = st.get('commands') or []
+            if not cmds:
+                cmds = [
+                    dict(type='执行·单次', config=''),
+                    dict(type='界面链接', config='日志'),
+                ]
+                st['commands'] = cmds
+            self.trigger_editor.set_commands(cmds)
+        else:
+            self.trigger_editor.set_commands([])
+
+    def _on_commands_changed(self, commands):
+        if not self._current_control:
+            return
+        self._ensure_state(self._current_control)['commands'] = deepcopy(commands)
+        self._persist()
+
+    def _open_bind(self):
+        if not self._current_control:
+            QMessageBox.information(self, '订阅', '请先在控件库点选一个控件。')
+            return
+        from desktop.bind_dialog import BindSourceDialog
+        project = self.document.project if self.document else {}
+        st = self._ensure_state(self._current_control)
+        dlg = BindSourceDialog(project, current=st.get('binding') or '', parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            st['binding'] = dlg.selected
+            self.prop_binding.setText(dlg.selected or '')
+            if self.document is not None:
+                dlg.apply_to_project(self.document)
+            self._persist()
+
+    def _persist(self):
+        if self.document is None:
+            return
+        p = deepcopy(self.document.project)
+        ui = p.setdefault('runUi', {})
+        ui['controls'] = deepcopy(self._control_state)
+        ui['split'] = SPLIT_PRESETS[self.split_combo.currentIndex()]
+        ui['fixedBars'] = dict(
+            top=self.fix_top.isChecked(),
+            bottom=self.fix_bottom.isChecked(),
+            left=self.fix_left.isChecked(),
+            right=self.fix_right.isChecked(),
+        )
+        try:
+            self.document.commit(p)
+        except Exception:
+            # avoid blocking designer on validate edge cases
+            self.document.project = p
+            self.document.changed.emit()
 
     def _refresh_fixed_chrome(self, *_):
         parts = []
@@ -222,10 +411,16 @@ class RunUiDesignerDialog(QDialog):
         chrome = '、'.join(parts) if parts else '无'
         self.preview_label.setText(
             f'运行界面预览 · {SPLIT_PRESETS[self.split_combo.currentIndex()]} 分屏 · 固定栏：{chrome}')
+        self._persist()
 
     def _preview(self):
         self.previewRequested.emit()
-        QMessageBox.information(self, '预览', '运行界面预览（骨架）：操作员态将按此布局展示。完整数据绑定见后续批次。')
+        n_btn = sum(1 for k, v in self._control_state.items()
+                    if k in ('按钮', '运行控制', '开关控制') and v.get('commands'))
+        QMessageBox.information(
+            self, '预览',
+            f'运行界面预览：已配置控件 {len(self._control_state)} 个，含触发命令的按钮类 {n_btn} 个。\n'
+            '操作员态将按布局与命令自上而下执行（引擎侧接线后续批次）。')
 
     def _export(self):
         self.exportRequested.emit()

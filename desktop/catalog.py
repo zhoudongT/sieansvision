@@ -33,7 +33,7 @@ for definition in CORE:
 def builtin_definitions():
     metadata=json.loads(Path(__file__).with_name('builtin-catalog.json').read_text(encoding='utf-8'))
     definitions={}
-    groups={'subflow':'流程控制','loop':'流程控制','condition':'流程控制','branch_merge':'流程控制','delay':'流程控制','variables':'变量与数据',
+    groups={'group':'流程控制','subflow':'流程控制','loop':'流程控制','condition':'流程控制','branch_merge':'流程控制','delay':'流程控制','variables':'变量与数据',
             'preprocess':'图像处理','locate':'定位与测量','geometry':'定位与测量','measure':'定位与测量','barcode':'识别','ocr':'识别','defects':'识别','yolo':'识别','yolo_segment':'识别'}
     for operation,meta in metadata.items():
         if operation=='plugin':continue
@@ -78,6 +78,21 @@ def builtin_definitions():
     for op in ('subflow','loop'):
         extra(op,'subflowId','子流程编号','string','');extra(op,'arguments','输入变量','object',{})
         extra(op,'stateMode','调用状态','string','reset',choices=choices(('reset','每次重置'),('preserve','保留状态')))
+    # B3 组合模块 Group（壳层：嵌套 + ImageData/InputROI + 循环设置）
+    definitions['group'] = dict(
+        operation='group', name='组合模块', category='流程控制',
+        defaults=dict(imageData='', inputRoi='', loopEnabled=False, loopCount=1, loopIntervalMs=0,
+                      inner=dict(steps=[], edges=[], sourcePosition=dict(x=300, y=40), localVariables={}),
+                      io=dict(inputs=[], outputs=[], display={})),
+        parameters=[
+            field('imageData', 'ImageData', 'string', ''),
+            field('inputRoi', 'InputROI', 'string', ''),
+            field('loopEnabled', '循环使能', 'boolean', False),
+            field('loopCount', '循环次数', 'integer', 1, minimum=1, maximum=100000),
+            field('loopIntervalMs', '循环间隔(ms)', 'integer', 0, minimum=0, maximum=100000),
+        ],
+        description='组合模块（Group）：双击进入嵌套流程；进组前须绑定 ImageData / InputROI；循环设置与主流程分层。',
+    )
     for key,label,kind,default in [('iterations','循环上限','integer',1),('mode','循环方式','string','count'),('frameMode','每轮输入','string','previous'),('stopField','停止条件字段','string','passed'),('stopValue','停止条件值','boolean',True)]:extra('loop',key,label,kind,default)
     return definitions
 
