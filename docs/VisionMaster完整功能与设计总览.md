@@ -426,6 +426,17 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊢ · 组头计数徽章 · Shift连选提示 · 曲线导出PNG · 徽章撤销倒计时 · undo自定义RGB · 2026-10-28】
+
+- **失败历史组头计数徽章**：日组头圆形数字图标（≥5 红 / ≥2 黄 / 否则蓝）；`_merge_diff_fail_hist_group_count_badge_icon`。
+- **拖拽 Shift 连选提示**：tooltip/WhatsThis + Shift 键/选区变化时 `QToolTip`「Shift 连选 · 已选 N 项」；`_show_sev_pin_arc_seize_recent_shift_hint`。
+- **曲线导出 PNG**：小窗「导出 PNG」；`export_toast_hist_cap_tip_anim_easing_curve_png`（grab 面板）。
+- **徽章撤销倒计时**：清历史后 8s 窗口；菜单「撤销… · Ns」；tick/expire；`path_copy_badge_fail_history_undo_left_ms`。
+- **undo 色阶自定义 RGB**：`custom` 预设 + hi/mid/lo 持久化；菜单「自定义 RGB…」；`set_/prompt_stale_prune_undo_color_custom_rgb`。
+- **冒烟**：`smoke-wave53-groupbadge-shifthint-curvepng-undocountdown-customrgb-e2e`（另回归 wave52/51/50）。
+
+---
+
 ## 【细妆㊡ · 失败历史全展/全折 · Ctrl+A · 双缓动对比 · 清历史撤销 · undo色阶预设 · 2026-10-28】
 
 - **失败历史全展/全折**：对话框「全展/全折」按钮；`expand_/collapse_merge_diff_batch_fail_history_groups`。

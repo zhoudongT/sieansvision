@@ -15,7 +15,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QAction, QKeySequence, QShortcut, QDesktopServices,
-    QPainter, QPen, QColor, QIcon, QPixmap, QPainterPath,
+    QPainter, QPen, QColor, QIcon, QPixmap, QPainterPath, QFont,
 )
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
@@ -1001,15 +1001,37 @@ class HostStateMachineWidget(QWidget):
                 0, min(30000, int(self._stale_prune_undo_extend_step_ms)))
         except Exception:
             self._stale_prune_undo_extend_step_ms = 0
-        # wave52: undo 色阶预设 traffic|cool|mono|sunset
+        # wave52–53: undo 色阶预设 traffic|cool|mono|sunset|custom
         try:
             _cs = str(self._host_settings().value(
                 'host/stalePruneUndoColorScale', 'traffic') or 'traffic').strip().lower()
-            if _cs not in ('traffic', 'cool', 'mono', 'sunset'):
+            if _cs not in ('traffic', 'cool', 'mono', 'sunset', 'custom'):
                 _cs = 'traffic'
             self._stale_prune_undo_color_scale = _cs
         except Exception:
             self._stale_prune_undo_color_scale = 'traffic'
+        # wave53: custom RGB hi/mid/lo
+        try:
+            self._stale_prune_undo_color_custom = {
+                'hi': str(self._host_settings().value(
+                    'host/stalePruneUndoColorCustomHi', '#3ecf8e') or '#3ecf8e'),
+                'mid': str(self._host_settings().value(
+                    'host/stalePruneUndoColorCustomMid', '#f0c040') or '#f0c040'),
+                'lo': str(self._host_settings().value(
+                    'host/stalePruneUndoColorCustomLo', '#e35d6a') or '#e35d6a'),
+            }
+        except Exception:
+            self._stale_prune_undo_color_custom = {
+                'hi': '#3ecf8e', 'mid': '#f0c040', 'lo': '#e35d6a'}
+        # wave53: 徽章清历史撤销倒计时
+        self._path_copy_badge_fail_history_undo_left_ms = 0
+        self._path_copy_badge_fail_history_undo_ms = 8000
+        self._path_copy_badge_fail_history_can_undo = False
+        self._path_copy_badge_fail_history_undo = None
+        self._path_copy_badge_fail_hist_undo_timer = QTimer(self)
+        self._path_copy_badge_fail_hist_undo_timer.setInterval(250)
+        self._path_copy_badge_fail_hist_undo_timer.timeout.connect(
+            self._on_path_copy_badge_fail_history_undo_tick)
         # wave47: 失败清单持久化 / 历史
         self._merge_diff_batch_fail_history = []
         self._last_merge_diff_batch_fail = []
@@ -1976,7 +1998,15 @@ class HostStateMachineWidget(QWidget):
             can_undo = self.can_undo_path_copy_badge_fail_history_clear()
         except Exception:
             can_undo = False
-        act_undo = QAction('撤销清除失败历史', menu)
+        undo_left = 0
+        try:
+            undo_left = int(self.path_copy_badge_fail_history_undo_left_ms() or 0)
+        except Exception:
+            undo_left = 0
+        undo_lbl = '撤销清除失败历史'
+        if can_undo and undo_left > 0:
+            undo_lbl = f'撤销清除失败历史 · {max(1, int(round(undo_left / 1000.0)))}s'
+        act_undo = QAction(undo_lbl, menu)
         act_undo.setProperty('isPathCopyBadgeFailHistoryUndo', True)
         act_undo.setObjectName('hostPathCopyBadgeFailHistoryUndoAct')
         act_undo.setEnabled(bool(can_undo))
@@ -1986,7 +2016,10 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             pass
         act_undo.setToolTip(
-            '快捷键 Z · 撤销最近一次清除' if can_undo else '无清除可撤销')
+            (f'快捷键 Z · 撤销最近一次清除 · 剩 {max(1, int(round(undo_left / 1000.0)))}s'
+             if undo_left > 0 else '快捷键 Z · 撤销最近一次清除')
+            if can_undo else '无清除可撤销')
+        self._last_path_copy_badge_fail_history_undo_left_ms = undo_left
         act_undo.triggered.connect(
             lambda *_: self.undo_path_copy_badge_fail_history_clear())
         menu.addAction(act_undo)
@@ -2032,23 +2065,77 @@ class HostStateMachineWidget(QWidget):
         snap = _copy.deepcopy(hist)
         self._path_copy_badge_fail_history_undo = snap
         self._path_copy_badge_fail_history_can_undo = True
+        # wave53: 撤销倒计时
+        undo_ms = int(getattr(self, '_path_copy_badge_fail_history_undo_ms', 8000) or 8000)
+        undo_ms = max(1000, min(60000, undo_ms))
+        self._path_copy_badge_fail_history_undo_left_ms = undo_ms
+        try:
+            t = getattr(self, '_path_copy_badge_fail_hist_undo_timer', None)
+            if t is not None:
+                t.start()
+        except Exception:
+            pass
         n_before = len(snap)
         cleared = self.clear_merge_diff_batch_fail_history()
         self._last_path_copy_badge_fail_history_cleared = list(snap)
+        self._last_path_copy_badge_fail_history_undo_countdown_ms = undo_ms
         try:
+            sec = max(1, int(round(undo_ms / 1000.0)))
             self._flash_host_toast(
-                f'已清除失败历史 · {n_before} · 可撤销', kind='ok', ms=1800)
+                f'已清除失败历史 · {n_before} · {sec}s 内可撤销',
+                kind='ok', ms=1800)
         except Exception:
             pass
         return list(snap)
 
+    def _on_path_copy_badge_fail_history_undo_tick(self):
+        """wave53: 徽章清历史撤销倒计时 tick."""
+        left = int(getattr(self, '_path_copy_badge_fail_history_undo_left_ms', 0) or 0)
+        left = max(0, left - 250)
+        self._path_copy_badge_fail_history_undo_left_ms = left
+        self._last_path_copy_badge_fail_history_undo_left_ms = left
+        if left <= 0:
+            self._expire_path_copy_badge_fail_history_undo()
+
+    def _expire_path_copy_badge_fail_history_undo(self):
+        """wave53: 倒计时结束 · 失效撤销."""
+        try:
+            t = getattr(self, '_path_copy_badge_fail_hist_undo_timer', None)
+            if t is not None and t.isActive():
+                t.stop()
+        except Exception:
+            pass
+        had = bool(getattr(self, '_path_copy_badge_fail_history_can_undo', False))
+        self._path_copy_badge_fail_history_can_undo = False
+        self._path_copy_badge_fail_history_undo = None
+        self._path_copy_badge_fail_history_undo_left_ms = 0
+        self._last_path_copy_badge_fail_history_undo_expired = True
+        if had:
+            try:
+                self._flash_host_toast('撤销窗口已过期', kind='info', ms=1000)
+            except Exception:
+                pass
+
+    def path_copy_badge_fail_history_undo_left_ms(self) -> int:
+        """wave53: 剩余撤销毫秒."""
+        if not self.can_undo_path_copy_badge_fail_history_clear():
+            return 0
+        return max(0, int(getattr(
+            self, '_path_copy_badge_fail_history_undo_left_ms', 0) or 0))
+
     def can_undo_path_copy_badge_fail_history_clear(self) -> bool:
-        """wave52: 是否可撤销徽章清历史."""
-        return bool(getattr(self, '_path_copy_badge_fail_history_can_undo', False)) and bool(
-            getattr(self, '_path_copy_badge_fail_history_undo', None))
+        """wave52–53: 是否可撤销徽章清历史（含倒计时）."""
+        if not (bool(getattr(self, '_path_copy_badge_fail_history_can_undo', False))
+                and bool(getattr(self, '_path_copy_badge_fail_history_undo', None))):
+            return False
+        left = int(getattr(self, '_path_copy_badge_fail_history_undo_left_ms', 0) or 0)
+        # wave53: 倒计时归零即失效
+        if left <= 0:
+            return False
+        return True
 
     def undo_path_copy_badge_fail_history_clear(self) -> list:
-        """wave52: 撤销徽章清除失败历史."""
+        """wave52–53: 撤销徽章清除失败历史."""
         if not self.can_undo_path_copy_badge_fail_history_clear():
             self._last_path_copy_badge_fail_history_undo_restored = []
             try:
@@ -2070,8 +2157,16 @@ class HostStateMachineWidget(QWidget):
                     'host/mergeDiffBatchFailLast', last)
         except Exception:
             pass
+        try:
+            t = getattr(self, '_path_copy_badge_fail_hist_undo_timer', None)
+            if t is not None and t.isActive():
+                t.stop()
+        except Exception:
+            pass
         self._path_copy_badge_fail_history_can_undo = False
         self._path_copy_badge_fail_history_undo = None
+        self._path_copy_badge_fail_history_undo_left_ms = 0
+        self._last_path_copy_badge_fail_history_undo_expired = False
         self._last_path_copy_badge_fail_history_undo_restored = list(snap)
         try:
             self._flash_host_toast(
@@ -3509,7 +3604,7 @@ class HostStateMachineWidget(QWidget):
             it = QListWidgetItem(f'{mark}最近  {color}')
             it.setData(Qt.ItemDataRole.UserRole, color)
             it.setToolTip(
-                f'{color}\n拖拽调序 · 单击应用 · 右键置顶/删除 · Del多选删除 · Home置顶 · Ctrl+A全选'
+                f'{color}\n拖拽调序 · 单击应用 · 右键置顶/删除 · Del多选删除 · Home置顶 · Ctrl+A全选 · Shift连选'
             )
             lst.addItem(it)
 
@@ -3638,11 +3733,70 @@ class HostStateMachineWidget(QWidget):
                 except Exception:
                     pass
                 return
+            # wave53: Shift 按下时提示连选
+            if key in (Qt.Key.Key_Shift,):
+                try:
+                    self._show_sev_pin_arc_seize_recent_shift_hint(lst)
+                except Exception:
+                    pass
             return _orig_key(event)
 
         lst.keyPressEvent = _on_list_key
+
+        def _on_sel_changed():
+            try:
+                mods = QApplication.keyboardModifiers()
+            except Exception:
+                mods = Qt.KeyboardModifier.NoModifier
+            n = 0
+            try:
+                n = len(lst.selectedItems())
+            except Exception:
+                n = 0
+            if mods & Qt.KeyboardModifier.ShiftModifier:
+                try:
+                    self._show_sev_pin_arc_seize_recent_shift_hint(lst, n=n)
+                except Exception:
+                    pass
+            self._last_sev_pin_arc_seize_recent_sel_n = n
+
+        try:
+            lst.itemSelectionChanged.connect(_on_sel_changed)
+        except Exception:
+            pass
+        try:
+            lst.setStatusTip('Shift 连选 · Ctrl+A 全选 · Del 多删 · 拖拽调序')
+            lst.setWhatsThis(
+                '最近色拖拽列表：Shift 按住后点选可连选区间；'
+                'Ctrl+A 全选；Del/Backspace 删除选中；Home 置顶当前。')
+        except Exception:
+            pass
         self._last_sev_pin_arc_seize_recent_drag_list = lst
+        self._last_sev_pin_arc_seize_recent_shift_hint = True
         return lst
+
+    def _show_sev_pin_arc_seize_recent_shift_hint(self, lst=None, n: int = None):
+        """wave53: Shift 连选浮动提示."""
+        if lst is None:
+            lst = getattr(self, '_last_sev_pin_arc_seize_recent_drag_list', None)
+        if n is None:
+            try:
+                n = len(lst.selectedItems()) if lst is not None else 0
+            except Exception:
+                n = 0
+        msg = f'Shift 连选 · 已选 {int(n)} 项' if n else 'Shift 连选 · 按住 Shift 点选区间'
+        self._last_sev_pin_arc_seize_recent_shift_hint_text = msg
+        self._last_sev_pin_arc_seize_recent_shift_hint_n = int(n or 0)
+        try:
+            if lst is not None:
+                gp = lst.mapToGlobal(lst.rect().bottomLeft())
+                QToolTip.showText(gp, msg, lst, lst.rect(), 1800)
+            else:
+                QToolTip.showText(
+                    self.mapToGlobal(self.rect().center()), msg, self)
+        except Exception:
+            pass
+        return msg
 
     def _rebuild_sev_pin_arc_seize_recent_section(self, menu):
         """wave45–48: 右键清除后热更最近区；含菜单内拖拽列表."""
@@ -4811,6 +4965,7 @@ class HostStateMachineWidget(QWidget):
             ('cool', '色阶 · 冷色'),
             ('mono', '色阶 · 单色琥珀'),
             ('sunset', '色阶 · 日落'),
+            ('custom', '色阶 · 自定义 RGB'),
         ):
             mark = '✓ ' if key == cur_cs else ''
             act = QAction(f'{mark}{lab}', menu)
@@ -4821,6 +4976,12 @@ class HostStateMachineWidget(QWidget):
             act.triggered.connect(
                 lambda *_a, nn=key: self.set_stale_prune_undo_color_scale_preset(nn))
             menu.addAction(act)
+        act_rgb = QAction('自定义 RGB…', menu)
+        act_rgb.setProperty('isUndoColorScaleCustomRgb', True)
+        act_rgb.setObjectName('hostStalePruneUndoColorCustomRgb')
+        act_rgb.triggered.connect(
+            lambda *_: self.prompt_stale_prune_undo_color_custom_rgb())
+        menu.addAction(act_rgb)
         self._last_stale_prune_undo_step_menu = menu
         return menu
 
@@ -5001,24 +5162,24 @@ class HostStateMachineWidget(QWidget):
         return True
 
     def stale_prune_undo_color_scale_preset(self) -> str:
-        """wave52: undo 色阶预设名."""
+        """wave52–53: undo 色阶预设名（含 custom）."""
         v = getattr(self, '_stale_prune_undo_color_scale', None)
-        if v not in ('traffic', 'cool', 'mono', 'sunset'):
+        if v not in ('traffic', 'cool', 'mono', 'sunset', 'custom'):
             try:
                 v = str(self._host_settings().value(
                     'host/stalePruneUndoColorScale', 'traffic') or 'traffic').strip().lower()
             except Exception:
                 v = 'traffic'
-            if v not in ('traffic', 'cool', 'mono', 'sunset'):
+            if v not in ('traffic', 'cool', 'mono', 'sunset', 'custom'):
                 v = 'traffic'
             self._stale_prune_undo_color_scale = v
         return str(self._stale_prune_undo_color_scale)
 
     def set_stale_prune_undo_color_scale_preset(
             self, name: str = 'traffic', *, persist: bool = True) -> str:
-        """wave52: 配置 undo 色阶预设并热刷进度条."""
+        """wave52–53: 配置 undo 色阶预设并热刷进度条."""
         name = str(name or 'traffic').strip().lower()
-        if name not in ('traffic', 'cool', 'mono', 'sunset'):
+        if name not in ('traffic', 'cool', 'mono', 'sunset', 'custom'):
             name = 'traffic'
         self._stale_prune_undo_color_scale = name
         if persist:
@@ -5033,6 +5194,97 @@ class HostStateMachineWidget(QWidget):
             pass
         self._last_stale_prune_undo_color_scale = name
         return name
+
+    def stale_prune_undo_color_custom_rgb(self) -> dict:
+        """wave53: 自定义 RGB hi/mid/lo."""
+        d = getattr(self, '_stale_prune_undo_color_custom', None)
+        if not isinstance(d, dict):
+            d = {'hi': '#3ecf8e', 'mid': '#f0c040', 'lo': '#e35d6a'}
+            self._stale_prune_undo_color_custom = d
+        out = {
+            'hi': str(d.get('hi') or '#3ecf8e'),
+            'mid': str(d.get('mid') or '#f0c040'),
+            'lo': str(d.get('lo') or '#e35d6a'),
+        }
+        return out
+
+    def set_stale_prune_undo_color_custom_rgb(
+            self, hi: str = None, mid: str = None, lo: str = None,
+            *, persist: bool = True, apply: bool = True) -> dict:
+        """wave53: 写入自定义 RGB 并可选切到 custom 预设."""
+        cur = self.stale_prune_undo_color_custom_rgb()
+
+        def _norm(v, fallback):
+            s = str(v or fallback).strip()
+            if not s.startswith('#'):
+                s = '#' + s
+            if len(s) not in (4, 7):
+                return fallback
+            return s.lower()
+
+        cur['hi'] = _norm(hi if hi is not None else cur['hi'], '#3ecf8e')
+        cur['mid'] = _norm(mid if mid is not None else cur['mid'], '#f0c040')
+        cur['lo'] = _norm(lo if lo is not None else cur['lo'], '#e35d6a')
+        self._stale_prune_undo_color_custom = dict(cur)
+        if persist:
+            try:
+                s = self._host_settings()
+                s.setValue('host/stalePruneUndoColorCustomHi', cur['hi'])
+                s.setValue('host/stalePruneUndoColorCustomMid', cur['mid'])
+                s.setValue('host/stalePruneUndoColorCustomLo', cur['lo'])
+            except Exception:
+                pass
+        if apply:
+            try:
+                self.set_stale_prune_undo_color_scale_preset('custom')
+            except Exception:
+                pass
+        self._last_stale_prune_undo_color_custom = dict(cur)
+        return dict(cur)
+
+    def prompt_stale_prune_undo_color_custom_rgb(
+            self, hi: str = None, mid: str = None, lo: str = None) -> dict:
+        """wave53: 交互/直传设置自定义 RGB."""
+        cur = self.stale_prune_undo_color_custom_rgb()
+        if (hi is None and mid is None and lo is None
+                and not getattr(self, '_stale_prune_undo_custom_rgb_no_dialog', False)):
+            try:
+                c_hi = QColorDialog.getColor(
+                    QColor(cur['hi']), self, '自定义色阶 · 高位 (hi)')
+                if not c_hi.isValid():
+                    self._last_stale_prune_undo_color_custom = None
+                    return cur
+                hi = c_hi.name()
+                c_mid = QColorDialog.getColor(
+                    QColor(cur['mid']), self, '自定义色阶 · 中位 (mid)')
+                if not c_mid.isValid():
+                    self._last_stale_prune_undo_color_custom = None
+                    return cur
+                mid = c_mid.name()
+                c_lo = QColorDialog.getColor(
+                    QColor(cur['lo']), self, '自定义色阶 · 低位 (lo)')
+                if not c_lo.isValid():
+                    self._last_stale_prune_undo_color_custom = None
+                    return cur
+                lo = c_lo.name()
+            except Exception:
+                hi = hi or cur['hi']
+                mid = mid or cur['mid']
+                lo = lo or cur['lo']
+        if hi is None:
+            hi = getattr(self, '_stale_prune_undo_custom_rgb_hi', cur['hi'])
+        if mid is None:
+            mid = getattr(self, '_stale_prune_undo_custom_rgb_mid', cur['mid'])
+        if lo is None:
+            lo = getattr(self, '_stale_prune_undo_custom_rgb_lo', cur['lo'])
+        got = self.set_stale_prune_undo_color_custom_rgb(hi, mid, lo)
+        try:
+            self._flash_host_toast(
+                f'自定义色阶 · {got["hi"]}/{got["mid"]}/{got["lo"]}',
+                kind='ok', ms=1400)
+        except Exception:
+            pass
+        return got
 
     def _stale_prune_undo_bar_chunk_color(self, ratio: float = 1.0) -> str:
         """wave51–52: 倒计时色阶（按预设）."""
@@ -5062,6 +5314,14 @@ class HostStateMachineWidget(QWidget):
                 color = '#e67e22'
             else:
                 color = '#e35d6a'
+        elif preset == 'custom':
+            rgb = self.stale_prune_undo_color_custom_rgb()
+            if r >= 0.55:
+                color = rgb.get('hi') or '#3ecf8e'
+            elif r >= 0.25:
+                color = rgb.get('mid') or '#f0c040'
+            else:
+                color = rgb.get('lo') or '#e35d6a'
         else:  # traffic
             if r >= 0.55:
                 t = (r - 0.55) / 0.45
@@ -5773,6 +6033,35 @@ class HostStateMachineWidget(QWidget):
         self._last_merge_diff_batch_fail_history_collapsed = set()
         return set()
 
+    def _merge_diff_fail_hist_group_count_badge_icon(
+            self, n: int = 0) -> QIcon:
+        """wave53: 失败历史组头计数徽章图标."""
+        try:
+            n = max(0, int(n))
+        except Exception:
+            n = 0
+        label = '99+' if n > 99 else str(n)
+        pm = QPixmap(22, 22)
+        pm.fill(QColor(0, 0, 0, 0))
+        p = QPainter(pm)
+        try:
+            p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            bg = QColor('#e35d6a') if n >= 5 else (
+                QColor('#f0c040') if n >= 2 else QColor('#5b9cff'))
+            p.setBrush(bg)
+            p.setPen(QPen(QColor('#1e2126'), 1))
+            p.drawEllipse(1, 1, 20, 20)
+            p.setPen(QColor('#ffffff'))
+            f = QFont()
+            f.setBold(True)
+            f.setPixelSize(9 if len(label) >= 3 else 11)
+            p.setFont(f)
+            p.drawText(pm.rect(), int(Qt.AlignmentFlag.AlignCenter), label)
+        finally:
+            p.end()
+        self._last_merge_diff_fail_hist_group_badge_icon_n = n
+        return QIcon(pm)
+
     def show_merge_diff_batch_fail_history(self, *, interactive: bool = True) -> bool:
         """wave47: 失败清单历史对话框 · 可选批次重开."""
         hist = self.merge_diff_batch_fail_history()
@@ -5893,10 +6182,12 @@ class HostStateMachineWidget(QWidget):
                     group_n += 1
                     is_col = gk in collapsed
                     mark = '▸' if is_col else '▾'
+                    n_ents = len(ents)
                     hdr = QListWidgetItem(
-                        f'{mark} {gk} · {len(ents)} 批')
+                        f'{mark} {gk} · {n_ents} 批')
                     hdr.setData(Qt.ItemDataRole.UserRole + 2, gk)
                     hdr.setData(Qt.ItemDataRole.UserRole + 3, True)  # isGroup
+                    hdr.setData(Qt.ItemDataRole.UserRole + 4, int(n_ents))
                     hdr.setFlags(
                         Qt.ItemFlag.ItemIsEnabled
                         | Qt.ItemFlag.ItemIsSelectable)
@@ -5905,10 +6196,19 @@ class HostStateMachineWidget(QWidget):
                         hdr.setForeground(QColor('#c8ccd0'))
                     except Exception:
                         pass
+                    # wave53: 组头计数徽章
+                    try:
+                        hdr.setIcon(
+                            self._merge_diff_fail_hist_group_count_badge_icon(
+                                n_ents))
+                    except Exception:
+                        pass
                     hdr.setToolTip(
-                        '单击折叠/展开该日分组' + (
+                        f'单击折叠/展开该日分组 · {n_ents} 批' + (
                             '（已折叠）' if is_col else '（已展开）'))
                     lst.addItem(hdr)
+                    self._last_merge_diff_batch_fail_history_group_badge_n = int(
+                        n_ents)
                     if is_col:
                         continue
                     for ent in ents:
@@ -7196,20 +7496,30 @@ class HostStateMachineWidget(QWidget):
             box_a.currentIndexChanged.connect(lambda *_: _refresh_pane())
             box_b.currentIndexChanged.connect(lambda *_: _refresh_pane())
             tip = QLabel(
-                '横轴时间 · 纵轴进度 · 蓝=主 / 红=对比（虚线=线性）', dlg)
+                '横轴时间 · 纵轴进度 · 蓝=主 / 红=对比（虚线=线性） · 可导出 PNG', dlg)
             tip.setStyleSheet('color:#9aa0a6;font-size:11px;')
             lay.addWidget(tip)
+            brow = QHBoxLayout()
+            btn_png = QPushButton('导出 PNG', dlg)
+            btn_png.setObjectName('hostToastTipAnimEasingCurveExportPng')
+            btn_png.setToolTip('将当前曲线面板导出为 PNG')
+            btn_png.clicked.connect(
+                lambda *_: self.export_toast_hist_cap_tip_anim_easing_curve_png())
+            brow.addWidget(btn_png)
+            brow.addStretch(1)
             btns = QDialogButtonBox(
                 QDialogButtonBox.StandardButton.Close, parent=dlg)
             btns.rejected.connect(dlg.reject)
             btns.accepted.connect(dlg.accept)
-            lay.addWidget(btns)
+            brow.addWidget(btns)
+            lay.addLayout(brow)
             self._last_toast_hist_cap_tip_anim_curve_dialog = dlg
             self._last_toast_hist_cap_tip_anim_curve_pane = pane
             self._last_toast_hist_cap_tip_anim_curve_name = name
             self._last_toast_hist_cap_tip_anim_curve_compare = name_b
             self._last_toast_hist_cap_tip_anim_curve_box_a = box_a
             self._last_toast_hist_cap_tip_anim_curve_box_b = box_b
+            self._last_toast_hist_cap_tip_anim_curve_export_btn = btn_png
             self._last_toast_hist_cap_tip_anim_curve_shown = True
             if getattr(self, '_toast_hist_cap_tip_anim_curve_no_exec', False) or not interactive:
                 return True
@@ -7222,6 +7532,89 @@ class HostStateMachineWidget(QWidget):
             except Exception:
                 pass
             return False
+
+    def export_toast_hist_cap_tip_anim_easing_curve_png(
+            self, path: str = None) -> str:
+        """wave53: 导出缓动曲线面板为 PNG."""
+        pane = getattr(self, '_last_toast_hist_cap_tip_anim_curve_pane', None)
+        if pane is None:
+            # build quietly if needed
+            try:
+                quiet = getattr(self, '_toast_hist_cap_tip_anim_curve_no_exec', False)
+                self._toast_hist_cap_tip_anim_curve_no_exec = True
+                self.show_toast_hist_cap_tip_anim_easing_curve(interactive=False)
+                self._toast_hist_cap_tip_anim_curve_no_exec = quiet
+            except Exception:
+                pass
+            pane = getattr(self, '_last_toast_hist_cap_tip_anim_curve_pane', None)
+        if pane is None:
+            self._last_toast_hist_cap_tip_anim_curve_png = ''
+            try:
+                self._flash_host_toast('无曲线可导出', kind='info', ms=1200)
+            except Exception:
+                pass
+            return ''
+        try:
+            pane.resize(max(pane.width(), 320), max(pane.height(), 200))
+            pane.update()
+            pm = pane.grab()
+        except Exception as err:
+            self._last_toast_hist_cap_tip_anim_curve_png = ''
+            try:
+                self._flash_host_toast(f'曲线抓取失败 · {err}', kind='info', ms=1200)
+            except Exception:
+                pass
+            return ''
+        if path is None and not getattr(
+                self, '_toast_hist_cap_tip_anim_curve_png_no_dialog', False):
+            try:
+                name = getattr(
+                    self, '_last_toast_hist_cap_tip_anim_curve_name', None) or 'easing'
+                cmp = getattr(
+                    self, '_last_toast_hist_cap_tip_anim_curve_compare', None)
+                sug = f'sieans-easing-{name}'
+                if cmp:
+                    sug += f'-vs-{cmp}'
+                sug += '.png'
+                path, _ = QFileDialog.getSaveFileName(
+                    self, '导出缓动曲线 PNG', sug, 'PNG (*.png)')
+            except Exception:
+                path = None
+        if not path:
+            path = getattr(self, '_toast_hist_cap_tip_anim_curve_png_path', '') or ''
+        if not path:
+            self._last_toast_hist_cap_tip_anim_curve_png = ''
+            return ''
+        if not str(path).lower().endswith('.png'):
+            path = str(path) + '.png'
+        try:
+            ok = pm.save(str(path), 'PNG')
+        except Exception as err:
+            ok = False
+            try:
+                self._flash_host_toast(f'PNG 保存失败 · {err}', kind='info', ms=1200)
+            except Exception:
+                pass
+            self._last_toast_hist_cap_tip_anim_curve_png = ''
+            return ''
+        if not ok:
+            self._last_toast_hist_cap_tip_anim_curve_png = ''
+            try:
+                self._flash_host_toast('PNG 保存失败', kind='info', ms=1200)
+            except Exception:
+                pass
+            return ''
+        self._last_toast_hist_cap_tip_anim_curve_png = str(path)
+        try:
+            from pathlib import Path as _P
+            lab = _P(path).name
+        except Exception:
+            lab = str(path)
+        try:
+            self._flash_host_toast(f'已导出曲线 PNG · {lab}', kind='ok', ms=1600)
+        except Exception:
+            pass
+        return str(path)
 
     def show_toast_hist_cap_tip_anim_easing_curve_compare(
             self, name_a: str = None, name_b: str = 'Linear',

@@ -178,7 +178,7 @@ def main():
     host._stale_prune_undo_step_menu_no_exec = True
     menu = host._build_stale_prune_undo_step_menu()
     cs_acts = [a for a in menu.actions() if a.property('isUndoColorScalePreset')]
-    assert len(cs_acts) == 4
+    assert len(cs_acts) >= 4
     host.set_stale_prune_undo_color_scale_preset('traffic')
     ok('undo 色阶 预设')
 
