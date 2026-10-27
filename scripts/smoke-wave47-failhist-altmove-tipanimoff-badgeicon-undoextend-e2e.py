@@ -103,6 +103,14 @@ def main():
             break
     assert target is not None
     menu.setActiveAction(target)
+    # wave48: also select in-menu drag list current row (Alt 优先读列表)
+    drag_lst = getattr(host, '_last_sev_pin_arc_seize_recent_drag_list', None)
+    if drag_lst is not None:
+        for i in range(drag_lst.count()):
+            it = drag_lst.item(i)
+            if it and str(it.data(Qt.ItemDataRole.UserRole) or '').lower() == '#bb0002':
+                drag_lst.setCurrentRow(i)
+                break
 
     class _Key:
         def __init__(self, key):
@@ -118,12 +126,18 @@ def main():
     assert getattr(host, '_last_sev_pin_arc_seize_recent_alt_moved', '') == '#bb0002'
     assert host.sev_pin_arc_seize_recent_colors()[0] == '#bb0002'
     # Alt+Down moves back
-    # rebuild may have new actions; find #bb0002 and activate
     menu = getattr(host, '_last_sev_pin_arc_seize_color_menu', menu)
     for a in menu.actions():
         if a.property('isSeizeColorRecent') and str(a.data()).lower() == '#bb0002':
             menu.setActiveAction(a)
             break
+    drag_lst = getattr(host, '_last_sev_pin_arc_seize_recent_drag_list', None)
+    if drag_lst is not None:
+        for i in range(drag_lst.count()):
+            it = drag_lst.item(i)
+            if it and str(it.data(Qt.ItemDataRole.UserRole) or '').lower() == '#bb0002':
+                drag_lst.setCurrentRow(i)
+                break
     assert host._on_sev_pin_arc_seize_color_menu_event(menu, _Key(Qt.Key.Key_Down)) is True
     assert host.sev_pin_arc_seize_recent_colors()[1] == '#bb0002'
     ok('最近色菜单 Alt↑↓')

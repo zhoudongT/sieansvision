@@ -143,7 +143,8 @@ def main():
     sc_f = fb_acts[0].shortcut()
     assert str(sc_c).upper() in ('C', 'C') or sc_c == QKeySequence('C'), sc_c
     assert str(sc_f).upper() in ('F', 'F') or sc_f == QKeySequence('F'), sc_f
-    assert getattr(host, '_last_path_copy_badge_menu_shortcuts', ()) == ('C', 'F')
+    scs = getattr(host, '_last_path_copy_badge_menu_shortcuts', ())
+    assert scs[:2] == ('C', 'F') and 'C' in scs and 'F' in scs, scs
     ok('徽章菜单 快捷键')
 
     # --- 5. undo hover remaining seconds ---

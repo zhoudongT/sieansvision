@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QColorDialog,
     QAbstractItemView,
     QGraphicsOpacityEffect,
+    QWidgetAction,
 )
 
 from desktop.theme import TEXT, TEXT_MUTED, TEXT_DIM, OK, PANEL, LINE
@@ -966,6 +967,22 @@ class HostStateMachineWidget(QWidget):
                 self._toast_hist_cap_tip_anim = bool(raw_ta)
         except Exception:
             self._toast_hist_cap_tip_anim = True
+        # wave48: tip 动画时长可配（ms）
+        try:
+            self._toast_hist_cap_tip_anim_ms = int(
+                self._host_settings().value('host/toastHistCapTipAnimMs', 320) or 320)
+            self._toast_hist_cap_tip_anim_ms = max(
+                80, min(2000, int(self._toast_hist_cap_tip_anim_ms)))
+        except Exception:
+            self._toast_hist_cap_tip_anim_ms = 320
+        # wave48: undo 延长步进（0=重置为全长，兼容㊼）
+        try:
+            self._stale_prune_undo_extend_step_ms = int(
+                self._host_settings().value('host/stalePruneUndoExtendStepMs', 0) or 0)
+            self._stale_prune_undo_extend_step_ms = max(
+                0, min(30000, int(self._stale_prune_undo_extend_step_ms)))
+        except Exception:
+            self._stale_prune_undo_extend_step_ms = 0
         # wave47: 失败清单持久化 / 历史
         self._merge_diff_batch_fail_history = []
         self._last_merge_diff_batch_fail = []
@@ -1579,8 +1596,8 @@ class HostStateMachineWidget(QWidget):
                 pass
         return True
 
-    def _pulse_host_toast(self, duration_ms: int = 320) -> bool:
-        """wave46–47: tip 热更 / 强调 — toast 透明度脉冲淡入；可关."""
+    def _pulse_host_toast(self, duration_ms: int = None) -> bool:
+        """wave46–48: tip 热更脉冲；可关；时长可配."""
         if not self.toast_hist_cap_tip_anim_enabled():
             self._last_host_toast_pulsed = False
             self._last_host_toast_pulse_skipped = True
@@ -1589,6 +1606,8 @@ class HostStateMachineWidget(QWidget):
         if toast is None or toast.isHidden():
             return False
         self._last_host_toast_pulse_skipped = False
+        if duration_ms is None:
+            duration_ms = self.toast_hist_cap_tip_anim_ms()
         try:
             eff = getattr(self, '_host_toast_opacity_eff', None)
             if eff is None or eff.parent() is not toast:
@@ -1596,7 +1615,7 @@ class HostStateMachineWidget(QWidget):
                 toast.setGraphicsEffect(eff)
                 self._host_toast_opacity_eff = eff
             anim = QPropertyAnimation(eff, b'opacity', self)
-            anim.setDuration(max(120, int(duration_ms or 320)))
+            anim.setDuration(max(80, int(duration_ms or 320)))
             anim.setStartValue(0.22)
             anim.setKeyValueAt(0.45, 1.0)
             anim.setEndValue(1.0)
@@ -1837,7 +1856,25 @@ class HostStateMachineWidget(QWidget):
                 not self.path_copy_badge_parent_fallback_enabled())
         )
         menu.addAction(act_fb)
-        self._last_path_copy_badge_menu_shortcuts = ('C', 'F')
+        menu.addSeparator()
+        act_hist = QAction('打开历史失败', menu)
+        act_hist.setProperty('isPathCopyBadgeFailHistory', True)
+        act_hist.setObjectName('hostPathCopyBadgeFailHistoryAct')
+        try:
+            act_hist.setIcon(self._path_copy_badge_menu_icon('history'))
+            act_hist.setIconVisibleInMenu(True)
+        except Exception:
+            pass
+        try:
+            act_hist.setShortcut(QKeySequence('H'))
+            act_hist.setShortcutVisibleInContextMenu(True)
+        except Exception:
+            pass
+        act_hist.setToolTip('快捷键 H · 打开失败清单历史')
+        act_hist.triggered.connect(
+            lambda *_: self.show_merge_diff_batch_fail_history())
+        menu.addAction(act_hist)
+        self._last_path_copy_badge_menu_shortcuts = ('C', 'F', 'H')
         self._last_path_copy_badge_menu_icons = True
         self._last_path_copy_badge_menu = menu
         return menu
@@ -3168,9 +3205,28 @@ class HostStateMachineWidget(QWidget):
                     act = menu.activeAction()
                 except Exception:
                     act = None
-                if act is None or not act.property('isSeizeColorRecent'):
-                    return False
-                color = str(act.data() or '').strip()
+                color = ''
+                if act is not None and act.property('isSeizeColorRecent'):
+                    color = str(act.data() or '').strip()
+                if not color:
+                    # wave48: 菜单内拖拽列表当前项
+                    lst = getattr(self, '_last_sev_pin_arc_seize_recent_drag_list', None)
+                    if lst is not None:
+                        try:
+                            it = lst.currentItem()
+                            if it is not None:
+                                color = str(it.data(Qt.ItemDataRole.UserRole) or '').strip()
+                        except Exception:
+                            pass
+                if not color:
+                    for a in menu.actions():
+                        try:
+                            if a.property('isSeizeColorRecent') and a.isChecked():
+                                color = str(a.data() or '').strip()
+                                if color:
+                                    break
+                        except Exception:
+                            continue
                 if not color:
                     return False
                 recent = self.sev_pin_arc_seize_recent_colors()
@@ -3190,11 +3246,17 @@ class HostStateMachineWidget(QWidget):
                 self.move_sev_pin_arc_seize_recent_color(color, new_idx)
                 try:
                     self._rebuild_sev_pin_arc_seize_recent_section(menu)
-                    # re-activate moved action
                     for a in menu.actions():
                         if a.property('isSeizeColorRecent') and str(a.data() or '').lower() == color.lower():
                             menu.setActiveAction(a)
                             break
+                    lst = getattr(self, '_last_sev_pin_arc_seize_recent_drag_list', None)
+                    if lst is not None:
+                        for i in range(lst.count()):
+                            it = lst.item(i)
+                            if it and str(it.data(Qt.ItemDataRole.UserRole) or '').lower() == color.lower():
+                                lst.setCurrentRow(i)
+                                break
                 except Exception:
                     pass
                 self._last_sev_pin_arc_seize_recent_alt_moved = color
@@ -3224,17 +3286,90 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             return False
 
+    def _make_sev_pin_arc_seize_recent_drag_list(self, parent=None):
+        """wave48: 菜单内最近色拖拽列表（InternalMove）."""
+        lst = QListWidget(parent)
+        lst.setObjectName('hostSevPinArcSeizeRecentDragList')
+        lst.setMaximumHeight(132)
+        lst.setMinimumWidth(180)
+        try:
+            lst.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+            lst.setDefaultDropAction(Qt.DropAction.MoveAction)
+            lst.setDragEnabled(True)
+            lst.setAcceptDrops(True)
+            lst.setSpacing(1)
+        except Exception:
+            pass
+        cur = self.sev_pin_arc_seize_color().lower()
+        for color in self.sev_pin_arc_seize_recent_colors()[:6]:
+            mark = '✓ ' if color == cur else ''
+            it = QListWidgetItem(f'{mark}最近  {color}')
+            it.setData(Qt.ItemDataRole.UserRole, color)
+            it.setToolTip(f'{color}\n拖拽调序 · 单击应用 · 右键清除')
+            lst.addItem(it)
+
+        def _apply_order():
+            order = []
+            for i in range(lst.count()):
+                it = lst.item(i)
+                if it is None:
+                    continue
+                c = str(it.data(Qt.ItemDataRole.UserRole) or '').strip()
+                if c:
+                    order.append(c)
+            if order:
+                self.reorder_sev_pin_arc_seize_recent_colors(order)
+                self._last_sev_pin_arc_seize_recent_menu_dragged = list(order)
+
+        def _on_rows_moved(*_a):
+            _apply_order()
+
+        try:
+            lst.model().rowsMoved.connect(lambda *_: _apply_order())
+        except Exception:
+            pass
+
+        def _on_click(item):
+            if item is None:
+                return
+            c = str(item.data(Qt.ItemDataRole.UserRole) or '').strip()
+            if c:
+                self._apply_sev_pin_arc_seize_color_preset(c)
+
+        lst.itemClicked.connect(_on_click)
+
+        def _on_list_context(pos):
+            it = lst.itemAt(pos)
+            if it is None:
+                return
+            c = str(it.data(Qt.ItemDataRole.UserRole) or '').strip()
+            if not c:
+                return
+            self.clear_sev_pin_arc_seize_recent_color(c)
+            menu = getattr(self, '_last_sev_pin_arc_seize_color_menu', None)
+            if menu is not None:
+                try:
+                    self._rebuild_sev_pin_arc_seize_recent_section(menu)
+                except Exception:
+                    pass
+
+        lst.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        lst.customContextMenuRequested.connect(_on_list_context)
+        self._last_sev_pin_arc_seize_recent_drag_list = lst
+        return lst
+
     def _rebuild_sev_pin_arc_seize_recent_section(self, menu):
-        """wave45: 右键清除后热更最近区."""
+        """wave45–48: 右键清除后热更最近区；含菜单内拖拽列表."""
         if menu is None:
             return
-        # remove old recent actions + header + clear-all
+        # remove old recent actions + header + clear-all + drag widget
         for act in list(menu.actions()):
             try:
                 if (act.property('isSeizeColorRecent')
                         or act.property('isSeizeRecentHeader')
                         or act.property('isSeizeRecentClearAll')
                         or act.property('isSeizeRecentReorder')
+                        or act.property('isSeizeRecentDrag')
                         or act.property('isSeizeRecentSep')):
                     menu.removeAction(act)
             except Exception:
@@ -3262,18 +3397,37 @@ class HostStateMachineWidget(QWidget):
                 sep.setProperty('isSeizeRecentSep', True)
             except Exception:
                 pass
-            act_hdr = QAction('最近（右键清除 · Alt↑↓ · 拖拽排序）', menu)
+            act_hdr = QAction('最近（菜单内拖拽 · 右键清除 · Alt↑↓）', menu)
             act_hdr.setEnabled(False)
             act_hdr.setProperty('isSeizeRecentHeader', True)
             _ins(act_hdr)
+            try:
+                drag_act = QWidgetAction(menu)
+                drag_act.setProperty('isSeizeRecentDrag', True)
+                drag_lst = self._make_sev_pin_arc_seize_recent_drag_list(menu)
+                drag_act.setDefaultWidget(drag_lst)
+                _ins(drag_act)
+            except Exception:
+                for color in recent[:6]:
+                    mark = '✓ ' if color == cur else ''
+                    act = QAction(f'{mark}最近  {color}', menu)
+                    act.setData(color)
+                    act.setProperty('isSeizeColorRecent', True)
+                    act.setCheckable(True)
+                    act.setChecked(color == cur)
+                    act.setToolTip('左键应用 · 右键清除 · Alt↑↓调序')
+                    act.triggered.connect(
+                        lambda *_a, c=color: self._apply_sev_pin_arc_seize_color_preset(c)
+                    )
+                    _ins(act)
+            # keep invisible recent actions for Alt↑↓ / eventFilter compatibility
             for color in recent[:6]:
-                mark = '✓ ' if color == cur else ''
-                act = QAction(f'{mark}最近  {color}', menu)
+                act = QAction(color, menu)
                 act.setData(color)
                 act.setProperty('isSeizeColorRecent', True)
+                act.setVisible(False)
                 act.setCheckable(True)
                 act.setChecked(color == cur)
-                act.setToolTip('左键应用 · 右键清除 · Alt↑↓调序')
                 act.triggered.connect(
                     lambda *_a, c=color: self._apply_sev_pin_arc_seize_color_preset(c)
                 )
@@ -3314,18 +3468,37 @@ class HostStateMachineWidget(QWidget):
                 sep.setProperty('isSeizeRecentSep', True)
             except Exception:
                 pass
-            act_hdr = QAction('最近（右键清除 · Alt↑↓ · 拖拽排序）', menu)
+            act_hdr = QAction('最近（菜单内拖拽 · 右键清除 · Alt↑↓）', menu)
             act_hdr.setEnabled(False)
             act_hdr.setProperty('isSeizeRecentHeader', True)
             menu.addAction(act_hdr)
+            try:
+                drag_act = QWidgetAction(menu)
+                drag_act.setProperty('isSeizeRecentDrag', True)
+                drag_act.setObjectName('hostSevPinArcSeizeRecentDragAct')
+                drag_lst = self._make_sev_pin_arc_seize_recent_drag_list(menu)
+                drag_act.setDefaultWidget(drag_lst)
+                menu.addAction(drag_act)
+            except Exception:
+                for color in recent[:6]:
+                    mark = '✓ ' if color == cur else ''
+                    act = QAction(f'{mark}最近  {color}', menu)
+                    act.setData(color)
+                    act.setProperty('isSeizeColorRecent', True)
+                    act.setCheckable(True)
+                    act.setChecked(color == cur)
+                    act.setToolTip('左键应用 · 右键清除 · Alt↑↓调序')
+                    act.triggered.connect(
+                        lambda *_a, c=color: self._apply_sev_pin_arc_seize_color_preset(c)
+                    )
+                    menu.addAction(act)
             for color in recent[:6]:
-                mark = '✓ ' if color == cur else ''
-                act = QAction(f'{mark}最近  {color}', menu)
+                act = QAction(color, menu)
                 act.setData(color)
                 act.setProperty('isSeizeColorRecent', True)
+                act.setVisible(False)
                 act.setCheckable(True)
                 act.setChecked(color == cur)
-                act.setToolTip('左键应用 · 右键清除 · Alt↑↓调序')
                 act.triggered.connect(
                     lambda *_a, c=color: self._apply_sev_pin_arc_seize_color_preset(c)
                 )
@@ -4234,8 +4407,37 @@ class HostStateMachineWidget(QWidget):
             pass
         self._last_stale_prune_undo_bar_hovered = False
 
+    def stale_prune_undo_extend_step_ms(self) -> int:
+        """wave48: undo 延长步进 ms；0=重置为全长（兼容㊼）."""
+        v = getattr(self, '_stale_prune_undo_extend_step_ms', None)
+        if v is None:
+            try:
+                v = int(self._host_settings().value(
+                    'host/stalePruneUndoExtendStepMs', 0) or 0)
+            except Exception:
+                v = 0
+            self._stale_prune_undo_extend_step_ms = max(0, min(30000, int(v)))
+        return int(self._stale_prune_undo_extend_step_ms)
+
+    def set_stale_prune_undo_extend_step_ms(
+            self, ms: int = 0, *, persist: bool = True) -> int:
+        """wave48: 配置 undo 延长步进；0 表示延长=重置全长."""
+        try:
+            ms = max(0, min(30000, int(ms)))
+        except Exception:
+            ms = 0
+        self._stale_prune_undo_extend_step_ms = ms
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/stalePruneUndoExtendStepMs', int(ms))
+            except Exception:
+                pass
+        self._last_stale_prune_undo_extend_step_ms = ms
+        return ms
+
     def extend_stale_prune_undo(self, ms: int = None) -> int:
-        """wave47: 延长失效清理 undo 倒计时（重置为 ms 或全长）."""
+        """wave47–48: 延长 undo；ms 优先；否则步进可配（0=重置全长）."""
         if not self.can_undo_prune_stale_alarm_film_csv_dirs():
             self._last_stale_prune_undo_extended = 0
             try:
@@ -4243,13 +4445,19 @@ class HostStateMachineWidget(QWidget):
             except Exception:
                 pass
             return 0
-        total = ms
-        if total is None:
-            total = int(getattr(self, '_stale_prune_undo_ms', 8000) or 8000)
-        try:
-            total = max(1500, min(30000, int(total)))
-        except Exception:
-            total = 8000
+        full = int(getattr(self, '_stale_prune_undo_ms', 8000) or 8000)
+        if ms is not None:
+            try:
+                total = max(1500, min(30000, int(ms)))
+            except Exception:
+                total = full
+        else:
+            step = self.stale_prune_undo_extend_step_ms()
+            if step <= 0:
+                total = max(1500, min(30000, full))
+            else:
+                left = max(0, int(getattr(self, '_stale_prune_undo_left_ms', 0) or 0))
+                total = max(1500, min(30000, left + int(step)))
         self._stale_prune_undo_left_ms = total
         timer = getattr(self, '_stale_prune_undo_timer', None)
         if timer is not None and not timer.isActive():
@@ -4884,6 +5092,22 @@ class HostStateMachineWidget(QWidget):
         """wave47: 失败清单历史（新→旧）."""
         return list(getattr(self, '_merge_diff_batch_fail_history', None) or [])
 
+    def filter_merge_diff_batch_fail_history(self, query: str = '') -> list:
+        """wave48: 按路径/时间子串过滤失败历史."""
+        q = str(query or '').strip().lower()
+        hist = self.merge_diff_batch_fail_history()
+        if not q:
+            self._last_merge_diff_batch_fail_history_filtered = list(hist)
+            return list(hist)
+        out = []
+        for ent in hist:
+            paths = list(ent.get('paths') or [])
+            blob = (str(ent.get('ts') or '') + ' ' + ' '.join(paths)).lower()
+            if q in blob:
+                out.append(ent)
+        self._last_merge_diff_batch_fail_history_filtered = list(out)
+        return list(out)
+
     def remember_merge_diff_batch_fails(
             self, paths=None, *, persist: bool = True) -> list:
         """wave47: 记入失败清单历史并持久化最近一次."""
@@ -4968,21 +5192,51 @@ class HostStateMachineWidget(QWidget):
             dlg.setObjectName('hostMergeDiffBatchFailHistoryDialog')
             dlg.setMinimumWidth(440)
             lay = QVBoxLayout(dlg)
-            tip = QLabel('双击批次载入为当前失败项 · 「重开该批」/「清空历史」', dlg)
+            tip = QLabel(
+                '搜索过滤路径/时间 · 双击载入 · 「重开该批」/「清空历史」', dlg)
             tip.setStyleSheet('color:#9aa0a6;font-size:11px;')
             lay.addWidget(tip)
+            filt = QLineEdit(dlg)
+            filt.setObjectName('hostMergeDiffBatchFailHistoryFilter')
+            filt.setPlaceholderText('搜索/过滤失败历史…')
+            filt.setClearButtonEnabled(True)
+            lay.addWidget(filt)
             lst = QListWidget(dlg)
             lst.setObjectName('hostMergeDiffBatchFailHistoryList')
-            for ent in hist:
+
+            def _ent_blob(ent):
                 paths = list(ent.get('paths') or [])
-                ts = ent.get('ts') or ''
-                lab0 = _lab(paths[0]) if paths else ''
-                it = QListWidgetItem(
-                    f'{ts} · {len(paths)} · {lab0}')
-                it.setData(Qt.ItemDataRole.UserRole, paths)
-                it.setToolTip('\n'.join(paths))
-                lst.addItem(it)
+                ts = str(ent.get('ts') or '')
+                return (ts + ' ' + ' '.join(paths)).lower()
+
+            def _refill(query: str = ''):
+                q = str(query or '').strip().lower()
+                lst.clear()
+                shown = 0
+                for ent in hist:
+                    if q and q not in _ent_blob(ent):
+                        continue
+                    paths = list(ent.get('paths') or [])
+                    ts = ent.get('ts') or ''
+                    lab0 = _lab(paths[0]) if paths else ''
+                    it = QListWidgetItem(
+                        f'{ts} · {len(paths)} · {lab0}')
+                    it.setData(Qt.ItemDataRole.UserRole, paths)
+                    it.setData(Qt.ItemDataRole.UserRole + 1, ent)
+                    it.setToolTip('\n'.join(paths))
+                    lst.addItem(it)
+                    shown += 1
+                self._last_merge_diff_batch_fail_history_filter = q
+                self._last_merge_diff_batch_fail_history_filter_n = shown
+                dlg.setWindowTitle(
+                    f'失败清单历史 · {shown}/{len(hist)}'
+                    + (f' · 过滤「{q}」' if q else ''))
+                return shown
+
+            _refill('')
+            filt.textChanged.connect(lambda t: _refill(t))
             lay.addWidget(lst)
+            self._last_merge_diff_batch_fail_history_filter_edit = filt
 
             def _load_current(item=None):
                 it = item or lst.currentItem()
@@ -5452,6 +5706,19 @@ class HostStateMachineWidget(QWidget):
                 not self.toast_hist_cap_tip_anim_enabled())
         )
         menu.addAction(act_anim)
+        cur_ms = self.toast_hist_cap_tip_anim_ms()
+        for ms, lab in ((200, '动画 200ms'), (320, '动画 320ms（默认）'),
+                        (500, '动画 500ms'), (800, '动画 800ms')):
+            mark = '✓ ' if ms == cur_ms else ''
+            act_ms = QAction(f'{mark}{lab}', menu)
+            act_ms.setCheckable(True)
+            act_ms.setChecked(ms == cur_ms)
+            act_ms.setData(ms)
+            act_ms.setProperty('isTipAnimMs', True)
+            act_ms.setProperty('tipAnimMsLabel', lab)
+            act_ms.triggered.connect(
+                lambda *_a, nn=ms: self.set_toast_hist_cap_tip_anim_ms(nn))
+            menu.addAction(act_ms)
         act_clear = QAction('清空切窗史', self)
         act_clear.triggered.connect(self.clear_liaison_toast_history)
         menu.addAction(act_clear)
@@ -5778,6 +6045,67 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             pass
         return self._toast_hist_cap_tip_anim
+
+    def toast_hist_cap_tip_anim_ms(self) -> int:
+        """wave48: tip 热更动画时长 ms（默认 320）."""
+        v = getattr(self, '_toast_hist_cap_tip_anim_ms', None)
+        if v is None:
+            try:
+                v = int(self._host_settings().value(
+                    'host/toastHistCapTipAnimMs', 320) or 320)
+            except Exception:
+                v = 320
+            self._toast_hist_cap_tip_anim_ms = max(80, min(2000, int(v)))
+        return int(self._toast_hist_cap_tip_anim_ms)
+
+    def set_toast_hist_cap_tip_anim_ms(
+            self, ms: int = 320, *, persist: bool = True) -> int:
+        """wave48: 配置 tip 动画时长；热更菜单标记."""
+        try:
+            ms = max(80, min(2000, int(ms)))
+        except Exception:
+            ms = 320
+        self._toast_hist_cap_tip_anim_ms = ms
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/toastHistCapTipAnimMs', int(ms))
+            except Exception:
+                pass
+        try:
+            self._refresh_toast_hist_cap_tip_anim_ms_action()
+        except Exception:
+            pass
+        self._last_toast_hist_cap_tip_anim_ms = ms
+        return ms
+
+    def _refresh_toast_hist_cap_tip_anim_ms_action(self) -> bool:
+        """wave48: 热更容量菜单 tip 动画时长勾选."""
+        cur = self.toast_hist_cap_tip_anim_ms()
+        updated = False
+        for menu in (
+            getattr(self, '_last_toast_hist_cap_menu', None),
+            getattr(self, '_toast_hist_cap_nav_menu', None),
+        ):
+            if menu is None:
+                continue
+            for act in menu.actions():
+                try:
+                    if not act.property('isTipAnimMs'):
+                        continue
+                    ms = int(act.data() or 0)
+                    on = ms == cur
+                    act.setChecked(on)
+                    base = str(act.property('tipAnimMsLabel') or act.text())
+                    # strip leading check
+                    lab = base.lstrip('✓ ').strip()
+                    act.setProperty('tipAnimMsLabel', lab)
+                    act.setText(('✓ ' if on else '') + lab)
+                    updated = True
+                except Exception:
+                    continue
+        self._last_toast_hist_cap_tip_anim_ms_refreshed = updated
+        return updated
 
     def _refresh_toast_hist_cap_tip_anim_action(self) -> bool:
         """wave47: 热更容量菜单「tip 动画」勾选/文案."""

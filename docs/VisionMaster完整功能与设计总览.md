@@ -426,6 +426,17 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊽ · 失败历史搜索/过滤 · 最近色菜单内拖拽 · tip动画时长可配 · 徽章打开历史失败 · undo延长步进可配 · 2026-10-28】
+
+- **失败历史搜索/过滤**：历史对话框 `QLineEdit` 过滤；`filter_merge_diff_batch_fail_history(query)`。
+- **最近色菜单内拖拽**：`QWidgetAction` + InternalMove 列表；单击应用 · 右键清除 · 拖拽落盘。
+- **tip 动画时长可配**：`toast_hist_cap_tip_anim_ms`（`host/toastHistCapTipAnimMs`）；容量菜单 200/320/500/800；`_pulse_host_toast` 用配置时长。
+- **徽章「打开历史失败」**：菜单项 + 图标 + 快捷键 H → `show_merge_diff_batch_fail_history`。
+- **undo 延长步进可配**：`stale_prune_undo_extend_step_ms`（0=重置全长兼容㊼；>0 则 left+step）。
+- **冒烟**：`smoke-wave48-failfilter-menudrag-animms-badgehist-undostep-e2e`（另回归 wave47/46/41）。
+
+---
+
 ## 【细妆㊼ · 失败清单持久化/历史 · 最近色Alt↑↓ · tip动画可关 · 徽章菜单图标 · undo点击延长 · 2026-10-28】
 
 - **失败清单持久化/历史**：`remember_merge_diff_batch_fails` → QSettings；`merge_diff_batch_fail_history` / `show_merge_diff_batch_fail_history`；失败对话框「失败历史」。
