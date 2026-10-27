@@ -426,6 +426,15 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆70 · 栈预览条点击跳档 · 多选忽略批量移除 · DST策略徽章 · A/B忽略后再预览 · 旁标滚轮调音 · 2026-10-28】
+
+- **栈预览条点击跳档**：`bind_…_preview_bar_click_jump` + `jump_…_to(index)`；芯片点击 `restore_at`；菜单「点击跳档」。
+- **多选忽略批量移除**：`batch_remove_…_overlap_highlight_keys`；按高亮键批量移出忽略名单；菜单「多选批量移除」。
+- **DST 策略徽章**：`ensure_/refresh_…_import_strategy_badge`（合/覆）；`set_…_strategy` 自动刷新；菜单「策略徽章」。
+- **A/B 忽略后自动再预览**：`ignore_…_rollback_conflicts` 返回 `repreview` / `repreview_conflict_n`；忽略后自动再预览（`repreview`）；按钮 tip「忽略冲突键后自动再预览」。
+- **旁标滚轮调音**：`bind_…_volume_mute_badge_bar_wheel` + `wheel_…_by(delta_pct)`；菜单「旁标滚轮调音」。
+- 非硬件进度约 **~96%**（细妆持续）。
+
 ## 【细妆69 · 频率撤销栈档位预览条 · 忽略高亮多选滚入 · DST diff导入策略合并/覆盖 · A/B回滚冲突一键忽略 · jitter旁标拖拽调音 · 2026-10-28】
 
 - **频率撤销栈档位预览条**：`ensure_/refresh_…_undo_stack_preview_bar`；深度 chips + focus；角标菜单「档位预览条」。
