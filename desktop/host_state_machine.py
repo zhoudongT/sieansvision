@@ -980,7 +980,7 @@ class HostStateMachineWidget(QWidget):
         self._path_copy_badge.setFixedHeight(20)
         self._path_copy_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._path_copy_badge.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._path_copy_badge.setToolTip('左键打开 · 右键再复制 · 中键父目录')
+        self._path_copy_badge.setToolTip('左键打开 · 右键菜单 · 中键父目录')
         self._path_copy_badge.setStyleSheet(
             'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
             'border-radius:3px;padding:1px 8px;font-size:10px;font-weight:700;'
@@ -1008,6 +1008,16 @@ class HostStateMachineWidget(QWidget):
         # wave44: 进度条可点撤销
         self._stale_prune_undo_bar.mousePressEvent = (
             lambda e: self._on_stale_prune_undo_bar_clicked(e)
+        )
+        # wave45: 悬停放大
+        self._stale_prune_undo_bar_base_h = 10
+        self._stale_prune_undo_bar_hover_h = 16
+        self._stale_prune_undo_bar_hovered = False
+        self._stale_prune_undo_bar.enterEvent = (
+            lambda e: self._on_stale_prune_undo_bar_enter(e)
+        )
+        self._stale_prune_undo_bar.leaveEvent = (
+            lambda e: self._on_stale_prune_undo_bar_leave(e)
         )
         self._path_copy_badge_timer = QTimer(self)
         self._path_copy_badge_timer.setSingleShot(True)
@@ -1654,7 +1664,7 @@ class HostStateMachineWidget(QWidget):
         text = '✓ 已复制' + (f' · {short}' if short else '路径') + ' · 再点打开'
         try:
             badge.setText(text)
-            badge.setToolTip(f'{path}\n左键打开 · 右键再复制 · 中键父目录' if path else '左键打开 · 右键再复制 · 中键父目录')
+            badge.setToolTip(f'{path}\n左键打开 · 右键菜单(再复制/回退) · 中键父目录' if path else '左键打开 · 右键菜单 · 中键父目录')
             badge.adjustSize()
             bw = max(badge.sizeHint().width() + 10, 88)
             bh = max(badge.sizeHint().height() + 2, 20)
@@ -1681,8 +1691,52 @@ class HostStateMachineWidget(QWidget):
             pass
         return True
 
+    def _build_path_copy_badge_menu(self, parent=None):
+        """wave45: 徽章菜单 · 再复制 + 中键回退开关."""
+        menu = QMenu(parent or self)
+        menu.setObjectName('hostPathCopyBadgeMenu')
+        act_copy = QAction('再复制路径', menu)
+        act_copy.setProperty('isPathCopyBadgeCopy', True)
+        act_copy.setObjectName('hostPathCopyBadgeCopyAct')
+        act_copy.triggered.connect(lambda *_: self.copy_path_copy_badge_path())
+        menu.addAction(act_copy)
+        menu.addSeparator()
+        fb_on = self.path_copy_badge_parent_fallback_enabled()
+        act_fb = QAction(
+            ('✓ ' if fb_on else '') + '中键失败回退本级', menu)
+        act_fb.setCheckable(True)
+        act_fb.setChecked(fb_on)
+        act_fb.setProperty('isPathCopyBadgeFallbackToggle', True)
+        act_fb.setObjectName('hostPathCopyBadgeFallbackToggle')
+        act_fb.triggered.connect(
+            lambda *_: self.set_path_copy_badge_parent_fallback_enabled(
+                not self.path_copy_badge_parent_fallback_enabled())
+        )
+        menu.addAction(act_fb)
+        self._last_path_copy_badge_menu = menu
+        return menu
+
+    def _show_path_copy_badge_menu(self, global_pos=None):
+        """wave45: 弹出徽章菜单."""
+        menu = self._build_path_copy_badge_menu()
+        self._last_path_copy_badge_menu_shown = True
+        if getattr(self, '_path_copy_badge_menu_no_exec', False):
+            return menu
+        try:
+            if global_pos is None:
+                badge = getattr(self, '_path_copy_badge', None)
+                if badge is not None:
+                    global_pos = badge.mapToGlobal(badge.rect().bottomLeft())
+            if global_pos is not None:
+                menu.exec(global_pos)
+            else:
+                menu.exec()
+        except Exception:
+            pass
+        return menu
+
     def _on_path_copy_badge_clicked(self, event=None):
-        """wave40–42: 左键打开目录；右键再复制；中键开父目录."""
+        """wave40–45: 左键打开；右键菜单（再复制/回退开关）；中键父目录."""
         btn = None
         try:
             if event is not None and hasattr(event, 'button'):
@@ -1690,7 +1744,15 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             btn = None
         if btn == Qt.MouseButton.RightButton:
-            return self.copy_path_copy_badge_path()
+            pos = None
+            try:
+                if event is not None and hasattr(event, 'globalPosition'):
+                    pos = event.globalPosition().toPoint()
+                elif event is not None and hasattr(event, 'globalPos'):
+                    pos = event.globalPos()
+            except Exception:
+                pos = None
+            return self._show_path_copy_badge_menu(pos)
         if btn == Qt.MouseButton.MiddleButton:
             return self.open_path_copy_badge_parent()
         if btn is not None and btn not in (Qt.MouseButton.LeftButton,):
@@ -1720,7 +1782,7 @@ class HostStateMachineWidget(QWidget):
 
     def set_path_copy_badge_parent_fallback_enabled(
             self, enabled: bool = True, *, persist: bool = True) -> bool:
-        """wave44: 配置中键失败回退本级."""
+        """wave44–45: 配置中键失败回退本级；热更徽章菜单勾."""
         self._path_copy_badge_parent_fallback = bool(enabled)
         if persist:
             try:
@@ -1728,6 +1790,16 @@ class HostStateMachineWidget(QWidget):
                     'host/pathCopyBadgeParentFallback', bool(enabled))
             except Exception:
                 pass
+        menu = getattr(self, '_last_path_copy_badge_menu', None)
+        if menu is not None:
+            for act in menu.actions():
+                try:
+                    if act.property('isPathCopyBadgeFallbackToggle'):
+                        act.setChecked(bool(enabled))
+                        act.setText(
+                            ('✓ ' if enabled else '') + '中键失败回退本级')
+                except Exception:
+                    continue
         return self._path_copy_badge_parent_fallback
 
     def open_path_copy_badge_parent(self) -> str:
@@ -1890,10 +1962,12 @@ class HostStateMachineWidget(QWidget):
         self.open_host_toast_path()
 
     def open_host_toast_path(self) -> str:
-        """wave35–36: 打开 toast 绑定目录；失败 tip；返回目录或 ''."""
+        """wave35–36/45: 打开 toast 绑定目录；失败 tip；silent 可抑 tip."""
+        silent = bool(getattr(self, '_open_host_toast_path_silent', False))
         path = str(getattr(self, '_host_toast_open_path', '') or '').strip()
         if not path:
-            self._flash_open_dir_fail_tip('无绑定路径')
+            if not silent:
+                self._flash_open_dir_fail_tip('无绑定路径')
             return ''
         try:
             from pathlib import Path as _P
@@ -1906,21 +1980,26 @@ class HostStateMachineWidget(QWidget):
                 # missing file but parent dir ok
                 target = p.parent
             else:
-                self._flash_open_dir_fail_tip('目录不存在')
+                if not silent:
+                    self._flash_open_dir_fail_tip('目录不存在')
                 return ''
             if not target.exists():
-                self._flash_open_dir_fail_tip('目录不存在')
+                if not silent:
+                    self._flash_open_dir_fail_tip('目录不存在')
                 return ''
             ok = QDesktopServices.openUrl(QUrl.fromLocalFile(str(target.resolve())))
             resolved = str(target.resolve())
             if not ok:
                 # headless：目录有效但系统未打开 → 成功软 tip（非失败）
-                self._flash_open_dir_ok_tip(resolved, soft=True)
+                if not silent:
+                    self._flash_open_dir_ok_tip(resolved, soft=True)
                 return resolved
-            self._flash_open_dir_ok_tip(resolved, soft=False)
+            if not silent:
+                self._flash_open_dir_ok_tip(resolved, soft=False)
             return resolved
         except Exception as err:
-            self._flash_open_dir_fail_tip(str(err))
+            if not silent:
+                self._flash_open_dir_fail_tip(str(err))
             return ''
 
     def set_liaison_window_sec(self, sec: int, *, persist: bool = True):
@@ -2734,6 +2813,42 @@ class HostStateMachineWidget(QWidget):
                 pass
         return list(recent)
 
+    def clear_sev_pin_arc_seize_recent_color(
+            self, color: str = '', *, persist: bool = True) -> list:
+        """wave45: 清除一条或全部最近色."""
+        color = str(color or '').strip()
+        if color:
+            if not color.startswith('#'):
+                color = '#' + color
+            color = color.lower()
+            recent = [
+                c for c in self.sev_pin_arc_seize_recent_colors() if c != color]
+            self._last_sev_pin_arc_seize_recent_cleared = color
+        else:
+            recent = []
+            self._last_sev_pin_arc_seize_recent_cleared = '*'
+        self._sev_pin_arc_seize_recent = recent
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/sevPinArcSeizeRecentColors', recent)
+            except Exception:
+                pass
+        try:
+            if color:
+                self._flash_host_toast(f'已清除最近色 · {color}', kind='info', ms=1200)
+            else:
+                self._flash_host_toast('已清空最近色', kind='info', ms=1200)
+            self._log_line(
+                f'清除最近色 · {color or "全部"}')
+        except Exception:
+            pass
+        return list(recent)
+
+    def clear_sev_pin_arc_seize_recent_colors(self, *, persist: bool = True) -> list:
+        """wave45: 清空全部最近色."""
+        return self.clear_sev_pin_arc_seize_recent_color('', persist=persist)
+
     def pick_sev_pin_arc_seize_custom_color(self, color: str = '') -> str:
         """wave44: 自定义抢占色；smoke 可传 color 或设 _seize_color_no_dialog."""
         color = str(color or '').strip()
@@ -2755,8 +2870,98 @@ class HostStateMachineWidget(QWidget):
         self._last_sev_pin_arc_seize_custom = c
         return c
 
+    def _on_sev_pin_arc_seize_color_menu_event(self, obj, event):
+        """wave45: 最近色右键 → 清除该色."""
+        try:
+            from PySide6.QtCore import QEvent
+            if event.type() != QEvent.Type.MouseButtonPress:
+                return False
+            if event.button() != Qt.MouseButton.RightButton:
+                return False
+            menu = getattr(self, '_last_sev_pin_arc_seize_color_menu', None)
+            if menu is None or obj is not menu:
+                return False
+            try:
+                act = menu.actionAt(event.pos())
+            except Exception:
+                act = None
+            if act is None or not act.property('isSeizeColorRecent'):
+                return False
+            color = str(act.data() or '').strip()
+            if not color:
+                return False
+            self.clear_sev_pin_arc_seize_recent_color(color)
+            # rebuild live menu if still open
+            try:
+                self._rebuild_sev_pin_arc_seize_recent_section(menu)
+            except Exception:
+                pass
+            self._last_sev_pin_arc_seize_recent_rmb_cleared = color
+            return True
+        except Exception:
+            return False
+
+    def _rebuild_sev_pin_arc_seize_recent_section(self, menu):
+        """wave45: 右键清除后热更最近区."""
+        if menu is None:
+            return
+        # remove old recent actions + header + clear-all
+        for act in list(menu.actions()):
+            try:
+                if (act.property('isSeizeColorRecent')
+                        or act.property('isSeizeRecentHeader')
+                        or act.property('isSeizeRecentClearAll')
+                        or act.property('isSeizeRecentSep')):
+                    menu.removeAction(act)
+            except Exception:
+                continue
+        # find insert point: before custom or sound
+        before = None
+        for act in menu.actions():
+            try:
+                if (act.property('isSeizeColorCustom')
+                        or act.property('isSeizeSoundToggle')):
+                    before = act
+                    break
+            except Exception:
+                continue
+        recent = self.sev_pin_arc_seize_recent_colors()
+        cur = self.sev_pin_arc_seize_color().lower()
+        def _ins(a):
+            if before is not None:
+                menu.insertAction(before, a)
+            else:
+                menu.addAction(a)
+        if recent:
+            sep = menu.insertSeparator(before) if before is not None else menu.addSeparator()
+            try:
+                sep.setProperty('isSeizeRecentSep', True)
+            except Exception:
+                pass
+            act_hdr = QAction('最近（右键清除）', menu)
+            act_hdr.setEnabled(False)
+            act_hdr.setProperty('isSeizeRecentHeader', True)
+            _ins(act_hdr)
+            for color in recent[:6]:
+                mark = '✓ ' if color == cur else ''
+                act = QAction(f'{mark}最近  {color}', menu)
+                act.setData(color)
+                act.setProperty('isSeizeColorRecent', True)
+                act.setCheckable(True)
+                act.setChecked(color == cur)
+                act.setToolTip('左键应用 · 右键清除此色')
+                act.triggered.connect(
+                    lambda *_a, c=color: self._apply_sev_pin_arc_seize_color_preset(c)
+                )
+                _ins(act)
+            act_clear = QAction('清除全部最近色', menu)
+            act_clear.setProperty('isSeizeRecentClearAll', True)
+            act_clear.triggered.connect(
+                lambda *_: self.clear_sev_pin_arc_seize_recent_colors())
+            _ins(act_clear)
+
     def _build_sev_pin_arc_seize_color_menu(self, parent=None):
-        """wave43–44: 抢占色板 · 预设 + 最近 + 自定义."""
+        """wave43–45: 抢占色板 · 预设 + 最近(右键清除) + 自定义."""
         menu = QMenu('进度弧抢占色', parent or self)
         menu.setObjectName('hostSevPinArcSeizeColorMenu')
         cur = self.sev_pin_arc_seize_color().lower()
@@ -2775,8 +2980,12 @@ class HostStateMachineWidget(QWidget):
         preset_set = {c.lower() for c, _ in self.sev_pin_arc_seize_color_presets()}
         recent_extra = [c for c in recent if c not in preset_set]
         if recent:
-            menu.addSeparator()
-            act_hdr = QAction('最近', menu)
+            sep = menu.addSeparator()
+            try:
+                sep.setProperty('isSeizeRecentSep', True)
+            except Exception:
+                pass
+            act_hdr = QAction('最近（右键清除）', menu)
             act_hdr.setEnabled(False)
             act_hdr.setProperty('isSeizeRecentHeader', True)
             menu.addAction(act_hdr)
@@ -2787,10 +2996,17 @@ class HostStateMachineWidget(QWidget):
                 act.setProperty('isSeizeColorRecent', True)
                 act.setCheckable(True)
                 act.setChecked(color == cur)
+                act.setToolTip('左键应用 · 右键清除此色')
                 act.triggered.connect(
                     lambda *_a, c=color: self._apply_sev_pin_arc_seize_color_preset(c)
                 )
                 menu.addAction(act)
+            act_clear = QAction('清除全部最近色', menu)
+            act_clear.setProperty('isSeizeRecentClearAll', True)
+            act_clear.setObjectName('hostSevPinArcSeizeRecentClearAll')
+            act_clear.triggered.connect(
+                lambda *_: self.clear_sev_pin_arc_seize_recent_colors())
+            menu.addAction(act_clear)
         menu.addSeparator()
         act_custom = QAction('自定义…', menu)
         act_custom.setObjectName('hostSevPinArcSeizeCustomColor')
@@ -2808,6 +3024,12 @@ class HostStateMachineWidget(QWidget):
                 not self.sev_pin_arc_seize_sound())
         )
         menu.addAction(act_snd)
+        # wave45: 安装右键清除过滤器
+        try:
+            menu.installEventFilter(self)
+            self._sev_pin_arc_seize_color_menu_filter = True
+        except Exception:
+            pass
         self._last_sev_pin_arc_seize_color_menu = menu
         self._last_sev_pin_arc_seize_recent_extra = recent_extra
         return menu
@@ -3617,6 +3839,35 @@ class HostStateMachineWidget(QWidget):
             return 0
         return max(0, int(getattr(self, '_stale_prune_undo_left_ms', 0) or 0))
 
+    def _on_stale_prune_undo_bar_enter(self, event=None):
+        """wave45: 悬停放大 undo 条."""
+        bar = getattr(self, '_stale_prune_undo_bar', None)
+        if bar is None:
+            return
+        self._stale_prune_undo_bar_hovered = True
+        try:
+            h = int(getattr(self, '_stale_prune_undo_bar_hover_h', 16) or 16)
+            bar.setFixedHeight(h)
+            self._place_stale_prune_undo_bar()
+            bar.raise_()
+        except Exception:
+            pass
+        self._last_stale_prune_undo_bar_hovered = True
+
+    def _on_stale_prune_undo_bar_leave(self, event=None):
+        """wave45: 离开恢复 undo 条高度."""
+        bar = getattr(self, '_stale_prune_undo_bar', None)
+        if bar is None:
+            return
+        self._stale_prune_undo_bar_hovered = False
+        try:
+            h = int(getattr(self, '_stale_prune_undo_bar_base_h', 10) or 10)
+            bar.setFixedHeight(h)
+            self._place_stale_prune_undo_bar()
+        except Exception:
+            pass
+        self._last_stale_prune_undo_bar_hovered = False
+
     def _on_stale_prune_undo_bar_clicked(self, event=None):
         """wave44: 点击 undo 进度条 → 撤销清理."""
         try:
@@ -3695,8 +3946,12 @@ class HostStateMachineWidget(QWidget):
             try:
                 bar.hide()
                 bar.setValue(0)
+                h = int(getattr(self, '_stale_prune_undo_bar_base_h', 10) or 10)
+                bar.setFixedHeight(h)
             except Exception:
                 pass
+        self._stale_prune_undo_bar_hovered = False
+        self._last_stale_prune_undo_bar_hovered = False
         self._last_stale_prune_undo_bar_visible = False
 
     def _on_stale_prune_undo_tick(self):
@@ -4107,7 +4362,7 @@ class HostStateMachineWidget(QWidget):
         return True
 
     def open_merge_diff_path(self, path: str = '', *, quiet: bool = False) -> str:
-        """wave43–44: 从 diff 清单打开目录."""
+        """wave43–45: 从 diff 清单打开目录；失败返回 ''."""
         path = str(path or '').strip()
         if not path:
             if not quiet:
@@ -4118,21 +4373,34 @@ class HostStateMachineWidget(QWidget):
             self._last_merge_diff_opened = ''
             return ''
         self._host_toast_open_path = path
-        got = self.open_host_toast_path()
-        self._last_merge_diff_opened = got or path
+        prev_silent = getattr(self, '_open_host_toast_path_silent', False)
+        if quiet:
+            self._open_host_toast_path_silent = True
+        try:
+            got = self.open_host_toast_path()
+        finally:
+            self._open_host_toast_path_silent = prev_silent
+        # wave45: 真实成败（不再 got or path）
+        self._last_merge_diff_opened = got or ''
         try:
             from pathlib import Path as _P
             lab = _P(path).name or path
-            self._log_line(f'diff 清单打开 · {path}')
-            if got and not quiet:
-                self._flash_host_toast(f'已打开 · {lab}', kind='ok', ms=1200)
+            if got:
+                self._log_line(f'diff 清单打开 · {path}')
+                if not quiet:
+                    self._flash_host_toast(f'已打开 · {lab}', kind='ok', ms=1200)
+            else:
+                self._log_line(f'diff 清单打开失败 · {path}')
+                if not quiet:
+                    self._flash_host_toast(f'打开失败 · {lab}', kind='info', ms=1400)
         except Exception:
             pass
         return self._last_merge_diff_opened
 
     def open_merge_diff_paths(self, paths=None) -> list:
-        """wave44: 批量打开 diff 路径."""
+        """wave44–45: 批量打开 diff 路径；失败汇总 tip."""
         out = []
+        fails = []
         seen = set()
         for p in list(paths or []):
             p = str(p or '').strip()
@@ -4142,14 +4410,38 @@ class HostStateMachineWidget(QWidget):
             got = self.open_merge_diff_path(p, quiet=True)
             if got:
                 out.append(got)
-        self._last_merge_diff_opened_batch = list(out)
-        try:
-            n = len(out)
-            if n:
-                self._flash_host_toast(f'已批量打开 · {n} 个目录', kind='ok', ms=1400)
-                self._log_line(f'diff 批量打开 · {n}')
             else:
-                self._flash_host_toast('无选中路径可开', kind='info', ms=1200)
+                fails.append(p)
+        self._last_merge_diff_opened_batch = list(out)
+        self._last_merge_diff_batch_fail = list(fails)
+        self._last_merge_diff_batch_ok_n = len(out)
+        self._last_merge_diff_batch_fail_n = len(fails)
+        try:
+            n_ok, n_fail = len(out), len(fails)
+            if n_ok == 0 and n_fail == 0:
+                tip = '无选中路径可开'
+                self._flash_host_toast(tip, kind='info', ms=1200)
+            elif n_fail == 0:
+                tip = f'已批量打开 · {n_ok} 个目录'
+                self._flash_host_toast(tip, kind='ok', ms=1400)
+            elif n_ok == 0:
+                try:
+                    from pathlib import Path as _P
+                    lab = _P(fails[0]).name or fails[0]
+                except Exception:
+                    lab = fails[0]
+                tip = f'批量打开失败 · {n_fail} · {lab}'
+                self._flash_host_toast(tip, kind='info', ms=1800)
+            else:
+                try:
+                    from pathlib import Path as _P
+                    lab = _P(fails[0]).name or fails[0]
+                except Exception:
+                    lab = fails[0]
+                tip = f'已开 {n_ok} · 失败 {n_fail} · {lab}'
+                self._flash_host_toast(tip, kind='info', ms=1800)
+            self._last_merge_diff_batch_tip = tip
+            self._log_line(f'diff 批量打开 · ok={n_ok} fail={n_fail}')
         except Exception:
             pass
         return list(out)
@@ -4641,7 +4933,12 @@ class HostStateMachineWidget(QWidget):
             pass
 
     def eventFilter(self, obj, event):  # noqa: N802
-        """wave38–40: 容量菜单 Esc/方向/数字；H 长按保持."""
+        """wave38–45: 容量菜单键控；色板最近色右键清除."""
+        try:
+            if self._on_sev_pin_arc_seize_color_menu_event(obj, event):
+                return True
+        except Exception:
+            pass
         try:
             from PySide6.QtCore import QEvent, Qt as _Qt
             nav_menu = getattr(self, '_toast_hist_cap_nav_menu', None)
@@ -4724,7 +5021,7 @@ class HostStateMachineWidget(QWidget):
 
     def set_toast_hist_cap_keep_exit_tip_enabled(
             self, enabled: bool = True, *, persist: bool = True) -> bool:
-        """wave44: 配置退出保持 tip 开关."""
+        """wave44–45: 配置退出保持 tip 开关；热更菜单勾."""
         self._toast_hist_cap_keep_exit_tip = bool(enabled)
         if persist:
             try:
@@ -4732,7 +5029,33 @@ class HostStateMachineWidget(QWidget):
                     'host/toastHistCapKeepExitTip', bool(enabled))
             except Exception:
                 pass
+        try:
+            self._refresh_toast_hist_cap_keep_exit_tip_action()
+        except Exception:
+            pass
         return self._toast_hist_cap_keep_exit_tip
+
+    def _refresh_toast_hist_cap_keep_exit_tip_action(self) -> bool:
+        """wave45: 热更容量菜单「退出保持提示」勾选/文案."""
+        on = self.toast_hist_cap_keep_exit_tip_enabled()
+        updated = False
+        for menu in (
+            getattr(self, '_last_toast_hist_cap_menu', None),
+            getattr(self, '_toast_hist_cap_nav_menu', None),
+        ):
+            if menu is None:
+                continue
+            for act in menu.actions():
+                try:
+                    if not act.property('isKeepExitTipToggle'):
+                        continue
+                    act.setChecked(on)
+                    act.setText(('✓ ' if on else '') + '退出保持提示')
+                    updated = True
+                except Exception:
+                    continue
+        self._last_toast_hist_cap_keep_exit_tip_refreshed = updated
+        return updated
 
     def exit_toast_hist_cap_keep(self) -> bool:
         """wave42–44: 保持徽标一键退出；tip 可关."""

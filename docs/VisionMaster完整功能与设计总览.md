@@ -426,6 +426,17 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊺ · diff批量失败汇总tip · 最近色右键清除 · tip开关热更勾 · 回退开关挂徽章菜单 · undo条悬停放大 · 2026-10-28】
+
+- **diff 批量开失败汇总 tip**：`open_merge_diff_paths` 统计 ok/fail；tip「已开 N · 失败 M · 首败名」；`_last_merge_diff_batch_fail`；quiet 抑单项 tip。
+- **最近色右键清除**：色板菜单 eventFilter RMB → `clear_sev_pin_arc_seize_recent_color`；「清除全部最近色」；热更最近区。
+- **tip 开关热更菜单勾**：`set_toast_hist_cap_keep_exit_tip_enabled` → `_refresh_toast_hist_cap_keep_exit_tip_action`。
+- **回退开关挂徽章菜单**：右键 → `hostPathCopyBadgeMenu`（再复制 + 中键失败回退本级）；setter 热更勾。
+- **undo 条悬停放大**：enter 10→16px / leave 恢复。
+- **冒烟**：`smoke-wave45-batchfail-recentrmb-tiphot-badgemenu-hoverbar-e2e`（另回归 wave44/43/41）。
+
+---
+
 ## 【细妆㊹ · diff多选批量开目录 · 色板自定义/最近色 · 保持tip可关 · 中键回退可配 · undo条可点撤销 · 2026-10-28】
 
 - **diff 多选批量开目录**：清单 ExtendedSelection；「打开选中」→ `open_merge_diff_selected` / `open_merge_diff_paths`（去重批量）。

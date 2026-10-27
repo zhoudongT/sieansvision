@@ -161,8 +161,15 @@ def main():
     class _E:
         def button(self):
             return Qt.MouseButton.RightButton
+    # wave45: 右键弹出徽章菜单 → 再复制
     host._last_path_copy_badge_recopied = False
+    host._path_copy_badge_menu_no_exec = True
     host._on_path_copy_badge_clicked(_E())
+    menu = getattr(host, '_last_path_copy_badge_menu', None)
+    assert menu is not None
+    copy_acts = [a for a in menu.actions() if a.property('isPathCopyBadgeCopy')]
+    assert len(copy_acts) == 1
+    copy_acts[0].trigger()
     assert host._last_path_copy_badge_recopied
     ok('徽章右键再复制路径')
 
