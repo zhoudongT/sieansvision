@@ -19,3 +19,7 @@ Ultralytics/
 *.key
 .git-source-files.txt
 .pydeps/
+.venv-ytdlp/
+docs/vm-bilibili-jgtech/videos/
+docs/vm-bilibili-jgtech/frames/
+docs/vm-bilibili-jgtech/*.log
