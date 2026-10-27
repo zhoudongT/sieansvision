@@ -463,6 +463,12 @@ class MainWindow(QMainWindow):
         if self.busy:return
         p=deepcopy(self.document.project);p['steps']=[step if s['id']==step['id'] else s for s in p['steps']]
         self.guard(lambda:self.document.commit(p))
+        # Display fitMode/channel → 模块结果 pane live (no re-run required for fit)
+        try:
+            if (step or {}).get('operation') == 'display':
+                self._apply_display_to_result_pane(step)
+        except Exception:
+            pass
 
     
     def refresh_config_status(self):
@@ -788,6 +794,7 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'filmstrip'):
                 if hasattr(self.filmstrip, 'set_pause_owner'):
                     self.filmstrip.set_pause_owner('continuous')
+                self._sync_pause_owner_badges('continuous')
                 if hasattr(self.filmstrip, 'set_continuous_controls_enabled'):
                     self.filmstrip.set_continuous_controls_enabled(True)
                 if hasattr(self.filmstrip, 'set_continuous_paused'):
@@ -807,6 +814,7 @@ class MainWindow(QMainWindow):
                     self.filmstrip.set_continuous_controls_enabled(False)
                 if hasattr(self.filmstrip, 'set_pause_owner'):
                     self.filmstrip.set_pause_owner(None)
+                self._sync_pause_owner_badges(None)
         except Exception:
             pass
         self.request('stop',{},lambda _:None)
@@ -814,6 +822,22 @@ class MainWindow(QMainWindow):
         if was_continuous:
             self._flush_after_continuous()
 
+
+
+    def _sync_pause_owner_badges(self, mode=None):
+        """Mirror filmstrip pause-owner tip onto HMI 生产统计 badge."""
+        if mode is None and hasattr(self, 'filmstrip'):
+            mode = getattr(self.filmstrip, '_pause_owner', None)
+        try:
+            if hasattr(self, 'filmstrip') and hasattr(self.filmstrip, 'set_pause_owner'):
+                # keep filmstrip tip in sync when called with explicit mode
+                if mode is not None or mode is None:
+                    pass
+            if hasattr(self, 'operator_hmi') and self.operator_hmi is not None:
+                if hasattr(self.operator_hmi, 'set_pause_owner_badge'):
+                    self.operator_hmi.set_pause_owner_badge(mode)
+        except Exception:
+            pass
 
     def pause_continuous(self):
         """Soft-pause ContinuousRun or 运行全部: skip next QTimer schedule."""
@@ -923,21 +947,89 @@ class MainWindow(QMainWindow):
 
 
     def _pick_annotated_image(self, records):
-        """Prefer 图像显示(display) engine annotatedImage, else last non-empty annotated."""
+        """Prefer 图像显示(display) engine annotatedImage, else last non-empty annotated.
+
+        Returns data-url string ( falsy if none).
+        """
+        img, _sid = self._pick_annotated_with_step(records)
+        return img
+
+    def _pick_annotated_with_step(self, records):
         records = list(records or [])
-        names = {s['id']: s.get('operation') for s in (self.document.project.get('steps') or [])}
+        steps = {s['id']: s for s in (self.document.project.get('steps') or [])}
         preferred = None
+        preferred_id = None
         fallback = None
+        fallback_id = None
         for record in reversed(records):
             image = (record.get('output') or {}).get('annotatedImage') or ''
             if not image:
                 continue
-            op = names.get(record.get('id')) or (record.get('output') or {}).get('operation')
+            sid = record.get('id')
+            op = (steps.get(sid) or {}).get('operation') or (record.get('output') or {}).get('operation')
             if op == 'display' and preferred is None:
-                preferred = image
+                preferred, preferred_id = image, sid
             if fallback is None:
-                fallback = image
-        return preferred or fallback or ''
+                fallback, fallback_id = image, sid
+        if preferred:
+            return preferred, preferred_id
+        return fallback or '', fallback_id
+
+    def _apply_display_to_result_pane(self, step=None, image=None):
+        """Live-apply Display fitMode/channel on 模块结果 pane."""
+        if not hasattr(self, 'output_view'):
+            return
+        step = step or {}
+        params = step.get('params') or {}
+        fit = params.get('fitMode') or 'contain'
+        if hasattr(self.output_view, 'set_fit_mode'):
+            self.output_view.set_fit_mode(fit)
+        # Cache engine/annotated frame for live channel toggling
+        if image:
+            self._last_display_image = image
+        src = image or getattr(self, '_last_display_image', None) or ''
+        ch = params.get('channel') or 'auto'
+        show = src
+        if src and ch not in (None, '', 'auto'):
+            try:
+                show = self._client_channel_preview(src, ch) or src
+            except Exception:
+                show = src
+        if show and (image or ch not in (None, '', 'auto')):
+            self.output_view.show_data(show)
+            if hasattr(self, 'images'):
+                self.images.setCurrentIndex(1)
+        elif not self.output_view.bounds.isEmpty():
+            self.output_view.fit()
+
+    def _client_channel_preview(self, data_url, channel):
+        """Live channel preview (cv2) without engine re-run; returns new data-url or None."""
+        import base64
+        if not data_url or channel in (None, '', 'auto'):
+            return None
+        try:
+            import cv2
+            import numpy as np
+            raw = base64.b64decode(data_url.split(',', 1)[-1], validate=False)
+            arr = np.frombuffer(raw, dtype=np.uint8)
+            bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if bgr is None:
+                return None
+            if channel in ('r', 'g', 'b'):
+                idx = {'b': 0, 'g': 1, 'r': 2}[channel]
+                plane = bgr[:, :, idx]
+                bgr = cv2.merge([plane, plane, plane])
+            elif channel == 'gray':
+                gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+                bgr = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+            else:
+                return None
+            ok, enc = cv2.imencode('.png', bgr)
+            if not ok:
+                return None
+            return 'data:image/png;base64,' + base64.b64encode(enc).decode()
+        except Exception:
+            return None
 
     def finished(self,result,release=True):
         self.last_result=result
@@ -945,9 +1037,13 @@ class MainWindow(QMainWindow):
         records=result.get('results',[])
         names={s['id']:s.get('name',s['operation']) for s in self.document.project['steps']}
         self.results.set_results([{**r,'name':names.get(r['id'],r['id'])} for r in records]);self.scene.show_results(records)
-        annotated_live=self._pick_annotated_image(records)
+        annotated_live, ann_sid = self._pick_annotated_with_step(records)
         if annotated_live:
-            self.output_view.show_data(annotated_live);self.images.setCurrentIndex(1)
+            disp_step = next((s for s in (self.document.project.get('steps') or []) if s.get('id')==ann_sid), None)
+            if disp_step and disp_step.get('operation')=='display':
+                self._apply_display_to_result_pane(disp_step, image=annotated_live)
+            else:
+                self.output_view.show_data(annotated_live);self.images.setCurrentIndex(1)
             try:
                 if hasattr(self,'filmstrip') and hasattr(self.filmstrip,'set_live_result'):
                     self.filmstrip.set_live_result(annotated_live)
@@ -1035,6 +1131,7 @@ class MainWindow(QMainWindow):
                         self.filmstrip.set_continuous_controls_enabled(False)
                     if hasattr(self,'filmstrip') and hasattr(self.filmstrip,'set_pause_owner'):
                         self.filmstrip.set_pause_owner(None)
+                    self._sync_pause_owner_badges(None)
                 except Exception:
                     pass
                 self.log('运行全部完成')
@@ -1292,6 +1389,7 @@ class MainWindow(QMainWindow):
         try:
             if hasattr(self.filmstrip, 'set_pause_owner'):
                 self.filmstrip.set_pause_owner('run_all')
+            self._sync_pause_owner_badges('run_all')
             if hasattr(self.filmstrip, 'set_continuous_controls_enabled'):
                 self.filmstrip.set_continuous_controls_enabled(True)
             if hasattr(self.filmstrip, 'set_continuous_paused'):
@@ -1741,19 +1839,66 @@ class MainWindow(QMainWindow):
                 }
                 s['params'] = params
                 break
-        # Restore outer history: keep pre-enter tip at idx, append merged as new tip
-        # so one Undo restores exactly the pre-enter project (depth≥1..N).
+        # Restore outer history: keep pre-enter tip; fold nest history tips into
+        # successive merged outer tips so Undo/Redo chain survives multi-exit (depth≥3).
         hist = list(frame.get('outer_history') or [])
         idx = int(frame.get('outer_index') or 0)
+        nest_hist = list(getattr(self.document, 'history', None) or [])
+        nest_idx = int(getattr(self.document, 'index', 0) or 0)
+        # Current merged outer (from live document.project inner) already in `outer`
         if hist:
             if 0 <= idx < len(hist):
-                hist = hist[:idx + 1] + [deepcopy(outer)]
+                base = hist[:idx + 1]
             else:
-                hist = hist + [deepcopy(outer)]
-            idx = len(hist) - 1
-            self.document.project = deepcopy(outer)
+                base = list(hist)
+                idx = len(base) - 1 if base else 0
+            tips = []
+            # nest_hist[0] ≈ enter snapshot (≡ pre-enter inner); map k>=1 → outer tips
+            # Always include tips through nest tip AND remaining redo beyond nest_idx
+            def _merge_inner(outer_proj, nest_proj):
+                o = deepcopy(outer_proj)
+                for s in o.get('steps', []):
+                    if s.get('id') == frame['node_id'] and s.get('operation') == 'group':
+                        params = normalize_group_params(s.get('params'))
+                        params['inner'] = {
+                            'steps': deepcopy(nest_proj.get('steps') or []),
+                            'edges': deepcopy(nest_proj.get('edges') or []),
+                            'sourcePosition': deepcopy(nest_proj.get('sourcePosition') or dict(x=300, y=40)),
+                            'localVariables': (s.get('params') or {}).get('inner', {}).get('localVariables') or {},
+                        }
+                        s['params'] = params
+                        break
+                return o
+            pre_outer = deepcopy(frame.get('outer_project') or outer)
+            if len(nest_hist) <= 1:
+                tips = [deepcopy(outer)]
+                new_index = len(base)  # tip after append
+            else:
+                for k in range(1, len(nest_hist)):
+                    tips.append(_merge_inner(pre_outer, nest_hist[k]))
+                if not tips:
+                    tips = [deepcopy(outer)]
+                # Map nest_idx → position in tips (nest 0 = pre-enter = base[-1])
+                # nest_idx 1 → tips[0], nest_idx 2 → tips[1], ...
+                new_index = (idx + nest_idx) if nest_idx >= 1 else idx
+                # Ensure current live merge is last tip when at nest tip with no extra redo
+                # Replace tips[nest_idx-1] with live `outer` so unsaved-equal commits match
+                if nest_idx >= 1 and (nest_idx - 1) < len(tips):
+                    tips[nest_idx - 1] = deepcopy(outer)
+                elif nest_idx >= len(nest_hist):
+                    pass
+                elif nest_idx == 0:
+                    new_index = idx
+                    # keep tips as redo stack beyond pre-enter
+            hist = base + tips
+            if nest_idx >= 1:
+                new_index = idx + nest_idx
+            else:
+                new_index = idx  # exited at enter snapshot; redos available after
+            new_index = max(0, min(new_index, len(hist) - 1))
+            self.document.project = deepcopy(hist[new_index])
             self.document.history = hist
-            self.document.index = min(idx, len(hist) - 1)
+            self.document.index = new_index
             if frame.get('outer_saved') is not None:
                 self.document.saved = frame['outer_saved']
             self.document.changed.emit()

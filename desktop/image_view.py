@@ -32,6 +32,7 @@ class ImageView(QGraphicsView):
         self.overlay = None
         self.bounds = QRectF()
         self._needs_fit = False
+        self._fit_mode = 'contain'  # contain | cover | actual (Display 适应模式)
         self._empty_hint = self.scene().addText('打开图像，或载入演示')
         self._empty_hint.setDefaultTextColor(QColor(TEXT_MUTED))
 
@@ -104,8 +105,15 @@ class ImageView(QGraphicsView):
             self.overlay = self.scene().addRect(QRectF(*roi), pen)
             self.overlay.setZValue(10)
 
+    def set_fit_mode(self, mode):
+        """Display fitMode → 模块结果 pane: contain | cover | actual."""
+        mode = mode if mode in ('contain', 'cover', 'actual') else 'contain'
+        self._fit_mode = mode
+        if not self.bounds.isEmpty():
+            self.fit()
+
     def fit(self):
-        """KeepAspectRatio full frame. Defer when hidden / viewport still tiny."""
+        """Fit per _fit_mode. Defer when hidden / viewport still tiny."""
         if self.bounds.isEmpty():
             self._needs_fit = False
             return
@@ -116,12 +124,24 @@ class ImageView(QGraphicsView):
         ):
             self._needs_fit = True
             return
-        # Temporarily hide scrollbars so fitInView uses the full viewport.
+        mode = getattr(self, '_fit_mode', 'contain') or 'contain'
+        if mode == 'actual':
+            self.resetTransform()
+            # Center on image
+            self.centerOn(self.bounds.center())
+            self._needs_fit = False
+            self.viewport().update()
+            return
         h_policy = self.horizontalScrollBarPolicy()
         v_policy = self.verticalScrollBarPolicy()
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.fitInView(self.bounds, Qt.AspectRatioMode.KeepAspectRatio)
+        aspect = (
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding
+            if mode == 'cover'
+            else Qt.AspectRatioMode.KeepAspectRatio
+        )
+        self.fitInView(self.bounds, aspect)
         self.setHorizontalScrollBarPolicy(h_policy)
         self.setVerticalScrollBarPolicy(v_policy)
         self._needs_fit = False

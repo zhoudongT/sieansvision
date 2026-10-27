@@ -472,10 +472,29 @@ def run(request):
     elif operation == 'distort_correct':
         data = distort_correct(image, canvas, p, offset)
     elif operation == 'display':
-        # Design-time 图像显示：透传上游图；可选叠加模块名
+        # Design-time 图像显示：透传上游图；channel 分离；可选叠加模块名
+        ch = (p.get('channel') or 'auto')
+        try:
+            import cv2
+            import numpy as np
+            if ch in ('r', 'g', 'b') and canvas.ndim == 3 and canvas.shape[2] >= 3:
+                # OpenCV BGR
+                idx = {'b': 0, 'g': 1, 'r': 2}[ch]
+                plane = canvas[:, :, idx]
+                canvas[:] = cv2.merge([plane, plane, plane]) if canvas.shape[2] == 3 else canvas
+                # assign back — canvas may be writeable view
+                for c in range(min(3, canvas.shape[2])):
+                    canvas[:, :, c] = plane
+            elif ch == 'gray':
+                if canvas.ndim == 3:
+                    gray = cv2.cvtColor(canvas, cv2.COLOR_BGR2GRAY)
+                    canvas[:] = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+        except Exception:
+            pass
         data = {
             'shown': True,
             'fitMode': p.get('fitMode') or 'contain',
+            'channel': ch,
             'showOverlay': bool(p.get('showOverlay', True)),
             'showName': bool(p.get('showName', True)),
         }

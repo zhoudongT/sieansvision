@@ -129,6 +129,13 @@ class ProductionStatsPanel(QWidget):
         self._pause_btn.setCheckable(True)
         self._pause_btn.toggled.connect(self._on_pause)
         btn_row.addWidget(self._pause_btn)
+        self._pause_owner_badge = QLabel('')
+        self._pause_owner_badge.setObjectName('pauseOwnerBadge')
+        self._pause_owner_badge.setStyleSheet(
+            f'color:{TEXT_MUTED};font-size:11px;padding:0 6px;'
+        )
+        self._pause_owner_badge.setVisible(False)
+        btn_row.addWidget(self._pause_owner_badge)
         reset = QPushButton('清零')
         reset.clicked.connect(self.reset)
         btn_row.addWidget(reset)
@@ -154,6 +161,25 @@ class ProductionStatsPanel(QWidget):
         self._list.setStyleSheet('font-size:11px;')
         root.addWidget(self._list, 1)
         self._refresh_labels()
+
+    def set_pause_owner_badge(self, mode):
+        """Mirror filmstrip pause-owner tip: continuous | run_all | None."""
+        if not hasattr(self, '_pause_owner_badge'):
+            return
+        if mode == 'run_all':
+            text = '模式·运行全部'
+            tip = '运行全部（与连续运行共用同一暂停控件）：暂停/继续切图调度'
+        elif mode == 'continuous':
+            text = '模式·连续运行'
+            tip = '连续运行（与运行全部共用同一暂停控件）：暂停/继续调度（可改间隔）'
+        else:
+            text = ''
+            tip = '连续运行 / 运行全部共用：暂停/继续切图调度（可中途改间隔）'
+        self._pause_owner_badge.setText(text)
+        self._pause_owner_badge.setToolTip(tip)
+        self._pause_owner_badge.setVisible(bool(text))
+        if hasattr(self, '_pause_btn'):
+            self._pause_btn.setToolTip(tip)
 
     def _on_pause(self, on: bool):
         self._paused = bool(on)
@@ -434,6 +460,28 @@ class OperatorHmiView(QWidget):
             self._tick_clocks()
         else:
             self._clock_timer.stop()
+
+    def set_pause_owner_badge(self, mode):
+        """Propagate filmstrip pause-owner mode tip to 生产统计 panels + header badge."""
+        mode = mode if mode in ('continuous', 'run_all') else None
+        for panel in getattr(self, '_stats_panels', None) or []:
+            try:
+                if hasattr(panel, 'set_pause_owner_badge'):
+                    panel.set_pause_owner_badge(mode)
+            except Exception:
+                pass
+        # Header state badge soft-hint when idle-ish
+        try:
+            if hasattr(self, '_state_badge') and mode and self._state_badge.text() in (
+                '空闲', '完成', '已停止',
+            ):
+                hint = '连续运行' if mode == 'continuous' else '运行全部'
+                self._state_badge.setToolTip(f'暂停控件归属：{hint}（与胶片条共用）')
+            elif hasattr(self, '_state_badge'):
+                if not mode:
+                    self._state_badge.setToolTip('')
+        except Exception:
+            pass
 
     def set_runtime(self, result: dict | None, image=None, annotated=None):
         """Push last run result / preview into image panes and lamps."""

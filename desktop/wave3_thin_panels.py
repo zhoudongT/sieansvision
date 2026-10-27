@@ -700,7 +700,15 @@ class DisplayPanel(_ShellBase):
         fit.setCurrentIndex(max(0, fit.findData(self.params.get('fitMode') or 'contain')))
         fit.currentIndexChanged.connect(lambda _: self._set_param('fitMode', fit.currentData()))
         form.addRow('适应模式', fit)
-        tip = QLabel('未选输入源时 incompleteBanner / 画布红叹号。')
+        ch = QComboBox()
+        for val, lab in (
+            ('auto', '自动'), ('r', 'R 红'), ('g', 'G 绿'), ('b', 'B 蓝'), ('gray', '灰度'),
+        ):
+            ch.addItem(lab, val)
+        ch.setCurrentIndex(max(0, ch.findData(self.params.get('channel') or 'auto')))
+        ch.currentIndexChanged.connect(lambda _: self._set_param('channel', ch.currentData()))
+        form.addRow('通道', ch)
+        tip = QLabel('适应模式/通道 → 模块结果即时生效；未选输入源时红叹号。')
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
         self._refresh_incomplete_banner()

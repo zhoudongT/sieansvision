@@ -88,6 +88,8 @@ class PropertyFloat(QDialog):
         self._source_form = None
         self._source_baseline = None  # snapshot at show_source for Esc/✕/取消 discard
         self._source_dirty = False
+        self._step_baseline = None  # snapshot at show_step for Esc/✕/取消 discard
+        self._step_dirty = False
         self.setStyleSheet(PROPERTY_FLOAT_QSS)
 
     def mousePressEvent(self, event):
@@ -145,7 +147,7 @@ class PropertyFloat(QDialog):
         self.sourceChanged.emit(cfg)
 
     def _on_ok_close(self):
-        # Commit current form (flush pending edits) — explicit 确定 path
+        # Commit current form/panel — explicit 确定 path
         form = getattr(self, '_source_form', None)
         if form is not None:
             try:
@@ -153,20 +155,42 @@ class PropertyFloat(QDialog):
                     self.sourceChanged.emit(form.config())
             except Exception:
                 pass
+        panel = getattr(self, '_panel', None)
+        if panel is not None and self._source_form is None:
+            # Flush latest step from panel if it exposes .step
+            try:
+                step = getattr(panel, 'step', None) or getattr(self, '_last_step', None)
+                if step is not None:
+                    self.changed.emit(deepcopy(step))
+            except Exception:
+                pass
         self._source_dirty = False
         self._source_baseline = None
+        self._step_dirty = False
+        self._step_baseline = None
         self._sync_host_filmstrip()
         self.close()
 
     def _on_cancel_close(self):
-        """取消 / Esc / ✕：discard unsaved sourceConfig draft → restore baseline."""
+        """取消 / Esc / ✕：discard unsaved draft → restore baseline (source or step)."""
         if self._source_form is not None and self._source_dirty and self._source_baseline is not None:
             try:
                 self.sourceChanged.emit(deepcopy(self._source_baseline))
             except Exception:
                 pass
+        elif (
+            self._source_form is None
+            and self._step_dirty
+            and self._step_baseline is not None
+        ):
+            try:
+                self.changed.emit(deepcopy(self._step_baseline))
+            except Exception:
+                pass
         self._source_dirty = False
         self._source_baseline = None
+        self._step_dirty = False
+        self._step_baseline = None
         self._sync_host_filmstrip()
         self.close()
 
@@ -211,6 +235,10 @@ class PropertyFloat(QDialog):
     def show_step(self, step, definition, project, index=1):
         self._node_id = step['id'] if step else None
         self._clear_body()
+        self._step_baseline = deepcopy(step) if step else None
+        self._step_dirty = False
+        self._source_baseline = None
+        self._source_dirty = False
         name = (definition or {}).get('name') or (step or {}).get('name') or '模块'
         bang = False
         try:
@@ -221,6 +249,10 @@ class PropertyFloat(QDialog):
         op = (step or {}).get('operation') or ''
         cat = (definition or {}).get('category') or ''
         sub = (cat + ' · ' + op) if op else cat
+        if sub:
+            sub = sub + ' · 确定提交 / Esc·✕·取消放弃'
+        else:
+            sub = '确定提交 / Esc·✕·取消放弃'
         self._set_chrome(('⚠ ' if bang else '') + f'{index} {name}', sub)
         # B3: 组合模块专用四 Tab 面板
         if step and step.get('operation') == 'group':
@@ -444,4 +476,6 @@ class PropertyFloat(QDialog):
         if old.get('imageFrom') != step.get('imageFrom'):
             self.paramAudited.emit(module, 'imageFrom', old.get('imageFrom'), step.get('imageFrom'))
         self._last_step = deepcopy(step)
+        self._step_dirty = True
+        # Live commit-on-change while open (canvas/result RT); Esc/✕ restores baseline
         self.changed.emit(step)
