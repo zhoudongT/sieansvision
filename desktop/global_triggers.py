@@ -382,6 +382,15 @@ class GlobalTriggersDialog(QDialog):
         hint.setObjectName('dialogHint')
         hint.setWordWrap(True)
         root.addWidget(hint)
+        link = QHBoxLayout()
+        link_lab = QLabel('联调：通信管理试收 / receive_data 载荷 → 本表字符串触发')
+        link_lab.setStyleSheet('color:#666;font-size:11px;')
+        link.addWidget(link_lab, 1)
+        open_cm = QPushButton('打开通信管理…')
+        open_cm.setToolTip('配置设备与收发事件（试收可回写本表）')
+        open_cm.clicked.connect(self._open_comm_manager)
+        link.addWidget(open_cm)
+        root.addLayout(link)
 
         self.tabs = QTabWidget()
         self.event_table = _TriggerTable('event')
@@ -465,3 +474,22 @@ class GlobalTriggersDialog(QDialog):
         self.document.commit(p)
         QMessageBox.information(self, '全局触发', f'已保存事件 {len(p["globalTriggers"]["events"])} 条、字符串 {len(p["globalTriggers"]["strings"])} 条。')
         self.accept()
+
+    def _open_comm_manager(self):
+        """细妆：全局触发 → 通信管理联调入口。"""
+        from PySide6.QtWidgets import QMessageBox
+        w = self.parent()
+        while w is not None:
+            if hasattr(w, 'open_comm_manager'):
+                try:
+                    w.open_comm_manager()
+                    return
+                except Exception as err:
+                    QMessageBox.warning(self, '全局触发', f'打开通信管理失败：{err}')
+                    return
+            w = w.parent()
+        QMessageBox.information(
+            self, '全局触发',
+            '请通过主窗口「设置 / 设备 → 通信管理…」配置设备与收发。',
+        )
+

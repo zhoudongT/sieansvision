@@ -117,6 +117,7 @@ class MainWindow(QMainWindow):
         settings_menu.addSeparator()
         settings_menu.addAction(self.action('设置运行间隔…', self._settings_run_interval))
         settings_menu.addAction(self.action('设置流程超时…', self._settings_flow_timeout))
+        settings_menu.addAction(self.action('连续跑路径说明…', self._settings_continuous_path_help))
         self._jump_skip_persist_action = self.action(
             '跨会话记住跳层确认跳过', self._toggle_jump_skip_persist)
         self._jump_skip_persist_action.setCheckable(True)
@@ -3622,8 +3623,25 @@ class MainWindow(QMainWindow):
             flow_scheme.ensure_scheme(p)
             fid = p.get('activeFlowId') or (p.get('flows') or [{}])[0].get('id')
             self._flow_tab_context(fid, 'interval')
+            self.log('连续跑全路径：间隔生效于 ↻连续 / 胶片「运行全部」；模块连续与全局连续分层。')
         except Exception as err:
             self.log(f'设置运行间隔失败：{err}')
+
+
+    def _settings_continuous_path_help(self):
+        """细妆：连续跑全路径走查说明。"""
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.information(
+            self,
+            '连续跑路径说明',
+            '全路径走查（对标 VM 连续执行）：\n'
+            '1. 设置 → 运行间隔 / 流程超时（或流程 Tab 右键）\n'
+            '2. 工具栏 ↻连续 = 全局连续；属性浮窗「连续执行」= 模块连续\n'
+            '3. 胶片条「运行全部」按间隔切图，末张可停\n'
+            '4. 全局触发「执行·连续」与 Host SM Running 对齐\n'
+            '5. 通信试收 RUN 可派发连续（见通信管理 ↔ 全局触发）\n'
+            '暂停/停止走 ■停止；报警历史可筛选导出。',
+        )
 
     def _settings_flow_timeout(self):
         """设置菜单：当前活动流程超时（与流程 Tab 右键同源）。"""

@@ -774,4 +774,43 @@ QFrame#propertyFloatFooter QPushButton#primaryButton {{
 QFrame#propertyFloatFooter QPushButton#primaryButton:hover {{
   background: {ACCENT_DEEP};
 }}
+
+QFrame#propertyFloatFooter {{
+  background: {FLOAT_CARD};
+  border-top: 1px solid {FLOAT_LINE};
+}}
+QPushButton#propertyFloatRun {{
+  background: {ACCENT};
+  color: #ffffff;
+  border: 1px solid {ACCENT};
+  border-radius: 2px;
+  padding: 5px 14px;
+  font-weight: 600;
+  min-height: 22px;
+}}
+QPushButton#propertyFloatRun:hover {{
+  background: #e88a20;
+}}
+QPushButton#propertyFloatRunContinuous {{
+  background: {FLOAT_BTN_BG};
+  color: {FLOAT_TEXT};
+  border: 1px solid {FLOAT_LINE};
+  border-radius: 2px;
+  padding: 5px 12px;
+  min-height: 22px;
+}}
+QPushButton#propertyFloatRunContinuous:hover {{
+  border-color: {ACCENT};
+  color: {ACCENT};
+}}
+QPushButton#propertyFloatOk {{
+  background: {FLOAT_BTN_BG};
+  border: 1px solid {FLOAT_LINE};
+  border-radius: 2px;
+  padding: 5px 16px;
+  min-height: 22px;
+}}
+QPushButton#propertyFloatOk:hover {{
+  background: #dedede;
+}}
 """

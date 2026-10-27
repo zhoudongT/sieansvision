@@ -294,6 +294,19 @@ class CommManagerDialog(QDialog):
         hint.setObjectName('dialogHint')
         hint.setWordWrap(True)
         root.addWidget(hint)
+        link = QHBoxLayout()
+        link_lab = QLabel('收数 → 字符串触发：试收报文可派发全局触发（RUN/STOP…）')
+        link_lab.setStyleSheet('color:#666;font-size:11px;')
+        link.addWidget(link_lab, 1)
+        open_gt = QPushButton('打开全局触发…')
+        open_gt.setToolTip('配置字符串/事件触发表（与通信试收联调）')
+        open_gt.clicked.connect(self._open_global_triggers)
+        link.addWidget(open_gt)
+        open_var = QPushButton('变量联调…')
+        open_var.setToolTip('收发事件可读写运行时变量；打开变量/全局变量面板指引')
+        open_var.clicked.connect(self._open_variables_hint)
+        link.addWidget(open_var)
+        root.addLayout(link)
 
         self.tabs = QTabWidget()
         root.addWidget(self.tabs, 1)
@@ -828,3 +841,45 @@ class CommManagerDialog(QDialog):
         n = len(p['commManager']['devices'])
         QMessageBox.information(self, '通信管理', f'已保存 {n} 个通讯设备及收发/心跳/响应配置。')
         self.accept()
+
+    def _open_global_triggers(self):
+        """细妆：通信管理 → 全局触发联调入口。"""
+        w = self.parent()
+        while w is not None:
+            if hasattr(w, 'open_global_triggers'):
+                try:
+                    w.open_global_triggers()
+                    return
+                except Exception as err:
+                    QMessageBox.warning(self, '通信管理', f'打开全局触发失败：{err}')
+                    return
+            w = w.parent()
+        QMessageBox.information(
+            self,
+            '通信管理',
+            '请通过主窗口「设置 → 全局触发…」配置字符串/事件表。\n'
+            '通信试收报文会匹配字符串触发（如 RUN → 执行·单次）。',
+        )
+
+    def _open_variables_hint(self):
+        """细妆：通信收发 ↔ 运行时变量联调指引。"""
+        w = self.parent()
+        while w is not None:
+            for attr in ('open_variable_manager', 'open_variables', 'show_variables_panel', 'open_global_variables'):
+                if hasattr(w, attr):
+                    try:
+                        getattr(w, attr)()
+                        return
+                    except Exception as err:
+                        QMessageBox.warning(self, '通信管理', f'打开变量面板失败：{err}')
+                        return
+            w = w.parent()
+        QMessageBox.information(
+            self,
+            '通信 · 变量联调',
+            '收发事件可将报文写入全局/流程变量，或从变量取数下发。\n'
+            '· 试收命中 → 字符串触发 / 写变量\n'
+            '· 试发载荷可用 ${var} 占位（见事件表）\n'
+            '请在主窗口「变量」或流程变量表中核对绑定。',
+        )
+

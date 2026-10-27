@@ -389,15 +389,25 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 | 域 | 剩余细妆 |
 |----|----------|
 | chrome | 工具栏纯图标人工观感确认；品牌条与 VM 分区像素级对照 |
-| panels | 模板编辑子窗（阈值/画笔）已接；全画布描摹与卡尺叠层仍可加深 |
-| harvest | 全算子面板「插入上游字段」扫盲（少数 wave3 薄壳可能仍缺） |
-| HMI | 表格/饼图/线图已可视化；固定栏相机会话缓存已接；容器壳/模板市场仍可加深 |
-| filmstrip | 格式过滤下拉 + sourceConfig 双向已接；属性面板控件仍可加深 |
-| float | 连续执行中热更新字幕已接；像素级 QSS 对照仍可加深 |
-| nest | 引擎循环已实执；进组红叹号 chip 已接；组内扫盲动画仍可加深 |
-| labels | N4 ToolTip 已强化；中英混用扫尾仍可继续 |
-| settings | 设置菜单已挂运行间隔/流程超时；连续跑全路径走查仍可加深 |
-| samples | 更多行业 Skip 集仅 UI 示意样例（无厂商 SDK） |
-| Comm | 收发事件 ↔ 运行时变量更深联调；全局触发←Comm 收数表壳联调 |
+| panels | 模板编辑子窗已接；匹配框/分数/搜索区/全画布描摹开关已接；几何卡尺叠层（拟合曲线/标签/标尺）已接；量测点线标签距离开关已接 |
+| harvest | 主流面板+wave3+脚本输入绑定已接；elapsed 结果显示开关已接 |
+| HMI | 表格/饼图/线图已可视化；固定栏相机会话缓存已接；模板市场+三行业示意已接；容器壳标签已标 |
+| filmstrip | 格式过滤 + sourceConfig 双向已接；缩略图尺寸（小/中/大）已接 |
+| float | 热更新字幕已接；底栏 Run/连续/确定 objectName + QSS 像素级已接 |
+| nest | 引擎循环已实执；进组红叹号 chip 已接；组内扫盲/循环 tip 已加深 |
+| labels | N4 ToolTip 已强化；状态栏/品牌条 ToolTip 已接；中英扫尾可继续 |
+| settings | 运行间隔/流程超时已挂；连续跑路径说明对话框已接 |
+| samples | 三行业运行界面示意模板 + examples/industry-ui-samples.json 已接（无厂商 SDK） |
+| Comm | 通信↔全局触发双向入口已接；变量联调指引已接；收发↔变量表更深仍可走查 |
 | Host SM | 信息栏→HMI 镜像已接；HMI→Host 已有；报警历史筛选已接 |
+
+
+### 进度续④ · 2026-10-27 深夜
+- measure_geom 结果显示：点/线/标签/距离文字独立开关
+- geometry_find：拟合曲线/标签/卡尺标尺叠层
+- locate：搜索区/特征点/全画布描摹开关；模板子窗文案更新
+- Comm↔全局触发双向按钮；通信→变量联调指引
+- HMI 模板市场 + 三行业 .ruitpl.json；float 底栏 QSS objectName
+- filmstrip 缩略尺寸；settings 连续跑路径说明；nest/chrome tip
+- csharp 插入上游→输入绑定；elapsed 合计/分步/趋势开关
 

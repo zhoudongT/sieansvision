@@ -172,6 +172,13 @@ class CsharpScriptPanel(QWidget):
         lay = QVBoxLayout(w)
         lay.setContentsMargins(10, 10, 10, 10)
         lay.addWidget(QLabel('输入 / 输出变量（设计态；对齐 VM 脚本左右栏）'))
+        tip = QLabel('绑定列可填 results.<模块>.字段；点「插入上游字段」从最近运行结果挑选。')
+        tip.setWordWrap(True); tip.setStyleSheet('color:#888;font-size:11px;')
+        lay.addWidget(tip)
+        pick = QPushButton('插入上游字段 → 输入绑定')
+        pick.setToolTip('挑选上游字段，写入下方输入表第一空绑定格')
+        pick.clicked.connect(self._pick_upstream_into_inputs)
+        lay.addWidget(pick)
         from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
         for title, key, cols in (
             ('输入变量', 'inputs', ['名称', '类型', '绑定']),
@@ -243,3 +250,26 @@ class CsharpScriptPanel(QWidget):
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
         return w
+
+    def _pick_upstream_into_inputs(self):
+        from desktop.upstream_field_picker import pick_upstream_field, host_last_result
+        from PySide6.QtWidgets import QMessageBox, QTableWidgetItem
+        picked = pick_upstream_field(
+            self, self.project, step_id=self.step.get('id'),
+            last_result=host_last_result(self),
+        )
+        if not picked:
+            return
+        _nid, _field, token = picked
+        rows = list(self.params.get('inputs') or [])
+        placed = False
+        for r in rows:
+            if isinstance(r, dict) and not str(r.get('bind') or '').strip():
+                r['bind'] = token
+                placed = True
+                break
+        if not placed:
+            rows.append({'name': _field or 'in0', 'type': 'string', 'bind': token})
+        self._set_param('inputs', rows)
+        QMessageBox.information(self, '脚本输入', f'已写入绑定：{token}\n请切回「输入输出」查看（重新打开面板可刷新表）。')
+

@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "name": "包装缺陷分拣",
+    "author": "SIEANS",
+    "scenario": "包装/标签缺陷",
+    "description": "图像 + 饼图 + OK/NG + 组合框容器壳"
+  },
+  "version": 1,
+  "split": 2,
+  "placements": [
+    {
+      "name": "图像"
+    },
+    {
+      "name": "饼图"
+    },
+    {
+      "name": "组合框"
+    },
+    {
+      "name": "OK"
+    },
+    {
+      "name": "NG"
+    },
+    {
+      "name": "信息提示栏"
+    }
+  ]
+}

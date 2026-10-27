@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "name": "尺寸测量台",
+    "author": "SIEANS",
+    "scenario": "卡尺/几何量测",
+    "description": "图像 + 多数据线图 + 表格 + 运行状态"
+  },
+  "version": 1,
+  "split": 3,
+  "placements": [
+    {
+      "name": "图像"
+    },
+    {
+      "name": "多数据线图"
+    },
+    {
+      "name": "表格"
+    },
+    {
+      "name": "运行状态"
+    },
+    {
+      "name": "运行控制"
+    }
+  ]
+}

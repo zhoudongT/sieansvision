@@ -97,6 +97,17 @@ class FilmstripBar(QWidget):
         self.format_filter.currentIndexChanged.connect(self._on_format_filter_changed)
         bar.addWidget(self.format_filter)
         self._format_filter_key = '全部'
+        bar.addWidget(QLabel('缩略'))
+        self.thumb_size = QComboBox()
+        self.thumb_size.setObjectName('filmstripThumbSize')
+        self.thumb_size.setToolTip('胶片条缩略图尺寸（属性级）')
+        for lab, px in (('小', 48), ('中', 72), ('大', 96)):
+            self.thumb_size.addItem(lab, px)
+        self.thumb_size.setCurrentIndex(1)
+        self.thumb_size.setFixedWidth(52)
+        self.thumb_size.currentIndexChanged.connect(self._on_thumb_size_changed)
+        bar.addWidget(self.thumb_size)
+        self._thumb_px = 72
         self.interval_label = QLabel('')
         self.interval_label.setObjectName('filmstripInterval')
         self.interval_label.setStyleSheet('color:#888;font-size:11px;')
@@ -583,3 +594,27 @@ class FilmstripBar(QWidget):
             return False
         self.thumbs.setCurrentRow(self._index + 1)
         return True
+
+    def _on_thumb_size_changed(self, *_):
+        px = self.thumb_size.currentData()
+        self._thumb_px = int(px or 72)
+        from PySide6.QtCore import QSize
+        if hasattr(self, 'thumbs') and self.thumbs is not None:
+            self.thumbs.setIconSize(QSize(self._thumb_px, self._thumb_px))
+        self.set_format_filter_hint(
+            f'缩略图 {self._thumb_px}px · 格式 ' + (
+                ', '.join(sorted(self._exts_for_filter()))
+                if getattr(self, '_format_filter_key', '全部') != '全部'
+                else '全部'))
+        # Re-render thumbs at new size when helper exists
+        if hasattr(self, 'refresh_thumbs'):
+            try:
+                self.refresh_thumbs()
+            except Exception:
+                pass
+        elif hasattr(self, '_reload_thumbs'):
+            try:
+                self._reload_thumbs()
+            except Exception:
+                pass
+

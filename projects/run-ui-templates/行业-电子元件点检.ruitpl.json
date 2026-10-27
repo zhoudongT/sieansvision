@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "name": "电子元件点检",
+    "author": "SIEANS",
+    "scenario": "SMT/插件外观 OK-NG",
+    "description": "图像 + OK/NG + 表格统计 + 信息栏（示意）"
+  },
+  "version": 1,
+  "split": 2,
+  "placements": [
+    {
+      "name": "图像"
+    },
+    {
+      "name": "运行控制"
+    },
+    {
+      "name": "OK"
+    },
+    {
+      "name": "NG"
+    },
+    {
+      "name": "表格"
+    },
+    {
+      "name": "信息提示栏"
+    }
+  ]
+}

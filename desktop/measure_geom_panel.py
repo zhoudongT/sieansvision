@@ -44,6 +44,10 @@ def normalize_measure_geom_params(op, params=None):
     p.setdefault('unit', 'px')
     p.setdefault('scale', 1.0)
     p.setdefault('showOverlay', True)
+    p.setdefault('showPoints', True)
+    p.setdefault('showLines', True)
+    p.setdefault('showLabels', True)
+    p.setdefault('showDistanceText', True)
     return p
 
 
@@ -176,13 +180,20 @@ class MeasureGeomPanel(QWidget):
 
     def _result_tab(self):
         w = QWidget(); form = QFormLayout(w); form.setContentsMargins(10, 10, 10, 10)
-        ov = OrangeSwitch(bool(self.params.get('showOverlay', True)))
-        ov.toggled.connect(lambda c: self._set_param('showOverlay', bool(c)))
-        form.addRow('显示叠加', ov)
+        for key, lab in (
+            ('showOverlay', '显示叠加'),
+            ('showPoints', '显示点'),
+            ('showLines', '显示线'),
+            ('showLabels', '显示标签'),
+            ('showDistanceText', '显示距离文字'),
+        ):
+            sw = OrangeSwitch(bool(self.params.get(key, True)))
+            sw.toggled.connect(lambda c, k=key: self._set_param(k, bool(c)))
+            form.addRow(lab, sw)
         tip = {
-            'line_intersect': '结果：intersectX / intersectY / parallel / status',
-            'point_distance': '结果：distance / dx / dy / status',
-            'point_line_distance': '结果：distance / footX / footY / status',
+            'line_intersect': '结果：intersectX / intersectY / parallel / status · 叠层随开关',
+            'point_distance': '结果：distance / dx / dy / status · 叠层随开关',
+            'point_line_distance': '结果：distance / footX / footY / status · 叠层随开关',
         }.get(self.op, '结果字段见引擎')
-        lab = QLabel(tip); lab.setStyleSheet('color:#888;'); form.addRow(lab)
+        lab = QLabel(tip); lab.setWordWrap(True); lab.setStyleSheet('color:#888;'); form.addRow(lab)
         return w

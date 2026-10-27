@@ -60,6 +60,9 @@ def normalize_locate_params(params=None):
     p.setdefault('showContour', True)
     p.setdefault('showOrigin', False)
     p.setdefault('showCross', True)
+    p.setdefault('showSearchRegion', True)
+    p.setdefault('showFeaturePoints', False)
+    p.setdefault('traceFullCanvas', False)
     p.setdefault('resultJudgeEnable', False)
     p.setdefault('resultJudgeMin', 0.0)
     p.setdefault('resultJudgeMax', 1.0)
@@ -105,7 +108,7 @@ class TemplateEditorDialog(QDialog):
         root = QVBoxLayout(self)
         tip = QLabel(
             '对标 VisionMaster 模板配置子窗：对比度阈值与画笔大小写入模块参数；'
-            '全画布描摹仍后续迭代。'
+            '全画布描摹：结果显示 Tab 可开 traceFullCanvas / 匹配框 / 分数 / 搜索区。'
         )
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#555;font-size:11px;')
@@ -348,7 +351,7 @@ class LocateMatchPanel(QWidget):
 
         tip = QLabel(
             'VisionMaster「灰度模板」：创建 / 载入灰度模板。' if (self.params.get('matchMode') == 'gray') else 'VisionMaster「特征模板」：创建 / 载入 / 编辑模板；对比度阈值与画笔在模板配置子窗。'
-            '创建模板… 打开对比度/画笔子窗；全画布描摹后续迭代。'
+            '创建模板… 打开对比度/画笔子窗；结果显示可开关匹配框/分数/搜索区/全画布描摹。'
         )
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#555;')
@@ -568,6 +571,9 @@ class LocateMatchPanel(QWidget):
         _sw('showContour', '显示轮廓', True)
         _sw('showOrigin', '显示模板原点', False)
         _sw('showCross', '显示十字准星', True)
+        _sw('showSearchRegion', '显示搜索区', True)
+        _sw('showFeaturePoints', '显示特征点', False)
+        _sw('traceFullCanvas', '全画布描摹', False)
         _sw('resultJudgeEnable', '结果判断使能', False)
         jmin = QDoubleSpinBox(); jmin.setRange(0, 1); jmin.setDecimals(3)
         jmin.setValue(float(self.params.get('resultJudgeMin') or 0))

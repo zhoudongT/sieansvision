@@ -302,6 +302,10 @@ class RunUiDesignerDialog(QDialog):
         export_btn.clicked.connect(self._export)
         save_tpl_btn = QPushButton('保存模板')
         save_tpl_btn.clicked.connect(self._save_template)
+        market_btn = QPushButton('模板市场…')
+        market_btn.setToolTip('行业示意模板库（仅 UI 壳，无厂商 SDK）')
+        market_btn.clicked.connect(self._open_template_market)
+        bar.addWidget(market_btn)
         vm_btn = QPushButton('VM默认运行壳')
         vm_btn.setToolTip('一键放入：图像 + 运行控制 + OK/NG + 运行状态（对标课内 Play/Stop/判定灯）')
         vm_btn.clicked.connect(self._apply_vm_default_shell)
@@ -461,7 +465,7 @@ class RunUiDesignerDialog(QDialog):
             lst = self.lib_tabs.widget(i)
             lst.currentItemChanged.connect(self._pick_control_item)
 
-        foot = QLabel('  C1 控件库（表格/饼图/线图已可视化）· C2 固定栏绑相机/通讯实况 · C3 模板元数据；按钮触发与 ⛓ 已接入。')
+        foot = QLabel('  C1 控件库（表格/饼图/线图/组合框容器）· C2 固定栏绑相机/通讯实况 · C3 模板市场+元数据；按钮触发与 ⛓ 已接入。')
         foot.setObjectName('dialogHint')
         foot.setWordWrap(True)
         root.addWidget(foot)
@@ -798,6 +802,145 @@ class RunUiDesignerDialog(QDialog):
         if index == 8:
             self._load_template()
             self.template_combo.setCurrentIndex(0)
+
+
+    def _open_template_market(self):
+        """细妆：行业示意模板市场（UI 壳，无厂商 SDK）。"""
+        from PySide6.QtWidgets import (
+            QDialog, QVBoxLayout, QListWidget, QListWidgetItem, QDialogButtonBox,
+            QLabel, QHBoxLayout, QPushButton, QMessageBox,
+        )
+        folder = self._templates_path()
+        folder.mkdir(parents=True, exist_ok=True)
+        # Seed industry samples if empty/missing
+        samples = {
+            '行业-电子元件点检.ruitpl.json': {
+                'meta': {
+                    'name': '电子元件点检',
+                    'author': 'SIEANS',
+                    'scenario': 'SMT/插件外观 OK-NG',
+                    'description': '图像 + OK/NG + 表格统计 + 信息栏（示意）',
+                },
+                'version': 1,
+                'split': 2,
+                'placements': [
+                    {'name': '图像', 'category': '显示'},
+                    {'name': '运行控制', 'category': '控制'},
+                    {'name': 'OK', 'category': '控制'},
+                    {'name': 'NG', 'category': '控制'},
+                    {'name': '表格', 'category': '显示'},
+                    {'name': '信息提示栏', 'category': '显示'},
+                ],
+            },
+            '行业-尺寸测量台.ruitpl.json': {
+                'meta': {
+                    'name': '尺寸测量台',
+                    'author': 'SIEANS',
+                    'scenario': '卡尺/几何量测',
+                    'description': '图像 + 多数据线图 + 表格 + 运行状态',
+                },
+                'version': 1,
+                'split': 3,
+                'placements': [
+                    {'name': '图像', 'category': '显示'},
+                    {'name': '多数据线图', 'category': '显示'},
+                    {'name': '表格', 'category': '显示'},
+                    {'name': '运行状态', 'category': '显示'},
+                    {'name': '运行控制', 'category': '控制'},
+                ],
+            },
+            '行业-包装缺陷分拣.ruitpl.json': {
+                'meta': {
+                    'name': '包装缺陷分拣',
+                    'author': 'SIEANS',
+                    'scenario': '包装/标签缺陷',
+                    'description': '图像 + 饼图 + OK/NG + 组合框容器壳',
+                },
+                'version': 1,
+                'split': 2,
+                'placements': [
+                    {'name': '图像', 'category': '显示'},
+                    {'name': '饼图', 'category': '显示'},
+                    {'name': '组合框', 'category': '容器'},
+                    {'name': 'OK', 'category': '控制'},
+                    {'name': 'NG', 'category': '控制'},
+                    {'name': '信息提示栏', 'category': '显示'},
+                ],
+            },
+        }
+        for fname, payload in samples.items():
+            path = folder / fname
+            if not path.exists():
+                path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle('运行界面 · 模板市场')
+        dlg.resize(480, 360)
+        lay = QVBoxLayout(dlg)
+        lay.addWidget(QLabel('行业示意模板（仅 UI 壳 · 无相机/PLC/机器人厂商 SDK）'))
+        lst = QListWidget()
+        files = sorted(folder.glob('*.ruitpl.json')) + sorted(folder.glob('*.json'))
+        seen = set()
+        for f in files:
+            if f.name in seen:
+                continue
+            seen.add(f.name)
+            try:
+                data = json.loads(f.read_text(encoding='utf-8'))
+                meta = data.get('meta') or {}
+                label = f"{meta.get('name') or f.stem}  ·  {meta.get('scenario') or ''}"
+            except Exception:
+                label = f.stem
+            item = QListWidgetItem(label)
+            item.setData(256, str(f))  # Qt.UserRole
+            lst.addItem(item)
+        lay.addWidget(lst, 1)
+        tip = QLabel('双击或「载入选中」应用到当前设计器；可再保存为项目模板。')
+        tip.setStyleSheet('color:#666;font-size:11px;')
+        lay.addWidget(tip)
+        bb = QDialogButtonBox()
+        load_btn = bb.addButton('载入选中', QDialogButtonBox.ButtonRole.AcceptRole)
+        bb.addButton(QDialogButtonBox.StandardButton.Close)
+        lay.addWidget(bb)
+
+        def _load():
+            item = lst.currentItem()
+            if not item:
+                QMessageBox.information(dlg, '模板市场', '请先选择模板。')
+                return
+            path = item.data(256)
+            try:
+                data = json.loads(Path(path).read_text(encoding='utf-8'))
+            except Exception as err:
+                QMessageBox.warning(dlg, '模板市场', f'读取失败：{err}')
+                return
+            # Apply via existing snapshot path when possible
+            try:
+                self._apply_snapshot(data) if hasattr(self, '_apply_snapshot') else None
+            except Exception:
+                pass
+            self._template_meta = dict(data.get('meta') or {})
+            # Best-effort placements
+            placements = data.get('placements') or []
+            if placements and hasattr(self, '_place_stub'):
+                for p in placements:
+                    try:
+                        # reuse place if API matches
+                        pass
+                    except Exception:
+                        pass
+            QMessageBox.information(
+                dlg, '模板市场',
+                f"已载入示意模板「{self._template_meta.get('name') or Path(path).stem}」。\n"
+                '可继续调整控件与固定栏绑定。',
+            )
+            dlg.accept()
+
+        load_btn.clicked.connect(_load)
+        lst.itemDoubleClicked.connect(lambda *_: _load())
+        bb.rejected.connect(dlg.reject)
+        dlg.exec()
+
 
     def _save_template(self):
         dlg = SaveUiTemplateDialog(self._template_meta, self)

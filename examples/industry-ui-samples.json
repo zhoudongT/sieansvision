@@ -1,0 +1,20 @@
+{
+  "note": "行业 UI 示意样例索引（无厂商 SDK / 无真实相机）",
+  "templates": [
+    {
+      "id": "electronics-aoi",
+      "title": "电子元件点检",
+      "file": "projects/run-ui-templates/行业-电子元件点检.ruitpl.json"
+    },
+    {
+      "id": "measure-bench",
+      "title": "尺寸测量台",
+      "file": "projects/run-ui-templates/行业-尺寸测量台.ruitpl.json"
+    },
+    {
+      "id": "pack-defect",
+      "title": "包装缺陷分拣",
+      "file": "projects/run-ui-templates/行业-包装缺陷分拣.ruitpl.json"
+    }
+  ]
+}

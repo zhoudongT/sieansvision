@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QTabWidget, QFormLayout, QLineEdit,
     QComboBox, QScrollArea, QFrame,
 )
+from desktop.widgets.switch import OrangeSwitch
 
 
 def normalize_elapsed_stats_params(params=None):
@@ -17,6 +18,9 @@ def normalize_elapsed_stats_params(params=None):
     p.setdefault('endStepId', '')
     p.setdefault('includeEnds', True)
     p.setdefault('unit', 'ms')
+    p.setdefault('showTotal', True)
+    p.setdefault('showPerStep', True)
+    p.setdefault('showSparkline', False)
     return p
 
 
@@ -118,8 +122,17 @@ class ElapsedStatsPanel(QWidget):
         w = QWidget()
         form = QFormLayout(w)
         form.setContentsMargins(10, 10, 10, 10)
-        tip = QLabel('运行结果：elapsedMs / startStepId / endStepId / breakdown[]。')
+        for key, lab, default in (
+            ('showTotal', '显示合计', True),
+            ('showPerStep', '显示分步耗时', True),
+            ('showSparkline', '显示趋势条', False),
+        ):
+            sw = OrangeSwitch(bool(self.params.get(key, default)))
+            sw.toggled.connect(lambda c, k=key: self._set_param(k, bool(c)))
+            form.addRow(lab, sw)
+        tip = QLabel('耗时统计结果写入 elapsedMs / totalMs；HMI 可绑表格或线图控件。')
         tip.setWordWrap(True)
-        tip.setStyleSheet('color:#888;')
+        tip.setStyleSheet('color:#888;font-size:11px;')
         form.addRow(tip)
         return w
+
