@@ -9,13 +9,14 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timedelta
 
-from PySide6.QtCore import Qt, Signal, QTimer, QSettings
+from PySide6.QtCore import Qt, Signal, QTimer, QSettings, QPoint
 from PySide6.QtGui import QAction, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
     QTabWidget, QFormLayout, QLineEdit, QGroupBox, QPlainTextEdit,
     QGridLayout, QSizePolicy, QComboBox, QDoubleSpinBox, QSpinBox, QListWidget, QListWidgetItem, QFileDialog, QApplication,
     QMenu,
+    QToolTip,
 )
 
 from desktop.theme import TEXT, TEXT_MUTED, TEXT_DIM, OK, PANEL, LINE
@@ -715,15 +716,20 @@ class HostStateMachineWidget(QWidget):
             chip_row.addWidget(b)
             self._alarm_sev_chips[key] = b
             self._alarm_sev_chip_labels[key] = lab
-            # wave29: 计数气泡
+            # wave29: 计数气泡 · wave30: 单击筛
             bubble = QLabel('0')
             bubble.setObjectName(f'hostAlarmSevCount_{key}')
             bubble.setFixedHeight(16)
             bubble.setMinimumWidth(14)
             bubble.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            bubble.setCursor(Qt.CursorShape.PointingHandCursor)
+            bubble.setToolTip(f'单击筛 · {lab}')
             bubble.setStyleSheet(
                 'background:#2a2c30;color:#6a7078;border:1px solid #3a3d42;'
                 'border-radius:7px;padding:0 3px;font-size:9px;font-weight:700;'
+            )
+            bubble.mousePressEvent = (
+                lambda e, k=key: self._on_sev_bubble_clicked(e, k)
             )
             chip_row.addWidget(bubble)
             self._alarm_sev_count_bubbles[key] = bubble
@@ -793,6 +799,9 @@ class HostStateMachineWidget(QWidget):
         self._sync_liaison_window_badge()
         # wave28: 联调切窗快捷键 Alt+L
         # wave29: Alt+L 全局态提示 — overlay on host (not tab-bound)
+        # wave30: toast 历史条（最近 N 次切窗）
+        self._liaison_toast_history = []
+        self._liaison_toast_history_max = 5
         self._liaison_hotkey_toast = QLabel(self)
         self._liaison_hotkey_toast.setObjectName('hostLiaisonHotkeyToast')
         self._liaison_hotkey_toast.setStyleSheet(
@@ -801,6 +810,14 @@ class HostStateMachineWidget(QWidget):
         )
         self._liaison_hotkey_toast.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._liaison_hotkey_toast.hide()
+        self._liaison_toast_history_bar = QLabel(self)
+        self._liaison_toast_history_bar.setObjectName('hostLiaisonToastHistory')
+        self._liaison_toast_history_bar.setStyleSheet(
+            'background:#1c2a3a;color:#9ec9f0;border:1px solid #3a5a7a;'
+            'border-radius:3px;padding:2px 8px;font-size:10px;font-weight:600;'
+        )
+        self._liaison_toast_history_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._liaison_toast_history_bar.hide()
         try:
             self._liaison_cycle_shortcut = QShortcut(QKeySequence('Alt+L'), self)
             self._liaison_cycle_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
@@ -986,24 +1003,53 @@ class HostStateMachineWidget(QWidget):
         self.cycle_liaison_window(from_hotkey=True)
 
     def _flash_liaison_hotkey_toast(self, lab: str = ''):
-        """wave29: Alt+L 全局态短提示（host 顶栏 overlay，不绑 tab）."""
+        """wave29–30: Alt+L 全局态短提示 + 历史条."""
         toast = getattr(self, '_liaison_hotkey_toast', None)
         if toast is None:
             return
+        lab = (lab or '').strip()
+        # wave30: push history
+        hist = getattr(self, '_liaison_toast_history', None)
+        if hist is None:
+            self._liaison_toast_history = []
+            hist = self._liaison_toast_history
+        if lab:
+            hist.append(lab)
+            max_n = int(getattr(self, '_liaison_toast_history_max', 5) or 5)
+            if len(hist) > max_n:
+                del hist[:-max_n]
         text = f'Alt+L · 联调 {lab}'.strip()
         toast.setText(text)
         toast.setToolTip(text)
         toast.adjustSize()
-        # center-top overlay on host widget
         try:
             tw = max(toast.sizeHint().width() + 8, 160)
             th = max(toast.sizeHint().height() + 4, 22)
             x = max(8, (self.width() - tw) // 2)
             toast.setGeometry(x, 8, tw, th)
         except Exception:
-            pass
+            tw = 160
+            th = 22
+            x = 8
         toast.raise_()
         toast.show()
+        # history bar under toast
+        hbar = getattr(self, '_liaison_toast_history_bar', None)
+        if hbar is not None and hist:
+            # newest last: show oldest → newest with arrows
+            htext = ' → '.join(hist)
+            hbar.setText(f'切窗史 · {htext}')
+            hbar.setToolTip(f'最近 {len(hist)} 次 Alt+L 切窗')
+            hbar.adjustSize()
+            try:
+                hw = max(hbar.sizeHint().width() + 8, tw)
+                hh = max(hbar.sizeHint().height() + 2, 18)
+                hx = max(8, (self.width() - hw) // 2)
+                hbar.setGeometry(hx, 8 + th + 4, hw, hh)
+            except Exception:
+                pass
+            hbar.raise_()
+            hbar.show()
         try:
             self.setStatusTip(text)
             self.setToolTip(f'Host SM · {text}')
@@ -1021,6 +1067,13 @@ class HostStateMachineWidget(QWidget):
         toast = getattr(self, '_liaison_hotkey_toast', None)
         if toast is not None:
             toast.hide()
+        hbar = getattr(self, '_liaison_toast_history_bar', None)
+        if hbar is not None:
+            hbar.hide()
+
+    def liaison_toast_history(self):
+        """wave30: 最近 N 次 Alt+L 切窗标签."""
+        return list(getattr(self, '_liaison_toast_history', None) or [])
 
     def set_liaison_window_sec(self, sec: int, *, persist: bool = True):
         combo = getattr(self, '_liaison_window', None)
@@ -1421,8 +1474,60 @@ class HostStateMachineWidget(QWidget):
             act_copy.setText('复制 path（无 path）')
         act_copy.triggered.connect(lambda *_: self.copy_alarm_film_path(item))
         menu.addAction(act_copy)
+        # wave30: 复制全部 paths
+        act_all = QAction('复制全部 paths', self)
+        all_paths = self._collect_alarm_film_paths()
+        act_all.setEnabled(bool(all_paths))
+        if all_paths:
+            act_all.setToolTip(f'{len(all_paths)} 条唯一 path')
+            act_all.setText(f'复制全部 paths（{len(all_paths)}）')
+        else:
+            act_all.setText('复制全部 paths（无）')
+        act_all.triggered.connect(lambda *_: self.copy_all_alarm_film_paths())
+        menu.addAction(act_all)
         self._last_alarm_ctx_item = item
         return menu
+
+    def _on_sev_bubble_clicked(self, event=None, key: str = 'all'):
+        """wave30: 芯片计数气泡单击 = 切严重度筛."""
+        try:
+            if event is not None and hasattr(event, 'button'):
+                if event.button() not in (Qt.MouseButton.LeftButton,):
+                    return
+        except Exception:
+            pass
+        self.set_alarm_severity_filter(key)
+
+    def _collect_alarm_film_paths(self) -> list:
+        """wave30: 报警历史中去重 filmPath（保序）."""
+        seen = set()
+        out = []
+        for entry in list(getattr(self, '_alarm_history', None) or []):
+            if not isinstance(entry, dict):
+                continue
+            fp = str(entry.get('filmPath') or '').strip()
+            if not fp or fp in seen:
+                continue
+            seen.add(fp)
+            out.append(fp)
+        return out
+
+    def copy_all_alarm_film_paths(self) -> bool:
+        """wave30: 全部唯一 filmPath → 剪贴板（换行分隔）."""
+        paths = self._collect_alarm_film_paths()
+        if not paths:
+            try:
+                self._log_line('复制全部 paths · 无胶片 path')
+            except Exception:
+                pass
+            return False
+        text = chr(10).join(paths)
+        try:
+            QApplication.clipboard().setText(text)
+            self._log_line(f'已复制全部胶片 path · {len(paths)}')
+        except Exception:
+            return False
+        return True
 
     def copy_alarm_film_path(self, item=None) -> bool:
         """wave29: 报警条目 filmPath → 剪贴板."""

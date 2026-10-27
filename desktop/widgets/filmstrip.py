@@ -1,12 +1,12 @@
 """Local-image filmstrip under the image viewport (VisionMaster 胶片条)."""
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QSettings, Signal, QSize
+from PySide6.QtCore import Qt, QSettings, Signal, QSize, QTimer, QEvent, QPoint
 from PySide6.QtGui import QIcon, QPixmap, QImage
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QListWidget,
     QListWidgetItem, QAbstractItemView, QFileDialog, QMessageBox, QComboBox,
-    QScrollArea, QFrame,
+    QScrollArea, QFrame, QToolTip,
 )
 
 from .switch import OrangeSwitch
@@ -763,7 +763,7 @@ class CompareThumbStrip(QWidget):
         self._lock_btn.setToolTip('锁定对比序（禁止拖拽）')
         self._lock_btn.toggled.connect(self._on_lock_toggled)
         head.addWidget(self._lock_btn)
-        # wave29: 锁序徽章
+        # wave29: 锁序徽章 · wave30: 单击切换锁
         self._lock_badge = QLabel('未锁')
         self._lock_badge.setObjectName('compareThumbLockBadge')
         self._lock_badge.setFixedHeight(16)
@@ -772,7 +772,9 @@ class CompareThumbStrip(QWidget):
             'background:#2a2c30;color:#6a7078;border:1px solid #3a3d42;'
             'border-radius:3px;padding:0 4px;font-size:9px;font-weight:600;'
         )
-        self._lock_badge.setToolTip('对比序锁态')
+        self._lock_badge.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._lock_badge.setToolTip('对比序锁态 · 单击切换')
+        self._lock_badge.mousePressEvent = lambda e: self._on_lock_badge_clicked(e)
         head.addWidget(self._lock_badge)
         self._reset_btn = QPushButton('↺')
         self._reset_btn.setObjectName('compareThumbReset')
@@ -799,13 +801,19 @@ class CompareThumbStrip(QWidget):
         )
         self._undo_depth_badge.setToolTip('撤销栈深度')
         head.addWidget(self._undo_depth_badge)
-        # wave29: 撤销栈清空钮
+        # wave29: 撤销栈清空钮 · wave30: 短按 tip / 长按清空
         self._undo_clear_btn = QPushButton('⊘')
         self._undo_clear_btn.setObjectName('compareThumbUndoClear')
         self._undo_clear_btn.setFixedSize(20, 20)
-        self._undo_clear_btn.setToolTip('清空撤销栈')
+        self._undo_clear_btn.setToolTip('短按提示 · 长按清空撤销栈')
         self._undo_clear_btn.setEnabled(False)
-        self._undo_clear_btn.clicked.connect(self.clear_order_undo)
+        self._undo_clear_long_ms = 650
+        self._undo_clear_long_fired = False
+        self._undo_clear_timer = QTimer(self)
+        self._undo_clear_timer.setSingleShot(True)
+        self._undo_clear_timer.timeout.connect(self._on_undo_clear_long_press)
+        self._undo_clear_btn.pressed.connect(self._on_undo_clear_pressed)
+        self._undo_clear_btn.released.connect(self._on_undo_clear_released)
         head.addWidget(self._undo_clear_btn)
         self._clear_btn = QPushButton('×')
         self._clear_btn.setObjectName('compareThumbClear')
@@ -939,6 +947,53 @@ class CompareThumbStrip(QWidget):
         except Exception:
             pass
 
+    def _on_lock_badge_clicked(self, event=None):
+        """wave30: 锁序徽章单击切换锁."""
+        try:
+            if event is not None and hasattr(event, 'button'):
+                if event.button() not in (Qt.MouseButton.LeftButton,):
+                    return
+        except Exception:
+            pass
+        new_locked = not bool(getattr(self, '_order_locked', False))
+        self.set_order_locked(new_locked, persist=True)
+
+    def _on_undo_clear_pressed(self):
+        """wave30: 按下开始长按计时."""
+        self._undo_clear_long_fired = False
+        timer = getattr(self, '_undo_clear_timer', None)
+        if timer is not None:
+            timer.start(int(getattr(self, '_undo_clear_long_ms', 650) or 650))
+
+    def _on_undo_clear_released(self):
+        """wave30: 短按 → 确认 tip；长按已触发则跳过."""
+        timer = getattr(self, '_undo_clear_timer', None)
+        if timer is not None and timer.isActive():
+            timer.stop()
+        if getattr(self, '_undo_clear_long_fired', False):
+            return
+        n = len(getattr(self, '_order_undo_stack', None) or [])
+        tip = f'长按 ⊘ 清空撤销栈（当前 {n}）' if n else '撤销栈为空'
+        btn = getattr(self, '_undo_clear_btn', None)
+        try:
+            if btn is not None:
+                QToolTip.showText(btn.mapToGlobal(QPoint(0, btn.height())), tip, btn)
+                btn.setToolTip(tip + ' · 短按提示 / 长按清空')
+        except Exception:
+            pass
+
+    def _on_undo_clear_long_press(self):
+        """wave30: 长按确认清空."""
+        self._undo_clear_long_fired = True
+        ok = self.clear_order_undo()
+        btn = getattr(self, '_undo_clear_btn', None)
+        tip = '已清空撤销栈' if ok else '撤销栈为空'
+        try:
+            if btn is not None:
+                QToolTip.showText(btn.mapToGlobal(QPoint(0, btn.height())), tip, btn)
+        except Exception:
+            pass
+
     def _on_lock_toggled(self, on: bool):
         self._order_locked = bool(on)
         self._apply_lock_chrome()
@@ -966,14 +1021,14 @@ class CompareThumbStrip(QWidget):
                     'background:#3a3420;color:#e0b84a;border:1px solid #e0b84a;'
                     'border-radius:3px;padding:0 4px;font-size:9px;font-weight:700;'
                 )
-                lb.setToolTip('对比序已锁定（拖拽禁用；↺ 复位仍可用）')
+                lb.setToolTip('对比序已锁定（拖拽禁用；↺ 复位仍可用）· 单击解锁')
             else:
                 lb.setText('未锁')
                 lb.setStyleSheet(
                     'background:#2a2c30;color:#6a7078;border:1px solid #3a3d42;'
                     'border-radius:3px;padding:0 4px;font-size:9px;font-weight:600;'
                 )
-                lb.setToolTip('对比序未锁定')
+                lb.setToolTip('对比序未锁定 · 单击锁定')
         # wave28: 锁序时复位仍可用提示
         rbtn = getattr(self, '_reset_btn', None)
         if rbtn is not None:
@@ -1060,7 +1115,9 @@ class CompareThumbStrip(QWidget):
         cbtn = getattr(self, '_undo_clear_btn', None)
         if cbtn is not None:
             cbtn.setEnabled(n > 0)
-            cbtn.setToolTip(f'清空撤销栈（{n}）' if n else '清空撤销栈（空）')
+            cbtn.setToolTip(
+                f'短按提示 · 长按清空撤销栈（{n}）' if n else '短按提示 · 长按清空撤销栈（空）'
+            )
 
     def clear_order_undo(self) -> bool:
         """wave29: 清空对比序撤销栈."""

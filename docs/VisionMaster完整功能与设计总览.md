@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㉚ · 气泡单击筛 · 清空长按确认 · 复制全部paths · Alt+L toast历史 · 锁徽章单击 · 2026-10-28】
+
+- **芯片气泡单击筛**：`hostAlarmSevCount_*` 手型+单击 → `set_alarm_severity_filter`（与芯片条同源）。
+- **撤销清空短按 tip / 长按清空**：`compareThumbUndoClear` 短按 `QToolTip` 确认；长按 ≥650ms → `clear_order_undo`。
+- **报警右键复制全部 paths**：`复制全部 paths（N）` → `copy_all_alarm_film_paths`（历史去重、换行剪贴板）。
+- **Alt+L toast 历史条**：`hostLiaisonToastHistory` 显示最近 ≤5 次切窗标签（`A → B → C`）；随 toast ~2.2s。
+- **锁序徽章单击切换**：`compareThumbLockBadge` 单击 → `set_order_locked` 并持久。
+- **冒烟**：`smoke-wave30-bubbleclick-undolongpress-copyall-toasthist-lockbadgeclick-e2e`（另回归 wave29）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆㉙ · 芯片计数气泡 · 撤销清空钮 · 报警右键复制path · Alt+L全局态提示 · 锁序徽章 · 2026-10-28】
 
 - **严重度芯片计数气泡**：`hostAlarmSevCount_{all|error|warning|info}` 随 `_alarm_severity_counts` 刷新；错红/警黄/讯青。
