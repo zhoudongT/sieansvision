@@ -41,7 +41,7 @@ class MainWindow(QMainWindow):
         self.backend.ready.connect(self.engine_online);self.backend.result.connect(self.engine_result)
         self.backend.error.connect(self.engine_error);self.backend.stopped.connect(self.engine_closed)
         if hasattr(self.backend,'progress'):self.backend.progress.connect(self.progress)
-        self.continuous=False;self.run_all_filmstrip=False;self._run_target=None;self.rail_category='';self.property_float=None;self._group_stack=[];self._group_breadcrumb=None
+        self.continuous=False;self.run_all_filmstrip=False;self._run_target=None;self.rail_category='';self.property_float=None;self._group_stack=[];self._group_breadcrumb=None;self._pending_trigger_cmds=[];self._comm_listener=None
         self.app_mode='design'  # design | run
         self.showing_all_flows=False
         self._left_pane=None;self._center_stack=None;self.run_mode_pane=None
@@ -128,6 +128,7 @@ class MainWindow(QMainWindow):
         a_chain=self.action('产线链',self.apply_production_demo_chain);a_chain.setToolTip('插入生产任务建议链');toolbar.addAction(a_chain)
         a_var=self.action('变量',lambda:self.open_panel('variables'));a_var.setToolTip('全局 / 流程变量');toolbar.addAction(a_var)
         a_trig=self.action('触发',self.open_global_triggers);a_trig.setToolTip('全局触发（字符串 / 事件）');toolbar.addAction(a_trig)
+        a_inj=self.action('注入RUN',lambda:self.guard(self.inject_run_trigger));a_inj.setToolTip('一键注入字符串 RUN → 全局触发（不打开对话框）');toolbar.addAction(a_inj)
         toolbar.addSeparator()
         self.run_action=self.action('▶ 单次',self.run_once,'Ctrl+Return');self.run_action.setToolTip('单次执行流程 (Ctrl+Return)');toolbar.addAction(self.run_action)
         self.cont_action=self.action('↻ 连续',self.run_continuous);self.cont_action.setToolTip('连续执行');toolbar.addAction(self.cont_action)
@@ -287,6 +288,7 @@ class MainWindow(QMainWindow):
             self.guard(lambda:self.open_project_file(path))
         else:
             self.show_platform_welcome()
+            self.reload_comm_listener()
         QTimer.singleShot(200, self.run_platform_health)
 
     def engine_result(self,request_id,result):
@@ -537,6 +539,7 @@ class MainWindow(QMainWindow):
             ops=', '.join(s.get('name') or s.get('operation') for s in project.get('steps',[]))
             nflows=len(project.get('flows') or [])
             self.log(f'已打开方案：{path.name} · {nflows} 个流程 · 模块：{ops}（含相机采集时无需预先打开图像，直接运行流程）')
+            self.reload_comm_listener()
             notes=(project.get('notes') or '').strip()
             if notes:
                 self.demo_notice.setText(notes);self.demo_notice.show()
@@ -881,6 +884,15 @@ class MainWindow(QMainWindow):
             else:
                 self.run_all_filmstrip=False;self.log('运行全部完成')
             return
+        if state in ('failed', 'cancelled'):
+            self._pending_trigger_cmds = []
+        elif state == 'completed' and not self.continuous and not self.run_all_filmstrip:
+            pending = list(getattr(self, '_pending_trigger_cmds', None) or [])
+            self._pending_trigger_cmds = []
+            if pending:
+                self.log(f'链式触发 · 续派 {len(pending)} 条')
+                QTimer.singleShot(0, lambda p=pending: self.guard(
+                    lambda: self._dispatch_global_triggers(p, reason='链式触发')))
         if self.continuous and state=='completed':
             cfg=normalize_source(self.document.project.get('sourceConfig'))
             target=self._run_target
@@ -1467,6 +1479,35 @@ class MainWindow(QMainWindow):
             self._group_breadcrumb.setVisible(False)
         self.log(f'已退出组合模块「{frame["name"]}」')
 
+
+    def reload_comm_listener(self):
+        """Start/refresh live Comm recvEvents listeners (TCP Server/UDP/Serial)."""
+        try:
+            from desktop.comm_listener import CommRecvListener
+            if self._comm_listener is None:
+                self._comm_listener = CommRecvListener(host=self, parent=self)
+                self._comm_listener.status.connect(lambda m: self.log(m))
+            else:
+                self._comm_listener.set_host(self)
+            started = self._comm_listener.reload(self.document.project)
+            if started:
+                self.log('通信监听已启动：' + '、'.join(started))
+        except Exception as err:
+            self.log(f'通信监听启动失败：{err}')
+
+    def inject_run_trigger(self):
+        """Toolbar one-shot: inject string RUN without opening 全局触发 dialog."""
+        try:
+            # Prefer live recv pipeline so recvEvents variable writebacks also run
+            if self._comm_listener is not None:
+                self._comm_listener.push_local('LocalLoop', 'RUN')
+                return
+            ok = bool(self.fire_string_trigger('RUN', reason='工具栏注入RUN'))
+            if not ok:
+                self.log('注入RUN：无匹配的字符串触发（请在全局触发中配置 RUN → 执行·单次）')
+        except Exception as err:
+            self.log(f'注入RUN失败：{err}')
+
     # ---- Wave2 通信管理 / B4 全局触发壳 ----
     def open_comm_manager(self):
         """Wave2: 通信管理窗（VM p=10）."""
@@ -1474,6 +1515,7 @@ class MainWindow(QMainWindow):
         dlg = CommManagerDialog(self.document, self)
         if dlg.exec():
             self.log('通信管理已更新')
+            self.reload_comm_listener()
 
     def open_global_triggers(self):
         from desktop.global_triggers import GlobalTriggersDialog
@@ -1549,17 +1591,22 @@ class MainWindow(QMainWindow):
         cmds = list(commands or [])
         if not cmds:
             return
-        for cmd in cmds:
+        for i, cmd in enumerate(cmds):
             raw = (cmd or {}).get('type') or ''
             ctype = ACTION_TO_COMMAND.get(raw) or raw
             if ctype not in COMMAND_TYPES and raw in COMMAND_TYPES:
                 ctype = raw
             cfg = (cmd or {}).get('config') or ''
             if ctype in ('执行·单次', '执行'):
-                self.run_once(); return  # run is async; further cmds after finish not chained yet
+                # Chain remaining commands after async run_once finishes
+                self._pending_trigger_cmds = list(cmds[i + 1:])
+                self.run_once()
+                return
             if ctype == '执行·连续':
+                self._pending_trigger_cmds = []  # continuous owns the loop
                 self.run_continuous(); return
             if ctype == '执行·停止':
+                self._pending_trigger_cmds = []
                 self.stop_run(); continue
             if ctype == '执行·暂停':
                 self.stop_run()
@@ -1567,6 +1614,7 @@ class MainWindow(QMainWindow):
                     self.operator_hmi._host_sm.set_state('Paused', '触发·暂停')
                 continue
             if ctype == '执行·继续':
+                self._pending_trigger_cmds = []
                 self.run_continuous(); return
             if ctype == '状态·报警':
                 if hasattr(self, 'operator_hmi') and getattr(self.operator_hmi, '_host_sm', None):
@@ -2025,6 +2073,11 @@ class MainWindow(QMainWindow):
         self.request('cloud/import',dict(name=path.name,content=content,unit=unit),imported)
 
     def closeEvent(self,event):
+        try:
+            if getattr(self, '_comm_listener', None) is not None:
+                self._comm_listener.stop()
+        except Exception:
+            pass
         if self.engine_stopped:
             if not self.closing and not self.confirm_discard(include_original=True):event.ignore();return
             event.accept();return

@@ -126,8 +126,12 @@ class VarCalcPanel(QWidget):
         add.clicked.connect(self._add)
         rem = QPushButton('删除选中')
         rem.clicked.connect(self._rem)
+        ins = QPushButton('插入上游字段')
+        ins.setToolTip('从最近一次运行结果挑选上游模块字段，插入到当前表达式')
+        ins.clicked.connect(self._insert_upstream_field)
         bar.addWidget(add)
         bar.addWidget(rem)
+        bar.addWidget(ins)
         bar.addStretch(1)
         lay.addLayout(bar)
         self._reload()
@@ -182,6 +186,50 @@ class VarCalcPanel(QWidget):
         elif c == 4:
             row['initOnRun'] = text not in ('否', '0', 'false', 'False', 'N', 'n')
         self._emit()
+
+
+    def _insert_upstream_field(self):
+        """Specialized-panel field picker: insert results.<id>.<field> into expression."""
+        from PySide6.QtWidgets import QInputDialog, QMessageBox
+        host = self.window()
+        last_result = getattr(host, 'last_result', None) if host else None
+        steps = list(self.project.get('steps') or [])
+        # Exclude self
+        sid = self.step.get('id')
+        upstream = [s for s in steps if s.get('id') and s.get('id') != sid]
+        if not upstream:
+            QMessageBox.information(self, '上游字段', '当前流程没有其他模块可供挑选。')
+            return
+        labels = [f"{i+1} {s.get('name') or s.get('operation') or s['id']}" for i, s in enumerate(upstream)]
+        choice, ok = QInputDialog.getItem(self, '上游模块', '选择模块', labels, 0, False)
+        if not ok or not choice:
+            return
+        idx = labels.index(choice)
+        node = upstream[idx]
+        try:
+            from desktop.forms import result_field_index
+            fi = result_field_index(last_result, [node])
+            fields = fi.get(node['id']) or ['ok', 'value', 'status']
+        except Exception:
+            fields = ['ok', 'value', 'status', 'payload', 'count']
+        field, ok = QInputDialog.getItem(self, '上游字段', f"模块 {node.get('name') or node['id']} 的字段", fields, 0, True)
+        if not ok or not field:
+            return
+        token = f"results.{node['id']}.{field}"
+        # Prefer selected row expression column
+        r = self.table.currentRow()
+        if r < 0:
+            r = 0 if self.table.rowCount() else -1
+        if r < 0:
+            self._add()
+            r = 0
+        item = self.table.item(r, 1)
+        cur = item.text() if item else ''
+        new_expr = (cur + ('+' if cur.strip() else '') + token) if cur else token
+        self._syncing = True
+        self.table.setItem(r, 1, QTableWidgetItem(new_expr))
+        self._syncing = False
+        self._on_item(self.table.item(r, 1))
 
     def _add(self):
         rows = self.params.setdefault('expressions', [])

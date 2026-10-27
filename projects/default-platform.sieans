@@ -268,5 +268,53 @@
         "enabled": true
       }
     ]
+  },
+  "commManager": {
+    "devices": [
+      {
+        "name": "LocalLoop",
+        "protocol": "Local Bus",
+        "host": "",
+        "port": 0,
+        "enabled": true,
+        "remark": "进程内事件总线（桌面演示；流程 send↔receive 同进程互通）"
+      },
+      {
+        "id": "trigger-listen",
+        "name": "TriggerListen",
+        "protocol": "TCP Server",
+        "host": "127.0.0.1",
+        "port": 19777,
+        "enabled": true,
+        "remark": "全局触发直播监听：向 127.0.0.1:19777 发送 RUN 即可执行·单次"
+      }
+    ],
+    "recvEvents": [
+      {
+        "name": "触发字串",
+        "device": "TriggerListen",
+        "message": "",
+        "topic": "",
+        "variable": "flow.commLastRecv"
+      },
+      {
+        "name": "Local注入",
+        "device": "LocalLoop",
+        "message": "",
+        "topic": "",
+        "variable": "flow.commLastRecv"
+      }
+    ],
+    "sendEvents": [],
+    "heartbeat": {
+      "enabled": false,
+      "intervalMs": 5000,
+      "payload": "HB"
+    },
+    "response": {
+      "enabled": false,
+      "timeoutMs": 3000,
+      "ack": "OK"
+    }
   }
 }

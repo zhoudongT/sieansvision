@@ -279,6 +279,15 @@
         "enabled": true,
         "host": "",
         "port": 0
+      },
+      {
+        "id": "trigger-listen",
+        "name": "TriggerListen",
+        "protocol": "TCP Server",
+        "host": "127.0.0.1",
+        "port": 19777,
+        "enabled": true,
+        "remark": "全局触发直播监听：向 127.0.0.1:19777 发送 RUN 即可执行·单次"
       }
     ],
     "sendEvents": [
@@ -290,11 +299,28 @@
     ],
     "recvEvents": [
       {
+        "name": "触发字串",
+        "device": "TriggerListen",
+        "message": "",
+        "topic": "",
+        "variable": "flow.commLastRecv"
+      },
+      {
         "device": "LocalLoop",
         "variable": "flow.recvData",
         "demoPayload": ""
       }
-    ]
+    ],
+    "heartbeat": {
+      "enabled": false,
+      "intervalMs": 5000,
+      "payload": "HB"
+    },
+    "response": {
+      "enabled": false,
+      "timeoutMs": 3000,
+      "ack": "OK"
+    }
   },
   "globalTriggers": {
     "events": [

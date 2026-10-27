@@ -186,22 +186,41 @@ class GroupParamPanel(QWidget):
         chain = QPushButton('⛓')
         chain.setFixedWidth(28)
         chain.setToolTip('挑选订阅源')
-        chain.clicked.connect(lambda *_ , t=table, rr=r, k=kind: self._io_bind_row(t, rr, k))
         rm = QPushButton('删')
         rm.setFixedWidth(28)
-        rm.clicked.connect(lambda *_ , t=table, rr=r: self._io_remove_row(t, rr))
         ol.addWidget(chain)
         ol.addWidget(rm)
         table.setCellWidget(r, 3, ops)
         table.blockSignals(False)
+        self._io_rebind_ops(table, kind)
+
+    def _io_rebind_ops(self, table, kind):
+        """Rebuild ⛓/删 widgets so row indices stay correct after add/delete/reorder."""
+        for r in range(table.rowCount()):
+            ops = QWidget()
+            ol = QHBoxLayout(ops)
+            ol.setContentsMargins(2, 0, 2, 0)
+            chain = QPushButton('⛓')
+            chain.setFixedWidth(28)
+            chain.setToolTip('挑选订阅源')
+            rm = QPushButton('删')
+            rm.setFixedWidth(28)
+            chain.clicked.connect(lambda *_, t=table, rr=r, k=kind: self._io_bind_row(t, rr, k))
+            rm.clicked.connect(lambda *_, t=table, rr=r, k=kind: self._io_remove_row(t, rr, k))
+            ol.addWidget(chain)
+            ol.addWidget(rm)
+            table.setCellWidget(r, 3, ops)
 
     def _io_add_row(self, table, kind):
         self._io_append_row(table, kind, ['NewParam', 'ANY', ''])
         self._emit()
 
-    def _io_remove_row(self, table, row):
+    def _io_remove_row(self, table, row, kind=None):
         if 0 <= row < table.rowCount():
             table.removeRow(row)
+            if kind is None:
+                kind = 'inputs' if table is getattr(self, '_inputs_table', None) else 'outputs'
+            self._io_rebind_ops(table, kind)
             self._emit()
 
     def _io_bind_row(self, table, row, kind):
