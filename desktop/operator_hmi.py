@@ -151,6 +151,11 @@ class ProductionStatsPanel(QWidget):
         self._pause_btn.setText('▶ 继续计数' if on else '⏸ 暂停计数')
         self.pauseToggled.emit(self._paused)
 
+    def _copy_history(self):
+        from PySide6.QtWidgets import QApplication
+        lines = list(self._history) if self._history else ['(暂无结果)']
+        QApplication.clipboard().setText('\n'.join(lines))
+
     def reset(self):
         self._ok = 0
         self._ng = 0
