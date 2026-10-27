@@ -89,6 +89,7 @@ class ProductionStatsPanel(QWidget):
         self._ng = 0
         self._paused = False
         self._history = []  # newest first, max 40
+        self._gate_key = None  # None → auto probe flow vars
         root = QVBoxLayout(self)
         root.setContentsMargins(4, 4, 4, 4)
         root.setSpacing(4)
@@ -134,8 +135,15 @@ class ProductionStatsPanel(QWidget):
         copy_btn.setToolTip('复制最近结果到剪贴板（便于产线交接/对账）')
         copy_btn.clicked.connect(self._copy_history)
         btn_row.addWidget(copy_btn)
+        self._gate_btn = QPushButton('判定门')
+        self._gate_btn.setToolTip('选择 flow 变量作为 OK/NG 判定门（默认自动探测 passGate/commOk/…）')
+        self._gate_btn.clicked.connect(self._pick_gate_key)
+        btn_row.addWidget(self._gate_btn)
         btn_row.addStretch(1)
         root.addLayout(btn_row)
+        self._gate_lab = QLabel('判定门：自动')
+        self._gate_lab.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
+        root.addWidget(self._gate_lab)
 
         cap = QLabel('最近结果')
         cap.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;font-weight:600;')
@@ -155,6 +163,34 @@ class ProductionStatsPanel(QWidget):
         from PySide6.QtWidgets import QApplication
         lines = list(self._history) if self._history else ['(暂无结果)']
         QApplication.clipboard().setText('\n'.join(lines))
+
+    def set_gate_key(self, key: str | None):
+        key = (key or '').strip() or None
+        self._gate_key = key
+        if hasattr(self, '_gate_lab'):
+            self._gate_lab.setText(f'判定门：{key}' if key else '判定门：自动')
+        if hasattr(self, '_gate_btn'):
+            self._gate_btn.setText(f'门:{key}' if key else '判定门')
+
+    def gate_key(self):
+        return self._gate_key
+
+    def _pick_gate_key(self):
+        from PySide6.QtWidgets import QInputDialog
+        options = ['(自动)', 'passGate', 'commOk', 'passed', 'ok', 'ResultOK', 'taskStatus']
+        cur = self._gate_key or '(自动)'
+        idx = options.index(cur) if cur in options else 0
+        choice, ok = QInputDialog.getItem(
+            self, '判定门变量',
+            '选择 flow.* 变量名（OK 当且仅当真值）\n也可手填自定义名：',
+            options, idx, True,
+        )
+        if not ok:
+            return
+        if not choice or choice == '(自动)':
+            self.set_gate_key(None)
+        else:
+            self.set_gate_key(choice.strip())
 
     def reset(self):
         self._ok = 0
@@ -205,9 +241,14 @@ class ProductionStatsPanel(QWidget):
         self._total_lab.setText(f'总量\n{total}')
         if total:
             y = 100.0 * self._ok / total
-            self._yield_lab.setText(f'良率\n{y:.1f}%')
+            self._yield_lab.setText(f'良率 {y:.1f}%\n{self._ok}/{total}')
+            self._yield_lab.setToolTip(
+                f'良率 = OK/(OK+NG) = {self._ok}/{total} = {y:.2f}%\n'
+                '暂停计数时不累计；清零后重新统计。'
+            )
         else:
-            self._yield_lab.setText('良率\n—')
+            self._yield_lab.setText('良率 —\n0/0')
+            self._yield_lab.setToolTip('尚无计数。运行完成后按判定门 (gate) 累计 OK/NG。')
 
 
 class OperatorHmiView(QWidget):
@@ -453,11 +494,24 @@ class OperatorHmiView(QWidget):
             if state == 'failed':
                 detail = str(result.get('error') or 'failed')
             else:
-                # Prefer explicit gate variables (passGate / commOk / passed)
+                # Prefer explicit gate variables (panel gateKey / fixedBars.gateKey / auto)
                 vars_bag = (result.get('variables') or {})
                 flow_vars = vars_bag.get('flow') if isinstance(vars_bag, dict) else {}
                 if isinstance(flow_vars, dict):
-                    for gate_key in ('passGate', 'commOk', 'passed', 'ok', 'ResultOK'):
+                    preferred = []
+                    for panel in getattr(self, '_stats_panels', []) or []:
+                        gk = getattr(panel, 'gate_key', lambda: None)()
+                        if gk:
+                            preferred.append(gk)
+                    fb_gate = (getattr(self, '_fixed_bars_cache', {}) or {}).get('gateKey')
+                    if fb_gate:
+                        preferred.append(str(fb_gate))
+                    auto = ('passGate', 'commOk', 'passed', 'ok', 'ResultOK')
+                    seen = set(); keys = []
+                    for k in list(preferred) + list(auto):
+                        if k and k not in seen:
+                            seen.add(k); keys.append(k)
+                    for gate_key in keys:
                         if gate_key in flow_vars:
                             val = flow_vars.get(gate_key)
                             truthy = val not in (0, 0.0, False, None, '', '0', 'false', 'False')
@@ -531,9 +585,17 @@ class OperatorHmiView(QWidget):
                 w.deleteLater()
 
     def _apply_fixed_bars(self, fb: dict):
+        self._fixed_bars_cache = dict(fb or {})
         cam = fb.get('cameraBind') or CAMERA_BIND_OPTIONS[0]
         comm = fb.get('commBind') or COMM_BIND_OPTIONS[0]
-        tip = f'相机:{cam} · 通讯:{comm}'
+        gate = (fb.get('gateKey') or '').strip()
+        tip = f'相机:{cam} · 通讯:{comm}' + (f' · 判定门:flow.{gate}' if gate else '')
+        for panel in getattr(self, '_stats_panels', []) or []:
+            try:
+                if gate and not panel.gate_key():
+                    panel.set_gate_key(gate)
+            except Exception:
+                pass
         if fb.get('top'):
             self._fix_top.setText(f'顶部固定栏 · {tip}')
             self._fix_top.show()

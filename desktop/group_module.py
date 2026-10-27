@@ -175,7 +175,7 @@ class GroupParamPanel(QWidget):
         bar.addWidget(add)
         bar.addStretch(1)
         v.addLayout(bar)
-        note = QLabel('I/O 可编辑并随方案保存；订阅关系可用 ⛓ 挑选，也可手填 results./flow. 路径。')
+        note = QLabel('I/O 可编辑并随方案保存；⛓ 订阅源、↑ 上游字段、复 复制行；也可手填 results./flow. 路径。')
         note.setWordWrap(True)
         note.setObjectName('dialogHint')
         v.addWidget(note)
@@ -206,19 +206,30 @@ class GroupParamPanel(QWidget):
         self._io_rebind_ops(table, kind)
 
     def _io_rebind_ops(self, table, kind):
-        """Rebuild ⛓/删 widgets so row indices stay correct after add/delete/reorder."""
+        """Rebuild ⛓/插入/删 widgets so row indices stay correct after add/delete/reorder."""
         for r in range(table.rowCount()):
             ops = QWidget()
             ol = QHBoxLayout(ops)
             ol.setContentsMargins(2, 0, 2, 0)
+            ol.setSpacing(2)
             chain = QPushButton('⛓')
             chain.setFixedWidth(28)
-            chain.setToolTip('挑选订阅源')
+            chain.setToolTip('挑选订阅源（Bind 对话框 / 上游字段）')
+            ins = QPushButton('↑')
+            ins.setFixedWidth(28)
+            ins.setToolTip('插入上游字段 token（results.<模块>.字段）')
+            dup = QPushButton('复')
+            dup.setFixedWidth(28)
+            dup.setToolTip('复制本行')
             rm = QPushButton('删')
             rm.setFixedWidth(28)
             chain.clicked.connect(lambda *_, t=table, rr=r, k=kind: self._io_bind_row(t, rr, k))
+            ins.clicked.connect(lambda *_, t=table, rr=r, k=kind: self._io_insert_upstream(t, rr, k))
+            dup.clicked.connect(lambda *_, t=table, rr=r, k=kind: self._io_dup_row(t, rr, k))
             rm.clicked.connect(lambda *_, t=table, rr=r, k=kind: self._io_remove_row(t, rr, k))
             ol.addWidget(chain)
+            ol.addWidget(ins)
+            ol.addWidget(dup)
             ol.addWidget(rm)
             table.setCellWidget(r, 3, ops)
 
@@ -279,6 +290,48 @@ class GroupParamPanel(QWidget):
         elif kind == 'inputs' and name == 'InputROI':
             self.input_roi.setText(choice)
         self._emit()
+
+
+    def _io_insert_upstream(self, table, row, kind):
+        """Direct upstream_field_picker into binding cell (density shortcut)."""
+        if row < 0 or row >= table.rowCount():
+            return
+        try:
+            from desktop.upstream_field_picker import pick_upstream_field, host_last_result
+            picked = pick_upstream_field(
+                self, self.project, step_id=self.step.get('id'),
+                last_result=host_last_result(self),
+            )
+        except Exception as exc:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, '插入上游字段', f'挑选失败：{exc}')
+            return
+        if not picked:
+            return
+        choice = picked[2]
+        table.blockSignals(True)
+        table.setItem(row, 2, QTableWidgetItem(choice))
+        table.blockSignals(False)
+        name_item = table.item(row, 0)
+        name = (name_item.text() if name_item else '').strip()
+        if kind == 'inputs' and name == 'ImageData':
+            self.image_data.setText(choice)
+        elif kind == 'inputs' and name == 'InputROI':
+            self.input_roi.setText(choice)
+        self._emit()
+
+    def _io_dup_row(self, table, row, kind):
+        if row < 0 or row >= table.rowCount():
+            return
+        vals = []
+        for c in range(3):
+            it = table.item(row, c)
+            vals.append(it.text() if it else '')
+        if vals[0]:
+            vals[0] = vals[0] + '_copy'
+        self._io_append_row(table, kind, vals)
+        self._emit()
+
 
     def _read_io_table(self, kind):
         table = getattr(self, f'_{kind}_table', None)

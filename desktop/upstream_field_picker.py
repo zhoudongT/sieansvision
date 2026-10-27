@@ -21,12 +21,18 @@ def pick_upstream_field(parent: QWidget, project: dict, step_id=None, last_resul
     node = upstream[labels.index(choice)]
     try:
         from desktop.forms import result_field_index
-        fi = result_field_index(last_result, [node])
-        fields = list(fi.get(node['id']) or [])
+        # last_result may be engine payload or already {results:[...]}; normalize
+        lr = last_result
+        if isinstance(lr, dict) and 'results' not in lr and 'output' in lr:
+            lr = {'results': [lr]}
+        fi = result_field_index(lr if isinstance(lr, dict) else None, [node])
+        fields = [f for f in list(fi.get(node['id']) or []) if isinstance(f, str) and f]
+        # de-dupe preserve order
+        seen = set(); fields = [f for f in fields if not (f in seen or seen.add(f))]
     except Exception:
         fields = []
     if not fields:
-        op = node.get('operation') or ''
+        op = str(node.get('operation') or '')
         fields = {
             'locate': ['matches', 'matches.0', 'score', 'ok', 'angle', 'x', 'y'],
             'pose_correct': ['fixtureX', 'fixtureY', 'fixtureAngle', 'matrix', 'ok'],
@@ -45,9 +51,11 @@ def pick_upstream_field(parent: QWidget, project: dict, step_id=None, last_resul
             'condition_branch': ['ok', 'branch', 'matched'],
             'production_task': ['ok', 'status', 'count', 'cycle'],
         }.get(op, ['ok', 'status', 'value', 'count', 'payload'])
+    if not fields:
+        fields = ['ok', 'status', 'value', 'payload']
     field, ok = QInputDialog.getItem(
         parent, '上游字段',
-        f"模块 {node.get('name') or node['id']} 的字段",
+        f"模块 {node.get('name') or node['id']} 的字段（可手改）",
         fields, 0, True,
     )
     if not ok or not field:

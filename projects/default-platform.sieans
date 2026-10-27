@@ -242,7 +242,8 @@
       "showRunStatus": true,
       "showOkNg": true,
       "showCounters": true,
-      "showHistory": true
+      "showHistory": true,
+      "gateKey": "passGate"
     },
     "meta": {
       "template": "open_and_run",

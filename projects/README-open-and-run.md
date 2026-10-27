@@ -21,6 +21,7 @@
 | `open-and-run-defects.sieans` | 图源 → 缺陷检测 | OK/NG + 区域 |
 | `open-and-run-ninepoint.sieans` | 标定九点 | 基本参数表 + 结果变量 |
 | `open-and-run-script.sieans` | 脚本模块 | 脚本输出写入变量 |
+| `open-and-run-format-protocol.sieans` | 样例报文 → 协议解析 → 格式化 → passGate | 运行后 flow.formatted / passGate；面板可插上游字段 |
 | `open-and-run-group-comm.sieans` | Group + Comm（TCP/LocalBus）+ 触发串 | Listen 徽章、`RUN`/`STOP`、HB→变量 |
 | `default-platform.sieans` | 默认产线壳：图源 + HMI 生产统计 + Comm | 打开即 HMI；计数/历史/复制历史 |
 | `mv-camera-ocr.sieans` | 相机/OCR 样例 | 需相机或离线帧 |

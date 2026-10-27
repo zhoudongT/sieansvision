@@ -1,0 +1,328 @@
+{
+  "version": 2,
+  "id": "b3f0fd3c5a2c467c",
+  "name": "打开即跑 · 协议解析/格式化",
+  "sourcePosition": {
+    "x": 300,
+    "y": 40
+  },
+  "variables": {},
+  "sourceConfig": {
+    "mode": "local",
+    "pixelFormat": "RGB24",
+    "intervalMs": 200,
+    "saveInSolution": false,
+    "showImageName": true,
+    "snStart": 0,
+    "imageCache": 0,
+    "outputMono8": false,
+    "stitchEnable": false,
+    "stitchStartY": 0,
+    "stitchHeight": 0,
+    "stitchClearOnTrigger": false,
+    "autoSwitch": false,
+    "stopAtLast": true,
+    "charFilterEnable": false,
+    "inputChar": "",
+    "triggerChar": "",
+    "cameraId": "",
+    "cameraParams": {},
+    "exposure": 0.0,
+    "gain": 0.0,
+    "images": [
+      "/home/allen/文档/sieansvision/public/vision/samples/circle-ring.png",
+      "/home/allen/文档/sieansvision/public/vision/samples/circle-hole.png",
+      "/home/allen/文档/sieansvision/public/vision/samples/caliper-line.png",
+      "/home/allen/文档/sieansvision/public/vision/samples/fixture-multiple.png"
+    ],
+    "currentIndex": 0
+  },
+  "steps": [
+    {
+      "id": "4ea5c66337814545",
+      "operation": "var_calc",
+      "name": "样例报文",
+      "params": {
+        "scope": "flow",
+        "expressions": [
+          {
+            "name": "samplePayload",
+            "expression": "\"OK,12.5,PASS\"",
+            "initial": "OK,12.5,PASS",
+            "outType": "string",
+            "initOnRun": true
+          }
+        ]
+      },
+      "position": {
+        "x": 300,
+        "y": 120
+      },
+      "imageFrom": "source"
+    },
+    {
+      "id": "0892fe9c919548aa",
+      "operation": "protocol_parse",
+      "name": "协议解析",
+      "params": {
+        "sourceVar": "samplePayload",
+        "protocol": "delimited",
+        "delimiter": ",",
+        "fields": "status,value,judge",
+        "pattern": "",
+        "fixedWidths": "8,8,16",
+        "targetPrefix": "parsed_"
+      },
+      "position": {
+        "x": 300,
+        "y": 220
+      },
+      "imageFrom": "4ea5c66337814545"
+    },
+    {
+      "id": "eb366fbcb9cb43b6",
+      "operation": "format_data",
+      "name": "格式化输出",
+      "params": {
+        "template": "STATUS={0} VALUE={1} JUDGE={2}",
+        "args": "parsed_status,parsed_value,parsed_judge",
+        "targetVar": "formatted",
+        "scope": "flow",
+        "emptyDefault": ""
+      },
+      "position": {
+        "x": 300,
+        "y": 320
+      },
+      "imageFrom": "0892fe9c919548aa"
+    },
+    {
+      "id": "010e4c6014c6443b",
+      "operation": "var_calc",
+      "name": "判定与回写",
+      "params": {
+        "scope": "flow",
+        "expressions": [
+          {
+            "name": "passGate",
+            "expression": "1",
+            "initial": 1,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "lastFormatted",
+            "expression": "formatted",
+            "initial": "",
+            "outType": "string",
+            "initOnRun": true
+          }
+        ]
+      },
+      "position": {
+        "x": 300,
+        "y": 420
+      },
+      "imageFrom": "eb366fbcb9cb43b6"
+    }
+  ],
+  "edges": [
+    {
+      "id": "ae296d7d22f34a16",
+      "from": "source",
+      "to": "4ea5c66337814545",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "68cc9cb105e84283",
+      "from": "4ea5c66337814545",
+      "to": "0892fe9c919548aa",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "9dbe927b1807418b",
+      "from": "0892fe9c919548aa",
+      "to": "eb366fbcb9cb43b6",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "54480283a9844088",
+      "from": "eb366fbcb9cb43b6",
+      "to": "010e4c6014c6443b",
+      "fromPort": "bottom",
+      "toPort": "top"
+    }
+  ],
+  "runUi": {
+    "split": "4",
+    "placements": [
+      {
+        "name": "图像",
+        "page": 3,
+        "cell": 0,
+        "category": "基础"
+      },
+      {
+        "name": "OK/NG",
+        "page": 3,
+        "cell": 1,
+        "category": "基础"
+      },
+      {
+        "name": "运行控制",
+        "page": 3,
+        "cell": 2,
+        "category": "基础"
+      },
+      {
+        "name": "生产统计",
+        "page": 3,
+        "cell": 3,
+        "category": "图表"
+      }
+    ],
+    "controls": {
+      "图像": {
+        "commands": [],
+        "binding": "source"
+      },
+      "OK/NG": {
+        "commands": [],
+        "binding": ""
+      },
+      "运行控制": {
+        "commands": [
+          {
+            "type": "执行·单次",
+            "config": ""
+          },
+          {
+            "type": "执行·连续",
+            "config": ""
+          },
+          {
+            "type": "执行·停止",
+            "config": ""
+          }
+        ],
+        "binding": ""
+      },
+      "生产统计": {
+        "commands": [],
+        "binding": "stats"
+      }
+    },
+    "fixedBars": {
+      "top": false,
+      "bottom": true,
+      "left": false,
+      "right": false,
+      "cameraBind": "未绑定",
+      "commBind": "TCP.连接状态",
+      "showRunStatus": true,
+      "showOkNg": true,
+      "showCounters": true,
+      "showHistory": true,
+      "gateKey": "passGate"
+    },
+    "meta": {
+      "template": "open_and_run",
+      "version": 1,
+      "openAndRun": true
+    }
+  },
+  "commManager": {
+    "devices": [
+      {
+        "id": "local-loop",
+        "name": "LocalLoop",
+        "protocol": "Local Bus",
+        "enabled": true,
+        "host": "",
+        "port": 0
+      },
+      {
+        "id": "trigger-listen",
+        "name": "TriggerListen",
+        "protocol": "TCP Server",
+        "host": "127.0.0.1",
+        "port": 19777,
+        "enabled": true,
+        "remark": "全局触发直播监听：向 127.0.0.1:19777 发送 RUN 即可执行·单次"
+      }
+    ],
+    "sendEvents": [
+      {
+        "device": "LocalLoop",
+        "variable": "flow.commPayload",
+        "message": ""
+      }
+    ],
+    "recvEvents": [
+      {
+        "name": "触发字串",
+        "device": "TriggerListen",
+        "message": "",
+        "topic": "",
+        "variable": "flow.commLastRecv"
+      },
+      {
+        "device": "LocalLoop",
+        "variable": "flow.recvData",
+        "demoPayload": ""
+      }
+    ],
+    "heartbeat": {
+      "enabled": true,
+      "intervalMs": 5000,
+      "payload": "HB"
+    },
+    "response": {
+      "enabled": true,
+      "timeoutMs": 3000,
+      "ack": "OK"
+    }
+  },
+  "globalTriggers": {
+    "events": [
+      {
+        "event": "流程开始",
+        "match": "流程开始",
+        "partial": false,
+        "commandType": "界面链接",
+        "config": "日志",
+        "enabled": true
+      },
+      {
+        "event": "流程结束",
+        "match": "流程结束",
+        "partial": false,
+        "commandType": "界面链接",
+        "config": "日志",
+        "enabled": true
+      }
+    ],
+    "strings": [
+      {
+        "event": "RUN",
+        "match": "RUN",
+        "partial": false,
+        "commandType": "执行·单次",
+        "config": "",
+        "enabled": true
+      },
+      {
+        "event": "STOP",
+        "match": "STOP",
+        "partial": false,
+        "commandType": "执行·停止",
+        "config": "",
+        "enabled": true
+      }
+    ]
+  },
+  "notes": "双击打开即可跑：样例报文 → protocol_parse → format_data → passGate。\n属性面板可对源变量/参数/目标变量点「插入上游字段」。\n无需外设；若要联调通信，可在通信管理中绑定 LocalBus/TCP 后再加 receive/send 模块。"
+}

@@ -400,7 +400,7 @@ class MainWindow(QMainWindow):
             cfg=normalize_source(self.document.project.get('sourceConfig'))
             flo.show_source(cfg, title='0 图像源')
             # sync filmstrip visibility for local mode
-            self.filmstrip.setVisible(cfg.get('mode','local')=='local')
+            self._sync_filmstrip_visibility()
             return
         step=next((s for s in self.document.project['steps'] if s['id']==node_id),None)
         if not step:return
@@ -421,7 +421,7 @@ class MainWindow(QMainWindow):
         self.filmstrip.set_paths(paths, int(p['sourceConfig'].get('currentIndex') or 0), root=self.root)
         self.filmstrip.set_auto_switch(bool(p['sourceConfig'].get('autoSwitch')))
         self.filmstrip.set_stop_at_last(bool(p['sourceConfig'].get('stopAtLast')))
-        self.filmstrip.setVisible(p['sourceConfig'].get('mode','local')=='local')
+        self._sync_filmstrip_visibility()
         self._sync_filmstrip_interval_hint()
         self.guard(lambda:self.document.commit(p))
 
@@ -493,7 +493,7 @@ class MainWindow(QMainWindow):
             self.filmstrip.auto_switch.blockSignals(False)
             if hasattr(self.filmstrip,'stop_at_last'):
                 self.filmstrip.stop_at_last.blockSignals(False)
-            self.filmstrip.setVisible(cfg.get('mode','local')=='local' and self.app_mode=='design')
+            self._sync_filmstrip_visibility()
             self._sync_filmstrip_interval_hint()
         self.refresh_config_status()
         if self.app_mode=='run' and hasattr(self,'operator_hmi'):
@@ -1127,63 +1127,95 @@ class MainWindow(QMainWindow):
         """Pull latest session frame into self.image; raise clear Chinese errors if not connected."""
         if not self.backend.is_ready:
             raise ValueError('原生引擎未就绪，无法从相机 SDK 取图')
-        # Synchronous-ish: use a tiny nested event loop for one capture; keep UI responsive.
         from PySide6.QtCore import QEventLoop, QTimer
-        status_box = {'value': None, 'error': None}
+        from PySide6.QtWidgets import QApplication
+        cam = cfg.get('cameraId') or (cfg.get('cameraParams') or {}).get('deviceId') or '未选择'
+        mode = cfg.get('mode') or 'camera'
+        self.log(f'相机取图中… 模式={mode} · 设备={cam}')
+        self._sync_filmstrip_visibility()
+        status_box = {'value': None, 'error': None, 'timed_out': False}
         loop = QEventLoop(self)
-        rid = self.backend.request('camera/session/status', {})
+        try:
+            rid = self.backend.request('camera/session/status', {})
+        except Exception as exc:
+            raise ValueError(f'无法查询相机会话状态：{exc}') from exc
+
         def on_result(request_id, value):
             if request_id != rid and status_box.get('cap_rid') != request_id:
                 return
             if request_id == rid:
-                status_box['value'] = value
-                st = (value or {}).get('state') if isinstance(value, dict) else None
+                status_box['value'] = value if isinstance(value, dict) else {}
+                st = status_box['value'].get('state')
                 if st != 'running':
                     loop.quit()
                     return
-                # capture latest
-                sid = value.get('id')
-                cap = self.backend.request('camera/capture', {
-                    'driver': 'session', 'sessionId': sid,
-                    'framePolicy': 'latest', 'maxAgeMs': 5000, 'timeoutMs': 5000,
-                })
+                sid = status_box['value'].get('id')
+                if not sid:
+                    status_box['error'] = '相机会话缺少 id'
+                    loop.quit()
+                    return
+                try:
+                    cap = self.backend.request('camera/capture', {
+                        'driver': 'session', 'sessionId': sid,
+                        'framePolicy': 'latest', 'maxAgeMs': 5000, 'timeoutMs': 5000,
+                    })
+                except Exception as exc:
+                    status_box['error'] = f'发起取帧失败：{exc}'
+                    loop.quit()
+                    return
                 status_box['cap_rid'] = cap
                 return
             if request_id == status_box.get('cap_rid'):
-                status_box['frame'] = value
+                status_box['frame'] = value if isinstance(value, dict) else {}
                 loop.quit()
+
         def on_error(request_id, message):
             if request_id in (rid, status_box.get('cap_rid')):
                 status_box['error'] = message
                 loop.quit()
+
+        def on_timeout():
+            status_box['timed_out'] = True
+            loop.quit()
+
         self.backend.result.connect(on_result)
         self.backend.error.connect(on_error)
-        QTimer.singleShot(12000, loop.quit)
+        QTimer.singleShot(12000, on_timeout)
         loop.exec()
         try:
             self.backend.result.disconnect(on_result)
             self.backend.error.disconnect(on_error)
         except Exception:
             pass
+        QApplication.processEvents()
         if status_box.get('error'):
-            raise ValueError('相机 SDK 取图失败：'+str(status_box['error']))
+            raise ValueError('相机 SDK 取图失败：' + str(status_box['error']))
+        if status_box.get('timed_out') and not status_box.get('frame'):
+            raise ValueError(
+                f'相机取图超时（12s）。模式={mode} · 设备={cam}。'
+                '请确认「相机管理」已连接且有实时预览，或切回本地图源用胶片条调试。'
+            )
         st = (status_box.get('value') or {}).get('state')
         if st != 'running':
-            cam = cfg.get('cameraId') or (cfg.get('cameraParams') or {}).get('deviceId') or '未选择'
             raise ValueError(
                 f'图像源为相机/SDK，但相机会话未连接（状态：{st or "未知"}，设备：{cam}）。'
                 '请打开「相机管理」→ 选择相机 → 打开「连接相机」。'
+                '调试可用：图像源属性切回「本地」以显示胶片条。'
             )
         frame = status_box.get('frame') or {}
         image = frame.get('annotatedImage') or frame.get('image') or ''
         if not image:
-            raise ValueError('相机会话已连接但尚无有效帧，请稍候再「运行」或在相机管理中点「取最新缓存帧」。')
+            raise ValueError(
+                '相机会话已连接但尚无有效帧。请稍候再「运行」，'
+                '或在相机管理中点「取最新缓存帧」；也可切回本地图源。'
+            )
         self.image = image
         self.cloud = frame.get('cloud')
         self.depth = frame.get('depth')
         self.input_view.show_data(self.image)
         self.images.setCurrentIndex(0)
         self._mirror_preview_to_operator()
+        self.log(f'相机帧已载入 · 设备={cam}')
 
     def open_camera_manager(self):
         if self.busy:return
@@ -1400,6 +1432,10 @@ class MainWindow(QMainWindow):
     def set_app_mode(self, mode):
         mode='run' if mode=='run' else 'design'
         self.app_mode=mode
+        try:
+            self._sync_filmstrip_visibility()
+        except Exception:
+            pass
         if hasattr(self,'mode_switch'):
             self.mode_switch.blockSignals(True)
             self.mode_switch.setChecked(mode=='run', animate=False)
@@ -1994,6 +2030,23 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         return max(50, self._active_run_interval_ms())
+
+    def _sync_filmstrip_visibility(self):
+        """Show filmstrip only for local image source in design mode."""
+        if not hasattr(self, 'filmstrip'):
+            return
+        try:
+            from desktop.image_source import normalize_source
+            cfg = normalize_source(self.document.project.get('sourceConfig'))
+            mode = cfg.get('mode') or 'local'
+            show = mode == 'local' and getattr(self, 'app_mode', 'design') == 'design'
+            self.filmstrip.setVisible(show)
+            if mode in ('camera', 'sdk'):
+                self.filmstrip.setToolTip('图像源为相机/SDK — 胶片条已隐藏；切回本地模式可导入图集')
+            else:
+                self.filmstrip.setToolTip('')
+        except Exception:
+            pass
 
     def _sync_filmstrip_interval_hint(self):
         if not hasattr(self, 'filmstrip'):
