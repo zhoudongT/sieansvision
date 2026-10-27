@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㉙ · 芯片计数气泡 · 撤销清空钮 · 报警右键复制path · Alt+L全局态提示 · 锁序徽章 · 2026-10-28】
+
+- **严重度芯片计数气泡**：`hostAlarmSevCount_{all|error|warning|info}` 随 `_alarm_severity_counts` 刷新；错红/警黄/讯青。
+- **撤销栈清空钮**：`compareThumbUndoClear` ⊘；`clear_order_undo` 清栈并同步深度徽章；空栈禁用。
+- **报警右键复制 path**：上下文菜单「复制 path」→ `copy_alarm_film_path` 写剪贴板（无 path 禁用）。
+- **Alt+L 全局态提示**：`_on_liaison_hotkey` → `cycle_liaison_window(from_hotkey=True)` + host 顶栏 overlay `hostLiaisonHotkeyToast`（~2.2s）+ statusTip。
+- **锁序徽章**：`compareThumbLockBadge` 已锁/未锁；锁态橙底；随 `set_order_locked` 同步。
+- **冒烟**：`smoke-wave29-chipcounts-undoclear-copypath-altltoast-lockbadge-e2e`（另回归 wave28）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆㉘ · 撤销深度徽章 · 严重度芯片条 · 报警右键定位 · 锁序复位提示 · Alt+L切窗 · 2026-10-28】
 
 - **撤销栈深度徽章**：`compareThumbUndoDepth` 显示栈深；有条目时青边高亮。

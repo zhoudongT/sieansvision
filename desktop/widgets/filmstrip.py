@@ -763,6 +763,17 @@ class CompareThumbStrip(QWidget):
         self._lock_btn.setToolTip('锁定对比序（禁止拖拽）')
         self._lock_btn.toggled.connect(self._on_lock_toggled)
         head.addWidget(self._lock_btn)
+        # wave29: 锁序徽章
+        self._lock_badge = QLabel('未锁')
+        self._lock_badge.setObjectName('compareThumbLockBadge')
+        self._lock_badge.setFixedHeight(16)
+        self._lock_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._lock_badge.setStyleSheet(
+            'background:#2a2c30;color:#6a7078;border:1px solid #3a3d42;'
+            'border-radius:3px;padding:0 4px;font-size:9px;font-weight:600;'
+        )
+        self._lock_badge.setToolTip('对比序锁态')
+        head.addWidget(self._lock_badge)
         self._reset_btn = QPushButton('↺')
         self._reset_btn.setObjectName('compareThumbReset')
         self._reset_btn.setFixedSize(20, 20)
@@ -788,6 +799,14 @@ class CompareThumbStrip(QWidget):
         )
         self._undo_depth_badge.setToolTip('撤销栈深度')
         head.addWidget(self._undo_depth_badge)
+        # wave29: 撤销栈清空钮
+        self._undo_clear_btn = QPushButton('⊘')
+        self._undo_clear_btn.setObjectName('compareThumbUndoClear')
+        self._undo_clear_btn.setFixedSize(20, 20)
+        self._undo_clear_btn.setToolTip('清空撤销栈')
+        self._undo_clear_btn.setEnabled(False)
+        self._undo_clear_btn.clicked.connect(self.clear_order_undo)
+        head.addWidget(self._undo_clear_btn)
         self._clear_btn = QPushButton('×')
         self._clear_btn.setObjectName('compareThumbClear')
         self._clear_btn.setFixedSize(20, 20)
@@ -938,6 +957,23 @@ class CompareThumbStrip(QWidget):
         if btn is not None:
             btn.setText('🔒' if locked else '🔓')
             btn.setToolTip('已锁定对比序（点击解锁）' if locked else '锁定对比序（禁止拖拽）')
+        # wave29: 锁序徽章
+        lb = getattr(self, '_lock_badge', None)
+        if lb is not None:
+            if locked:
+                lb.setText('已锁')
+                lb.setStyleSheet(
+                    'background:#3a3420;color:#e0b84a;border:1px solid #e0b84a;'
+                    'border-radius:3px;padding:0 4px;font-size:9px;font-weight:700;'
+                )
+                lb.setToolTip('对比序已锁定（拖拽禁用；↺ 复位仍可用）')
+            else:
+                lb.setText('未锁')
+                lb.setStyleSheet(
+                    'background:#2a2c30;color:#6a7078;border:1px solid #3a3d42;'
+                    'border-radius:3px;padding:0 4px;font-size:9px;font-weight:600;'
+                )
+                lb.setToolTip('对比序未锁定')
         # wave28: 锁序时复位仍可用提示
         rbtn = getattr(self, '_reset_btn', None)
         if rbtn is not None:
@@ -1021,6 +1057,20 @@ class CompareThumbStrip(QWidget):
                     'background:#2a2c30;color:#6a7078;border:1px solid #3a3d42;'
                     'border-radius:3px;padding:0 3px;font-size:9px;font-weight:700;'
                 )
+        cbtn = getattr(self, '_undo_clear_btn', None)
+        if cbtn is not None:
+            cbtn.setEnabled(n > 0)
+            cbtn.setToolTip(f'清空撤销栈（{n}）' if n else '清空撤销栈（空）')
+
+    def clear_order_undo(self) -> bool:
+        """wave29: 清空对比序撤销栈."""
+        stack = getattr(self, '_order_undo_stack', None)
+        if not stack:
+            self._sync_undo_btn()
+            return False
+        stack.clear()
+        self._sync_undo_btn()
+        return True
 
     def undo_order(self) -> bool:
         """wave27: 弹出撤销栈恢复上一对比序."""

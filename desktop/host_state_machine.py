@@ -696,6 +696,8 @@ class HostStateMachineWidget(QWidget):
         chip_row = QHBoxLayout()
         chip_row.setSpacing(4)
         self._alarm_sev_chips = {}
+        self._alarm_sev_chip_labels = {}
+        self._alarm_sev_count_bubbles = {}
         for lab, key in (
             ('全部', 'all'),
             ('错', 'error'),
@@ -706,11 +708,25 @@ class HostStateMachineWidget(QWidget):
             b.setObjectName(f'hostAlarmSevChip_{key}')
             b.setCheckable(True)
             b.setFixedHeight(20)
-            b.setMaximumWidth(40)
+            b.setMinimumWidth(36)
+            b.setMaximumWidth(64)
             b.setToolTip(f'严重度筛 · {lab}')
             b.clicked.connect(lambda *_a, k=key: self.set_alarm_severity_filter(k))
             chip_row.addWidget(b)
             self._alarm_sev_chips[key] = b
+            self._alarm_sev_chip_labels[key] = lab
+            # wave29: 计数气泡
+            bubble = QLabel('0')
+            bubble.setObjectName(f'hostAlarmSevCount_{key}')
+            bubble.setFixedHeight(16)
+            bubble.setMinimumWidth(14)
+            bubble.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            bubble.setStyleSheet(
+                'background:#2a2c30;color:#6a7078;border:1px solid #3a3d42;'
+                'border-radius:7px;padding:0 3px;font-size:9px;font-weight:700;'
+            )
+            chip_row.addWidget(bubble)
+            self._alarm_sev_count_bubbles[key] = bubble
         chip_row.addStretch(1)
         chip_hint = QLabel('芯片')
         chip_hint.setStyleSheet(f'color:{TEXT_MUTED};font-size:10px;')
@@ -776,10 +792,19 @@ class HostStateMachineWidget(QWidget):
         row.addWidget(self._liaison_window_badge)
         self._sync_liaison_window_badge()
         # wave28: 联调切窗快捷键 Alt+L
+        # wave29: Alt+L 全局态提示 — overlay on host (not tab-bound)
+        self._liaison_hotkey_toast = QLabel(self)
+        self._liaison_hotkey_toast.setObjectName('hostLiaisonHotkeyToast')
+        self._liaison_hotkey_toast.setStyleSheet(
+            'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+            'border-radius:3px;padding:4px 10px;font-size:11px;font-weight:700;'
+        )
+        self._liaison_hotkey_toast.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._liaison_hotkey_toast.hide()
         try:
             self._liaison_cycle_shortcut = QShortcut(QKeySequence('Alt+L'), self)
             self._liaison_cycle_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
-            self._liaison_cycle_shortcut.activated.connect(self.cycle_liaison_window)
+            self._liaison_cycle_shortcut.activated.connect(self._on_liaison_hotkey)
             self._liaison_window.setToolTip(
                 (self._liaison_window.toolTip() or '联调 CSV 时段') + ' · Alt+L 循环'
             )
@@ -931,19 +956,71 @@ class HostStateMachineWidget(QWidget):
             pass
         return self.cycle_liaison_window()
 
-    def cycle_liaison_window(self) -> int:
-        """wave27/28: 循环全部→5分→15分→1时→24时→全部（徽章/Alt+L）；返回新 sec."""
+    def cycle_liaison_window(self, *, from_hotkey: bool = False) -> int:
+        """wave27–29: 循环全部→5分→15分→1时→24时→全部（徽章/Alt+L）；返回新 sec."""
         combo = getattr(self, '_liaison_window', None)
         if combo is None or combo.count() <= 0:
             return self.liaison_window_sec()
         nxt = (combo.currentIndex() + 1) % combo.count()
         combo.setCurrentIndex(nxt)
         sec = self.liaison_window_sec()
+        lab = ''
         try:
-            self._log_line(f'联调徽章切窗 · {combo.currentText()}')
+            lab = combo.currentText() or ''
+        except Exception:
+            lab = ''
+        try:
+            src = 'Alt+L' if from_hotkey else '徽章'
+            self._log_line(f'联调{src}切窗 · {lab}')
         except Exception:
             pass
+        if from_hotkey:
+            try:
+                self._flash_liaison_hotkey_toast(lab or str(sec))
+            except Exception:
+                pass
         return sec
+
+    def _on_liaison_hotkey(self):
+        """wave29: Alt+L → 切窗 + 全局态提示."""
+        self.cycle_liaison_window(from_hotkey=True)
+
+    def _flash_liaison_hotkey_toast(self, lab: str = ''):
+        """wave29: Alt+L 全局态短提示（host 顶栏 overlay，不绑 tab）."""
+        toast = getattr(self, '_liaison_hotkey_toast', None)
+        if toast is None:
+            return
+        text = f'Alt+L · 联调 {lab}'.strip()
+        toast.setText(text)
+        toast.setToolTip(text)
+        toast.adjustSize()
+        # center-top overlay on host widget
+        try:
+            tw = max(toast.sizeHint().width() + 8, 160)
+            th = max(toast.sizeHint().height() + 4, 22)
+            x = max(8, (self.width() - tw) // 2)
+            toast.setGeometry(x, 8, tw, th)
+        except Exception:
+            pass
+        toast.raise_()
+        toast.show()
+        try:
+            self.setStatusTip(text)
+            self.setToolTip(f'Host SM · {text}')
+        except Exception:
+            pass
+        timer = getattr(self, '_liaison_hotkey_toast_timer', None)
+        if timer is None:
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(self._hide_liaison_hotkey_toast)
+            self._liaison_hotkey_toast_timer = timer
+        timer.start(2200)
+
+    def _hide_liaison_hotkey_toast(self):
+        toast = getattr(self, '_liaison_hotkey_toast', None)
+        if toast is not None:
+            toast.hide()
 
     def set_liaison_window_sec(self, sec: int, *, persist: bool = True):
         combo = getattr(self, '_liaison_window', None)
@@ -1181,21 +1258,45 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             pass
 
+    def _alarm_severity_counts(self) -> dict:
+        """wave29: 历史按严重度计数（供芯片气泡）."""
+        counts = {'all': 0, 'error': 0, 'warning': 0, 'info': 0}
+        for e in getattr(self, '_alarm_history', None) or []:
+            counts['all'] += 1
+            sev = str(e.get('severity') or 'info')
+            if sev in ('warn', 'warning'):
+                sev = 'warning'
+            if sev not in ('error', 'warning', 'info'):
+                sev = 'info'
+            counts[sev] = counts.get(sev, 0) + 1
+        return counts
+
     def _sync_alarm_sev_chips(self):
-        """wave28: 严重度筛芯片条高亮当前."""
+        """wave28/29: 严重度筛芯片条高亮 + 计数气泡."""
         chips = getattr(self, '_alarm_sev_chips', None) or {}
         if not chips:
             return
         cur = self.alarm_severity_filter()
+        counts = self._alarm_severity_counts()
+        labels = getattr(self, '_alarm_sev_chip_labels', None) or {
+            'all': '全部', 'error': '错', 'warning': '警', 'info': '讯',
+        }
         styles = {
             'all': ('#2a3340', '#9aa0a6', '#3a3d42'),
             'error': ('#3a1c1c', '#e35d6a', '#e35d6a'),
             'warning': ('#3a3420', '#e0b84a', '#e0b84a'),
             'info': ('#1c2a3a', '#6eb6ff', '#6eb6ff'),
         }
+        bubbles = getattr(self, '_alarm_sev_count_bubbles', None) or {}
         for key, b in chips.items():
             on = (key == cur)
             bg, fg, bd = styles.get(key, styles['all'])
+            n = int(counts.get(key, 0) or 0)
+            base = labels.get(key, key)
+            try:
+                b.setText(base)
+            except Exception:
+                pass
             if on:
                 b.setChecked(True)
                 b.setStyleSheet(
@@ -1208,6 +1309,20 @@ class HostStateMachineWidget(QWidget):
                     'background:#2a2c30;color:#6a7078;border:1px solid #3a3d42;'
                     'border-radius:3px;font-size:10px;padding:1px 4px;'
                 )
+            bubble = bubbles.get(key)
+            if bubble is not None:
+                bubble.setText(str(n))
+                bubble.setToolTip(f'{base} · {n} 条')
+                if n > 0:
+                    bubble.setStyleSheet(
+                        f'background:{bg};color:{fg};border:1px solid {bd};'
+                        f'border-radius:7px;padding:0 3px;font-size:9px;font-weight:700;'
+                    )
+                else:
+                    bubble.setStyleSheet(
+                        'background:#2a2c30;color:#6a7078;border:1px solid #3a3d42;'
+                        'border-radius:7px;padding:0 3px;font-size:9px;font-weight:700;'
+                    )
 
     def alarm_severity_filter(self) -> str:
         combo = getattr(self, '_alarm_sev_filter', None)
@@ -1296,8 +1411,37 @@ class HostStateMachineWidget(QWidget):
             lambda *_: self._locate_film_from_alarm_item(item, source='alarm_context')
         )
         menu.addAction(act)
+        # wave29: 复制 path
+        act_copy = QAction('复制 path', self)
+        act_copy.setEnabled(bool(fp))
+        if fp:
+            act_copy.setToolTip(fp)
+            act_copy.setText(f'复制 path · {fp.rsplit("/", 1)[-1]}')
+        else:
+            act_copy.setText('复制 path（无 path）')
+        act_copy.triggered.connect(lambda *_: self.copy_alarm_film_path(item))
+        menu.addAction(act_copy)
         self._last_alarm_ctx_item = item
         return menu
+
+    def copy_alarm_film_path(self, item=None) -> bool:
+        """wave29: 报警条目 filmPath → 剪贴板."""
+        if item is None:
+            lst = getattr(self, '_alarm_list', None)
+            item = lst.currentItem() if lst is not None else None
+        fp = self._film_path_from_alarm_item(item)
+        if not fp:
+            try:
+                self._log_line('复制 path · 无胶片 path')
+            except Exception:
+                pass
+            return False
+        try:
+            QApplication.clipboard().setText(fp)
+            self._log_line(f'已复制胶片 path · {fp}')
+        except Exception:
+            return False
+        return True
 
     def _film_path_from_alarm_item(self, item) -> str:
         if item is None:
@@ -1542,6 +1686,11 @@ class HostStateMachineWidget(QWidget):
                     '最近报警：▇=未清除 ▁=已清除（左旧右新）；'
                     '红=error · 琥珀=warning · 蓝=info · 灰=已清除'
                 )
+
+        try:
+            self._sync_alarm_sev_chips()
+        except Exception:
+            pass
 
     def set_production_snapshot(self, ok_n=None, ng_n=None, *, host_state: str | None = None):
         """Feed OK/NG/yield into alarm-tab production strip (VM run-mode feel)."""
