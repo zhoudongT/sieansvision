@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆58 · pin建议历史筛选预设拖拽排序 · 冲突策略快捷键冲突检测 · DST旁标快捷键 · A/B预览列宽/持久布局 · jitter旁标快捷键可改绑 · 2026-10-28】
+
+- **pin 建议历史筛选预设拖拽排序**：`reorder/show_…_filter_query_presets_reorder_dialog`（QListWidget InternalMove）；最近查询子菜单「拖拽排序…」；QSettings 持久。
+- **冲突策略快捷键冲突检测**：`detect/format_…_strategy_shortcut_conflicts`（保留键 + 吸史撤/重序 + 钉上限 ± + jitter重做 + DST撤/重做）；`set_…` 冲突 toast；旁标 tip ⚠ + 橙标。
+- **DST 旁标快捷键**：默认 `Ctrl+Alt+U`/`Ctrl+Alt+D` → `_on_dst_reorder_undo/redo_hotkey`；`get/set/_ensure_…_reorder_shortcuts`；tooltip 标键。
+- **A/B 预览列宽/持久布局**：`get/set_…_preview_layout`（columns/widths/dialog_w/h/filter/sort/reverse）；开窗还原 · 关闭写入；`is…PreviewLayout`。
+- **jitter 旁标快捷键可改绑**：`show_…_reorder_redo_shortcut_rebind_dialog`；右键菜单「改绑快捷键…」；tooltip「右击菜单/改绑」。
+- **冒烟**：`smoke-wave90-pinsuggestfilterpresetreorder-confirmstratconflict-dsthotkey-abprevlayout-jitterrebind-e2e`（另回归 wave89/88/87）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆57 · pin建议历史筛选预设持久/导出 · 冲突策略快捷键可改绑定 · DST旁标右键菜单 · A/B预览列显隐 · jitter旁标快捷键 · 2026-10-28】
 
 - **pin 建议历史筛选预设持久/导出**：`export/import_…_filter_query_presets` JSON；最近查询子菜单「导出预设…/导入预设…」；QSettings 已持久。
