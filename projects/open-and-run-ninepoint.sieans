@@ -1,0 +1,187 @@
+{
+  "version": 2,
+  "id": "071255d8a8554ca6",
+  "name": "打开即跑 · 九点标定",
+  "steps": [
+    {
+      "id": "7ecf5e4659c9417a",
+      "operation": "nine_point",
+      "name": "九点标定",
+      "params": {
+        "coordSystem": "机械坐标系",
+        "unit": "mm",
+        "method": "affine",
+        "points": [
+          {
+            "index": 1,
+            "pixelX": 100,
+            "pixelY": 100,
+            "worldX": 10,
+            "worldY": 10,
+            "enabled": true
+          },
+          {
+            "index": 2,
+            "pixelX": 320,
+            "pixelY": 100,
+            "worldX": 50,
+            "worldY": 10,
+            "enabled": true
+          },
+          {
+            "index": 3,
+            "pixelX": 540,
+            "pixelY": 100,
+            "worldX": 90,
+            "worldY": 10,
+            "enabled": true
+          },
+          {
+            "index": 4,
+            "pixelX": 100,
+            "pixelY": 240,
+            "worldX": 10,
+            "worldY": 40,
+            "enabled": true
+          },
+          {
+            "index": 5,
+            "pixelX": 320,
+            "pixelY": 240,
+            "worldX": 50,
+            "worldY": 40,
+            "enabled": true
+          },
+          {
+            "index": 6,
+            "pixelX": 540,
+            "pixelY": 240,
+            "worldX": 90,
+            "worldY": 40,
+            "enabled": true
+          },
+          {
+            "index": 7,
+            "pixelX": 100,
+            "pixelY": 380,
+            "worldX": 10,
+            "worldY": 70,
+            "enabled": true
+          },
+          {
+            "index": 8,
+            "pixelX": 320,
+            "pixelY": 380,
+            "worldX": 50,
+            "worldY": 70,
+            "enabled": true
+          },
+          {
+            "index": 9,
+            "pixelX": 540,
+            "pixelY": 380,
+            "worldX": 90,
+            "worldY": 70,
+            "enabled": true
+          }
+        ]
+      },
+      "position": {
+        "x": 300,
+        "y": 160
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "41db676081434b30",
+      "from": "source",
+      "to": "7ecf5e4659c9417a",
+      "fromPort": "bottom",
+      "toPort": "top"
+    }
+  ],
+  "sourcePosition": {
+    "x": 300,
+    "y": 40
+  },
+  "variables": {},
+  "sourceConfig": {
+    "mode": "local",
+    "pixelFormat": "RGB24",
+    "intervalMs": 0,
+    "saveInSolution": false,
+    "showImageName": true,
+    "snStart": 0,
+    "imageCache": 0,
+    "outputMono8": false,
+    "stitchEnable": false,
+    "stitchStartY": 0,
+    "stitchHeight": 0,
+    "stitchClearOnTrigger": false,
+    "autoSwitch": false,
+    "stopAtLast": false,
+    "charFilterEnable": false,
+    "inputChar": "",
+    "triggerChar": "",
+    "cameraId": "",
+    "cameraParams": {},
+    "exposure": 0.0,
+    "gain": 0.0,
+    "images": [
+      "/home/allen/文档/sieansvision/public/vision/samples/caliper-line.png"
+    ],
+    "currentIndex": 0
+  },
+  "runUi": {
+    "split": "2",
+    "placements": [
+      {
+        "name": "图像",
+        "page": 1,
+        "cell": 0,
+        "category": "基础"
+      },
+      {
+        "name": "上位机状态机",
+        "page": 1,
+        "cell": 1,
+        "category": "基础"
+      }
+    ],
+    "controls": {
+      "图像": {
+        "commands": [],
+        "binding": "source"
+      },
+      "上位机状态机": {
+        "commands": [
+          {
+            "type": "执行·连续",
+            "config": ""
+          },
+          {
+            "type": "执行·停止",
+            "config": ""
+          }
+        ],
+        "binding": "host"
+      }
+    },
+    "fixedBars": {
+      "top": false,
+      "bottom": true,
+      "left": false,
+      "right": false,
+      "cameraBind": "未绑定",
+      "commBind": "TCP.连接状态",
+      "showRunStatus": true,
+      "showOkNg": true
+    },
+    "meta": {
+      "template": "host_state_machine",
+      "version": 1
+    }
+  },
+  "notes": "【打开即跑 · 标定】内置 9 组 pixel/world 点对，▶ 单次仿射（无机械手 SDK）。"
+}

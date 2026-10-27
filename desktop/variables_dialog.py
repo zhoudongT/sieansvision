@@ -347,7 +347,7 @@ class VariablesDialog(QDialog):
             initials = self.initial.get(scope, {}); current = self._scope_values(self.runtime_draft, scope)
             types = (self.runtime_draft or {}).get('globalTypes', {}) if scope == 'global' else self.types.get(scope, {})
             self.notes.setdefault(scope, {})
-            names = list(dict.fromkeys([*initials, *current, *types, *notes.keys()]))
+            names = list(dict.fromkeys([*initials, *current, *types, *(self.notes.get(scope) or {}).keys()]))
             q = self.search.text().lower()
             for name in names:
                 note = str((self.notes.get(scope) or {}).get(name) or '')

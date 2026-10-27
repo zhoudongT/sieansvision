@@ -77,15 +77,22 @@
         "scope": "flow",
         "expressions": [
           {
-            "name": "runFlag",
-            "expression": "1",
+            "name": "circleCount",
+            "expression": "geometry_count",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "firstRadius",
+            "expression": "geometry_radius",
             "initial": 0,
             "outType": "number",
             "initOnRun": true
           },
           {
             "name": "passGate",
-            "expression": "runFlag",
+            "expression": "circleCount > 0",
             "initial": 0,
             "outType": "number",
             "initOnRun": true

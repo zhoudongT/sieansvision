@@ -1008,3 +1008,7 @@ sieans：`config_status.node_needs_bang` + `Node.needs_config` / `run_failed`（
 - **运行 HMI**：`ProductionStatsPanel` — OK/NG 计数、良率、最近结果历史、暂停计数、NG 报警条；`生产统计` 控件与默认运行壳已接线。
 - **自检**：engine-host E2E 圆查找 count=5 / 模板匹配 bestScore≈0.997；HMI 计数单元 smoke 通过。
 - 文件→打开示例 / 快捷菜单已置顶「打开即跑」。
+
+- **变量计算**：`var_calc` 现可引用上游结果标量（`geometry_count` / `geometry_radius` / `locate_score` 等），runtime 注入；打开即跑默认工程已用 `circleCount`/`firstRadius`/`passGate`。
+- **九点标定样例**：`projects/open-and-run-ninepoint.sieans`（pixelX/Y↔worldX/Y，affine RMS≈0）。
+- **稳定性**：修复 `variables_dialog.render` 中 `notes` → `self.notes` NameError（打开工程即崩）。

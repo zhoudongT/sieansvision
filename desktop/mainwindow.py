@@ -81,6 +81,7 @@ class MainWindow(QMainWindow):
         for label, relative in [
             ('打开即跑 · 圆查找', 'projects/default-platform.sieans'),
             ('打开即跑 · 模板匹配', 'projects/open-and-run-locate.sieans'),
+            ('打开即跑 · 九点标定', 'projects/open-and-run-ninepoint.sieans'),
             ('空白检测工程', 'projects/templates/blank-inspection.sieans'),
             ('采集 → 几何 → 尺寸', 'projects/templates/measure-chain.sieans'),
             ('参考图缺陷检测', 'projects/templates/defect-inspection.sieans'),
@@ -1747,6 +1748,7 @@ class MainWindow(QMainWindow):
             'projects/default-platform.sieans',
             'projects/open-and-run-demo.sieans',
             'projects/open-and-run-locate.sieans',
+            'projects/open-and-run-ninepoint.sieans',
             'projects/templates/blank-inspection.sieans',
             'projects/templates/measure-chain.sieans',
             'projects/templates/defect-inspection.sieans',
