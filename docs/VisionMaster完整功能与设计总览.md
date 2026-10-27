@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆54 · pin建议历史按键过滤/搜索 · 导入冲突策略默认+持久指示条 · DST自定义拖拽排序 · A/B回退冲突预览表 · jitter重做深度/清redo UI · 2026-10-28】
+
+- **pin 建议历史按键过滤/搜索**：`filter/set/get_…_suggest_history_filter_query`；菜单「筛选…」/`清除筛选`；smoke `filter_history`。
+- **导入冲突策略默认+持久指示条**：旁标 替/并/跳/询；`refresh_…_import_conflict_strategy_lab`；菜单「· 默认」+「策略默认·持久」；点击循环切换。
+- **DST 自定义拖拽排序**：`reorder_…_ttl_preset_customs`；`show_…_reorder_dialog`；菜单「拖拽排序…」；smoke `reorder_customs`。
+- **A/B 回退冲突预览表**：`preview_…_import_conflict`（new/same/conflict）；`show_…_preview_dialog`；ask 路径优先预览表。
+- **jitter 重做深度指示/清 redo UI**：菜单「重做排序 · N」深度属性；「清重做栈 · N」→ `clear_…_reorder_redo`。
+- **冒烟**：`smoke-wave86-pinsuggesthistfilter-confirmstratbar-dstreorder-abprevtable-jitterclearredo-e2e`（另回归 wave85/84/83）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆53 · pin建议历史子菜单UI · 导入冲突策略菜单切换 · DST自定义编辑/删项UI · A/B回退按流程导入/冲突 · jitter排序重做栈 · 2026-10-28】
 
 - **pin 建议历史子菜单 UI**：菜单「历史 · N」；`restore_…_suggest_history(index)`；条目恢复勾选/应用首选；「清空历史」；仅记录所选亦记入历史。
