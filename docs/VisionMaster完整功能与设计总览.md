@@ -426,6 +426,15 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆88 · 策略 refresh out 属性同步 · 再预览/短史/步进 tip flash_ms_prop_ok · 档差 refresh tip_prop_ok · FlashMs refresh 往返 · 2026-10-28】
+
+- **DST 策略徽章**：refresh out 同步 `strategy_prop_ok` / `tip_max_len_prop_ok` / `last_toast_brief_prop_ok`。
+- **A/B 回滚**：再预览 tip 读回 `flash_ms_prop_ok`；refresh out 带 FlashMs 往返。
+- **忽略名单**：短史 tip `flash_ms_prop_ok`；refresh FlashMs 往返。
+- **jitter 旁标音量**：步进 tip `flash_ms_prop_ok`；refresh FlashMs 往返。
+- **栈预览跳档**：refresh out 带 `tip_prop_ok` / `flash_ms_prop_ok`。
+- **验证**：`scripts/smoke-wave120-…-e2e.py` 6/6；regress wave119 7/7。非硬件约 **~99.98%**。
+
 ## 【细妆87 · 策略菜单同步 out 属性 · 再预览/短史/步进 set status_prop_ok · 档差 tip/set 读回镜像 · 2026-10-28】
 
 - **DST 策略徽章**：菜单 out 同步 `strategy_prop_ok` / `tip_max_len_prop_ok` / `last_toast_brief_prop_ok`。
