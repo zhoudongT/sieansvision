@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊰ · pin上限键盘快捷 · 历史色右键删 · PNG城市TZ · A/B镜像方向 · jitter箱线均值 · 2026-10-28】
+
+- **pin 上限键盘快捷**：`Ctrl+[` / `Ctrl+]` 与菜单 −/+；`bump_…_max_pin`；旋钮/角标联动。
+- **历史色右键删单条**：吸史色块右键「删除」；`remove_…_eyedropper_history`；清全部仍可用。
+- **PNG TZ 城市预设**：本机/UTC/北京/东京/迪拜/伦敦/纽约/洛杉矶；按本机 UTC 差换算相对偏移；手拧旋钮标 custom。
+- **A/B 镜像 B→A 方向**：`a_to_b` / `b_to_a`；菜单「方向切换」；锁定+镜像按方向单向同步。
+- **jitter 箱线图/均值线**：min/q1/med/q3/max + μ；预览窗箱线行；分布芯片切换同步刷新。
+- **冒烟**：`smoke-wave67-maxpinhotkey-eyeremove-pngtzcity-abmirrordir-jitterbox-e2e`（另回归 wave66/65/64）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊯ · pin上限菜单旋钮 · 吸管历史色 · PNG时区偏移 · A/B锁定镜像 · jitter直方图 · 2026-10-28】
 
 - **pin 上限菜单旋钮**：导引带最近色板菜单内嵌 `QSpinBox`（1–6）；空色板亦显示旋钮；改值即时挤出超额钉并刷新角标。
