@@ -150,6 +150,7 @@ def main():
         def _refresh_group_breadcrumb(self): pass
         exit_group_module = MainWindow.exit_group_module
         jump_exit_group_to = MainWindow.jump_exit_group_to
+        _place_canvas_status_chip = MainWindow._place_canvas_status_chip
         _show_canvas_status_chip = MainWindow._show_canvas_status_chip
         _undo_with_fold_tip = MainWindow._undo_with_fold_tip
         _redo_with_fold_tip = MainWindow._redo_with_fold_tip

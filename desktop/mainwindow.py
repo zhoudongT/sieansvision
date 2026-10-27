@@ -1310,6 +1310,10 @@ class MainWindow(QMainWindow):
         from PySide6.QtCore import QEvent
         if obj is getattr(self,'_canvas_host',None) and event.type()==QEvent.Type.Resize:
             self._place_minimap()
+            try:
+                self._place_canvas_status_chip()
+            except Exception:
+                pass
         return super().eventFilter(obj, event)
 
     def _place_minimap(self):
@@ -1828,6 +1832,16 @@ class MainWindow(QMainWindow):
             self._group_breadcrumb.setVisible(True)
         else:
             self._group_breadcrumb.setVisible(False)
+        # Breadcrumb show/hide changes chip Y; re-place after layout
+        try:
+            self._place_canvas_status_chip()
+        except Exception:
+            pass
+        try:
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, self._place_canvas_status_chip)
+        except Exception:
+            pass
 
     def enter_group_module(self, node_id):
         step = next((s for s in self.document.project.get('steps', []) if s.get('id') == node_id), None)
@@ -1982,24 +1996,41 @@ class MainWindow(QMainWindow):
         depth = len(self._group_stack or [])
         if depth <= target:
             return
-        # Confirm when mid-redo on nest tip: jump would fold unused redo side into outer
+        # Confirm when mid-redo OR nest tip dirty vs enter/outer_saved (unsaved nest edits)
         try:
             hist = list(getattr(self.document, 'history', None) or [])
             idx = int(getattr(self.document, 'index', 0) or 0)
             mid_redo = bool(hist) and idx + 1 < len(hist)
+            # enter_group: document.saved = nest enter tip; frame.outer_saved = outer saved.
+            # modified() ⇒ unsaved nest edits relative to that enter/outer_saved contract.
+            try:
+                nest_dirty = bool(self.document.modified())
+            except Exception:
+                nest_dirty = self.document.project != getattr(self.document, 'saved', None)
             levels = depth - target
-            if mid_redo and levels >= 1:
-                redo_n = len(hist) - 1 - idx
+            if (mid_redo or nest_dirty) and levels >= 1:
+                bits = []
+                if mid_redo:
+                    redo_n = len(hist) - 1 - idx
+                    bits.append(f'尚有 {redo_n} 步可重做')
+                if nest_dirty:
+                    bits.append('嵌套内有未保存编辑（相对进组快照 / outer_saved）')
+                reason = '；'.join(bits) if bits else '嵌套状态未落定'
                 ans = QMessageBox.question(
                     self,
                     '跳层退出确认',
-                    f'当前嵌套编辑不在最新点（尚有 {redo_n} 步可重做）。\n'
-                    f'跳层退出 {levels} 层会折叠整段撤销/重做链到上层。\n\n仍要跳层？',
+                    f'当前嵌套：{reason}。\n'
+                    f'跳层退出 {levels} 层会折叠撤销/重做链到上层，未保存编辑将随退出合并。\n\n仍要跳层？',
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                     QMessageBox.StandardButton.No,
                 )
                 if ans != QMessageBox.StandardButton.Yes:
-                    self.log('已取消面包屑跳层（保留嵌套中段重做）')
+                    why = (
+                        '保留嵌套中段重做' if mid_redo and not nest_dirty else
+                        '保留未保存嵌套编辑' if nest_dirty and not mid_redo else
+                        '保留嵌套重做与未保存编辑'
+                    )
+                    self.log(f'已取消面包屑跳层（{why}）')
                     return
         except Exception:
             pass
@@ -2077,19 +2108,15 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
-    def _show_canvas_status_chip(self, message, ms=3200):
-        """Transient chip over canvas (fold-boundary / nest tips), not only log/wb_status."""
+    def _place_canvas_status_chip(self):
+        """Reposition canvas status chip (host resize / breadcrumb show-hide)."""
         chip = getattr(self, '_canvas_status_chip', None)
         host = getattr(self, '_canvas_host', None)
         if chip is None or host is None:
             return
-        text = str(message or '').strip()
-        if not text:
-            chip.setVisible(False)
+        if not chip.isVisible():
             return
-        chip.setText(text)
         chip.adjustSize()
-        # Place below breadcrumb, centered
         hw = max(120, host.width() - 24)
         chip.setFixedWidth(min(hw, max(280, chip.sizeHint().width() + 8)))
         chip.adjustSize()
@@ -2103,7 +2130,20 @@ class MainWindow(QMainWindow):
             y = 8
         chip.move(x, y)
         chip.raise_()
+
+    def _show_canvas_status_chip(self, message, ms=3200):
+        """Transient chip over canvas (fold-boundary / nest tips), not only log/wb_status."""
+        chip = getattr(self, '_canvas_status_chip', None)
+        host = getattr(self, '_canvas_host', None)
+        if chip is None or host is None:
+            return
+        text = str(message or '').strip()
+        if not text:
+            chip.setVisible(False)
+            return
+        chip.setText(text)
         chip.setVisible(True)
+        self._place_canvas_status_chip()
         timer = getattr(self, '_canvas_chip_timer', None)
         if timer is not None:
             timer.stop()

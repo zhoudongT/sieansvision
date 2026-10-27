@@ -232,12 +232,86 @@ class PropertyFloat(QDialog):
             pass
         super().hideEvent(event)
 
-    def show_source(self, config, title='0 图像源'):
+    def show_hybrid(self, config, step, definition, project, index=1):
+        """Hold source + step baselines at once; Esc/✕ discards both.
+
+        Body: compact 图像源 form on top + step panel below (panels that need
+        dual draft — e.g. source-linked modules).
+        """
+        from desktop.image_source import normalize_source
+        from desktop.image_source import ImageSourceForm
+        self._node_id = (step or {}).get('id') or 'source'
+        self._clear_body()
+        self._source_baseline = deepcopy(normalize_source(config))
+        self._source_dirty = False
+        self._step_baseline = deepcopy(step) if step else None
+        self._step_dirty = False
+        name = (definition or {}).get('name') or (step or {}).get('name') or '模块'
+        op = (step or {}).get('operation') or ''
+        cat = (definition or {}).get('category') or ''
+        sub = (cat + ' · ' + op) if op else cat
+        sub = ((sub + ' · ') if sub else '') + '图像源+模块 · 确定提交 / Esc·✕·取消放弃二者'
+        self._set_chrome(f'{index} {name} · 混合', sub)
+        # Source form (compact)
+        form = ImageSourceForm(config)
+        form.changed.connect(self._on_source_draft)
+        try:
+            form.openCameraManager.connect(self.openCameraManager.emit)
+        except Exception:
+            pass
+        form.paramAudited.connect(lambda p, o, n: self.paramAudited.emit('图像源1', p, o, n))
+        self.body.addWidget(form)
+        self._source_form = form
+        # Step panel via existing builder path (keep_source so baseline survives)
+        # Inline: reuse panel construction by temporarily calling show_step pieces
+        # Build panel after source form without wiping baselines
+        # Mount step editor without clearing hybrid baselines
+        try:
+            self._append_step_panel(step, definition, project)
+        except Exception:
+            from PySide6.QtWidgets import QLabel
+            self.body.addWidget(QLabel('（模块面板暂不可用 · 图像源草稿仍可 Esc 放弃）'))
+        self.show(); self.raise_(); self.activateWindow()
+
+    def _append_step_panel(self, step, definition, project):
+        """Append step property panel under an existing body (hybrid); wires changed."""
+        from desktop.forms import ParameterPanel
+        panel = None
+        op = (step or {}).get('operation') or ''
+        try:
+            if op == 'group':
+                from desktop.group_module import GroupModulePanel
+                panel = GroupModulePanel(step, project)
+            elif op in ('locate_match', 'shape_match'):
+                from desktop.locate_match_panel import LocateMatchPanel, normalize_locate_params
+                step = deepcopy(step); step['params'] = normalize_locate_params(step.get('params'))
+                panel = LocateMatchPanel(step, project)
+            else:
+                panel = ParameterPanel(step, definition or {}, project)
+        except Exception:
+            panel = ParameterPanel(step, definition or {}, project)
+        if panel is None:
+            return
+        if hasattr(panel, 'changed'):
+            panel.changed.connect(self._on_step_changed)
+        if hasattr(panel, 'paramAudited'):
+            try:
+                panel.paramAudited.connect(self.paramAudited.emit)
+            except Exception:
+                pass
+        self.body.addWidget(panel)
+        self._panel = panel
+        self._last_step = deepcopy(step)
+
+    def show_source(self, config, title='0 图像源', *, keep_step=False):
         from desktop.image_source import normalize_source
         self._node_id = 'source'
         self._clear_body()
         self._source_baseline = deepcopy(normalize_source(config))
         self._source_dirty = False
+        if not keep_step:
+            self._step_baseline = None
+            self._step_dirty = False
         try:
             from desktop.config_status import source_incomplete
             bang = source_incomplete(config)
@@ -255,13 +329,20 @@ class PropertyFloat(QDialog):
         self._source_form = form
         self.show(); self.raise_(); self.activateWindow()
 
-    def show_step(self, step, definition, project, index=1):
+    def show_step(self, step, definition, project, index=1, *, keep_source=False):
         self._node_id = step['id'] if step else None
+        # Preserve source baseline when hybrid / keep_source
+        saved_src_base = self._source_baseline if keep_source else None
+        saved_src_dirty = self._source_dirty if keep_source else False
         self._clear_body()
         self._step_baseline = deepcopy(step) if step else None
         self._step_dirty = False
-        self._source_baseline = None
-        self._source_dirty = False
+        if keep_source and saved_src_base is not None:
+            self._source_baseline = deepcopy(saved_src_base)
+            self._source_dirty = bool(saved_src_dirty)
+        else:
+            self._source_baseline = None
+            self._source_dirty = False
         name = (definition or {}).get('name') or (step or {}).get('name') or '模块'
         bang = False
         try:

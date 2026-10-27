@@ -9,6 +9,10 @@ from PySide6.QtWidgets import (
 )
 
 from .switch import OrangeSwitch
+try:
+    from desktop.theme import CANVAS, BG
+except Exception:  # pragma: no cover
+    CANVAS, BG = '#2d2f33', '#2a2c30'
 
 IMAGE_FILTER = '图像文件 (*.bmp *.jpeg *.jpg *.png *.tif *.tiff);;所有文件 (*)'
 IMAGE_EXTS = {'.bmp', '.jpeg', '.jpg', '.png', '.tif', '.tiff'}
@@ -105,6 +109,9 @@ class FilmstripBar(QWidget):
         self.empty_hint.setWordWrap(True)
         root.addWidget(self.empty_hint)
         self.set_paths([], 0)
+        self._live_fit_mode = 'contain'
+        self._actual_letterbox = True  # pad with theme CANVAS when src < thumb
+        self._actual_pad_color = None  # None → theme CANVAS
 
     def paths(self):
         return list(self._paths)
@@ -309,10 +316,34 @@ class FilmstripBar(QWidget):
             return pix.scaled(size, Qt.AspectRatioMode.KeepAspectRatio,
                               Qt.TransformationMode.SmoothTransformation)
         if mode == 'actual':
-            # 1:1 center-crop (or pad) into thumb rect
+            # 1:1 center-crop; when src smaller than thumb → letterbox with theme pad
+            from PySide6.QtGui import QColor
             src = pix
+            letterbox = bool(getattr(self, '_actual_letterbox', True))
+            pad = getattr(self, '_actual_pad_color', None)
+            if pad is None:
+                try:
+                    pad = QColor(CANVAS)
+                except Exception:
+                    pad = QColor('#2d2f33')
+            elif not isinstance(pad, QColor):
+                pad = QColor(str(pad))
+            if letterbox and (src.width() < tw or src.height() < th):
+                out = QPixmap(size)
+                out.fill(pad)
+                p = QPainter(out)
+                x = max(0, (tw - src.width()) // 2)
+                y = max(0, (th - src.height()) // 2)
+                # clip if one dim still larger
+                sw = min(src.width(), tw)
+                sh = min(src.height(), th)
+                sx = max(0, (src.width() - sw) // 2)
+                sy = max(0, (src.height() - sh) // 2)
+                p.drawPixmap(x, y, src, sx, sy, sw, sh)
+                p.end()
+                return out
             if src.width() < tw or src.height() < th:
-                # pad onto transparent/black canvas centered
+                # letterbox disabled → transparent pad (legacy)
                 out = QPixmap(size)
                 out.fill(Qt.GlobalColor.transparent)
                 p = QPainter(out)
