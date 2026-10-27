@@ -1175,6 +1175,15 @@ class HostStateMachineWidget(QWidget):
             self._toast_curve_png_station_name = 'station1'
         self._merge_diff_fail_hist_drop_pulse_preview_loop = False
         self._merge_diff_fail_hist_drop_pulse_preview_loop_timer = None
+        # wave62: 脉冲循环间隔 / PNG 工程名自动填
+        try:
+            _gap = int(self._host_settings().value(
+                'host/mergeDiffFailHistDropPulsePreviewLoopGapMs', 120) or 120)
+            self._merge_diff_fail_hist_drop_pulse_preview_loop_gap_ms = max(
+                0, min(2000, _gap))
+        except Exception:
+            self._merge_diff_fail_hist_drop_pulse_preview_loop_gap_ms = 120
+        self._toast_curve_png_project_autofill = True
         # wave54: 失败历史组头拖拽顺序
         try:
             raw_ord = self._host_settings().value(
@@ -3911,8 +3920,20 @@ class HostStateMachineWidget(QWidget):
                 act.triggered.connect(
                     lambda *_a, mm=ms: self.set_sev_pin_solo_delete_undo_ms(mm))
                 menu.addAction(act)
-            # wave61: 撤销条色阶预设切换入口
+            # wave61–62: 撤销条色阶预设切换入口 · 嵌预览小条
             menu.addSeparator()
+            try:
+                prev_bar = self._make_undo_color_scale_preview_bar(menu)
+                prev_bar.setObjectName('hostSoloDeleteUndoColorScalePreviewBar')
+                prev_bar.setFixedHeight(14)
+                prev_bar.setMinimumWidth(160)
+                wa_prev = QWidgetAction(menu)
+                wa_prev.setProperty('isSoloDeleteUndoColorScalePreview', True)
+                wa_prev.setDefaultWidget(prev_bar)
+                menu.addAction(wa_prev)
+                self._last_sev_pin_solo_delete_undo_color_scale_preview = prev_bar
+            except Exception:
+                pass
             cur_cs = self.stale_prune_undo_color_scale_preset()
             for key, lab in (
                 ('traffic', '色阶 · 红绿灯'),
@@ -3931,7 +3952,9 @@ class HostStateMachineWidget(QWidget):
                 act.triggered.connect(
                     lambda *_a, nn=key: (
                         self.set_stale_prune_undo_color_scale_preset(nn),
-                        self._update_sev_pin_solo_delete_undo_bar()))
+                        self._update_sev_pin_solo_delete_undo_bar(),
+                        self._paint_undo_color_scale_preview_bar(
+                            getattr(self, '_last_sev_pin_solo_delete_undo_color_scale_preview', None))))
                 menu.addAction(act)
             self._last_sev_pin_solo_delete_undo_ms_menu = menu
             if getattr(self, '_sev_pin_solo_delete_undo_ms_menu_no_exec', False):
@@ -6395,7 +6418,7 @@ class HostStateMachineWidget(QWidget):
         return bar
 
     def _on_undo_color_scale_preview_bar_click(self, event=None, bar=None) -> str:
-        """wave61: 预览条点选色阶预设（x 五等分）."""
+        """wave61–62: 预览条点选色阶预设（x 五等分 · 菜单勾选即时刷新）."""
         presets = ('traffic', 'cool', 'mono', 'sunset', 'custom')
         labels = ('红绿灯', '冷色', '单色琥珀', '日落', '自定义')
         idx = 0
@@ -6418,14 +6441,33 @@ class HostStateMachineWidget(QWidget):
             self._paint_undo_color_scale_preview_bar(bar)
         except Exception:
             pass
+        refreshed = False
         try:
             menu = getattr(self, '_last_undo_color_scale_hot_sync_menu', None)
             if menu is not None:
-                self.refresh_undo_color_scale_hot_sync_menu(menu)
+                refreshed = bool(self.refresh_undo_color_scale_hot_sync_menu(menu))
+                # wave62: 即时核对勾选态
+                for act in menu.actions():
+                    if act.property('isUndoColorScalePreset'):
+                        key = str(act.data() or '').strip().lower()
+                        want = key == got
+                        if act.isChecked() != want:
+                            act.setChecked(want)
+                            lab = act.text().lstrip('✓ ').strip()
+                            act.setText(('✓ ' if want else '') + lab)
+                        if want and act.isChecked():
+                            refreshed = True
+                try:
+                    from PySide6.QtWidgets import QApplication as _QA
+                    _QA.processEvents()
+                except Exception:
+                    pass
         except Exception:
-            pass
+            refreshed = False
         self._last_undo_color_scale_preview_click_preset = got
         self._last_undo_color_scale_preview_click_idx = idx
+        self._last_undo_color_scale_preview_click_menu_refreshed = refreshed
+        self._last_undo_color_scale_hot_sync_menu_cur = got
         try:
             self._flash_host_toast(
                 f'色阶 · {labels[idx]}', kind='ok', ms=900)
@@ -8126,6 +8168,70 @@ class HostStateMachineWidget(QWidget):
         self._last_merge_diff_fail_hist_drop_snap_guide_recent_cleared = True
         return []
 
+    def reorder_merge_diff_fail_hist_drop_snap_guide_recent_colors(
+            self, order=None, *, persist: bool = True) -> list:
+        """wave62: 导引带最近色板拖拽排序落盘."""
+        cur = self.merge_diff_fail_hist_drop_snap_guide_recent_colors()
+        if order is None:
+            return list(cur)
+        seen = set()
+        out = []
+        for c in list(order or []):
+            c = str(c or '').strip()
+            if not c:
+                continue
+            if not c.startswith('#'):
+                c = '#' + c
+            try:
+                qc = QColor(c)
+                if not qc.isValid():
+                    continue
+                c = qc.name()
+            except Exception:
+                continue
+            if c in seen:
+                continue
+            if c not in cur:
+                continue
+            seen.add(c)
+            out.append(c)
+        for c in cur:
+            if c not in seen:
+                out.append(c)
+        out = out[:6]
+        self._merge_diff_fail_hist_drop_snap_guide_recent_colors = out
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/mergeDiffFailHistDropSnapGuideRecentColors', list(out))
+            except Exception:
+                pass
+        self._last_merge_diff_fail_hist_drop_snap_guide_recent_reordered = list(out)
+        return list(out)
+
+    def move_merge_diff_fail_hist_drop_snap_guide_recent_color(
+            self, hexv: str, new_idx: int = 0, *, persist: bool = True) -> list:
+        """wave62: 移动导引带最近色到指定下标."""
+        hexv = str(hexv or '').strip()
+        if not hexv:
+            return self.merge_diff_fail_hist_drop_snap_guide_recent_colors()
+        if not hexv.startswith('#'):
+            hexv = '#' + hexv
+        try:
+            qc = QColor(hexv)
+            if qc.isValid():
+                hexv = qc.name()
+        except Exception:
+            pass
+        cur = self.merge_diff_fail_hist_drop_snap_guide_recent_colors()
+        if hexv not in cur:
+            return list(cur)
+        cur = [c for c in cur if c != hexv]
+        new_idx = max(0, min(len(cur), int(new_idx)))
+        cur.insert(new_idx, hexv)
+        return self.reorder_merge_diff_fail_hist_drop_snap_guide_recent_colors(
+            cur, persist=persist)
+
     def prompt_merge_diff_fail_hist_drop_snap_guide_custom_color(
             self, color: str = '') -> str:
         """wave59: 导引带自定义色拾取（QColorDialog）."""
@@ -8262,29 +8368,122 @@ class HostStateMachineWidget(QWidget):
         act_cus.triggered.connect(
             lambda *_: self.set_merge_diff_fail_hist_drop_snap_guide_preset('custom'))
         menu.addAction(act_cus)
-        # wave61: 最近色板记忆
+        # wave61–62: 最近色板记忆 · 拖拽排序
         try:
             recent_gc = self.merge_diff_fail_hist_drop_snap_guide_recent_colors()
             if recent_gc:
                 wrap_r = QWidget(menu)
+                wrap_r.setObjectName('hostSnapGuideRecentPalette')
                 lay_r = QHBoxLayout(wrap_r)
                 lay_r.setContentsMargins(8, 2, 8, 2)
                 lay_r.setSpacing(4)
                 lab_r = QLabel('最近', wrap_r)
                 lab_r.setStyleSheet('color:#9aa7b5;font-size:11px;')
+                lab_r.setToolTip('拖拽色块排序 · 单击应用')
                 lay_r.addWidget(lab_r)
+                self._snap_guide_recent_drag_hex = ''
+                self._snap_guide_recent_drag_btns = []
+
+                def _apply_order_from_btns():
+                    order = []
+                    for b in list(getattr(self, '_snap_guide_recent_drag_btns', []) or []):
+                        try:
+                            hx2 = str(b.property('snapGuideRecentHex') or '')
+                            if hx2:
+                                order.append(hx2)
+                        except Exception:
+                            pass
+                    if order:
+                        self.reorder_merge_diff_fail_hist_drop_snap_guide_recent_colors(order)
+
                 for hx in recent_gc[:6]:
                     btn = QPushButton('', wrap_r)
                     btn.setObjectName('hostSnapGuideRecentSwatch')
                     btn.setFixedSize(18, 18)
                     btn.setProperty('isSnapGuideRecentSwatch', True)
                     btn.setProperty('snapGuideRecentHex', hx)
-                    btn.setToolTip(hx)
+                    btn.setToolTip(f'{hx} · 拖拽排序')
+                    btn.setCursor(Qt.CursorShape.OpenHandCursor)
                     btn.setStyleSheet(
                         f'background:{hx};border:1px solid #3a3d42;border-radius:2px;')
-                    btn.clicked.connect(
-                        lambda *_a, hh=hx: self.set_merge_diff_fail_hist_drop_snap_guide_custom_hex(hh))
+
+                    def _press(e, b=btn, hh=hx):
+                        self._snap_guide_recent_drag_hex = hh
+                        self._snap_guide_recent_drag_start = e.pos() if hasattr(e, 'pos') else None
+                        self._snap_guide_recent_drag_moved = False
+                        try:
+                            b.setCursor(Qt.CursorShape.ClosedHandCursor)
+                        except Exception:
+                            pass
+
+                    def _move(e, b=btn, hh=hx):
+                        if getattr(self, '_snap_guide_recent_drag_hex', '') != hh:
+                            return
+                        try:
+                            start = getattr(self, '_snap_guide_recent_drag_start', None)
+                            if start is not None and hasattr(e, 'pos'):
+                                if abs(e.pos().x() - start.x()) + abs(e.pos().y() - start.y()) > 3:
+                                    self._snap_guide_recent_drag_moved = True
+                        except Exception:
+                            self._snap_guide_recent_drag_moved = True
+                        # find drop target by global x among siblings
+                        try:
+                            gx = b.mapToGlobal(e.pos()).x() if hasattr(e, 'pos') else 0
+                            btns = list(getattr(self, '_snap_guide_recent_drag_btns', []) or [])
+                            target_idx = None
+                            for i, sib in enumerate(btns):
+                                try:
+                                    cx = sib.mapToGlobal(sib.rect().center()).x()
+                                    if abs(gx - cx) < 14:
+                                        target_idx = i
+                                        break
+                                except Exception:
+                                    pass
+                            if target_idx is not None:
+                                cur_idx = btns.index(b) if b in btns else -1
+                                if cur_idx >= 0 and cur_idx != target_idx:
+                                    btns.pop(cur_idx)
+                                    btns.insert(target_idx, b)
+                                    self._snap_guide_recent_drag_btns = btns
+                                    # re-layout buttons after label
+                                    while lay_r.count() > 1:
+                                        item = lay_r.takeAt(1)
+                                        w = item.widget()
+                                        if w is not None and w.property('isSnapGuideRecentSwatch'):
+                                            lay_r.removeWidget(w)
+                                    # re-add in new order then stretch+clear later by rebuild on release
+                                    for sb in btns:
+                                        lay_r.insertWidget(lay_r.count(), sb)
+                        except Exception:
+                            pass
+
+                    def _release(e, b=btn, hh=hx):
+                        moved = bool(getattr(self, '_snap_guide_recent_drag_moved', False))
+                        try:
+                            b.setCursor(Qt.CursorShape.OpenHandCursor)
+                        except Exception:
+                            pass
+                        self._snap_guide_recent_drag_hex = ''
+                        if moved:
+                            # persist order from current btn list
+                            order = []
+                            for sb in list(getattr(self, '_snap_guide_recent_drag_btns', []) or []):
+                                try:
+                                    order.append(str(sb.property('snapGuideRecentHex') or ''))
+                                except Exception:
+                                    pass
+                            order = [x for x in order if x]
+                            if order:
+                                self.reorder_merge_diff_fail_hist_drop_snap_guide_recent_colors(order)
+                                self._last_merge_diff_fail_hist_drop_snap_guide_recent_dragged = True
+                        else:
+                            self.set_merge_diff_fail_hist_drop_snap_guide_custom_hex(hh)
+
+                    btn.mousePressEvent = _press
+                    btn.mouseMoveEvent = _move
+                    btn.mouseReleaseEvent = _release
                     lay_r.addWidget(btn)
+                    self._snap_guide_recent_drag_btns.append(btn)
                 lay_r.addStretch(1)
                 act_clr_r = QPushButton('清空', wrap_r)
                 act_clr_r.setFixedHeight(18)
@@ -8416,6 +8615,34 @@ class HostStateMachineWidget(QWidget):
         self._last_merge_diff_fail_hist_drop_pulse_intensity_pct = v
         return v
 
+    def merge_diff_fail_hist_drop_pulse_preview_loop_gap_ms(self) -> int:
+        """wave62: 脉冲循环间隔（脉冲结束后额外等待 ms）."""
+        try:
+            v = int(getattr(
+                self, '_merge_diff_fail_hist_drop_pulse_preview_loop_gap_ms', 120
+            ) or 120)
+        except Exception:
+            v = 120
+        return max(0, min(2000, v))
+
+    def set_merge_diff_fail_hist_drop_pulse_preview_loop_gap_ms(
+            self, ms: int = 120, *, persist: bool = True) -> int:
+        """wave62: 设置脉冲循环间隔 0–2000ms."""
+        try:
+            v = int(ms)
+        except Exception:
+            v = 120
+        v = max(0, min(2000, v))
+        self._merge_diff_fail_hist_drop_pulse_preview_loop_gap_ms = v
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/mergeDiffFailHistDropPulsePreviewLoopGapMs', int(v))
+            except Exception:
+                pass
+        self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_ms = v
+        return v
+
     def merge_diff_fail_hist_drop_pulse_preview_loop(self) -> bool:
         """wave61: 脉冲预览是否循环播放."""
         return bool(getattr(
@@ -8446,11 +8673,12 @@ class HostStateMachineWidget(QWidget):
         return True
 
     def _arm_merge_diff_fail_hist_drop_pulse_preview_loop(self, play_fn=None) -> bool:
-        """wave61: 按当前时长+缓冲再触发."""
+        """wave61–62: 按当前时长+可调间隔再触发."""
         if not self.merge_diff_fail_hist_drop_pulse_preview_loop():
             return False
         try:
-            ms = int(self.merge_diff_fail_hist_drop_pulse_ms()) + 120
+            ms = (int(self.merge_diff_fail_hist_drop_pulse_ms())
+                  + int(self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_ms()))
             t = getattr(self, '_merge_diff_fail_hist_drop_pulse_preview_loop_timer', None)
             if t is None:
                 t = QTimer(self)
@@ -8509,6 +8737,38 @@ class HostStateMachineWidget(QWidget):
             chk_loop.setChecked(self.merge_diff_fail_hist_drop_pulse_preview_loop())
             lay.addWidget(chk_loop)
             self._last_merge_diff_fail_hist_drop_pulse_preview_loop_chk = chk_loop
+            # wave62: 循环间隔可调
+            wrap_gap = QWidget(dlg)
+            lay_gap = QHBoxLayout(wrap_gap)
+            lay_gap.setContentsMargins(0, 0, 0, 0)
+            lay_gap.setSpacing(6)
+            lab_gap = QLabel('循环间隔', wrap_gap)
+            lab_gap.setStyleSheet('color:#9aa7b5;font-size:11px;')
+            sl_gap = QSlider(Qt.Orientation.Horizontal, wrap_gap)
+            sl_gap.setObjectName('hostMergeDiffFailHistDropPulsePreviewLoopGap')
+            sl_gap.setRange(0, 2000)
+            sl_gap.setSingleStep(50)
+            sl_gap.setPageStep(100)
+            sl_gap.setValue(self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_ms())
+            val_gap = QLabel(f'{sl_gap.value()}ms', wrap_gap)
+            val_gap.setObjectName('hostMergeDiffFailHistDropPulsePreviewLoopGapVal')
+            val_gap.setFixedWidth(48)
+            val_gap.setStyleSheet('color:#c8d2dc;font-size:11px;')
+
+            def _on_gap(v, vl=val_gap):
+                self.set_merge_diff_fail_hist_drop_pulse_preview_loop_gap_ms(int(v))
+                try:
+                    vl.setText(f'{int(v)}ms')
+                except Exception:
+                    pass
+
+            sl_gap.valueChanged.connect(_on_gap)
+            lay_gap.addWidget(lab_gap)
+            lay_gap.addWidget(sl_gap, 1)
+            lay_gap.addWidget(val_gap)
+            lay.addWidget(wrap_gap)
+            self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_slider = sl_gap
+            self._last_merge_diff_fail_hist_drop_pulse_preview_loop_gap_val = val_gap
             row = QHBoxLayout()
             btn_play = QPushButton('再播一次', dlg)
             btn_play.setObjectName('hostMergeDiffFailHistDropPulsePreviewPlay')
@@ -8524,7 +8784,8 @@ class HostStateMachineWidget(QWidget):
                         f'时长 {self.merge_diff_fail_hist_drop_pulse_ms()}ms · '
                         f'缓动 {self.merge_diff_fail_hist_drop_pulse_easing()} · '
                         f'强度 {self.merge_diff_fail_hist_drop_pulse_intensity_pct()}%'
-                        + (' · 循环' if self.merge_diff_fail_hist_drop_pulse_preview_loop() else ''))
+                        + (f' · 循环+{self.merge_diff_fail_hist_drop_pulse_preview_loop_gap_ms()}ms'
+                           if self.merge_diff_fail_hist_drop_pulse_preview_loop() else ''))
                 except Exception:
                     pass
                 try:
@@ -10622,6 +10883,53 @@ class HostStateMachineWidget(QWidget):
         self._last_toast_curve_png_export_dir = d
         return d
 
+    def current_project_name_for_png(self) -> str:
+        """wave62: 解析当前工程名（主窗 document → 回落已存 project）."""
+        name = ''
+        try:
+            w = self
+            for _ in range(8):
+                if w is None:
+                    break
+                doc = getattr(w, 'document', None)
+                if doc is not None:
+                    proj = getattr(doc, 'project', None)
+                    if isinstance(proj, dict):
+                        name = str(proj.get('name') or '').strip()
+                        if name:
+                            break
+                mw = getattr(w, '_mainwindow', None) or getattr(w, 'mainwindow', None)
+                if mw is not None and getattr(mw, 'document', None) is not None:
+                    proj = getattr(mw.document, 'project', None)
+                    if isinstance(proj, dict):
+                        name = str(proj.get('name') or '').strip()
+                        if name:
+                            break
+                try:
+                    w = w.parent() if callable(getattr(w, 'parent', None)) else None
+                except Exception:
+                    w = None
+        except Exception:
+            name = ''
+        ov = str(getattr(self, '_toast_curve_png_project_source_name', '') or '').strip()
+        if ov:
+            name = ov
+        if not name:
+            name = str(getattr(self, '_toast_curve_png_project_name', 'default')
+                       or 'default').strip() or 'default'
+        safe = ''.join(ch if ch.isalnum() or ch in '-_.' else '_' for ch in name)
+        self._last_toast_curve_png_current_project_raw = name
+        self._last_toast_curve_png_current_project_safe = safe or 'default'
+        return safe or 'default'
+
+    def sync_toast_curve_png_project_from_current(
+            self, *, persist: bool = True, force: bool = False) -> str:
+        """wave62: 用当前工程名自动填 {project}."""
+        if not force and not getattr(self, '_toast_curve_png_project_autofill', True):
+            return self.toast_curve_png_project_name()
+        got = self.current_project_name_for_png()
+        return self.set_toast_curve_png_project_name(got, persist=persist)
+
     def toast_curve_png_project_name(self) -> str:
         """wave61: PNG 模板 {project} 变量."""
         v = str(getattr(self, '_toast_curve_png_project_name', 'default')
@@ -10729,7 +11037,13 @@ class HostStateMachineWidget(QWidget):
 
     def show_toast_curve_png_name_template_dialog(
             self, *, interactive: bool = True) -> str:
-        """wave60: PNG 命名模板编辑对话框."""
+        """wave60–62: PNG 命名模板编辑对话框（自动填当前工程名）."""
+        try:
+            if getattr(self, '_toast_curve_png_project_autofill', True):
+                self.sync_toast_curve_png_project_from_current(persist=False)
+                self._last_toast_curve_png_project_autofilled = True
+        except Exception:
+            self._last_toast_curve_png_project_autofilled = False
         if getattr(self, '_toast_curve_png_name_template_dialog_no_exec', False):
             # smoke path: apply optional smoke template
             tmpl = str(getattr(
@@ -10813,6 +11127,23 @@ class HostStateMachineWidget(QWidget):
 
             edit_p.textChanged.connect(_on_ps)
             edit_s.textChanged.connect(_on_ps)
+            # wave62: 从当前工程填入
+            btn_af = QPushButton('从工程', dlg)
+            btn_af.setObjectName('hostToastCurvePngProjectAutofill')
+            btn_af.setProperty('isToastCurvePngProjectAutofill', True)
+            btn_af.setFixedHeight(22)
+            btn_af.setStyleSheet('font-size:10px;padding:0 6px;')
+
+            def _do_af(*_a):
+                try:
+                    got = self.sync_toast_curve_png_project_from_current(persist=False)
+                    edit_p.setText(got)
+                except Exception:
+                    pass
+
+            btn_af.clicked.connect(_do_af)
+            row_ps.insertWidget(2, btn_af)
+            self._last_toast_curve_png_project_autofill_btn = btn_af
             # quick presets
             row = QHBoxLayout()
             for lab, tmpl in (
