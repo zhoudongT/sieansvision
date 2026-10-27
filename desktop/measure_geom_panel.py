@@ -247,7 +247,7 @@ class MeasureGeomPanel(QWidget):
         wiz.setToolTip('按步骤引导操作员完成上游绑定（画布点选 / 插入字段 / 跳过）')
         wiz.clicked.connect(self._run_bind_wizard)
         form.addRow('操作员', wiz)
-        tip = QLabel('绑定字段示例：lines[0]、matches[0]、circles[0]。「画布点选」：先运行几何/定位，再在图像上点击目标线/点写入绑定。「绑定制导」逐步走完所有槽位。叠层随「结果显示」开关。')
+        tip = QLabel('绑定字段示例：lines[0]、matches[0]、circles[0]。「画布点选」：先运行几何/定位，再在图像上点击目标线/点写入绑定。「绑定制导」逐步走完所有槽位。叠层随「结果显示」开关。打开即跑链：预处理→卡尺→交点/点线距→门限；换型后可切运行态单次试跑。')
         tip.setWordWrap(True); tip.setStyleSheet('color:#888;'); form.addRow(tip)
         return w
 

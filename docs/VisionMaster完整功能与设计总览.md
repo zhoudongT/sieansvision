@@ -426,6 +426,17 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆⑱ · 运行态chrome收束 · 配方换型闭环 · Comm验收落盘 · 2026-10-28】
+
+- **运行模式 chrome 观感收束（代码级，非人工签字）**：`StatusLamp` NG 边沿闪烁；HMI 头栏/底条 `配方徽章`；固定栏结构化 chip（📷相机│📡通讯│门│配方│●状态│◆判定│＃计数）并按 OK/NG/Alarm 变色；默认运行条分组分隔 + 配方标签；`set_recipe_chrome` / `update_fixed_bar_live` 驱动灯与栏。
+- **配方/换型 → 产线闭环**：换型对话框「套用后切运行态 / 套用后单次试跑」；`_stamp_post_apply` → `MainWindow.sync_after_recipe_apply`（刷生产任务字段、HMI 徽章、可选 `set_app_mode('run')` + 单次试跑）；工具栏变体快切 / 生产任务「套用变体」同样刷徽章。
+- **Comm 验收→变量一键落盘**：`dump_acceptance_to_variables` + 对话框「一键写入变量」；写 `flow.commAcceptPass/Fail/Skip/At/Host/Port/Overall`、按项 `flow.commAccept_<id>`，并解析 VALUE/MEAS sibling。
+- **打开即跑 measure 链**：`open-and-run-caliper-measure` 种子配方「卡尺测宽·默认 / A型」、固定栏计数+判定门；`measure_geom` 绑定 tip 点明换型→运行试跑。
+- **Smokes**：`smoke-hmi-chrome-recipe-fixedbar-e2e` / `smoke-recipe-apply-run-loop-e2e` / `smoke-comm-accept-vars-dump-e2e`（全部 PASS）。
+
+### 仍外置
+- 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
 ## 【细妆⑰ · 生产链路/报警加深 · Comm写回 · 绑定制导 · 2026-10-28】
 
 - **生产链路 / 报警历史 UX**：Host SM 报警页生产条（OK/NG/良率/状态）、报警序列 spark（▇未清/▁已清）、状态筛选（全部/未清除/已清除）、severity（错/警/讯）+ 清除历时；CSV 增 `cleared_at/severity`。`ProductionStatsPanel` 上位机状态镜像、判定序列、节拍/UPH、导出CSV；HMI chrome ↔ Host SM `set_production_snapshot` 双向跟。

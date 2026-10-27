@@ -105,6 +105,64 @@ class _Runner(QThread):
         self.finishedAll.emit(report)
 
 
+
+def dump_acceptance_to_variables(project, report, *, prefix='commAccept') -> dict:
+    """细妆⑱：验收报告一键落盘到 flow 变量（含 VALUE/MEAS 解析 sibling）.
+
+    Writes:
+      flow.{prefix}Pass / Fail / Skip / At / Host / Port / Overall
+      flow.{prefix}_{itemId} = PASS|FAIL|SKIP
+      flow.{prefix}_{itemId}_{extraKey} from parse_protocol_writeback_extras(reply)
+    Returns stats dict {written, extras, keys}.
+    """
+    from desktop.comm_manager import write_project_variable, parse_protocol_writeback_extras
+    from datetime import datetime as _dt
+    project = project if isinstance(project, dict) else {}
+    report = report if isinstance(report, dict) else {}
+    summary = report.get('summary') or {}
+    written = 0
+    extras_n = 0
+    keys = []
+    def _w(ref, val):
+        nonlocal written
+        scope, name = write_project_variable(project, ref, val)
+        if name:
+            written += 1
+            keys.append(f'{scope or "flow"}.{name}')
+
+    _w(f'flow.{prefix}Pass', int(summary.get('pass') or 0))
+    _w(f'flow.{prefix}Fail', int(summary.get('fail') or 0))
+    _w(f'flow.{prefix}Skip', int(summary.get('skip') or 0))
+    _w(f'flow.{prefix}At', str(report.get('finishedAt') or _dt.now().strftime('%Y-%m-%d %H:%M:%S')))
+    _w(f'flow.{prefix}Host', str(report.get('host') or ''))
+    _w(f'flow.{prefix}Port', int(report.get('port') or 0))
+    fail_n = int(summary.get('fail') or 0)
+    _w(f'flow.{prefix}Overall', 'FAIL' if fail_n else 'PASS')
+
+    for it in report.get('items') or []:
+        if not isinstance(it, dict):
+            continue
+        cid = str(it.get('id') or it.get('cid') or '').strip()
+        if not cid:
+            continue
+        # sanitize id for var name
+        safe = ''.join(ch if ch.isalnum() or ch in '_-' else '_' for ch in cid)
+        status = str(it.get('status') or 'SKIP')
+        _w(f'flow.{prefix}_{safe}', status)
+        reply = it.get('reply') or it.get('detail') or ''
+        try:
+            pairs = parse_protocol_writeback_extras(str(reply))
+        except Exception:
+            pairs = []
+        for k, v in pairs or []:
+            ksafe = ''.join(ch if ch.isalnum() or ch in '_-' else '_' for ch in str(k))
+            if not ksafe:
+                continue
+            _w(f'flow.{prefix}_{safe}_{ksafe}', v)
+            extras_n += 1
+    return {'written': written, 'extras': extras_n, 'keys': keys}
+
+
 class CommAcceptanceDialog(QDialog):
     """Acceptance checklist shell — dry-run on sim, ready for field host/port."""
 
@@ -244,6 +302,16 @@ class CommAcceptanceDialog(QDialog):
         b_clip = QPushButton('复制报告')
         b_clip.clicked.connect(self._copy_report)
         row.addWidget(b_clip)
+        self.btn_dump_vars = QPushButton('一键写入变量')
+        self.btn_dump_vars.setObjectName('commAcceptDumpVarsBtn')
+        self.btn_dump_vars.setToolTip(
+            '把验收 PASS/FAIL/汇总 + 回包 VALUE/MEAS 解析写入工程 flow 变量（需主窗 document）'
+        )
+        self.btn_dump_vars.setStyleSheet(
+            'QPushButton{background:#2a3a4a;color:#9ad;font-weight:600;padding:6px 12px;}'
+        )
+        self.btn_dump_vars.clicked.connect(self._dump_vars)
+        row.addWidget(self.btn_dump_vars)
         self.summary_lab = QLabel('尚未运行')
         self.summary_lab.setObjectName('commAcceptSummary')
         row.addWidget(self.summary_lab)
@@ -254,6 +322,72 @@ class CommAcceptanceDialog(QDialog):
         lay.addLayout(row)
         self._bootstrap_last()
 
+
+    
+    def _dump_vars(self):
+        """细妆⑱：验收→变量一键落盘."""
+        report = self._report
+        if not report:
+            # try last on disk
+            try:
+                path = self.last_report_path()
+                if path.is_file():
+                    report = json.loads(path.read_text(encoding='utf-8'))
+                    self._report = report
+            except Exception:
+                report = None
+        if not report:
+            QMessageBox.information(self, '写入变量', '尚无验收报告。请先干跑或载入上次报告。')
+            return
+        # resolve project from parent MainWindow
+        project = None
+        doc = None
+        w = self.parent()
+        while w is not None and not hasattr(w, 'document'):
+            try:
+                w = w.parent()
+            except Exception:
+                w = None
+                break
+        if w is not None and hasattr(w, 'document'):
+            doc = w.document
+            project = getattr(doc, 'project', None)
+        if not isinstance(project, dict):
+            QMessageBox.warning(
+                self, '写入变量',
+                '未找到主窗工程（document.project）。请从主程序「真机 Comm 验收」打开本对话框。',
+            )
+            return
+        try:
+            stats = dump_acceptance_to_variables(project, report)
+        except Exception as err:
+            QMessageBox.warning(self, '写入变量失败', str(err))
+            return
+        try:
+            if doc is not None:
+                if hasattr(doc, 'mark_dirty'):
+                    doc.mark_dirty()
+                if hasattr(doc, 'changed'):
+                    doc.changed.emit()
+        except Exception:
+            pass
+        msg = (
+            f"已写入 {stats.get('written', 0)} 个变量"
+            f"（含 extras {stats.get('extras', 0)}）\n"
+            + '、'.join((stats.get('keys') or [])[:8])
+            + ('…' if len(stats.get('keys') or []) > 8 else '')
+        )
+        self._log('变量落盘 · ' + msg.replace('\n', ' · '))
+        try:
+            if w is not None and hasattr(w, 'log'):
+                w.log('Comm 验收变量落盘 · ' + msg.replace('\n', ' · '))
+            if w is not None and hasattr(w, 'statusBar'):
+                w.statusBar().showMessage(
+                    f"Comm验收→变量 · 写入{stats.get('written', 0)}", 5000,
+                )
+        except Exception:
+            pass
+        QMessageBox.information(self, '变量已落盘', msg)
 
     def _bootstrap_last(self):
         try:

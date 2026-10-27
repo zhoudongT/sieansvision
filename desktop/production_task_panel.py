@@ -357,6 +357,16 @@ class ProductionTaskPanel(QWidget):
                     w.document.changed.emit()
                 except Exception:
                     pass
+            # 细妆⑱：闭环刷 HMI 配方徽章（不强制进运行态）
+            if w is not None and hasattr(w, 'sync_after_recipe_apply'):
+                try:
+                    w.sync_after_recipe_apply({
+                        **stats,
+                        'enterRun': False,
+                        'trialOnce': False,
+                    })
+                except Exception:
+                    pass
         except Exception as exc:
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(self, '变体套用失败', str(exc))

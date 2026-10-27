@@ -52,6 +52,20 @@ class RecipeSwitchDialog(QDialog):
         tabs.addTab(self._build_project_tab(), '本方案配方')
         tabs.addTab(self._build_library_tab(), '工程库换型')
 
+        # 细妆⑱：换型 → 运行壳闭环选项
+        loop = QHBoxLayout()
+        self._chk_enter_run = QCheckBox('套用后切运行态')
+        self._chk_enter_run.setObjectName('recipeEnterRunChk')
+        self._chk_enter_run.setToolTip('一键换型后自动进入运行模式（操作员 HMI）')
+        self._chk_enter_run.setChecked(True)
+        loop.addWidget(self._chk_enter_run)
+        self._chk_trial_once = QCheckBox('套用后单次试跑')
+        self._chk_trial_once.setObjectName('recipeTrialOnceChk')
+        self._chk_trial_once.setToolTip('切运行态后自动触发 ▶ 单次（需主窗在场）')
+        loop.addWidget(self._chk_trial_once)
+        loop.addStretch(1)
+        lay.addLayout(loop)
+
         row = QHBoxLayout()
         close_btn = QPushButton('关闭')
         close_btn.clicked.connect(self.reject)
@@ -320,6 +334,14 @@ class RecipeSwitchDialog(QDialog):
             chip.setText(f'参数差分：{err}')
             chip.setStyleSheet('color:#e35d6a;font-size:11px;padding:2px 4px;')
 
+
+    def _stamp_post_apply(self, stats: dict) -> dict:
+        """细妆⑱：把闭环选项写入 stats，供 MainWindow.sync_after_recipe_apply."""
+        stats = dict(stats or {})
+        stats['enterRun'] = bool(getattr(self, '_chk_enter_run', None) and self._chk_enter_run.isChecked())
+        stats['trialOnce'] = bool(getattr(self, '_chk_trial_once', None) and self._chk_trial_once.isChecked())
+        return stats
+
     def _apply_selected(self):
         rid = self._selected_id()
         if not rid:
@@ -347,6 +369,7 @@ class RecipeSwitchDialog(QDialog):
             return
         self.document.commit(p)
         self.refresh()
+        stats = self._stamp_post_apply(stats)
         self.recipeApplied.emit(stats)
         self.recipesChanged.emit()
         QMessageBox.information(
@@ -411,6 +434,7 @@ class RecipeSwitchDialog(QDialog):
             return
         self.document.commit(p)
         self.refresh()
+        stats = self._stamp_post_apply(stats)
         self.recipeApplied.emit(stats)
         self.recipesChanged.emit()
         QMessageBox.information(

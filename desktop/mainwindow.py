@@ -3648,8 +3648,89 @@ class MainWindow(QMainWindow):
                 f"变体快切「{variant}」→ 配方 {stats.get('name')} "
                 f"（写入 {stats.get('applied', 0)} · 跳过 {stats.get('skipped', 0)}）"
             )
+            try:
+                # 快切不默认进运行态；只刷生产任务/HMI 徽章
+                self.sync_after_recipe_apply({
+                    **stats,
+                    'enterRun': False,
+                    'trialOnce': False,
+                })
+            except Exception:
+                pass
         except Exception as exc:
             self.log(f'变体快切失败：{exc}')
+
+    def sync_after_recipe_apply(self, stats=None):
+        """细妆⑱：配方套用 → 生产任务字段 / HMI 配方徽章 / 可选切运行 + 单次试跑."""
+        stats = stats or {}
+        name = str(stats.get('name') or '')
+        variant = str(stats.get('variant') or '')
+        try:
+            from desktop import recipe_library as rl
+            if not name:
+                name = rl.active_recipe_name(self.document.project) or ''
+            if not variant:
+                variant = str(self.document.project.get('activeRecipeVariant') or '')
+        except Exception:
+            pass
+        try:
+            self.document.changed.emit()
+        except Exception:
+            pass
+        try:
+            self.refresh_parameters()
+        except Exception:
+            pass
+        try:
+            self.scene.rebuild()
+        except Exception:
+            pass
+        try:
+            self.refresh_variant_chip()
+        except Exception:
+            pass
+        # HMI recipe chrome
+        try:
+            if hasattr(self, 'operator_hmi') and self.operator_hmi is not None:
+                if hasattr(self.operator_hmi, 'set_recipe_chrome'):
+                    self.operator_hmi.set_recipe_chrome(name, variant)
+                if getattr(self, 'app_mode', 'design') == 'run':
+                    self.operator_hmi.reload_layout(self.document.project)
+        except Exception:
+            pass
+        try:
+            self.statusBar().showMessage(
+                f"换型已落盘 · {name or '—'}"
+                + (f' / {variant}' if variant else '')
+                + f" · 写入{stats.get('applied', 0)} 跳过{stats.get('skipped', 0)}",
+                5000,
+            )
+        except Exception:
+            pass
+        # optional enter run + trial once
+        enter = bool(stats.get('enterRun'))
+        trial = bool(stats.get('trialOnce'))
+        if enter and getattr(self, 'app_mode', 'design') != 'run':
+            try:
+                self.guard(lambda: self.set_app_mode('run'))
+                self.log(f'换型闭环 · 已切运行态 · 配方 {name or "—"}')
+            except Exception as err:
+                self.log(f'换型切运行态失败：{err}')
+        if trial:
+            def _fire_once():
+                try:
+                    from desktop.operator_hmi import DEFAULT_RUN_COMMANDS
+                    from copy import deepcopy as _dc
+                    self.guard(lambda: self._run_hmi_commands(_dc(DEFAULT_RUN_COMMANDS)))
+                    self.log('换型闭环 · 已触发单次试跑')
+                except Exception as err:
+                    self.log(f'换型单次试跑失败：{err}')
+            try:
+                from PySide6.QtCore import QTimer
+                # slight delay so run-mode layout settles
+                QTimer.singleShot(180, _fire_once)
+            except Exception:
+                _fire_once()
 
     def open_recipe_switch(self):
         """细妆⑬：产线配方 / 一键换型（本方案快照 + 工程库整案）."""
@@ -3658,17 +3739,20 @@ class MainWindow(QMainWindow):
         dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         def _on_applied(stats):
             self.log(f"换型完成 · {stats.get('name')} · 写入{stats.get('applied')} 跳过{stats.get('skipped')}")
-            self.document.changed.emit()
-            self.refresh_parameters()
-            self.scene.rebuild()
-            try:
-                self.refresh_variant_chip()
-            except Exception:
-                pass
+            self.sync_after_recipe_apply(stats)
         def _on_scheme(proj):
             try:
                 self.guard(lambda: self.use_project(proj))
                 self.log(f"工程库换型已加载 · {proj.get('name') or ''}")
+                try:
+                    from desktop import recipe_library as rl
+                    self.sync_after_recipe_apply({
+                        'name': rl.active_recipe_name(proj) or proj.get('name') or '',
+                        'variant': str(proj.get('activeRecipeVariant') or ''),
+                        'enterRun': False,
+                    })
+                except Exception:
+                    pass
             except Exception as err:
                 self.log(f'工程库换型失败：{err}')
         dlg.recipeApplied.connect(_on_applied)

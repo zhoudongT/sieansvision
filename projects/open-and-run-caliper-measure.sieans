@@ -340,12 +340,192 @@
     "fixedBars": {
       "bottom": true,
       "gateKey": "passGate",
-      "showCounters": true
+      "showCounters": true,
+      "top": true,
+      "showOkNg": true
     },
     "meta": {
       "title": "卡尺直线 · 打开即跑",
       "industry": "measure"
     }
   },
-  "notes": "【打开即跑 · 卡尺】caliper-line 等样张。▶ 单次：预处理→多卡尺直线(边缘类型=全部,maxCount=3)→门限。\n看叠层：卡尺框·边缘点·多直线·rms；变量 lineCount/lineScore/lineRms/passGate。\n联调：全局触发 RUN/CONT/STOP；模板市场可云同步本机站 :19779。无 Halcon / 无现场硬件。"
+  "notes": "【打开即跑 · 卡尺】caliper-line 等样张。▶ 单次：预处理→多卡尺直线(边缘类型=全部,maxCount=3)→门限。\n看叠层：卡尺框·边缘点·多直线·rms；变量 lineCount/lineScore/lineRms/passGate。\n联调：全局触发 RUN/CONT/STOP；模板市场可云同步本机站 :19779。无 Halcon / 无现场硬件。\n细妆⑱：配方换型→运行壳；固定栏显示判定/计数/配方",
+  "recipes": [
+    {
+      "id": "e81e45c696524f8a",
+      "name": "卡尺测宽·默认",
+      "note": "打开即跑 · 细妆⑱闭环演示",
+      "variant": "A型",
+      "varKeys": [],
+      "stepOps": [],
+      "updatedAt": "2026-10-28 01:09:30",
+      "stepCount": 5,
+      "snapshot": {
+        "steps": [
+          {
+            "id": "88437751b6394bfd",
+            "name": "图像预处理",
+            "operation": "preprocess",
+            "params": {
+              "method": "grayscale",
+              "threshold": 127,
+              "kernel": 3,
+              "cannyLow": 50,
+              "cannyHigh": 150,
+              "invert": false,
+              "blur": 1
+            },
+            "imageFrom": "source"
+          },
+          {
+            "id": "a511881928374398",
+            "name": "卡尺直线查找",
+            "operation": "geometry",
+            "params": {
+              "feature": "lines",
+              "findMethod": "caliper",
+              "roiPreset": "center",
+              "caliperCount": 16,
+              "caliperWidth": 18,
+              "caliperLength": 220,
+              "caliperSigma": 1.0,
+              "caliperProjAngle": 0.0,
+              "edgeType": "all",
+              "edgePolarity": "any",
+              "edgeThreshold": 25,
+              "searchDir": "left_right",
+              "maxCount": 3,
+              "minScore": 0.35,
+              "minLength": 40,
+              "maximumResidual": 3.0,
+              "rejectPoints": 1,
+              "showOverlay": true,
+              "showPoints": true,
+              "showCalipers": true,
+              "showFitCurve": true,
+              "showFitError": true,
+              "showLabels": true,
+              "showRuler": true,
+              "subPixel": true,
+              "filterSize": 1
+            },
+            "imageFrom": "88437751b6394bfd"
+          },
+          {
+            "id": "f28467b7a8134cde",
+            "name": "两直线交点",
+            "operation": "line_intersect",
+            "params": {
+              "mode": "bind",
+              "line1From": "a511881928374398",
+              "line1Field": "lines[0]",
+              "line2From": "a511881928374398",
+              "line2Field": "lines[1]",
+              "unit": "px",
+              "scale": 1.0,
+              "showOverlay": true,
+              "showPoints": true,
+              "showLines": true,
+              "showLabels": true,
+              "showDistanceText": true,
+              "x1": 0,
+              "y1": 0,
+              "x2": 100,
+              "y2": 0,
+              "x3": 50,
+              "y3": -50,
+              "x4": 50,
+              "y4": 50
+            },
+            "imageFrom": "a511881928374398"
+          },
+          {
+            "id": "970477979fba492f",
+            "name": "交点到线3垂距",
+            "operation": "point_line_distance",
+            "params": {
+              "mode": "bind",
+              "pointFrom": "f28467b7a8134cde",
+              "pointField": "",
+              "lineFrom": "a511881928374398",
+              "lineField": "lines[2]",
+              "unit": "px",
+              "scale": 1.0,
+              "showOverlay": true,
+              "showPoints": true,
+              "showLines": true,
+              "showLabels": true,
+              "showDistanceText": true,
+              "px": 0,
+              "py": 0,
+              "x1": 0,
+              "y1": 0,
+              "x2": 100,
+              "y2": 0
+            },
+            "imageFrom": "f28467b7a8134cde"
+          },
+          {
+            "id": "153f422383c34c88",
+            "name": "交点·垂距门限·OK/NG",
+            "operation": "var_calc",
+            "params": {
+              "scope": "flow",
+              "expressions": [
+                {
+                  "name": "lineCount",
+                  "expression": "geometry_count",
+                  "initial": 0,
+                  "outType": "number",
+                  "initOnRun": true
+                },
+                {
+                  "name": "lineScore",
+                  "expression": "geometry_score",
+                  "initial": 0,
+                  "outType": "number",
+                  "initOnRun": true
+                },
+                {
+                  "name": "intersectX",
+                  "expression": "line_intersect_x",
+                  "initial": 0,
+                  "outType": "number",
+                  "initOnRun": true
+                },
+                {
+                  "name": "intersectY",
+                  "expression": "line_intersect_y",
+                  "initial": 0,
+                  "outType": "number",
+                  "initOnRun": true
+                },
+                {
+                  "name": "pldDist",
+                  "expression": "point_line_distance_distance",
+                  "initial": 0,
+                  "outType": "number",
+                  "initOnRun": true
+                },
+                {
+                  "name": "passGate",
+                  "expression": "lineCount >= 2 && lineScore >= 0.35 && line_intersect_ok == 1",
+                  "initial": 0,
+                  "outType": "number",
+                  "initOnRun": true
+                }
+              ]
+            },
+            "imageFrom": "970477979fba492f"
+          }
+        ],
+        "variables": {},
+        "productionRecipe": "卡尺测宽·默认",
+        "variant": "A型",
+        "varKeys": [],
+        "stepOps": []
+      }
+    }
+  ],
+  "activeRecipeId": "e81e45c696524f8a"
 }

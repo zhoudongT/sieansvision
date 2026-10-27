@@ -65,22 +65,56 @@ def _split_rows_cols(split: str):
 
 
 class StatusLamp(QLabel):
-    """Simple round-ish status lamp (OK/NG / 信号灯)."""
+    """Simple round-ish status lamp (OK/NG / 信号灯) — 细妆⑱ blink on NG."""
 
     def __init__(self, caption='状态', parent=None):
         super().__init__(parent)
         self._caption = caption or '状态'
+        self._ok = None
+        self._blink_on = False
+        self._blink_timer = QTimer(self)
+        self._blink_timer.setInterval(420)
+        self._blink_timer.timeout.connect(self._toggle_blink)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setMinimumHeight(48)
         self.set_state(None)
 
+    def set_caption(self, caption: str):
+        self._caption = caption or self._caption or '状态'
+        self.set_state(self._ok)
+
     def set_state(self, ok):
+        prev = self._ok
+        self._ok = ok
+        self._blink_on = False
+        self._paint_lamp()
+        # NG 边沿起闪；离开 NG 停闪
+        if ok is False:
+            if prev is not False:
+                self._blink_timer.start()
+        else:
+            self._blink_timer.stop()
+
+    def _toggle_blink(self):
+        if self._ok is not False:
+            self._blink_timer.stop()
+            return
+        self._blink_on = not self._blink_on
+        self._paint_lamp()
+
+    def _paint_lamp(self):
+        ok = self._ok
         if ok is True:
             color, text = '#1c3a2a', f'{self._caption}\nOK'
             border = '#3ecf8e'
         elif ok is False:
-            color, text = '#3a1c1c', f'{self._caption}\nNG'
-            border = '#e35d6a'
+            # blink: alternate brighter border
+            if self._blink_on:
+                color, text = '#5a2020', f'{self._caption}\nNG'
+                border = '#ff6b7a'
+            else:
+                color, text = '#3a1c1c', f'{self._caption}\nNG'
+                border = '#e35d6a'
         else:
             color, text = '#2a3340', f'{self._caption}\n—'
             border = '#3d4a5c'
@@ -491,6 +525,14 @@ class OperatorHmiView(QWidget):
         title = QLabel('运行模式 · 操作员界面')
         title.setObjectName('dialogTitle')
         header.addWidget(title)
+        self._recipe_badge = QLabel('配方 · —')
+        self._recipe_badge.setObjectName('hmiRecipeBadge')
+        self._recipe_badge.setStyleSheet(
+            f'background:{CARD};color:{TEXT_MUTED};border:1px solid {LINE};'
+            f'border-radius:3px;padding:3px 8px;font-size:11px;font-weight:600;'
+        )
+        self._recipe_badge.setToolTip('当前产线配方 / 产品变体（套用后自动刷新）')
+        header.addWidget(self._recipe_badge)
         header.addStretch(1)
         self._state_badge = QLabel('空闲')
         self._state_badge.setObjectName('modeBadge')
@@ -578,28 +620,53 @@ class OperatorHmiView(QWidget):
 
         # Always-available default run strip (also used when layout has no 运行控制)
         self._default_strip = QWidget()
+        self._default_strip.setObjectName('hmiDefaultStrip')
         strip = QHBoxLayout(self._default_strip)
-        strip.setContentsMargins(0, 0, 0, 0)
+        strip.setContentsMargins(2, 2, 2, 2)
+        strip.setSpacing(4)
+        self._strip_recipe_lab = QLabel('配方 —')
+        self._strip_recipe_lab.setObjectName('hmiStripRecipe')
+        self._strip_recipe_lab.setStyleSheet(
+            f'color:{TEXT_MUTED};font-size:11px;padding:0 6px;font-weight:600;'
+        )
+        strip.addWidget(self._strip_recipe_lab)
+        def _sep():
+            s = QFrame()
+            s.setFrameShape(QFrame.Shape.VLine)
+            s.setStyleSheet(f'color:{LINE};')
+            s.setFixedWidth(2)
+            strip.addWidget(s)
+        _sep()
         self._strip_btns = {}
-        for key, label, cmds, primary in (
-            ('once', '▶ 单次', DEFAULT_RUN_COMMANDS, True),
-            ('cont', '↻ 连续', DEFAULT_CONT_COMMANDS, False),
-            ('pause', '⏸ 暂停', DEFAULT_PAUSE_COMMANDS, False),
-            ('resume', '▶ 继续', DEFAULT_RESUME_COMMANDS, False),
-            ('stop', '■ 停止', DEFAULT_STOP_COMMANDS, False),
-            ('clear', '清除报警', DEFAULT_CLEAR_ALARM_COMMANDS, False),
-            ('inj_run', '注入 RUN', DEFAULT_INJECT_RUN_COMMANDS, False),
-            ('inj_stop', '注入 STOP', DEFAULT_INJECT_STOP_COMMANDS, False),
-        ):
-            btn = QPushButton(label)
-            if primary:
-                btn.setObjectName('primaryButton')
-            if key == 'clear':
-                btn.setObjectName('hmiClearAlarmBtn')
-                btn.setToolTip('清除上位机报警 → 空闲（状态·清除报警）')
-            btn.clicked.connect(lambda _=False, c=cmds: self.triggerCommands.emit(deepcopy(c)))
-            strip.addWidget(btn)
-            self._strip_btns[key] = btn
+        groups = [
+            (
+                ('once', '▶ 单次', DEFAULT_RUN_COMMANDS, True),
+                ('cont', '↻ 连续', DEFAULT_CONT_COMMANDS, False),
+                ('pause', '⏸ 暂停', DEFAULT_PAUSE_COMMANDS, False),
+                ('resume', '▶ 继续', DEFAULT_RESUME_COMMANDS, False),
+                ('stop', '■ 停止', DEFAULT_STOP_COMMANDS, False),
+            ),
+            (
+                ('clear', '清除报警', DEFAULT_CLEAR_ALARM_COMMANDS, False),
+            ),
+            (
+                ('inj_run', '注入 RUN', DEFAULT_INJECT_RUN_COMMANDS, False),
+                ('inj_stop', '注入 STOP', DEFAULT_INJECT_STOP_COMMANDS, False),
+            ),
+        ]
+        for gi, group in enumerate(groups):
+            if gi:
+                _sep()
+            for key, label, cmds, primary in group:
+                btn = QPushButton(label)
+                if primary:
+                    btn.setObjectName('primaryButton')
+                if key == 'clear':
+                    btn.setObjectName('hmiClearAlarmBtn')
+                    btn.setToolTip('清除上位机报警 → 空闲（状态·清除报警）')
+                btn.clicked.connect(lambda _=False, c=cmds: self.triggerCommands.emit(deepcopy(c)))
+                strip.addWidget(btn)
+                self._strip_btns[key] = btn
         strip.addStretch(1)
         root.addWidget(self._default_strip)
         self._sync_strip_buttons('Idle')
@@ -632,6 +699,15 @@ class OperatorHmiView(QWidget):
         )
         if fp == self._layout_fp and self._grid_layout.count():
             # Still refresh fixed-bar text (bindings may change without placement change)
+                        # 细妆⑱：从工程刷配方徽章
+            try:
+                from desktop import recipe_library as _rl
+                self.set_recipe_chrome(
+                    _rl.active_recipe_name(project) or '',
+                    str(project.get('activeRecipeVariant') or ''),
+                )
+            except Exception:
+                pass
             self._apply_fixed_bars(ui.get('fixedBars') or {})
             return
         self._layout_fp = fp
@@ -1500,12 +1576,53 @@ class OperatorHmiView(QWidget):
                 pass
 
 
+    def set_recipe_chrome(self, name: str = '', variant: str = ''):
+        """细妆⑱：刷新运行态配方/变体徽章（换型闭环 → HMI 一目了然）."""
+        name = (name or '').strip() or '—'
+        variant = (variant or '').strip()
+        self._live_recipe = name
+        self._live_variant = variant
+        badge = getattr(self, '_recipe_badge', None)
+        if badge is not None:
+            txt = f'配方 · {name}' + (f' · {variant}' if variant else '')
+            badge.setText(txt)
+            badge.setToolTip(f'当前产线配方：{name}' + (f' / 变体 {variant}' if variant else ''))
+            # accent when a real recipe is active
+            if name and name != '—':
+                badge.setStyleSheet(
+                    f'background:#2a3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                    f'border-radius:3px;padding:3px 8px;font-size:11px;font-weight:700;'
+                )
+            else:
+                badge.setStyleSheet(
+                    f'background:{CARD};color:{TEXT_MUTED};border:1px solid {LINE};'
+                    f'border-radius:3px;padding:3px 8px;font-size:11px;font-weight:600;'
+                )
+        strip_lab = getattr(self, '_strip_recipe_lab', None)
+        if strip_lab is not None:
+            strip_lab.setText(f'配方 {name}' + (f'/{variant}' if variant else ''))
+        # re-paint fixed bars so tip includes recipe
+        try:
+            self._apply_fixed_bars(getattr(self, '_fixed_bars_cache', None) or {})
+        except Exception:
+            pass
+
     def update_fixed_bar_live(self, *, run_status=None, okng=None, counters=None, camera=None, comm=None):
         """Refresh fixed-bar chrome with live run/OKNG/counters (细妆 · 固定栏实况)."""
         if run_status is not None:
             self._live_run_status = str(run_status)
         if okng is not None:
             self._live_okng = str(okng)
+            # drive status lamps from OK/NG string
+            low = str(okng).strip().upper()
+            lamp_ok = True if low in ('OK', 'PASS', '良', '通过') else (
+                False if low in ('NG', 'FAIL', '不良', '拒', 'NG/FAIL') else None
+            )
+            for lamp in getattr(self, '_status_lamps', []) or []:
+                try:
+                    lamp.set_state(lamp_ok)
+                except Exception:
+                    pass
         if counters is not None:
             self._live_counters = str(counters)
         fb = dict(getattr(self, '_fixed_bars_cache', None) or {})
@@ -1520,20 +1637,42 @@ class OperatorHmiView(QWidget):
 
 
     def _apply_fixed_bars(self, fb: dict):
+        """细妆⑱：固定栏结构化 chip（相机/通讯/状态灯/配方）— 代码观感收束，非人工签字."""
         self._fixed_bars_cache = dict(fb or {})
         cam = fb.get('cameraBind') or CAMERA_BIND_OPTIONS[0]
         comm = fb.get('commBind') or COMM_BIND_OPTIONS[0]
         gate = (fb.get('gateKey') or '').strip()
-        tip = f'相机:{cam} · 通讯:{comm}' + (f' · 判定门:flow.{gate}' if gate else '')
+        recipe = getattr(self, '_live_recipe', '') or ''
+        variant = getattr(self, '_live_variant', '') or ''
+        chips = [f'📷 {cam}', f'📡 {comm}']
+        if gate:
+            chips.append(f'门 flow.{gate}')
+        if recipe and recipe != '—':
+            chips.append(f'配方 {recipe}' + (f'/{variant}' if variant else ''))
         extras = []
+        run_st = getattr(self, '_live_run_status', '空闲')
+        okng = getattr(self, '_live_okng', '—')
         if fb.get('showRunStatus', True):
-            extras.append(f'状态:{getattr(self, "_live_run_status", "空闲")}')
+            extras.append(f'● {run_st}')
         if fb.get('showOkNg', True):
-            extras.append(f'判定:{getattr(self, "_live_okng", "—")}')
+            extras.append(f'◆ {okng}')
         if fb.get('showCounters'):
-            extras.append(f'计数:{getattr(self, "_live_counters", "0/0")}')
-        if extras:
-            tip = tip + ' · ' + ' · '.join(extras)
+            extras.append(f'＃ {getattr(self, "_live_counters", "0/0")}')
+        tip = '  │  '.join(chips + extras)
+        # colorize bar by OK/NG / Alarm-ish
+        bar_bg, bar_fg, bar_bd = CARD, TEXT_MUTED, LINE
+        low = str(okng).strip().upper()
+        host = getattr(self, '_host_state', 'Idle')
+        if host == 'Alarm' or low in ('NG', 'FAIL', '不良', '拒'):
+            bar_bg, bar_fg, bar_bd = '#3a1c1c', '#ffb4b4', '#e35d6a'
+        elif low in ('OK', 'PASS', '良', '通过') or host == 'Running':
+            bar_bg, bar_fg, bar_bd = '#1c3a2a', '#9ed9a8', '#3ecf8e'
+        elif host == 'Paused':
+            bar_bg, bar_fg, bar_bd = '#3a3420', '#e0b84a', '#e0b84a'
+        bar_ss = (
+            f'background:{bar_bg};color:{bar_fg};border:1px solid {bar_bd};'
+            f'border-radius:3px;padding:5px 10px;font-size:11px;font-weight:600;'
+        )
         for panel in getattr(self, '_stats_panels', []) or []:
             try:
                 if gate and not panel.gate_key():
@@ -1541,24 +1680,34 @@ class OperatorHmiView(QWidget):
             except Exception:
                 pass
         if fb.get('top'):
-            self._fix_top.setText(f'顶部固定栏 · {tip}')
+            self._fix_top.setText(f'▬ 顶栏  {tip}')
+            self._fix_top.setStyleSheet(bar_ss)
+            self._fix_top.setToolTip(tip)
             self._fix_top.show()
         else:
             self._fix_top.hide()
         if fb.get('bottom'):
-            self._fix_bottom.setText(f'底部固定栏 · {tip}')
+            self._fix_bottom.setText(f'▬ 底栏  {tip}')
+            self._fix_bottom.setStyleSheet(bar_ss)
+            self._fix_bottom.setToolTip(tip)
             self._fix_bottom.show()
         else:
             self._fix_bottom.hide()
+        side_ss = (
+            f'background:{bar_bg};color:{bar_fg};border:1px solid {bar_bd};'
+            f'border-radius:2px;padding:2px;font-size:10px;font-weight:700;'
+        )
         if fb.get('left'):
-            self._fix_left.setText('左\n固\n定\n栏')
+            self._fix_left.setText('左\n固\n定')
             self._fix_left.setToolTip(tip)
+            self._fix_left.setStyleSheet(side_ss)
             self._fix_left.show()
         else:
             self._fix_left.hide()
         if fb.get('right'):
-            self._fix_right.setText('右\n固\n定\n栏')
+            self._fix_right.setText('右\n固\n定')
             self._fix_right.setToolTip(tip)
+            self._fix_right.setStyleSheet(side_ss)
             self._fix_right.show()
         else:
             self._fix_right.hide()
