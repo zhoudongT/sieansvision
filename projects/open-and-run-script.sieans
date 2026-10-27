@@ -1,0 +1,127 @@
+{
+  "version": 2,
+  "id": "2dd86a3644374625",
+  "name": "打开即跑 · Python 脚本",
+  "steps": [
+    {
+      "id": "deafed79249844df",
+      "operation": "script",
+      "name": "脚本计数",
+      "params": {
+        "code": "def run(ctx):\n    # 打开即跑：无 OpenCV 依赖，纯结果回写\n    n = int(ctx.get(\"params\", {}).get(\"count\", 3))\n    return dict(result=dict(count=n, passed=n>0, note=\"script-ok\"))\n",
+        "timeoutMs": 5000,
+        "arguments": {
+          "count": 3
+        },
+        "outputBindings": [
+          {
+            "field": "passed",
+            "scope": "flow",
+            "name": "passed"
+          },
+          {
+            "field": "count",
+            "scope": "flow",
+            "name": "scriptCount"
+          }
+        ]
+      },
+      "position": {
+        "x": 300,
+        "y": 160
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "fc1c511c559746bf",
+      "from": "source",
+      "to": "deafed79249844df",
+      "fromPort": "bottom",
+      "toPort": "top"
+    }
+  ],
+  "sourcePosition": {
+    "x": 300,
+    "y": 40
+  },
+  "variables": {},
+  "sourceConfig": {
+    "mode": "local",
+    "pixelFormat": "RGB24",
+    "intervalMs": 0,
+    "saveInSolution": false,
+    "showImageName": true,
+    "snStart": 0,
+    "imageCache": 0,
+    "outputMono8": false,
+    "stitchEnable": false,
+    "stitchStartY": 0,
+    "stitchHeight": 0,
+    "stitchClearOnTrigger": false,
+    "autoSwitch": false,
+    "stopAtLast": false,
+    "charFilterEnable": false,
+    "inputChar": "",
+    "triggerChar": "",
+    "cameraId": "",
+    "cameraParams": {},
+    "exposure": 0.0,
+    "gain": 0.0,
+    "images": [
+      "/home/allen/文档/sieansvision/public/vision/samples/circle-ring.png"
+    ],
+    "currentIndex": 0
+  },
+  "runUi": {
+    "split": "2",
+    "placements": [
+      {
+        "name": "图像",
+        "page": 1,
+        "cell": 0,
+        "category": "基础"
+      },
+      {
+        "name": "上位机状态机",
+        "page": 1,
+        "cell": 1,
+        "category": "基础"
+      }
+    ],
+    "controls": {
+      "图像": {
+        "commands": [],
+        "binding": "source"
+      },
+      "上位机状态机": {
+        "commands": [
+          {
+            "type": "执行·连续",
+            "config": ""
+          },
+          {
+            "type": "执行·停止",
+            "config": ""
+          }
+        ],
+        "binding": "host"
+      }
+    },
+    "fixedBars": {
+      "top": false,
+      "bottom": true,
+      "left": false,
+      "right": false,
+      "cameraBind": "未绑定",
+      "commBind": "TCP.连接状态",
+      "showRunStatus": true,
+      "showOkNg": true
+    },
+    "meta": {
+      "template": "host_state_machine",
+      "version": 1
+    }
+  },
+  "notes": "【打开即跑 · 脚本】Python script 算子。设计态勾选「允许脚本」后 ▶ 单次；未勾选时引擎会拒绝执行脚本体。"
+}

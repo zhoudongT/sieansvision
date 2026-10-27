@@ -1,0 +1,113 @@
+{
+  "version": 2,
+  "id": "fd7b0ffe954b479e",
+  "name": "打开即跑 · 条码识别",
+  "steps": [
+    {
+      "id": "ce0d667af2f546b0",
+      "operation": "barcode",
+      "name": "条码识别",
+      "params": {
+        "maxCodes": 5,
+        "types": "all"
+      },
+      "position": {
+        "x": 300,
+        "y": 160
+      },
+      "imageFrom": "source"
+    }
+  ],
+  "edges": [
+    {
+      "id": "680558ce796d4540",
+      "from": "source",
+      "to": "ce0d667af2f546b0",
+      "fromPort": "bottom",
+      "toPort": "top"
+    }
+  ],
+  "sourcePosition": {
+    "x": 300,
+    "y": 40
+  },
+  "variables": {},
+  "sourceConfig": {
+    "mode": "local",
+    "pixelFormat": "RGB24",
+    "intervalMs": 0,
+    "saveInSolution": false,
+    "showImageName": true,
+    "snStart": 0,
+    "imageCache": 0,
+    "outputMono8": false,
+    "stitchEnable": false,
+    "stitchStartY": 0,
+    "stitchHeight": 0,
+    "stitchClearOnTrigger": false,
+    "autoSwitch": false,
+    "stopAtLast": false,
+    "charFilterEnable": false,
+    "inputChar": "",
+    "triggerChar": "",
+    "cameraId": "",
+    "cameraParams": {},
+    "exposure": 0.0,
+    "gain": 0.0,
+    "images": [
+      "/home/allen/文档/sieansvision/public/vision/samples/codes.png"
+    ],
+    "currentIndex": 0
+  },
+  "runUi": {
+    "split": "2",
+    "placements": [
+      {
+        "name": "图像",
+        "page": 1,
+        "cell": 0,
+        "category": "基础"
+      },
+      {
+        "name": "上位机状态机",
+        "page": 1,
+        "cell": 1,
+        "category": "基础"
+      }
+    ],
+    "controls": {
+      "图像": {
+        "commands": [],
+        "binding": "source"
+      },
+      "上位机状态机": {
+        "commands": [
+          {
+            "type": "执行·连续",
+            "config": ""
+          },
+          {
+            "type": "执行·停止",
+            "config": ""
+          }
+        ],
+        "binding": "host"
+      }
+    },
+    "fixedBars": {
+      "top": false,
+      "bottom": true,
+      "left": false,
+      "right": false,
+      "cameraBind": "未绑定",
+      "commBind": "TCP.连接状态",
+      "showRunStatus": true,
+      "showOkNg": true
+    },
+    "meta": {
+      "template": "host_state_machine",
+      "version": 1
+    }
+  },
+  "notes": "【打开即跑 · 条码】codes.png。▶ 单次识别。"
+}

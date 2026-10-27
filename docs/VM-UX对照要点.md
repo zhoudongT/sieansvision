@@ -1012,3 +1012,5 @@ sieans：`config_status.node_needs_bang` + `Node.needs_config` / `run_failed`（
 - **变量计算**：`var_calc` 现可引用上游结果标量（`geometry_count` / `geometry_radius` / `locate_score` 等），runtime 注入；打开即跑默认工程已用 `circleCount`/`firstRadius`/`passGate`。
 - **九点标定样例**：`projects/open-and-run-ninepoint.sieans`（pixelX/Y↔worldX/Y，affine RMS≈0）。
 - **稳定性**：修复 `variables_dialog.render` 中 `notes` → `self.notes` NameError（打开工程即崩）。
+
+- **缺陷 / 条码 / 脚本样例**：`open-and-run-defects`（差分 count=2）、`open-and-run-barcode`（codes.png→2）、`open-and-run-script`（allowScripts 下 Python 回写）。均已 engine-host E2E。
