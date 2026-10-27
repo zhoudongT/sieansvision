@@ -7,7 +7,7 @@ from datetime import datetime
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
-    QPlainTextEdit, QGridLayout, QSizePolicy, QLineEdit,
+    QPlainTextEdit, QGridLayout, QSizePolicy, QLineEdit, QListWidget,
 )
 
 from desktop.image_view import ImageView
@@ -71,6 +71,130 @@ class StatusLamp(QLabel):
         )
 
 
+
+class ProductionStatsPanel(QWidget):
+    """OK/NG counters + yield + recent history + pause/alarm (今日 HMI 交付)."""
+
+    pauseToggled = Signal(bool)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._ok = 0
+        self._ng = 0
+        self._paused = False
+        self._history = []  # newest first, max 40
+        root = QVBoxLayout(self)
+        root.setContentsMargins(4, 4, 4, 4)
+        root.setSpacing(4)
+
+        self._alarm = QLabel('')
+        self._alarm.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._alarm.setStyleSheet(
+            f'background:#3a1c1c;color:#ffb4b4;border:1px solid #e35d6a;'
+            f'border-radius:2px;padding:4px;font-weight:700;font-size:11px;'
+        )
+        self._alarm.hide()
+        root.addWidget(self._alarm)
+
+        row = QHBoxLayout()
+        self._ok_lab = QLabel('OK\n0')
+        self._ng_lab = QLabel('NG\n0')
+        self._yield_lab = QLabel('良率\n—')
+        self._total_lab = QLabel('总量\n0')
+        for lab, color in (
+            (self._ok_lab, '#3ecf8e'),
+            (self._ng_lab, '#e35d6a'),
+            (self._yield_lab, '#6eb6ff'),
+            (self._total_lab, TEXT_MUTED),
+        ):
+            lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lab.setMinimumHeight(52)
+            lab.setStyleSheet(
+                f'background:{CARD};color:{color};border:1px solid {LINE};'
+                f'border-radius:2px;font-weight:700;font-size:12px;padding:4px;'
+            )
+            row.addWidget(lab, 1)
+        root.addLayout(row)
+
+        btn_row = QHBoxLayout()
+        self._pause_btn = QPushButton('⏸ 暂停计数')
+        self._pause_btn.setCheckable(True)
+        self._pause_btn.toggled.connect(self._on_pause)
+        btn_row.addWidget(self._pause_btn)
+        reset = QPushButton('清零')
+        reset.clicked.connect(self.reset)
+        btn_row.addWidget(reset)
+        btn_row.addStretch(1)
+        root.addLayout(btn_row)
+
+        cap = QLabel('最近结果')
+        cap.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;font-weight:600;')
+        root.addWidget(cap)
+        self._list = QListWidget()
+        self._list.setMaximumHeight(140)
+        self._list.setStyleSheet('font-size:11px;')
+        root.addWidget(self._list, 1)
+        self._refresh_labels()
+
+    def _on_pause(self, on: bool):
+        self._paused = bool(on)
+        self._pause_btn.setText('▶ 继续计数' if on else '⏸ 暂停计数')
+        self.pauseToggled.emit(self._paused)
+
+    def reset(self):
+        self._ok = 0
+        self._ng = 0
+        self._history.clear()
+        self._list.clear()
+        self.clear_alarm()
+        self._refresh_labels()
+
+    def clear_alarm(self):
+        self._alarm.hide()
+        self._alarm.setText('')
+
+    def set_alarm(self, message: str):
+        if not message:
+            self.clear_alarm()
+            return
+        self._alarm.setText('⚠ ' + str(message))
+        self._alarm.show()
+
+    def record(self, ok: bool | None, elapsed_ms=None, detail=''):
+        if self._paused or ok is None:
+            return
+        if ok:
+            self._ok += 1
+            tag = 'OK'
+        else:
+            self._ng += 1
+            tag = 'NG'
+            self.set_alarm(detail or '检测 NG')
+        if ok:
+            # clear sticky alarm on next OK
+            self.clear_alarm()
+        ts = datetime.now().strftime('%H:%M:%S')
+        ms = f' · {elapsed_ms} ms' if elapsed_ms is not None else ''
+        line = f'{ts}  {tag}{ms}' + (f'  {detail}' if detail else '')
+        self._history.insert(0, line)
+        self._history = self._history[:40]
+        self._list.insertItem(0, line)
+        while self._list.count() > 40:
+            self._list.takeItem(self._list.count() - 1)
+        self._refresh_labels()
+
+    def _refresh_labels(self):
+        total = self._ok + self._ng
+        self._ok_lab.setText(f'OK\n{self._ok}')
+        self._ng_lab.setText(f'NG\n{self._ng}')
+        self._total_lab.setText(f'总量\n{total}')
+        if total:
+            y = 100.0 * self._ok / total
+            self._yield_lab.setText(f'良率\n{y:.1f}%')
+        else:
+            self._yield_lab.setText('良率\n—')
+
+
 class OperatorHmiView(QWidget):
     """Operator surface shown in 运行模式; driven by document.project['runUi']."""
 
@@ -86,6 +210,7 @@ class OperatorHmiView(QWidget):
         self._run_status_labels = []
         self._log_panes = []
         self._clock_labels = []
+        self._stats_panels = []
         self._layout_fp = None
         self._clock_timer = QTimer(self)
         self._clock_timer.setInterval(1000)
@@ -210,6 +335,7 @@ class OperatorHmiView(QWidget):
         self._run_status_labels = []
         self._log_panes = []
         self._clock_labels = []
+        self._stats_panels = []
         self._host_sm = None
 
         placements = list(ui.get('placements') or [])
@@ -303,6 +429,34 @@ class OperatorHmiView(QWidget):
                 host.sync_from_runtime(result)
             except Exception:
                 pass
+
+        # Production counters / history / alarm
+        if state in ('completed', 'failed'):
+            detail = ''
+            if state == 'failed':
+                detail = str(result.get('error') or 'failed')
+            else:
+                # Prefer last step status if present
+                for record in reversed(result.get('results') or []):
+                    out = (record.get('output') or {}).get('result') or {}
+                    st = out.get('status')
+                    if st and st not in ('ok', 'completed', 'pass'):
+                        detail = f"{record.get('name') or record.get('id')}:{st}"
+                        ok = False
+                        break
+            for panel in getattr(self, '_stats_panels', []) or []:
+                try:
+                    panel.record(ok if state == 'completed' else False,
+                                 elapsed_ms=result.get('elapsedMs'),
+                                 detail=detail)
+                except Exception:
+                    pass
+        elif state == 'cancelled':
+            for panel in getattr(self, '_stats_panels', []) or []:
+                try:
+                    panel.set_alarm('已停止')
+                except Exception:
+                    pass
 
     def set_preview_image(self, data):
         """Live / source preview hook (e.g. after capture, before run)."""
@@ -403,6 +557,12 @@ class OperatorHmiView(QWidget):
         self._log_panes.append(log)
         log_cell.layout().addWidget(log, 1)
         left.addWidget(log_cell, 1)
+
+        stats_cell = self._make_cell_frame('生产统计')
+        stats = ProductionStatsPanel()
+        self._stats_panels.append(stats)
+        stats_cell.layout().addWidget(stats, 1)
+        left.addWidget(stats_cell, 1)
 
         left_w = QWidget()
         left_w.setLayout(left)
@@ -613,6 +773,13 @@ class OperatorHmiView(QWidget):
             self._log_views.append(log)
             cell.layout().addWidget(log, 1)
             return cell
+        if name in ('生产统计', '产量统计', '计数器'):
+            cell = self._make_cell_frame(name)
+            panel = ProductionStatsPanel()
+            self._stats_panels.append(panel)
+            cell.layout().addWidget(panel, 1)
+            return cell
+
         # Fallback stub for charts / layout containers etc.
         cell = self._make_cell_frame(name)
         hint = CONTROL_STUB_HINTS.get(name, '')

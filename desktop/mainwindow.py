@@ -79,6 +79,8 @@ class MainWindow(QMainWindow):
         files.addSeparator()
         templates=files.addMenu('从模板新建检测工程')
         for label, relative in [
+            ('打开即跑 · 圆查找', 'projects/default-platform.sieans'),
+            ('打开即跑 · 模板匹配', 'projects/open-and-run-locate.sieans'),
             ('空白检测工程', 'projects/templates/blank-inspection.sieans'),
             ('采集 → 几何 → 尺寸', 'projects/templates/measure-chain.sieans'),
             ('参考图缺陷检测', 'projects/templates/defect-inspection.sieans'),
@@ -541,6 +543,8 @@ class MainWindow(QMainWindow):
             self.refresh_flow_tabs()
             self._remember_recent(path)
             QTimer.singleShot(300, self.maybe_warm_camera)
+            # Open-and-run: auto-load first local sourceConfig image into global 图像
+            QTimer.singleShot(50, lambda: self.guard(lambda: self._autoload_source_image(force=True)))
         self.request('project/validate',{'project':value},loaded)
 
     def save_project(self):
@@ -763,6 +767,11 @@ class MainWindow(QMainWindow):
             s.get('operation')=='camera_capture' for s in self.document.project.get('steps') or []
         ):
             self._ensure_camera_frame_for_run(cfg)
+        elif not self.image and cfg.get('mode', 'local') == 'local':
+            # Open-and-run: pull filmstrip / sourceConfig image if global 图像 empty
+            self._autoload_source_image(force=False)
+        if not self.image and cfg.get('mode', 'local') == 'local' and (cfg.get('images') or []):
+            raise ValueError('本地源图未能载入，请检查胶片条路径是否存在')
         params=dict(project=deepcopy(self.document.project),image=self.image,allowScripts=self.script_action.isChecked())
         self.script_action.setChecked(False)
         if self.cloud:params['cloud']=self.cloud
@@ -981,6 +990,31 @@ class MainWindow(QMainWindow):
         mm.move(max(8, host.width()-mm.width()-12), max(8, host.height()-mm.height()-12))
         mm.raise_()
         mm.show()
+
+    def _autoload_source_image(self, force=False):
+        """Load current local sourceConfig / filmstrip image into self.image (open-and-run)."""
+        if self.busy and not force:
+            return bool(self.image)
+        if self.image and not force:
+            return True
+        cfg = normalize_source(self.document.project.get('sourceConfig'))
+        if cfg.get('mode', 'local') not in ('local', '', None):
+            return bool(self.image)
+        images = list(cfg.get('images') or [])
+        if not images and hasattr(self, 'filmstrip'):
+            images = list(self.filmstrip.paths() or [])
+        if not images:
+            return bool(self.image)
+        idx = int(cfg.get('currentIndex') or 0)
+        if idx < 0 or idx >= len(images):
+            idx = 0
+        target = images[idx]
+        try:
+            self.load_filmstrip_path(target)
+        except Exception as err:
+            self.log(f'自动载入源图失败：{err}')
+            return False
+        return bool(self.image)
 
     def load_filmstrip_path(self, path):
         if self.busy or not path:return
@@ -1710,11 +1744,13 @@ class MainWindow(QMainWindow):
             return
         examples = []
         for rel in (
+            'projects/default-platform.sieans',
+            'projects/open-and-run-demo.sieans',
+            'projects/open-and-run-locate.sieans',
             'projects/templates/blank-inspection.sieans',
             'projects/templates/measure-chain.sieans',
             'projects/templates/defect-inspection.sieans',
             'projects/templates/mv-gentl-ocr.sieans',
-            'projects/default-platform.sieans',
             'projects/mv-camera-ocr.sieans',
         ):
             path = (self.root / rel).resolve()

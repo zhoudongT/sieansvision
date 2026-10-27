@@ -1,0 +1,244 @@
+{
+  "version": 2,
+  "id": "19ef6aa2ee084ed5",
+  "name": "打开即跑 · 圆查找演示",
+  "steps": [
+    {
+      "id": "2c4d5e1937b74ee8",
+      "operation": "preprocess",
+      "name": "图像预处理",
+      "params": {
+        "method": "grayscale",
+        "threshold": 127,
+        "kernel": 3,
+        "cannyLow": 50,
+        "cannyHigh": 150,
+        "invert": false,
+        "blur": 1
+      },
+      "position": {
+        "x": 300,
+        "y": 140
+      },
+      "imageFrom": "source"
+    },
+    {
+      "id": "b196bbc0953b4acd",
+      "operation": "geometry",
+      "name": "圆查找",
+      "params": {
+        "feature": "circles",
+        "minRadius": 20,
+        "maxRadius": 180,
+        "minDistance": 30,
+        "votes": 25,
+        "cannyLow": 50,
+        "cannyHigh": 150,
+        "maxCount": 5,
+        "filterSize": 1,
+        "threshold": 127,
+        "minArea": 50,
+        "edgeType": "strongest",
+        "edgePolarity": "any",
+        "edgeThreshold": 30,
+        "caliperCount": 20,
+        "showOverlay": true,
+        "showPoints": true,
+        "annulusInner": 0,
+        "annulusOuter": 0
+      },
+      "position": {
+        "x": 300,
+        "y": 240
+      },
+      "imageFrom": "2c4d5e1937b74ee8"
+    },
+    {
+      "id": "ba15d7260971408a",
+      "operation": "measure",
+      "name": "尺寸测量",
+      "params": {
+        "feature": "circles",
+        "threshold": 127,
+        "minArea": 50,
+        "unit": "px"
+      },
+      "position": {
+        "x": 300,
+        "y": 340
+      },
+      "imageFrom": "b196bbc0953b4acd"
+    },
+    {
+      "id": "f8c62d9c8b2a4d58",
+      "operation": "var_calc",
+      "name": "结果变量",
+      "params": {
+        "scope": "flow",
+        "expressions": [
+          {
+            "name": "runFlag",
+            "expression": "1",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "passGate",
+            "expression": "runFlag",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          }
+        ]
+      },
+      "position": {
+        "x": 300,
+        "y": 440
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "632a7286e6ca4253",
+      "from": "source",
+      "to": "2c4d5e1937b74ee8",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "c6b85fb878ef46cc",
+      "from": "2c4d5e1937b74ee8",
+      "to": "b196bbc0953b4acd",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "07f74eaee4e74605",
+      "from": "b196bbc0953b4acd",
+      "to": "ba15d7260971408a",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "3cacd2df5f8d4a29",
+      "from": "ba15d7260971408a",
+      "to": "f8c62d9c8b2a4d58",
+      "fromPort": "bottom",
+      "toPort": "top"
+    }
+  ],
+  "sourcePosition": {
+    "x": 300,
+    "y": 40
+  },
+  "variables": {},
+  "sourceConfig": {
+    "mode": "local",
+    "pixelFormat": "RGB24",
+    "intervalMs": 200,
+    "saveInSolution": false,
+    "showImageName": true,
+    "snStart": 0,
+    "imageCache": 0,
+    "outputMono8": false,
+    "stitchEnable": false,
+    "stitchStartY": 0,
+    "stitchHeight": 0,
+    "stitchClearOnTrigger": false,
+    "autoSwitch": false,
+    "stopAtLast": true,
+    "charFilterEnable": false,
+    "inputChar": "",
+    "triggerChar": "",
+    "cameraId": "",
+    "cameraParams": {},
+    "exposure": 0.0,
+    "gain": 0.0,
+    "images": [
+      "/home/allen/文档/sieansvision/public/vision/samples/circle-ring.png",
+      "/home/allen/文档/sieansvision/public/vision/samples/circle-hole.png",
+      "/home/allen/文档/sieansvision/public/vision/samples/caliper-line.png",
+      "/home/allen/文档/sieansvision/public/vision/samples/fixture-multiple.png"
+    ],
+    "currentIndex": 0
+  },
+  "runUi": {
+    "split": "4",
+    "placements": [
+      {
+        "name": "图像",
+        "page": 3,
+        "cell": 0,
+        "category": "基础"
+      },
+      {
+        "name": "OK/NG",
+        "page": 3,
+        "cell": 1,
+        "category": "基础"
+      },
+      {
+        "name": "运行控制",
+        "page": 3,
+        "cell": 2,
+        "category": "基础"
+      },
+      {
+        "name": "生产统计",
+        "page": 3,
+        "cell": 3,
+        "category": "图表"
+      }
+    ],
+    "controls": {
+      "图像": {
+        "commands": [],
+        "binding": "source"
+      },
+      "OK/NG": {
+        "commands": [],
+        "binding": ""
+      },
+      "运行控制": {
+        "commands": [
+          {
+            "type": "执行·单次",
+            "config": ""
+          },
+          {
+            "type": "执行·连续",
+            "config": ""
+          },
+          {
+            "type": "执行·停止",
+            "config": ""
+          }
+        ],
+        "binding": ""
+      },
+      "生产统计": {
+        "commands": [],
+        "binding": "stats"
+      }
+    },
+    "fixedBars": {
+      "top": false,
+      "bottom": true,
+      "left": false,
+      "right": false,
+      "cameraBind": "未绑定",
+      "commBind": "TCP.连接状态",
+      "showRunStatus": true,
+      "showOkNg": true,
+      "showCounters": true,
+      "showHistory": true
+    },
+    "meta": {
+      "template": "open_and_run",
+      "version": 1,
+      "openAndRun": true
+    }
+  },
+  "notes": "【打开即跑 · 今日交付】胶片条已挂 circle/caliper/fixture 样张。设计态 ▶ 单次：预处理→圆查找→测量→变量；或切「运行模式」用操作员界面开始/停止。无需预先「打开图像」——打开工程会自动载入第一张。"
+}

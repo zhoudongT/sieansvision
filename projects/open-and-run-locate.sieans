@@ -1,0 +1,136 @@
+{
+  "version": 2,
+  "id": "49c6c6f8b1b04c8d",
+  "name": "打开即跑 · 模板匹配",
+  "steps": [
+    {
+      "id": "3a3570f6657c45d7",
+      "operation": "locate",
+      "name": "快速模板匹配",
+      "params": {
+        "matchMode": "fast",
+        "minScore": 0.7,
+        "maxMatches": 5,
+        "angleStart": -30,
+        "angleEnd": 30,
+        "angleStep": 30,
+        "scales": [
+          0.8,
+          1,
+          1.2
+        ],
+        "scaleStart": 0.8,
+        "scaleEnd": 1.2,
+        "scaleStep": 0.2,
+        "overlapThreshold": 0.3,
+        "maxOverlap": 0.3,
+        "hasTemplate": true,
+        "templateReady": true,
+        "showMatchBox": true,
+        "showScore": true,
+        "showContour": true,
+        "fullSearch": false,
+        "matchPolarity": "consider"
+      },
+      "reference": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABACAIAAAACpWdhAAAEF0lEQVRoBeXBvWpUWxgG4PcbRIJs0OJNsBHBaiDpjLewEATB5r2CBakU2xXruOxstMgtfI3YiLcgpvIHpoyVEKZQGC0GGU514BzyTdYWlGSzn8dIYkyMJMbESGJMjCTGxEhiTIwkxsRIYkyMJMbESCKSUsLvyDnjIpGEiJFEJKWE3nLOuGAkIWIkEUkpoZ+cMy4eSYgYSURSSmjJOeOikoSIkUQkpYQz5ZxxgUlCxEgiklLCejlnXGySEDGSiKSUsEbOGReeJESMJCIpJZySc8ZASELESCKSUsL/5ZwxHJIQMZKIpJTwHzlnDIokRIwkIikl/CvnjKGRhIiRRCSlBCDnjGGShIiRRCSllHPGYElCxEgi4u4YMkmIGElE3B2/abFYzOdzkl3X4bxJQsRIIuLu6Ge5XH7+/Pndu3dfvnyZz+ebm5s3b968ffv2zs7OxsYGzokkRIwkIu6OHlar1cuXLz98+IBTtre3Hz16NJlMcB4kIWIkEXF3tPz69auU8u3bN6xx9erVp0+fXr58Gb2VUtBSa0WLJESMJCLujjP9/Pnz2bNnX79+xZmuX79eSrly5Qr6KaWgpdaKFkmIGElE3B3rrVarV69evX37Fj3cvXv3wYMHk8kEPZRS0FJrRYskRIwkIu6OMx0eHh4dHaGH3d3dvb099FNKQUutFS2SEDGSiLg71lssFgcHB/P5HD2QfPLkSdd16KGUgpZaK1okIWIkEXF3rHd8fHxwcIDeSim3bt1CD6UUtNRa0SIJESOJiLtjvcViUWs9OTlBD5ubm/v7+13XoYdSClpqrWiRhIiRRMTdcabDw8OjoyP0sLu7u7e3h35KKWiptaJFEiJGEhF3x3qr1er169dv3rxBD/fu3bt///5kMkEPpRS01FrRIgkRI4mIu+NMP378ePz4MXp4/vx513Xop5SCllorWiQhYiQRcXe0LJfL/f3979+/Y41r167VWi9duoTeSiloqbWiRRIiRhIRd0cPq9XqxYsXHz9+xCk7OzsPHz6cTCb4HaUUtNRa0SIJESOJiLujn+Vy+enTp/fv3x8fH8/n862trRs3bty5c2d7e3tjYwPnRBIiRhIRd8dvWiwWJycnW1tbXdfhvElCxEgi4u4YMkmIGElE3B1DJgkRI4mIu2PIJCFiJBFxdwyZJESMJCLujiGThIiRRMTdMWSSEDGSiLg7hkwSIkYSEXfHkElCxEgi4u44ZTqd4k+bzWb4CyQhYiQRcXf833Q6xd8xm83wp0lCxEgi4u44ZTqd4k+bzWb4CyQhYiQRcXcMmSREjCQi7o4hk4SIkUTE3TFkkhAxkoi4O4ZMEiJGEhF3x5BJQsRIIuLuGDJJiBhJjImRxJgYSYyJkcSYGEmMiZHEmBhJjImRxJj8A+yWX1Bvb/pTAAAAAElFTkSuQmCC",
+      "position": {
+        "x": 300,
+        "y": 160
+      },
+      "imageFrom": "source"
+    }
+  ],
+  "edges": [
+    {
+      "id": "bb11df27902d4fea",
+      "from": "source",
+      "to": "3a3570f6657c45d7",
+      "fromPort": "bottom",
+      "toPort": "top"
+    }
+  ],
+  "sourcePosition": {
+    "x": 300,
+    "y": 40
+  },
+  "variables": {},
+  "sourceConfig": {
+    "mode": "local",
+    "pixelFormat": "RGB24",
+    "intervalMs": 0,
+    "saveInSolution": false,
+    "showImageName": true,
+    "snStart": 0,
+    "imageCache": 0,
+    "outputMono8": false,
+    "stitchEnable": false,
+    "stitchStartY": 0,
+    "stitchHeight": 0,
+    "stitchClearOnTrigger": false,
+    "autoSwitch": false,
+    "stopAtLast": true,
+    "charFilterEnable": false,
+    "inputChar": "",
+    "triggerChar": "",
+    "cameraId": "",
+    "cameraParams": {},
+    "exposure": 0.0,
+    "gain": 0.0,
+    "images": [
+      "/home/allen/文档/sieansvision/public/vision/samples/fixture-multiple.png",
+      "/home/allen/文档/sieansvision/public/vision/samples/fixture-rotated.png"
+    ],
+    "currentIndex": 0
+  },
+  "runUi": {
+    "split": "2",
+    "placements": [
+      {
+        "name": "图像",
+        "page": 1,
+        "cell": 0,
+        "category": "基础"
+      },
+      {
+        "name": "上位机状态机",
+        "page": 1,
+        "cell": 1,
+        "category": "基础"
+      }
+    ],
+    "controls": {
+      "图像": {
+        "commands": [],
+        "binding": "source"
+      },
+      "上位机状态机": {
+        "commands": [
+          {
+            "type": "执行·连续",
+            "config": ""
+          },
+          {
+            "type": "执行·停止",
+            "config": ""
+          }
+        ],
+        "binding": "host"
+      }
+    },
+    "fixedBars": {
+      "top": false,
+      "bottom": true,
+      "left": false,
+      "right": false,
+      "cameraBind": "未绑定",
+      "commBind": "TCP.连接状态",
+      "showRunStatus": true,
+      "showOkNg": true
+    },
+    "meta": {
+      "template": "host_state_machine",
+      "version": 1
+    }
+  },
+  "notes": "【打开即跑】fixture 样张 + 已嵌入参考模板。打开后 ▶ 单次执行快速匹配。"
+}

@@ -24,3 +24,6 @@ docs/vm-bilibili-jgtech/videos/
 docs/vm-bilibili-jgtech/frames/
 docs/vm-bilibili-jgtech/*.log
 docs/vm-bilibili-jgtech/review/
+
+# local smoke scratch
+native-data-smoke-today/

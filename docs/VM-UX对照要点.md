@@ -1001,3 +1001,10 @@ sieans：`config_status.node_needs_bang` + `Node.needs_config` / `run_failed`（
 - **工具栏轻抛光**：`var`→「变量」；通信/上位机/产线链/触发/运行钮补 ToolTip；主栏 `mainToolBar` 略收紧间距。
 - **无推送、无机械手 SDK。本批后暂停等 Allen 反馈。**
 
+## 2026-10-27 晚 · 打开即跑 + 运行 HMI（今日交付切片）
+
+- **打开即跑工程**：`projects/default-platform.sieans` / `open-and-run-demo.sieans`（预处理→圆查找→测量→变量 + 本地样张胶片条）；`open-and-run-locate.sieans`（模板匹配，参考图已嵌入）。
+- **自动载入源图**：打开工程 / 运行前若全局图像为空且 `sourceConfig.mode=local`，从胶片条/`images[currentIndex]` 自动载入（`MainWindow._autoload_source_image`）。
+- **运行 HMI**：`ProductionStatsPanel` — OK/NG 计数、良率、最近结果历史、暂停计数、NG 报警条；`生产统计` 控件与默认运行壳已接线。
+- **自检**：engine-host E2E 圆查找 count=5 / 模板匹配 bestScore≈0.997；HMI 计数单元 smoke 通过。
+- 文件→打开示例 / 快捷菜单已置顶「打开即跑」。
