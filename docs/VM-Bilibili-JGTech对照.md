@@ -24,7 +24,7 @@
 | 1 | VisionMaster4.2试用一月安装 | ✓ | Skip(installer) | 网盘/试用包分发；**不克隆海康安装器**。sieans：自带 App/工程即可 |
 | 2 | MVS和VisionMaster的卸载 | ✓ | Skip(installer) | 官方 uninstall.exe；sieans 无对标卸载向导 |
 | 3 | MVS和VisionMaster的安装 | ✓ | Skip(installer) | MVS+VM 安装包；**首启相关**：设备树/虚拟相机概念 → 已有相机管理+图像源本地/SDK |
-| 4 | 图像源 | ✓ | Implemented | `ImageSourceForm` + 相机管理 + N4 叹号 |
+| 4 | 图像源 | ✓ | Implemented | ~32（含 p40/54/62–63 可模仿加深） |
 | 5 | 直线查找 | ✓ | Implemented | `GeometryFindPanel` feature=lines |
 | 6 | 圆查找 | ✓ | Implemented | `GeometryFindPanel` feature=circles |
 | 7 | 快速模板匹配 | ✓ | Implemented | `LocateMatchPanel` 四 Tab |
@@ -51,46 +51,46 @@
 | 28 | 运行界面设计1 | ✓ | Implemented | 运行界面设计器 + **VM 默认壳**（图像/OKNG/日志） |
 | 29 | 运行界面设计2 | ✓ | Implemented | 控件库四分类 + 触发命令 + 固定栏；深度可再贴帧 |
 | 30 | 全局触发 | ✓ | Implemented | 部分匹配列 |
-| 31 | 远程通信连接其他电脑如何设置ip | ✓ | Shell* | *复用 CommManager；未下帧。网络/IP 教程式，非新算子 |
+| 31 | 远程通信连接其他电脑如何设置ip | ✓ | Shell* | 复用 CommManager host/port + TCP 测试；教程式 |
 | 32 | 定位引导·自动化九点标定_（副本） | ✓ | Skip(industry) | 机器人引导；复用 `nine_point` 即可 |
 | 33 | 定位引导·文件夹模拟_（副本） | ✓ | Skip(industry) | 同上 |
 | 34 | 定位引导·自动化九点标定 | ✓ | Skip(industry) | 机械手链路；不做厂商 SDK |
 | 35 | 定位引导·文件夹模拟 | ✓ | Skip(industry) | 图像文件夹模拟；可用图像源胶片条近似 |
-| 36 | 验证九点标定 | ✓ | Skip(industry) | 验证流程；可后补对照壳 |
+| 36 | 验证九点标定 | ✓ | Skip(industry) | 验证九点：图像位→机械坐标→机械手测；复用 nine_point，无臂 SDK |
 | 37 | 相对移动定位纠偏法 | ✓ | Skip(industry) | 机械手纠偏 |
 | 38 | 设置图像基准位置 | ✓ | Skip(industry) | 引导项目子步 |
 | 39 | 设置机械手基准位置 | ✓ | Skip(industry) | 机械手基准；Skip SDK |
-| 40 | 生产任务设计 | ✓ | Shell | **`production_task` 薄壳**（任务名/配方→变量）；无产线 SDK |
-| 41 | 上位机状态机·UI设计1 | ✓ | Shell* | *对齐运行界面/HMI；未深做状态机引擎 |
-| 42 | 上位机状态机·UI设计2 | ✓ | Shell* | 同上 |
+| 40 | 生产任务设计 | ✓ | Implemented | `production_task` 面板+建议流程链（图像→匹配→修正→物理坐标→偏差→发送）；无机械手 SDK |
+| 41 | 上位机状态机·UI设计1 | ✓ | Shell* | HMI 控件库+IP/端口/连接状态/信息栏示意；状态机引擎仍薄 |
+| 42 | 上位机状态机·UI设计2 | ✓ | Shell* | 同上（控件/触发加深；无机械手协议） |
 | 43 | 上位机状态机·UI设计3 | ✓ | Shell* | 同上 |
-| 44 | 为什么用旋转中心标定 | ✓ | Skip(industry) | 理论课 |
-| 45 | 旋转中心·原理公式 | ✓ | Skip(industry) | 理论课 |
-| 46 | 旋转中心·公式基础 | ✓ | Skip(industry) | 理论课 |
-| 47 | 旋转中心·原点为旋转中心 | — | Skip(industry) | 理论课 |
-| 48 | 旋转中心·旋转点表示公式 | — | Skip(industry) | 理论课 |
-| 49 | 旋转中心·任意点为旋转中心 | — | Skip(industry) | 理论课 |
-| 50 | 完整课程（短宣） | — | Skip | 宣发短片 |
-| 51 | 上下相机对位贴合 | — | Skip(industry) | 多相机对位；无专有 SDK 计划 |
-| 52 | 平移旋转标定（十二点）-介绍 | — | Skip(industry) | 可远期挂 `nine_point` 扩展，现 Skip |
-| 53 | 实现十二点标定 | — | Skip(industry) | 同上 |
-| 54 | 九点平移标定（行业复述） | — | Shell* | *已有 `nine_point`；本集未下帧 |
-| 55 | 十二点标定完整课程（短） | — | Skip | 宣发 |
-| 56 | 单点抓取 | — | Skip(industry) | 机器人抓取 |
-| 57 | 对位贴合·角度验证-1 | — | Skip(industry) | 理论/验证 |
-| 58 | 对位贴合·角度验证-2 | — | Skip(industry) | 理论/验证 |
-| 59 | 十二点标定与单点抓取（短） | — | Skip | 宣发 |
-| 60 | 旋转标定数学公式几何本质 | — | Skip(industry) | 理论课 |
-| 61 | 旋转标定优化圆心 | — | Skip(industry) | 理论课 |
-| 62 | C#脚本使用 OpenCV-1 | — | Shell* | *`csharp_script`/`script`；OpenCV 走 Python script |
-| 63 | C#脚本使用 OpenCV-2 | — | Shell* | 同上 |
-| 64 | 旋转标定模块使用注意 | — | Skip(industry) | VM 专有模块注意项 |
-| 65 | 官网精品免费课程 | — | Skip | 外链宣发 |
+| 44 | 为什么用旋转中心标定 | ✓ | Skip(industry) | 理论课：为何旋转中心标定（一句话看过） |
+| 45 | 旋转中心·原理公式 | ✓ | Skip(industry) | 理论课：旋转中心原理公式 |
+| 46 | 旋转中心·公式基础 | ✓ | Skip(industry) | 理论课：旋转中心公式基础 |
+| 47 | 旋转中心·原点为旋转中心 | ✓ | Skip(industry) | 理论课：原点为旋转中心 |
+| 48 | 旋转中心·旋转点表示公式 | ✓ | Skip(industry) | 理论课：旋转点表示公式 |
+| 49 | 旋转中心·任意点为旋转中心 | ✓ | Skip(industry) | 理论课：任意点为旋转中心 |
+| 50 | 完整课程（短宣） | ✓ | Skip | 宣发短片 |
+| 51 | 上下相机对位贴合 | ✓ | Skip(industry) | 上下相机对位贴合；无专有多相机 SDK |
+| 52 | 平移旋转标定（十二点）-介绍 | ✓ | Skip(industry) | 十二点标定介绍；远期可扩 nine_point |
+| 53 | 实现十二点标定 | ✓ | Skip(industry) | 实现十二点；不做厂商旋转标定 SDK |
+| 54 | 九点平移标定（行业复述） | ✓ | Implemented | 复用 `nine_point`（平移九点/标定转换）；无新 SDK |
+| 55 | 十二点标定完整课程（短） | ✓ | Skip | 宣发短片 |
+| 56 | 单点抓取 | ✓ | Skip(industry) | 单点抓取；机械手链路 Skip SDK |
+| 57 | 对位贴合·角度验证-1 | ✓ | Skip(industry) | 角度验证理论-1 |
+| 58 | 对位贴合·角度验证-2 | ✓ | Skip(industry) | 角度验证理论-2 |
+| 59 | 十二点标定与单点抓取（短） | ✓ | Skip | 宣发短片 |
+| 60 | 旋转标定数学公式几何本质 | ✓ | Skip(industry) | 旋转标定几何本质（理论） |
+| 61 | 旋转标定优化圆心 | ✓ | Skip(industry) | 优化圆心（理论） |
+| 62 | C#脚本使用 OpenCV-1 | ✓ | Implemented | `csharp_script`→Python+OpenCV（无 CLR）；默认 Canny |
+| 63 | C#脚本使用 OpenCV-2 | ✓ | Implemented | 同上 |
+| 64 | 旋转标定模块使用注意 | ✓ | Skip(industry) | VM 旋转标定模块注意项 |
+| 65 | 官网精品免费课程 | ✓ | Skip | 官网宣发 |
 
 ### 统计（约）
 | 类别 | 数量 |
 |------|------|
-| Watched（有帧） | 30+（p1–30 齐；p31+ 持续下帧中） |
+| Watched（有帧） | 65（p1–65 齐） |
 | Implemented | ~28（p1–30 壳已加深） |
 | Shell / Shell* | ~6（p31/40/41–43/54/62–63 等） |
 | Skip(industry) / Skip | ~21 |
@@ -153,6 +153,17 @@
 ---
 
 ## p=4 图像源 — 交互笔记
+
+
+### p47–65 下帧速记（理论/行业；可模仿处已挂钩）
+- **p44–50 / 60–61 / 64–65**：理论或宣发 — 一句话看过即可，不实现旋转中心 SDK。
+- **p51–53 / 55–59**：十二点/对位/抓取 — Skip(industry)；流程叙事可参考，无厂商臂。
+- **p54**：VM「平移九点标定」生产流程多 Tab（上相机九点/基准/生产/旋转中心）；sieans 用已有 `nine_point`+多流程。
+- **p36 验证九点**：①图像目标位 ②转机械坐标 ③臂测 — 仅前两步可本地 mimic。
+- **p40**：建议链已写入 `production_task` 面板。
+- **p41–43**：上位机 UI（IP/端口/连接/运动/吸嘴/信息栏）→ HMI 控件库示意；不做机械手协议。
+- **p62–63**：C# OpenCV → 本机 Python `csharp_script`/`script` + OpenCV。
+
 
 ### UI 步骤（课内）
 1. 工具箱拖入 **图像源**（画布序号 `0 图像源1`）。

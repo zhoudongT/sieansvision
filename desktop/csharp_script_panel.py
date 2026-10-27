@@ -85,9 +85,9 @@ class CsharpScriptPanel(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         hint = QLabel(
-            '对齐 VisionMaster「C# 脚本」：设计态编辑器。'
+            '对齐 VisionMaster「C# 脚本」(p12) 与「C#脚本使用 OpenCV」(p62–63)：设计态编辑器。'
             'C# = unsupported（无 CLR）。切语言为 Python 且运行时勾选允许脚本即可真实执行（含 OpenCV）；'
-            '也可改用「Python 自定义脚本」算子。'
+            '也可改用「Python 自定义脚本」算子。默认模板含 Canny 示意。'
         )
         hint.setWordWrap(True)
         hint.setStyleSheet('color:#666;padding:8px 10px 4px;')

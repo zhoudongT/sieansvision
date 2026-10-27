@@ -59,7 +59,7 @@ class NinePointPanel(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         hint = QLabel(
-            '对齐 VisionMaster「平移九点标定」：填写像素点与世界坐标对照表；'
+            '对齐 VisionMaster（含 p54 九点平移行业复述，复用本算子）「平移九点标定」：填写像素点与世界坐标对照表；'
             '运行时对启用点估仿射（≥3 点），输出 transform / rms。'
         )
         hint.setWordWrap(True)

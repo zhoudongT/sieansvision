@@ -274,7 +274,7 @@ def builtin_definitions():
     definitions['production_task'] = dict(
         operation='production_task', name='生产任务', category='流程控制',
         defaults=dict(taskName='', recipe='', autoStart=False, statusVar='taskStatus', scope='global',
-                      note='占位：配方名/任务名写入变量；深度产线逻辑后续扩展'),
+                      note='任务名/配方+建议流程链；无机械手 SDK', chain=[]),
         parameters=[
             field('taskName', '任务名称', 'string', ''),
             field('recipe', '配方/方案', 'string', ''),
@@ -282,7 +282,7 @@ def builtin_definitions():
             field('statusVar', '状态变量', 'string', 'taskStatus'),
             field('scope', '变量作用域', 'string', 'global', choices=choices(('global', '全局'), ('flow', '流程'))),
         ],
-        description='生产任务（VM p=40 示意）：任务名/配方写入变量的薄壳；不接机械手 SDK。',
+        description='生产任务（VM p=40）：任务名/配方/建议流程链写入变量；不接机械手 SDK。请用 locate→pose_correct→nine_point→var_calc→send_data 串接。',
     )
 
     if 'locate' in definitions:

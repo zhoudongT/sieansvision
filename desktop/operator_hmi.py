@@ -557,6 +557,32 @@ class OperatorHmiView(QWidget):
             cell.layout().addWidget(lab, 1)
             return cell
 
+        # p41 host-chrome stubs (no robot SDK)
+        if name in ('IP地址', '端口'):
+            box = QWidget()
+            lay = QVBoxLayout(box)
+            lay.setContentsMargins(6, 6, 6, 6)
+            cap = QLabel(name)
+            cap.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;')
+            edit = QLineEdit(str(state.get('value') or ('127.0.0.1' if name == 'IP地址' else '5001')))
+            edit.setReadOnly(True)
+            lay.addWidget(cap)
+            lay.addWidget(edit)
+            return box
+        if name == '连接状态':
+            lab = QLabel(str(state.get('value') or '连接状态: --'))
+            lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lab.setStyleSheet(f'color:{TEXT_MUTED};padding:8px;')
+            return lab
+        if name == '信息提示栏':
+            from PySide6.QtWidgets import QPlainTextEdit
+            log = QPlainTextEdit()
+            log.setReadOnly(True)
+            log.setPlaceholderText('信息提示栏…')
+            log.setMaximumBlockCount(200)
+            self._log_views = getattr(self, '_log_views', [])
+            self._log_views.append(log)
+            return log
         # Fallback stub for charts / layout containers etc.
         cell = self._make_cell_frame(name)
         hint = CONTROL_STUB_HINTS.get(name, '')

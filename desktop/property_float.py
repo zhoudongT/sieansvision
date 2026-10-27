@@ -275,6 +275,18 @@ class PropertyFloat(QDialog):
             self.show(); self.raise_(); self.activateWindow()
             return
 
+        if step and step.get('operation') == 'production_task':
+            from desktop.production_task_panel import ProductionTaskPanel, normalize_production_task_params
+            step = deepcopy(step)
+            step['params'] = normalize_production_task_params(step.get('params'))
+            panel = ProductionTaskPanel(step, definition, project)
+            panel.changed.connect(self._on_step_changed)
+            self.body.addWidget(panel)
+            self._panel = panel
+            self._last_step = deepcopy(step)
+            self.show(); self.raise_(); self.activateWindow()
+            return
+
         # Wave2: 条件分支 / 分支模块 表
         if step and step.get('operation') in ('condition', 'branch'):
             from desktop.condition_branch_panel import (
