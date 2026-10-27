@@ -898,9 +898,32 @@ class HostStateMachineWidget(QWidget):
         self._sev_pin_arc_owner = ''  # 'chip' | 'bubble'
         self._last_sev_pin_arc_seize = {}
         self._sev_pin_arc_seize_timer = None
+        try:
+            raw_sc = str(self._host_settings().value(
+                'host/sevPinArcSeizeColor', '#ffffff') or '#ffffff').strip()
+            if raw_sc and not raw_sc.startswith('#'):
+                raw_sc = '#' + raw_sc
+            self._sev_pin_arc_seize_color = raw_sc or '#ffffff'
+        except Exception:
+            self._sev_pin_arc_seize_color = '#ffffff'
+        try:
+            raw_ss = self._host_settings().value('host/sevPinArcSeizeSound', True)
+            if isinstance(raw_ss, str):
+                self._sev_pin_arc_seize_sound = raw_ss.strip().lower() not in (
+                    '0', 'false', 'no', 'off')
+            else:
+                self._sev_pin_arc_seize_sound = bool(raw_ss)
+        except Exception:
+            self._sev_pin_arc_seize_sound = True
         self._stale_prune_can_undo = False
         self._stale_prune_undo_dirs = []
+        self._stale_prune_undo_ms = 8000
+        self._stale_prune_undo_left_ms = 0
+        self._stale_prune_undo_timer = QTimer(self)
+        self._stale_prune_undo_timer.setInterval(250)
+        self._stale_prune_undo_timer.timeout.connect(self._on_stale_prune_undo_tick)
         self._last_merge_stats = {}
+        self._last_merge_diff = {}
         try:
             raw_c = str(self._host_settings().value('host/sevChipPinArcColor', '#f0c040') or '#f0c040').strip()
             if raw_c and not raw_c.startswith('#'):
@@ -921,7 +944,7 @@ class HostStateMachineWidget(QWidget):
         self._path_copy_badge.setFixedHeight(20)
         self._path_copy_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._path_copy_badge.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._path_copy_badge.setToolTip('左键再点打开 · 右键再复制路径')
+        self._path_copy_badge.setToolTip('左键打开 · 右键再复制 · 中键父目录')
         self._path_copy_badge.setStyleSheet(
             'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
             'border-radius:3px;padding:1px 8px;font-size:10px;font-weight:700;'
@@ -1576,7 +1599,7 @@ class HostStateMachineWidget(QWidget):
         text = '✓ 已复制' + (f' · {short}' if short else '路径') + ' · 再点打开'
         try:
             badge.setText(text)
-            badge.setToolTip(f'{path}\n左键打开 · 右键再复制' if path else '左键打开 · 右键再复制')
+            badge.setToolTip(f'{path}\n左键打开 · 右键再复制 · 中键父目录' if path else '左键打开 · 右键再复制 · 中键父目录')
             badge.adjustSize()
             bw = max(badge.sizeHint().width() + 10, 88)
             bh = max(badge.sizeHint().height() + 2, 20)
@@ -1604,7 +1627,7 @@ class HostStateMachineWidget(QWidget):
         return True
 
     def _on_path_copy_badge_clicked(self, event=None):
-        """wave40–41: 左键再点打开目录；右键再复制路径."""
+        """wave40–42: 左键打开目录；右键再复制；中键开父目录."""
         btn = None
         try:
             if event is not None and hasattr(event, 'button'):
@@ -1613,6 +1636,8 @@ class HostStateMachineWidget(QWidget):
             btn = None
         if btn == Qt.MouseButton.RightButton:
             return self.copy_path_copy_badge_path()
+        if btn == Qt.MouseButton.MiddleButton:
+            return self.open_path_copy_badge_parent()
         if btn is not None and btn not in (Qt.MouseButton.LeftButton,):
             return False
         path = str(getattr(self, '_path_copy_badge_path', '') or '').strip()
@@ -1621,6 +1646,45 @@ class HostStateMachineWidget(QWidget):
         got = self.open_host_toast_path()
         self._last_path_copy_badge_opened = got
         return got
+
+    def open_path_copy_badge_parent(self) -> str:
+        """wave42: 徽章中键 — 打开路径的父目录."""
+        path = str(getattr(self, '_path_copy_badge_path', '') or '').strip()
+        if not path:
+            try:
+                self._flash_host_toast('无路径可开父目录', kind='info', ms=1200)
+            except Exception:
+                pass
+            self._last_path_copy_badge_parent = ''
+            return ''
+        try:
+            from pathlib import Path as _P
+            p = _P(path)
+            parent = p if p.is_dir() else p.parent
+            # if already dir, go one level up when possible
+            if p.is_dir() and p.parent and str(p.parent) not in ('', str(p)):
+                parent = p.parent
+            parent_s = str(parent)
+        except Exception:
+            parent_s = ''
+        if not parent_s:
+            try:
+                self._flash_open_dir_fail_tip('父目录无效')
+            except Exception:
+                pass
+            self._last_path_copy_badge_parent = ''
+            return ''
+        self._host_toast_open_path = parent_s
+        got = self.open_host_toast_path()
+        self._last_path_copy_badge_parent = got or parent_s
+        try:
+            from pathlib import Path as _P
+            lab = _P(parent_s).name or parent_s
+            self._flash_host_toast(f'已开父目录 · {lab}', kind='ok', ms=1200)
+            self._log_line(f'徽章中键开父目录 · {parent_s}')
+        except Exception:
+            pass
+        return self._last_path_copy_badge_parent
 
     def copy_path_copy_badge_path(self) -> bool:
         """wave41: 徽章右键 — 再复制路径到剪贴板."""
@@ -1688,6 +1752,9 @@ class HostStateMachineWidget(QWidget):
             return
         if action == 'undo_prune':
             self.undo_prune_stale_alarm_film_csv_dirs()
+            return
+        if action == 'merge_diff':
+            self.show_last_merge_diff()
             return
         self.open_host_toast_path()
 
@@ -2434,8 +2501,60 @@ class HostStateMachineWidget(QWidget):
         self._sev_pin_arc_owner = owner
         return prev
 
+    def sev_pin_arc_seize_color(self) -> str:
+        """wave42: 抢占闪色（默认 #ffffff）."""
+        c = str(getattr(self, '_sev_pin_arc_seize_color', '') or '').strip()
+        if not c:
+            try:
+                c = str(self._host_settings().value(
+                    'host/sevPinArcSeizeColor', '#ffffff') or '#ffffff').strip()
+            except Exception:
+                c = '#ffffff'
+        if c and not c.startswith('#'):
+            c = '#' + c
+        return c or '#ffffff'
+
+    def set_sev_pin_arc_seize_color(self, color: str, *, persist: bool = True) -> str:
+        """wave42: 配置抢占闪色."""
+        c = str(color or '').strip() or '#ffffff'
+        if not c.startswith('#'):
+            c = '#' + c
+        self._sev_pin_arc_seize_color = c
+        if persist:
+            try:
+                self._host_settings().setValue('host/sevPinArcSeizeColor', c)
+            except Exception:
+                pass
+        return c
+
+    def sev_pin_arc_seize_sound(self) -> bool:
+        """wave42: 抢占是否蜂鸣."""
+        v = getattr(self, '_sev_pin_arc_seize_sound', None)
+        if v is None:
+            try:
+                raw = self._host_settings().value('host/sevPinArcSeizeSound', True)
+                if isinstance(raw, str):
+                    v = raw.strip().lower() not in ('0', 'false', 'no', 'off')
+                else:
+                    v = bool(raw)
+            except Exception:
+                v = True
+            self._sev_pin_arc_seize_sound = bool(v)
+        return bool(self._sev_pin_arc_seize_sound)
+
+    def set_sev_pin_arc_seize_sound(self, enabled: bool = True, *, persist: bool = True) -> bool:
+        """wave42: 配置抢占蜂鸣开关."""
+        self._sev_pin_arc_seize_sound = bool(enabled)
+        if persist:
+            try:
+                self._host_settings().setValue(
+                    'host/sevPinArcSeizeSound', bool(enabled))
+            except Exception:
+                pass
+        return self._sev_pin_arc_seize_sound
+
     def _flash_sev_pin_arc_seize(self, prev: str, owner: str):
-        """wave41: 抢占可视化 — 弧色闪白后还原 + tip."""
+        """wave41–42: 抢占可视化 — 可配闪色/蜂鸣 + tip."""
         arc = getattr(self, '_sev_pin_arc', None)
         if arc is None:
             return
@@ -2444,11 +2563,20 @@ class HostStateMachineWidget(QWidget):
             saved = arc.color()
         except Exception:
             saved = '#f0c040'
+        flash_c = self.sev_pin_arc_seize_color()
         try:
-            arc.set_color('#ffffff')
+            arc.set_color(flash_c)
             arc.update()
         except Exception:
             pass
+        if self.sev_pin_arc_seize_sound():
+            try:
+                QApplication.beep()
+                self._last_sev_pin_arc_seize_beeped = True
+            except Exception:
+                self._last_sev_pin_arc_seize_beeped = False
+        else:
+            self._last_sev_pin_arc_seize_beeped = False
         tip = f'进度弧抢占 · {prev}→{owner}'
         try:
             self._flash_host_toast(tip, kind='info', ms=900)
@@ -2456,7 +2584,7 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             pass
         self._last_sev_pin_arc_seize_tip = tip
-        # restore color shortly
+        self._last_sev_pin_arc_seize_flash_color = flash_c
         timer = getattr(self, '_sev_pin_arc_seize_timer', None)
         if timer is None:
             timer = QTimer(self)
@@ -3180,19 +3308,82 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             pass
         try:
-            self._log_line(f'已清理失效另存 · {removed_n} 项（可撤销）')
+            ms = int(getattr(self, '_stale_prune_undo_ms', 8000) or 8000)
+            self._stale_prune_undo_left_ms = ms
+            self._log_line(f'已清理失效另存 · {removed_n} 项（可撤销 {ms//1000}s）')
             self._flash_host_toast(
-                f'已清理失效 · {removed_n} · 点此撤销',
+                f'已清理失效 · {removed_n} · 点此撤销（{ms//1000}s）',
                 kind='info',
-                ms=4200,
+                ms=ms + 400,
             )
             self._host_toast_click_action = 'undo_prune'
+            timer = getattr(self, '_stale_prune_undo_timer', None)
+            if timer is not None:
+                timer.start()
         except Exception:
             pass
         return list(kept)
 
+    def set_stale_prune_undo_ms(self, ms: int = 8000) -> int:
+        """wave42: 失效清理 undo 倒计时时长（ms）."""
+        try:
+            ms = max(1500, min(30000, int(ms)))
+        except Exception:
+            ms = 8000
+        self._stale_prune_undo_ms = ms
+        return ms
+
+    def stale_prune_undo_left_ms(self) -> int:
+        """wave42: 剩余可撤销毫秒；0 表示已失效."""
+        if not getattr(self, '_stale_prune_can_undo', False):
+            return 0
+        return max(0, int(getattr(self, '_stale_prune_undo_left_ms', 0) or 0))
+
+    def _on_stale_prune_undo_tick(self):
+        """wave42: undo 倒计时 tick；到期失效."""
+        if not getattr(self, '_stale_prune_can_undo', False):
+            timer = getattr(self, '_stale_prune_undo_timer', None)
+            if timer is not None and timer.isActive():
+                timer.stop()
+            return
+        left = int(getattr(self, '_stale_prune_undo_left_ms', 0) or 0)
+        step = 250
+        left = max(0, left - step)
+        self._stale_prune_undo_left_ms = left
+        # refresh toast text roughly each second
+        if left > 0 and left % 1000 < step:
+            try:
+                n = len(getattr(self, '_stale_prune_undo_removed', None) or [])
+                sec = max(1, (left + 999) // 1000)
+                toast = getattr(self, '_liaison_hotkey_toast', None)
+                if toast is not None and not toast.isHidden():
+                    toast.setText(f'已清理失效 · {n} · 点此撤销（{sec}s）')
+            except Exception:
+                pass
+        if left <= 0:
+            self.expire_stale_prune_undo(silent=False)
+
+    def expire_stale_prune_undo(self, *, silent: bool = False) -> bool:
+        """wave42: 使 undo 倒计时失效."""
+        had = bool(getattr(self, '_stale_prune_can_undo', False))
+        self._stale_prune_can_undo = False
+        self._stale_prune_undo_left_ms = 0
+        timer = getattr(self, '_stale_prune_undo_timer', None)
+        if timer is not None and timer.isActive():
+            timer.stop()
+        if getattr(self, '_host_toast_click_action', '') == 'undo_prune':
+            self._host_toast_click_action = 'open'
+        self._last_stale_prune_undo_expired = True
+        if had and not silent:
+            try:
+                self._flash_host_toast('撤销已失效', kind='info', ms=1400)
+                self._log_line('失效清理撤销 · 已超时')
+            except Exception:
+                pass
+        return had
+
     def undo_prune_stale_alarm_film_csv_dirs(self) -> list:
-        """wave41: 撤销最近一次失效清理."""
+        """wave41–42: 撤销最近一次失效清理（倒计时内）."""
         if not getattr(self, '_stale_prune_can_undo', False):
             try:
                 self._flash_host_toast('无可撤销的清理', kind='info')
@@ -3210,7 +3401,11 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             pass
         self._stale_prune_can_undo = False
+        self._stale_prune_undo_left_ms = 0
         self._last_stale_prune_undone = True
+        timer = getattr(self, '_stale_prune_undo_timer', None)
+        if timer is not None and timer.isActive():
+            timer.stop()
         try:
             self._log_line(f'已撤销失效清理 · 恢复 {len(snap)} 档')
             self._flash_host_toast(f'已撤销清理 · {len(snap)} 档', kind='ok')
@@ -3220,8 +3415,18 @@ class HostStateMachineWidget(QWidget):
         return list(snap)
 
     def can_undo_prune_stale_alarm_film_csv_dirs(self) -> bool:
-        """wave41: 是否可撤销失效清理."""
-        return bool(getattr(self, '_stale_prune_can_undo', False))
+        """wave41–42: 是否可撤销失效清理（倒计时未失效）."""
+        if not bool(getattr(self, '_stale_prune_can_undo', False)):
+            return False
+        left = int(getattr(self, '_stale_prune_undo_left_ms', 0) or 0)
+        # left==0 with flag still set → treat as expired
+        if left <= 0:
+            try:
+                self.expire_stale_prune_undo(silent=True)
+            except Exception:
+                self._stale_prune_can_undo = False
+            return False
+        return True
 
     def export_alarm_film_csv_dirs_json(self, path: str = '') -> str:
         """wave39: 导出多档另存记忆为 JSON；空 path 弹存盘框."""
@@ -3338,9 +3543,12 @@ class HostStateMachineWidget(QWidget):
                 bits.append(f'裁剪{t_n}')
             if bits:
                 tip += ' · ' + ' · '.join(bits)
+            if c_n or n_n or t_n:
+                tip += ' · 点开清单'
             try:
                 self._log_line(f'另存记忆已合并导入 · {len(out)} 档 · 冲突{c_n} 新增{n_n} 裁剪{t_n}')
-                self._flash_host_toast(tip, kind='ok')
+                self._flash_host_toast(tip, kind='ok', ms=4200)
+                self._host_toast_click_action = 'merge_diff'
             except Exception:
                 pass
             self._last_alarm_film_csv_dirs_import_mode = 'merge'
@@ -3374,7 +3582,7 @@ class HostStateMachineWidget(QWidget):
         return out
 
     def merge_alarm_film_csv_dirs(self, dirs) -> list:
-        """wave40–41: 多档记忆去重并集；记录冲突/新增/裁剪计数."""
+        """wave40–42: 多档记忆去重并集；记录冲突/新增/裁剪与 diff 清单."""
         max_n = self.alarm_film_csv_dirs_max()
         existing = list(self.alarm_film_csv_dirs(max_n=max_n))
         existing_set = set(existing)
@@ -3383,18 +3591,10 @@ class HostStateMachineWidget(QWidget):
             s = str(d or '').strip()
             if s and s not in incoming:
                 incoming.append(s)
-        conflict_n = sum(1 for d in incoming if d in existing_set)
-        new_n = sum(1 for d in incoming if d not in existing_set)
-        seen = []
-        for d in incoming:
-            if d not in seen:
-                seen.append(d)
-        for d in existing:
-            if d not in seen:
-                seen.append(d)
-            if len(seen) >= max_n:
-                break
-        # items that would have been kept but got cut by max
+        conflicts = [d for d in incoming if d in existing_set]
+        news = [d for d in incoming if d not in existing_set]
+        conflict_n = len(conflicts)
+        new_n = len(news)
         full = []
         for d in incoming:
             if d not in full:
@@ -3402,7 +3602,8 @@ class HostStateMachineWidget(QWidget):
         for d in existing:
             if d not in full:
                 full.append(d)
-        trimmed_n = max(0, len(full) - max_n)
+        trimmed = full[max_n:] if len(full) > max_n else []
+        trimmed_n = len(trimmed)
         seen = full[:max_n]
         try:
             self._host_settings().setValue('host/alarmFilmCsvDirs', seen)
@@ -3412,6 +3613,14 @@ class HostStateMachineWidget(QWidget):
         self._last_merge_conflict_n = int(conflict_n)
         self._last_merge_new_n = int(new_n)
         self._last_merge_trimmed_n = int(trimmed_n)
+        self._last_merge_diff = {
+            'conflict': list(conflicts),
+            'new': list(news),
+            'trimmed': list(trimmed),
+            'out': list(seen),
+            'incoming': list(incoming),
+            'existing': list(existing),
+        }
         self._last_merge_stats = {
             'conflict': int(conflict_n),
             'new': int(new_n),
@@ -3419,6 +3628,52 @@ class HostStateMachineWidget(QWidget):
             'out': len(seen),
         }
         return list(seen)
+
+    def show_last_merge_diff(self) -> bool:
+        """wave42: 点开合并 tip → 展示 diff 清单."""
+        diff = getattr(self, '_last_merge_diff', None) or {}
+        if not diff:
+            try:
+                self._flash_host_toast('无合并 diff 可看', kind='info')
+            except Exception:
+                pass
+            return False
+        def _lab(d):
+            try:
+                from pathlib import Path as _P
+                return _P(d).name or d
+            except Exception:
+                return d
+        sections = []
+        for key, title in (
+            ('new', '新增'),
+            ('conflict', '冲突（已存在）'),
+            ('trimmed', '裁剪（超上限丢弃）'),
+        ):
+            items = list(diff.get(key) or [])
+            if not items:
+                continue
+            lines = [f'【{title} · {len(items)}】']
+            for i, d in enumerate(items[:12], 1):
+                lines.append(f'  {i}. {_lab(d)}\n     {d}')
+            if len(items) > 12:
+                lines.append(f'  …另有 {len(items)-12} 项')
+            sections.append('\n'.join(lines))
+        body = '\n\n'.join(sections) if sections else '（无差异项）'
+        out_n = len(diff.get('out') or [])
+        try:
+            QMessageBox.information(
+                self,
+                f'合并导入 diff · 结果 {out_n} 档',
+                body,
+            )
+        except Exception:
+            try:
+                self._flash_host_toast('合并 diff 已生成', kind='info')
+            except Exception:
+                pass
+        self._last_merge_diff_shown = True
+        return True
 
     def merge_import_alarm_film_csv_dirs_json(self, path_or_text: str = '') -> list:
         """wave40: 合并导入 JSON（去重并集）."""
@@ -3642,11 +3897,13 @@ class HostStateMachineWidget(QWidget):
         cur = int(getattr(self, '_liaison_toast_history_max', 5) or 5)
         keep = bool(getattr(self, '_toast_hist_cap_keep_open', False))
         if keep:
-            act_keep = QAction('◉ 保持中 · 数字不关菜单', menu)
-            act_keep.setEnabled(False)
+            act_keep = QAction('◉ 保持中 · 点此退出', menu)
+            act_keep.setEnabled(True)
             act_keep.setObjectName('hostToastHistCapKeepBadge')
             act_keep.setProperty('isKeepBadge', True)
-            act_keep.setToolTip('长按 H 已开启保持；Esc 退出')
+            act_keep.setProperty('isKeepExit', True)
+            act_keep.setToolTip('点击退出保持；Esc 亦可')
+            act_keep.triggered.connect(lambda *_: self.exit_toast_hist_cap_keep())
             menu.addAction(act_keep)
             menu.addSeparator()
             self._last_toast_hist_cap_keep_badge = True
@@ -3934,26 +4191,64 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             pass
 
+    def exit_toast_hist_cap_keep(self) -> bool:
+        """wave42: 保持徽标一键退出."""
+        was = bool(getattr(self, '_toast_hist_cap_keep_open', False))
+        self._toast_hist_cap_keep_open = False
+        self._toast_hist_cap_h_down = False
+        self._last_toast_hist_cap_keep_exited = True
+        # remove badge actions from open menu
+        menu = getattr(self, '_last_toast_hist_cap_menu', None) or getattr(
+            self, '_toast_hist_cap_nav_menu', None)
+        if menu is not None:
+            for act in list(menu.actions()):
+                try:
+                    if act.property('isKeepBadge') or act.property('isKeepExit'):
+                        menu.removeAction(act)
+                except Exception:
+                    continue
+        self._last_toast_hist_cap_keep_badge = False
+        if was:
+            try:
+                self._flash_host_toast('已退出保持', kind='info', ms=1000)
+                self._log_line('容量菜单保持 · 已退出')
+            except Exception:
+                pass
+        return was
+
     def _ensure_toast_hist_cap_keep_badge(self) -> bool:
-        """wave41: 若容量菜单已开且保持中，注入「保持」徽标."""
+        """wave41–42: 若容量菜单已开且保持中，注入可点退出的「保持」徽标."""
         menu = getattr(self, '_last_toast_hist_cap_menu', None) or getattr(
             self, '_toast_hist_cap_nav_menu', None)
         if menu is None or not bool(getattr(self, '_toast_hist_cap_keep_open', False)):
             return False
-        # already has badge?
         for act in menu.actions():
             try:
                 if act.property('isKeepBadge'):
+                    # upgrade disabled legacy badge
+                    try:
+                        act.setEnabled(True)
+                        act.setText('◉ 保持中 · 点此退出')
+                        act.setProperty('isKeepExit', True)
+                        act.triggered.disconnect()
+                    except Exception:
+                        pass
+                    try:
+                        act.triggered.connect(
+                            lambda *_: self.exit_toast_hist_cap_keep())
+                    except Exception:
+                        pass
                     self._last_toast_hist_cap_keep_badge = True
                     return True
             except Exception:
                 continue
-        act_keep = QAction('◉ 保持中 · 数字不关菜单', menu)
-        act_keep.setEnabled(False)
+        act_keep = QAction('◉ 保持中 · 点此退出', menu)
+        act_keep.setEnabled(True)
         act_keep.setObjectName('hostToastHistCapKeepBadge')
         act_keep.setProperty('isKeepBadge', True)
-        act_keep.setToolTip('长按 H 已开启保持；Esc 退出')
-        # insert at top
+        act_keep.setProperty('isKeepExit', True)
+        act_keep.setToolTip('点击退出保持；Esc 亦可')
+        act_keep.triggered.connect(lambda *_: self.exit_toast_hist_cap_keep())
         before = menu.actions()[0] if menu.actions() else None
         if before is not None:
             menu.insertAction(before, act_keep)

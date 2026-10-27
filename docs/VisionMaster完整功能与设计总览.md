@@ -426,6 +426,17 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊷ · 合并tip点开diff · 抢占音/色可配 · 保持徽标一键退出 · 徽章中键父目录 · undo倒计时失效 · 2026-10-28】
+
+- **合并 tip 点开 diff 清单**：合并 toast 带「点开清单」；`_host_toast_click_action=merge_diff` → `show_last_merge_diff`（新增/冲突/裁剪分类 QMessageBox）；`_last_merge_diff`。
+- **抢占音/色可配**：`set_sev_pin_arc_seize_color` / `set_sev_pin_arc_seize_sound`（设置键 `host/sevPinArcSeizeColor` · `host/sevPinArcSeizeSound`）；闪色默认 `#ffffff`；音开则 `QApplication.beep()`。
+- **保持徽标一键退出**：徽标文案「◉ 保持中 · 点此退出」（`isKeepExit`）；`exit_toast_hist_cap_keep` 清 keep 并移除徽标。
+- **徽章中键开父目录**：`open_path_copy_badge_parent`；左开/右再复制/中开父。
+- **undo 倒计时失效**：默认 8s（`set_stale_prune_undo_ms`）；toast 倒数；`expire_stale_prune_undo`；到期清 can_undo。
+- **冒烟**：`smoke-wave42-mergediff-seizecfg-keepexit-midparent-undotimer-e2e`（另回归 wave41/40）。
+
+---
+
 ## 【细妆㊶ · 合并冲突计数tip · 共享弧抢占可视化 · 容量保持徽标 · 徽章右键再复制 · 失效清理undo · 2026-10-28】
 
 - **合并导入冲突计数 tip**：`merge_alarm_film_csv_dirs` 记录 conflict/new/trimmed；toast「已合并导入 · N 档 · 冲突x · 新增y · 裁剪z」。

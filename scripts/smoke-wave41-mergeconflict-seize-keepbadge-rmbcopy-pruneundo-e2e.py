@@ -132,7 +132,8 @@ def main():
         if a.property('isKeepBadge'):
             found = True
             assert '保持' in (a.text() or '')
-            assert not a.isEnabled()
+            # wave42: badge clickable to exit keep
+            assert a.isEnabled()
             assert a.objectName() == 'hostToastHistCapKeepBadge'
     assert found
     assert getattr(host, '_last_toast_hist_cap_keep_badge', False)
