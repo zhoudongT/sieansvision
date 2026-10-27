@@ -426,6 +426,15 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆81 · 再预览闪标时长可配 · 步进夹紧预览后闪标 · 短史闪标时长可配 · 策略复制原长写入悬停 toast · 档差闪标档写入 tip/status · 2026-10-28】
+
+- **A/B 回滚**：再预览角标闪标时长可配（QSettings `host/repreviewCountBadgeFlashMs`；右键子菜单「闪标时长 · Nms」档 300/600/1200/1800；夹紧预览后闪标沿用配置）。
+- **jitter 旁标音量**：步进旁标「夹紧预览」后闪标（橙边高亮）；`flashed` 写入预览结果。
+- **忽略名单**：短史徽章闪标时长可配（QSettings `host/batchRemoveUndoToastHistoryBadgeFlashMs`；右键子菜单「闪标时长」）。
+- **DST 策略徽章**：「复制原长」写入悬停 toast（`toast`/`_last_…_hover_toast`）；tip 可复制行含「→toast」。
+- **栈预览跳档**：档差旁标 tip/refresh status 写入「闪标档：Nms」。
+- **验证**：`scripts/smoke-wave113-…-e2e.py` 6/6；regress wave112 6/6。非硬件约 **~99.6%**。
+
 ## 【细妆80 · 档差闪标时长可配 · 短史双击复位后闪标 · 策略 tip 原长可复制 · 再预览夹紧预览后闪标 · 步进右键夹紧预览 · 2026-10-28】
 
 - **栈预览跳档**：档差旁标闪标时长可配（QSettings `host/jumpDeltaBadgeFlashMs`；右键子菜单「闪标时长 · Nms」档 300/600/1200/1800；夹紧预览后闪标沿用配置）。
