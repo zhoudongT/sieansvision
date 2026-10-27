@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊵ · pin避让色标对比条 · 吸史重序快捷键 · DST跳月年切换 · A/B自定义预设导出/导入 · jitter重抽历史栈 · 2026-10-28】
+
+- **pin 避让色标对比条**：`render_…_key_avoid_compare_bar`；左当前/右建议渐变条；菜单旁对比条 tip。
+- **吸史重序快捷键**：Ctrl+Shift+Z 撤序 / Ctrl+Shift+Y 重序；`_ensure_…_order_shortcuts`；按钮 tip+shortcut。
+- **DST 跳月年切换**：`set/bump_…_dst_calendar_year`；◀ 年 ▶；刷新月芯片+聚焦。
+- **A/B 自定义预设导出/导入**：`export/import_…_channel_preset_customs` JSON；剪贴板；菜单 ⇪/⇩；merge/replace。
+- **jitter 重抽历史栈**：重抽压栈（≤16）；`undo_…_seed_reshuffle` +「撤种」。
+- **冒烟**：`smoke-wave72-pincompare-histkeys-dstyear-abio-jitterhist-e2e`（另回归 wave71/70/69）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊴ · pin避让预览色标 · 吸史撤序重做 · DST日历点选跳月 · A/B预设自定义存档 · jitter种子一键重抽 · 2026-10-28】
 
 - **pin 避让预览色标**：`preview/render_…_key_avoid`；当前橙(#e6a23c)/建议绿(#3ecf8e) 色标；「避」旁 ●→● swatch + tip。
