@@ -7,6 +7,7 @@
 | 素材路径 | `docs/vm-bilibili-jgtech/videos/` · `docs/vm-bilibili-jgtech/frames/` |
 | 关键帧策略 | ~1 帧 / 9s（OpenCV；PC 无 ffmpeg/yt-dlp，用 `bin/bili_fetch.py`） |
 | 目标 | 先看视频再改 sieansvision；本文记录 **UI 步骤 / 中文标签 / 已有 vs 缺口** |
+| 总览 | 功能+设计综合见 `docs/VisionMaster完整功能与设计总览.md` |
 | 日期 | 2026-10-27（Asia/Shanghai） |
 
 > 不复刻海康算法内核；对齐 **交互分区、标签、未配置态、运行壳**。品牌色保留 sieans 橙。
@@ -24,7 +25,7 @@
 | 1 | VisionMaster4.2试用一月安装 | ✓ | Skip(installer) | 网盘/试用包分发；**不克隆海康安装器**。sieans：自带 App/工程即可 |
 | 2 | MVS和VisionMaster的卸载 | ✓ | Skip(installer) | 官方 uninstall.exe；sieans 无对标卸载向导 |
 | 3 | MVS和VisionMaster的安装 | ✓ | Skip(installer) | MVS+VM 安装包；**首启相关**：设备树/虚拟相机概念 → 已有相机管理+图像源本地/SDK |
-| 4 | 图像源 | ✓ | Implemented | ~32（含 p40/54/62–63 可模仿加深） |
+| 4 | 图像源 | ✓ | Implemented | ~35（含 p41–43 上位机状态机） |
 | 5 | 直线查找 | ✓ | Implemented | `GeometryFindPanel` feature=lines |
 | 6 | 圆查找 | ✓ | Implemented | `GeometryFindPanel` feature=circles |
 | 7 | 快速模板匹配 | ✓ | Implemented | `LocateMatchPanel` 四 Tab |
@@ -51,7 +52,7 @@
 | 28 | 运行界面设计1 | ✓ | Implemented | 运行界面设计器 + **VM 默认壳**（图像/OKNG/日志） |
 | 29 | 运行界面设计2 | ✓ | Implemented | 控件库四分类 + 触发命令 + 固定栏；深度可再贴帧 |
 | 30 | 全局触发 | ✓ | Implemented | 部分匹配列 |
-| 31 | 远程通信连接其他电脑如何设置ip | ✓ | Shell* | 复用 CommManager host/port + TCP 测试；教程式 |
+| 31 | 远程通信连接其他电脑如何设置ip | ✓ | Shell* | CommManager+TCP 测试可写变量；教程式 |
 | 32 | 定位引导·自动化九点标定_（副本） | ✓ | Skip(industry) | 机器人引导；复用 `nine_point` 即可 |
 | 33 | 定位引导·文件夹模拟_（副本） | ✓ | Skip(industry) | 同上 |
 | 34 | 定位引导·自动化九点标定 | ✓ | Skip(industry) | 机械手链路；不做厂商 SDK |
@@ -61,9 +62,9 @@
 | 38 | 设置图像基准位置 | ✓ | Skip(industry) | 引导项目子步 |
 | 39 | 设置机械手基准位置 | ✓ | Skip(industry) | 机械手基准；Skip SDK |
 | 40 | 生产任务设计 | ✓ | Implemented | `production_task` 面板+建议流程链（图像→匹配→修正→物理坐标→偏差→发送）；无机械手 SDK |
-| 41 | 上位机状态机·UI设计1 | ✓ | Shell* | HMI 控件库+IP/端口/连接状态/信息栏示意；状态机引擎仍薄 |
-| 42 | 上位机状态机·UI设计2 | ✓ | Shell* | 同上（控件/触发加深；无机械手协议） |
-| 43 | 上位机状态机·UI设计3 | ✓ | Shell* | 同上 |
+| 41 | 上位机状态机·UI设计1 | ✓ | Implemented | HostStateMachine：手动/自动·Idle/Run/Pause/Alarm；默认运行壳；无臂 SDK |
+| 42 | 上位机状态机·UI设计2 | ✓ | Implemented | 同上（运动/吸嘴/三模式组） |
+| 43 | 上位机状态机·UI设计3 | ✓ | Implemented | 同上（开始/暂停/继续/停止→流程触发） |
 | 44 | 为什么用旋转中心标定 | ✓ | Skip(industry) | 理论课：为何旋转中心标定（一句话看过） |
 | 45 | 旋转中心·原理公式 | ✓ | Skip(industry) | 理论课：旋转中心原理公式 |
 | 46 | 旋转中心·公式基础 | ✓ | Skip(industry) | 理论课：旋转中心公式基础 |
@@ -92,7 +93,7 @@
 |------|------|
 | Watched（有帧） | 65（p1–65 齐） |
 | Implemented | ~28（p1–30 壳已加深） |
-| Shell / Shell* | ~6（p31/40/41–43/54/62–63 等） |
+| Shell / Shell* | ~2（p31 等） |
 | Skip(industry) / Skip | ~21 |
 | 纯 Unwatched 且待定 | 0（31–65 均已归类） |
 
@@ -113,7 +114,7 @@
 - **p31 远程通信/IP**：CommManager 主机/端口 + TCP 测试即可对标；教程式网络设置，无新算子。
 - **p32–39 定位引导/九点/纠偏/基准**：流程上复用 `nine_point` + `pose_correct` + 图像源胶片；机械手链路保持 Skip(industry)，对照只记步骤名。
 - **p40 生产任务**：已有 `production_task` 薄壳（任务名/配方→变量）。
-- **p41–43 上位机状态机 UI**：对齐运行界面设计器/OperatorHmiView；状态机引擎仍 Shell*，先贴控件布局。
+- **p41–43 上位机状态机 UI**：`HostStateMachineWidget` 已嵌入默认运行壳 + 控件库「上位机状态机」；开始/停止绑流程；无机械手协议。
 
 - **p31 帧观感**：空流程 + 全局图像棋盘；通讯侧靠系统/通信管理配 IP（对标 CommManager host/port + TCP 测试）。
 - **p40 帧观感**：生产任务=图像→模板匹配→位置修正→圆查找→基准/目标物理坐标→偏差 dx/dy→MoveX/Y→发送上位机；sieans 可用 locate+pose_correct+geometry+var_calc+send_data 串，机械手 SDK 仍 Skip。
