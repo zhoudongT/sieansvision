@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊿ · pin建议键候选菜单多选 · 试键撤栈导出/清空可撤 · DST撤清TTL · A/B回退记忆清/导出 · jitter自定义拖拽排序 · 2026-10-28】
+
+- **pin 建议键候选菜单多选**：`show_…_cycle_key_suggest_menu`（勾选多项→应用首选/仅记录）；`…_suggest_selected`；resolve `action=menu`。
+- **试键撤栈导出/清空可撤**：`export_…_confirm_undo` JSON；`clear/undo_clear_…_confirm_undo`；菜单 export/clear/undo_clear。
+- **DST 撤清 TTL**：`get/set/prompt_…_clear_undo_ttl_ms`；`discard_…_clear_snap`；clear→schedule；undo_clear→停表。
+- **A/B 回退记忆清/导出**：`clear_…_fallback(flow|all)`；`export_…_fallback` JSON。
+- **jitter 自定义拖拽排序**：`reorder_…_customs`；`show_…_reorder_dialog`（QListWidget InternalMove）；菜单 `ttl_reorder`。
+- **冒烟**：`smoke-wave82-pinsuggestmenu-histundoexport-dstttl-abfallbackio-jitterreorder-e2e`（另回归 wave81/80/79）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊾ · pin cycle冲突弹窗改键建议 · 试键撤销栈浏览/多级跳 · DST清栈可撤销 · A/B回退源记忆 · jitter自定义预设编辑/删 · 2026-10-28】
 
 - **pin cycle 冲突弹窗改键建议**：`suggest_…_cycle_key`；`prompt_resolve_…_cycle_key_conflicts`（Yes→应用干净建议键）；`prompt_…_cycle_key` 冲突后自动弹建议。
