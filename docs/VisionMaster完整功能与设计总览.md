@@ -426,6 +426,18 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆㊾ · pin cycle冲突弹窗改键建议 · 试键撤销栈浏览/多级跳 · DST清栈可撤销 · A/B回退源记忆 · jitter自定义预设编辑/删 · 2026-10-28】
+
+- **pin cycle 冲突弹窗改键建议**：`suggest_…_cycle_key`；`prompt_resolve_…_cycle_key_conflicts`（Yes→应用干净建议键）；`prompt_…_cycle_key` 冲突后自动弹建议。
+- **试键撤销栈浏览/多级跳**：`list_…_confirm_undo_entries`；`jump_…_confirm_undo(index)`；旁标右击 `show_…_confirm_undo_menu`。
+- **DST 清栈可撤销**：`clear_…` 快照；`undo_clear_…_apply_all_undo`；旁标中键撤清。
+- **A/B 回退源记忆**：`remember/recall/load/persist_…_fallback`；autoload 无记忆时召回；失败仍记住。
+- **jitter 自定义预设编辑/删**：`edit/delete/prompt_edit_…_ttl_preset_custom`；菜单 ✏/🗑；smoke `ttl_edit`/`ttl_delete`。
+- **冒烟**：`smoke-wave81-pincyclesuggest-histundojump-dstclearundo-abfallbackmem-jitteredit-e2e`（另回归 wave80/79/78）。
+- **边界**：无 push；不碰 Halcon / 真机云 / 机械手 SDK；不碰 `:18280`；`?? os` 独留。
+
+---
+
 ## 【细妆㊽ · pin锁角标点击切换+cycle键冲突检测 · 试键撤销深度旁标 · DST深度长按清栈 · A/B载源失败回退提示 · jitter预设自定义/单项恢复动画 · 2026-10-28】
 
 - **pin 锁角标点击切换 + cycle 键冲突检测**：角标左键 `toggle_…_lock`；`detect/format_…_cycle_key_conflicts`（保留键/钉加减/吸史/已有快捷）；`set_…_cycle_key` 记冲突并 toast。
