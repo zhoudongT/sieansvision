@@ -687,7 +687,7 @@ QWidget#propertyFloatBody QHeaderView::section {{
   border-bottom: 1px solid {FLOAT_LINE};
   font-weight: 600;
 }}
-QPushButton#propertyFloatClose {
+QPushButton#propertyFloatClose {{
   background: transparent;
   color: #e8e8e8;
   border: 0;
@@ -697,8 +697,8 @@ QPushButton#propertyFloatClose {
   min-width: 28px;
   min-height: 28px;
   padding: 0;
-}
-QPushButton#propertyFloatClose:hover {
+}}
+QPushButton#propertyFloatClose:hover {{
   background: #c62828;
   color: #ffffff;
 }}
