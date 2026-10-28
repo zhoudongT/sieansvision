@@ -33867,7 +33867,15 @@ class HostStateMachineWidget(QWidget):
                 orig = len(str(tip).split('\n原长：')[0]) if tip else 0
             orig = int(orig)
         except Exception as e:
-            out = {'ok': False, 'reason': str(e)}
+            status = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status', None)
+            status_prop = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop', None)
+            status_prop_ok = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop_ok', False))
+            tip_prop_ok = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_prop_ok', False))
+            out = {
+                'ok': False, 'reason': str(e),
+                'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok),
+                'tip_prop_ok': bool(tip_prop_ok),
+            }
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_copy_orig_len = dict(out)
             return out
         text = f'原长：{orig}字'
@@ -33877,7 +33885,15 @@ class HostStateMachineWidget(QWidget):
             if cb is not None:
                 cb.setText(text)
         except Exception as e:
-            out = {'ok': False, 'reason': str(e), 'orig_len': orig, 'text': text}
+            status = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status', None)
+            status_prop = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop', None)
+            status_prop_ok = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop_ok', False))
+            tip_prop_ok = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_prop_ok', False))
+            out = {
+                'ok': False, 'reason': str(e), 'orig_len': orig, 'text': text,
+                'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok),
+                'tip_prop_ok': bool(tip_prop_ok),
+            }
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_copy_orig_len = dict(out)
             return out
         toast = f'已复制{text}'
@@ -34014,11 +34030,28 @@ class HostStateMachineWidget(QWidget):
         if badge is None:
             badge = self.ensure_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge()
         if badge is None:
-            out = {'ok': False, 'reason': 'no_badge'}
+            out = {
+                'ok': False, 'reason': 'no_badge',
+                'status': None, 'status_prop': None, 'status_prop_ok': False,
+                'strategy_prop_ok': False, 'tip_prop_ok': False,
+            }
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_click = dict(out)
             return out
         if getattr(badge, '_dst_import_strategy_badge_click_bound', False):
             out = {'ok': True, 'bound': True, 'already': True}
+            try:
+                self.tip_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover()
+            except Exception:
+                pass
+            out['status'] = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status', None)
+            out['status_prop'] = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop', None)
+            out['status_prop_ok'] = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop_ok', False))
+            out['strategy_prop'] = badge.property('dstImportStrategyBadgeStrategy') if badge is not None else None
+            try:
+                out['strategy_prop_ok'] = str(out['strategy_prop']) in ('merge', 'overwrite')
+            except Exception:
+                out['strategy_prop_ok'] = False
+            out['tip_prop_ok'] = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_prop_ok', False))
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_click = dict(out)
             return out
         host = self
@@ -34033,10 +34066,27 @@ class HostStateMachineWidget(QWidget):
             badge.mousePressEvent = _on_press
             badge._dst_import_strategy_badge_click_bound = True
         except Exception as e:
-            out = {'ok': False, 'reason': str(e)}
+            out = {
+                'ok': False, 'reason': str(e),
+                'status': None, 'status_prop': None, 'status_prop_ok': False,
+                'strategy_prop_ok': False, 'tip_prop_ok': False,
+            }
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_click = dict(out)
             return out
         out = {'ok': True, 'bound': True}
+        try:
+            self.tip_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover()
+        except Exception:
+            pass
+        out['status'] = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status', None)
+        out['status_prop'] = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop', None)
+        out['status_prop_ok'] = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop_ok', False))
+        out['strategy_prop'] = badge.property('dstImportStrategyBadgeStrategy') if badge is not None else None
+        try:
+            out['strategy_prop_ok'] = str(out['strategy_prop']) in ('merge', 'overwrite')
+        except Exception:
+            out['strategy_prop_ok'] = False
+        out['tip_prop_ok'] = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_prop_ok', False))
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_click = dict(out)
         return out
 
@@ -34223,11 +34273,28 @@ class HostStateMachineWidget(QWidget):
         if badge is None:
             badge = self.ensure_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge()
         if badge is None:
-            out = {'ok': False, 'reason': 'no_badge'}
+            out = {
+                'ok': False, 'reason': 'no_badge',
+                'status': None, 'status_prop': None, 'status_prop_ok': False,
+                'strategy_prop_ok': False, 'tip_prop_ok': False,
+            }
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_bind = dict(out)
             return out
         if getattr(badge, '_dst_import_strategy_badge_menu_bound', False):
             out = {'ok': True, 'bound': True, 'already': True}
+            try:
+                self.tip_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover()
+            except Exception:
+                pass
+            out['status'] = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status', None)
+            out['status_prop'] = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop', None)
+            out['status_prop_ok'] = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop_ok', False))
+            out['strategy_prop'] = badge.property('dstImportStrategyBadgeStrategy') if badge is not None else None
+            try:
+                out['strategy_prop_ok'] = str(out['strategy_prop']) in ('merge', 'overwrite')
+            except Exception:
+                out['strategy_prop_ok'] = False
+            out['tip_prop_ok'] = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_prop_ok', False))
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_bind = dict(out)
             return out
         host = self
@@ -34237,10 +34304,27 @@ class HostStateMachineWidget(QWidget):
             badge.customContextMenuRequested.connect(lambda pos, b=badge: host.show_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_context_menu(b.mapToGlobal(pos) if hasattr(b, "mapToGlobal") else None))
             badge._dst_import_strategy_badge_menu_bound = True
         except Exception as e:
-            out = {'ok': False, 'reason': str(e)}
+            out = {
+                'ok': False, 'reason': str(e),
+                'status': None, 'status_prop': None, 'status_prop_ok': False,
+                'strategy_prop_ok': False, 'tip_prop_ok': False,
+            }
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_bind = dict(out)
             return out
         out = {'ok': True, 'bound': True}
+        try:
+            self.tip_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover()
+        except Exception:
+            pass
+        out['status'] = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status', None)
+        out['status_prop'] = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop', None)
+        out['status_prop_ok'] = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop_ok', False))
+        out['strategy_prop'] = badge.property('dstImportStrategyBadgeStrategy') if badge is not None else None
+        try:
+            out['strategy_prop_ok'] = str(out['strategy_prop']) in ('merge', 'overwrite')
+        except Exception:
+            out['strategy_prop_ok'] = False
+        out['tip_prop_ok'] = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_prop_ok', False))
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_bind = dict(out)
         return out
 

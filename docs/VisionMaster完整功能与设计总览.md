@@ -426,6 +426,14 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆97 · bind_click/menu_bind 顶层 status · copy_orig_len 失败路径 · 2026-10-28】
+
+- **bind_click_toggle / bind_context_menu**：成功与 already 路径 tip 后顶层表面 `status` / `status_prop_ok` / `strategy_prop_ok` / `tip_prop_ok`；失败路径显式 False。
+- **show context-menu**：既有 `_menu_sync` 顶层 status 保持（冒烟确认）。
+- **copy_*_orig_len 失败路径**：clipboard/解析异常 out 仍级联 tip 的 `status` / `status_prop_ok` / `tip_prop_ok`。
+- **FlashMs**：仍不起步（无 flash_* 视觉）。
+- **验证**：`scripts/smoke-wave129-bindstatus-copyorigerr-e2e.py` → 9 PASS。非硬件约 **~99.98%**。
+
 ## 【细妆96 · copy_orig_len Status 级联 · toggle 表面 status · 2026-10-28】
 
 - **copy_*_orig_len**：out / stash 级联 tip 的 `status` / `status_prop` / `status_prop_ok` / `tip_prop_ok`（原长复制与 tip 状态同源）。
