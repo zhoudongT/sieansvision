@@ -33780,6 +33780,21 @@ class HostStateMachineWidget(QWidget):
                 self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_from_get_prefer = False
             except Exception:
                 pass
+        # echo dual-origin from ensure into tip attrs
+        try:
+            ens = dict(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_ensure', None) or {})
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_from_set_strategy = bool(ens.get('from_set_strategy'))
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_from_toggle = bool(ens.get('from_toggle'))
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_dual_origin_echo = bool(ens.get('from_set_strategy') or ens.get('from_toggle'))
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_ensure_strategy = ens.get('strategy')
+        except Exception:
+            try:
+                self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_from_set_strategy = False
+                self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_from_toggle = False
+                self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_dual_origin_echo = False
+                self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_ensure_strategy = None
+            except Exception:
+                pass
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_max_len_shown = int(tip_ml)
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip = tip
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_truncated = bool(truncated)
@@ -34011,6 +34026,7 @@ class HostStateMachineWidget(QWidget):
             truncate_ok = False
             fail_reason = str(e)
         from_get_prefer = False
+        from_get_fold = False
         # fail-path: prefer from_get status into truncate stash when status weaker
         if not status_prop_ok:
             try:
@@ -34025,12 +34041,24 @@ class HostStateMachineWidget(QWidget):
                     from_get_prefer = True
             except Exception:
                 from_get_prefer = False
+        # success-path: fold get-stash status when strong (aligned)
+        elif status_prop_ok:
+            try:
+                _get = dict(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_max_len_get', None) or {})
+                _gst = _get.get('status') or getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_max_len_get_status', None)
+                _gok = bool(_get.get('status_prop_ok') or getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_max_len_get_status_prop_ok', False))
+                _gst_usable = bool(_gst) and str(_gst).startswith('策略·') and (_gok or bool(_get.get('ok')))
+                if _gst_usable and str(_gst) == str(status):
+                    from_get_fold = True
+                    status = _gst  # fold strong get-stash
+            except Exception:
+                from_get_fold = False
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_truncate = {
             'ok': bool(truncate_ok), 'truncate_ok': bool(truncate_ok),
             'reason': fail_reason, 'fail_reason': fail_reason,
             'len': len(s), 'max_len': ml, 'truncated': out[1], 'tip': out[0],
             'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok),
-            'from_get_prefer': bool(from_get_prefer)}
+            'from_get_prefer': bool(from_get_prefer), 'from_get_fold': bool(from_get_fold)}
         return out
 
 
@@ -34081,6 +34109,17 @@ class HostStateMachineWidget(QWidget):
             'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok),
             'tip_prop_ok': bool(tip_prop_ok),
         }
+        try:
+            ens = dict(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_ensure', None) or {})
+            out['from_set_strategy'] = bool(ens.get('from_set_strategy'))
+            out['from_toggle'] = bool(ens.get('from_toggle'))
+            out['dual_origin_echo'] = bool(out['from_set_strategy'] or out['from_toggle'])
+            out['ensure_strategy'] = ens.get('strategy')
+        except Exception:
+            out['from_set_strategy'] = False
+            out['from_toggle'] = False
+            out['dual_origin_echo'] = False
+            out['ensure_strategy'] = None
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_copy = dict(out)
         return out
 
@@ -34295,6 +34334,16 @@ class HostStateMachineWidget(QWidget):
             out['from_set_strategy'] = False
             out['from_toggle'] = False
             out['dual_origin_echo'] = False
+        # fold tip_max_len_action checked_preset into refresh
+        try:
+            act = dict(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_tip_max_len_action', None) or {})
+            out['tip_max_len_action_checked_preset'] = act.get('checked_preset')
+            out['tip_max_len_action_checked_preset_ok'] = bool(act.get('checked_preset_ok'))
+            out['tip_max_len_action_checked_synced'] = bool(act.get('checked_synced'))
+            out['tip_max_len_action_from_action'] = bool(act.get('ok') or act.get('checked_synced') or act.get('checked_preset') is not None)
+            out['tip_max_len_action_status_from_action'] = act.get('status_from_action') or act.get('status')
+        except Exception:
+            out['tip_max_len_action_from_action'] = False
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge = dict(out)
         return out
 
@@ -34327,6 +34376,14 @@ class HostStateMachineWidget(QWidget):
             except Exception:
                 out['strategy_prop_ok'] = False
             out['tip_prop_ok'] = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_prop_ok', False))
+            try:
+                act = dict(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_tip_max_len_action', None) or {})
+                out['tip_max_len_action_checked_preset'] = act.get('checked_preset')
+                out['tip_max_len_action_checked_preset_ok'] = bool(act.get('checked_preset_ok'))
+                out['tip_max_len_action_from_action'] = bool(act.get('ok') or act.get('checked_synced') or act.get('checked_preset') is not None)
+                out['tip_max_len_action_status_from_action'] = act.get('status_from_action') or act.get('status')
+            except Exception:
+                out['tip_max_len_action_from_action'] = False
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_click = dict(out)
             return out
         host = self
@@ -34362,6 +34419,14 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             out['strategy_prop_ok'] = False
         out['tip_prop_ok'] = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_prop_ok', False))
+        try:
+            act = dict(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_tip_max_len_action', None) or {})
+            out['tip_max_len_action_checked_preset'] = act.get('checked_preset')
+            out['tip_max_len_action_checked_preset_ok'] = bool(act.get('checked_preset_ok'))
+            out['tip_max_len_action_from_action'] = bool(act.get('ok') or act.get('checked_synced') or act.get('checked_preset') is not None)
+            out['tip_max_len_action_status_from_action'] = act.get('status_from_action') or act.get('status')
+        except Exception:
+            out['tip_max_len_action_from_action'] = False
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_click = dict(out)
         return out
 
@@ -34557,7 +34622,7 @@ class HostStateMachineWidget(QWidget):
                     except Exception:
                         menu_st['tip_max_len_checked_synced'] = False
                         menu_st['tip_max_len_checked_preset_ok'] = False
-                    # mirror checked_preset into tip_max_len_action stash
+                    # mirror checked_preset into tip_max_len_action stash + status_from_action
                     try:
                         act_st = dict(getattr(host, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_tip_max_len_action', None) or r or {})
                         act_st['checked_preset'] = menu_st.get('tip_max_len_checked_preset')
@@ -34565,9 +34630,13 @@ class HostStateMachineWidget(QWidget):
                         act_st['qaction_count'] = menu_st.get('tip_max_len_qaction_count')
                         act_st['checked_synced'] = bool(menu_st.get('tip_max_len_checked_synced'))
                         act_st['submenu_restamped'] = bool(menu_st.get('tip_max_len_submenu_restamped'))
+                        act_st['status_from_action'] = act_st.get('status') or (r or {}).get('status')
+                        act_st['status_from_action_ok'] = bool(act_st.get('status_from_action')) and str(act_st.get('status_from_action')).startswith('策略·')
                         host._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_tip_max_len_action = dict(act_st)
                         menu_st['tip_max_len_action_checked_preset'] = act_st.get('checked_preset')
                         menu_st['tip_max_len_action_checked_preset_ok'] = bool(act_st.get('checked_preset_ok'))
+                        menu_st['tip_max_len_action_status_from_action'] = act_st.get('status_from_action')
+                        menu_st['tip_max_len_action_status_from_action_ok'] = bool(act_st.get('status_from_action_ok'))
                     except Exception:
                         pass
                     host._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu = dict(menu_st)
@@ -34724,6 +34793,14 @@ class HostStateMachineWidget(QWidget):
             except Exception:
                 out['strategy_prop_ok'] = False
             out['tip_prop_ok'] = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_prop_ok', False))
+            try:
+                act = dict(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_tip_max_len_action', None) or {})
+                out['tip_max_len_action_checked_preset'] = act.get('checked_preset')
+                out['tip_max_len_action_checked_preset_ok'] = bool(act.get('checked_preset_ok'))
+                out['tip_max_len_action_from_action'] = bool(act.get('ok') or act.get('checked_synced') or act.get('checked_preset') is not None)
+                out['tip_max_len_action_status_from_action'] = act.get('status_from_action') or act.get('status')
+            except Exception:
+                out['tip_max_len_action_from_action'] = False
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_bind = dict(out)
             return out
         host = self
@@ -34754,6 +34831,14 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             out['strategy_prop_ok'] = False
         out['tip_prop_ok'] = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_prop_ok', False))
+        try:
+            act = dict(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_tip_max_len_action', None) or {})
+            out['tip_max_len_action_checked_preset'] = act.get('checked_preset')
+            out['tip_max_len_action_checked_preset_ok'] = bool(act.get('checked_preset_ok'))
+            out['tip_max_len_action_from_action'] = bool(act.get('ok') or act.get('checked_synced') or act.get('checked_preset') is not None)
+            out['tip_max_len_action_status_from_action'] = act.get('status_from_action') or act.get('status')
+        except Exception:
+            out['tip_max_len_action_from_action'] = False
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_bind = dict(out)
         return out
 

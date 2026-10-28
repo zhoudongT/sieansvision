@@ -426,6 +426,15 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆105 · tip/copy dual_origin · truncate from_get_fold · bind/refresh checked_preset · status_from_action · 2026-10-28】
+
+- **tip / copy**：回显 ensure 的 `from_set_strategy` / `from_toggle` → `dual_origin_echo` + `ensure_strategy`（tip 写 hover_* attrs；copy 写 out/stash）。
+- **truncate 成功路径**：get-stash 强且与 status 对齐时置 `from_get_fold`（失败路径仍 `from_get_prefer`）。
+- **bind / refresh**：折入 tip_max_len_action 的 `checked_preset` / `_ok` / `from_action` / `status_from_action`。
+- **menu tip_max_len_action**：trigger 后补 `status_from_action` / `_ok`；menu 侧 `tip_max_len_action_status_from_action(_ok)`。
+- **FlashMs**：仍不起步。
+- **验证**：`scripts/smoke-wave137-tipcopyecho-bindchecked-statusfromaction-e2e.py` → 10 PASS。非硬件约 **~99.99%**。
+
 ## 【细妆104 · set/toggle dual_origin echo · action checked_preset · truncate from_get prefer · 2026-10-28】
 
 - **set / toggle 出口**：ensure 镜像后回显 `from_set_strategy` / `from_toggle` → `dual_origin_echo` + `ensure_strategy` 进 set_out / toggle out stash（set 仍返 str；toggle 返 dict）。
