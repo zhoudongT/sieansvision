@@ -426,6 +426,14 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆101 · toggle→ensure/refresh 镜像 · tip_max_len action→menu · getter status · 2026-10-28】
+
+- **toggle**：refresh 后镜像 `toggle_strategy` / `toggle_status` / `toggle_status_prop_ok` 进 refresh stash，并回写 ensure（`from_toggle` / `strategy` / `status_prop_ok`）；toggle out 含 click/menu_bind status。
+- **menu tip_max_len action**：`QAction.trigger` 后把 action 的 `status` / `max_len` / `status_prop_ok` 拷进 menu stash（`tip_max_len_action_*` + `tip_max_len_status`）。
+- **getter** `strategy_badge_hover_tip_max_len`：仍返回 int；表面 status 到 badge 并 stash `_last_…_hover_tip_max_len_get`（`_strategy_badge_tip_max_len_getting` 防重入）。
+- **FlashMs**：仍不起步。
+- **验证**：`scripts/smoke-wave133-togglemirror-menutipaction-getterstatus-e2e.py` → 9 PASS。非硬件约 **~99.99%**。
+
 ## 【细妆100 · set→ensure/refresh 镜像 · tip_max_len QAction.fire · truncate 失败 · 2026-10-28】
 
 - **set-strategy**：refresh 后镜像 `set_strategy` / `set_status_prop_ok` 进 refresh stash，并回写 ensure stash（`from_set_strategy` / `strategy` / `status_prop_ok`）；set stash 含 click/menu_bind status。
