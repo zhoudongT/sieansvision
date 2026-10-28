@@ -39,7 +39,7 @@ def builtin_definitions():
     metadata=json.loads(Path(__file__).with_name('builtin-catalog.json').read_text(encoding='utf-8'))
     definitions={}
     groups={'group':'流程控制','subflow':'流程控制','loop':'流程控制','condition':'流程控制','branch_merge':'流程控制','branch':'流程控制','delay':'流程控制','variables':'变量与数据','var_calc':'变量与数据','format_data':'变量与数据','text_save':'变量与数据','elapsed_stats':'流程控制','receive_data':'工业通信','send_data':'工业通信','protocol_parse':'工业通信','output_image':'图像处理',
-            'preprocess':'图像处理','display':'图像处理','locate':'定位与测量','pose_correct':'定位与测量','distort_correct':'标定与校正','nine_point':'标定与校正','geometry':'定位与测量','measure':'定位与测量','line_intersect':'定位与测量','point_distance':'定位与测量','point_line_distance':'定位与测量','csharp_script':'变量与数据','production_task':'流程控制','barcode':'识别','ocr':'识别','defects':'识别','yolo':'识别','yolo_segment':'识别'}
+            'preprocess':'图像处理','display':'图像处理','locate':'定位与测量','pose_correct':'定位与测量','distort_correct':'标定与校正','nine_point':'标定与校正','geometry':'定位与测量','measure':'定位与测量','line_intersect':'定位与测量','point_distance':'定位与测量','point_line_distance':'定位与测量','line_angle':'定位与测量','point_circle_distance':'定位与测量','circle_circle_distance':'定位与测量','csharp_script':'变量与数据','production_task':'流程控制','barcode':'识别','ocr':'识别','defects':'识别','yolo':'识别','yolo_segment':'识别'}
     for operation,meta in metadata.items():
         if operation=='plugin':continue
         defaults=deepcopy(meta.get('defaults',{}));parameters=[]
@@ -270,15 +270,50 @@ def builtin_definitions():
         ],
         description='点与线距离（VM p=17/集16）：点到直线垂距。',
     )
+    definitions['line_angle'] = dict(
+        operation='line_angle', name='线与线夹角', category='定位与测量',
+        defaults=dict(mode='bind', line1From='', line1Field='lines[0]', line2From='', line2Field='lines[0]',
+                      x1=0.0, y1=0.0, x2=100.0, y2=0.0, x3=0.0, y3=0.0, x4=0.0, y4=100.0,
+                      unit='deg', scale=1.0, showOverlay=True, parallelTolDeg=0.001, perpTolDeg=0.5),
+        parameters=[
+            field('mode', '输入模式', 'string', 'bind', choices=choices(('bind', '绑定上游'), ('manual', '手动坐标'))),
+            field('unit', '单位', 'string', 'deg'),
+        ],
+        description='线与线夹角：无向锐角 0–90°；parallel/perpendicular 旗标。',
+    )
+    definitions['point_circle_distance'] = dict(
+        operation='point_circle_distance', name='点与圆距离', category='定位与测量',
+        defaults=dict(mode='bind', pointFrom='', pointField='matches[0]', circleFrom='', circleField='circles[0]',
+                      px=0.0, py=0.0, cx=50.0, cy=50.0, radius=20.0, circleMode='edge',
+                      unit='px', scale=1.0, showOverlay=True),
+        parameters=[
+            field('mode', '输入模式', 'string', 'bind', choices=choices(('bind', '绑定上游'), ('manual', '手动坐标'))),
+            field('circleMode', '圆距模式', 'string', 'edge', choices=choices(('edge', '到边缘'), ('center', '到圆心'), ('signed', '有符号'))),
+            field('unit', '单位', 'string', 'px'),
+        ],
+        description='点与圆距离：edge/center/signed；软几何，无 Halcon。',
+    )
+    definitions['circle_circle_distance'] = dict(
+        operation='circle_circle_distance', name='圆与圆距离', category='定位与测量',
+        defaults=dict(mode='bind', circle1From='', circle1Field='circles[0]', circle2From='', circle2Field='circles[0]',
+                      cx1=40.0, cy1=50.0, r1=15.0, cx2=80.0, cy2=50.0, r2=15.0, circleMode='gap',
+                      unit='px', scale=1.0, showOverlay=True),
+        parameters=[
+            field('mode', '输入模式', 'string', 'bind', choices=choices(('bind', '绑定上游'), ('manual', '手动坐标'))),
+            field('circleMode', '圆距模式', 'string', 'gap', choices=choices(('gap', '间隙'), ('center', '中心距'), ('outer', '外包距'))),
+            field('unit', '单位', 'string', 'px'),
+        ],
+        description='圆与圆距离：间隙/中心距/外包距；overlapping 旗标。',
+    )
     definitions['csharp_script'] = dict(
         operation='csharp_script', name='C#脚本', category='变量与数据',
-        defaults=dict(language='csharp', code='', timeoutMs=5000, entry='Script.Run', references='', arguments={}),
+        defaults=dict(language='csharp', code='', timeoutMs=5000, entry='Script.Run', references='', arguments={}, writeOutputVars=True, injectGlobals=True, inputs=[{'name':'recStr','type':'string','bind':''}], outputs=[{'name':'out0','type':'string'},{'name':'out1','type':'string'}]),
         parameters=[
             field('language', '语言', 'string', 'csharp', choices=choices(('csharp', 'C#'), ('python', 'Python示意'))),
             field('timeoutMs', '超时ms', 'integer', 5000, minimum=100, maximum=120000),
             field('entry', '入口', 'string', 'Script.Run'),
         ],
-        description='C# 脚本（VM p=12）：设计态编辑器；本机 C# 标记 unsupported，真实执行请用 script。',
+        description='C# 脚本（VM p=12）：设计态编辑器+输入注入/输出写回壳；本机 C#=unsupported；Python+允许脚本可真实执行。',
     )
 
     # Wrap: 生产任务薄壳（VM p=40 行业案例可复用入口；非机器人 SDK）

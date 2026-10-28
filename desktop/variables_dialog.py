@@ -249,6 +249,8 @@ class VariablesDialog(QDialog):
         for lab, key in (
             ('过滤·全部', 'all'),
             ('过滤·测量链', 'measure'),
+            ('过滤·几何/卡尺', 'geometry'),
+            ('过滤·脚本写回', 'script'),
             ('过滤·缺陷OCR', 'defects_ocr'),
             ('过滤·Comm', 'comm'),
             ('过滤·注入标量', 'inject'),
@@ -260,6 +262,14 @@ class VariablesDialog(QDialog):
         row.addWidget(self.search, 1); row.addWidget(self.count_label)
         refresh = QPushButton('重新读取（撤销当前值编辑）'); refresh.clicked.connect(self.refresh); row.addWidget(refresh)
         self.hint = QLabel(); self.hint.setWordWrap(True); layout.addWidget(self.hint)
+        # 细妆：结果实况条（几何/脚本写回）
+        self.result_chrome = QLabel('结果实况：尚未读取')
+        self.result_chrome.setObjectName('varsResultChrome')
+        self.result_chrome.setWordWrap(True)
+        self.result_chrome.setStyleSheet(
+            'color:#9ad;font-size:11px;padding:5px 8px;background:#1e2228;border-radius:4px;margin:2px 0;'
+        )
+        layout.addWidget(self.result_chrome)
         self.table = QTableWidget(0, 8); self.table.setObjectName('variableTable')
         self.table.setHorizontalHeaderLabels(['作用域', '名称', '固定类型', '工程初始值', '运行当前值', '备注', '持久', '校验'])
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -348,6 +358,10 @@ class VariablesDialog(QDialog):
         self.pending.clear()
 
     def refresh(self):
+        try:
+            self._refresh_result_chrome()
+        except Exception:
+            pass
         if any(tag == 'read' for tag in self.pending.values()): return
         if self.stale: self._load_definitions()
         self.pending[self.backend.request('variables/get', {'project': deepcopy(self.document.project)})] = 'read'
@@ -673,6 +687,10 @@ class VariablesDialog(QDialog):
                     except Exception:
                         pass
         self.count_label.setText(f'{self.table.rowCount()} 项')
+        try:
+            self._refresh_result_chrome()
+        except Exception:
+            pass
         # wave23: Comm 折叠按簇计数徽章（扫 initial / runtime / project.variables）
         try:
             fc = getattr(self, 'fold_comm', None)
@@ -692,6 +710,44 @@ class VariablesDialog(QDialog):
             pass
         editable = not overview and not self.busy and not self.stale and (initial or self.runtime_draft is not None)
         self.dup_button.setEnabled(editable); self.copy_name_button.setEnabled(self.table.rowCount() > 0)
+
+    def _refresh_result_chrome(self):
+        """细妆：变量页结果实况 — 几何/脚本写回摘要。"""
+        lab = getattr(self, 'result_chrome', None)
+        if lab is None:
+            return
+        try:
+            state = getattr(self, 'runtime_draft', None) or getattr(self, 'state', None)
+            flow = dict((self._scope_values(state, 'flow') if state else {}) or {})
+            if not flow:
+                pv = ((self.document.project or {}).get('variables') or {})
+                # nested flow or flat bag
+                if isinstance(pv.get('flow'), dict):
+                    flow = dict(pv.get('flow') or {})
+                else:
+                    flow = dict(pv)
+        except Exception:
+            flow = {}
+        geom = []
+        script = []
+        for k, v in list(flow.items())[:80]:
+            ks = str(k)
+            if ks.startswith('script_') or ks in ('out0', 'out1'):
+                script.append(f'{ks}={v}')
+            elif any(tok in ks.lower() for tok in (
+                'angle', 'gap', 'circle', 'caliper', 'geom', 'distance', 'intersect', 'lineangle', 'pointcircle'
+            )):
+                geom.append(f'{ks}={v}')
+        bits = []
+        if geom:
+            bits.append('几何 ' + ' · '.join(geom[:6]))
+        if script:
+            bits.append('脚本 ' + ' · '.join(script[:6]))
+        n = len(flow)
+        if bits:
+            lab.setText(f'结果实况：flow {n} 项 · ' + ' │ '.join(bits))
+        else:
+            lab.setText(f'结果实况：flow {n} 项 · （无几何/脚本写回键；运行测量或脚本后刷新）')
 
     def _selected(self):
         row = self.table.currentRow()

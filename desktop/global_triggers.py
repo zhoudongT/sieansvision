@@ -398,12 +398,21 @@ class GlobalTriggersDialog(QDialog):
         self.tabs.addTab(self.event_table, '事件触发')
         self.tabs.addTab(self.string_table, '字符串触发')
         root.addWidget(self.tabs, 1)
+        self.result_chrome = QLabel('触发实况：尚未试匹配')
+        self.result_chrome.setObjectName('triggersResultChrome')
+        self.result_chrome.setWordWrap(True)
+        self.result_chrome.setStyleSheet(
+            'color:#9ad;font-size:11px;padding:5px 8px;background:#1e2228;border-radius:4px;'
+        )
+        root.addWidget(self.result_chrome)
         test = QHBoxLayout()
         test.addWidget(QLabel('试匹配（字符串）'))
         self.test_input = QLineEdit()
+        self.test_input.setObjectName('triggersTestInput')
         self.test_input.setPlaceholderText('粘贴收到的报文…')
         test.addWidget(self.test_input, 1)
         test_btn = QPushButton('试匹配')
+        test_btn.setObjectName('triggersTestMatchBtn')
         test_btn.clicked.connect(self._test_match)
         test.addWidget(test_btn)
         run_btn = QPushButton('匹配并执行')
@@ -412,6 +421,7 @@ class GlobalTriggersDialog(QDialog):
         run_btn.clicked.connect(self._test_match_and_run)
         test.addWidget(run_btn)
         self.test_result = QLabel('')
+        self.test_result.setObjectName('triggersTestResult')
         test.addWidget(self.test_result)
         root.addLayout(test)
 
@@ -441,15 +451,44 @@ class GlobalTriggersDialog(QDialog):
                     cmds.append(dict(type=row.get('commandType'), config=row.get('config') or '', source='string'))
         return hits, cmds
 
+    def _update_result_chrome(self, text, hits, cmds=None, executed=False):
+        lab = getattr(self, 'result_chrome', None)
+        if lab is None:
+            return
+        from datetime import datetime as _dt
+        n_ev = len(self.event_table.rows()) if hasattr(self, 'event_table') else 0
+        n_st = len(self.string_table.rows()) if hasattr(self, 'string_table') else 0
+        stamp = _dt.now().strftime('%H:%M:%S')
+        if hits:
+            cmd_n = len(cmds or [])
+            lab.setText(
+                f'触发实况 [{stamp}]：命中 {len(hits)} · 命令 {cmd_n}'
+                + (' · 已执行' if executed else ' · 仅匹配')
+                + f' · 表 事件{n_ev}/字符{n_st} · 报文「{(text or "")[:40]}」'
+                + ' · ' + '，'.join(hits[:4])
+            )
+            lab.setStyleSheet(
+                'color:#8d8;font-size:11px;padding:5px 8px;background:#1e2a22;border-radius:4px;'
+            )
+        else:
+            lab.setText(
+                f'触发实况 [{stamp}]：无命中 · 表 事件{n_ev}/字符{n_st}'
+                + f' · 报文「{(text or "")[:40]}」'
+            )
+            lab.setStyleSheet(
+                'color:#e88;font-size:11px;padding:5px 8px;background:#2a1e1e;border-radius:4px;'
+            )
+
     def _test_match(self):
         text = self.test_input.text()
-        hits, _ = self._matched_commands(text)
+        hits, cmds = self._matched_commands(text)
         if hits:
             self.test_result.setText('命中：' + '，'.join(hits))
             self.test_result.setStyleSheet('color:#2e7d32;font-weight:600;')
         else:
             self.test_result.setText('无命中')
             self.test_result.setStyleSheet('color:#c62828;')
+        self._update_result_chrome(text, hits, cmds, executed=False)
 
     def _test_match_and_run(self):
         text = self.test_input.text()
@@ -457,9 +496,11 @@ class GlobalTriggersDialog(QDialog):
         if not hits:
             self.test_result.setText('无命中 · 未执行')
             self.test_result.setStyleSheet('color:#c62828;')
+            self._update_result_chrome(text, hits, cmds, executed=False)
             return
         self.test_result.setText('命中并执行：' + '，'.join(hits))
         self.test_result.setStyleSheet('color:#2e7d32;font-weight:600;')
+        self._update_result_chrome(text, hits, cmds, executed=True)
         if self._execute_commands:
             self._execute_commands(cmds)
         else:

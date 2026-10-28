@@ -1,7 +1,8 @@
-"""测量几何壳 — 线线交点 / 点点距 / 点线距（VM p=14/16/17）.
+"""测量几何壳 — 线线交点 / 点点距 / 点线距 / 夹角 / 点圆距 / 圆圆距（VM 几何测量）.
 
-ops: line_intersect | point_distance | point_line_distance
-绑定上游几何结果字段，运行时做解析几何计算。
+ops: line_intersect | point_distance | point_line_distance |
+     line_angle | point_circle_distance | circle_circle_distance
+绑定上游几何结果字段，运行时做解析几何计算（软 OpenCV 路径，无 Halcon）。
 """
 from copy import deepcopy
 
@@ -17,7 +18,12 @@ OP_META = {
     'line_intersect': ('线与线交点', '绑定两条直线（或四点），求交点。'),
     'point_distance': ('点与点距离', '绑定两个点坐标，求欧氏距离。'),
     'point_line_distance': ('点与线距离', '绑定一点与一条直线，求垂距。'),
+    'line_angle': ('线与线夹角', '绑定两条直线，求无向锐夹角 0–90°。'),
+    'point_circle_distance': ('点与圆距离', '绑定一点与一圆，求到圆心或边缘距离。'),
+    'circle_circle_distance': ('圆与圆距离', '绑定两圆，求中心距 / 间隙 / 外包距。'),
 }
+
+MEASURE_GEOM_OPS = tuple(OP_META.keys())
 
 
 def normalize_measure_geom_params(op, params=None):
@@ -35,13 +41,40 @@ def normalize_measure_geom_params(op, params=None):
         p.setdefault('point2From', ''); p.setdefault('point2Field', 'matches[0]')
         p.setdefault('x1', 0.0); p.setdefault('y1', 0.0)
         p.setdefault('x2', 100.0); p.setdefault('y2', 0.0)
+    elif op == 'point_line_distance':
+        p.setdefault('pointFrom', ''); p.setdefault('pointField', 'matches[0]')
+        p.setdefault('lineFrom', ''); p.setdefault('lineField', 'lines[0]')
+        p.setdefault('px', 0.0); p.setdefault('py', 0.0)
+        p.setdefault('x1', 0.0); p.setdefault('y1', 0.0)
+        p.setdefault('x2', 100.0); p.setdefault('y2', 0.0)
+    elif op == 'line_angle':
+        p.setdefault('line1From', ''); p.setdefault('line1Field', 'lines[0]')
+        p.setdefault('line2From', ''); p.setdefault('line2Field', 'lines[0]')
+        p.setdefault('x1', 0.0); p.setdefault('y1', 0.0)
+        p.setdefault('x2', 100.0); p.setdefault('y2', 0.0)
+        p.setdefault('x3', 0.0); p.setdefault('y3', 0.0)
+        p.setdefault('x4', 0.0); p.setdefault('y4', 100.0)
+        p.setdefault('parallelTolDeg', 0.001)
+        p.setdefault('perpTolDeg', 0.5)
+    elif op == 'point_circle_distance':
+        p.setdefault('pointFrom', ''); p.setdefault('pointField', 'matches[0]')
+        p.setdefault('circleFrom', ''); p.setdefault('circleField', 'circles[0]')
+        p.setdefault('px', 0.0); p.setdefault('py', 0.0)
+        p.setdefault('cx', 50.0); p.setdefault('cy', 50.0); p.setdefault('radius', 20.0)
+        p.setdefault('circleMode', 'edge')  # edge|center|signed
+    elif op == 'circle_circle_distance':
+        p.setdefault('circle1From', ''); p.setdefault('circle1Field', 'circles[0]')
+        p.setdefault('circle2From', ''); p.setdefault('circle2Field', 'circles[0]')
+        p.setdefault('cx1', 40.0); p.setdefault('cy1', 50.0); p.setdefault('r1', 15.0)
+        p.setdefault('cx2', 80.0); p.setdefault('cy2', 50.0); p.setdefault('r2', 15.0)
+        p.setdefault('circleMode', 'gap')  # gap|center|outer
     else:
         p.setdefault('pointFrom', ''); p.setdefault('pointField', 'matches[0]')
         p.setdefault('lineFrom', ''); p.setdefault('lineField', 'lines[0]')
         p.setdefault('px', 0.0); p.setdefault('py', 0.0)
         p.setdefault('x1', 0.0); p.setdefault('y1', 0.0)
         p.setdefault('x2', 100.0); p.setdefault('y2', 0.0)
-    p.setdefault('unit', 'px')
+    p.setdefault('unit', 'deg' if op == 'line_angle' else 'px')
     p.setdefault('scale', 1.0)
     p.setdefault('showOverlay', True)
     p.setdefault('showPoints', True)
@@ -53,11 +86,14 @@ def normalize_measure_geom_params(op, params=None):
         'line_intersect': 'intersectPt',
         'point_distance': 'pointDist',
         'point_line_distance': 'pointLineDist',
+        'line_angle': 'lineAngle',
+        'point_circle_distance': 'pointCircleDist',
+        'circle_circle_distance': 'circleGap',
     }.get(op, 'measureGeom'))
     p.setdefault('writeFlowVars', True)
     p.setdefault('judgeEnable', False)
     p.setdefault('judgeMin', 0.0)
-    p.setdefault('judgeMax', 99999.0)
+    p.setdefault('judgeMax', 99999.0 if op != 'line_angle' else 90.0)
     p.setdefault('hostDisplayFields', True)
     return p
 
@@ -111,9 +147,11 @@ class MeasureGeomPanel(QWidget):
         return items
 
     def _bind_kind(self, default_field):
-        """line vs point bind kind from default field hint."""
+        """line vs point vs circle bind kind from default field hint."""
         df = str(default_field or '')
-        if 'match' in df or 'circle' in df or df.startswith('center'):
+        if 'circle' in df:
+            return 'circle'
+        if 'match' in df or df.startswith('center') or 'point' in df:
             return 'point'
         return 'line'
 
@@ -240,11 +278,36 @@ class MeasureGeomPanel(QWidget):
         elif self.op == 'point_distance':
             self._bind_row(form, '点1', 'point1From', 'point1Field', 'matches[0]')
             self._bind_row(form, '点2', 'point2From', 'point2Field', 'matches[0]')
+        elif self.op == 'point_line_distance':
+            self._bind_row(form, '点', 'pointFrom', 'pointField', 'matches[0]')
+            self._bind_row(form, '直线', 'lineFrom', 'lineField', 'lines[0]')
+        elif self.op == 'line_angle':
+            self._bind_row(form, '直线1', 'line1From', 'line1Field', 'lines[0]')
+            self._bind_row(form, '直线2', 'line2From', 'line2Field', 'lines[0]')
+        elif self.op == 'point_circle_distance':
+            self._bind_row(form, '点', 'pointFrom', 'pointField', 'matches[0]')
+            self._bind_row(form, '圆', 'circleFrom', 'circleField', 'circles[0]')
+            cm = QComboBox()
+            for d, lab in (('edge', '到边缘'), ('center', '到圆心'), ('signed', '有符号(外+/内-)')):
+                cm.addItem(lab, d)
+            cm.setCurrentIndex(max(0, cm.findData(self.params.get('circleMode') or 'edge')))
+            cm.currentIndexChanged.connect(lambda _: self._set_param('circleMode', cm.currentData()))
+            form.addRow('圆距模式', cm)
+        elif self.op == 'circle_circle_distance':
+            self._bind_row(form, '圆1', 'circle1From', 'circle1Field', 'circles[0]')
+            self._bind_row(form, '圆2', 'circle2From', 'circle2Field', 'circles[0]')
+            cm = QComboBox()
+            for d, lab in (('gap', '间隙(边缘)'), ('center', '中心距'), ('outer', '外包距')):
+                cm.addItem(lab, d)
+            cm.setCurrentIndex(max(0, cm.findData(self.params.get('circleMode') or 'gap')))
+            cm.currentIndexChanged.connect(lambda _: self._set_param('circleMode', cm.currentData()))
+            form.addRow('圆距模式', cm)
         else:
             self._bind_row(form, '点', 'pointFrom', 'pointField', 'matches[0]')
             self._bind_row(form, '直线', 'lineFrom', 'lineField', 'lines[0]')
         unit = QComboBox()
-        for u in ('px', 'mm', 'cm'):
+        units = ('deg',) if self.op == 'line_angle' else ('px', 'mm', 'cm')
+        for u in units:
             unit.addItem(u, u)
         unit.setCurrentIndex(max(0, unit.findData(self.params.get('unit') or 'px')))
         unit.currentIndexChanged.connect(lambda _: self._set_param('unit', unit.currentData()))
@@ -258,17 +321,22 @@ class MeasureGeomPanel(QWidget):
         wiz.setToolTip('按步骤引导操作员完成上游绑定（画布点选 / 插入字段 / 跳过）')
         wiz.clicked.connect(self._run_bind_wizard)
         form.addRow('操作员', wiz)
-        tip = QLabel('绑定字段示例：lines[0]、matches[0]、circles[0]。「画布点选」：先运行几何/定位，再在图像上点击目标线/点写入绑定。「绑定制导」逐步走完所有槽位。叠层随「结果显示」开关。打开即跑链：预处理→卡尺→交点/点线距→门限；换型后可切运行态单次试跑。')
+        tip = QLabel('绑定字段示例：lines[0]、matches[0]、circles[0]；夹角/点圆/圆圆同绑定语义。「画布点选」：先运行几何/定位，再在图像上点击目标线/点写入绑定。「绑定制导」逐步走完所有槽位。叠层随「结果显示」开关。打开即跑链：预处理→卡尺→交点/点线距→门限；换型后可切运行态单次试跑。')
         tip.setWordWrap(True); tip.setStyleSheet('color:#888;'); form.addRow(tip)
         return w
 
     def _manual_tab(self):
         w = QWidget(); form = QFormLayout(w); form.setContentsMargins(10, 10, 10, 10)
-        if self.op == 'line_intersect':
+        if self.op in ('line_intersect', 'line_angle'):
             keys = [('x1','线1 X1'),('y1','线1 Y1'),('x2','线1 X2'),('y2','线1 Y2'),
                     ('x3','线2 X1'),('y3','线2 Y1'),('x4','线2 X2'),('y4','线2 Y2')]
         elif self.op == 'point_distance':
             keys = [('x1','点1 X'),('y1','点1 Y'),('x2','点2 X'),('y2','点2 Y')]
+        elif self.op == 'point_circle_distance':
+            keys = [('px','点 X'),('py','点 Y'),('cx','圆心 X'),('cy','圆心 Y'),('radius','半径')]
+        elif self.op == 'circle_circle_distance':
+            keys = [('cx1','圆1 X'),('cy1','圆1 Y'),('r1','圆1 半径'),
+                    ('cx2','圆2 X'),('cy2','圆2 Y'),('r2','圆2 半径')]
         else:
             keys = [('px','点 X'),('py','点 Y'),('x1','线 X1'),('y1','线 Y1'),('x2','线 X2'),('y2','线 Y2')]
         for key, lab in keys:
@@ -299,6 +367,9 @@ class MeasureGeomPanel(QWidget):
             'line_intersect': 'intersectPt',
             'point_distance': 'pointDist',
             'point_line_distance': 'pointLineDist',
+            'line_angle': 'lineAngle',
+            'point_circle_distance': 'pointCircleDist',
+            'circle_circle_distance': 'circleGap',
         }.get(self.op, 'measureGeom')
         out_var = QLineEdit(str(self.params.get('resultVar') or default_var))
         out_var.setObjectName('measureGeomResultVar')
@@ -336,6 +407,9 @@ class MeasureGeomPanel(QWidget):
             'line_intersect': '结果：intersectX / intersectY / parallel / status / judgeOk',
             'point_distance': '结果：distance / dx / dy / status / judgeOk',
             'point_line_distance': '结果：distance / footX / footY / status / judgeOk',
+            'line_angle': '结果：angleDeg / parallel / perpendicular / status / judgeOk',
+            'point_circle_distance': '结果：distance / signed / centerDist / inside / status / judgeOk',
+            'circle_circle_distance': '结果：distance / gap / centerDist / overlapping / status / judgeOk',
         }.get(self.op, '结果字段见引擎')
         lab = QLabel((tip or '') + ' · 叠层开关已接入 annotate_geom（关则不画）。')
         lab.setWordWrap(True); lab.setStyleSheet('color:#888;'); form.addRow(lab)
@@ -382,7 +456,7 @@ class MeasureGeomPanel(QWidget):
         if not hit:
             # bind summary from params even without run
             binds = []
-            for k in ('line1From', 'line2From', 'point1From', 'point2From', 'pointFrom', 'lineFrom'):
+            for k in ('line1From', 'line2From', 'point1From', 'point2From', 'pointFrom', 'lineFrom', 'circleFrom', 'circle1From', 'circle2From'):
                 if self.params.get(k):
                     binds.append(f'{k}={self.params.get(k)}')
             lab.setText(
@@ -392,8 +466,9 @@ class MeasureGeomPanel(QWidget):
             return
         res = (hit.get('output') or {}).get('result') or hit.get('result') or {}
         bits = []
-        for k in ('status', 'distance', 'intersectX', 'intersectY', 'dx', 'dy',
-                  'footX', 'footY', 'parallel', 'judgeOk', 'judgeStatus', 'unit'):
+        for k in ('status', 'distance', 'angleDeg', 'intersectX', 'intersectY', 'dx', 'dy',
+                  'footX', 'footY', 'gap', 'centerDist', 'signed', 'inside', 'overlapping',
+                  'parallel', 'perpendicular', 'judgeOk', 'judgeStatus', 'unit'):
             if k in res and res[k] is not None:
                 bits.append(f'{k}={res[k]}')
         flow = ((lr.get('variables') or {}).get('flow') or {})
@@ -405,7 +480,10 @@ class MeasureGeomPanel(QWidget):
                     bits.append(f'flow.{key}={flow[key]}')
         # also injected op scalars
         for k, v in list(flow.items())[:40]:
-            if any(k.startswith(p) for p in ('point_distance', 'line_intersect', 'point_line')):
+            if any(k.startswith(p) for p in (
+                'point_distance', 'line_intersect', 'point_line', 'line_angle',
+                'point_circle', 'circle_circle', 'circleGap', 'pointCircle', 'lineAngle',
+            )):
                 if k not in [b.split('=')[0].replace('flow.', '') for b in bits]:
                     bits.append(f'flow.{k}={v}')
         lab.setText('实况：' + (' · '.join(bits[:14]) if bits else str(list(res.keys())[:8])))
@@ -413,7 +491,7 @@ class MeasureGeomPanel(QWidget):
 
     def _bind_slots(self):
         """Ordered bind slots for guided wizard: (label, id_key, field_key, default_field)."""
-        if self.op == 'line_intersect':
+        if self.op in ('line_intersect', 'line_angle'):
             return [
                 ('直线1', 'line1From', 'line1Field', 'lines[0]'),
                 ('直线2', 'line2From', 'line2Field', 'lines[0]'),
@@ -422,6 +500,16 @@ class MeasureGeomPanel(QWidget):
             return [
                 ('点1', 'point1From', 'point1Field', 'matches[0]'),
                 ('点2', 'point2From', 'point2Field', 'matches[0]'),
+            ]
+        if self.op == 'point_circle_distance':
+            return [
+                ('点', 'pointFrom', 'pointField', 'matches[0]'),
+                ('圆', 'circleFrom', 'circleField', 'circles[0]'),
+            ]
+        if self.op == 'circle_circle_distance':
+            return [
+                ('圆1', 'circle1From', 'circle1Field', 'circles[0]'),
+                ('圆2', 'circle2From', 'circle2Field', 'circles[0]'),
             ]
         return [
             ('点', 'pointFrom', 'pointField', 'matches[0]'),

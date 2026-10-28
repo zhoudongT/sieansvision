@@ -190,13 +190,13 @@ def step_incomplete_reason(step, project=None) -> str:
     if op in ('geometry', 'rect_find', 'measure', 'caliper'):
         return _img_reason(step)
 
-    if op in ('line_intersect', 'point_distance', 'point_line_distance'):
+    if op in ('line_intersect', 'point_distance', 'point_line_distance', 'line_angle', 'point_circle_distance', 'circle_circle_distance'):
         if (params.get('mode') or 'bind') == 'manual':
             # still bang if judgeEnable but no resultVar alias for Host watch
             if params.get('judgeEnable') and not str(params.get('resultVar') or '').strip():
                 return '已启用判定但未设置 resultVar'
             return ''
-        keys = ('line1From', 'line2From', 'point1From', 'point2From', 'pointFrom', 'lineFrom')
+        keys = ('line1From', 'line2From', 'point1From', 'point2From', 'pointFrom', 'lineFrom', 'circleFrom', 'circle1From', 'circle2From')
         if not any(str(params.get(k) or '').strip() for k in keys):
             return '绑定模式下未选择几何输入'
         if params.get('judgeEnable') and not str(params.get('resultVar') or '').strip():

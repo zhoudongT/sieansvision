@@ -53,6 +53,9 @@ def pick_upstream_field(parent: QWidget, project: dict, step_id=None, last_resul
             'point_distance': ['ok', 'value', 'distance', 'length', 'dx', 'dy', 'x1', 'y1', 'x2', 'y2'],
             'point_line_distance': ['ok', 'value', 'distance', 'footX', 'footY', 'px', 'py'],
             'line_intersect': ['ok', 'intersectX', 'intersectY', 'parallel', 'status', 'x', 'y'],
+            'line_angle': ['ok', 'angleDeg', 'angleRad', 'parallel', 'perpendicular', 'status'],
+            'point_circle_distance': ['ok', 'distance', 'signed', 'centerDist', 'inside', 'cx', 'cy', 'radius'],
+            'circle_circle_distance': ['ok', 'distance', 'gap', 'centerDist', 'overlapping', 'cx', 'cy', 'radius'],
             'measure': ['ok', 'value', 'distance', 'angle', 'length', 'circles', 'circles[0]'],
             'condition': ['ok', 'branch', 'matched', 'passed'],
             'nine_point': ['ok', 'matrix', 'rms', 'resultVar'],
@@ -150,7 +153,7 @@ def default_bind_field_for_op(op, kind='line'):
         return 'matches[0]'
     if op in ('geometry', 'geometry_find'):
         return 'lines[0]'  # midpoint via _pickPoint unwrap
-    if op in ('line_intersect',):
+    if op in ('line_intersect', 'line_angle'):
         return 'intersectX'  # not a full point — prefer manual; still list
     if op == 'measure':
         return 'circles[0]'

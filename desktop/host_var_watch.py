@@ -20,10 +20,17 @@ from PySide6.QtWidgets import (
 # Preset filters (name → predicate over (scope, key))
 _MEASURE_RE = re.compile(
     r'^(ixPt|pldDist|pointDist|intersectPt|pointLineDist|pdLive|pd2|'
-    r'geometry_|locate_|measure_|line_intersect|point_distance|point_line_distance|'
+    r'geometry_|locate_|measure_|line_intersect|point_distance|point_line_distance|line_angle|point_circle|circle_circle|circleGap|pointCircle|lineAngle|'
     r'passGate|ixJudge|pldJudge|pld$|intersect)',
     re.I,
 )
+_GEOMETRY_RE = re.compile(
+    r'^(lineAngle|pointCircle|circleGap|circleCircle|geom_|caliper_|'
+    r'angleDeg|centerDist|_gap|_radius|_angle|_cx|_cy|'
+    r'line_angle|point_circle|circle_circle)',
+    re.I,
+)
+_SCRIPT_RE = re.compile(r'^(script_|csOut|pyOut|out0|out1|csharp_)', re.I)
 _DEFECTS_OCR_RE = re.compile(r'^(defects|ocr|defLive)', re.I)
 _COMM_RE = re.compile(r'^(commAccept|commRecv|commSend|commVar|\$\{)', re.I)
 _TEMPLATE_RE = re.compile(r'\$\{[^}]+\}')
@@ -37,6 +44,10 @@ def classify_watch_key(name: str) -> str:
         return 'comm'
     if _DEFECTS_OCR_RE.search(n):
         return 'defects_ocr'
+    if _SCRIPT_RE.search(n) or n.startswith('script_'):
+        return 'script'
+    if _GEOMETRY_RE.search(n):
+        return 'geometry'
     if _MEASURE_RE.search(n):
         return 'measure'
     return 'other'
@@ -79,7 +90,7 @@ def collect_watch_keys_from_project(project=None) -> list:
                 _add(f'{base}_judgeOk')
                 _add(f'{base}_ok')
                 if params.get('judgeEnable') or step.get('operation') in (
-                    'line_intersect', 'point_line_distance', 'point_distance',
+                    'line_intersect', 'point_line_distance', 'point_distance', 'line_angle', 'point_circle_distance', 'circle_circle_distance',
                     'geometry', 'measure',
                 ):
                     _add(f'{base}_x')

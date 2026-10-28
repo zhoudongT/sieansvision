@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTabWidget, QFormLayout,
     QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QHeaderView,
-    QAbstractItemView, QScrollArea, QFrame, QComboBox,
+    QAbstractItemView, QScrollArea, QFrame, QComboBox, QTextEdit,
 )
 
 
@@ -151,6 +151,14 @@ class VarCalcPanel(QWidget):
         self._live_lab.setWordWrap(True)
         self._live_lab.setStyleSheet('color:#9ad;font-size:11px;padding:4px;background:#1e2228;border-radius:4px;')
         form.addRow(self._live_lab)
+        self._result_box = QTextEdit()
+        self._result_box.setObjectName('varCalcResultBox')
+        self._result_box.setReadOnly(True)
+        self._result_box.setMinimumHeight(140)
+        self._result_box.setStyleSheet(
+            'background:#141820;color:#cde;font-family:Menlo,monospace;font-size:11px;'
+        )
+        form.addRow(self._result_box)
         brow = QHBoxLayout()
         b_ref = QPushButton('刷新实况')
         b_ref.setObjectName('varCalcLiveRefreshBtn')
@@ -183,6 +191,9 @@ class VarCalcPanel(QWidget):
                 break
         if not hit:
             lab.setText('实况：尚无本模块运行结果（先 ▶ 单次运行）')
+            box = getattr(self, '_result_box', None)
+            if box is not None:
+                box.setPlainText('（等待流程运行）')
             return
         res = (hit.get('output') or {}).get('result') or {}
         vals = res.get('values') if isinstance(res.get('values'), dict) else {}
@@ -200,6 +211,13 @@ class VarCalcPanel(QWidget):
             if nm and nm in flow and nm not in vals:
                 bits.append(f'{scope}.{nm}={flow[nm]}')
         lab.setText('实况：' + (' · '.join(bits) if bits else (str(list(res.keys())[:8]) or '空')))
+        box = getattr(self, '_result_box', None)
+        if box is not None:
+            import json
+            try:
+                box.setPlainText(json.dumps({'values': vals, 'errors': errs, 'rawKeys': list(res.keys())[:24]}, ensure_ascii=False, indent=2, default=str)[:6000])
+            except Exception:
+                box.setPlainText(str(res)[:6000])
 
     def _reload(self):
         self._syncing = True

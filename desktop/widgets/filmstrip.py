@@ -965,7 +965,7 @@ class FilmstripBar(QWidget):
         ok_n = ng_n = 0
         focus_ops = {
             'geometry', 'caliper', 'measure', 'locate', 'match', 'template_match',
-            'line_intersect', 'point_distance', 'point_line_distance',
+            'line_intersect', 'point_distance', 'point_line_distance', 'line_angle', 'point_circle_distance', 'circle_circle_distance',
             'defects', 'ocr', 'blob', 'fixture',
         }
         for i, rec in enumerate(records):

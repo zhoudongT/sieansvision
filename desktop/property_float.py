@@ -546,7 +546,7 @@ class PropertyFloat(QDialog):
             self._last_step = deepcopy(step)
             self.show(); self.raise_(); self.activateWindow()
             return
-        if step and step.get('operation') in ('line_intersect', 'point_distance', 'point_line_distance'):
+        if step and step.get('operation') in ('line_intersect', 'point_distance', 'point_line_distance', 'line_angle', 'point_circle_distance', 'circle_circle_distance'):
             from desktop.measure_geom_panel import MeasureGeomPanel, normalize_measure_geom_params
             step = deepcopy(step)
             step['params'] = normalize_measure_geom_params(step.get('operation'), step.get('params'))

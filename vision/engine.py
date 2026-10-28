@@ -643,7 +643,7 @@ def distort_correct(image, canvas, p, offset):
 
 
 def annotate_geom(canvas, p):
-    """Draw measure_geom overlays (line_intersect / point_distance / point_line_distance) onto canvas.
+    """Draw measure_geom overlays (line_intersect / point_distance / point_line_distance / line_angle / point_circle_distance / circle_circle_distance) onto canvas.
 
     Params carry both show* toggles and geometry scalars from flow-control results.
     """
@@ -717,6 +717,80 @@ def annotate_geom(canvas, p):
                         cv2.FONT_HERSHEY_SIMPLEX, .5, color_txt, 1, cv2.LINE_AA)
             drawn.append('distance')
         return {'annotated': True, 'kind': 'point_line_distance', 'drawn': drawn}
+
+    # line_angle: two lines + angle label
+    if kind in ('line_angle', 'auto') and p.get('angleDeg') is not None and p.get('x1') is not None:
+        if show_lines:
+            cv2.line(canvas, _pt(p['x1'], p['y1']), _pt(p['x2'], p['y2']), color_line, 2, cv2.LINE_AA)
+            cv2.line(canvas, _pt(p['x3'], p['y3']), _pt(p['x4'], p['y4']), color_line, 2, cv2.LINE_AA)
+            drawn.append('lines')
+        # approximate apex as line-line intersect if available else mid of first segment
+        try:
+            den = (float(p['x1']) - float(p['x2'])) * (float(p['y3']) - float(p['y4'])) - (float(p['y1']) - float(p['y2'])) * (float(p['x3']) - float(p['x4']))
+            if abs(den) > 1e-12:
+                t = ((float(p['x1']) - float(p['x3'])) * (float(p['y3']) - float(p['y4'])) - (float(p['y1']) - float(p['y3'])) * (float(p['x3']) - float(p['x4']))) / den
+                ax = float(p['x1']) + t * (float(p['x2']) - float(p['x1']))
+                ay = float(p['y1']) + t * (float(p['y2']) - float(p['y1']))
+            else:
+                ax = (float(p['x1']) + float(p['x2'])) / 2
+                ay = (float(p['y1']) + float(p['y2'])) / 2
+        except Exception:
+            ax = (float(p['x1']) + float(p['x2'])) / 2
+            ay = (float(p['y1']) + float(p['y2'])) / 2
+        if show_pts:
+            cv2.circle(canvas, _pt(ax, ay), 4, color_pt, -1, cv2.LINE_AA)
+            drawn.append('apex')
+        if show_dist or show_labels:
+            cv2.putText(canvas, f"{float(p['angleDeg']):.2f}deg", _pt(ax + 6, ay - 6),
+                        cv2.FONT_HERSHEY_SIMPLEX, .5, color_txt, 1, cv2.LINE_AA)
+            drawn.append('angle')
+        return {'annotated': True, 'kind': 'line_angle', 'drawn': drawn}
+
+    # point_circle_distance
+    if kind in ('point_circle_distance', 'auto') and p.get('cx') is not None and p.get('px') is not None:
+        c = _pt(p['cx'], p['cy'])
+        pt = _pt(p['px'], p['py'])
+        rad = float(p.get('radius') or 0)
+        if show_lines and rad > 0:
+            cv2.circle(canvas, c, max(1, int(round(rad))), color_line, 2, cv2.LINE_AA)
+            drawn.append('circle')
+        if show_lines:
+            cv2.line(canvas, c, pt, (255, 180, 0), 1, cv2.LINE_AA)
+            drawn.append('radial')
+        if show_pts:
+            cv2.circle(canvas, c, 3, color_pt, -1, cv2.LINE_AA)
+            cv2.circle(canvas, pt, 4, color_pt, -1, cv2.LINE_AA)
+            drawn.append('points')
+        if (show_dist or show_labels) and p.get('distance') is not None:
+            unit = str(p.get('unit') or 'px')
+            mid = ((c[0] + pt[0]) // 2, (c[1] + pt[1]) // 2)
+            cv2.putText(canvas, f"{float(p['distance']):.3f}{unit}", mid, cv2.FONT_HERSHEY_SIMPLEX, .5, color_txt, 1, cv2.LINE_AA)
+            drawn.append('distance')
+        return {'annotated': True, 'kind': 'point_circle_distance', 'drawn': drawn}
+
+    # circle_circle_distance
+    if kind in ('circle_circle_distance', 'auto') and p.get('cx') is not None and p.get('cx2') is not None:
+        c1 = _pt(p['cx'], p['cy'])
+        c2 = _pt(p['cx2'], p['cy2'])
+        r1 = float(p.get('radius') or 0)
+        r2 = float(p.get('radius2') or 0)
+        if show_lines:
+            if r1 > 0:
+                cv2.circle(canvas, c1, max(1, int(round(r1))), color_line, 2, cv2.LINE_AA)
+            if r2 > 0:
+                cv2.circle(canvas, c2, max(1, int(round(r2))), color_line, 2, cv2.LINE_AA)
+            cv2.line(canvas, c1, c2, (255, 180, 0), 1, cv2.LINE_AA)
+            drawn.append('circles')
+        if show_pts:
+            cv2.circle(canvas, c1, 3, color_pt, -1, cv2.LINE_AA)
+            cv2.circle(canvas, c2, 3, color_pt, -1, cv2.LINE_AA)
+            drawn.append('centers')
+        if (show_dist or show_labels) and p.get('distance') is not None:
+            unit = str(p.get('unit') or 'px')
+            mid = ((c1[0] + c2[0]) // 2, (c1[1] + c2[1]) // 2)
+            cv2.putText(canvas, f"{float(p['distance']):.3f}{unit}", mid, cv2.FONT_HERSHEY_SIMPLEX, .5, color_txt, 1, cv2.LINE_AA)
+            drawn.append('distance')
+        return {'annotated': True, 'kind': 'circle_circle_distance', 'drawn': drawn}
 
     return {'annotated': False, 'reason': 'no matching geometry fields'}
 

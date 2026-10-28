@@ -669,7 +669,7 @@ class MainWindow(QMainWindow):
         # measure_geom 叠层开关：改 show* 后立刻按上次运行结果重绘矢量层（无需重跑）
         try:
             op = (step or {}).get('operation') or ''
-            if op in ('line_intersect', 'point_distance', 'point_line_distance') and self.last_result:
+            if op in ('line_intersect', 'point_distance', 'point_line_distance', 'line_angle', 'point_circle_distance', 'circle_circle_distance', 'line_angle', 'point_circle_distance', 'circle_circle_distance') and self.last_result:
                 self._apply_measure_geom_overlays(self.last_result.get('results') or [])
         except Exception:
             pass
@@ -1210,7 +1210,7 @@ class MainWindow(QMainWindow):
             records = []
         focus = {
             'geometry', 'caliper', 'measure', 'locate', 'match', 'template_match',
-            'line_intersect', 'point_distance', 'point_line_distance',
+            'line_intersect', 'point_distance', 'point_line_distance', 'line_angle', 'point_circle_distance', 'circle_circle_distance',
             'defects', 'ocr', 'blob', 'fixture',
         }
         saw_ok = False
@@ -2065,7 +2065,7 @@ class MainWindow(QMainWindow):
             sid = record.get('id')
             step = steps.get(sid) or {}
             op = step.get('operation') or ''
-            if op not in ('line_intersect', 'point_distance', 'point_line_distance'):
+            if op not in ('line_intersect', 'point_distance', 'point_line_distance', 'line_angle', 'point_circle_distance', 'circle_circle_distance', 'line_angle', 'point_circle_distance', 'circle_circle_distance'):
                 continue
             params = step.get('params') or {}
             if params.get('showOverlay') in (False, 0, 'false', 'False'):
@@ -2103,6 +2103,34 @@ class MainWindow(QMainWindow):
                 if (show_dist or show_labels) and result.get('distance') is not None and result.get('px') is not None:
                     specs.append(dict(type='label', x=float(result['px'])+6, y=float(result['py'])-6,
                                       text=f"{float(result['distance']):.3f}{result.get('unit') or 'px'}"))
+            elif op == 'line_angle' and result.get('x1') is not None:
+                if show_lines:
+                    specs.append(dict(type='line', x1=result['x1'], y1=result['y1'], x2=result['x2'], y2=result['y2']))
+                    specs.append(dict(type='line', x1=result['x3'], y1=result['y3'], x2=result['x4'], y2=result['y4']))
+                if (show_dist or show_labels) and result.get('angleDeg') is not None:
+                    mx = (float(result['x1'])+float(result['x2']))/2
+                    my = (float(result['y1'])+float(result['y2']))/2
+                    specs.append(dict(type='label', x=mx, y=my, text=f"{float(result['angleDeg']):.2f}deg"))
+            elif op == 'point_circle_distance' and result.get('cx') is not None:
+                if show_pts:
+                    specs.append(dict(type='point', x=result['cx'], y=result['cy']))
+                    if result.get('px') is not None:
+                        specs.append(dict(type='point', x=result['px'], y=result['py']))
+                if show_lines and result.get('px') is not None:
+                    specs.append(dict(type='line', x1=result['cx'], y1=result['cy'], x2=result['px'], y2=result['py'], color='#ffb400'))
+                if (show_dist or show_labels) and result.get('distance') is not None:
+                    specs.append(dict(type='label', x=float(result['cx'])+6, y=float(result['cy'])-6,
+                                      text=f"{float(result['distance']):.3f}{result.get('unit') or 'px'}"))
+            elif op == 'circle_circle_distance' and result.get('cx') is not None and result.get('cx2') is not None:
+                if show_pts:
+                    specs.append(dict(type='point', x=result['cx'], y=result['cy']))
+                    specs.append(dict(type='point', x=result['cx2'], y=result['cy2']))
+                if show_lines:
+                    specs.append(dict(type='line', x1=result['cx'], y1=result['cy'], x2=result['cx2'], y2=result['cy2'], color='#ffb400'))
+                if (show_dist or show_labels) and result.get('distance') is not None:
+                    mx = (float(result['cx'])+float(result['cx2']))/2
+                    my = (float(result['cy'])+float(result['cy2']))/2
+                    specs.append(dict(type='label', x=mx, y=my, text=f"{float(result['distance']):.3f}{result.get('unit') or 'px'}"))
         try:
             view.set_geom_overlays(specs)
         except Exception:
