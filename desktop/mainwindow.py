@@ -1024,13 +1024,24 @@ class MainWindow(QMainWindow):
                         except Exception:
                             pass
                 try:
-                    from desktop.host_var_watch import apply_pin_group_picker_accels
+                    from desktop.host_var_watch import (
+                        apply_pin_group_picker_accels,
+                        apply_pin_group_picker_accel_tip,
+                        pin_group_picker_accel_tip,
+                    )
+                    tip_info = apply_pin_group_picker_accel_tip(menu, entries)
+                    self._last_pin_group_picker_accel_tip = tip_info.get('tip') or pin_group_picker_accel_tip(entries)
                     self._last_pin_group_picker_accels = apply_pin_group_picker_accels(menu, entries)
                 except Exception:
                     self._last_pin_group_picker_accels = [
                         {'name': str(e.get('name') or ''), 'accel': str(e.get('accel') or '')}
                         for e in entries
                     ]
+                    try:
+                        from desktop.host_var_watch import pin_group_picker_accel_tip
+                        self._last_pin_group_picker_accel_tip = pin_group_picker_accel_tip(entries)
+                    except Exception:
+                        self._last_pin_group_picker_accel_tip = '数字键 1–9 快速选钉组'
             chosen = menu.exec(chip_w.mapToGlobal(pos) if hasattr(chip_w, 'mapToGlobal') else pos)
             if chosen is None:
                 return
@@ -1857,6 +1868,52 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+
+    def _sync_spark_from_compare_path(self, path: str) -> dict:
+        """Compare-strip activate → highlight matching spark bar on open locate panel."""
+        path = str(path or '').strip()
+        out = {'ok': False, 'path': path}
+        if not path:
+            out['reason'] = 'empty'
+            return out
+        try:
+            from desktop.locate_scoreboard import sync_spark_from_compare_path
+            from desktop.locate_match_panel import LocateMatchPanel
+        except Exception as err:
+            out['reason'] = str(err)
+            return out
+        panel = None
+        try:
+            pf = getattr(self, 'property_float', None)
+            if pf is not None:
+                for w in pf.findChildren(LocateMatchPanel):
+                    panel = w
+                    break
+        except Exception:
+            panel = None
+        if panel is None:
+            out['reason'] = 'no locate panel'
+            return out
+        spark = getattr(panel, '_tpl_trend_spark', None)
+        trend = None
+        try:
+            if hasattr(panel, '_score_trend'):
+                trend = panel._score_trend()
+        except Exception:
+            trend = None
+        hit = sync_spark_from_compare_path(spark, path, trend=trend)
+        self._last_compare_spark_sync = dict(hit) if isinstance(hit, dict) else {}
+        if hit.get('ok'):
+            try:
+                from pathlib import Path as _P
+                self.statusBar().showMessage(
+                    f"对比→火花 · {_P(path).name} → #{int(hit.get('index', -1)) + 1} · 无硬件",
+                    2800,
+                )
+            except Exception:
+                pass
+        return hit
+
     def _on_compare_strip_path(self, path: str):
         """wave24: 侧栏缩略点击 → 定位胶片 + 保持多选对比高亮."""
         path = str(path or '').strip()
@@ -1874,6 +1931,11 @@ class MainWindow(QMainWindow):
                 highlight_path=path,
                 highlight_paths=multi or None,
             )
+        except Exception:
+            pass
+        # compare-strip → spark reverse sync (soft / no hardware)
+        try:
+            self._sync_spark_from_compare_path(path)
         except Exception:
             pass
         try:

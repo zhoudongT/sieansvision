@@ -1003,6 +1003,10 @@ class LocateMatchPanel(QWidget):
         """Optional explicit seek callback (tests / host inject). Soft."""
         self._filmstrip_seek_handler = fn
 
+    def set_compare_strip_sync_handler(self, fn):
+        """Optional spark→compare-strip sync callback (tests / host inject). Soft."""
+        self._compare_strip_sync_handler = fn
+
     def _resolve_filmstrip(self):
         """Find host FilmstripBar: explicit handler host → window().filmstrip."""
         fn = getattr(self, '_filmstrip_seek_handler', None)
@@ -1020,6 +1024,24 @@ class LocateMatchPanel(QWidget):
         fs = getattr(host, 'filmstrip', None) if host is not None else None
         if fs is not None:
             return ('filmstrip', fs)
+        return ('none', None)
+
+    def _resolve_compare_strip(self):
+        """Find host CompareThumbStrip: explicit handler → window().compare_strip."""
+        fn = getattr(self, '_compare_strip_sync_handler', None)
+        if callable(fn):
+            return ('handler', fn)
+        try:
+            w = self.window() if hasattr(self, 'window') else None
+        except Exception:
+            w = None
+        cs = getattr(w, 'compare_strip', None) if w is not None else None
+        if cs is not None:
+            return ('compare', cs)
+        host = getattr(w, 'host', None) if w is not None else None
+        cs = getattr(host, 'compare_strip', None) if host is not None else None
+        if cs is not None:
+            return ('compare', cs)
         return ('none', None)
 
     def _on_spark_frame_jump(self, bag=None):
@@ -1082,10 +1104,34 @@ class LocateMatchPanel(QWidget):
                 )
             except Exception:
                 pass
+        # spark → compare-strip sync (activate if path already on strip)
+        sync_info = {'ok': False, 'reason': 'pending'}
+        try:
+            sync_bag = dict(bag)
+            if seek_info.get('path'):
+                sync_bag['path'] = seek_info.get('path')
+            sk, st = self._resolve_compare_strip()
+            if sk == 'handler':
+                sync_info = st(sync_bag) or {'ok': False, 'reason': 'handler empty'}
+            elif sk == 'compare':
+                from desktop.locate_scoreboard import sync_compare_strip_from_spark_jump
+                sync_info = sync_compare_strip_from_spark_jump(st, sync_bag)
+            else:
+                sync_info = {'ok': False, 'reason': 'no compare strip'}
+        except Exception as err:
+            sync_info = {'ok': False, 'reason': str(err)}
+        if sync_info.get('ok') and lab is not None:
+            try:
+                lab.setText((lab.text() or text) + ' · 对比✓')
+            except Exception:
+                pass
+
         self._last_spark_jump = dict(bag)
         self._last_spark_seek = dict(seek_info) if isinstance(seek_info, dict) else {}
+        self._last_spark_compare_sync = dict(sync_info) if isinstance(sync_info, dict) else {}
         bag = dict(bag)
         bag['seek'] = dict(self._last_spark_seek)
+        bag['compareSync'] = dict(self._last_spark_compare_sync)
         return bag
 
     def _score_trend(self):

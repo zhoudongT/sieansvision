@@ -470,6 +470,22 @@ class RunUiDesignerDialog(QDialog):
         self.blink_conflict_list.setToolTip('保留字冲突明细（设计器页脚同步）· 无硬件')
         self.blink_conflict_list.setVisible(False)
         bf.addRow(QLabel('冲突列表'), self.blink_conflict_list)
+        self.blink_suggest_lab = QLabel('')
+        self.blink_suggest_lab.setObjectName('runUiBlinkSuggestLab')
+        self.blink_suggest_lab.setWordWrap(True)
+        self.blink_suggest_lab.setStyleSheet('color:#9ad;font-size:11px;padding:2px 0;')
+        self.blink_suggest_lab.setToolTip('保留字冲突时建议改用的空闲快捷键 · 点击可填入 · 无硬件')
+        self.blink_suggest_lab.setVisible(False)
+        try:
+            from PySide6.QtCore import Qt as _Qt
+            self.blink_suggest_lab.setCursor(_Qt.CursorShape.PointingHandCursor)
+        except Exception:
+            pass
+        try:
+            self.blink_suggest_lab.mousePressEvent = lambda e: self._on_blink_suggest_click(e)
+        except Exception:
+            pass
+        bf.addRow(QLabel('建议'), self.blink_suggest_lab)
         for w in (self.blink_toggle_edit, self.blink_swap_edit):
             w.editingFinished.connect(self._on_blink_prefs_changed)
             try:
@@ -853,6 +869,100 @@ class RunUiDesignerDialog(QDialog):
             'warn': warn,
         }
 
+    _BLINK_ALT_CANDIDATES = (
+        'Alt+N', 'Alt+M', 'Alt+G', 'Alt+J', 'Alt+K', 'Alt+U', 'Alt+I',
+        'Shift+Alt+N', 'Shift+Alt+M', 'Shift+Alt+G', 'Shift+Alt+J', 'Shift+Alt+K',
+        'Ctrl+Alt+B', 'Ctrl+Alt+N', 'Ctrl+Alt+M', 'Alt+Shift+B',
+    )
+
+    def suggest_blink_alternate_chords(self, info=None, *, limit: int = 4) -> dict:
+        """Suggest free blink chords when reserved conflicts exist. Soft.
+
+        Returns {ok, suggestions:[{field,conflictKey,suggest}], freePool, warn}.
+        """
+        info = info if isinstance(info, dict) else self.check_blink_reserved_conflicts()
+        reserved = set(self._blink_reserved_set() or set())
+        toggle = self._normalize_blink_chord(info.get('toggle') or '')
+        swap = self._normalize_blink_chord(info.get('swap') or '')
+        used = {k for k in (toggle, swap) if k}
+        free = []
+        for cand in self._BLINK_ALT_CANDIDATES:
+            nk = self._normalize_blink_chord(cand)
+            if not nk or nk in reserved or nk in used or nk in free:
+                continue
+            free.append(nk)
+        suggestions = []
+        conflicts = list(info.get('conflicts') or [])
+        pool_i = 0
+        seen_fields = set()
+        for c in conflicts:
+            field = str(c.get('field') or '')
+            if field == 'both':
+                for f in ('toggle', 'swap'):
+                    if f in seen_fields:
+                        continue
+                    if pool_i >= len(free):
+                        break
+                    suggestions.append({
+                        'field': f,
+                        'conflictKey': c.get('key') or '',
+                        'suggest': free[pool_i],
+                    })
+                    seen_fields.add(f)
+                    pool_i += 1
+                continue
+            if field in seen_fields:
+                continue
+            if pool_i >= len(free):
+                break
+            suggestions.append({
+                'field': field,
+                'conflictKey': c.get('key') or '',
+                'suggest': free[pool_i],
+            })
+            seen_fields.add(field)
+            pool_i += 1
+            if len(suggestions) >= max(1, int(limit or 4)):
+                break
+        return {
+            'ok': bool(info.get('ok')),
+            'suggestions': suggestions,
+            'freePool': free[: max(4, int(limit or 4) + 2)],
+            'warn': info.get('warn') or '',
+            'hasConflict': not bool(info.get('ok')),
+        }
+
+    def _on_blink_suggest_click(self, event=None):
+        """Apply first suggested alternate chords into editor fields. Soft."""
+        lab = getattr(self, 'blink_suggest_lab', None)
+        suggestions = []
+        try:
+            suggestions = list(lab.property('suggestions') or []) if lab is not None else []
+        except Exception:
+            suggestions = []
+        if not suggestions:
+            try:
+                suggestions = list((self.suggest_blink_alternate_chords() or {}).get('suggestions') or [])
+            except Exception:
+                suggestions = []
+        applied = []
+        for s in suggestions:
+            chord = str(s.get('suggest') or '').strip()
+            field = str(s.get('field') or '')
+            if not chord:
+                continue
+            if field == 'toggle' and getattr(self, 'blink_toggle_edit', None) is not None:
+                self.blink_toggle_edit.setText(chord)
+                applied.append(('toggle', chord))
+            elif field == 'swap' and getattr(self, 'blink_swap_edit', None) is not None:
+                self.blink_swap_edit.setText(chord)
+                applied.append(('swap', chord))
+        try:
+            self._on_blink_conflict_live_check()
+        except Exception:
+            pass
+        return {'ok': bool(applied), 'applied': applied}
+
     def _fill_blink_conflict_list(self, info=None):
         """Populate conflict list widget + designer footer from check bag."""
         info = info if isinstance(info, dict) else self.check_blink_reserved_conflicts()
@@ -868,6 +978,29 @@ class RunUiDesignerDialog(QDialog):
                     '交换' if c.get('field') == 'swap' else str(c.get('field') or '?')
                 )
                 rows.append(f"{lab}「{c.get('key')}」占保留字")
+        alt = self.suggest_blink_alternate_chords(info)
+        suggestions = list(alt.get('suggestions') or [])
+        for s in suggestions:
+            flab = '开关' if s.get('field') == 'toggle' else (
+                '交换' if s.get('field') == 'swap' else str(s.get('field') or '?')
+            )
+            rows.append(f"建议{flab}改用「{s.get('suggest')}」")
+        sug_lab = getattr(self, 'blink_suggest_lab', None)
+        if sug_lab is not None:
+            if suggestions:
+                bits = [
+                    f"{('开关' if s.get('field') == 'toggle' else '交换')}→{s.get('suggest')}"
+                    for s in suggestions
+                ]
+                sug_lab.setText('可用替代 · ' + '；'.join(bits) + '（点击填入）')
+                sug_lab.setVisible(True)
+                try:
+                    sug_lab.setProperty('suggestions', suggestions)
+                except Exception:
+                    pass
+            else:
+                sug_lab.setText('')
+                sug_lab.setVisible(False)
         if lst is not None:
             try:
                 lst.clear()
@@ -882,7 +1015,12 @@ class RunUiDesignerDialog(QDialog):
                 pass
         if foot is not None:
             if rows:
-                foot.setText('闪比快捷键冲突 · ' + '；'.join(rows) + ' — 不会写入')
+                conflict_rows = [r for r in rows if not str(r).startswith('建议')]
+                sug_rows = [r for r in rows if str(r).startswith('建议')]
+                body = '；'.join(conflict_rows)
+                if sug_rows:
+                    body += ' · ' + '；'.join(sug_rows)
+                foot.setText('闪比快捷键冲突 · ' + body + ' — 不会写入')
                 foot.setVisible(True)
             else:
                 foot.setText('')
@@ -891,7 +1029,9 @@ class RunUiDesignerDialog(QDialog):
         bar = getattr(self, 'fix_bottom_bar', None)
         if bar is not None and rows:
             try:
-                bar.setText('闪比冲突 · ' + '；'.join(rows))
+                bar.setText('闪比冲突 · ' + '；'.join(
+                    [r for r in rows if not str(r).startswith('建议')][:3]
+                ))
                 bar.setStyleSheet(
                     'background:#2a1818;color:#e8a;border:1px solid #a55;'
                     'padding:4px;font-size:11px;font-weight:600;'
@@ -899,7 +1039,10 @@ class RunUiDesignerDialog(QDialog):
                 bar.show()
             except Exception:
                 pass
-        return {'ok': not conflicts, 'rows': rows, 'conflicts': conflicts, 'warn': info.get('warn') or ''}
+        return {
+            'ok': not conflicts, 'rows': rows, 'conflicts': conflicts,
+            'warn': info.get('warn') or '', 'suggestions': suggestions,
+        }
 
     def _on_blink_conflict_live_check(self, *_):
         """Live warn label + conflict list/footer while typing blink chords."""

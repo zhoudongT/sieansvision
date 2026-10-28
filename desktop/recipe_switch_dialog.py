@@ -227,7 +227,13 @@ class RecipeSwitchDialog(QDialog):
             '导出时附带步骤快照体积（JSON 体积更大；CSV 仍不含快照）· 默认关 · 无硬件'
         )
         self._rollback_export_snap_chk.setChecked(False)
+        self._rollback_export_snap_chk.toggled.connect(self._refresh_rollback_export_size_lab)
         row.addWidget(self._rollback_export_snap_chk)
+        self._rollback_export_size_lab = QLabel('')
+        self._rollback_export_size_lab.setObjectName('recipeRollbackExportSizeLab')
+        self._rollback_export_size_lab.setStyleSheet('color:#8ab;font-size:11px;')
+        self._rollback_export_size_lab.setToolTip('导出 JSON 体积估算（含/不含快照）· 无硬件')
+        row.addWidget(self._rollback_export_size_lab)
         self._rollback_export_btn = QPushButton('导出栈')
         self._rollback_export_btn.setObjectName('recipeRollbackExportBtn')
         self._rollback_export_btn.setToolTip('导出回滚历史栈为 JSON/CSV（默认不含快照体积；勾选「含快照」写入）· 无硬件')
@@ -718,6 +724,10 @@ class RecipeSwitchDialog(QDialog):
             clr_btn.setEnabled(bool(depth))
         if snap_chk is not None:
             snap_chk.setEnabled(bool(depth))
+        try:
+            self._refresh_rollback_export_size_lab()
+        except Exception:
+            pass
 
 
     def _export_include_snapshots(self) -> bool:
@@ -726,6 +736,32 @@ class RecipeSwitchDialog(QDialog):
             return bool(chk.isChecked()) if chk is not None else False
         except Exception:
             return False
+
+    def _refresh_rollback_export_size_lab(self, *_):
+        """Update snap-size estimate label beside 含快照 checkbox. Soft."""
+        lab = getattr(self, '_rollback_export_size_lab', None)
+        if lab is None:
+            return {'ok': False, 'reason': 'no lab'}
+        try:
+            est = rl.estimate_rollback_export_bytes(
+                self.document.project,
+                include_snapshots=self._export_include_snapshots(),
+            )
+        except Exception as err:
+            lab.setText('')
+            return {'ok': False, 'reason': str(err)}
+        if not est.get('depth'):
+            lab.setText('')
+            return est
+        if est.get('includeSnapshots'):
+            lab.setText(
+                f"约 {est.get('human')}（含快照 · 无快照 {est.get('withoutSnapHuman')}）"
+            )
+        else:
+            lab.setText(
+                f"约 {est.get('human')}（无快照 · 含则 {est.get('withSnapHuman')}）"
+            )
+        return est
 
     def _export_rollback_stack(self):
         """Export rollback history stack to JSON or CSV (soft; optional snapshots)."""

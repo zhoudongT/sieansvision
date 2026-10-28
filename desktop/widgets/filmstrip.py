@@ -285,7 +285,133 @@ class FilmstripBar(QWidget):
                 pass
         return True
 
-    def seek_frame_token(self, token='', *, index=None, emit=True) -> dict:
+    def flash_seek_thumb(self, index=None, *, path='', ms=480) -> dict:
+        """Brief highlight flash on the seek-target thumb (spark seek feedback). Soft.
+
+        Returns {ok, index, path, ms, flashed}. Restores prior item chrome after ms.
+        """
+        paths = list(self._paths or [])
+        out = {'ok': False, 'index': -1, 'path': '', 'ms': int(ms or 480), 'flashed': False}
+        idx = -1
+        if index is not None:
+            try:
+                idx = int(index)
+            except (TypeError, ValueError):
+                idx = -1
+        if idx < 0 and path:
+            token = str(path).strip()
+            from pathlib import Path as _P
+            base = _P(token).name
+            for i, pth in enumerate(paths):
+                if pth == token or _P(pth).name == base or _P(pth).name == token:
+                    idx = i
+                    break
+        if idx < 0 and 0 <= int(getattr(self, '_index', -1) or -1) < len(paths):
+            idx = int(self._index)
+        if idx < 0 or idx >= len(paths):
+            out['reason'] = 'no target'
+            return out
+        out.update(index=idx, path=paths[idx])
+        item = None
+        try:
+            item = self.thumbs.item(idx) if hasattr(self, 'thumbs') else None
+        except Exception:
+            item = None
+        if item is None:
+            out['reason'] = 'no item'
+            return out
+        # cancel prior flash timer
+        old_t = getattr(self, '_seek_flash_timer', None)
+        if old_t is not None:
+            try:
+                old_t.stop()
+            except Exception:
+                pass
+        # restore previously flashed item if any
+        prev_i = getattr(self, '_seek_flash_index', None)
+        prev_ss = getattr(self, '_seek_flash_prev_ss', None)
+        if prev_i is not None and prev_i != idx:
+            try:
+                prev_item = self.thumbs.item(int(prev_i))
+                if prev_item is not None:
+                    prev_item.setData(Qt.ItemDataRole.UserRole + 31, None)
+                    # clear foreground flash marker
+                    if prev_ss is not None:
+                        pass
+            except Exception:
+                pass
+        flash_ss = (
+            'QListWidget::item:selected{'
+            'border:2px solid #ffd24a;background:#3a3020;}'
+        )
+        try:
+            # mark item with bright background via data + list stylesheet overlay
+            item.setBackground(QColor('#4a3a18'))
+            item.setForeground(QColor('#ffe08a'))
+            self._seek_flash_index = idx
+            self._seek_flash_path = paths[idx]
+            # also tighten thumbs selected border for the flash window
+            base_ss = getattr(self, '_thumbs_base_stylesheet', None)
+            if base_ss is None:
+                try:
+                    base_ss = self.thumbs.styleSheet() or ''
+                    self._thumbs_base_stylesheet = base_ss
+                except Exception:
+                    base_ss = ''
+                    self._thumbs_base_stylesheet = ''
+            try:
+                self.thumbs.setStyleSheet(
+                    (base_ss or '') + (
+                        '\nQListWidget::item:selected{'
+                        'border:2px solid #ffd24a;background:#3a3020;}'
+                    )
+                )
+            except Exception:
+                pass
+            # ensure selected + scrolled
+            try:
+                self.thumbs.blockSignals(True)
+                self.thumbs.setCurrentRow(idx)
+                self.thumbs.scrollToItem(item)
+                self.thumbs.blockSignals(False)
+            except Exception:
+                try:
+                    self.thumbs.blockSignals(False)
+                except Exception:
+                    pass
+        except Exception as err:
+            out['reason'] = str(err)
+            return out
+
+        def _clear_flash():
+            try:
+                it = self.thumbs.item(idx) if hasattr(self, 'thumbs') else None
+                if it is not None:
+                    it.setBackground(QColor(0, 0, 0, 0))
+                    it.setForeground(QColor('#c8c8c8'))
+            except Exception:
+                pass
+            try:
+                base = getattr(self, '_thumbs_base_stylesheet', '') or ''
+                self.thumbs.setStyleSheet(base)
+            except Exception:
+                pass
+            self._seek_flash_index = None
+
+        try:
+            t = QTimer(self)
+            t.setSingleShot(True)
+            t.timeout.connect(_clear_flash)
+            t.start(max(120, int(ms or 480)))
+            self._seek_flash_timer = t
+        except Exception:
+            # still mark as flashed even if timer fails
+            pass
+        out.update(ok=True, flashed=True)
+        return out
+
+    def seek_frame_token(self, token='', *, index=None, emit=True, flash=True) -> dict:
+
         """Seek filmstrip by spark-jump frame token / basename / absolute index.
 
         Soft / no hardware. Returns {ok, index, path, matchedBy, token}.
@@ -307,6 +433,11 @@ class FilmstripBar(QWidget):
             if 0 <= i < len(paths):
                 ok = self.select_index(i, emit=emit)
                 out.update(ok=bool(ok), index=i, path=paths[i] if ok else '', matchedBy='index')
+                if ok and flash:
+                    try:
+                        out['flash'] = self.flash_seek_thumb(i, path=paths[i])
+                    except Exception as _fe:
+                        out['flash'] = {'ok': False, 'reason': str(_fe)}
                 return out
         if not token:
             out['reason'] = 'no token'
@@ -315,6 +446,11 @@ class FilmstripBar(QWidget):
         if self.select_path(token, emit=emit):
             i = int(self._index)
             out.update(ok=True, index=i, path=paths[i], matchedBy='path')
+            if flash:
+                try:
+                    out['flash'] = self.flash_seek_thumb(i, path=paths[i])
+                except Exception as _fe:
+                    out['flash'] = {'ok': False, 'reason': str(_fe)}
             return out
         # 3) basename / stem / substring soft match
         from pathlib import Path as _P
@@ -350,6 +486,11 @@ class FilmstripBar(QWidget):
             return out
         ok = self.select_index(hit, emit=emit)
         out.update(ok=bool(ok), index=hit, path=paths[hit] if ok else '', matchedBy=how)
+        if ok and flash:
+            try:
+                out['flash'] = self.flash_seek_thumb(hit, path=paths[hit])
+            except Exception as _fe:
+                out['flash'] = {'ok': False, 'reason': str(_fe)}
         return out
 
 
@@ -1561,6 +1702,45 @@ class CompareThumbStrip(QWidget):
             self._list.setCurrentRow(active_row)
         self._suppress_reorder = False
         self.show()
+
+    def activate_path(self, path='', *, emit=False) -> dict:
+        """Select/activate a compare-strip thumb by path/basename (spark sync). Soft.
+
+        Returns {ok, index, path, matchedBy}. Does not add missing paths.
+        """
+        token = str(path or '').strip()
+        out = {'ok': False, 'index': -1, 'path': '', 'matchedBy': ''}
+        paths = list(self._paths or [])
+        if not token or not paths:
+            out['reason'] = 'empty'
+            return out
+        from pathlib import Path as _P
+        base = _P(token).name
+        hit = -1
+        how = ''
+        for i, pth in enumerate(paths):
+            if pth == token:
+                hit, how = i, 'path'; break
+            if _P(pth).name == base or _P(pth).name == token:
+                hit, how = i, 'basename'; break
+        if hit < 0:
+            for i, pth in enumerate(paths):
+                if token in str(pth) or base in str(pth):
+                    hit, how = i, 'substr'; break
+        if hit < 0:
+            out['reason'] = 'not on strip'
+            return out
+        try:
+            self._list.setCurrentRow(hit)
+        except Exception:
+            pass
+        out.update(ok=True, index=hit, path=paths[hit], matchedBy=how)
+        if emit:
+            try:
+                self.pathActivated.emit(paths[hit])
+            except Exception:
+                pass
+        return out
 
     def clear(self):
         self.set_paths([])

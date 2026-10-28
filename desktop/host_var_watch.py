@@ -176,6 +176,67 @@ def pin_group_picker_accel_entries(groups=None, *, active: str = '') -> list:
     return out
 
 
+def pin_group_picker_accel_tip(entries=None) -> str:
+    """Discoverability tip for chip RMB pin-group 1–9 accelerators. Soft."""
+    entries = list(entries or [])
+    n = sum(1 for e in entries if str((e or {}).get('accel') or '').strip())
+    if n <= 0:
+        n = min(9, len(entries)) if entries else 0
+    if n <= 0:
+        return '右键钉组 · 建组后可用数字键 1–9 加速选择 · 无硬件'
+    hi = min(9, n)
+    return f'数字键 1–{hi} 快速选钉组 · 菜单前缀同号 · 无硬件'
+
+
+def apply_pin_group_picker_accel_tip(menu, entries=None) -> dict:
+    """Insert a disabled tip action at the top of the pin-group picker menu. Soft.
+
+    Returns {ok, tip, inserted}.
+    """
+    tip = pin_group_picker_accel_tip(entries)
+    out = {'ok': False, 'tip': tip, 'inserted': False}
+    if menu is None:
+        out['reason'] = 'no menu'
+        return out
+    try:
+        # avoid duplicate tip
+        for a in list(menu.actions()):
+            try:
+                if a.objectName() == 'hostWatchPinGroupAccelTip':
+                    a.setText(tip)
+                    out.update(ok=True, inserted=False, updated=True)
+                    return out
+            except Exception:
+                pass
+        act = menu.addAction(tip)
+        try:
+            act.setObjectName('hostWatchPinGroupAccelTip')
+        except Exception:
+            pass
+        try:
+            act.setEnabled(False)
+        except Exception:
+            pass
+        # move to top
+        try:
+            actions = list(menu.actions())
+            if actions and actions[-1] is act and len(actions) > 1:
+                menu.removeAction(act)
+                menu.insertAction(actions[0], act)
+                # separator after tip
+                sep = menu.insertSeparator(actions[0])
+                try:
+                    sep.setObjectName('hostWatchPinGroupAccelTipSep')
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        out.update(ok=True, inserted=True)
+    except Exception as err:
+        out['reason'] = str(err)
+    return out
+
+
 def apply_pin_group_picker_accels(menu, entries=None):
     """Stamp 1–9 shortcuts onto QMenu actions (data = group name). Soft.
 

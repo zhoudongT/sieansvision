@@ -417,12 +417,12 @@ class MatchScoreTrend:
 
 
 
-def seek_filmstrip_from_spark_jump(filmstrip, bag=None) -> dict:
-    """Wire spark click-jump bag → filmstrip seek (soft / no hardware).
+def seek_filmstrip_from_spark_jump(filmstrip, bag=None, *, flash=True) -> dict:
+    """Wire spark click-jump bag → filmstrip seek (+ optional thumb flash). Soft.
 
     bag keys: frame, label, index. Uses FilmstripBar.seek_frame_token when
     available, else select_path / select_index.
-    Returns {ok, index, path, matchedBy, frame, label, sparkIndex}.
+    Returns {ok, index, path, matchedBy, frame, label, sparkIndex, flash?}.
     """
     bag = bag if isinstance(bag, dict) else {}
     frame = str(bag.get('frame') or '')
@@ -435,29 +435,45 @@ def seek_filmstrip_from_spark_jump(filmstrip, bag=None) -> dict:
     if filmstrip is None:
         out['reason'] = 'no filmstrip'
         return out
+
+    def _maybe_flash(hit):
+        if not flash or not hit.get('ok'):
+            return hit
+        # seek_frame_token already flashes when flash=True; still fill if missing
+        if hit.get('flash'):
+            return hit
+        if hasattr(filmstrip, 'flash_seek_thumb'):
+            try:
+                hit['flash'] = filmstrip.flash_seek_thumb(
+                    hit.get('index'), path=str(hit.get('path') or ''),
+                )
+            except Exception as err:
+                hit['flash'] = {'ok': False, 'reason': str(err)}
+        return hit
+
     # Prefer dedicated seek_frame_token
     if hasattr(filmstrip, 'seek_frame_token'):
         # try frame token first, then label, then spark index as filmstrip index
         for token, how_pref in ((frame, 'frame'), (label, 'label')):
             if not token:
                 continue
-            hit = filmstrip.seek_frame_token(token, emit=True)
+            hit = filmstrip.seek_frame_token(token, emit=True, flash=flash)
             if hit.get('ok'):
                 out.update(hit)
                 out['frame'] = frame
                 out['label'] = label
                 out['sparkIndex'] = spark_index
                 out['matchedBy'] = hit.get('matchedBy') or how_pref
-                return out
+                return _maybe_flash(out)
         if spark_index is not None:
-            hit = filmstrip.seek_frame_token('', index=spark_index, emit=True)
+            hit = filmstrip.seek_frame_token('', index=spark_index, emit=True, flash=flash)
             if hit.get('ok'):
                 out.update(hit)
                 out['frame'] = frame
                 out['label'] = label
                 out['sparkIndex'] = spark_index
                 out['matchedBy'] = hit.get('matchedBy') or 'sparkIndex'
-                return out
+                return _maybe_flash(out)
         out['reason'] = 'not found'
         return out
     # Fallback select_path / select_index
@@ -467,7 +483,7 @@ def seek_filmstrip_from_spark_jump(filmstrip, bag=None) -> dict:
             paths = list(getattr(filmstrip, 'paths', lambda: [])())
             out.update(ok=True, index=idx, path=(paths[idx] if 0 <= idx < len(paths) else token),
                        matchedBy='path')
-            return out
+            return _maybe_flash(out)
     if spark_index is not None and hasattr(filmstrip, 'select_index'):
         try:
             i = int(spark_index)
@@ -477,8 +493,121 @@ def seek_filmstrip_from_spark_jump(filmstrip, bag=None) -> dict:
             paths = list(getattr(filmstrip, 'paths', lambda: [])())
             out.update(ok=True, index=i, path=(paths[i] if 0 <= i < len(paths) else ''),
                        matchedBy='sparkIndex')
-            return out
+            return _maybe_flash(out)
     out['reason'] = 'not found'
+    return out
+
+
+def sync_compare_strip_from_spark_jump(compare_strip, bag=None) -> dict:
+    """Spark jump → activate matching path on CompareThumbStrip (soft sync).
+
+    Does not add paths; only activates if already on the strip.
+    Returns {ok, index, path, matchedBy, frame, label}.
+    """
+    bag = bag if isinstance(bag, dict) else {}
+    frame = str(bag.get('frame') or '')
+    label = str(bag.get('label') or '')
+    path = str(bag.get('path') or frame or '')
+    out = {
+        'ok': False, 'index': -1, 'path': '', 'matchedBy': '',
+        'frame': frame, 'label': label,
+    }
+    if compare_strip is None:
+        out['reason'] = 'no compare strip'
+        return out
+    for token in (path, frame, label):
+        if not token:
+            continue
+        if hasattr(compare_strip, 'activate_path'):
+            hit = compare_strip.activate_path(token, emit=False)
+            if hit.get('ok'):
+                out.update(hit)
+                out['frame'] = frame
+                out['label'] = label
+                return out
+        # fallback: scan paths()
+        try:
+            paths = list(compare_strip.paths() if callable(getattr(compare_strip, 'paths', None)) else [])
+        except Exception:
+            paths = []
+        from pathlib import Path as _P
+        base = _P(token).name
+        for i, pth in enumerate(paths):
+            if pth == token or _P(pth).name == base:
+                out.update(ok=True, index=i, path=pth, matchedBy='scan')
+                try:
+                    lst = getattr(compare_strip, '_list', None)
+                    if lst is not None:
+                        lst.setCurrentRow(i)
+                except Exception:
+                    pass
+                return out
+    out['reason'] = 'not on strip'
+    return out
+
+
+def sync_spark_from_compare_path(spark_widget, path='', *, trend=None) -> dict:
+    """Compare-strip path → highlight/jump matching spark bar (soft reverse sync).
+
+    Matches by frame path / basename / label. Returns {ok, local, index, frame, label}.
+    """
+    token = str(path or '').strip()
+    out = {'ok': False, 'local': -1, 'index': -1, 'frame': '', 'label': '', 'path': token}
+    if not token or spark_widget is None:
+        out['reason'] = 'no spark/path'
+        return out
+    from pathlib import Path as _P
+    base = _P(token).name
+    stem = _P(token).stem
+    pts = []
+    try:
+        pts = list(getattr(spark_widget, '_points', None) or [])
+    except Exception:
+        pts = []
+    if not pts and trend is not None and hasattr(trend, 'points'):
+        try:
+            pts = list(trend.points())
+        except Exception:
+            pts = []
+    win_start = int(getattr(spark_widget, '_window_start', 0) or 0)
+    hit_local = -1
+    hit_pt = None
+    for i, pt in enumerate(pts):
+        if not isinstance(pt, dict):
+            continue
+        fr = str(pt.get('frame') or '')
+        lab = str(pt.get('label') or '')
+        if fr == token or _P(fr).name == base or _P(fr).name == token:
+            hit_local, hit_pt = i, pt
+            break
+        if lab and (lab == token or lab == base or lab == stem or base in lab):
+            hit_local, hit_pt = i, pt
+            break
+    if hit_local < 0:
+        out['reason'] = 'no spark point'
+        return out
+    abs_i = win_start + hit_local
+    out.update(
+        ok=True, local=hit_local, index=abs_i,
+        frame=str((hit_pt or {}).get('frame') or ''),
+        label=str((hit_pt or {}).get('label') or ''),
+    )
+    # visual select: set hover + optional jump without re-emitting seek loop
+    try:
+        spark_widget._hover_local = hit_local
+        spark_widget._sync_select_local = hit_local
+        spark_widget._last_jump = {
+            'index': abs_i, 'local': hit_local,
+            'frame': out['frame'], 'label': out['label'],
+            'score': float((hit_pt or {}).get('score') or 0),
+            'ok': (hit_pt or {}).get('ok'),
+            'templateId': str((hit_pt or {}).get('templateId') or ''),
+            'fromCompare': True,
+        }
+        if hasattr(spark_widget, 'update'):
+            spark_widget.update()
+    except Exception as err:
+        out['paintErr'] = str(err)
     return out
 
 
@@ -541,6 +670,7 @@ class MatchScoreSparkWidget:
                 self._unicode = ''
                 self._summary = ''
                 self._hover_local = -1
+                self._sync_select_local = -1
                 self._last_jump = {}
                 self._on_jump = None
 
@@ -730,9 +860,13 @@ class MatchScoreSparkWidget:
                             color = QColor('#b85a4a')
                         else:
                             color = QColor('#4a8ab8')
-                        if i == self._hover_local:
+                        sel = int(getattr(self, '_sync_select_local', -1))
+                        if i == self._hover_local or i == sel:
                             color = color.lighter(130)
                             painter.fillRect(QRect(x - 1, pad, bar_w + 2, avail_h), QBrush(QColor('#1a2430')))
+                            if i == sel and i != self._hover_local:
+                                painter.setPen(QPen(QColor('#ffd24a')))
+                                painter.drawRect(x - 1, pad, bar_w + 1, avail_h - 1)
                         painter.fillRect(QRect(x, y, bar_w, bh), QBrush(color))
                 finally:
                     painter.end()

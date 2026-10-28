@@ -509,6 +509,53 @@ def rollback_recipe_n_steps(project: dict, n: int = 1, *,
 
 
 
+def estimate_rollback_export_bytes(project: dict, *,
+                                   stack_key: str = '_recipeRollbackStack',
+                                   store_key: str = '_recipeRollbackSnap',
+                                   include_snapshots: bool = False) -> dict:
+    """Estimate JSON export byte size for rollback stack (soft / no hardware).
+
+    Returns {ok, bytes, human, depth, includeSnapshots, withSnapBytes, withoutSnapBytes}.
+    """
+    import json as _json
+    bag0 = export_recipe_rollback_stack(
+        project, stack_key=stack_key, store_key=store_key, include_snapshots=False,
+    )
+    bag1 = export_recipe_rollback_stack(
+        project, stack_key=stack_key, store_key=store_key, include_snapshots=True,
+    )
+    def _nbytes(bag):
+        try:
+            return len(_json.dumps(bag, ensure_ascii=False).encode('utf-8'))
+        except Exception:
+            return 0
+
+    def _human(n):
+        n = int(n or 0)
+        if n < 1024:
+            return f'{n} B'
+        if n < 1024 * 1024:
+            return f'{n / 1024:.1f} KB'
+        return f'{n / (1024 * 1024):.2f} MB'
+
+    b0 = _nbytes(bag0)
+    b1 = _nbytes(bag1)
+    chosen = b1 if include_snapshots else b0
+    return {
+        'ok': True,
+        'bytes': chosen,
+        'human': _human(chosen),
+        'depth': int(bag0.get('depth') or 0),
+        'includeSnapshots': bool(include_snapshots),
+        'withoutSnapBytes': b0,
+        'withSnapBytes': b1,
+        'withoutSnapHuman': _human(b0),
+        'withSnapHuman': _human(b1),
+        'deltaBytes': max(0, b1 - b0),
+        'deltaHuman': _human(max(0, b1 - b0)),
+    }
+
+
 def export_recipe_rollback_stack(project: dict, *,
                                  stack_key: str = '_recipeRollbackStack',
                                  store_key: str = '_recipeRollbackSnap',
@@ -536,7 +583,7 @@ def export_recipe_rollback_stack(project: dict, *,
             if isinstance(snap, dict):
                 row['snapshot'] = deepcopy(snap)
         entries.append(row)
-    return {
+    out = {
         'ok': True,
         'depth': len(entries),
         'entries': entries,
@@ -544,6 +591,12 @@ def export_recipe_rollback_stack(project: dict, *,
         'includeSnapshots': bool(include_snapshots),
         'stackKey': stack_key,
     }
+    try:
+        import json as _json
+        out['approxBytes'] = len(_json.dumps(out, ensure_ascii=False).encode('utf-8'))
+    except Exception:
+        out['approxBytes'] = 0
+    return out
 
 
 def clear_recipe_rollback_stack(project: dict, *,
