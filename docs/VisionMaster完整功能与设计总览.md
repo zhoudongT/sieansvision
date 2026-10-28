@@ -426,6 +426,13 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆95 · 策略 tip/truncate Status 镜像 · copy 级联 status_prop_ok · 2026-10-28】
+
+- **tip**：写回 `dstImportStrategyBadgeStatus`（`策略·合并/覆盖`），stash `hover_status` / `hover_status_prop` / `hover_status_prop_ok`（对齐 tip_prop 往返）。
+- **truncate**：last dict 含 `status` / `status_prop` / `status_prop_ok`，并写回徽章 Status。
+- **级联**：`copy_*_hover_tip` out 带入 tip 的 `status_prop_ok` / `tip_prop_ok`。未加 `StrategyBadgeFlashMs`（无既有 FlashMs 调用链，留后续）。
+- **验证**：`scripts/smoke-wave127-…-e2e.py`；regress wave126/125。非硬件约 **~99.98%**。
+
 ## 【细妆94 · 策略 refresh/set/ensure status_prop_ok · tip_max_len Status 级联 · 2026-10-28】
 
 - **DST 策略徽章 refresh**：写回 `dstImportStrategyBadgeStatus`（`策略·合并/覆盖`），out 含 `status` / `status_prop` / `status_prop_ok`。

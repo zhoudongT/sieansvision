@@ -33626,30 +33626,41 @@ class HostStateMachineWidget(QWidget):
             tip_max_len_prop_ok = False
             last_toast_brief_prop_ok = False
             tip_prop_ok = False
+            _st_label = '覆盖' if str(st) == 'overwrite' else ('合并' if str(st) == 'merge' else str(st))
+            status = f'策略·{_st_label}'
+            status_prop = None
+            status_prop_ok = False
             if badge is not None:
                 badge.setProperty('dstImportStrategyBadgeHoverTipMaxLen', int(tip_ml))
                 badge.setProperty('dstImportStrategyBadgeLastToastBrief', str(last_toast_brief))
                 badge.setProperty('dstImportStrategyBadgeHoverTip', tip)
+                badge.setProperty('dstImportStrategyBadgeStatus', status)
                 tip_max_len_prop = badge.property('dstImportStrategyBadgeHoverTipMaxLen')
                 last_toast_brief_prop = badge.property('dstImportStrategyBadgeLastToastBrief')
                 tip_prop = badge.property('dstImportStrategyBadgeHoverTip')
+                status_prop = badge.property('dstImportStrategyBadgeStatus')
                 try:
                     tip_max_len_prop_ok = (int(tip_max_len_prop) == int(tip_ml))
                 except Exception:
                     tip_max_len_prop_ok = False
                 last_toast_brief_prop_ok = (str(last_toast_brief_prop) == str(last_toast_brief))
                 tip_prop_ok = (str(tip_prop) == tip)
+                status_prop_ok = (str(status_prop) == status)
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_max_len_prop = tip_max_len_prop
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_max_len_prop_ok = bool(tip_max_len_prop_ok)
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_toast_brief_prop = last_toast_brief_prop
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_toast_brief_prop_ok = bool(last_toast_brief_prop_ok)
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_prop = tip_prop
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_prop_ok = bool(tip_prop_ok)
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status = status
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop = status_prop
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop_ok = bool(status_prop_ok)
         except Exception:
             try:
                 self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_max_len_prop_ok = False
                 self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_toast_brief_prop_ok = False
                 self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_prop_ok = False
+                self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop_ok = False
             except Exception:
                 pass
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_max_len_shown = int(tip_ml)
@@ -33780,8 +33791,30 @@ class HostStateMachineWidget(QWidget):
             out = (s, False)
         else:
             out = (s[: max(1, ml - 1)] + '…', True)
+        status = None
+        status_prop = None
+        status_prop_ok = False
+        try:
+            badge = getattr(self, '_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge', None)
+            if badge is None:
+                badge = self.ensure_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge()
+            try:
+                st_cur = self.toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_shortcut_conflict_history_batch_diff_import_strategy()
+            except Exception:
+                st_cur = 'merge'
+            _st_label = '覆盖' if str(st_cur) == 'overwrite' else ('合并' if str(st_cur) == 'merge' else str(st_cur))
+            status = f'策略·{_st_label}'
+            if badge is not None:
+                badge.setProperty('dstImportStrategyBadgeStatus', status)
+                status_prop = badge.property('dstImportStrategyBadgeStatus')
+                status_prop_ok = (str(status_prop) == status)
+        except Exception:
+            status = None
+            status_prop = None
+            status_prop_ok = False
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_truncate = {
-            'ok': True, 'len': len(s), 'max_len': ml, 'truncated': out[1], 'tip': out[0]}
+            'ok': True, 'len': len(s), 'max_len': ml, 'truncated': out[1], 'tip': out[0],
+            'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok)}
         return out
 
 
@@ -33807,7 +33840,15 @@ class HostStateMachineWidget(QWidget):
             self._flash_host_toast('已复制策略说明', kind='ok', ms=600)
         except Exception:
             pass
-        out = {'ok': True, 'copied': True, 'tip': tip, 'len': len(tip)}
+        status = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status', None)
+        status_prop = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop', None)
+        status_prop_ok = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop_ok', False))
+        tip_prop_ok = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_prop_ok', False))
+        out = {
+            'ok': True, 'copied': True, 'tip': tip, 'len': len(tip),
+            'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok),
+            'tip_prop_ok': bool(tip_prop_ok),
+        }
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_copy = dict(out)
         return out
 
