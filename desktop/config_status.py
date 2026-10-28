@@ -192,10 +192,15 @@ def step_incomplete_reason(step, project=None) -> str:
 
     if op in ('line_intersect', 'point_distance', 'point_line_distance'):
         if (params.get('mode') or 'bind') == 'manual':
+            # still bang if judgeEnable but no resultVar alias for Host watch
+            if params.get('judgeEnable') and not str(params.get('resultVar') or '').strip():
+                return '已启用判定但未设置 resultVar'
             return ''
         keys = ('line1From', 'line2From', 'point1From', 'point2From', 'pointFrom', 'lineFrom')
         if not any(str(params.get(k) or '').strip() for k in keys):
             return '绑定模式下未选择几何输入'
+        if params.get('judgeEnable') and not str(params.get('resultVar') or '').strip():
+            return '已启用判定但未设置 resultVar'
         return ''
 
     if op == 'csharp_script':
@@ -254,7 +259,17 @@ def step_incomplete_reason(step, project=None) -> str:
             return '未指定子流程'
         return ''
 
-    if op in ('fixture', 'blob', 'ocr'):
+    if op == 'ocr':
+        r = _img_reason(step)
+        if r:
+            return r
+        if str(params.get('roiMode') or 'inherit') == 'draw':
+            roi = params.get('roi')
+            if not (isinstance(roi, list) and len(roi) == 4):
+                return 'OCR 绘制模式未设置 ROI'
+        return ''
+
+    if op in ('fixture', 'blob'):
         return _img_reason(step)
 
     # Point cloud family — need an input cloud / image binding when present

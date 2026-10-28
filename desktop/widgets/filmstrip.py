@@ -145,6 +145,14 @@ class FilmstripBar(QWidget):
         self.empty_hint.setStyleSheet('color:#c62828;font-size:11px;padding:0 2px;')
         self.empty_hint.setWordWrap(True)
         root.addWidget(self.empty_hint)
+        self.result_strip = QLabel('')
+        self.result_strip.setObjectName('filmstripResultStrip')
+        self.result_strip.setWordWrap(True)
+        self.result_strip.setStyleSheet(
+            'color:#bbb;font-size:11px;padding:2px 4px;background:#1e2228;border:1px solid #333;border-radius:3px;'
+        )
+        self.result_strip.setVisible(False)
+        root.addWidget(self.result_strip)
         self.set_paths([], 0)
         self._live_fit_mode = 'contain'
         self._actual_letterbox = True  # pad with theme CANVAS when src < thumb
@@ -692,6 +700,92 @@ class FilmstripBar(QWidget):
                         item.setToolTip((base_tip + '\n' + extra).strip())
         except Exception:
             pass
+
+
+    def push_module_results(self, records=None, names=None):
+        """N4/胶片结果条：定位/几何/测量 OK·NG 摘要（VisionMaster 结果条风格）。"""
+        lab = getattr(self, 'result_strip', None)
+        if lab is None:
+            return
+        records = records or []
+        name_map = names or {}
+        bits = []
+        ok_n = ng_n = 0
+        focus_ops = {
+            'geometry', 'caliper', 'measure', 'locate', 'match', 'template_match',
+            'line_intersect', 'point_distance', 'point_line_distance',
+            'defects', 'ocr', 'blob', 'fixture',
+        }
+        for i, rec in enumerate(records):
+            if not isinstance(rec, dict):
+                continue
+            op = str(rec.get('operation') or rec.get('op') or '')
+            rid = str(rec.get('id') or '')
+            name = ''
+            if isinstance(name_map, dict):
+                name = str(name_map.get(rid) or name_map.get(op) or '')
+            elif isinstance(name_map, (list, tuple)) and i < len(name_map):
+                name = str(name_map[i] or '')
+            name = name or str(rec.get('name') or rid or op or f'#{i+1}')
+            # Prefer judgeOk / ok / success
+            judge = rec.get('judgeOk')
+            if judge is None:
+                judge = rec.get('ok')
+            if judge is None and 'success' in rec:
+                judge = bool(rec.get('success'))
+            # Nested outputs
+            out = rec.get('outputs') if isinstance(rec.get('outputs'), dict) else {}
+            if judge is None and isinstance(out, dict) and 'judgeOk' in out:
+                judge = out.get('judgeOk')
+            status = rec.get('status') or rec.get('state')
+            if judge is None and status is not None:
+                s = str(status).lower()
+                if s in ('ok', 'pass', 'success', 'done'):
+                    judge = True
+                elif s in ('ng', 'fail', 'error', 'failed'):
+                    judge = False
+            # Only highlight focus ops unless we have explicit judge
+            if op and op not in focus_ops and judge is None:
+                continue
+            if judge is True:
+                ok_n += 1
+                tag = 'OK'
+                color = '#2e7d32'
+            elif judge is False:
+                ng_n += 1
+                tag = 'NG'
+                color = '#c62828'
+            else:
+                # show scalar highlights for measure chain
+                dist = out.get('distance') if isinstance(out, dict) else rec.get('distance')
+                ratio = out.get('ratio') if isinstance(out, dict) else rec.get('ratio')
+                text = out.get('text') if isinstance(out, dict) else rec.get('text')
+                extra = ''
+                if dist is not None:
+                    try:
+                        extra = f' d={float(dist):.3g}'
+                    except Exception:
+                        extra = f' d={dist}'
+                elif ratio is not None:
+                    try:
+                        extra = f' r={float(ratio):.3g}'
+                    except Exception:
+                        extra = f' r={ratio}'
+                elif text:
+                    extra = f' "{str(text)[:24]}"'
+                bits.append(f'<span style="color:#888">{name}{extra}</span>')
+                continue
+            bits.append(f'<span style="color:{color};font-weight:600">{name} {tag}</span>')
+        if not bits and not (ok_n or ng_n):
+            lab.setVisible(False)
+            lab.setText('')
+            return
+        head = f'<b>结果</b> · OK {ok_n} · NG {ng_n}'
+        body = ' ｜ '.join(bits[:12])
+        if len(bits) > 12:
+            body += f' ｜ …+{len(bits)-12}'
+        lab.setText(f'{head}<br/>{body}' if body else head)
+        lab.setVisible(True)
 
     def clear_all(self):
         if not self._paths:

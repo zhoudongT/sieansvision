@@ -100,7 +100,7 @@ class MainWindow(QMainWindow):
         files.addSeparator();files.addAction(self.action('退出',self.close))
         self.workspace_actions=[]
         work=self.menuBar().addMenu('工程管理');devices=self.menuBar().addMenu('设备与模型');records=self.menuBar().addMenu('记录与账号')
-        for menu,label,key in [(work,'本机工程库','projects'),(work,'三级变量','variables'),(work,'子流程管理','subflows'),(work,'运行画面编辑 / 运行','hmi'),(work,'算子插件管理','plugins'),
+        for menu,label,key in [(work,'本机工程库','projects'),(work,'三级变量','variables'),(work,'变量监视板','var_watch'),(work,'子流程管理','subflows'),(work,'运行画面编辑 / 运行','hmi'),(work,'算子插件管理','plugins'),
                                (devices,'相机与连续采集','camera'),(devices,'连续检测 / 事件触发','continuous'),(devices,'模型训练管理','training'),(records,'检测历史','history'),(records,'操作记录','audit'),(records,'操作员账号','accounts')]:
             action=self.action(label,lambda k=key:self.open_panel(k));action.setData(key);menu.addAction(action);self.workspace_actions.append(action)
         records.addAction(self.action('管理员登录',lambda:self.open_panel('login')))
@@ -214,6 +214,8 @@ class MainWindow(QMainWindow):
         apply_toolbar_action(a_chain, 'chain'); toolbar.addAction(a_chain)
         a_var = self.action('变量', lambda: self.open_panel('variables'))
         apply_toolbar_action(a_var, 'var'); toolbar.addAction(a_var)
+        a_var_watch = self.action('监视', lambda: self.open_panel('var_watch'))
+        apply_toolbar_action(a_var_watch, 'var'); toolbar.addAction(a_var_watch)
         a_trig = self.action('触发', self.open_global_triggers)
         apply_toolbar_action(a_trig, 'trigger'); toolbar.addAction(a_trig)
         a_inj = self.action('注入RUN', lambda: self.guard(self.inject_run_trigger))
@@ -917,7 +919,16 @@ class MainWindow(QMainWindow):
         if reference:
             p=deepcopy(self.document.project);step=next(s for s in p['steps'] if s['id']==self.selected)
             if step['operation'] not in ('locate','defects'):raise ValueError('当前模块不使用参考图')
-            step['reference']=data;self.document.commit(p);self.log('已设置所选模块参考图');return
+            step['reference']=data
+            params=step.setdefault('params',{})
+            if step['operation']=='defects':
+                params['hasReference']=True
+                params['referencePath']=str(path)
+            elif step['operation']=='locate':
+                params['hasTemplate']=True
+                if not str(params.get('templatePath') or '').strip():
+                    params['templatePath']=str(path)
+            self.document.commit(p);self.log('已设置所选模块参考图');return
         self.image=data;self.input_view.show_data(data);self.output_view.show_data('');self.results.set_results([]);self._mirror_preview_to_operator();self.log(f'载入图像 {image.width()} × {image.height()}')
         self.clear_cloud();self.last_result=None;self.refresh_parameters()
         # keep filmstrip in sync for local source
@@ -1739,6 +1750,12 @@ class MainWindow(QMainWindow):
 
     def finished(self,result,release=True):
         self.last_result=result
+        try:
+            vw=(self.dialogs or {}).get('var_watch')
+            if vw is not None and hasattr(vw,'board'):
+                vw.board.set_last_result(result)
+        except Exception:
+            pass
         # multi-source filmstrip: stash per-path last_result for canvas pick
         try:
             path = ''
@@ -1763,6 +1780,11 @@ class MainWindow(QMainWindow):
         records=result.get('results',[])
         names={s['id']:s.get('name',s['operation']) for s in self.document.project['steps']}
         self.results.set_results([{**r,'name':names.get(r['id'],r['id'])} for r in records]);self.scene.show_results(records)
+        try:
+            if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_module_results'):
+                self.filmstrip.push_module_results(records, names)
+        except Exception:
+            pass
         annotated_live, ann_sid = self._pick_annotated_with_step(records)
         _disp_applied = False
         if annotated_live:
@@ -1773,8 +1795,11 @@ class MainWindow(QMainWindow):
             else:
                 self.output_view.show_data(annotated_live);self._apply_measure_geom_overlays(records);self.images.setCurrentIndex(1)
                 try:
-                    if hasattr(self,'filmstrip') and hasattr(self.filmstrip,'set_live_result'):
-                        self.filmstrip.set_live_result(annotated_live)
+                    if hasattr(self,'filmstrip') and self.filmstrip is not None:
+                        if hasattr(self.filmstrip,'set_live_result'):
+                            self.filmstrip.set_live_result(annotated_live)
+                        if hasattr(self.filmstrip,'push_module_results'):
+                            self.filmstrip.push_module_results(records, names)
                 except Exception:
                     pass
         for record in reversed(records):
@@ -5027,9 +5052,15 @@ class MainWindow(QMainWindow):
             '硬件与算法依赖沿用本机配置；界面可用不代表所有现场设备已验收。')
 
     def open_panel(self,key):
-        if self.busy and key not in ('hmi','continuous'):return
+        if self.busy and key not in ('hmi','continuous','var_watch','variables'):return
         if key in self.dialogs:
             if key=='continuous':self.dialogs[key].set_input(self.image,self.cloud,self.depth)
+            if key=='var_watch':
+                try:
+                    self.dialogs[key].board.set_last_result(getattr(self,'last_result',None))
+                    self.dialogs[key].board.bind(self.document, getattr(self,'last_result',None))
+                except Exception:
+                    pass
             self.dialogs[key].show();self.dialogs[key].raise_();return
         if key in ('camera','training'):
             from desktop.device_dialogs import CameraDialog,TrainingDialog
@@ -5044,6 +5075,14 @@ class MainWindow(QMainWindow):
             dialog=ContinuousDialog(self.document,self.backend,self);dialog.set_input(self.image,self.cloud,self.depth)
             dialog.busy_changed.connect(self.set_busy)
             dialog.result_ready.connect(lambda result:self.finished(result,release=False))
+        elif key=='var_watch':
+            from desktop.host_var_watch import HostVarWatchDialog
+            dialog=HostVarWatchDialog(self.document, getattr(self,'last_result',None), self)
+            try:
+                dialog.board.refreshRequested.connect(
+                    lambda: dialog.board.set_last_result(getattr(self,'last_result',None)))
+            except Exception:
+                pass
         elif key=='variables':
             from desktop.variables_dialog import VariablesDialog
             dialog=VariablesDialog(self.document,self.backend,self)

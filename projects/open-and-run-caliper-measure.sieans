@@ -1,7 +1,7 @@
 {
   "version": 2,
   "id": "3f4384ea4de44b6f",
-  "name": "打开即跑 · 卡尺→几何测量",
+  "name": "打开即跑 · 卡尺→测量链判定",
   "steps": [
     {
       "id": "88437751b6394bfd",
@@ -63,7 +63,7 @@
     {
       "id": "f28467b7a8134cde",
       "operation": "line_intersect",
-      "name": "两直线交点",
+      "name": "两直线交点·判OK",
       "params": {
         "mode": "bind",
         "line1From": "a511881928374398",
@@ -84,7 +84,12 @@
         "x3": 50,
         "y3": -50,
         "x4": 50,
-        "y4": 50
+        "y4": 50,
+        "resultVar": "ixPt",
+        "writeFlowVars": true,
+        "judgeEnable": true,
+        "judgeMin": 0.0,
+        "judgeMax": 99999.0
       },
       "position": {
         "x": 300,
@@ -95,7 +100,7 @@
     {
       "id": "970477979fba492f",
       "operation": "point_line_distance",
-      "name": "交点到线3垂距",
+      "name": "交点到线3垂距·判OK",
       "params": {
         "mode": "bind",
         "pointFrom": "f28467b7a8134cde",
@@ -114,7 +119,12 @@
         "x1": 0,
         "y1": 0,
         "x2": 100,
-        "y2": 0
+        "y2": 0,
+        "resultVar": "pldDist",
+        "writeFlowVars": true,
+        "judgeEnable": true,
+        "judgeMin": 0.5,
+        "judgeMax": 800.0
       },
       "position": {
         "x": 300,
@@ -125,7 +135,7 @@
     {
       "id": "153f422383c34c88",
       "operation": "var_calc",
-      "name": "交点·垂距门限·OK/NG",
+      "name": "测量链门限·OK/NG",
       "params": {
         "scope": "flow",
         "expressions": [
@@ -145,28 +155,42 @@
           },
           {
             "name": "intersectX",
-            "expression": "line_intersect_x",
+            "expression": "ixPt_x",
             "initial": 0,
             "outType": "number",
             "initOnRun": true
           },
           {
             "name": "intersectY",
-            "expression": "line_intersect_y",
+            "expression": "ixPt_y",
             "initial": 0,
             "outType": "number",
             "initOnRun": true
           },
           {
-            "name": "pldDist",
-            "expression": "point_line_distance_distance",
+            "name": "ixJudge",
+            "expression": "ixPt_judgeOk",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "pld",
+            "expression": "pldDist_distance",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "pldJudge",
+            "expression": "pldDist_judgeOk",
             "initial": 0,
             "outType": "number",
             "initOnRun": true
           },
           {
             "name": "passGate",
-            "expression": "lineCount >= 2 && lineScore >= 0.35 && line_intersect_ok == 1",
+            "expression": "lineCount >= 2 && ixJudge == 1 && pldJudge == 1",
             "initial": 0,
             "outType": "number",
             "initOnRun": true
@@ -221,7 +245,18 @@
     "x": 300,
     "y": 40
   },
-  "variables": {},
+  "variables": {
+    "lineCount": 0,
+    "lineScore": 0,
+    "intersectX": 0,
+    "intersectY": 0,
+    "ixJudge": 0,
+    "pld": 0,
+    "pldJudge": 0,
+    "passGate": 0,
+    "ixPt": 0,
+    "pldDist": 0
+  },
   "sourceConfig": {
     "mode": "local",
     "pixelFormat": "RGB24",
@@ -345,11 +380,21 @@
       "showOkNg": true
     },
     "meta": {
-      "title": "卡尺直线 · 打开即跑",
-      "industry": "measure"
+      "title": "卡尺→测量链 · 打开即跑",
+      "industry": "measure",
+      "watchKeys": [
+        "ixPt",
+        "ixPt_x",
+        "ixPt_y",
+        "ixPt_judgeOk",
+        "pldDist",
+        "pldDist_distance",
+        "pldDist_judgeOk",
+        "passGate"
+      ]
     }
   },
-  "notes": "【打开即跑 · 卡尺】caliper-line 等样张。▶ 单次：预处理→多卡尺直线(边缘类型=全部,maxCount=3)→门限。\n看叠层：卡尺框·边缘点·多直线·rms；变量 lineCount/lineScore/lineRms/passGate。\n联调：全局触发 RUN/CONT/STOP；模板市场可云同步本机站 :19779。无 Halcon / 无现场硬件。\n细妆⑱：配方换型→运行壳；固定栏显示判定/计数/配方",
+  "notes": "【打开即跑 · 卡尺→测量链】caliper-line 样张。▶单次：预处理→多卡尺直线→两直线交点(resultVar=ixPt/judge)→交点到线3垂距(resultVar=pldDist/judge)→变量门限。\nHost 实况：flow.ixPt / ixPt_x/_y/_judgeOk · flow.pldDist / pldDist_distance/_judgeOk · passGate。\n变量监视板可按「测量链」过滤。无 Halcon / 无现场硬件。",
   "recipes": [
     {
       "id": "e81e45c696524f8a",
@@ -527,5 +572,17 @@
       }
     }
   ],
-  "activeRecipeId": "e81e45c696524f8a"
+  "activeRecipeId": "e81e45c696524f8a",
+  "variableTypes": {
+    "lineCount": "number",
+    "lineScore": "number",
+    "intersectX": "number",
+    "intersectY": "number",
+    "ixJudge": "number",
+    "pld": "number",
+    "pldJudge": "number",
+    "passGate": "number",
+    "ixPt": "number",
+    "pldDist": "number"
+  }
 }

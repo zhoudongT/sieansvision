@@ -737,7 +737,12 @@ def run(request):
     p = request.get('params', {})
     if not isinstance(p, dict):
         raise ValueError('params 必须为对象')
-    image, offset = roi_image(source, p)
+    # roiMode=inherit → ignore params.roi (OCR/缺陷等绘制模式才裁剪)
+    run_params = dict(p)
+    if str(run_params.get('roiMode') or 'inherit') != 'draw':
+        run_params.pop('roi', None)
+    image, offset = roi_image(source, run_params)
+    p = run_params
     canvas = source.copy()
     operation = request.get('operation')
     reference = decode(request['reference']) if request.get('reference') else None

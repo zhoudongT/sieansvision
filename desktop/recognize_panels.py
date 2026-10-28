@@ -2,6 +2,7 @@
 """缺陷检测 / OCR 结果显示与判定面板（OpenCV 壳 · 无 Halcon）。
 
 与 MeasureGeomPanel / LocateResultPanel 同风格：参数 + 结果叠层 + Host 实况绑定。
+细妆：缺陷参考图绑定 UX · OCR ROI 绘制/绑定。
 """
 from __future__ import annotations
 
@@ -9,6 +10,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QFormLayout, QLabel, QComboBox, QDoubleSpinBox,
     QSpinBox, QLineEdit, QHBoxLayout, QPushButton, QTabWidget, QTextEdit,
+    QFileDialog, QMessageBox,
 )
 
 from desktop.widgets.switch import OrangeSwitch
@@ -29,6 +31,8 @@ def _norm_defects(params: dict | None) -> dict:
     p.setdefault('judgeEnable', True)
     p.setdefault('judgeMaxCount', 0)  # 0 = any defect → NG when enable
     p.setdefault('judgeMaxRatio', 0.05)
+    p.setdefault('referencePath', '')
+    p.setdefault('hasReference', False)
     return p
 
 
@@ -45,7 +49,20 @@ def _norm_ocr(params: dict | None) -> dict:
     p.setdefault('judgeEnable', False)
     p.setdefault('expectedText', '')
     p.setdefault('judgeMinConfidence', 0.5)
+    p.setdefault('roiMode', 'inherit')  # inherit | draw
+    if 'roi' not in p:
+        p['roi'] = None
     return p
+
+
+def _has_ref(step: dict, params: dict) -> bool:
+    if step.get('reference'):
+        return True
+    if params.get('hasReference'):
+        return True
+    if str(params.get('referencePath') or '').strip():
+        return True
+    return False
 
 
 class _RecognizeShell(QWidget):
@@ -90,18 +107,208 @@ class _RecognizeShell(QWidget):
                 return (hit.get('output') or {}).get('result') or hit.get('result') or hit
         return {}
 
+    def _host_sample_image(self):
+        """Best-effort current image for ROI editor background."""
+        try:
+            w = self.window()
+            for attr in ('image', 'last_image', '_preview_image'):
+                v = getattr(w, attr, None)
+                if isinstance(v, str) and v.startswith('data:image'):
+                    return v
+            # filmstrip current path
+            fs = getattr(w, 'filmstrip', None)
+            if fs is not None and hasattr(fs, 'current_path'):
+                path = fs.current_path()
+                if path:
+                    return path
+            cfg = (self.project or {}).get('sourceConfig') or {}
+            imgs = cfg.get('images') or []
+            idx = int(cfg.get('currentIndex') or 0)
+            if imgs:
+                return imgs[max(0, min(idx, len(imgs) - 1))]
+        except Exception:
+            pass
+        return None
+
 
 class DefectsPanel(_RecognizeShell):
-    """缺陷检测：阈值 + 结果显示 + 判定 + 流程变量。"""
+    """缺陷检测：参考图绑定 + 阈值 + 结果显示 + 判定 + 流程变量。"""
 
     def _build(self):
         self.params = _norm_defects(self.params)
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         tabs = QTabWidget()
+        tabs.setObjectName('defectsTabs')
+        tabs.addTab(self._ref_tab(), '参考图')
         tabs.addTab(self._params_tab(), '参数')
         tabs.addTab(self._result_tab(), '结果与判定')
         root.addWidget(tabs)
+
+    def _ref_tab(self):
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(10, 10, 10, 10)
+        tip = QLabel(
+            '工业视觉「良品参考图」：与检测图同尺寸、同位姿、相近光照。'
+            '未绑定 → 画布节点红叹号；也可工具栏「设置参考图」。'
+        )
+        tip.setWordWrap(True)
+        tip.setStyleSheet('color:#888;font-size:11px;')
+        lay.addWidget(tip)
+
+        form = QFormLayout()
+        self._ref_path = QLineEdit(str(self.params.get('referencePath') or ''))
+        self._ref_path.setObjectName('defectsReferencePath')
+        self._ref_path.setPlaceholderText('参考图路径 / 方案内 data URL 已绑定时可留路径备注')
+        self._ref_path.editingFinished.connect(self._on_ref_path_edit)
+        form.addRow('参考路径', self._ref_path)
+        lay.addLayout(form)
+
+        row = QHBoxLayout()
+        load_btn = QPushButton('载入参考图…')
+        load_btn.setObjectName('defectsRefLoadBtn')
+        load_btn.clicked.connect(self._load_reference)
+        use_cur = QPushButton('用当前图像')
+        use_cur.setObjectName('defectsRefUseCurrentBtn')
+        use_cur.setToolTip('将主机当前预览/胶片图设为参考（写入 step.reference）')
+        use_cur.clicked.connect(self._use_current_as_ref)
+        clear_btn = QPushButton('清除')
+        clear_btn.setObjectName('defectsRefClearBtn')
+        clear_btn.clicked.connect(self._clear_reference)
+        row.addWidget(load_btn)
+        row.addWidget(use_cur)
+        row.addWidget(clear_btn)
+        row.addStretch(1)
+        lay.addLayout(row)
+
+        ready = _has_ref(self.step, self.params)
+        self._ref_status = QLabel('参考图状态：已加载' if ready else '参考图状态：未绑定（缺配）')
+        self._ref_status.setObjectName('defectsRefStatus')
+        self._ref_status.setStyleSheet(
+            'font-weight:600;color:#2e7d32;' if ready else 'font-weight:600;color:#c62828;'
+        )
+        lay.addWidget(self._ref_status)
+
+        self._ref_meta = QLabel(self._ref_meta_text())
+        self._ref_meta.setObjectName('defectsRefMeta')
+        self._ref_meta.setWordWrap(True)
+        self._ref_meta.setStyleSheet(
+            'color:#9ad;font-size:11px;padding:6px 8px;background:#1e2228;border-radius:4px;'
+        )
+        lay.addWidget(self._ref_meta)
+        lay.addStretch(1)
+        return w
+
+    def _ref_meta_text(self) -> str:
+        bits = []
+        path = str(self.params.get('referencePath') or '').strip()
+        if path:
+            bits.append(f'path={path[-64:]}')
+        ref = self.step.get('reference')
+        if isinstance(ref, str) and ref.startswith('data:image'):
+            bits.append(f'dataURL≈{len(ref)}B')
+            # try dimensions via Qt
+            try:
+                from PySide6.QtGui import QImage
+                import base64
+                b64 = ref.split(',', 1)[-1]
+                img = QImage.fromData(base64.b64decode(b64))
+                if not img.isNull():
+                    bits.append(f'{img.width()}×{img.height()}')
+            except Exception:
+                pass
+        elif ref:
+            bits.append('reference=set')
+        if self.params.get('hasReference'):
+            bits.append('hasReference=1')
+        return '绑定信息：' + (' · '.join(bits) if bits else '无')
+
+    def _sync_ref_status(self):
+        ready = _has_ref(self.step, self.params)
+        if getattr(self, '_ref_status', None):
+            self._ref_status.setText('参考图状态：已加载' if ready else '参考图状态：未绑定（缺配）')
+            self._ref_status.setStyleSheet(
+                'font-weight:600;color:#2e7d32;' if ready else 'font-weight:600;color:#c62828;'
+            )
+        if getattr(self, '_ref_meta', None):
+            self._ref_meta.setText(self._ref_meta_text())
+        if getattr(self, '_ref_path', None):
+            cur = str(self.params.get('referencePath') or '')
+            if self._ref_path.text() != cur:
+                self._ref_path.setText(cur)
+
+    def _on_ref_path_edit(self):
+        path = self._ref_path.text().strip()
+        self.params['referencePath'] = path
+        if path:
+            self.params['hasReference'] = True
+        elif not self.step.get('reference'):
+            self.params['hasReference'] = False
+        self._sync_ref_status()
+        self._emit()
+
+    def _load_reference(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, '载入缺陷参考图', '',
+            '图像 (*.png *.bmp *.jpg *.jpeg *.tif);;所有文件 (*)'
+        )
+        if not path:
+            return
+        try:
+            from pathlib import Path
+            import base64
+            raw = Path(path).read_bytes()
+            if len(raw) > 12 * 1024 * 1024:
+                QMessageBox.warning(self, '参考图', '图像不能超过 12 MB')
+                return
+            suf = Path(path).suffix.lower().lstrip('.') or 'png'
+            if suf in ('jpg', 'jpeg'):
+                mime = 'jpeg'
+            else:
+                mime = suf if suf in ('png', 'bmp', 'tif', 'tiff', 'webp') else 'png'
+            data = f'data:image/{mime};base64,' + base64.b64encode(raw).decode()
+            self.step['reference'] = data
+            self.params['referencePath'] = path
+            self.params['hasReference'] = True
+            self._sync_ref_status()
+            self._emit()
+        except Exception as exc:
+            QMessageBox.warning(self, '参考图', f'载入失败：{exc}')
+
+    def _use_current_as_ref(self):
+        img = self._host_sample_image()
+        if not img:
+            QMessageBox.information(self, '参考图', '当前无可用预览/胶片图像')
+            return
+        if isinstance(img, str) and img.startswith('data:image'):
+            self.step['reference'] = img
+            self.params['referencePath'] = self.params.get('referencePath') or '（当前预览）'
+            self.params['hasReference'] = True
+        else:
+            # path — load as data URL
+            try:
+                from pathlib import Path
+                import base64
+                p = Path(str(img))
+                raw = p.read_bytes()
+                suf = p.suffix.lower().lstrip('.') or 'png'
+                mime = 'jpeg' if suf in ('jpg', 'jpeg') else suf
+                self.step['reference'] = f'data:image/{mime};base64,' + base64.b64encode(raw).decode()
+                self.params['referencePath'] = str(p)
+                self.params['hasReference'] = True
+            except Exception as exc:
+                QMessageBox.warning(self, '参考图', f'读取失败：{exc}')
+                return
+        self._sync_ref_status()
+        self._emit()
+
+    def _clear_reference(self):
+        self.step['reference'] = ''
+        self.params['referencePath'] = ''
+        self.params['hasReference'] = False
+        self._sync_ref_status()
+        self._emit()
 
     def _params_tab(self):
         w = QWidget(); form = QFormLayout(w); form.setContentsMargins(10, 10, 10, 10)
@@ -122,7 +329,7 @@ class DefectsPanel(_RecognizeShell):
         blur.setValue(int(self.params.get('blur') or 3))
         blur.valueChanged.connect(lambda v: self._set_param('blur', int(v)))
         form.addRow('模糊核', blur)
-        tip = QLabel('OpenCV absdiff / contour 壳 · 无 Halcon。模板图可在上游采集或绑定。')
+        tip = QLabel('OpenCV absdiff / contour 壳 · 无 Halcon。参考图见「参考图」页。')
         tip.setWordWrap(True); tip.setStyleSheet('color:#888;'); form.addRow(tip)
         return w
 
@@ -202,7 +409,6 @@ class DefectsPanel(_RecognizeShell):
             key = prefix if suffix == '' else prefix + suffix
             if key in flow:
                 bits.append(f'flow.{key}={flow[key]}')
-        # also defects_* inject
         for k in ('defects_count', 'defects_ratio', 'defects_passed', 'defects_judgeOk'):
             if k in flow:
                 bits.append(f'flow.{k}={flow[k]}')
@@ -210,14 +416,16 @@ class DefectsPanel(_RecognizeShell):
 
 
 class OcrPanel(_RecognizeShell):
-    """OCR：参数 + 结果显示 + 文本判定 + 流程变量。"""
+    """OCR：ROI + 参数 + 结果显示 + 文本判定 + 流程变量。"""
 
     def _build(self):
         self.params = _norm_ocr(self.params)
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         tabs = QTabWidget()
+        tabs.setObjectName('ocrTabs')
         tabs.addTab(self._params_tab(), '参数')
+        tabs.addTab(self._roi_tab(), 'ROI')
         tabs.addTab(self._result_tab(), '结果与判定')
         root.addWidget(tabs)
 
@@ -234,9 +442,95 @@ class OcrPanel(_RecognizeShell):
         mi = QSpinBox(); mi.setRange(1, 500); mi.setValue(int(self.params.get('maxItems') or 50))
         mi.valueChanged.connect(lambda v: self._set_param('maxItems', int(v)))
         form.addRow('最大条目', mi)
-        tip = QLabel('RapidOCR / OpenCV 壳 · 无 Halcon。文本结果写入 flow 前缀。')
+        tip = QLabel('RapidOCR / OpenCV 壳 · 无 Halcon。ROI 见「ROI」页；文本写入 flow 前缀。')
         tip.setWordWrap(True); tip.setStyleSheet('color:#888;'); form.addRow(tip)
         return w
+
+    def _roi_tab(self):
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(10, 10, 10, 10)
+        tip = QLabel(
+            'OCR 识别区：继承=全图/上游 ROI；绘制=引擎按 params.roi=[x,y,w,h] 裁剪后识别。'
+        )
+        tip.setWordWrap(True)
+        tip.setStyleSheet('color:#888;font-size:11px;')
+        lay.addWidget(tip)
+
+        form = QFormLayout()
+        roi = QComboBox()
+        roi.setObjectName('ocrRoiMode')
+        roi.addItem('继承（连线 ROI / 全图）', 'inherit')
+        roi.addItem('绘制 ROI', 'draw')
+        idx = max(0, roi.findData(self.params.get('roiMode') or 'inherit'))
+        roi.setCurrentIndex(idx)
+        roi.currentIndexChanged.connect(lambda _: self._set_param('roiMode', roi.currentData()))
+        form.addRow('ROI 模式', roi)
+
+        self._roi_lab = QLabel(self._roi_summary())
+        self._roi_lab.setObjectName('ocrRoiSummary')
+        self._roi_lab.setStyleSheet(
+            'color:#9ad;font-size:11px;padding:6px 8px;background:#1e2228;border-radius:4px;'
+        )
+        form.addRow('当前 ROI', self._roi_lab)
+        lay.addLayout(form)
+
+        row = QHBoxLayout()
+        edit_btn = QPushButton('绘制 / 编辑 ROI…')
+        edit_btn.setObjectName('ocrRoiEditBtn')
+        edit_btn.clicked.connect(self._edit_roi)
+        clear_btn = QPushButton('清除 ROI')
+        clear_btn.setObjectName('ocrRoiClearBtn')
+        clear_btn.clicked.connect(self._clear_roi)
+        row.addWidget(edit_btn)
+        row.addWidget(clear_btn)
+        row.addStretch(1)
+        lay.addLayout(row)
+        lay.addStretch(1)
+        return w
+
+    def _roi_summary(self) -> str:
+        mode = self.params.get('roiMode') or 'inherit'
+        roi = self.params.get('roi')
+        if mode != 'draw':
+            return f'模式=继承 · roi={"已忽略" if not roi else roi}'
+        if isinstance(roi, list) and len(roi) == 4:
+            x, y, w, h = roi
+            return f'模式=绘制 · [{x:.0f},{y:.0f},{w:.0f},{h:.0f}]'
+        return '模式=绘制 · 尚未设置矩形（将回退全图）'
+
+    def _sync_roi_lab(self):
+        if getattr(self, '_roi_lab', None):
+            self._roi_lab.setText(self._roi_summary())
+
+    def _edit_roi(self):
+        from desktop.simple_roi_editor import SimpleRoiEditorDialog
+        from PySide6.QtWidgets import QDialog
+        img = self._host_sample_image()
+        dlg = SimpleRoiEditorDialog(self.params, parent=self, image_data=img, title='OCR ROI 编辑器')
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        for k, v in dlg.result_params().items():
+            self.params[k] = v
+        # when draw mode, ensure engine sees roi; inherit clears use of stale? keep roi for re-enable
+        self._sync_roi_lab()
+        self._emit()
+
+    def _clear_roi(self):
+        self.params['roi'] = None
+        self.params['roiMode'] = 'inherit'
+        self._sync_roi_lab()
+        # sync combo if present
+        try:
+            box = self.findChild(QComboBox, 'ocrRoiMode')
+            if box is not None:
+                idx = max(0, box.findData('inherit'))
+                box.blockSignals(True)
+                box.setCurrentIndex(idx)
+                box.blockSignals(False)
+        except Exception:
+            pass
+        self._emit()
 
     def _result_tab(self):
         w = QWidget(); form = QFormLayout(w); form.setContentsMargins(10, 10, 10, 10)

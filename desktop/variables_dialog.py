@@ -243,9 +243,21 @@ class VariablesDialog(QDialog):
             '折叠分组：隐藏 commAccept_<项> 明细，保留 Pass/Fail/Skip/Overall/At/Host/Port 摘要'
         )
         self.fold_comm.setChecked(self._load_fold_comm_pref())
+        self.watch_preset = QComboBox()
+        self.watch_preset.setObjectName('varsWatchPreset')
+        self.watch_preset.setToolTip('Host 监视过滤：测量链 / Comm / 缺陷OCR 注入标量')
+        for lab, key in (
+            ('过滤·全部', 'all'),
+            ('过滤·测量链', 'measure'),
+            ('过滤·缺陷OCR', 'defects_ocr'),
+            ('过滤·Comm', 'comm'),
+            ('过滤·注入标量', 'inject'),
+        ):
+            self.watch_preset.addItem(lab, key)
         self.count_label = QLabel('0 项')
         row.addWidget(self.mode); row.addWidget(self.scope); row.addWidget(self.global_only)
-        row.addWidget(self.fold_comm); row.addWidget(self.search, 1); row.addWidget(self.count_label)
+        row.addWidget(self.fold_comm); row.addWidget(self.watch_preset)
+        row.addWidget(self.search, 1); row.addWidget(self.count_label)
         refresh = QPushButton('重新读取（撤销当前值编辑）'); refresh.clicked.connect(self.refresh); row.addWidget(refresh)
         self.hint = QLabel(); self.hint.setWordWrap(True); layout.addWidget(self.hint)
         self.table = QTableWidget(0, 8); self.table.setObjectName('variableTable')
@@ -270,6 +282,7 @@ class VariablesDialog(QDialog):
         self._load_definitions()
         self.mode.currentIndexChanged.connect(self.render); self.scope.currentIndexChanged.connect(self.render); self.search.textChanged.connect(self.render); self.global_only.toggled.connect(self.render)
         self.fold_comm.toggled.connect(self._on_fold_comm_toggled)
+        self.watch_preset.currentIndexChanged.connect(self.render)
         self.document.changed.connect(self._document_changed)
         self.backend.result.connect(self._result); self.backend.error.connect(self._error)
         self.finished.connect(self._disconnect)
@@ -628,6 +641,19 @@ class VariablesDialog(QDialog):
             for name in names:
                 if fold and _is_comm_detail(name):
                     continue
+                # Host 监视过滤预设
+                try:
+                    wp = getattr(self, 'watch_preset', None)
+                    preset = wp.currentData() if wp is not None else 'all'
+                    if preset and preset != 'all':
+                        from desktop.host_var_watch import classify_watch_key
+                        cat = classify_watch_key(name)
+                        if preset == 'inject' and cat == 'other':
+                            continue
+                        if preset != 'inject' and cat != preset:
+                            continue
+                except Exception:
+                    pass
                 note = str((self.notes.get(scope) or {}).get(name) or '')
                 if q and q not in name.lower() and q not in note.lower(): continue
                 value = initials.get(name, MISSING) if initial else current.get(name, MISSING)
