@@ -846,6 +846,32 @@ class CommManagerDialog(QDialog):
         self.result_okng_tx_meta.setStyleSheet('color:#666;font-size:11px;')
         resp_lay.addWidget(self.result_okng_tx_meta)
 
+        # Page chrome: sendEvents result-out → Host SM / HMI status rail closed-loop
+        tip_loop = QLabel(
+            'sendEvents 结果出站 → Host SM / HMI 状态轨 闭环页铬：出站后回写上位机状态与操作员状态轨（无现场 TCP）。'
+        )
+        tip_loop.setWordWrap(True)
+        tip_loop.setStyleSheet('color:#888;')
+        resp_lay.addWidget(tip_loop)
+        self.tx_status_rail_loop_strip = QPlainTextEdit()
+        self.tx_status_rail_loop_strip.setObjectName('commSendEventsHostSmStatusRailLoopStrip')
+        self.tx_status_rail_loop_strip.setReadOnly(True)
+        self.tx_status_rail_loop_strip.setMaximumHeight(100)
+        self.tx_status_rail_loop_strip.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#1a2430;color:#9ec9f0;'
+        )
+        self.tx_status_rail_loop_strip.setPlainText('(尚无 sendEvents→Host SM/HMI 状态轨闭环)')
+        self.tx_status_rail_loop_strip.setToolTip(
+            'Comm sendEvents result-out → Host SM / HMI status rail closed-loop page chrome'
+        )
+        resp_lay.addWidget(QLabel('sendEvents → Host SM / HMI 状态轨 闭环条（页铬）'))
+        resp_lay.addWidget(self.tx_status_rail_loop_strip)
+        self.tx_status_rail_loop_meta = QLabel('(出站→状态轨闭环待命)')
+        self.tx_status_rail_loop_meta.setObjectName('commSendEventsHostSmStatusRailLoopMeta')
+        self.tx_status_rail_loop_meta.setWordWrap(True)
+        self.tx_status_rail_loop_meta.setStyleSheet('color:#666;font-size:11px;')
+        resp_lay.addWidget(self.tx_status_rail_loop_meta)
+
         resp_lay.addStretch(1)
         self.tabs.addTab(resp, '响应')
 
@@ -2248,9 +2274,107 @@ class CommManagerDialog(QDialog):
             )
         except Exception:
             pass
+        # Closed-loop page chrome: result-out → Host SM / HMI status rail
+        loop_bag = {}
+        try:
+            loop_bag = self._soft_close_loop_host_sm_status_rail(
+                judge=j, recipe=recipe, status_var=status_var,
+                tx_n=tx_n, devices=devices, is_ok=is_ok, snap=snap,
+            )
+        except Exception:
+            loop_bag = {}
         return {
             'okng': j, 'tx': tx_n, 'devices': devices, 'entries': entries,
             'resultOk': 1 if is_ok else 0, 'pageStrip': page,
+            'statusRailLoop': loop_bag,
+        }
+
+    def _soft_close_loop_host_sm_status_rail(self, *, judge='OK', recipe='', status_var='',
+                                            tx_n=0, devices=None, is_ok=True, snap=None):
+        """sendEvents result-out → Host SM / HMI status rail closed-loop page chrome."""
+        from datetime import datetime
+        snap = dict(snap or {})
+        j = str(judge or 'OK')
+        devices = list(devices or [])
+        ts = datetime.now().strftime('%H:%M:%S')
+        host_state = 'Idle' if is_ok else 'Alarm'
+        rail_status = 'ready' if is_ok else 'alarm'
+        # Resolve Host SM + HMI from document/parent window
+        hmi = None
+        host = None
+        try:
+            parent = self.parent()
+            # walk up to MainWindow-ish
+            w = parent
+            for _ in range(8):
+                if w is None:
+                    break
+                hmi = getattr(w, 'operator_hmi', None) or hmi
+                host = getattr(w, 'host_state_machine', None) or getattr(w, 'host_sm', None) or host
+                if hmi is not None or host is not None:
+                    break
+                w = w.parent() if hasattr(w, 'parent') else None
+            if hmi is not None and host is None:
+                host = getattr(hmi, '_host_sm', None)
+        except Exception:
+            pass
+        liaison = []
+        if host is not None:
+            try:
+                if hasattr(host, 'set_state'):
+                    host.set_state(host_state, f'sendEvents 出站 {j} · {recipe or "—"}')
+                if hasattr(host, 'push_liaison_event'):
+                    code = 'TX_OK_RAIL' if is_ok else 'TX_NG_RAIL'
+                    kind = '出站通过' if is_ok else '出站报警'
+                    host.push_liaison_event(
+                        f'sendEvents→状态轨 · {j} · TX={tx_n} · {",".join(devices) or "LocalLoop"}',
+                        kind=kind, code=code,
+                    )
+                    liaison.append(code)
+                if hasattr(host, 'set_comm_tx_status_rail_loop_strip'):
+                    host.set_comm_tx_status_rail_loop_strip(
+                        f'出站闭环 · okng={j} · host={host_state} · TX={tx_n} · '
+                        f'devices={",".join(devices) or "—"} · rail={rail_status}',
+                        okng=j, host_state=host_state, tx_n=tx_n,
+                    )
+            except Exception:
+                pass
+        # HMI status rail / page chrome
+        if hmi is not None and hasattr(hmi, 'apply_comm_tx_status_rail_closed_loop'):
+            try:
+                hmi.apply_comm_tx_status_rail_closed_loop(
+                    judge=j, recipe=recipe, status_var=status_var,
+                    host_state=host_state, rail_status=rail_status,
+                    tx_n=tx_n, devices=devices, snap=snap,
+                )
+            except Exception:
+                pass
+        lines = [
+            '── sendEvents result-out → Host SM / HMI status rail closed-loop ──',
+            f'[{ts}] okng={j} · host→{host_state} · rail={rail_status} · TX={tx_n} · '
+            f'devices={",".join(devices) or "—"} · liaison={",".join(liaison) or "—"}',
+            f'  statusVar={status_var or "—"} · recipe={recipe or "—"} · LocalBus · 页铬非芯片',
+            f'  targets=hostStateRail · hmiStatusRail · pageChromeBanner · fixedBars',
+        ]
+        page = '\n'.join(lines)
+        if hasattr(self, 'tx_status_rail_loop_strip') and self.tx_status_rail_loop_strip is not None:
+            self.tx_status_rail_loop_strip.setPlainText(page)
+            if is_ok:
+                self.tx_status_rail_loop_strip.setStyleSheet(
+                    'font-family:monospace;font-size:11px;background:#1c2a1c;color:#9ed9a8;'
+                )
+            else:
+                self.tx_status_rail_loop_strip.setStyleSheet(
+                    'font-family:monospace;font-size:11px;background:#2a1c1c;color:#ffb4b4;'
+                )
+        if hasattr(self, 'tx_status_rail_loop_meta') and self.tx_status_rail_loop_meta is not None:
+            self.tx_status_rail_loop_meta.setText(
+                f'闭环 · okng={j} · host={host_state} · rail={rail_status} · TX={tx_n} · '
+                f'liaison={",".join(liaison) or "—"} · 状态轨页铬'
+            )
+        return {
+            'okng': j, 'hostState': host_state, 'railStatus': rail_status,
+            'tx': tx_n, 'devices': devices, 'liaison': liaison, 'pageStrip': page,
         }
 
     def _clear_autoack_send_format_roundtrip(self):

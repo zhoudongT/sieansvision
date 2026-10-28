@@ -770,6 +770,32 @@ class HostStateMachineWidget(QWidget):
         self._alarm_okng_cobind_strip.setToolTip('Host SM 报警历史 ↔ HMI OK-NG 看板页铬共绑')
         lay.addWidget(self._alarm_okng_cobind_strip)
 
+        # Comm sendEvents → status rail closed-loop page chrome
+        self._comm_tx_status_rail_loop_strip = QLabel('出站→状态轨闭环 · 待命')
+        self._comm_tx_status_rail_loop_strip.setObjectName('hostCommTxStatusRailLoopStrip')
+        self._comm_tx_status_rail_loop_strip.setWordWrap(True)
+        self._comm_tx_status_rail_loop_strip.setStyleSheet(
+            'background:#1a2430;color:#9ec9f0;border:1px solid #3a6a9a;'
+            'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+        )
+        self._comm_tx_status_rail_loop_strip.setToolTip(
+            'Comm sendEvents result-out → Host SM / HMI status rail closed-loop'
+        )
+        lay.addWidget(self._comm_tx_status_rail_loop_strip)
+
+        # Alarm hist export/filter ↔ OK-NG sequence co-bind
+        self._alarm_okng_seq_cobind_strip = QLabel('报警导出/筛选 ↔ OK-NG 序列共绑 · 待命')
+        self._alarm_okng_seq_cobind_strip.setObjectName('hostAlarmHistOkNgSeqCoBindStrip')
+        self._alarm_okng_seq_cobind_strip.setWordWrap(True)
+        self._alarm_okng_seq_cobind_strip.setStyleSheet(
+            'background:#1a2030;color:#9ec9f0;border:1px solid #3a6a9a;'
+            'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+        )
+        self._alarm_okng_seq_cobind_strip.setToolTip(
+            '报警历史导出/筛选 ↔ OK-NG 序列页铬共绑'
+        )
+        lay.addWidget(self._alarm_okng_seq_cobind_strip)
+
         # wave22: Alarm 历史联调条（试跑清除 / 换型失败 / 报警清除）
         self._liaison_strip = QLabel('联调 · 等待事件（试跑清除 / 换型失败 / 报警清除）')
         self._liaison_strip.setObjectName('hostLiaisonStrip')
@@ -1784,6 +1810,14 @@ class HostStateMachineWidget(QWidget):
         except Exception as err:
             self._log_line(f'复制失败：{err}')
 
+        try:
+            self._soft_bump_alarm_hist_okng_seq_cobind(
+                export_kind='clipboard', export_n=len(getattr(self, '_alarm_history', []) or []),
+                note='导出clipboard',
+            )
+        except Exception:
+            pass
+
     def export_alarm_history_file(self):
         path, _ = QFileDialog.getSaveFileName(
             self, '导出报警历史', 'alarm-history.csv', 'CSV (*.csv);;All (*)')
@@ -1795,7 +1829,14 @@ class HostStateMachineWidget(QWidget):
             self._log_line(f'报警历史已导出 · {path}')
         except Exception as err:
             self._log_line(f'导出失败：{err}')
-
+            return
+        try:
+            self._soft_bump_alarm_hist_okng_seq_cobind(
+                export_kind='file', export_n=len(getattr(self, '_alarm_history', []) or []),
+                note='导出file',
+            )
+        except Exception:
+            pass
 
     @staticmethod
     def _liaison_severity(kind: str = '', code: str = '') -> str:
@@ -37927,6 +37968,11 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             pass
 
+        try:
+            self._soft_bump_alarm_hist_okng_seq_cobind(note='筛选刷新')
+        except Exception:
+            pass
+
     def set_production_snapshot(self, ok_n=None, ng_n=None, *, host_state: str | None = None):
         """Feed OK/NG/yield into alarm-tab production strip (VM run-mode feel)."""
         strip = getattr(self, '_prod_strip', None)
@@ -37935,6 +37981,10 @@ class HostStateMachineWidget(QWidget):
         try:
             ok_i = int(ok_n) if ok_n is not None else None
             ng_i = int(ng_n) if ng_n is not None else None
+            if ok_i is not None:
+                self._prod_ok = ok_i
+            if ng_i is not None:
+                self._prod_ng = ng_i
         except (TypeError, ValueError):
             ok_i = ng_i = None
         st = host_state or self._state
@@ -37997,6 +38047,11 @@ class HostStateMachineWidget(QWidget):
         except Exception:
             pass
 
+        try:
+            self._soft_bump_alarm_hist_okng_seq_cobind(note='刷新')
+        except Exception:
+            pass
+
     def set_alarm_okng_cobind_strip(self, text: str, *, hist_n: int = 0, open_n: int = 0,
                                    ok_n: int = 0, ng_n: int = 0, judge: str = '—'):
         """Page-level Alarm history ↔ OK-NG dashboard co-bind mirror (not chips)."""
@@ -38020,6 +38075,157 @@ class HostStateMachineWidget(QWidget):
                 'background:#1a2030;color:#9ec9f0;border:1px solid #3a6a9a;'
                 'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
             )
+
+
+    def set_comm_tx_status_rail_loop_strip(self, text: str, *, okng: str = '—',
+                                          host_state: str = 'Idle', tx_n: int = 0):
+        """Comm sendEvents result-out → status rail closed-loop page chrome."""
+        lab = getattr(self, '_comm_tx_status_rail_loop_strip', None)
+        if lab is None:
+            return
+        lab.setText(str(text or ''))
+        if str(okng).upper() in ('NG', 'FAIL', '不良') or host_state == 'Alarm':
+            lab.setStyleSheet(
+                'background:#3a1c1c;color:#ffb4b4;border:1px solid #e35d6a;'
+                'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+            )
+        else:
+            lab.setStyleSheet(
+                'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+            )
+        # Soft paint host state rail
+        try:
+            rail = getattr(self, '_state_rail_labels', None) or {}
+            for st, rlab in rail.items():
+                on = (st == host_state)
+                if on:
+                    if st == 'Alarm':
+                        rlab.setStyleSheet(
+                            'background:#e35d6a;color:#1a0b0b;font-weight:700;padding:2px 6px;'
+                        )
+                    else:
+                        rlab.setStyleSheet(
+                            'background:#3ecf8e;color:#0b1a12;font-weight:700;padding:2px 6px;'
+                        )
+        except Exception:
+            pass
+
+    def set_alarm_okng_seq_cobind_strip(self, text: str, *, shown: int = 0, total: int = 0,
+                                       open_n: int = 0, ok_n: int = 0, ng_n: int = 0,
+                                       seq: str = '', judge: str = '—'):
+        """Alarm hist export/filter ↔ OK-NG sequence page co-bind strip."""
+        lab = getattr(self, '_alarm_okng_seq_cobind_strip', None)
+        if lab is None:
+            return
+        lab.setText(str(text or ''))
+        alarm_on = open_n > 0 or str(judge).upper() in ('NG', 'FAIL', '不良')
+        if alarm_on:
+            lab.setStyleSheet(
+                'background:#3a1c1c;color:#ffb4b4;border:1px solid #e35d6a;'
+                'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+            )
+        elif str(judge).upper() in ('OK', 'PASS', '良', '通过'):
+            lab.setStyleSheet(
+                'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+            )
+        else:
+            lab.setStyleSheet(
+                'background:#1a2030;color:#9ec9f0;border:1px solid #3a6a9a;'
+                'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+            )
+
+    def _soft_bump_alarm_hist_okng_seq_cobind(self, *, export_kind='', export_n=0, note='筛选'):
+        """Push filtered/exported alarm hist ↔ OK-NG sequence co-bind to HMI page chrome."""
+        try:
+            hist = list(self.alarm_history() or [])
+        except Exception:
+            hist = []
+        # Rebuild filtered list same as UI
+        needle = ''
+        filt = getattr(self, '_alarm_filter', None)
+        if filt is not None:
+            try:
+                needle = (filt.text() or '').strip().lower()
+            except Exception:
+                needle = ''
+        status = 'all'
+        sf = getattr(self, '_alarm_status_filter', None)
+        if sf is not None:
+            try:
+                status = sf.currentData() or 'all'
+            except Exception:
+                status = 'all'
+        sev_f = 'all'
+        sfv = getattr(self, '_alarm_sev_filter', None)
+        if sfv is not None:
+            try:
+                sev_f = sfv.currentData() or 'all'
+            except Exception:
+                sev_f = 'all'
+        filtered = []
+        for e in hist:
+            reason = str(e.get('reason', '') or '')
+            cleared = bool(e.get('cleared'))
+            if status == 'open' and cleared:
+                continue
+            if status == 'cleared' and not cleared:
+                continue
+            if status == 'liaison' and not e.get('liaison'):
+                continue
+            sev = e.get('severity') or 'info'
+            if sev_f and sev_f != 'all':
+                sev_norm = 'warning' if sev in ('warn', 'warning') else sev
+                want = 'warning' if sev_f in ('warn', 'warning') else sev_f
+                if sev_norm != want:
+                    continue
+            if needle and needle not in reason.lower() and needle not in str(e.get('ts') or '').lower():
+                continue
+            filtered.append(e)
+        # OK/NG soft counts from production snapshot if any
+        ok_n = int(getattr(self, '_prod_ok', 0) or 0)
+        ng_n = int(getattr(self, '_prod_ng', 0) or 0)
+        host_state = getattr(self, '_state', 'Idle') or 'Idle'
+        judge = 'NG' if host_state == 'Alarm' else ('OK' if ok_n >= ng_n and (ok_n + ng_n) > 0 else '—')
+        # Sequence from alarm spark open/cleared as soft O/N proxy + prod
+        seq_bits = []
+        for e in hist[-24:]:
+            seq_bits.append('N' if not e.get('cleared') else 'O')
+        seq = ''.join(seq_bits)
+        summary = (
+            f'报警导出/筛选 ↔ OK-NG 序列 · {note} · 显示 {len(filtered)}/{len(hist)} · '
+            f'OK {ok_n} NG {ng_n} · host={host_state}'
+            + (f' · 序列 {seq}' if seq else '')
+            + (f' · 导出={export_kind}:{export_n}' if export_kind else '')
+            + (f' · 关键字={needle!r}' if needle else '')
+            + (f' · 状态={status}' if status != 'all' else '')
+        )
+        self.set_alarm_okng_seq_cobind_strip(
+            summary, shown=len(filtered), total=len(hist),
+            open_n=sum(1 for e in hist if not e.get('cleared')),
+            ok_n=ok_n, ng_n=ng_n, seq=seq, judge=judge,
+        )
+        # Push to linked HMI if any
+        hmi = getattr(self, '_operator_hmi', None) or getattr(self, 'operator_hmi', None)
+        if hmi is None:
+            try:
+                w = self.window() if hasattr(self, 'window') else None
+                if w is not None:
+                    hmi = getattr(w, 'operator_hmi', None)
+            except Exception:
+                hmi = None
+        if hmi is not None and hasattr(hmi, 'co_bind_alarm_hist_export_filter_okng_sequence'):
+            try:
+                hmi.co_bind_alarm_hist_export_filter_okng_sequence(
+                    hist=hist, filtered=filtered, filter_needle=needle,
+                    filter_status=status, export_kind=export_kind, export_n=export_n,
+                    ok_n=ok_n, ng_n=ng_n, judge=judge, host_state=host_state,
+                    seq=seq, note=note,
+                )
+            except Exception:
+                pass
+        return {'shown': len(filtered), 'total': len(hist), 'seq': seq}
 
     def set_okng_dashboard_strip(self, text: str, *, alarm_on: bool = False):
         """Page-level Alarm/OK-NG dashboard soft strip (no sev-chip cascade)."""

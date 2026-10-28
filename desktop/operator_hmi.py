@@ -1054,6 +1054,55 @@ class OperatorHmiView(QWidget):
         )
         root.addWidget(self._variant_chain_preview_strip)
 
+        # Comm sendEvents → Host SM / HMI status rail closed-loop page chrome
+        self._comm_tx_status_rail_loop_strip = QLabel('出站→状态轨闭环 · 待命')
+        self._comm_tx_status_rail_loop_strip.setObjectName('hmiCommTxStatusRailClosedLoopStrip')
+        self._comm_tx_status_rail_loop_strip.setWordWrap(True)
+        self._comm_tx_status_rail_loop_strip.setStyleSheet(
+            'background:#1a2430;color:#9ec9f0;border:1px solid #3a6a9a;'
+            'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+        )
+        self._comm_tx_status_rail_loop_strip.setToolTip(
+            'Comm sendEvents result-out → Host SM / HMI status rail closed-loop page chrome'
+        )
+        root.addWidget(self._comm_tx_status_rail_loop_strip)
+
+        # Recipe variant apply → chain dry-run → OK-NG dashboard co-update
+        self._variant_dryrun_okng_strip = QLabel('变体套用·链 dry-run → OK-NG 看板 · 待命')
+        self._variant_dryrun_okng_strip.setObjectName('hmiVariantDryRunOkNgCoUpdateStrip')
+        self._variant_dryrun_okng_strip.setWordWrap(True)
+        self._variant_dryrun_okng_strip.setStyleSheet(
+            'background:#1a2430;color:#c5e1a5;border:1px solid #3a7a5a;'
+            'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+        )
+        self._variant_dryrun_okng_strip.setToolTip(
+            '配方变体套用 → production_task 链 dry-run → OK-NG 看板页共更'
+        )
+        root.addWidget(self._variant_dryrun_okng_strip)
+
+        # Alarm hist export/filter ↔ OK-NG sequence page co-bind
+        self._alarm_okng_seq_cobind_strip = QLabel('报警导出/筛选 ↔ OK-NG 序列共绑 · 待命')
+        self._alarm_okng_seq_cobind_strip.setObjectName('hmiAlarmHistOkNgSeqCoBindStrip')
+        self._alarm_okng_seq_cobind_strip.setWordWrap(True)
+        self._alarm_okng_seq_cobind_strip.setStyleSheet(
+            'background:#1a2030;color:#9ec9f0;border:1px solid #3a6a9a;'
+            'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+        )
+        self._alarm_okng_seq_cobind_strip.setToolTip(
+            'Host SM 报警历史导出/筛选 ↔ HMI OK-NG 序列页铬共绑'
+        )
+        root.addWidget(self._alarm_okng_seq_cobind_strip)
+        self._alarm_okng_seq_cobind_detail = QPlainTextEdit()
+        self._alarm_okng_seq_cobind_detail.setObjectName('hmiAlarmHistOkNgSeqCoBindDetail')
+        self._alarm_okng_seq_cobind_detail.setReadOnly(True)
+        self._alarm_okng_seq_cobind_detail.setMaximumHeight(90)
+        self._alarm_okng_seq_cobind_detail.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#141a24;color:#c5d0e0;'
+        )
+        self._alarm_okng_seq_cobind_detail.setPlainText('(尚无报警导出/筛选 ↔ OK-NG 序列共绑明细)')
+        root.addWidget(self._alarm_okng_seq_cobind_detail)
+        self._okng_seq_bits = []  # soft OK/NG sequence for co-bind (page chrome; not chips)
+
         # Always-available default run strip (also used when layout has no 运行控制)
         self._default_strip = QWidget()
         self._default_strip.setObjectName('hmiDefaultStrip')
@@ -3507,6 +3556,228 @@ class OperatorHmiView(QWidget):
             except Exception:
                 pass
         return {'recipe': recipe, 'variant': variant, 'steps': n, 'text': text}
+
+    def apply_comm_tx_status_rail_closed_loop(self, *, judge='OK', recipe='', status_var='',
+                                              host_state='Idle', rail_status='ready',
+                                              tx_n=0, devices=None, snap=None):
+        """Comm sendEvents result-out → Host SM / HMI status rail closed-loop page chrome."""
+        from datetime import datetime
+        devices = list(devices or [])
+        snap = dict(snap or {})
+        j = str(judge or 'OK')
+        ts = datetime.now().strftime('%H:%M:%S')
+        try:
+            from desktop.host_state_machine import STATE_ZH
+            st_zh = STATE_ZH.get(host_state, host_state)
+        except Exception:
+            st_zh = host_state
+        text = (
+            f'出站→状态轨闭环 · [{ts}] okng={j} · host={st_zh} · rail={rail_status} · '
+            f'TX={tx_n} · devices={",".join(devices) or "—"}'
+            + (f' · 配方 {recipe}' if recipe else '')
+            + (f' · {status_var}' if status_var else '')
+        )
+        lab = getattr(self, '_comm_tx_status_rail_loop_strip', None)
+        if lab is not None:
+            lab.setText(text)
+            if str(j).upper() in ('NG', 'FAIL', '不良') or host_state == 'Alarm':
+                lab.setStyleSheet(
+                    'background:#3a1c1c;color:#ffb4b4;border:1px solid #e35d6a;'
+                    'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+                )
+            else:
+                lab.setStyleSheet(
+                    'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                    'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+                )
+        # Paint status rail labels when present
+        rail = getattr(self, '_state_rail_labels', None) or {}
+        if rail:
+            for st, rlab in rail.items():
+                try:
+                    on = (st == host_state)
+                    rlab.setStyleSheet(
+                        ('background:#3ecf8e;color:#0b1a12;font-weight:700;padding:2px 6px;'
+                         if on and st != 'Alarm' else
+                         'background:#e35d6a;color:#1a0b0b;font-weight:700;padding:2px 6px;'
+                         if on and st == 'Alarm' else
+                         f'background:{CARD};color:{TEXT_MUTED};padding:2px 6px;')
+                    )
+                except Exception:
+                    pass
+        # Soft bump page chrome banner / fixed bars
+        ban = getattr(self, '_page_chrome_banner', None)
+        if ban is not None:
+            try:
+                ban.setText(
+                    f'页铬 · 出站闭环 {j} · host={st_zh} · rail={rail_status}'
+                    + (f' · 配方 {recipe}' if recipe else '')
+                    + (f' · TX={tx_n}' if tx_n else '')
+                )
+            except Exception:
+                pass
+        # Keep live chrome bag
+        live = dict(getattr(self, '_live_page_chrome', None) or {})
+        live.update({
+            'okng': j, 'hostState': host_state, 'railStatus': rail_status,
+            'recipe': recipe or live.get('recipe'), 'statusVar': status_var or live.get('statusVar'),
+        })
+        self._live_page_chrome = live
+        self._live_okng = j
+        self._host_state = host_state
+        # Refresh OK-NG dashboard lightly
+        try:
+            self.refresh_okng_dashboard_strip(
+                judge=j, host_state=host_state, recipe=recipe or None,
+                status=rail_status, status_var=status_var or None,
+            )
+        except Exception:
+            pass
+        return {'okng': j, 'hostState': host_state, 'railStatus': rail_status, 'text': text}
+
+    def apply_variant_dryrun_okng_co_update(self, *, recipe='', variant='', steps=None,
+                                           ok_n=0, ng_n=0, judge='OK', host_state='Idle',
+                                           status_var='', note='变体 dry-run', dry_run=True):
+        """Recipe variant apply → production_task chain dry-run → OK-NG dashboard page co-update."""
+        from datetime import datetime
+        steps = list(steps or [])
+        n = len(steps)
+        ts = datetime.now().strftime('%H:%M:%S')
+        total = int(ok_n or 0) + int(ng_n or 0)
+        ytxt = f'{(100.0 * int(ok_n or 0) / total):.1f}%' if total else '—'
+        ops = ', '.join(
+            str((s.get('op') or s.get('operation') or s.get('step') or ''))[:16]
+            for s in steps[:5]
+        )
+        mode = 'dry-run' if dry_run else 'apply'
+        text = (
+            f'变体{mode}→OK-NG · [{ts}] 配方 {recipe or "—"}'
+            + (f'/{variant}' if variant else '')
+            + f' · 链 {n} 步 · OK {ok_n} NG {ng_n} 良率 {ytxt} · 判定 {judge} · host={host_state}'
+            + (f' · {status_var}' if status_var else '')
+            + (f' · [{ops}{"…" if n > 5 else ""}]' if ops else '')
+            + f' · {note}'
+        )
+        lab = getattr(self, '_variant_dryrun_okng_strip', None)
+        if lab is not None:
+            lab.setText(text)
+            if str(judge).upper() in ('NG', 'FAIL', '不良'):
+                lab.setStyleSheet(
+                    'background:#3a1c1c;color:#ffb4b4;border:1px solid #e35d6a;'
+                    'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+                )
+            else:
+                lab.setStyleSheet(
+                    'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                    'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+                )
+        # Co-update OK-NG dashboard + recipe chrome
+        try:
+            if recipe:
+                self.set_recipe_chrome(recipe, variant or '')
+        except Exception:
+            pass
+        try:
+            self.refresh_okng_dashboard_strip(
+                ok_n=ok_n, ng_n=ng_n, judge=judge, host_state=host_state,
+                recipe=recipe or None, status_var=status_var or None,
+            )
+        except Exception:
+            pass
+        # Soft bump sequence bits
+        bits = list(getattr(self, '_okng_seq_bits', []) or [])
+        bits.append(1 if str(judge).upper() in ('OK', 'PASS', '良', '通过') else 0)
+        self._okng_seq_bits = bits[-48:]
+        return {'recipe': recipe, 'variant': variant, 'steps': n, 'ok': ok_n, 'ng': ng_n,
+                'judge': judge, 'text': text, 'dryRun': dry_run}
+
+    def co_bind_alarm_hist_export_filter_okng_sequence(
+            self, *, hist=None, filtered=None, filter_needle='', filter_status='all',
+            export_kind='', export_n=0, ok_n=0, ng_n=0, judge='—', host_state='Idle',
+            seq=None, note='导出/筛选共绑'):
+        """Alarm hist export/filter ↔ OK-NG sequence page co-bind (page chrome; not chips)."""
+        from datetime import datetime
+        hist = list(hist if hist is not None else [])
+        filtered = list(filtered if filtered is not None else hist)
+        # Build OK/NG sequence from soft bits or stats panels
+        if seq is None:
+            bits = list(getattr(self, '_okng_seq_bits', []) or [])
+            if not bits:
+                for panel in getattr(self, '_stats_panels', []) or []:
+                    h = list(getattr(panel, '_ok_hist', []) or [])
+                    if h:
+                        bits = [1 if b else 0 for b in reversed(h[:32])]
+                        break
+            seq = ''.join('O' if b else 'N' for b in bits[-32:]) if bits else ''
+        else:
+            seq = str(seq or '')
+        open_n = sum(1 for e in hist if not e.get('cleared'))
+        shown = len(filtered)
+        total = len(hist)
+        ts = datetime.now().strftime('%H:%M:%S')
+        total_okng = int(ok_n or 0) + int(ng_n or 0)
+        ytxt = f'{(100.0 * int(ok_n or 0) / total_okng):.1f}%' if total_okng else '—'
+        filt_desc = []
+        if filter_needle:
+            filt_desc.append(f'关键字={filter_needle!r}')
+        if filter_status and filter_status != 'all':
+            filt_desc.append(f'状态={filter_status}')
+        if export_kind:
+            filt_desc.append(f'导出={export_kind}:{export_n}')
+        summary = (
+            f'报警导出/筛选 ↔ OK-NG 序列 · {note} · 显示 {shown}/{total} '
+            f'(开 {open_n}) · OK {ok_n} NG {ng_n} 良率 {ytxt} · 判定 {judge} · host={host_state}'
+            + (f' · 序列 {seq}' if seq else '')
+            + (f' · {" · ".join(filt_desc)}' if filt_desc else '')
+        )
+        lab = getattr(self, '_alarm_okng_seq_cobind_strip', None)
+        if lab is not None:
+            lab.setText(summary)
+            alarm_on = (host_state == 'Alarm') or open_n > 0 or str(judge).upper() in ('NG', 'FAIL', '不良')
+            if alarm_on:
+                lab.setStyleSheet(
+                    'background:#3a1c1c;color:#ffb4b4;border:1px solid #e35d6a;'
+                    'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+                )
+            elif str(judge).upper() in ('OK', 'PASS', '良', '通过'):
+                lab.setStyleSheet(
+                    'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                    'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+                )
+            else:
+                lab.setStyleSheet(
+                    'background:#1a2030;color:#9ec9f0;border:1px solid #3a6a9a;'
+                    'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+                )
+        detail = getattr(self, '_alarm_okng_seq_cobind_detail', None)
+        if detail is not None:
+            lines = [
+                '── Alarm hist export/filter ↔ OK-NG sequence page co-bind ──',
+                f'[{ts}] shown={shown}/{total} open={open_n} · okng={ok_n}/{ng_n} · judge={judge} · seq={seq or "—"}',
+            ]
+            if filt_desc:
+                lines.append('  filter · ' + ' · '.join(filt_desc))
+            for e in filtered[-8:]:
+                clr = 'cleared' if e.get('cleared') else 'OPEN'
+                reason = str(e.get('reason') or e.get('detail') or '')
+                lines.append(f"  [{clr}] {e.get('ts', '')} · {reason[:72]}")
+            if not filtered:
+                lines.append('  (筛选结果空)')
+            detail.setPlainText('\n'.join(lines))
+        # Mirror onto Host SM
+        host = getattr(self, '_host_sm', None) or getattr(self, 'host_state_machine', None)
+        if host is not None and hasattr(host, 'set_alarm_okng_seq_cobind_strip'):
+            try:
+                host.set_alarm_okng_seq_cobind_strip(
+                    summary, shown=shown, total=total, open_n=open_n,
+                    ok_n=ok_n, ng_n=ng_n, seq=seq, judge=judge,
+                )
+            except Exception:
+                pass
+        return {
+            'summary': summary, 'shown': shown, 'total': total, 'open': open_n,
+            'ok': ok_n, 'ng': ng_n, 'seq': seq,
+        }
 
     def set_recipe_chrome(self, name: str = '', variant: str = ''):
 

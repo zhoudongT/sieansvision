@@ -771,6 +771,40 @@ class ProductionTaskPanel(QWidget):
         self._prod_variant_chain_meta.setStyleSheet('color:#666;font-size:11px;')
         lay.addWidget(self._prod_variant_chain_meta)
 
+        # Page-level: variant apply → chain dry-run → OK-NG dashboard co-update
+        lay.addWidget(QLabel('变体套用 → 生产链 dry-run → OK-NG 看板共更（页铬）'))
+        self._prod_variant_dryrun_okng = QPlainTextEdit()
+        self._prod_variant_dryrun_okng.setObjectName('productionTaskVariantDryRunOkNgStrip')
+        self._prod_variant_dryrun_okng.setReadOnly(True)
+        self._prod_variant_dryrun_okng.setMaximumHeight(110)
+        self._prod_variant_dryrun_okng.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#1a2430;color:#c5e1a5;'
+        )
+        self._prod_variant_dryrun_okng.setPlainText('(尚未变体套用/链 dry-run → OK-NG 共更)')
+        lay.addWidget(self._prod_variant_dryrun_okng)
+        self._prod_variant_dryrun_okng_meta = QLabel('(变体 dry-run→OK-NG 待命)')
+        self._prod_variant_dryrun_okng_meta.setObjectName('productionTaskVariantDryRunOkNgMeta')
+        self._prod_variant_dryrun_okng_meta.setWordWrap(True)
+        self._prod_variant_dryrun_okng_meta.setStyleSheet('color:#666;font-size:11px;')
+        lay.addWidget(self._prod_variant_dryrun_okng_meta)
+
+        # Page-level: Comm TX → Host SM / HMI status rail closed-loop mirror
+        lay.addWidget(QLabel('结果出站 → Host SM / HMI 状态轨闭环（页铬）'))
+        self._prod_tx_status_rail_loop = QPlainTextEdit()
+        self._prod_tx_status_rail_loop.setObjectName('productionTaskCommTxStatusRailLoopStrip')
+        self._prod_tx_status_rail_loop.setReadOnly(True)
+        self._prod_tx_status_rail_loop.setMaximumHeight(90)
+        self._prod_tx_status_rail_loop.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#1a2430;color:#9ec9f0;'
+        )
+        self._prod_tx_status_rail_loop.setPlainText('(尚无出站→状态轨闭环)')
+        lay.addWidget(self._prod_tx_status_rail_loop)
+        self._prod_tx_status_rail_loop_meta = QLabel('(出站→状态轨闭环待命)')
+        self._prod_tx_status_rail_loop_meta.setObjectName('productionTaskCommTxStatusRailLoopMeta')
+        self._prod_tx_status_rail_loop_meta.setWordWrap(True)
+        self._prod_tx_status_rail_loop_meta.setStyleSheet('color:#666;font-size:11px;')
+        lay.addWidget(self._prod_tx_status_rail_loop_meta)
+
         self._prod_result_meta = QLabel()
         self._prod_result_meta.setObjectName('productionTaskResultMeta')
         self._prod_result_meta.setWordWrap(True)
@@ -1562,9 +1596,60 @@ class ProductionTaskPanel(QWidget):
                 f'闭环出站 · okng={j} · TX={tx_n} · devices={",".join(devices) or "—"} · '
                 f'{scope}.{sv} · LocalBus · 无现场 TCP'
             )
+        # Mirror closed-loop Host SM / HMI status rail page chrome
+        loop_bag = {}
+        try:
+            host_state = 'Idle' if is_ok else 'Alarm'
+            rail_status = 'ready' if is_ok else 'alarm'
+            loop_lines = [
+                '── result-out → Host SM / HMI status rail closed-loop ──',
+                f'okng={j} · host→{host_state} · rail={rail_status} · TX={tx_n} · '
+                f'devices={",".join(devices) or "—"} · {scope}.{sv}',
+            ]
+            if hasattr(self, '_prod_tx_status_rail_loop') and self._prod_tx_status_rail_loop is not None:
+                self._prod_tx_status_rail_loop.setPlainText('\n'.join(loop_lines))
+                if is_ok:
+                    self._prod_tx_status_rail_loop.setStyleSheet(
+                        'font-family:monospace;font-size:11px;background:#1c2a1c;color:#9ed9a8;'
+                    )
+                else:
+                    self._prod_tx_status_rail_loop.setStyleSheet(
+                        'font-family:monospace;font-size:11px;background:#2a1c1c;color:#ffb4b4;'
+                    )
+            if hasattr(self, '_prod_tx_status_rail_loop_meta') and self._prod_tx_status_rail_loop_meta is not None:
+                self._prod_tx_status_rail_loop_meta.setText(
+                    f'闭环 · okng={j} · host={host_state} · rail={rail_status} · TX={tx_n} · 页铬'
+                )
+            hmi = getattr(w, 'operator_hmi', None) if w is not None else None
+            if hmi is not None and hasattr(hmi, 'apply_comm_tx_status_rail_closed_loop'):
+                hmi.apply_comm_tx_status_rail_closed_loop(
+                    judge=j, recipe=recipe, status_var=f'{scope}.{sv}',
+                    host_state=host_state, rail_status=rail_status,
+                    tx_n=tx_n, devices=devices, snap=snap,
+                )
+            host = getattr(w, 'host_state_machine', None) if w is not None else None
+            if host is None and hmi is not None:
+                host = getattr(hmi, '_host_sm', None)
+            if host is not None and hasattr(host, 'set_state'):
+                try:
+                    host.set_state(host_state, f'出站闭环 {j} · {recipe}')
+                except Exception:
+                    pass
+            if host is not None and hasattr(host, 'set_comm_tx_status_rail_loop_strip'):
+                try:
+                    host.set_comm_tx_status_rail_loop_strip(
+                        f'出站闭环 · okng={j} · host={host_state} · TX={tx_n}',
+                        okng=j, host_state=host_state, tx_n=tx_n,
+                    )
+                except Exception:
+                    pass
+            loop_bag = {'hostState': host_state, 'railStatus': rail_status, 'tx': tx_n}
+        except Exception:
+            loop_bag = {}
         return {
             'okng': j, 'tx': tx_n, 'devices': devices, 'entries': entries,
             'resultOk': 1 if is_ok else 0, 'recipe': recipe,
+            'statusRailLoop': loop_bag,
         }
 
     def soft_preview_variant_prod_chain(self, *, recipe=None, variant=None, modules=None, note='变体链预览'):
@@ -1619,4 +1704,103 @@ class ProductionTaskPanel(QWidget):
         return {
             'recipe': recipe, 'variant': variant, 'steps': preview_rows,
             'statusVar': sv, 'scope': scope, 'chainSteps': len(preview_rows),
+        }
+
+
+    def soft_apply_variant_chain_dryrun_okng(self, *, recipe=None, variant=None, modules=None,
+                                            note='变体 dry-run', dry_run=True, apply_chain=True,
+                                            judge='OK'):
+        """Recipe variant apply → production_task chain dry-run → OK-NG dashboard page co-update."""
+        from datetime import datetime
+        # Preview first
+        bag = self.soft_preview_variant_prod_chain(
+            recipe=recipe, variant=variant, modules=modules, note=note,
+        )
+        recipe = bag.get('recipe') or recipe or '—'
+        variant = bag.get('variant') or variant or ''
+        steps = list(bag.get('steps') or [])
+        sv = bag.get('statusVar') or 'taskStatus'
+        scope = bag.get('scope') or 'global'
+        # Soft apply chain into params (dry-run keeps snapshot for rollback of preview only)
+        prev_chain = list(self.params.get('chain') or [])
+        if apply_chain and steps:
+            self.params['chain'] = [
+                {'step': s.get('step') or '', 'op': s.get('op') or '', 'vars': s.get('vars') or ''}
+                for s in steps
+            ]
+            if recipe and recipe != '—':
+                self.params['recipe'] = recipe
+            try:
+                proj = self.project if isinstance(self.project, dict) else {}
+                if variant:
+                    proj['activeRecipeVariant'] = variant
+                proj['activeRecipeName'] = recipe
+            except Exception:
+                pass
+            # Refresh chain table UI if present
+            try:
+                if hasattr(self, '_reload_chain_table'):
+                    self._reload_chain_table()
+                elif hasattr(self, '_chain_table') and self._chain_table is not None:
+                    # soft rebuild rows
+                    tbl = self._chain_table
+                    if hasattr(tbl, 'setRowCount'):
+                        tbl.setRowCount(0)
+            except Exception:
+                pass
+        # Soft dry-run co-update: simulate one OK/NG tick into HMI OK-NG dashboard
+        j = str(judge or 'OK')
+        is_ok = j.upper() in ('OK', 'PASS', '良', '通过', 'TRUE', '1')
+        ok_n = 1 if is_ok else 0
+        ng_n = 0 if is_ok else 1
+        host_state = 'Idle' if is_ok else 'Alarm'
+        # If dry_run and we mutated chain, restore previous chain after co-update paint
+        ts = datetime.now().strftime('%H:%M:%S')
+        mode = 'dry-run' if dry_run else 'apply'
+        lines = [
+            f'── recipe variant {mode} → production_task chain → OK-NG dashboard co-update ──',
+            f'[{ts}] recipe={recipe}' + (f'/{variant}' if variant else '') +
+            f' · steps={len(steps)} · judge={j} · ok={ok_n} ng={ng_n} · host={host_state}',
+            f'  statusVar={scope}.{sv} · apply_chain={apply_chain} · dry_run={dry_run}',
+            '  ── chain ──',
+        ]
+        for i, s in enumerate(steps[:20], 1):
+            lines.append(f"  {i:02d}. {s.get('step') or '—'} · op={s.get('op') or '—'}")
+        if hasattr(self, '_prod_variant_dryrun_okng') and self._prod_variant_dryrun_okng is not None:
+            self._prod_variant_dryrun_okng.setPlainText('\n'.join(lines))
+            if is_ok:
+                self._prod_variant_dryrun_okng.setStyleSheet(
+                    'font-family:monospace;font-size:11px;background:#1c2a1c;color:#9ed9a8;'
+                )
+            else:
+                self._prod_variant_dryrun_okng.setStyleSheet(
+                    'font-family:monospace;font-size:11px;background:#2a1c1c;color:#ffb4b4;'
+                )
+        if hasattr(self, '_prod_variant_dryrun_okng_meta') and self._prod_variant_dryrun_okng_meta is not None:
+            self._prod_variant_dryrun_okng_meta.setText(
+                f'{mode} · 配方 {recipe}' + (f'/{variant}' if variant else '') +
+                f' · 链 {len(steps)} 步 · OK {ok_n} NG {ng_n} · 看板共更 · 页铬非芯片'
+            )
+        w = self.window()
+        hmi = getattr(w, 'operator_hmi', None) if w is not None else None
+        if hmi is not None and hasattr(hmi, 'apply_variant_dryrun_okng_co_update'):
+            try:
+                hmi.apply_variant_dryrun_okng_co_update(
+                    recipe=recipe, variant=variant, steps=steps,
+                    ok_n=ok_n, ng_n=ng_n, judge=j, host_state=host_state,
+                    status_var=f'{scope}.{sv}', note=note, dry_run=dry_run,
+                )
+            except Exception:
+                pass
+        if dry_run and apply_chain:
+            # restore previous chain after soft paint (dry-run does not persist)
+            try:
+                self.params['chain'] = prev_chain
+            except Exception:
+                pass
+        return {
+            'recipe': recipe, 'variant': variant, 'steps': steps,
+            'ok': ok_n, 'ng': ng_n, 'judge': j, 'dryRun': dry_run,
+            'chainSteps': len(steps), 'hostState': host_state,
+            'statusVar': sv, 'scope': scope,
         }

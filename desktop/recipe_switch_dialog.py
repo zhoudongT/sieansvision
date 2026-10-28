@@ -171,6 +171,33 @@ class RecipeSwitchDialog(QDialog):
         self._variant_chain_meta.setWordWrap(True)
         self._variant_chain_meta.setStyleSheet('color:#666;font-size:11px;')
         left.addWidget(self._variant_chain_meta)
+
+        # Variant apply → chain dry-run → OK-NG dashboard co-update page chrome
+        self._variant_dryrun_okng = QPlainTextEdit()
+        self._variant_dryrun_okng.setObjectName('recipeVariantDryRunOkNgStrip')
+        self._variant_dryrun_okng.setReadOnly(True)
+        self._variant_dryrun_okng.setMaximumHeight(100)
+        self._variant_dryrun_okng.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#1a2430;color:#c5e1a5;'
+        )
+        self._variant_dryrun_okng.setPlainText('(选配方后 dry-run 套用链并共更 OK-NG 看板)')
+        self._variant_dryrun_okng.setToolTip(
+            '配方变体套用 → production_task 链 dry-run → OK-NG 看板页共更'
+        )
+        left.addWidget(self._variant_dryrun_okng)
+        self._variant_dryrun_okng_meta = QLabel('(变体 dry-run→OK-NG 待命)')
+        self._variant_dryrun_okng_meta.setObjectName('recipeVariantDryRunOkNgMeta')
+        self._variant_dryrun_okng_meta.setWordWrap(True)
+        self._variant_dryrun_okng_meta.setStyleSheet('color:#666;font-size:11px;')
+        left.addWidget(self._variant_dryrun_okng_meta)
+        dry_bar = QHBoxLayout()
+        self._variant_dryrun_btn = QPushButton('变体链 dry-run→OK-NG')
+        self._variant_dryrun_btn.setObjectName('recipeVariantDryRunOkNgBtn')
+        self._variant_dryrun_btn.setToolTip('软套用变体 modules 为生产链并 dry-run 共更 OK-NG 看板（不写工程）')
+        self._variant_dryrun_btn.clicked.connect(lambda: self.soft_apply_variant_chain_dryrun_page(dry_run=True))
+        dry_bar.addWidget(self._variant_dryrun_btn)
+        dry_bar.addStretch(1)
+        left.addLayout(dry_bar)
         # 换型 dry-run 左右对照
         sb_head = QHBoxLayout()
         sb_lab = QLabel('换型对照（当前 | 配方）')
@@ -609,6 +636,11 @@ class RecipeSwitchDialog(QDialog):
                 'padding:6px 8px;font-size:12px;'
             )
         return diff
+
+        try:
+            self.soft_apply_variant_chain_dryrun_page(dry_run=True)
+        except Exception:
+            pass
 
     def _preview_apply(self):
         """Dry-run apply-preview on a copy — refreshes side-by-side; never mutates project."""
@@ -1173,6 +1205,93 @@ class RecipeSwitchDialog(QDialog):
                 pass
         return {'recipe': name, 'variant': variant, 'steps': preview}
 
+
+    def soft_apply_variant_chain_dryrun_page(self, entry=None, *, dry_run=True, judge='OK'):
+        """Recipe variant apply → production_task chain dry-run → OK-NG dashboard page co-update."""
+        from datetime import datetime
+        entry = entry or {}
+        if not entry:
+            try:
+                it = self._recipe_list.currentItem() if hasattr(self, '_recipe_list') else None
+                rid = it.data(Qt.ItemDataRole.UserRole) if it is not None else None
+                from desktop import recipe_library as rl
+                entry = next((r for r in rl.list_recipes(self.document.project)
+                              if r.get('id') == rid or r.get('name') == rid), {}) or {}
+            except Exception:
+                entry = {}
+        name = str(entry.get('name') or '')
+        variant = str(entry.get('variant') or '')
+        if not variant and hasattr(self, '_variant_edit'):
+            try:
+                variant = self._variant_edit.text().strip()
+            except Exception:
+                variant = ''
+        modules = list(entry.get('modules') or [])
+        try:
+            self.soft_preview_variant_prod_chain_page(entry)
+        except Exception:
+            pass
+        hmi, host = self._host_hmi()
+        panel = None
+        try:
+            from desktop.production_task_panel import ProductionTaskPanel
+            if host is not None:
+                for w in host.findChildren(ProductionTaskPanel):
+                    panel = w
+                    break
+        except Exception:
+            panel = None
+        bag = {}
+        if panel is not None and hasattr(panel, 'soft_apply_variant_chain_dryrun_okng'):
+            try:
+                bag = panel.soft_apply_variant_chain_dryrun_okng(
+                    recipe=name, variant=variant, modules=modules,
+                    note='配方对话框 dry-run', dry_run=dry_run, apply_chain=True, judge=judge,
+                ) or {}
+            except Exception as err:
+                bag = {'error': str(err)}
+        elif hmi is not None and hasattr(hmi, 'apply_variant_dryrun_okng_co_update'):
+            steps = []
+            for m in modules:
+                if isinstance(m, dict):
+                    steps.append({
+                        'step': str(m.get('name') or m.get('operation') or '步骤'),
+                        'op': str(m.get('operation') or ''),
+                    })
+            is_ok = str(judge).upper() in ('OK', 'PASS', '良', '通过')
+            try:
+                bag = hmi.apply_variant_dryrun_okng_co_update(
+                    recipe=name, variant=variant, steps=steps,
+                    ok_n=1 if is_ok else 0, ng_n=0 if is_ok else 1,
+                    judge=judge, host_state='Idle' if is_ok else 'Alarm',
+                    note='配方对话框 dry-run', dry_run=dry_run,
+                ) or {}
+            except Exception as err:
+                bag = {'error': str(err)}
+        ts = datetime.now().strftime('%H:%M:%S')
+        mode = 'dry-run' if dry_run else 'apply'
+        steps_n = int(bag.get('chainSteps') or 0)
+        if isinstance(bag.get('steps'), list):
+            steps_n = len(bag['steps'])
+        elif not steps_n:
+            steps_n = len(modules)
+        lines = [
+            f'── recipe variant {mode} → production_task chain → OK-NG co-update ──',
+            f'[{ts}] recipe={name or "—"}' + (f'/{variant}' if variant else '') +
+            f' · steps={steps_n} · judge={bag.get("judge") or judge} · '
+            f'OK={bag.get("ok", "—")} NG={bag.get("ng", "—")} · dry_run={dry_run}',
+        ]
+        if bag.get('error'):
+            lines.append(f'  error={bag["error"]}')
+        text = chr(10).join(lines)
+        if hasattr(self, '_variant_dryrun_okng') and self._variant_dryrun_okng is not None:
+            self._variant_dryrun_okng.setPlainText(text)
+        if hasattr(self, '_variant_dryrun_okng_meta') and self._variant_dryrun_okng_meta is not None:
+            self._variant_dryrun_okng_meta.setText(
+                f'{mode} · 配方 {name or "—"}' + (f'/{variant}' if variant else '') +
+                f' · 链 {steps_n} 步 · OK-NG 共更 · 页铬非芯片'
+            )
+        return {'recipe': name, 'variant': variant, 'bag': bag, 'dryRun': dry_run, 'steps': steps_n}
 
     def _co_bind_production_variant_status(self, *, recipe='', variant='', status_var='taskStatus',
                                           scope='global', host_state='Idle'):
