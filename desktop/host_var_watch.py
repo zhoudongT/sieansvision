@@ -13,7 +13,7 @@ from PySide6.QtGui import QColor, QBrush
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox,
     QTableWidget, QTableWidgetItem, QPushButton, QHeaderView, QAbstractItemView,
-    QDialog, QDialogButtonBox,
+    QDialog, QDialogButtonBox, QFileDialog, QMessageBox, QInputDialog,
 )
 
 
@@ -293,6 +293,8 @@ class HostVarWatchBoard(QWidget):
         self._auto = True
         self._pinned_keys: list[str] = []
         self._seed_label = ''
+        self._pin_groups: dict[str, list[str]] = {'默认': []}
+        self._active_pin_group = '默认'
 
         root = QVBoxLayout(self)
         root.setContentsMargins(6, 6, 6, 6)
@@ -336,6 +338,36 @@ class HostVarWatchBoard(QWidget):
         row.addWidget(self.search, 1)
         row.addWidget(self.refresh_btn)
         root.addLayout(row)
+
+        grow = QHBoxLayout()
+        grow.addWidget(QLabel('钉组'))
+        self.pin_group = QComboBox()
+        self.pin_group.setObjectName('hostVarWatchPinGroup')
+        self.pin_group.setToolTip('监视钉组：切换显示的种子键集合')
+        self.pin_group.addItem('默认', '默认')
+        self.pin_group.currentIndexChanged.connect(self._on_pin_group_changed)
+        grow.addWidget(self.pin_group)
+        self.pin_group_new_btn = QPushButton('建组')
+        self.pin_group_new_btn.setObjectName('hostVarWatchPinGroupNewBtn')
+        self.pin_group_new_btn.setToolTip('用当前种子键新建钉组')
+        self.pin_group_new_btn.clicked.connect(self._on_new_pin_group)
+        grow.addWidget(self.pin_group_new_btn)
+        self.pin_group_save_btn = QPushButton('存组')
+        self.pin_group_save_btn.setObjectName('hostVarWatchPinGroupSaveBtn')
+        self.pin_group_save_btn.setToolTip('把当前种子键写入活动钉组')
+        self.pin_group_save_btn.clicked.connect(self._save_active_pin_group)
+        grow.addWidget(self.pin_group_save_btn)
+        self.export_csv_btn = QPushButton('导出CSV')
+        self.export_csv_btn.setObjectName('hostVarWatchExportCsvBtn')
+        self.export_csv_btn.setToolTip('导出当前监视表（含展开列）为 CSV')
+        self.export_csv_btn.clicked.connect(self._on_export_csv_clicked)
+        grow.addWidget(self.export_csv_btn)
+        grow.addStretch(1)
+        self.pin_group_lab = QLabel('')
+        self.pin_group_lab.setObjectName('hostVarWatchPinGroupLab')
+        self.pin_group_lab.setStyleSheet('color:#6a9;font-size:11px;')
+        grow.addWidget(self.pin_group_lab)
+        root.addLayout(grow)
 
         tip = QLabel(
             '只读 · 打开样张自动种子 watchKeys/resultVar · '
@@ -387,6 +419,16 @@ class HostVarWatchBoard(QWidget):
             cleaned.append(n)
         self._pinned_keys = cleaned
         self._seed_label = str(label or '')
+        # keep active pin group in sync when seeding from project
+        gname = self._active_pin_group or '默认'
+        if gname not in self._pin_groups:
+            self._pin_groups[gname] = []
+        if cleaned and (not self._pin_groups.get(gname) or gname == '默认'):
+            self._pin_groups[gname] = list(cleaned)
+        try:
+            self._rebuild_pin_group_combo()
+        except Exception:
+            pass
         if cleaned:
             self.seed_lab.setText(
                 f'已种子 {len(cleaned)}' + (f' · {self._seed_label}' if self._seed_label else '')
@@ -408,6 +450,151 @@ class HostVarWatchBoard(QWidget):
 
     def pinned_keys(self) -> list:
         return list(self._pinned_keys)
+
+    def pin_groups(self) -> dict:
+        return {k: list(v) for k, v in self._pin_groups.items()}
+
+    def active_pin_group(self) -> str:
+        return str(self._active_pin_group or '默认')
+
+    def set_pin_groups(self, groups: dict | None, *, active: str = ''):
+        cleaned = {}
+        if isinstance(groups, dict):
+            for name, keys in groups.items():
+                n = str(name or '').strip() or '未命名'
+                bag = []
+                seen = set()
+                for k in (keys or []):
+                    kk = str(k or '').strip()
+                    if kk and kk not in seen:
+                        seen.add(kk)
+                        bag.append(kk)
+                cleaned[n] = bag
+        if not cleaned:
+            cleaned = {'默认': list(self._pinned_keys)}
+        self._pin_groups = cleaned
+        self._active_pin_group = str(active or self._active_pin_group or '默认')
+        if self._active_pin_group not in self._pin_groups:
+            self._active_pin_group = next(iter(self._pin_groups))
+        self._rebuild_pin_group_combo()
+        self.seed_watch_keys(
+            self._pin_groups.get(self._active_pin_group) or [],
+            label=f'钉组:{self._active_pin_group}',
+        )
+
+    def ensure_pin_group(self, name: str, keys=None) -> str:
+        n = str(name or '').strip() or '未命名'
+        bag = []
+        seen = set()
+        for k in (keys if keys is not None else self._pinned_keys):
+            kk = str(k or '').strip()
+            if kk and kk not in seen:
+                seen.add(kk)
+                bag.append(kk)
+        self._pin_groups[n] = bag
+        self._rebuild_pin_group_combo()
+        return n
+
+    def _rebuild_pin_group_combo(self):
+        cb = getattr(self, 'pin_group', None)
+        if cb is None:
+            return
+        cur = self._active_pin_group
+        cb.blockSignals(True)
+        cb.clear()
+        for name in self._pin_groups:
+            cb.addItem(name, name)
+        idx = cb.findData(cur)
+        cb.setCurrentIndex(idx if idx >= 0 else 0)
+        cb.blockSignals(False)
+        self._sync_pin_group_lab()
+
+    def _sync_pin_group_lab(self):
+        lab = getattr(self, 'pin_group_lab', None)
+        if lab is None:
+            return
+        keys = self._pin_groups.get(self._active_pin_group) or []
+        lab.setText(f'{self._active_pin_group} · {len(keys)}键')
+
+    def _on_pin_group_changed(self, *_):
+        cb = self.pin_group
+        name = cb.currentData() or cb.currentText() or '默认'
+        self._active_pin_group = str(name)
+        keys = list(self._pin_groups.get(self._active_pin_group) or [])
+        self.seed_watch_keys(keys, label=f'钉组:{self._active_pin_group}')
+        self._sync_pin_group_lab()
+
+    def _save_active_pin_group(self):
+        name = self.active_pin_group()
+        self._pin_groups[name] = list(self._pinned_keys)
+        self._sync_pin_group_lab()
+
+    def _on_new_pin_group(self):
+        name, ok = QInputDialog.getText(self, '新建钉组', '钉组名称：', text='测量')
+        if not ok:
+            return
+        name = (name or '').strip() or '未命名'
+        self.ensure_pin_group(name, self._pinned_keys)
+        self._active_pin_group = name
+        self._rebuild_pin_group_combo()
+        self.seed_watch_keys(self._pin_groups.get(name) or [], label=f'钉组:{name}')
+
+    def export_csv(self, path: str | None = None) -> str:
+        """Export current rendered table to CSV. Returns path written."""
+        import csv
+        from pathlib import Path as _P
+        if not path:
+            path, _ = QFileDialog.getSaveFileName(
+                self, '导出监视变量 CSV', 'host-watch.csv', 'CSV (*.csv)'
+            )
+            if not path:
+                return ''
+        path = str(_P(path))
+        rows = []
+        headers = []
+        for c in range(self.table.columnCount()):
+            h = self.table.horizontalHeaderItem(c)
+            headers.append(h.text() if h else f'c{c}')
+        # meta
+        rows.append(['#pin_group', self.active_pin_group()])
+        rows.append(['#pinned', ','.join(self._pinned_keys)])
+        rows.append(headers)
+        for r in range(self.table.rowCount()):
+            rows.append([
+                (self.table.item(r, c).text() if self.table.item(r, c) else '')
+                for c in range(self.table.columnCount())
+            ])
+        with open(path, 'w', encoding='utf-8-sig', newline='') as f:
+            w = csv.writer(f)
+            w.writerows(rows)
+        return path
+
+    def export_csv_text(self) -> str:
+        """Return CSV text for current table (no dialog) — for smoke/tests."""
+        import io, csv
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        headers = []
+        for c in range(self.table.columnCount()):
+            h = self.table.horizontalHeaderItem(c)
+            headers.append(h.text() if h else f'c{c}')
+        w.writerow(['#pin_group', self.active_pin_group()])
+        w.writerow(['#pinned', ','.join(self._pinned_keys)])
+        w.writerow(headers)
+        for r in range(self.table.rowCount()):
+            w.writerow([
+                (self.table.item(r, c).text() if self.table.item(r, c) else '')
+                for c in range(self.table.columnCount())
+            ])
+        return buf.getvalue()
+
+    def _on_export_csv_clicked(self):
+        out = self.export_csv()
+        if out:
+            try:
+                QMessageBox.information(self, '导出CSV', f'已导出：\n{out}')
+            except Exception:
+                pass
 
     def _on_refresh_clicked(self):
         self.refreshRequested.emit()

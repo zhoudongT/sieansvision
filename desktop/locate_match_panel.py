@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QFormLayout, QLineEdit, QComboBox, QDoubleSpinBox, QSpinBox,
     QScrollArea, QFrame, QFileDialog, QCheckBox, QDialog, QDialogButtonBox,
     QSlider, QListWidget, QListWidgetItem, QMessageBox, QInputDialog,
+    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
 )
 
 from desktop.widgets.switch import OrangeSwitch
@@ -59,6 +60,11 @@ def normalize_locate_params(params=None):
     if not isinstance(p.get('templateLibrary'), list):
         p['templateLibrary'] = []
     p.setdefault('activeTemplateId', '')
+    p.setdefault('batchScoreThreshold', float(p.get('minScore') or 0.85))
+    if not isinstance(p.get('lastBatchScoreboard'), dict):
+        p['lastBatchScoreboard'] = {}
+    if not isinstance(p.get('matchScoreTrend'), dict):
+        p['matchScoreTrend'] = {'capacity': 32, 'points': []}
     p.setdefault('showMatchBox', True)
     p.setdefault('showScore', True)
     p.setdefault('showContour', True)
@@ -505,6 +511,72 @@ class LocateMatchPanel(QWidget):
             lib_btns.addWidget(b)
         lib_btns.addStretch(1)
         lib_lay.addLayout(lib_btns)
+
+        # ---- 多模板批量记分板（工业：阈值 / 最优选用）----
+        sb_head = QHBoxLayout()
+        sb_title = QLabel('批量记分板')
+        sb_title.setStyleSheet('font-weight:600;color:#c8d0d8;font-size:12px;')
+        sb_head.addWidget(sb_title)
+        self._tpl_sb_summary = QLabel('未评分')
+        self._tpl_sb_summary.setObjectName('locateBatchScoreSummary')
+        self._tpl_sb_summary.setStyleSheet('color:#8ab;font-size:11px;')
+        sb_head.addWidget(self._tpl_sb_summary, 1)
+        lib_lay.addLayout(sb_head)
+
+        thr_row = QHBoxLayout()
+        thr_row.addWidget(QLabel('阈值'))
+        self._tpl_sb_thr = QDoubleSpinBox()
+        self._tpl_sb_thr.setObjectName('locateBatchScoreThr')
+        self._tpl_sb_thr.setRange(0.0, 1.0)
+        self._tpl_sb_thr.setDecimals(3)
+        self._tpl_sb_thr.setSingleStep(0.01)
+        self._tpl_sb_thr.setValue(float(self.params.get('batchScoreThreshold')
+                                       or self.params.get('minScore') or 0.85))
+        self._tpl_sb_thr.valueChanged.connect(
+            lambda v: self._set_param('batchScoreThreshold', float(v))
+        )
+        thr_row.addWidget(self._tpl_sb_thr)
+        score_btn = QPushButton('批量评分')
+        score_btn.setObjectName('locateBatchScoreBtn')
+        score_btn.setToolTip('对模板库全员打分（软估或注入分）；无 Halcon / 无相机')
+        score_btn.clicked.connect(self._tpl_batch_score)
+        thr_row.addWidget(score_btn)
+        best_btn = QPushButton('选用最优')
+        best_btn.setObjectName('locateBatchBestBtn')
+        best_btn.setToolTip('按记分板选用最高分且过阈值的模板')
+        best_btn.clicked.connect(self._tpl_select_best)
+        thr_row.addWidget(best_btn)
+        thr_row.addStretch(1)
+        lib_lay.addLayout(thr_row)
+
+        self._tpl_sb_table = QTableWidget(0, 4)
+        self._tpl_sb_table.setObjectName('locateBatchScoreTable')
+        self._tpl_sb_table.setHorizontalHeaderLabels(['模板', '分数', '判定', '序'])
+        self._tpl_sb_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._tpl_sb_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._tpl_sb_table.setMaximumHeight(130)
+        self._tpl_sb_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self._tpl_sb_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self._tpl_sb_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self._tpl_sb_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self._tpl_sb_table.setStyleSheet(
+            'QTableWidget{background:#12151a;color:#c8d0d8;font-size:11px;}'
+        )
+        self._tpl_sb_table.itemDoubleClicked.connect(lambda *_: self._tpl_lib_select())
+        lib_lay.addWidget(self._tpl_sb_table)
+
+        self._tpl_trend_lab = QLabel('趋势：暂无分数')
+        self._tpl_trend_lab.setObjectName('locateMatchScoreTrend')
+        self._tpl_trend_lab.setWordWrap(True)
+        self._tpl_trend_lab.setStyleSheet(
+            'color:#9ad;font-size:11px;padding:4px 6px;background:#151a20;'
+            'border:1px solid #2a3340;border-radius:3px;'
+        )
+        self._tpl_trend_lab.setToolTip('最近匹配分趋势（运行/试批写入，无硬件）')
+        lib_lay.addWidget(self._tpl_trend_lab)
+        self._restore_score_trend_label()
+        self._refresh_batch_scoreboard_table()
+
         lay.addWidget(lib_frame)
 
         ready = bool(self.params.get('hasTemplate') or str(self.params.get('templatePath') or '').strip())
@@ -561,6 +633,10 @@ class LocateMatchPanel(QWidget):
         cnt = getattr(self, '_tpl_lib_count', None)
         if cnt is not None:
             cnt.setText(f'{lw.count()} 项')
+        try:
+            self._refresh_batch_scoreboard_table()
+        except Exception:
+            pass
 
     def _sync_tpl_status(self):
         status = getattr(self, '_tpl_status', None)
@@ -701,6 +777,173 @@ class LocateMatchPanel(QWidget):
         if prev is not None:
             prev.setText('预览：选中库条目查看路径/备注')
             prev.setStyleSheet('color:#8ab;font-size:11px;padding:2px 0;')
+
+
+    def _batch_threshold(self) -> float:
+        thr_w = getattr(self, '_tpl_sb_thr', None)
+        if thr_w is not None:
+            return float(thr_w.value())
+        return float(self.params.get('batchScoreThreshold')
+                     or self.params.get('minScore') or 0.85)
+
+    def _refresh_batch_scoreboard_table(self, board=None):
+        from desktop.locate_scoreboard import build_batch_scoreboard
+        table = getattr(self, '_tpl_sb_table', None)
+        if table is None:
+            return
+        if board is None:
+            board = self.params.get('lastBatchScoreboard')
+            if not isinstance(board, dict) or not board.get('rows'):
+                board = build_batch_scoreboard(
+                    self._tpl_library(),
+                    {},
+                    threshold=self._batch_threshold(),
+                    active_id=str(self.params.get('activeTemplateId') or ''),
+                )
+        rows = board.get('rows') or []
+        table.setRowCount(0)
+        for r in rows:
+            i = table.rowCount()
+            table.insertRow(i)
+            name = str(r.get('name') or r.get('id') or '')
+            if r.get('active'):
+                name += ' ★'
+            sc = r.get('score')
+            sc_txt = '—' if sc is None else f'{float(sc):.3f}'
+            if r.get('pending'):
+                judge = '待评'
+            else:
+                judge = 'OK' if r.get('ok') else 'NG'
+            rank = r.get('rank') or ''
+            for c, text in enumerate((name, sc_txt, judge, str(rank) if rank else '—')):
+                it = QTableWidgetItem(text)
+                it.setData(Qt.ItemDataRole.UserRole, r)
+                if judge == 'OK':
+                    it.setForeground(Qt.GlobalColor.green)
+                elif judge == 'NG':
+                    it.setForeground(Qt.GlobalColor.red)
+                table.setItem(i, c, it)
+        lab = getattr(self, '_tpl_sb_summary', None)
+        if lab is not None:
+            lab.setText(str(board.get('summary') or '未评分'))
+
+    def run_batch_scoreboard(self, scores_by_id=None, *, soft: bool = True,
+                             seed: str = '') -> dict:
+        """Score all templates; soft=True fills missing with deterministic estimates."""
+        from desktop.locate_scoreboard import (
+            build_batch_scoreboard, soft_estimate_scores,
+        )
+        lib = self._tpl_library()
+        scores = dict(scores_by_id or {})
+        if soft:
+            est = soft_estimate_scores(lib, seed=seed or str(self.params.get('templatePath') or ''))
+            for k, v in est.items():
+                scores.setdefault(k, v)
+        board = build_batch_scoreboard(
+            lib, scores,
+            threshold=self._batch_threshold(),
+            active_id=str(self.params.get('activeTemplateId') or ''),
+        )
+        self._set_param('lastBatchScoreboard', board)
+        self._set_param('batchScoreThreshold', self._batch_threshold())
+        self._refresh_batch_scoreboard_table(board)
+        # push best into trend
+        if board.get('bestScore') is not None:
+            self.push_match_score(
+                board['bestScore'],
+                label='batch',
+                ok=bool(board.get('passCount')),
+                template_id=str(board.get('bestId') or ''),
+            )
+        return board
+
+    def _tpl_batch_score(self):
+        board = self.run_batch_scoreboard(soft=True)
+        prev = getattr(self, '_tpl_lib_preview_lab', None)
+        if prev is not None:
+            prev.setText(f"记分板：{board.get('summary')}")
+            prev.setStyleSheet('color:#9ad;font-size:11px;padding:2px 0;')
+
+    def _tpl_select_best(self):
+        from desktop.locate_scoreboard import select_best_template, build_batch_scoreboard
+        board = self.params.get('lastBatchScoreboard')
+        if not isinstance(board, dict) or not board.get('rows'):
+            board = self.run_batch_scoreboard(soft=True)
+        best = select_best_template(board)
+        if not best:
+            QMessageBox.information(self, '记分板', '没有可选用的评分结果')
+            return
+        thr = self._batch_threshold()
+        if best.get('score') is not None and float(best['score']) < thr:
+            ans = QMessageBox.question(
+                self, '选用最优',
+                f"最优「{best.get('name')}」={best.get('score'):.3f} 低于阈值 {thr:.3f}，仍选用？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if ans != QMessageBox.StandardButton.Yes:
+                return
+        # select into library list then apply
+        lw = getattr(self, '_tpl_lib_list', None)
+        if lw is not None:
+            for i in range(lw.count()):
+                it = lw.item(i)
+                data = it.data(Qt.ItemDataRole.UserRole) if it else None
+                if isinstance(data, dict) and str(data.get('id') or '') == str(best.get('id') or ''):
+                    lw.setCurrentRow(i)
+                    break
+        path = str(best.get('path') or '').strip()
+        if not path:
+            QMessageBox.warning(self, '记分板', '最优条目无路径')
+            return
+        self._set_param('templatePath', path)
+        self._set_param('hasTemplate', True)
+        self._set_param('templateReady', True)
+        self._set_param('activeTemplateId', str(best.get('id') or ''))
+        self._sync_tpl_status()
+        self._refresh_batch_scoreboard_table(
+            build_batch_scoreboard(
+                self._tpl_library(),
+                {r['id']: r.get('score') for r in (board.get('rows') or []) if r.get('id')},
+                threshold=thr,
+                active_id=str(best.get('id') or ''),
+            )
+        )
+        prev = getattr(self, '_tpl_lib_preview_lab', None)
+        if prev is not None:
+            prev.setText(
+                f"已选用最优「{best.get('name')}」={float(best.get('score') or 0):.3f} → {path}"
+            )
+            prev.setStyleSheet('color:#2e7d32;font-size:11px;font-weight:600;')
+
+    def _score_trend(self):
+        from desktop.locate_scoreboard import MatchScoreTrend
+        t = getattr(self, '_match_score_trend', None)
+        if t is None:
+            t = MatchScoreTrend(32)
+            bag = self.params.get('matchScoreTrend')
+            if isinstance(bag, dict):
+                t.load_dict(bag)
+            self._match_score_trend = t
+        return t
+
+    def _restore_score_trend_label(self):
+        lab = getattr(self, '_tpl_trend_lab', None)
+        if lab is None:
+            return
+        lab.setText(self._score_trend().summary())
+
+    def push_match_score(self, score, *, label: str = '', ok=None,
+                         template_id: str = '', frame: str = '') -> str:
+        """Append a match score into the trend strip (runs/frames, no hardware)."""
+        trend = self._score_trend()
+        trend.push(score, label=label, ok=ok, template_id=template_id, frame=frame)
+        self._set_param('matchScoreTrend', trend.to_dict())
+        lab = getattr(self, '_tpl_trend_lab', None)
+        summary = trend.summary()
+        if lab is not None:
+            lab.setText(summary)
+        return summary
 
     def _run_tab(self):
         w = QWidget()

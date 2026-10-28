@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget,
     QListWidgetItem, QLineEdit, QTextEdit, QMessageBox, QTabWidget, QWidget,
     QFormLayout, QGroupBox, QAbstractItemView, QSplitter, QComboBox, QCheckBox,
+    QTableWidget, QTableWidgetItem, QHeaderView,
 )
 
 from desktop.theme import TEXT, TEXT_MUTED, CARD, LINE
@@ -132,10 +133,36 @@ class RecipeSwitchDialog(QDialog):
         left.addWidget(self._diff_chip)
         self._diff_list = QListWidget()
         self._diff_list.setObjectName('recipeDiffDetailList')
-        self._diff_list.setMaximumHeight(140)
+        self._diff_list.setMaximumHeight(90)
         self._diff_list.setStyleSheet('QListWidget{font-size:11px;color:#c8d0d8;background:#1a1e24;}')
         self._diff_list.setToolTip('行级差分：模块参数键 / 变量值（只读预览）')
         left.addWidget(self._diff_list)
+        # 换型 dry-run 左右对照
+        sb_head = QHBoxLayout()
+        sb_lab = QLabel('换型对照（当前 | 配方）')
+        sb_lab.setStyleSheet('color:#9ad;font-size:11px;font-weight:600;')
+        sb_head.addWidget(sb_lab)
+        self._dry_run_btn = QPushButton('Dry-run 对照')
+        self._dry_run_btn.setObjectName('recipeDryRunDiffBtn')
+        self._dry_run_btn.setToolTip('只刷新左右对照，不写入工程')
+        self._dry_run_btn.clicked.connect(self._dry_run_side_by_side)
+        sb_head.addWidget(self._dry_run_btn)
+        sb_head.addStretch(1)
+        left.addLayout(sb_head)
+        self._diff_side = QTableWidget(0, 3)
+        self._diff_side.setObjectName('recipeDiffSideBySide')
+        self._diff_side.setHorizontalHeaderLabels(['键', '当前', '配方'])
+        self._diff_side.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._diff_side.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._diff_side.setMaximumHeight(160)
+        self._diff_side.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self._diff_side.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self._diff_side.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self._diff_side.setStyleSheet(
+            'QTableWidget{font-size:11px;color:#c8d0d8;background:#1a1e24;}'
+        )
+        self._diff_side.setToolTip('Dry-run 左右对照：当前工程 vs 配方快照（不改工程）')
+        left.addWidget(self._diff_side)
         lay.addLayout(left, 2)
 
         right = QVBoxLayout()
@@ -349,6 +376,7 @@ class RecipeSwitchDialog(QDialog):
             chip.setStyleSheet('color:#9ad;font-size:11px;padding:2px 4px;')
             if dlist is not None:
                 dlist.clear()
+            self._fill_side_by_side(None)
             return
         try:
             diff = rl.diff_recipe(self.document.project, rid)
@@ -382,6 +410,7 @@ class RecipeSwitchDialog(QDialog):
                     elif kind == 'step':
                         item.setForeground(Qt.GlobalColor.yellow)
                     dlist.addItem(item)
+            self._fill_side_by_side(diff)
         except Exception as err:
             chip.setText(f'参数差分：{err}')
             chip.setStyleSheet('color:#e35d6a;font-size:11px;padding:2px 4px;')
@@ -390,6 +419,67 @@ class RecipeSwitchDialog(QDialog):
                 dlist.addItem(QListWidgetItem(str(err)))
 
 
+
+
+    def _fill_side_by_side(self, diff):
+        table = getattr(self, '_diff_side', None)
+        if table is None:
+            return
+        rows = rl.format_diff_side_by_side(diff) if diff else []
+        table.setRowCount(0)
+        if not diff:
+            return
+        for row in rows:
+            i = table.rowCount()
+            table.insertRow(i)
+            kind = row.get('kind') or 'info'
+            texts = [
+                str(row.get('key') or ''),
+                str(row.get('current') or ''),
+                str(row.get('recipe') or ''),
+            ]
+            for c, text in enumerate(texts):
+                it = QTableWidgetItem(text)
+                if kind == 'missing':
+                    it.setForeground(Qt.GlobalColor.red)
+                elif kind == 'var':
+                    it.setForeground(Qt.GlobalColor.cyan)
+                elif kind == 'step':
+                    it.setForeground(Qt.GlobalColor.yellow)
+                table.setItem(i, c, it)
+
+    def _dry_run_side_by_side(self):
+        """Explicit dry-run: refresh chip + side-by-side without applying."""
+        rid = self._selected_id()
+        if not rid:
+            banner = getattr(self, '_post_banner', None)
+            if banner is not None:
+                banner.setText('Dry-run：请先选中一条配方（未写入工程）')
+            self._fill_side_by_side(None)
+            return None
+        try:
+            diff = rl.diff_recipe(self.document.project, rid)
+        except Exception as err:
+            banner = getattr(self, '_post_banner', None)
+            if banner is not None:
+                banner.setText(f'Dry-run 失败：{err}')
+            return None
+        self._refresh_diff_chip()
+        self._fill_side_by_side(diff)
+        n = ((diff.get('summary') or {}).get('stepsChanged', 0)
+             + (diff.get('summary') or {}).get('varsChanged', 0)
+             + (diff.get('summary') or {}).get('stepsMissing', 0))
+        banner = getattr(self, '_post_banner', None)
+        if banner is not None:
+            banner.setText(
+                f'Dry-run 对照「{diff.get("name") or rid}」· Δ{n} · '
+                f'{rl.format_diff_chip(diff)} · 未写入工程'
+            )
+            banner.setStyleSheet(
+                'background:#1a2430;color:#9ad;border:1px solid #3a5a7a;border-radius:4px;'
+                'padding:6px 8px;font-size:12px;'
+            )
+        return diff
 
     def _update_post_banner(self, stats=None, *, error: str = ''):
         banner = getattr(self, '_post_banner', None)

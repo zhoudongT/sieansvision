@@ -30,6 +30,9 @@ class FilmstripBar(QWidget):
     listChanged = Signal(list)           # paths
     formatFilterChanged = Signal(str)    # 全部|.bmp|.jpg|.png|.tif
     thumbHovered = Signal(str)           # 细妆⑯：悬停缩略路径（空=离开）
+    blinkPairChanged = Signal(str, str)  # A path, B path
+    blinkTick = Signal(str)              # currently shown path during blink
+    blinkActiveChanged = Signal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -66,6 +69,32 @@ class FilmstripBar(QWidget):
         self.pause_btn.setEnabled(False)
         self.pause_btn.toggled.connect(self._on_pause_toggled)
         bar.addWidget(self.pause_btn)
+        # A/B 闪比（无硬件）：在两帧间交替聚焦
+        self.blink_btn = QPushButton('A/B闪比')
+        self.blink_btn.setObjectName('filmstripBlinkBtn')
+        self.blink_btn.setCheckable(True)
+        self.blink_btn.setToolTip(
+            '帧 A/B 闪烁对比：当前为 A，下一张（或对比条第二帧）为 B；无相机'
+        )
+        self.blink_btn.toggled.connect(self._on_blink_toggled)
+        bar.addWidget(self.blink_btn)
+        self.blink_swap_btn = QPushButton('A⇄B')
+        self.blink_swap_btn.setObjectName('filmstripBlinkSwapBtn')
+        self.blink_swap_btn.setToolTip('交换 A/B 帧')
+        self.blink_swap_btn.setFixedWidth(40)
+        self.blink_swap_btn.clicked.connect(self.swap_blink_pair)
+        bar.addWidget(self.blink_swap_btn)
+        self.blink_lab = QLabel('')
+        self.blink_lab.setObjectName('filmstripBlinkLab')
+        self.blink_lab.setStyleSheet('color:#9ad;font-size:11px;')
+        bar.addWidget(self.blink_lab)
+        self._blink_a = ''
+        self._blink_b = ''
+        self._blink_showing = 'A'
+        self._blink_ms = 450
+        self._blink_timer = QTimer(self)
+        self._blink_timer.setInterval(self._blink_ms)
+        self._blink_timer.timeout.connect(self._on_blink_tick)
         bar.addStretch(1)
         self.add_btn = QPushButton('+')
         self.add_btn.setToolTip('添加图像')
@@ -788,6 +817,130 @@ class FilmstripBar(QWidget):
         lab.setVisible(True)
 
 
+
+    # ----- A/B blink compare (no hardware) -----
+    def blink_pair(self):
+        return str(self._blink_a or ''), str(self._blink_b or '')
+
+    def is_blinking(self) -> bool:
+        return bool(getattr(self, '_blink_timer', None) and self._blink_timer.isActive())
+
+    def set_blink_interval_ms(self, ms: int):
+        self._blink_ms = max(120, min(2000, int(ms or 450)))
+        self._blink_timer.setInterval(self._blink_ms)
+
+    def set_blink_pair(self, path_a: str, path_b: str, *, start: bool = False):
+        self._blink_a = str(path_a or '').strip()
+        self._blink_b = str(path_b or '').strip()
+        self._blink_showing = 'A'
+        self._sync_blink_label()
+        self.blinkPairChanged.emit(self._blink_a, self._blink_b)
+        if start and self._blink_a and self._blink_b and self._blink_a != self._blink_b:
+            if not self.blink_btn.isChecked():
+                self.blink_btn.setChecked(True)
+            else:
+                self.start_blink()
+        elif not (self._blink_a and self._blink_b):
+            self.stop_blink()
+
+    def auto_pick_blink_pair(self):
+        """Current frame = A; next (or prev) = B."""
+        paths = list(self._paths or [])
+        if len(paths) < 2:
+            return '', ''
+        cur = self.current_path() or (paths[self._index] if paths else '')
+        if cur not in paths:
+            cur = paths[0]
+        i = paths.index(cur)
+        other = paths[i + 1] if i + 1 < len(paths) else paths[i - 1]
+        self.set_blink_pair(cur, other)
+        return cur, other
+
+    def swap_blink_pair(self):
+        self._blink_a, self._blink_b = self._blink_b, self._blink_a
+        self._sync_blink_label()
+        self.blinkPairChanged.emit(self._blink_a, self._blink_b)
+        if self.is_blinking():
+            self._show_blink_frame(self._blink_showing)
+
+    def start_blink(self):
+        if not self._blink_a or not self._blink_b or self._blink_a == self._blink_b:
+            a, b = self.auto_pick_blink_pair()
+            if not a or not b:
+                self.blink_btn.blockSignals(True)
+                self.blink_btn.setChecked(False)
+                self.blink_btn.blockSignals(False)
+                self.blink_lab.setText('闪比需≥2帧')
+                return False
+        self._blink_showing = 'A'
+        self._blink_timer.start(self._blink_ms)
+        btn = getattr(self, 'blink_btn', None)
+        if btn is not None and not btn.isChecked():
+            btn.blockSignals(True)
+            btn.setChecked(True)
+            btn.blockSignals(False)
+        self._show_blink_frame('A')
+        self.blinkActiveChanged.emit(True)
+        self._sync_blink_label()
+        return True
+
+    def stop_blink(self):
+        was = self._blink_timer.isActive()
+        self._blink_timer.stop()
+        if getattr(self, 'blink_btn', None) and self.blink_btn.isChecked():
+            self.blink_btn.blockSignals(True)
+            self.blink_btn.setChecked(False)
+            self.blink_btn.blockSignals(False)
+        if was:
+            self.blinkActiveChanged.emit(False)
+        self._sync_blink_label()
+
+    def _on_blink_toggled(self, on: bool):
+        if on:
+            ok = self.start_blink()
+            if not ok:
+                return
+        else:
+            self._blink_timer.stop()
+            self.blinkActiveChanged.emit(False)
+            self._sync_blink_label()
+
+    def _on_blink_tick(self):
+        nxt = 'B' if self._blink_showing == 'A' else 'A'
+        self._show_blink_frame(nxt)
+
+    def _show_blink_frame(self, which: str):
+        which = 'B' if which == 'B' else 'A'
+        self._blink_showing = which
+        path = self._blink_b if which == 'B' else self._blink_a
+        if path:
+            try:
+                self.select_path(path, emit=True)
+            except Exception:
+                # fallback index
+                try:
+                    if path in self._paths:
+                        self.select_index(self._paths.index(path), emit=True)
+                except Exception:
+                    pass
+            self.blinkTick.emit(path)
+        self._sync_blink_label()
+
+    def _sync_blink_label(self):
+        lab = getattr(self, 'blink_lab', None)
+        if lab is None:
+            return
+        from pathlib import Path as _P
+        def leaf(p):
+            return _P(p).name if p else '—'
+        if not self._blink_a and not self._blink_b:
+            lab.setText('')
+            return
+        mark = self._blink_showing if self._blink_timer.isActive() else '-'
+        lab.setText(
+            f'闪比[{mark}] A={leaf(self._blink_a)} | B={leaf(self._blink_b)}'
+        )
+
     def set_frame_measure_badges(self, badges=None):
         """Annotate main filmstrip thumb tooltips/foreground with OK/NG measure tags.
 
@@ -1037,6 +1190,16 @@ class CompareThumbStrip(QWidget):
         self._suppress_reorder = False
         lay.addWidget(self._list, 1)
         self.hide()
+
+
+    def blink_paths(self):
+        """First two compare paths as A/B candidates."""
+        ps = list(self._paths or [])
+        if len(ps) >= 2:
+            return ps[0], ps[1]
+        if len(ps) == 1:
+            return ps[0], ''
+        return '', ''
 
     def paths(self):
         return list(self._paths)

@@ -411,6 +411,33 @@ def format_diff_detail(diff: dict | None, *, max_steps: int = 40, max_vars: int 
     return rows
 
 
+
+
+def format_diff_side_by_side(diff: dict | None, *, max_rows: int = 60) -> list:
+    """Side-by-side dry-run rows: current vs recipe (delegates to locate_scoreboard)."""
+    try:
+        from desktop.locate_scoreboard import format_side_by_side_diff
+        return format_side_by_side_diff(diff, max_rows=max_rows)
+    except Exception:
+        # minimal fallback
+        rows = []
+        for d in format_diff_detail(diff, max_steps=max_rows, max_vars=max_rows):
+            rows.append({
+                'kind': d.get('kind') or 'info',
+                'key': d.get('key') or d.get('name') or '',
+                'current': _short_fallback(d.get('from')),
+                'recipe': _short_fallback(d.get('to')),
+                'text': d.get('text') or '',
+            })
+        return rows or [{'kind': 'info', 'key': '', 'current': '', 'recipe': '', 'text': '无差分'}]
+
+
+def _short_fallback(v) -> str:
+    if v is None:
+        return '空'
+    s = repr(v) if not isinstance(v, str) else v
+    return s if len(s) <= 48 else s[:45] + '…'
+
 def list_variants(project: dict) -> list:
     """Unique product variant labels present on recipes (stable order)."""
     seen = []
