@@ -221,9 +221,16 @@ class RecipeSwitchDialog(QDialog):
         self._rollback_pick_btn.clicked.connect(self._rollback_to_selected)
         self._rollback_pick_btn.setEnabled(False)
         row.addWidget(self._rollback_pick_btn)
+        self._rollback_export_snap_chk = QCheckBox('含快照')
+        self._rollback_export_snap_chk.setObjectName('recipeRollbackExportSnapChk')
+        self._rollback_export_snap_chk.setToolTip(
+            '导出时附带步骤快照体积（JSON 体积更大；CSV 仍不含快照）· 默认关 · 无硬件'
+        )
+        self._rollback_export_snap_chk.setChecked(False)
+        row.addWidget(self._rollback_export_snap_chk)
         self._rollback_export_btn = QPushButton('导出栈')
         self._rollback_export_btn.setObjectName('recipeRollbackExportBtn')
-        self._rollback_export_btn.setToolTip('导出回滚历史栈为 JSON/CSV（不含快照体积）· 无硬件')
+        self._rollback_export_btn.setToolTip('导出回滚历史栈为 JSON/CSV（默认不含快照体积；勾选「含快照」写入）· 无硬件')
         self._rollback_export_btn.clicked.connect(self._export_rollback_stack)
         self._rollback_export_btn.setEnabled(False)
         row.addWidget(self._rollback_export_btn)
@@ -704,16 +711,27 @@ class RecipeSwitchDialog(QDialog):
             pick_btn.setEnabled(bool(depth) and lst.count() > 0)
         exp_btn = getattr(self, '_rollback_export_btn', None)
         clr_btn = getattr(self, '_rollback_clear_btn', None)
+        snap_chk = getattr(self, '_rollback_export_snap_chk', None)
         if exp_btn is not None:
             exp_btn.setEnabled(bool(depth))
         if clr_btn is not None:
             clr_btn.setEnabled(bool(depth))
+        if snap_chk is not None:
+            snap_chk.setEnabled(bool(depth))
 
+
+    def _export_include_snapshots(self) -> bool:
+        chk = getattr(self, '_rollback_export_snap_chk', None)
+        try:
+            return bool(chk.isChecked()) if chk is not None else False
+        except Exception:
+            return False
 
     def _export_rollback_stack(self):
-        """Export rollback history stack to JSON or CSV (soft / no snapshots by default)."""
+        """Export rollback history stack to JSON or CSV (soft; optional snapshots)."""
         p = self.document.project
-        bag = rl.export_recipe_rollback_stack(p)
+        include_snap = self._export_include_snapshots()
+        bag = rl.export_recipe_rollback_stack(p, include_snapshots=include_snap)
         if not bag.get('ok') or not bag.get('depth'):
             QMessageBox.information(self, '导出栈', '回滚历史栈为空，无可导出。')
             return
@@ -731,17 +749,19 @@ class RecipeSwitchDialog(QDialog):
                 rows = rl.rollback_stack_export_csv_rows(bag)
                 with open(path, 'w', encoding='utf-8-sig', newline='') as f:
                     csv.writer(f).writerows(rows)
+                snap_note = 'CSV 不含快照'
             else:
                 import json
                 with open(path, 'w', encoding='utf-8') as f:
                     json.dump(bag, f, ensure_ascii=False, indent=2)
+                snap_note = '含快照体积' if include_snap else '无快照体积'
         except Exception as err:
             QMessageBox.warning(self, '导出失败', str(err))
             return
         banner = getattr(self, '_post_banner', None)
         if banner is not None:
             banner.setText(
-                f'已导出回滚栈 {bag.get("depth")} 条 → {path} · 无快照体积 · 无硬件'
+                f'已导出回滚栈 {bag.get("depth")} 条 → {path} · {snap_note} · 无硬件'
             )
             banner.setStyleSheet(
                 'background:#1a2430;color:#9cd;border:1px solid #3a6a8a;border-radius:4px;'
@@ -749,7 +769,7 @@ class RecipeSwitchDialog(QDialog):
             )
         QMessageBox.information(
             self, '导出完成',
-            f'已导出 {bag.get("depth")} 条回滚历史（不含快照体积）。\n{path}',
+            f'已导出 {bag.get("depth")} 条回滚历史（{snap_note}）。\n{path}',
         )
 
     def _clear_rollback_stack(self):

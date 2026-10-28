@@ -460,6 +460,16 @@ class RunUiDesignerDialog(QDialog):
         self.blink_conflict_lab.setStyleSheet('color:#c88;font-size:11px;padding:2px 0;')
         self.blink_conflict_lab.setVisible(False)
         bf.addRow(QLabel('冲突'), self.blink_conflict_lab)
+        self.blink_conflict_list = QListWidget()
+        self.blink_conflict_list.setObjectName('runUiBlinkConflictList')
+        self.blink_conflict_list.setMaximumHeight(72)
+        self.blink_conflict_list.setStyleSheet(
+            'QListWidget{font-size:11px;color:#e8b;background:#1a1414;'
+            'border:1px solid #5a3a3a;}'
+        )
+        self.blink_conflict_list.setToolTip('保留字冲突明细（设计器页脚同步）· 无硬件')
+        self.blink_conflict_list.setVisible(False)
+        bf.addRow(QLabel('冲突列表'), self.blink_conflict_list)
         for w in (self.blink_toggle_edit, self.blink_swap_edit):
             w.editingFinished.connect(self._on_blink_prefs_changed)
             try:
@@ -509,6 +519,16 @@ class RunUiDesignerDialog(QDialog):
         foot.setObjectName('dialogHint')
         foot.setWordWrap(True)
         root.addWidget(foot)
+        # Designer footer: live blink reserved-conflict list (soft / no hardware)
+        self.blink_conflict_footer = QLabel('')
+        self.blink_conflict_footer.setObjectName('runUiBlinkConflictFooter')
+        self.blink_conflict_footer.setWordWrap(True)
+        self.blink_conflict_footer.setStyleSheet(
+            'color:#c88;font-size:11px;padding:4px 10px;background:#1a1212;'
+            'border-top:1px solid #5a3a3a;'
+        )
+        self.blink_conflict_footer.setVisible(False)
+        root.addWidget(self.blink_conflict_footer)
 
         # Restore saved designer stub from project if any
         if document is not None:
@@ -833,10 +853,59 @@ class RunUiDesignerDialog(QDialog):
             'warn': warn,
         }
 
+    def _fill_blink_conflict_list(self, info=None):
+        """Populate conflict list widget + designer footer from check bag."""
+        info = info if isinstance(info, dict) else self.check_blink_reserved_conflicts()
+        conflicts = list(info.get('conflicts') or [])
+        lst = getattr(self, 'blink_conflict_list', None)
+        foot = getattr(self, 'blink_conflict_footer', None)
+        rows = []
+        for c in conflicts:
+            if c.get('reason') == 'toggle==swap':
+                rows.append(f"开关/交换相同「{c.get('key')}」")
+            else:
+                lab = '开关' if c.get('field') == 'toggle' else (
+                    '交换' if c.get('field') == 'swap' else str(c.get('field') or '?')
+                )
+                rows.append(f"{lab}「{c.get('key')}」占保留字")
+        if lst is not None:
+            try:
+                lst.clear()
+                for r in rows:
+                    try:
+                        from PySide6.QtWidgets import QListWidgetItem
+                        lst.addItem(QListWidgetItem(r))
+                    except Exception:
+                        lst.addItem(r)
+                lst.setVisible(bool(rows))
+            except Exception:
+                pass
+        if foot is not None:
+            if rows:
+                foot.setText('闪比快捷键冲突 · ' + '；'.join(rows) + ' — 不会写入')
+                foot.setVisible(True)
+            else:
+                foot.setText('')
+                foot.setVisible(False)
+        # also mirror into preview bottom fixed bar when conflicts
+        bar = getattr(self, 'fix_bottom_bar', None)
+        if bar is not None and rows:
+            try:
+                bar.setText('闪比冲突 · ' + '；'.join(rows))
+                bar.setStyleSheet(
+                    'background:#2a1818;color:#e8a;border:1px solid #a55;'
+                    'padding:4px;font-size:11px;font-weight:600;'
+                )
+                bar.show()
+            except Exception:
+                pass
+        return {'ok': not conflicts, 'rows': rows, 'conflicts': conflicts, 'warn': info.get('warn') or ''}
+
     def _on_blink_conflict_live_check(self, *_):
-        """Live warn label while typing blink chords in designer."""
+        """Live warn label + conflict list/footer while typing blink chords."""
         info = self.check_blink_reserved_conflicts()
         lab = getattr(self, 'blink_conflict_lab', None)
+        self._fill_blink_conflict_list(info)
         if lab is None:
             return info
         if info.get('ok'):

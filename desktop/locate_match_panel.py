@@ -999,8 +999,31 @@ class LocateMatchPanel(QWidget):
             prev.setStyleSheet('color:#2e7d32;font-size:11px;font-weight:600;')
 
 
+    def set_filmstrip_seek_handler(self, fn):
+        """Optional explicit seek callback (tests / host inject). Soft."""
+        self._filmstrip_seek_handler = fn
+
+    def _resolve_filmstrip(self):
+        """Find host FilmstripBar: explicit handler host → window().filmstrip."""
+        fn = getattr(self, '_filmstrip_seek_handler', None)
+        if callable(fn):
+            return ('handler', fn)
+        try:
+            w = self.window() if hasattr(self, 'window') else None
+        except Exception:
+            w = None
+        fs = getattr(w, 'filmstrip', None) if w is not None else None
+        if fs is not None:
+            return ('filmstrip', fs)
+        # property_float host may stash mainwindow
+        host = getattr(w, 'host', None) if w is not None else None
+        fs = getattr(host, 'filmstrip', None) if host is not None else None
+        if fs is not None:
+            return ('filmstrip', fs)
+        return ('none', None)
+
     def _on_spark_frame_jump(self, bag=None):
-        """Spark click → jump hint for frame (soft / no hardware)."""
+        """Spark click → jump hint + filmstrip seek wire (soft / no hardware)."""
         bag = bag if isinstance(bag, dict) else {}
         frame = str(bag.get('frame') or '')
         label = str(bag.get('label') or '')
@@ -1024,24 +1047,45 @@ class LocateMatchPanel(QWidget):
         elif ok is True:
             tip_bits.append('✓')
         text = '跳帧 · ' + ' · '.join(tip_bits) if tip_bits else '跳帧'
+        seek_info = {'ok': False, 'reason': 'pending'}
+        kind, target = self._resolve_filmstrip()
+        try:
+            if kind == 'handler':
+                seek_info = target(bag) or {'ok': False, 'reason': 'handler empty'}
+            elif kind == 'filmstrip':
+                from desktop.locate_scoreboard import seek_filmstrip_from_spark_jump
+                seek_info = seek_filmstrip_from_spark_jump(target, bag)
+            else:
+                seek_info = {'ok': False, 'reason': 'no filmstrip'}
+        except Exception as err:
+            seek_info = {'ok': False, 'reason': str(err)}
+        if seek_info.get('ok'):
+            tip_bits.append(
+                f"胶片#{int(seek_info.get('index', -1)) + 1}"
+                if seek_info.get('index', -1) >= 0 else '胶片✓'
+            )
+            text = '跳帧 · ' + ' · '.join(tip_bits) if tip_bits else '跳帧'
         lab = getattr(self, '_spark_jump_lab', None)
         if lab is not None:
             lab.setText(text)
             lab.setVisible(True)
+            how = seek_info.get('matchedBy') or seek_info.get('reason') or '—'
             lab.setToolTip(
-                f"火花线点击跳帧 · frame={frame or '—'} · label={label or '—'} · 无硬件"
+                f"火花线点击跳帧 · frame={frame or '—'} · label={label or '—'} · "
+                f"seek={how} · 无硬件"
             )
         trend_lab = getattr(self, '_tpl_trend_lab', None)
         if trend_lab is not None and tip_bits:
             try:
-                prev = trend_lab.text() or ''
-                # keep summary; annotate tip in status via tooltip
                 trend_lab.setToolTip(
                     (trend_lab.toolTip() or '') + f'\n跳帧 → {text}'
                 )
             except Exception:
                 pass
         self._last_spark_jump = dict(bag)
+        self._last_spark_seek = dict(seek_info) if isinstance(seek_info, dict) else {}
+        bag = dict(bag)
+        bag['seek'] = dict(self._last_spark_seek)
         return bag
 
     def _score_trend(self):

@@ -285,6 +285,74 @@ class FilmstripBar(QWidget):
                 pass
         return True
 
+    def seek_frame_token(self, token='', *, index=None, emit=True) -> dict:
+        """Seek filmstrip by spark-jump frame token / basename / absolute index.
+
+        Soft / no hardware. Returns {ok, index, path, matchedBy, token}.
+        Match order: explicit index → full/resolved path → basename →
+        substring token in path → numeric token-as-index.
+        """
+        token = str(token or '').strip()
+        out = {'ok': False, 'index': -1, 'path': '', 'matchedBy': '', 'token': token}
+        paths = list(self._paths or [])
+        if not paths:
+            out['reason'] = 'empty'
+            return out
+        # 1) explicit absolute index
+        if index is not None:
+            try:
+                i = int(index)
+            except (TypeError, ValueError):
+                i = -1
+            if 0 <= i < len(paths):
+                ok = self.select_index(i, emit=emit)
+                out.update(ok=bool(ok), index=i, path=paths[i] if ok else '', matchedBy='index')
+                return out
+        if not token:
+            out['reason'] = 'no token'
+            return out
+        # 2) path / basename via select_path
+        if self.select_path(token, emit=emit):
+            i = int(self._index)
+            out.update(ok=True, index=i, path=paths[i], matchedBy='path')
+            return out
+        # 3) basename / stem / substring soft match
+        from pathlib import Path as _P
+        base = _P(token).name
+        stem = _P(token).stem
+        hit = -1
+        how = ''
+        for i, pth in enumerate(paths):
+            try:
+                pn = _P(pth).name
+                ps = _P(pth).stem
+            except Exception:
+                pn, ps = str(pth), str(pth)
+            if pn == base or pn == token:
+                hit, how = i, 'basename'; break
+            if stem and (ps == stem or stem in pn or stem in ps):
+                hit, how = i, 'stem'; break
+        if hit < 0:
+            for i, pth in enumerate(paths):
+                if token in str(pth):
+                    hit, how = i, 'substr'
+                    break
+        if hit < 0:
+            # 4) numeric token as index
+            try:
+                i = int(token)
+            except (TypeError, ValueError):
+                i = -1
+            if 0 <= i < len(paths):
+                hit, how = i, 'tokenIndex'
+        if hit < 0:
+            out['reason'] = 'not found'
+            return out
+        ok = self.select_index(hit, emit=emit)
+        out.update(ok=bool(ok), index=hit, path=paths[hit] if ok else '', matchedBy=how)
+        return out
+
+
     def select_path(self, path, *, emit=True):
         """细妆⑳：按路径定位缩略（规范化比对）；找不到返回 False。"""
         path = str(path or '').strip()

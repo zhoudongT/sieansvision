@@ -416,6 +416,72 @@ class MatchScoreTrend:
                 })
 
 
+
+def seek_filmstrip_from_spark_jump(filmstrip, bag=None) -> dict:
+    """Wire spark click-jump bag → filmstrip seek (soft / no hardware).
+
+    bag keys: frame, label, index. Uses FilmstripBar.seek_frame_token when
+    available, else select_path / select_index.
+    Returns {ok, index, path, matchedBy, frame, label, sparkIndex}.
+    """
+    bag = bag if isinstance(bag, dict) else {}
+    frame = str(bag.get('frame') or '')
+    label = str(bag.get('label') or '')
+    spark_index = bag.get('index')
+    out = {
+        'ok': False, 'index': -1, 'path': '', 'matchedBy': '',
+        'frame': frame, 'label': label, 'sparkIndex': spark_index,
+    }
+    if filmstrip is None:
+        out['reason'] = 'no filmstrip'
+        return out
+    # Prefer dedicated seek_frame_token
+    if hasattr(filmstrip, 'seek_frame_token'):
+        # try frame token first, then label, then spark index as filmstrip index
+        for token, how_pref in ((frame, 'frame'), (label, 'label')):
+            if not token:
+                continue
+            hit = filmstrip.seek_frame_token(token, emit=True)
+            if hit.get('ok'):
+                out.update(hit)
+                out['frame'] = frame
+                out['label'] = label
+                out['sparkIndex'] = spark_index
+                out['matchedBy'] = hit.get('matchedBy') or how_pref
+                return out
+        if spark_index is not None:
+            hit = filmstrip.seek_frame_token('', index=spark_index, emit=True)
+            if hit.get('ok'):
+                out.update(hit)
+                out['frame'] = frame
+                out['label'] = label
+                out['sparkIndex'] = spark_index
+                out['matchedBy'] = hit.get('matchedBy') or 'sparkIndex'
+                return out
+        out['reason'] = 'not found'
+        return out
+    # Fallback select_path / select_index
+    for token in (frame, label):
+        if token and hasattr(filmstrip, 'select_path') and filmstrip.select_path(token, emit=True):
+            idx = int(getattr(filmstrip, 'current_index', lambda: -1)())
+            paths = list(getattr(filmstrip, 'paths', lambda: [])())
+            out.update(ok=True, index=idx, path=(paths[idx] if 0 <= idx < len(paths) else token),
+                       matchedBy='path')
+            return out
+    if spark_index is not None and hasattr(filmstrip, 'select_index'):
+        try:
+            i = int(spark_index)
+        except (TypeError, ValueError):
+            i = -1
+        if filmstrip.select_index(i, emit=True):
+            paths = list(getattr(filmstrip, 'paths', lambda: [])())
+            out.update(ok=True, index=i, path=(paths[i] if 0 <= i < len(paths) else ''),
+                       matchedBy='sparkIndex')
+            return out
+    out['reason'] = 'not found'
+    return out
+
+
 def _spark_char(v: float) -> str:
     # 8-level block sparkline (v expected in [0,1])
     chars = '▁▂▃▄▅▆▇█'

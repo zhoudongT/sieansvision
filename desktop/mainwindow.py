@@ -970,7 +970,9 @@ class MainWindow(QMainWindow):
                 'groupNames': list((getattr(self, '_host_watch_pin_groups', None) or {}).keys()),
             }
         try:
-            from desktop.host_var_watch import pin_group_picker_entries
+            from desktop.host_var_watch import (
+                pin_group_picker_entries, pin_group_picker_accel_entries,
+            )
             groups = getattr(self, '_host_watch_pin_groups', None) or {}
             if not groups and isinstance(bag.get('pinGroupEntries'), list):
                 groups = {
@@ -979,9 +981,19 @@ class MainWindow(QMainWindow):
                     if isinstance(e, dict) and e.get('name')
                 }
             act = bag.get('active') or getattr(self, '_host_watch_active_pin_group', '') or ''
-            entries = bag.get('pinGroupEntries') or pin_group_picker_entries(groups, active=act)
-            if not entries and groups:
-                entries = pin_group_picker_entries(groups, active=act)
+            entries = pin_group_picker_accel_entries(groups, active=act)
+            if not entries and bag.get('pinGroupEntries'):
+                # enrich existing chip entries with accel
+                raw = list(bag.get('pinGroupEntries') or [])
+                entries = []
+                for i, e in enumerate(raw):
+                    if not isinstance(e, dict):
+                        continue
+                    row = dict(e)
+                    if i < 9:
+                        row['accel'] = str(i + 1)
+                        row['accelKey'] = f"Key_{i + 1}"
+                    entries.append(row)
         except Exception:
             entries = []
         try:
@@ -992,17 +1004,33 @@ class MainWindow(QMainWindow):
                 act0 = menu.addAction('（无钉组 · 仍打开监视板）')
                 act0.setData('')
             else:
-                for e in entries:
+                from PySide6.QtGui import QKeySequence
+                for i, e in enumerate(entries):
                     name = str(e.get('name') or '')
                     nkeys = int(e.get('nKeys') or 0)
                     mark = ' ★' if e.get('active') else ''
-                    a = menu.addAction(f'{name}{mark}  · {nkeys}键')
+                    accel = str(e.get('accel') or (str(i + 1) if i < 9 else ''))
+                    prefix = f'{accel}  ' if accel else ''
+                    a = menu.addAction(f'{prefix}{name}{mark}  · {nkeys}键')
                     a.setData(name)
+                    if accel:
+                        try:
+                            a.setShortcut(QKeySequence(accel))
+                        except Exception:
+                            pass
                     if e.get('active'):
                         try:
                             f = a.font(); f.setBold(True); a.setFont(f)
                         except Exception:
                             pass
+                try:
+                    from desktop.host_var_watch import apply_pin_group_picker_accels
+                    self._last_pin_group_picker_accels = apply_pin_group_picker_accels(menu, entries)
+                except Exception:
+                    self._last_pin_group_picker_accels = [
+                        {'name': str(e.get('name') or ''), 'accel': str(e.get('accel') or '')}
+                        for e in entries
+                    ]
             chosen = menu.exec(chip_w.mapToGlobal(pos) if hasattr(chip_w, 'mapToGlobal') else pos)
             if chosen is None:
                 return

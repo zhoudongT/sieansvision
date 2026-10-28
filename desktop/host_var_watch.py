@@ -153,6 +153,61 @@ def pin_group_picker_entries(groups=None, *, active: str = '') -> list:
     return rows
 
 
+
+def pin_group_picker_accel_entries(groups=None, *, active: str = '') -> list:
+    """Pin-group picker rows with keyboard accelerators 1–9 (soft).
+
+    Adds accel / accelKey / accelHint onto pin_group_picker_entries rows.
+    """
+    rows = pin_group_picker_entries(groups, active=active)
+    out = []
+    for i, r in enumerate(rows):
+        row = dict(r)
+        if i < 9:
+            digit = str(i + 1)
+            row['accel'] = digit
+            row['accelKey'] = f'Key_{digit}'
+            row['accelHint'] = digit
+        else:
+            row['accel'] = ''
+            row['accelKey'] = ''
+            row['accelHint'] = ''
+        out.append(row)
+    return out
+
+
+def apply_pin_group_picker_accels(menu, entries=None):
+    """Stamp 1–9 shortcuts onto QMenu actions (data = group name). Soft.
+
+    Returns list of {name, accel, actionText}. Does not exec the menu.
+    """
+    from PySide6.QtGui import QKeySequence
+    entries = list(entries or [])
+    stamped = []
+    actions = list(menu.actions()) if menu is not None else []
+    # Prefer matching by data/name order
+    for i, e in enumerate(entries):
+        if i >= len(actions):
+            break
+        a = actions[i]
+        name = str(e.get('name') or '')
+        accel = str(e.get('accel') or (str(i + 1) if i < 9 else ''))
+        if accel:
+            try:
+                a.setShortcut(QKeySequence(accel))
+            except Exception:
+                pass
+            # Prefix digit for discoverability
+            txt = a.text() or ''
+            if not txt.lstrip().startswith(accel):
+                try:
+                    a.setText(f'{accel}  {txt}')
+                except Exception:
+                    pass
+        stamped.append({'name': name, 'accel': accel, 'actionText': a.text()})
+    return stamped
+
+
 def resolve_pin_group_from_chip(chip=None, *, name: str = '', project=None) -> dict:
     """Resolve a pin-group pick from chip/project into an open payload.
 
@@ -184,7 +239,7 @@ def resolve_pin_group_from_chip(chip=None, *, name: str = '', project=None) -> d
     elif not chip.get('active') and groups:
         chip['active'] = next(iter(groups))
     chip['groupNames'] = list(groups.keys()) if groups else list(chip.get('groupNames') or [])
-    chip['pinGroupEntries'] = pin_group_picker_entries(groups, active=str(chip.get('active') or ''))
+    chip['pinGroupEntries'] = pin_group_picker_accel_entries(groups, active=str(chip.get('active') or ''))
     chip['restored'] = True
     chip['kind'] = 'hostWatch'
     chip['clickAction'] = 'openVarWatch'
@@ -258,7 +313,7 @@ def format_host_watch_open_chip(keys=None, groups=None, *, active: str = '',
         'clickHint': '点击打开变量监视板（恢复钉组）· 右键选钉组',
         'rmbAction': 'pickPinGroup',
         'rmbHint': '右键选择钉组后打开监视板',
-        'pinGroupEntries': pin_group_picker_entries(groups, active=act),
+        'pinGroupEntries': pin_group_picker_accel_entries(groups, active=act),
     }
 
 
