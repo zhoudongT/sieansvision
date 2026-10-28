@@ -746,6 +746,20 @@ class HostStateMachineWidget(QWidget):
             f'border-radius:2px;padding:4px 8px;font-size:11px;font-weight:600;'
         )
         lay.addWidget(self._prod_strip)
+        # Alarm/OK-NG dashboard soft strip deepen (page-level; not sev-chip cascade)
+        self._okng_dashboard_strip = QLabel(
+            '看板 · OK —  NG —  良率 —  ·  判定 —  ·  报警开 —  ·  状态 空闲'
+        )
+        self._okng_dashboard_strip.setObjectName('hostOkNgDashboardStrip')
+        self._okng_dashboard_strip.setWordWrap(True)
+        self._okng_dashboard_strip.setStyleSheet(
+            f'background:{PANEL};color:{TEXT_MUTED};border:1px solid {LINE};'
+            f'border-radius:2px;padding:5px 8px;font-size:11px;font-weight:700;'
+        )
+        self._okng_dashboard_strip.setToolTip(
+            'Alarm/OK-NG 看板软条：与操作员 HMI 页铬同步；无现场 SDK'
+        )
+        lay.addWidget(self._okng_dashboard_strip)
         # wave22: Alarm 历史联调条（试跑清除 / 换型失败 / 报警清除）
         self._liaison_strip = QLabel('联调 · 等待事件（试跑清除 / 换型失败 / 报警清除）')
         self._liaison_strip.setObjectName('hostLiaisonStrip')
@@ -37913,8 +37927,25 @@ class HostStateMachineWidget(QWidget):
             ok_i = ng_i = None
         st = host_state or self._state
         st_zh = STATE_ZH.get(st, st)
+        open_n = 0
+        last_reason = ''
+        try:
+            hist = list(getattr(self, '_alarm_history', []) or [])
+            open_n = sum(1 for e in hist if not e.get('cleared'))
+            for e in reversed(hist):
+                if not e.get('cleared'):
+                    last_reason = str(e.get('reason') or e.get('detail') or '')
+                    break
+        except Exception:
+            pass
         if ok_i is None or ng_i is None:
             strip.setText(f'生产 · OK —  NG —  良率 —  ·  状态 {st_zh}')
+            self.set_okng_dashboard_strip(
+                f'看板 · OK —  NG —  良率 —  ·  判定 —  ·  报警开 {open_n}'
+                + (f' · 末警 {last_reason[:24]}' if last_reason else '')
+                + f'  ·  状态 {st_zh}',
+                alarm_on=(st == 'Alarm' or open_n > 0),
+            )
             return
         total = ok_i + ng_i
         if total:
@@ -37923,6 +37954,37 @@ class HostStateMachineWidget(QWidget):
         else:
             ytxt = '—'
         strip.setText(f'生产 · OK {ok_i}  NG {ng_i}  良率 {ytxt}  ·  状态 {st_zh}')
+        judge = 'OK' if (total and ok_i >= ng_i and st != 'Alarm') else (
+            'NG' if (ng_i > ok_i or st == 'Alarm') else '—'
+        )
+        dash = (
+            f'看板 · OK {ok_i}  NG {ng_i}  良率 {ytxt}  ·  判定 {judge}  ·  报警开 {open_n}'
+            + (f' · 末警 {last_reason[:24]}' if last_reason else '')
+            + f'  ·  状态 {st_zh}'
+        )
+        self.set_okng_dashboard_strip(dash, alarm_on=(st == 'Alarm' or open_n > 0))
+
+    def set_okng_dashboard_strip(self, text: str, *, alarm_on: bool = False):
+        """Page-level Alarm/OK-NG dashboard soft strip (no sev-chip cascade)."""
+        lab = getattr(self, '_okng_dashboard_strip', None)
+        if lab is None:
+            return
+        lab.setText(str(text or ''))
+        if alarm_on or self._state == 'Alarm':
+            lab.setStyleSheet(
+                'background:#3a1c1c;color:#ffb4b4;border:1px solid #e35d6a;'
+                'border-radius:2px;padding:5px 8px;font-size:11px;font-weight:700;'
+            )
+        elif '判定 OK' in str(text) or '良率 100' in str(text):
+            lab.setStyleSheet(
+                'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                'border-radius:2px;padding:5px 8px;font-size:11px;font-weight:700;'
+            )
+        else:
+            lab.setStyleSheet(
+                f'background:{PANEL};color:{TEXT_MUTED};border:1px solid {LINE};'
+                f'border-radius:2px;padding:5px 8px;font-size:11px;font-weight:700;'
+            )
 
 
     def _raise_alarm(self):

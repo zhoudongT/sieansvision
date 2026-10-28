@@ -820,6 +820,44 @@ class CommManagerDialog(QDialog):
         demo.setWordWrap(True)
         demo.setStyleSheet('color:#888;font-size:11px;')
         form.addRow(demo)
+        # Multi-device LocalBus inbox soft timeline (design-time; no field TCP)
+        form.addRow(QLabel('多设备 LocalBus 软投递'))
+        self.tpl_device_list = QListWidget()
+        self.tpl_device_list.setObjectName('commMessageTemplateDeviceList')
+        self.tpl_device_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+        self.tpl_device_list.setMaximumHeight(90)
+        self.tpl_device_list.setToolTip('选择要软投递的设备（默认含 LocalLoop）；无现场 TCP')
+        form.addRow('目标设备', self.tpl_device_list)
+        self.tpl_inbox_timeline = QPlainTextEdit()
+        self.tpl_inbox_timeline.setObjectName('commMessageTemplateInboxTimeline')
+        self.tpl_inbox_timeline.setReadOnly(True)
+        self.tpl_inbox_timeline.setMaximumHeight(140)
+        self.tpl_inbox_timeline.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#1a2430;color:#80cbc4;'
+        )
+        self.tpl_inbox_timeline.setPlaceholderText(
+            '多设备 LocalBus 收件箱软时间线（选模板 → 软投递后在此汇总）'
+        )
+        form.addRow('收件箱时间线', self.tpl_inbox_timeline)
+        self.tpl_inbox_meta = QLabel('(尚未软投递)')
+        self.tpl_inbox_meta.setObjectName('commMessageTemplateInboxMeta')
+        self.tpl_inbox_meta.setWordWrap(True)
+        self.tpl_inbox_meta.setStyleSheet('color:#666;font-size:11px;')
+        form.addRow(self.tpl_inbox_meta)
+        fan_row = QHBoxLayout()
+        self.tpl_fanout_btn = QPushButton('多设备 LocalBus 软投递')
+        self.tpl_fanout_btn.setObjectName('commMessageTemplateFanoutBtn')
+        self.tpl_fanout_btn.setToolTip(
+            '把当前模板展开正文软投递到所选设备 LocalBus 收件箱，并刷新时间线（无现场 TCP）'
+        )
+        self.tpl_fanout_btn.clicked.connect(self._tpl_soft_fanout_timeline)
+        self.tpl_inbox_clear_btn = QPushButton('清空时间线')
+        self.tpl_inbox_clear_btn.setObjectName('commMessageTemplateInboxClear')
+        self.tpl_inbox_clear_btn.clicked.connect(self._tpl_clear_inbox_timeline)
+        fan_row.addWidget(self.tpl_fanout_btn)
+        fan_row.addWidget(self.tpl_inbox_clear_btn)
+        fan_row.addStretch(1)
+        form.addRow(fan_row)
         # live refresh
         self.tpl_body.textChanged.connect(self._tpl_refresh_preview)
         self.tpl_name.editingFinished.connect(self._tpl_commit_form)
@@ -829,6 +867,7 @@ class CommManagerDialog(QDialog):
         tpl_lay.addWidget(split, 1)
         self.tabs.addTab(tpl, '消息模板')
         self._tpl_items = []
+        self._tpl_inbox_lines = []
 
         # --- TCP 测试（对标 VM 通信管理连通性）---
         # --- TCP 测试（对标 VM 通信管理连通性）---
@@ -1063,6 +1102,10 @@ class CommManagerDialog(QDialog):
         self.resp_timeout.setValue(int(resp.get('timeoutMs') or 3000))
         self.resp_ack.setText(str(resp.get('ack') or 'OK'))
         self._tpl_load_from_project(cm.get('messageTemplates'))
+        try:
+            self._tpl_refresh_device_list()
+        except Exception:
+            pass
         self._refresh_tcp_devices()
 
     def _add_device(self):
@@ -1531,6 +1574,133 @@ class CommManagerDialog(QDialog):
         self.tpl_list.blockSignals(False)
         if self._tpl_items:
             self.tpl_list.setCurrentRow(0)
+
+    def _tpl_refresh_device_list(self):
+        """Populate multi-select device list for soft fan-out (LocalLoop first)."""
+        lw = getattr(self, 'tpl_device_list', None)
+        if lw is None:
+            return
+        names = []
+        for d in (getattr(self, '_devices', None) or []):
+            if isinstance(d, dict):
+                n = str(d.get('name') or '').strip()
+                if n:
+                    names.append(n)
+        if 'LocalLoop' not in names:
+            names.insert(0, 'LocalLoop')
+        # de-dupe keep order
+        seen = set()
+        ordered = []
+        for n in names:
+            if n in seen:
+                continue
+            seen.add(n)
+            ordered.append(n)
+        prev = {it.text() for it in lw.selectedItems()}
+        lw.blockSignals(True)
+        lw.clear()
+        for n in ordered:
+            item = QListWidgetItem(n)
+            lw.addItem(item)
+            if (not prev and n == 'LocalLoop') or n in prev:
+                item.setSelected(True)
+        # ensure at least LocalLoop selected
+        if not lw.selectedItems() and lw.count():
+            lw.item(0).setSelected(True)
+        lw.blockSignals(False)
+
+    def _tpl_selected_devices(self):
+        lw = getattr(self, 'tpl_device_list', None)
+        if lw is None:
+            return ['LocalLoop']
+        names = [it.text() for it in lw.selectedItems() if it and it.text()]
+        return names or ['LocalLoop']
+
+    def _tpl_soft_fanout_timeline(self):
+        """Expand current template and soft-fanout into multi-device LocalBus inbox timeline."""
+        self._tpl_commit_form()
+        self._tpl_refresh_preview()
+        body = ''
+        if hasattr(self, 'tpl_preview'):
+            body = self.tpl_preview.toPlainText() or self.tpl_body.toPlainText()
+        else:
+            body = self.tpl_body.toPlainText() if hasattr(self, 'tpl_body') else ''
+        name = self.tpl_name.text().strip() if hasattr(self, 'tpl_name') else '模板'
+        devices = self._tpl_selected_devices()
+        from datetime import datetime
+        ts = datetime.now().strftime('%H:%M:%S')
+        lines = list(getattr(self, '_tpl_inbox_lines', []) or [])
+        lines.append(f'── [{ts}] soft fan-out · tpl={name or "模板"} · devices={",".join(devices)} · no field TCP')
+        bytes_n = len(body.encode('utf-8'))
+        for dev in devices:
+            line = (
+                f'[{ts}] TX→inbox {dev}/default tpl={name or "模板"} '
+                f'bytes={bytes_n} │ {body[:80]}'
+            )
+            lines.append(line)
+            # soft RX mirror
+            lines.append(
+                f'[{ts}] RX  {dev}/default path=softFanout-inbox bytes={bytes_n} │ {body[:80]}'
+            )
+        # keep last ~60 lines
+        self._tpl_inbox_lines = lines[-60:]
+        if hasattr(self, 'tpl_inbox_timeline') and self.tpl_inbox_timeline is not None:
+            # group view
+            grouped = ['── multi-device LocalBus inbox soft timeline ──']
+            by = {}
+            for ln in self._tpl_inbox_lines:
+                if 'TX→inbox ' in ln or ln.startswith('[') and '] RX  ' in ln:
+                    # extract device
+                    try:
+                        if 'TX→inbox ' in ln:
+                            dev = ln.split('TX→inbox ', 1)[1].split('/', 1)[0]
+                        else:
+                            dev = ln.split('] RX  ', 1)[1].split('/', 1)[0]
+                    except Exception:
+                        dev = 'LocalLoop'
+                    by.setdefault(dev, []).append(ln)
+                else:
+                    grouped.append(ln)
+            for dev, lst in by.items():
+                grouped.append(f'▶ {dev} · {len(lst)} 条')
+                grouped.extend('  ' + x for x in lst[-8:])
+            self.tpl_inbox_timeline.setPlainText('\n'.join(grouped))
+        if hasattr(self, 'tpl_inbox_meta') and self.tpl_inbox_meta is not None:
+            self.tpl_inbox_meta.setText(
+                f'已软投递 {len(devices)} 设备 · tpl={name or "模板"} · '
+                f'bytes={bytes_n} · LocalBus inbox · 无现场 TCP'
+            )
+        # Also try node softFanout when available (engine parity); ignore failures
+        try:
+            import subprocess, json as _json
+            from pathlib import Path as _P
+            root = _P(__file__).resolve().parents[1]
+            js = (
+                "const bus=require('./lib/comm-bus.cjs');"
+                f"const r=bus.softFanoutTimeline({_json.dumps(devices)},{_json.dumps(body)},"
+                f"{{template:{_json.dumps(name or '模板')}}});"
+                "process.stdout.write(JSON.stringify({n:r.entries.length,timeline:r.timeline.slice(0,200)}));"
+            )
+            subprocess.run(
+                ['node', '-e', js], cwd=str(root),
+                capture_output=True, text=True, timeout=3,
+            )
+        except Exception:
+            pass
+        return {
+            'devices': devices,
+            'template': name,
+            'bytes': bytes_n,
+            'body': body,
+            'lines': list(self._tpl_inbox_lines),
+        }
+
+    def _tpl_clear_inbox_timeline(self):
+        self._tpl_inbox_lines = []
+        if hasattr(self, 'tpl_inbox_timeline') and self.tpl_inbox_timeline is not None:
+            self.tpl_inbox_timeline.setPlainText('(多设备 LocalBus 收件箱时间线空)')
+        if hasattr(self, 'tpl_inbox_meta') and self.tpl_inbox_meta is not None:
+            self.tpl_inbox_meta.setText('(尚未软投递)')
 
     def _tpl_apply_to_send_event(self):
         """Append / fill first send-event row with template body (expanded optional)."""

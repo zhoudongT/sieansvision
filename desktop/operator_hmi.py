@@ -225,6 +225,16 @@ class ProductionStatsPanel(QWidget):
             f'border-radius:2px;padding:3px 6px;font-size:11px;font-weight:600;'
         )
         root.addWidget(self._host_state_lab)
+        # Alarm/OK-NG dashboard soft strip (page-level deepen; not micro chips)
+        self._okng_dash_lab = QLabel('看板 · OK 0  NG 0  良率 —  ·  序列 —  ·  报警关')
+        self._okng_dash_lab.setObjectName('prodOkNgDashboardStrip')
+        self._okng_dash_lab.setWordWrap(True)
+        self._okng_dash_lab.setStyleSheet(
+            f'background:{CARD};color:{TEXT_MUTED};border:1px solid {LINE};'
+            f'border-radius:2px;padding:4px 6px;font-size:11px;font-weight:600;'
+        )
+        self._okng_dash_lab.setToolTip('Alarm/OK-NG 看板软条：累计 + 序列 + 报警态（跟 Host SM / 页铬）')
+        root.addWidget(self._okng_dash_lab)
         self._ok_spark_lab = QLabel('判定序列 · · ·')
         self._ok_spark_lab.setObjectName('prodOkSpark')
         self._ok_spark_lab.setStyleSheet(f'color:{TEXT_MUTED};font-size:12px;font-family:monospace;')
@@ -490,6 +500,36 @@ class ProductionStatsPanel(QWidget):
         ut = getattr(self, '_uph_trend_lab', None)
         if ut is not None:
             ut.setText(self.trend_uph_text())
+        # Deepen OK/NG dashboard soft strip
+        dash = getattr(self, '_okng_dash_lab', None)
+        if dash is not None:
+            ok_i = int(self._ok)
+            ng_i = int(self._ng)
+            tot = ok_i + ng_i
+            ytxt = f'{(100.0 * ok_i / tot):.1f}%' if tot else '—'
+            hist = list(getattr(self, '_ok_hist', []) or [])
+            seq = ''.join(('O' if b else 'N') for b in reversed(hist[:24])) if hist else '—'
+            alarm = getattr(self, '_alarm', None)
+            alarm_on = bool(alarm is not None and alarm.isVisible() and (alarm.text() or '').strip())
+            alarm_bit = ('⚠ ' + alarm.text().replace('⚠ ', '')[:28]) if alarm_on else '报警关'
+            dash.setText(
+                f'看板 · OK {ok_i}  NG {ng_i}  良率 {ytxt}  ·  序列 {seq}  ·  {alarm_bit}'
+            )
+            if alarm_on or (ng_i > ok_i and tot):
+                dash.setStyleSheet(
+                    'background:#3a1c1c;color:#ffb4b4;border:1px solid #e35d6a;'
+                    'border-radius:2px;padding:4px 6px;font-size:11px;font-weight:700;'
+                )
+            elif ok_i > 0 and ng_i == 0:
+                dash.setStyleSheet(
+                    'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                    'border-radius:2px;padding:4px 6px;font-size:11px;font-weight:700;'
+                )
+            else:
+                dash.setStyleSheet(
+                    f'background:{CARD};color:{TEXT_MUTED};border:1px solid {LINE};'
+                    f'border-radius:2px;padding:4px 6px;font-size:11px;font-weight:600;'
+                )
 
     def ok_count(self):
         return self._ok
@@ -867,6 +907,19 @@ class OperatorHmiView(QWidget):
         root.addWidget(self._state_rail)
         self._paint_machine_chrome('Idle')
 
+        # Page-level production chrome banner (recipe/status binding; not prop chips)
+        self._page_chrome_banner = QLabel('页铬 · 配方 — · 状态 — · 未绑定生产任务')
+        self._page_chrome_banner.setObjectName('hmiPageChromeBanner')
+        self._page_chrome_banner.setWordWrap(True)
+        self._page_chrome_banner.setStyleSheet(
+            'background:#1a2430;color:#9ec9f0;border:1px solid #3a5a7a;'
+            'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+        )
+        self._page_chrome_banner.setToolTip(
+            '生产任务 ↔ 操作员页级铬：配方/状态/statusVar 一次绑定到页眉·状态轨·固定栏'
+        )
+        root.addWidget(self._page_chrome_banner)
+
         self._hint = QLabel('')
         self._hint.setObjectName('dialogHint')
         self._hint.setWordWrap(True)
@@ -908,6 +961,21 @@ class OperatorHmiView(QWidget):
         self._fix_bottom.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._fix_bottom.hide()
         root.addWidget(self._fix_bottom)
+
+        # Alarm / OK-NG dashboard soft strip (page-level; not micro chips)
+        self._okng_dashboard_strip = QLabel(
+            '看板 · OK —  NG —  良率 —  ·  判定 —  ·  报警开 —  ·  状态 空闲'
+        )
+        self._okng_dashboard_strip.setObjectName('hmiOkNgDashboardStrip')
+        self._okng_dashboard_strip.setWordWrap(True)
+        self._okng_dashboard_strip.setStyleSheet(
+            f'background:{CARD};color:{TEXT_MUTED};border:1px solid {LINE};'
+            f'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+        )
+        self._okng_dashboard_strip.setToolTip(
+            'Alarm/OK-NG 看板软条：累计 OK/NG/良率 + 末次判定 + 未清报警 + 上位机状态'
+        )
+        root.addWidget(self._okng_dashboard_strip)
 
         # Always-available default run strip (also used when layout has no 运行控制)
         self._default_strip = QWidget()
@@ -1530,6 +1598,14 @@ class OperatorHmiView(QWidget):
                 host.set_production_snapshot(ok_n, ng_n, host_state=getattr(self, '_host_state', None))
             except Exception:
                 pass
+        # Deepen Alarm/OK-NG dashboard soft strip
+        try:
+            self.refresh_okng_dashboard_strip(
+                ok_n=ok_n, ng_n=ng_n,
+                host_state=getattr(self, '_host_state', None),
+            )
+        except Exception:
+            pass
 
     # ----- internals -----
     def _clear_grid(self):
@@ -2643,6 +2719,210 @@ class OperatorHmiView(QWidget):
             QTimer.singleShot(1400, _settle)
         except Exception:
             pass
+
+    def apply_production_page_chrome(self, snapshot=None):
+        """Page-level recipe/status chrome binding from production_task (not prop chips)."""
+        snap = dict(snapshot or {})
+        recipe = str(snap.get('recipe') or '').strip() or '—'
+        variant = str(snap.get('variant') or '').strip()
+        status = str(snap.get('status') or 'ready')
+        sv = str(snap.get('statusVar') or 'taskStatus')
+        scope = str(snap.get('scope') or 'global')
+        task = str(snap.get('taskName') or '—')
+        steps = snap.get('chainSteps', 0)
+        banner = str(snap.get('banner') or '').strip() or (
+            f'页铬 · 配方 {recipe} · 状态 {status} · {scope}.{sv} · 链 {steps} 步'
+        )
+        self._live_page_chrome = snap
+        # Header recipe badge + strip recipe
+        try:
+            self.set_recipe_chrome(recipe, variant)
+        except Exception:
+            pass
+        # Page chrome banner
+        lab = getattr(self, '_page_chrome_banner', None)
+        if lab is not None:
+            trial = ' · 试跑待回填' if snap.get('trial') else ''
+            lab.setText(banner + trial)
+            lab.setToolTip(
+                f'任务 {task} · {scope}.{sv}={status} · 链 {steps} 步 · '
+                f'绑定目标：页眉徽章 / 状态轨 / 固定栏 / 默认条配方'
+            )
+            if status == 'running' or snap.get('trial'):
+                lab.setStyleSheet(
+                    'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                    'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+                )
+            elif status == 'unconfigured':
+                lab.setStyleSheet(
+                    'background:#3a3420;color:#e0b84a;border:1px solid #e0b84a;'
+                    'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+                )
+            else:
+                lab.setStyleSheet(
+                    'background:#1a2430;color:#9ec9f0;border:1px solid #3a5a7a;'
+                    'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+                )
+        # Fixed-bar live + machine chrome
+        try:
+            self.update_fixed_bar_live(
+                run_status=str(snap.get('runStatus') or status),
+                okng=str(snap.get('okng') or '—'),
+                counters=str(snap.get('counters') or f'链{steps}'),
+                comm=str(snap.get('comm') or 'LocalBus'),
+            )
+        except Exception:
+            pass
+        host_state = str(snap.get('hostState') or '')
+        if host_state:
+            try:
+                self._paint_machine_chrome(host_state)
+            except Exception:
+                pass
+            try:
+                for panel in getattr(self, '_stats_panels', []) or []:
+                    if hasattr(panel, 'set_host_state_mirror'):
+                        try:
+                            from desktop.host_state_machine import STATE_ZH
+                            zh = STATE_ZH.get(host_state, host_state)
+                        except Exception:
+                            zh = host_state
+                        panel.set_host_state_mirror(host_state, zh)
+            except Exception:
+                pass
+        # Refresh OK/NG dashboard soft strip with chrome context
+        try:
+            self.refresh_okng_dashboard_strip(
+                recipe=recipe, status=status, status_var=f'{scope}.{sv}',
+            )
+        except Exception:
+            pass
+        return snap
+
+    def refresh_okng_dashboard_strip(self, *, ok_n=None, ng_n=None, judge=None,
+                                     open_alarms=None, host_state=None,
+                                     recipe=None, status=None, status_var=None,
+                                     last_alarm=None):
+        """Deepen Alarm/OK-NG dashboard soft strip (page-level; no micro chips)."""
+        strip = getattr(self, '_okng_dashboard_strip', None)
+        if strip is None:
+            return
+        # Pull live counters from first stats panel when not provided
+        if ok_n is None or ng_n is None:
+            for panel in getattr(self, '_stats_panels', []) or []:
+                try:
+                    ok_n = int(getattr(panel, '_ok', 0) if ok_n is None else ok_n)
+                    ng_n = int(getattr(panel, '_ng', 0) if ng_n is None else ng_n)
+                    break
+                except Exception:
+                    pass
+        try:
+            ok_i = int(ok_n) if ok_n is not None else 0
+            ng_i = int(ng_n) if ng_n is not None else 0
+        except (TypeError, ValueError):
+            ok_i = ng_i = 0
+        total = ok_i + ng_i
+        ytxt = f'{(100.0 * ok_i / total):.1f}%' if total else '—'
+        st = host_state or getattr(self, '_host_state', 'Idle') or 'Idle'
+        try:
+            from desktop.host_state_machine import STATE_ZH
+            st_zh = STATE_ZH.get(st, st)
+        except Exception:
+            st_zh = st
+        judge_txt = judge if judge is not None else getattr(self, '_live_okng', '—')
+        # open alarms from host SM when available
+        if open_alarms is None:
+            open_alarms = 0
+            last_alarm = last_alarm or ''
+            host = getattr(self, '_host_sm', None) or getattr(self, 'host_state_machine', None)
+            if host is None:
+                # try embedded widgets
+                for w in getattr(self, '_host_embeds', []) or []:
+                    if hasattr(w, 'alarm_history'):
+                        host = w
+                        break
+            if host is not None and hasattr(host, 'alarm_history'):
+                try:
+                    hist = list(host.alarm_history() or [])
+                    open_alarms = sum(1 for e in hist if not e.get('cleared'))
+                    if not last_alarm:
+                        for e in reversed(hist):
+                            if not e.get('cleared'):
+                                last_alarm = str(e.get('reason') or e.get('detail') or '')
+                                break
+                except Exception:
+                    pass
+        # recent OK/NG sequence text (soft strip, not chip cascade)
+        seq = ''
+        for panel in getattr(self, '_stats_panels', []) or []:
+            hist = list(getattr(panel, '_ok_hist', []) or [])
+            if hist:
+                # newest first → show left=old right=new for strip readability
+                bits = [('O' if b else 'N') for b in reversed(hist[:24])]
+                seq = ''.join(bits)
+                break
+        recipe_txt = recipe if recipe is not None else getattr(self, '_live_recipe', '') or '—'
+        status_txt = status if status is not None else getattr(self, '_live_run_status', '') or '—'
+        sv_txt = status_var or ''
+        alarm_bit = f'报警开 {open_alarms}'
+        if last_alarm:
+            alarm_bit += f' · 末警 {last_alarm[:24]}'
+        parts = [
+            f'看板 · OK {ok_i}  NG {ng_i}  良率 {ytxt}',
+            f'判定 {judge_txt}',
+            alarm_bit,
+            f'状态 {st_zh}',
+        ]
+        if seq:
+            parts.append(f'序列 {seq}')
+        if recipe_txt and recipe_txt != '—':
+            parts.append(f'配方 {recipe_txt}')
+        if sv_txt:
+            parts.append(sv_txt)
+        if status_txt and status_txt not in ('—', st_zh):
+            parts.append(f'运行 {status_txt}')
+        text = '  ·  '.join(parts)
+        strip.setText(text)
+        # color by alarm / NG dominance
+        alarm_on = (st == 'Alarm') or bool(getattr(self, '_live_host_alarm', False)) or (open_alarms and int(open_alarms) > 0 and str(judge_txt).upper() in ('NG', 'FAIL', '不良'))
+        low = str(judge_txt).strip().upper()
+        if alarm_on or st == 'Alarm':
+            strip.setStyleSheet(
+                'background:#3a1c1c;color:#ffb4b4;border:1px solid #e35d6a;'
+                'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+            )
+        elif low in ('NG', 'FAIL', '不良', '拒'):
+            strip.setStyleSheet(
+                'background:#3a1c1c;color:#ffb4b4;border:1px solid #e35d6a;'
+                'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+            )
+        elif low in ('OK', 'PASS', '良', '通过') or (total and ok_i >= ng_i and st == 'Running'):
+            strip.setStyleSheet(
+                'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+            )
+        else:
+            strip.setStyleSheet(
+                f'background:{CARD};color:{TEXT_MUTED};border:1px solid {LINE};'
+                f'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+            )
+        # Mirror into Host SM production strip when present
+        host = None
+        for attr in ('_host_sm', 'host_state_machine'):
+            host = getattr(self, attr, None)
+            if host is not None:
+                break
+        if host is not None and hasattr(host, 'set_production_snapshot'):
+            try:
+                host.set_production_snapshot(ok_i, ng_i, host_state=st)
+            except Exception:
+                pass
+        if host is not None and hasattr(host, 'set_okng_dashboard_strip'):
+            try:
+                host.set_okng_dashboard_strip(text, alarm_on=bool(alarm_on or st == 'Alarm'))
+            except Exception:
+                pass
+        return text
 
     def set_recipe_chrome(self, name: str = '', variant: str = ''):
 

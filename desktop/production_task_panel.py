@@ -655,6 +655,22 @@ class ProductionTaskPanel(QWidget):
         lay.addWidget(QLabel('HMI 配方/状态条（软预览）'))
         lay.addWidget(self._prod_hmi_strip)
 
+        # Page-level chrome binding (substantial soft; not prop-chip cascade)
+        lay.addWidget(QLabel('HMI 页铬绑定（配方/状态 → 运行页页眉·固定栏·状态轨）'))
+        self._prod_page_chrome = QPlainTextEdit()
+        self._prod_page_chrome.setObjectName('productionTaskPageChrome')
+        self._prod_page_chrome.setReadOnly(True)
+        self._prod_page_chrome.setMaximumHeight(130)
+        self._prod_page_chrome.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#1a2430;color:#9ec9f0;'
+        )
+        lay.addWidget(self._prod_page_chrome)
+        self._prod_page_chrome_meta = QLabel()
+        self._prod_page_chrome_meta.setObjectName('productionTaskPageChromeMeta')
+        self._prod_page_chrome_meta.setWordWrap(True)
+        self._prod_page_chrome_meta.setStyleSheet('color:#666;font-size:11px;')
+        lay.addWidget(self._prod_page_chrome_meta)
+
         self._prod_trial_strip = QPlainTextEdit()
         self._prod_trial_strip.setObjectName('productionTaskTrialStrip')
         self._prod_trial_strip.setReadOnly(True)
@@ -684,6 +700,14 @@ class ProductionTaskPanel(QWidget):
         hmi.setToolTip('把当前配方名推到运行态 HMI 配方徽章（若已打开）')
         hmi.clicked.connect(lambda: self._soft_push_hmi_recipe(trial=False))
         bar.addWidget(hmi)
+        page = QPushButton('绑定 HMI 页铬')
+        page.setObjectName('productionTaskPageChromeBindBtn')
+        page.setToolTip(
+            '把 recipe / statusVar / 任务状态一次性绑定到操作员 HMI 页级铬'
+            '（页眉徽章·状态轨·固定栏·页铬横幅；非属性芯片级联）'
+        )
+        page.clicked.connect(lambda: self._soft_bind_hmi_page_chrome(trial=False))
+        bar.addWidget(page)
         bar.addStretch(1)
         lay.addLayout(bar)
         lay.addStretch(1)
@@ -705,13 +729,18 @@ class ProductionTaskPanel(QWidget):
         recipe = str(self.params.get('recipe') or '').strip()
         chain = self.params.get('chain') or []
         steps_n = len([r for r in chain if isinstance(r, dict) and (r.get('step') or r.get('op'))])
+        hmi_recipe = recipe or name or '—'
+        banner = (
+            f'页铬 · 配方 {hmi_recipe} · 状态 {status} · {scope}.{sv} · 链 {steps_n} 步'
+        )
         mapping = {
             f'{scope}.{sv}': status,
             f'{scope}.{sv}_name': name or '—',
             f'{scope}.{sv}_recipe': recipe or '—',
             f'{scope}.{sv}_steps': steps_n,
-            f'{scope}.hmiRecipe': recipe or name or '—',
+            f'{scope}.hmiRecipe': hmi_recipe,
             f'{scope}.hmiTaskStatus': status,
+            f'{scope}.hmiPageChromeBanner': banner,
         }
         return mapping, status, sv, scope, name, recipe, steps_n
 
@@ -797,6 +826,102 @@ class ProductionTaskPanel(QWidget):
                 )
             except Exception:
                 pass
+        # Always refresh page-chrome soft preview; bind live when HMI open
+        try:
+            self._soft_bind_hmi_page_chrome(trial=trial, push_live=hmi is not None)
+        except Exception:
+            pass
+
+    def _page_chrome_snapshot(self, *, trial=False):
+        """Page-level recipe/status chrome contract (not prop chips)."""
+        mapping, status, sv, scope, name, recipe, steps_n = self._writeback_map()
+        label = recipe or name or '—'
+        banner = mapping.get(f'{scope}.hmiPageChromeBanner') or (
+            f'页铬 · 配方 {label} · 状态 {status} · {scope}.{sv} · 链 {steps_n} 步'
+        )
+        variant = ''
+        try:
+            variant = str((self.project or {}).get('activeRecipeVariant') or '')
+        except Exception:
+            variant = ''
+        host_state = 'Running' if status == 'running' else (
+            'Idle' if status in ('ready', 'unconfigured') else 'Idle'
+        )
+        if trial:
+            host_state = 'Running'
+        return {
+            'recipe': label,
+            'variant': variant,
+            'status': status,
+            'statusVar': sv,
+            'scope': scope,
+            'taskName': name or '—',
+            'chainSteps': steps_n,
+            'banner': banner,
+            'strip': (
+                f'配方 · {label}  │  状态 {status}  │  {scope}.{sv}  │  链 {steps_n} 步'
+                + (' · 试跑待回填' if trial else '')
+            ),
+            'runStatus': '试跑' if trial else status,
+            'okng': '—' if trial else ('OK' if status == 'ready' else status.upper()),
+            'counters': f'链{steps_n}',
+            'comm': 'LocalBus',
+            'hostState': host_state,
+            'trial': bool(trial),
+            'writeback': dict(mapping),
+        }
+
+    def _soft_bind_hmi_page_chrome(self, *, trial=False, push_live=True):
+        """Bind production_task recipe/status into operator HMI page chrome."""
+        snap = self._page_chrome_snapshot(trial=trial)
+        # Local page-chrome preview (design-time)
+        if hasattr(self, '_prod_page_chrome') and self._prod_page_chrome is not None:
+            lines = [
+                f"banner   = {snap['banner']}",
+                f"recipe   = {snap['recipe']}"
+                + (f" / {snap['variant']}" if snap.get('variant') else ''),
+                f"status   = {snap['status']}  ·  hostState = {snap['hostState']}",
+                f"bind     = {snap['scope']}.{snap['statusVar']}",
+                f"task     = {snap['taskName']}  ·  chainSteps = {snap['chainSteps']}",
+                f"run/okng = {snap['runStatus']} / {snap['okng']}  ·  counters = {snap['counters']}",
+                f"comm     = {snap['comm']}  ·  trial = {snap['trial']}",
+                'targets  = header.recipeBadge · stateRail · fixedBars · pageChromeBanner · strip.recipe',
+            ]
+            self._prod_page_chrome.setPlainText('\n'.join(lines))
+        if hasattr(self, '_prod_page_chrome_meta') and self._prod_page_chrome_meta is not None:
+            self._prod_page_chrome_meta.setText(
+                f"页铬契约 · recipe↔徽章 · statusVar↔状态轨/固定栏 · "
+                f"{snap['scope']}.{snap['statusVar']}={snap['status']} · "
+                f"非属性芯片级联"
+            )
+        # Persist soft chrome bag on project
+        proj = self.project if isinstance(self.project, dict) else {}
+        try:
+            proj['hmiPageChrome'] = {
+                'recipe': snap['recipe'],
+                'variant': snap.get('variant') or '',
+                'status': snap['status'],
+                'statusVar': snap['statusVar'],
+                'scope': snap['scope'],
+                'taskName': snap['taskName'],
+                'chainSteps': snap['chainSteps'],
+                'banner': snap['banner'],
+                'hostState': snap['hostState'],
+            }
+        except Exception:
+            pass
+        if not push_live:
+            return snap
+        w = self.window()
+        if w is None:
+            return snap
+        hmi = getattr(w, 'operator_hmi', None)
+        if hmi is not None and hasattr(hmi, 'apply_production_page_chrome'):
+            try:
+                hmi.apply_production_page_chrome(snap)
+            except Exception:
+                pass
+        return snap
 
     def _record_trial_strip(self, title, ops):
         from datetime import datetime
@@ -826,6 +951,11 @@ class ProductionTaskPanel(QWidget):
             self._prod_hmi_strip.setText(
                 f'配方 · {label}  │  状态 {status}  │  {scope}.{sv}  │  链 {steps_n} 步'
             )
+        # Soft page-chrome preview (no live push on plain refresh)
+        try:
+            self._soft_bind_hmi_page_chrome(trial=False, push_live=False)
+        except Exception:
+            pass
         if hasattr(self, '_prod_trial_strip') and self._prod_trial_strip is not None:
             hist = list(getattr(self, '_trial_strip_lines', []) or [])
             if hist:
