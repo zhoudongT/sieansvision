@@ -1798,6 +1798,13 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 ### 仍为外依赖
 - 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
 
+## 【开箱即用 + 薄壳加深 · 2026-10-28】
+
+- **开箱即用**：`projects/default-platform.sieans` 样张改为仓库相对路径；启动/打开时 `_rebase_source_images` + `_autoload_source_image`；`runUi.meta.openAndRun` → 自动进入运行模式，可点上位机「▶ 开始」做采集/识别（本地胶片模拟相机）。
+- **薄壳加深（面板↔运行对齐）**：`format_data` trim/onEmpty/emptyDefault；`text_save` BOM/行首时间戳；`protocol_parse` fixedWidths；`output_image` onlyOnOk+okVar、filePrefix、createDir。
+- **验证**：`tests/test_flow_control_deepen.cjs`；`scripts/smoke-default-platform-open-and-run-e2e.cjs`；`scripts/smoke-open-and-run-wiring-e2e.py`。
+- **仍外置**：真实 TCP 设备、远端云同步、Halcon 卡尺核、机械手厂商 SDK；不宣称 chrome 人工签字。
+
 ## 【细妆⑨ · 卡尺核深化 · 本地模板云 · TCP环回 · 2026-10-28】
 
 

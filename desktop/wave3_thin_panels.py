@@ -31,6 +31,7 @@ def normalize_output_image_params(params=None):
     p.setdefault('quality', 95)
     p.setdefault('useTimestamp', True)
     p.setdefault('onlyOnOk', False)
+    p.setdefault('okVar', 'passGate')
     p.setdefault('filePrefix', 'img')
     p.setdefault('createDir', True)
     p.setdefault('overwrite', True)
@@ -154,8 +155,8 @@ class _ShellBase(QWidget):
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
         keys = QLabel(
-            'format_data → targetVar；output_image → savedPath；'
-            'protocol_parse → fields；text_save → bytesWritten。'
+            'format_data → formatted/status；output_image → path/status(skipped_ng)；'
+            'protocol_parse → fields；text_save → bytes/bom/timestampPrefix。'
         )
         keys.setWordWrap(True)
         form.addRow('输出字段', keys)
@@ -358,6 +359,10 @@ class OutputImagePanel(_ShellBase):
         ok_only = OrangeSwitch(bool(self.params.get('onlyOnOk', False)))
         ok_only.toggled.connect(lambda c: self._set_param('onlyOnOk', bool(c)))
         form.addRow('仅 OK 时保存', ok_only)
+        ok_var = QLineEdit(str(self.params.get('okVar') or 'passGate'))
+        ok_var.editingFinished.connect(lambda: self._set_param('okVar', ok_var.text().strip() or 'passGate'))
+        ok_var.setToolTip('仅 OK 时保存：读取流程/全局变量（默认 passGate）')
+        form.addRow('OK 变量', ok_var)
         mkdir = OrangeSwitch(bool(self.params.get('createDir', True)))
         mkdir.toggled.connect(lambda c: self._set_param('createDir', bool(c)))
         form.addRow('自动建目录', mkdir)

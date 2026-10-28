@@ -166,10 +166,10 @@
     "exposure": 0.0,
     "gain": 0.0,
     "images": [
-      "/home/allen/文档/sieansvision/public/vision/samples/circle-ring.png",
-      "/home/allen/文档/sieansvision/public/vision/samples/circle-hole.png",
-      "/home/allen/文档/sieansvision/public/vision/samples/caliper-line.png",
-      "/home/allen/文档/sieansvision/public/vision/samples/fixture-multiple.png"
+      "public/vision/samples/circle-ring.png",
+      "public/vision/samples/circle-hole.png",
+      "public/vision/samples/caliper-line.png",
+      "public/vision/samples/fixture-multiple.png"
     ],
     "currentIndex": 0
   },
@@ -231,7 +231,7 @@
       "openAndRun": true
     }
   },
-  "notes": "【打开即跑 · 今日交付】胶片条已挂 circle/caliper/fixture 样张。设计态 ▶ 单次：预处理→圆查找→测量→变量；或切「运行模式」用操作员界面开始/停止。无需预先「打开图像」——打开工程会自动载入第一张。\n【细妆】默认运行壳：图像 + 上位机状态机（p41–43）；底栏 OK/NG/计数；无机械手 SDK。",
+  "notes": "【打开即跑 · 今日交付】胶片条已挂 circle/caliper/fixture 样张。设计态 ▶ 单次：预处理→圆查找→测量→变量；或切「运行模式」用操作员界面开始/停止。无需预先「打开图像」——打开工程会自动载入第一张。\n【细妆】默认运行壳：图像 + 上位机状态机（p41–43）；底栏 OK/NG/计数；无机械手 SDK。\n【开箱】样张使用仓库相对路径（public/vision/samples/…），换机/换目录仍可自动载入。",
   "globalTriggers": {
     "events": [],
     "strings": [

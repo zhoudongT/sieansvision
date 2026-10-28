@@ -794,6 +794,10 @@ class MainWindow(QMainWindow):
             # runUi.fixedBars.gateKey (判定门) and sourceConfig must survive save→reopen.
             for key in ('flows','activeFlowId','flowEdges','runUi','commManager','globalTriggers','notes','sourceConfig'):
                 if key in value:project[key]=value[key]
+            try:
+                project = self._rebase_source_images(project)
+            except Exception:
+                pass
             flow_scheme.ensure_scheme(project)
             # Prefer active flow payload on top-level
             try:flow_scheme.activate_flow(project, project['activeFlowId'])
@@ -818,6 +822,8 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(300, self.maybe_warm_camera)
             # Open-and-run: auto-load first local sourceConfig image into global 图像
             QTimer.singleShot(50, lambda: self.guard(lambda: self._autoload_source_image(force=True)))
+            # meta.openAndRun → enter operator HMI (click 开始 for acquisition+recognition)
+            QTimer.singleShot(400, lambda: self.guard(self._maybe_open_and_run))
         self.request('project/validate',{'project':value},loaded)
 
     def save_project(self):
@@ -2102,7 +2108,65 @@ class MainWindow(QMainWindow):
         mm.raise_()
         mm.show()
 
+    def _rebase_source_images(self, project):
+        """Prefer repo-relative sample paths; rewrite absolute paths under self.root."""
+        from pathlib import Path as P
+        project = project or {}
+        cfg = normalize_source(project.get('sourceConfig'))
+        images = list(cfg.get('images') or [])
+        if not images:
+            return project
+        root = P(self.root).resolve()
+        out = []
+        changed = False
+        for raw in images:
+            s = str(raw or '').strip()
+            if not s:
+                continue
+            p = P(s)
+            try:
+                if p.is_absolute():
+                    try:
+                        rel = p.resolve().relative_to(root)
+                        s2 = str(rel).replace('\\', '/')
+                        if s2 != s:
+                            changed = True
+                        out.append(s2)
+                        continue
+                    except Exception:
+                        out.append(s)
+                        continue
+                out.append(s.replace('\\', '/'))
+            except Exception:
+                out.append(s)
+        if changed or out != images:
+            cfg['images'] = out
+            project['sourceConfig'] = cfg
+        return project
+
+    def _maybe_open_and_run(self):
+        """Honor runUi.meta.openAndRun: enter operator HMI so Allen can click 开始."""
+        try:
+            ui = (self.document.project or {}).get('runUi') or {}
+            meta = ui.get('meta') or {}
+            if not meta.get('openAndRun'):
+                return
+            self._autoload_source_image(force=True)
+            if getattr(self, 'app_mode', 'design') != 'run':
+                self.set_app_mode('run')
+            try:
+                self.statusBar().showMessage(
+                    '开箱即跑就绪 · 样张已载入 · 点上位机「▶ 开始」或工具栏连续/单次',
+                    8000,
+                )
+            except Exception:
+                pass
+            self.log('开箱即跑：已进入运行模式（openAndRun）· 可立即开始采集/识别')
+        except Exception as err:
+            self.log(f'开箱即跑进入运行态失败：{err}')
+
     def _autoload_source_image(self, force=False):
+
         """Load current local sourceConfig / filmstrip image into self.image (open-and-run)."""
         if self.busy and not force:
             return bool(self.image)
@@ -2121,6 +2185,23 @@ class MainWindow(QMainWindow):
             idx = 0
         target = images[idx]
         try:
+            from pathlib import Path as P
+            tp = P(target)
+            if (not tp.is_file()) and tp.is_absolute():
+                # Absolute path gone (moved checkout) — try same relative under root
+                try:
+                    s = str(target).replace('\\', '/')
+                    marker = 'public/vision/samples/'
+                    if marker in s:
+                        cand = self.root / s[s.index(marker):]
+                        if cand.is_file():
+                            target = str(cand)
+                except Exception:
+                    pass
+            elif (not tp.is_file()) and (not tp.is_absolute()):
+                cand = self.root / target
+                if cand.is_file():
+                    target = str(cand)
             self.load_filmstrip_path(target)
         except Exception as err:
             self.log(f'自动载入源图失败：{err}')
