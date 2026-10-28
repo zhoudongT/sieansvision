@@ -426,6 +426,14 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆94 · 策略 refresh/set/ensure status_prop_ok · tip_max_len Status 级联 · 2026-10-28】
+
+- **DST 策略徽章 refresh**：写回 `dstImportStrategyBadgeStatus`（`策略·合并/覆盖`），out 含 `status` / `status_prop` / `status_prop_ok`。
+- **set 策略**：仍返回 `str`（兼容 smoke101）；额外 stash `_last_…_strategy_set` 含 `status_prop_ok` / `strategy_prop_ok` / `tip_prop_ok`。
+- **ensure**：新建徽章时初始化 `dstImportStrategyBadgeStatus=策略·合并`。
+- **级联**：`set_strategy_badge_hover_tip_max_len` 同步 Status，out 含 `status_prop_ok`。未加策略 flash_ms（无既有 FlashMs 缺口，留后续）。
+- **验证**：`scripts/smoke-wave126-…-e2e.py`；regress wave125/120。非硬件约 **~99.98%**。
+
 ## 【细妆93 · 策略菜单 status_prop_ok · 短史夹紧 tip/status · 菜单 flash+tip+status 三联回归 · 2026-10-28】
 
 - **DST 策略徽章右键菜单**：同步 `dstImportStrategyBadgeStatus`（`策略·合并/覆盖`），out/`_menu_sync` 含 `status` / `status_prop` / `status_prop_ok`（对齐 tip 往返）。

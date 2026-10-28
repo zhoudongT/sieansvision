@@ -33540,8 +33540,23 @@ class HostStateMachineWidget(QWidget):
             self._flash_host_toast(f'DST导入策略 · {tip}', kind='ok', ms=700)
         except Exception:
             pass
+        refreshed = {}
         try:
-            self.refresh_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge()
+            refreshed = self.refresh_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge() or {}
+        except Exception:
+            refreshed = {}
+        try:
+            set_out = {
+                'ok': True, 'strategy': v, 'persist': bool(persist),
+                'status': refreshed.get('status'),
+                'status_prop': refreshed.get('status_prop'),
+                'status_prop_ok': bool(refreshed.get('status_prop_ok')),
+                'strategy_prop': refreshed.get('strategy_prop'),
+                'strategy_prop_ok': bool(refreshed.get('strategy_prop_ok')),
+                'tip_prop': refreshed.get('tip_prop'),
+                'tip_prop_ok': bool(refreshed.get('tip_prop_ok')),
+            }
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_set = dict(set_out)
         except Exception:
             pass
         return v
@@ -33556,6 +33571,7 @@ class HostStateMachineWidget(QWidget):
             badge = QLabel(self)
             badge.setObjectName('dstBatchDiffImportStrategyBadge')
             badge.setProperty('isDstClearUndoTtlPresetCustomsReorderShortcutConflictHistoryImportStrategyBadge', True)
+            badge.setProperty('dstImportStrategyBadgeStatus', '策略·合并')
             badge.setStyleSheet('color:#e6a23c;background:#1f2329;padding:2px 6px;border:1px solid #3a3f44;border-radius:3px;font-size:11px;')
             badge.hide()
             self._dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge = badge
@@ -33692,6 +33708,9 @@ class HostStateMachineWidget(QWidget):
             tip_max_len_prop_ok = False
             last_toast_brief_prop_ok = False
             tip_prop_ok = False
+            status = None
+            status_prop = None
+            status_prop_ok = False
             if badge is not None and tip:
                 badge.setToolTip(tip)
                 badge.setProperty('dstImportStrategyBadgeHoverTip', tip)
@@ -33701,9 +33720,17 @@ class HostStateMachineWidget(QWidget):
                 if brief is None:
                     brief = '无'
                 badge.setProperty('dstImportStrategyBadgeLastToastBrief', str(brief))
+                try:
+                    st_cur = self.toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_shortcut_conflict_history_batch_diff_import_strategy()
+                except Exception:
+                    st_cur = 'merge'
+                _st_label = '覆盖' if str(st_cur) == 'overwrite' else ('合并' if str(st_cur) == 'merge' else str(st_cur))
+                status = f'策略·{_st_label}'
+                badge.setProperty('dstImportStrategyBadgeStatus', status)
                 tip_max_len_prop = badge.property('dstImportStrategyBadgeHoverTipMaxLen')
                 last_toast_brief_prop = badge.property('dstImportStrategyBadgeLastToastBrief')
                 tip_prop = badge.property('dstImportStrategyBadgeHoverTip')
+                status_prop = badge.property('dstImportStrategyBadgeStatus')
                 try:
                     tip_max_len_prop_ok = (int(tip_max_len_prop) == int(v))
                 except Exception:
@@ -33711,6 +33738,7 @@ class HostStateMachineWidget(QWidget):
                 last_toast_brief_prop_ok = (str(last_toast_brief_prop) == str(brief))
                 if tip:
                     tip_prop_ok = (str(tip_prop) == tip)
+                status_prop_ok = (str(status_prop) == status)
         except Exception:
             tip_max_len_prop = None
             last_toast_brief_prop = None
@@ -33718,6 +33746,9 @@ class HostStateMachineWidget(QWidget):
             tip_max_len_prop_ok = False
             last_toast_brief_prop_ok = False
             tip_prop_ok = False
+            status = None
+            status_prop = None
+            status_prop_ok = False
         brief = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_toast_brief', None)
         if brief is None:
             brief = '无'
@@ -33727,6 +33758,7 @@ class HostStateMachineWidget(QWidget):
             'last_toast_brief': str(brief), 'last_toast_brief_prop': last_toast_brief_prop,
             'last_toast_brief_prop_ok': bool(last_toast_brief_prop_ok),
             'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok),
+            'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok),
         }
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_max_len = dict(out)
         return out
@@ -33854,6 +33886,10 @@ class HostStateMachineWidget(QWidget):
         tip_max_len_prop_ok = False
         tip_prop = None
         tip_prop_ok = False
+        _st_label = '覆盖' if str(st) == 'overwrite' else ('合并' if str(st) == 'merge' else str(st))
+        status = f'策略·{_st_label}'
+        status_prop = None
+        status_prop_ok = False
         last_toast_brief = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_toast_brief', None)
         if last_toast_brief is None:
             last_toast_brief = '无'
@@ -33869,12 +33905,14 @@ class HostStateMachineWidget(QWidget):
                 badge.setProperty('dstImportStrategyBadgeStrategy', str(st))
                 badge.setProperty('dstImportStrategyBadgeHoverTipMaxLen', int(tip_ml))
                 badge.setProperty('dstImportStrategyBadgeLastToastBrief', str(last_toast_brief))
+                badge.setProperty('dstImportStrategyBadgeStatus', status)
                 if last_tip:
                     badge.setProperty('dstImportStrategyBadgeHoverTip', str(last_tip))
                 strategy_prop = badge.property('dstImportStrategyBadgeStrategy')
                 tip_max_len_prop = badge.property('dstImportStrategyBadgeHoverTipMaxLen')
                 last_toast_brief_prop = badge.property('dstImportStrategyBadgeLastToastBrief')
                 tip_prop = badge.property('dstImportStrategyBadgeHoverTip')
+                status_prop = badge.property('dstImportStrategyBadgeStatus')
                 strategy_prop_ok = (str(strategy_prop) == str(st))
                 try:
                     tip_max_len_prop_ok = (int(tip_max_len_prop) == int(tip_ml))
@@ -33883,6 +33921,7 @@ class HostStateMachineWidget(QWidget):
                 last_toast_brief_prop_ok = (str(last_toast_brief_prop) == str(last_toast_brief))
                 if last_tip:
                     tip_prop_ok = (str(tip_prop) == str(last_tip))
+                status_prop_ok = (str(status_prop) == status)
         except Exception:
             strategy_prop = None
             strategy_prop_ok = False
@@ -33892,11 +33931,14 @@ class HostStateMachineWidget(QWidget):
             last_toast_brief_prop_ok = False
             tip_prop = None
             tip_prop_ok = False
+            status_prop = None
+            status_prop_ok = False
         try:
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_strategy_prop_ok = bool(strategy_prop_ok)
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_tip_max_len_prop_ok = bool(tip_max_len_prop_ok)
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_toast_brief_prop_ok = bool(last_toast_brief_prop_ok)
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_tip_prop_ok = bool(tip_prop_ok)
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_status_prop_ok = bool(status_prop_ok)
         except Exception:
             pass
         out = {
@@ -33906,6 +33948,7 @@ class HostStateMachineWidget(QWidget):
             'last_toast_brief': str(last_toast_brief), 'last_toast_brief_prop': last_toast_brief_prop,
             'last_toast_brief_prop_ok': bool(last_toast_brief_prop_ok),
             'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok),
+            'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok),
         }
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge = dict(out)
         try:
