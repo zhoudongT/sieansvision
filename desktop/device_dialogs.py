@@ -432,6 +432,80 @@ class _RpcDialog(QDialog):
         pass
 
 
+
+class LivePreviewLabel(QLabel):
+    """CameraDialog live view: QLabel scaled pixmap — no QGraphicsView 1:1 strip.
+
+    Training / ROI annotation still uses _Preview (needs scene coordinates).
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setMinimumSize(360, 240)
+        self.setStyleSheet('background:#0c0c0e; color:#888;')
+        self.setText('等待预览帧…')
+        self.setScaledContents(False)
+        self._source = QPixmap()
+
+    def set_image(self, data):
+        try:
+            if not data or not isinstance(data, str) or ',' not in data:
+                raise ValueError('empty')
+            pixels = base64.b64decode(data.split(',', 1)[1], validate=False)
+            pm = QPixmap()
+            if not pm.loadFromData(pixels):
+                raise ValueError('decode')
+            self._source = pm
+            self._apply_scale()
+        except Exception:
+            self._source = QPixmap()
+            self.setPixmap(QPixmap())
+            self.setText('暂无可显示图像')
+
+    def show_live_frame(self, data):
+        self.set_image(data)
+
+    def fit_image(self):
+        self._apply_scale()
+
+    def _apply_scale(self):
+        if self._source.isNull():
+            return
+        w = max(1, self.width() - 4)
+        h = max(1, self.height() - 4)
+        if w < 32 or h < 32:
+            return
+        scaled = self._source.scaled(
+            w, h,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.setPixmap(scaled)
+        self.setText('')
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._apply_scale()
+
+    # Compatibility shims used by CameraDialog heal paths
+    @property
+    def pixmap_size(self):
+        return self._source.size()
+
+    def _is_corner_crop_transform(self):
+        return False
+
+    @property
+    def _needs_fit(self):
+        return False
+
+    @_needs_fit.setter
+    def _needs_fit(self, value):
+        if value:
+            self._apply_scale()
+
+
 class CameraDialog(_RpcDialog):
     image_ready = Signal(str)
     frame_ready = Signal(dict)
@@ -478,8 +552,8 @@ class CameraDialog(_RpcDialog):
         self.device_table.setMaximumHeight(170)
         device_layout.addWidget(self.device_table)
         split = QSplitter()
-        self.preview = _Preview()
-        self.preview.setMinimumSize(360, 240)
+        # QLabel live view — avoids QGraphicsView identity-transform「一条」on Wayland.
+        self.preview = LivePreviewLabel()
         self.details = QTreeWidget()
         self.details.setHeaderLabels(['参数 / 结果', '值'])
         self.details.setMinimumWidth(200)
@@ -487,7 +561,7 @@ class CameraDialog(_RpcDialog):
         split.addWidget(self.details)
         split.setStretchFactor(0, 3)
         split.setStretchFactor(1, 2)
-        split.setSizes([640, 360])
+        split.setSizes([720, 320])
         self._preview_split = split
         split.splitterMoved.connect(lambda *_: self._refit_preview())
         device_layout.addWidget(split, 1)

@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QSpinBox, QSplitter, QTabWidget, QVBoxLayout, QWidget,
 )
 
-from desktop.device_dialogs import _RpcDialog, _Preview
+from desktop.device_dialogs import _RpcDialog, _Preview, LivePreviewLabel
 from desktop.widgets.switch import OrangeSwitch
 
 
@@ -198,7 +198,7 @@ class CameraManagerDialog(_RpcDialog):
 
         preview_page = QWidget()
         pv = QVBoxLayout(preview_page)
-        self.preview = _Preview()
+        self.preview = LivePreviewLabel()
         pv.addWidget(self.preview, 1)
         self.preview_meta = QLabel('未连接')
         self.preview_meta.setWordWrap(True)
