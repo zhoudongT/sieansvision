@@ -50,6 +50,9 @@ class CameraManagerDialog(_RpcDialog):
             self._preview_gate = PreviewFrameGate(live_preview_ui_min_interval_ms())
         except Exception:
             self._preview_gate = None
+        self._last_painted_seq = None
+        self._did_live_refit = False
+        self._ui_heartbeat_n = 0
         self._gate_flush_timer = QTimer(self)
         self._gate_flush_timer.setSingleShot(True)
         self._gate_flush_timer.timeout.connect(self._flush_preview_gate)
@@ -661,6 +664,8 @@ class CameraManagerDialog(_RpcDialog):
         else:
             self._live_timer.stop()
             self._live_pending = False
+            self._did_live_refit = False
+            self._last_painted_seq = None
             if st == 'failed':
                 self._set_connect(False)
         self._buttons()
@@ -697,21 +702,22 @@ class CameraManagerDialog(_RpcDialog):
         if any(m == 'camera/capture' for m, _, _ in self.pending.values()):
             return
         self._live_pending = True
+        self._ui_heartbeat_n = getattr(self, '_ui_heartbeat_n', 0) + 1
         sid = self._session.get('id')
 
         def done(value):
             self._live_pending = False
-            data = value.get('result', value) if isinstance(value, dict) else value
             # camera/capture returns {annotatedImage, result, ...} at top level from engine
             frame = value if isinstance(value, dict) else {}
+            meta = frame.get('result') if isinstance(frame.get('result'), dict) else {}
+            seq = meta.get('frameSequence')
+            if seq is not None and seq == getattr(self, '_last_painted_seq', None):
+                return
             image = frame.get('annotatedImage') or frame.get('image') or ''
-            if not image and isinstance(frame.get('result'), dict):
-                # unlikely
-                pass
             if image:
-                self._last_frame = deepcopy(frame)
+                # Keep reference (no deepcopy of multi-MB payload on UI thread).
+                self._last_frame = frame
                 self._paint_live_preview(image, frame)
-                meta = frame.get('result') or {}
                 w = meta.get('width') or meta.get('Width')
                 h = meta.get('height') or meta.get('Height')
                 age = meta.get('frameAgeMs')
@@ -721,6 +727,8 @@ class CameraManagerDialog(_RpcDialog):
                 if age is not None:
                     bits.append(f'龄 {age} ms')
                 bits.append(f"帧 #{meta.get('frameSequence', '—')}")
+                hb = getattr(self, '_ui_heartbeat_n', 0)
+                bits.append(f'UI♥{hb}')
                 try:
                     from desktop.soft_acquisition_chrome import chrome_badge, is_soft_driver
                     from desktop.camera_backends import kind_of_driver
@@ -763,12 +771,14 @@ class CameraManagerDialog(_RpcDialog):
 
 
     def _paint_live_preview(self, image, frame=None):
-        """wave152: gate + in-place preview paint (drop-old / UI throttle)."""
+        """wave152/hang-fix: gate + in-place paint; heal layout once, not every frame."""
         gate = getattr(self, '_preview_gate', None)
         seq = None
         if isinstance(frame, dict):
-            meta = frame.get('result') or frame
+            meta = frame.get('result') if isinstance(frame.get('result'), dict) else frame
             seq = meta.get('frameSequence') if isinstance(meta, dict) else None
+        if seq is not None and seq == getattr(self, '_last_painted_seq', None):
+            return
         paintable = image
         if gate is not None:
             paintable = gate.offer(image, seq=seq)
@@ -780,9 +790,13 @@ class CameraManagerDialog(_RpcDialog):
                         self._gate_flush_timer.start(ms)
                 return
         if hasattr(self.preview, 'show_live_frame'):
-            self.preview.show_live_frame(paintable)
+            try:
+                self.preview.show_live_frame(paintable, seq=seq)
+            except TypeError:
+                self.preview.show_live_frame(paintable)
         else:
             self.preview.set_image(paintable)
+        self._last_painted_seq = seq
         # First live frame: jump to「预览」so the operator sees the stream (and showEvent refits).
         tabs = getattr(self, '_right_tabs', None)
         if tabs is not None and not getattr(self, '_auto_preview_once', False):
@@ -792,16 +806,12 @@ class CameraManagerDialog(_RpcDialog):
                         tabs.setCurrentIndex(i)
                     self._auto_preview_once = True
                     break
-        # Always heal: frames often start while「预览」tab is hidden → 1:1 corner strip.
+        # Heal once (or if still marked dirty) — never on every GenTL frame.
         if hasattr(self.preview, 'fit_image') and self.preview.isVisible():
             needs = getattr(self.preview, '_needs_fit', False)
-            bad = False
-            try:
-                bad = bool(self.preview._is_corner_crop_transform())
-            except Exception:
-                bad = False
-            if needs or bad:
+            if needs or not getattr(self, '_did_live_refit', False):
                 self.preview.fit_image()
+                self._did_live_refit = True
 
     def _flush_preview_gate(self):
         gate = getattr(self, '_preview_gate', None)
@@ -809,10 +819,16 @@ class CameraManagerDialog(_RpcDialog):
             return
         payload = gate.flush_due()
         if payload:
+            seq = getattr(gate, '_last_taken_seq', None)
             if hasattr(self.preview, 'show_live_frame'):
-                self.preview.show_live_frame(payload)
+                try:
+                    self.preview.show_live_frame(payload, seq=seq)
+                except TypeError:
+                    self.preview.show_live_frame(payload)
             else:
                 self.preview.set_image(payload)
+            if seq is not None:
+                self._last_painted_seq = seq
             if hasattr(self.preview, 'fit_image') and self.preview.isVisible():
                 if getattr(self.preview, '_needs_fit', False):
                     self.preview.fit_image()

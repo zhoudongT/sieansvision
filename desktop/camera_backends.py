@@ -147,7 +147,10 @@ def discover_gentl_ctis(*, include_env: bool = True) -> list[dict[str, Any]]:
 
 
 def _encode_bgr_png_data_url(image) -> str:
-    """BGR/gray ndarray → data:image/png;base64,… for PreviewFrameGate / show_live_frame."""
+    """BGR/gray ndarray → data:image/jpeg;base64,… for PreviewFrameGate / show_live_frame.
+
+    Kept name for callers; JPEG keeps continuous-live UI responsive (PNG decode hung Qt).
+    """
     import cv2
     import numpy as np
     if image is None:
@@ -157,10 +160,10 @@ def _encode_bgr_png_data_url(image) -> str:
         arr = cv2.cvtColor(arr, cv2.COLOR_GRAY2BGR)
     if arr.dtype != np.uint8:
         arr = arr.astype(np.uint8)
-    ok, encoded = cv2.imencode('.png', arr)
+    ok, encoded = cv2.imencode('.jpg', arr, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
     if not ok:
-        raise ValueError('PNG encode failed')
-    return 'data:image/png;base64,' + base64.b64encode(encoded.tobytes()).decode('ascii')
+        raise ValueError('JPEG encode failed')
+    return 'data:image/jpeg;base64,' + base64.b64encode(encoded.tobytes()).decode('ascii')
 
 
 def _soft_synthetic_bgr(width: int = 640, height: int = 400, seq: int = 0):

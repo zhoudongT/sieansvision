@@ -458,12 +458,14 @@ def pack_frame(result, p, started):
     # (grayscale PNG is valid but some preview paths showed a black 1:1 crop).
     if image.ndim == 2:
         image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-    ok, encoded = cv2.imencode('.png', image)
+    # JPEG for continuous live: Mono8→BGR PNG was ~2MB/frame and ~24ms QPixmap
+    # decode on the Qt UI thread (GNOME「python3无响应」). JPEG ~0.2MB / ~7ms.
+    ok, encoded = cv2.imencode('.jpg', image, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
     if not ok or encoded.size > 12_000_000:
         raise ValueError('相机帧编码失败或超过 12 MB')
-    return dict(annotatedImage='data:image/png;base64,' + base64.b64encode(encoded).decode('ascii'), cloud=cloud, depth=depth,
+    return dict(annotatedImage='data:image/jpeg;base64,' + base64.b64encode(encoded).decode('ascii'), cloud=cloud, depth=depth,
                 result=dict(**info, driver=p['driver'], width=image.shape[1], height=image.shape[0],
-                            timestampSource='host-receive',
+                            timestampSource='host-receive', previewCodec='jpeg80',
                             simulated=p['driver'] in ('simulator','rgbd_simulator'), trigger=p['trigger']), elapsedMs=round((time.monotonic()-started)*1000, 2))
 
 

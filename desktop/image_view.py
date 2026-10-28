@@ -118,16 +118,19 @@ class ImageView(QGraphicsView):
             self._empty_hint.setDefaultTextColor(QColor(TEXT_MUTED))
             self.scene().setSceneRect(QRectF(0, 0, 400, 300))
 
-    def show_live_frame(self, data):
+    def show_live_frame(self, data, *, seq=None):
         """Continuous soft/session preview — Wayland-safe full-frame fill.
 
         Pre-scale KeepAspectRatio into the viewport, then place the pixmap at
         1:1 with identity transform. Never relies on fitInView (which leaves a
         hairline strip when the first fit races a tiny/hidden viewport).
         Empty / undecodable data is ignored (keeps last good frame).
+        Hang fix: skip re-decode when frameSequence unchanged.
         """
         if not data or not isinstance(data, str):
             return False
+        if seq is not None and seq == getattr(self, '_last_live_seq', None) and not self._live_source.isNull():
+            return True
         pixmap = QPixmap()
         try:
             raw = data.split(',', 1)[-1]
@@ -135,6 +138,7 @@ class ImageView(QGraphicsView):
                 return False
         except Exception:
             return False
+        self._last_live_seq = seq
         image = pixmap.toImage()
         if image.format() not in (
             image.Format.Format_RGB32,

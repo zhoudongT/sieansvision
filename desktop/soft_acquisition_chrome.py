@@ -40,14 +40,15 @@ SESSION_COLUMNS = ['项', '值']
 # Frame pacing: timer interval for pull ticks; uiMinIntervalMs throttles paints;
 # dropOldFrame coalesces to latest so UI never paints a stale backlog.
 LIVE_PREVIEW_POLICY = dict(
-    intervalMs=50,
-    managerIntervalMs=120,
-    uiMinIntervalMs=33,  # ~30 Hz UI ceiling; drop-old coalesces faster producers
+    intervalMs=66,           # ~15 Hz pull; GenTL PNG/JPEG decode must not starve Qt
+    managerIntervalMs=100,
+    uiMinIntervalMs=66,      # ≤15 FPS display ceiling (hang fix: was 33/~30Hz)
     dropOldFrame=True,
     framePolicy='latest',
     antiFlicker='in_place_pixmap',
     refitOnShow=True,
-    note='同尺寸帧原地 setPixmap；UI 节流+丢旧帧；禁止每 tick scene.clear+fitInView',
+    skipSameSequence=True,
+    note='JPEG live + ≤15FPS UI节流+丢旧帧+同序跳过；禁止每 tick refit/scene.clear',
 )
 
 
@@ -413,19 +414,20 @@ class PreviewFrameGate:
 
     __slots__ = (
         'min_interval_ms', 'drop_old',
-        '_last_paint_ms', '_pending', '_pending_seq',
+        '_last_paint_ms', '_pending', '_pending_seq', '_last_taken_seq',
         '_offered', '_painted', '_dropped',
     )
 
     def __init__(self, min_interval_ms: int | None = None, *, drop_old: bool | None = None):
         pol = LIVE_PREVIEW_POLICY
         self.min_interval_ms = int(
-            min_interval_ms if min_interval_ms is not None else pol.get('uiMinIntervalMs', 33)
+            min_interval_ms if min_interval_ms is not None else pol.get('uiMinIntervalMs', 66)
         )
         self.drop_old = bool(pol.get('dropOldFrame', True) if drop_old is None else drop_old)
         self._last_paint_ms = 0.0
         self._pending = None
         self._pending_seq = None
+        self._last_taken_seq = None
         self._offered = 0
         self._painted = 0
         self._dropped = 0
@@ -434,6 +436,7 @@ class PreviewFrameGate:
         self._last_paint_ms = 0.0
         self._pending = None
         self._pending_seq = None
+        self._last_taken_seq = None
         self._offered = 0
         self._painted = 0
         self._dropped = 0
@@ -464,6 +467,7 @@ class PreviewFrameGate:
             return None
         now = self._now(now_ms)
         payload = self._pending
+        self._last_taken_seq = self._pending_seq
         self._pending = None
         self._pending_seq = None
         self._last_paint_ms = now

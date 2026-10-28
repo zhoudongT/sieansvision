@@ -439,6 +439,7 @@ class LivePreviewLabel(QLabel):
 
     Avoids QGraphicsView fitInView「一条线」and QLabel setPixmap+stylesheet
     paint races on Wayland. Training / ROI annotation still uses _Preview.
+    Hang fix: cache scaled pixmap (no re-scale every paint); skip identical payload.
     """
 
     def __init__(self):
@@ -456,36 +457,55 @@ class LivePreviewLabel(QLabel):
         self.setScaledContents(False)
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
         self._source = QPixmap()
+        self._scaled = QPixmap()
+        self._scaled_for = (0, 0)
         self._hint = '等待预览帧…'
+        self._last_data_key = None
+        self._last_seq = None
 
     def sizeHint(self):
         # Ignore pixmap sizeHint so layout stretch owns the pane height.
         return self.minimumSize()
 
-    def set_image(self, data):
+    def set_image(self, data, *, seq=None):
         try:
             if not data or not isinstance(data, str) or ',' not in data:
                 raise ValueError('empty')
+            # Same frameSequence or identical payload → skip expensive decode.
+            key = (len(data), data[:48], data[-24:])
+            if seq is not None and seq == self._last_seq and not self._source.isNull():
+                return
+            if key == self._last_data_key and not self._source.isNull():
+                return
             pixels = base64.b64decode(data.split(',', 1)[1], validate=False)
             pm = QPixmap()
             if not pm.loadFromData(pixels):
                 raise ValueError('decode')
             self._source = pm
+            self._scaled = QPixmap()
+            self._scaled_for = (0, 0)
+            self._last_data_key = key
+            self._last_seq = seq
             self._hint = ''
             self.setText('')
             self.setPixmap(QPixmap())  # paintEvent owns drawing
             self.update()
         except Exception:
             self._source = QPixmap()
+            self._scaled = QPixmap()
+            self._scaled_for = (0, 0)
+            self._last_data_key = None
             self._hint = '暂无可显示图像'
             self.setPixmap(QPixmap())
             self.setText(self._hint)
             self.update()
 
-    def show_live_frame(self, data):
-        self.set_image(data)
+    def show_live_frame(self, data, *, seq=None):
+        self.set_image(data, seq=seq)
 
     def fit_image(self):
+        self._scaled = QPixmap()
+        self._scaled_for = (0, 0)
         self.update()
 
     def paintEvent(self, event):
@@ -499,17 +519,22 @@ class LivePreviewLabel(QLabel):
         h = max(1, self.height())
         if w < 8 or h < 8:
             return
-        scaled = self._source.scaled(
-            w, h,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.FastTransformation,
-        )
+        if self._scaled.isNull() or self._scaled_for != (w, h):
+            self._scaled = self._source.scaled(
+                w, h,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.FastTransformation,
+            )
+            self._scaled_for = (w, h)
+        scaled = self._scaled
         x = (w - scaled.width()) // 2
         y = (h - scaled.height()) // 2
         painter.drawPixmap(x, y, scaled)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        self._scaled = QPixmap()
+        self._scaled_for = (0, 0)
         self.update()
 
     # Compatibility shims used by CameraDialog heal paths
@@ -644,8 +669,10 @@ class CameraDialog(_RpcDialog):
         # Live preview: pull latest buffered frame while continuous session runs.
         # Avoids browser JPEG/HTTP paint stutter; still uses cached PNG from session.
         self.live_timer = QTimer(self)
-        self.live_timer.setInterval(50)  # ~20 Hz; PNG session cache still caps real rate
+        self.live_timer.setInterval(66)  # ≤15 Hz; hang fix (was 50/~20Hz + heavy PNG decode)
         self.live_timer.timeout.connect(self._live_tick)
+        self._last_painted_seq = None
+        self._ui_heartbeat_n = 0
         # wave152: drop-old + UI throttle gate for continuous soft preview
         try:
             from desktop.soft_acquisition_chrome import PreviewFrameGate, live_preview_ui_min_interval_ms
@@ -974,16 +1001,23 @@ class CameraDialog(_RpcDialog):
         if any(method == 'camera/capture' for method, _, _ in self.pending.values()):
             return
         self._live_pending = True
+        self._ui_heartbeat_n = getattr(self, '_ui_heartbeat_n', 0) + 1
 
         def done(value):
             self._live_pending = False
-            frame = value.get('result', value) if isinstance(value, dict) else {}
-            if not isinstance(frame, dict):
-                frame = {}
-            self.frame = deepcopy(frame)
-            image = frame.get('annotatedImage') or frame.get('image') or ''
+            # Engine result is {annotatedImage, result:{frameSequence,…}} — use top-level.
+            payload = value if isinstance(value, dict) else {}
+            meta = payload.get('result') if isinstance(payload.get('result'), dict) else {}
+            seq = meta.get('frameSequence')
+            if seq is not None and seq == getattr(self, '_last_painted_seq', None):
+                return  # same cached frame — skip decode/paint
+            image = payload.get('annotatedImage') or payload.get('image') or ''
+            if not image and isinstance(payload.get('result'), dict):
+                # legacy nested shape
+                image = payload['result'].get('annotatedImage') or payload['result'].get('image') or ''
+            self.frame = payload
             if image:
-                self._paint_live_preview(image, frame)
+                self._paint_live_preview(image, payload)
 
         try:
             from desktop.soft_acquisition_chrome import live_capture_frame_policy
@@ -1000,7 +1034,7 @@ class CameraDialog(_RpcDialog):
 
 
     def _refit_preview(self):
-        """Keep full frame visible after splitter / layout changes."""
+        """Keep full frame visible after splitter / layout changes (not every live tick)."""
         prev = getattr(self, 'preview', None)
         if prev is None or not hasattr(prev, 'fit_image'):
             return
@@ -1010,17 +1044,18 @@ class CameraDialog(_RpcDialog):
             pass
         from PySide6.QtCore import QTimer
         QTimer.singleShot(0, prev.fit_image)
-        QTimer.singleShot(50, prev.fit_image)
-        QTimer.singleShot(200, prev.fit_image)
+        QTimer.singleShot(80, prev.fit_image)
 
     def _paint_live_preview(self, image, frame=None):
-        """wave152: gate + in-place preview (drop-old / UI throttle)."""
+        """wave152/hang-fix: gate + in-place preview; never refit every frame."""
         gate = getattr(self, '_preview_gate', None)
         seq = None
         if isinstance(frame, dict):
-            meta = frame.get('result') or frame
+            meta = frame.get('result') if isinstance(frame.get('result'), dict) else frame
             if isinstance(meta, dict):
                 seq = meta.get('frameSequence')
+        if seq is not None and seq == getattr(self, '_last_painted_seq', None):
+            return
         paintable = image
         if gate is not None:
             paintable = gate.offer(image, seq=seq)
@@ -1031,10 +1066,17 @@ class CameraDialog(_RpcDialog):
                         self._gate_flush_timer.start(ms)
                 return
         if hasattr(self.preview, 'show_live_frame'):
-            self.preview.show_live_frame(paintable)
+            try:
+                self.preview.show_live_frame(paintable, seq=seq)
+            except TypeError:
+                self.preview.show_live_frame(paintable)
         else:
             self.preview.set_image(paintable)
-        self._refit_preview()
+        self._last_painted_seq = seq
+        # Refit only once on first painted live frame (not every tick — that hung Qt).
+        if not getattr(self, '_did_live_refit', False):
+            self._did_live_refit = True
+            self._refit_preview()
 
     def _flush_preview_gate(self):
         gate = getattr(self, '_preview_gate', None)
@@ -1042,11 +1084,16 @@ class CameraDialog(_RpcDialog):
             return
         payload = gate.flush_due()
         if payload:
+            seq = getattr(gate, '_last_taken_seq', None)
             if hasattr(self.preview, 'show_live_frame'):
-                self.preview.show_live_frame(payload)
+                try:
+                    self.preview.show_live_frame(payload, seq=seq)
+                except TypeError:
+                    self.preview.show_live_frame(payload)
             else:
                 self.preview.set_image(payload)
-            self._refit_preview()
+            if seq is not None:
+                self._last_painted_seq = seq
         elif gate.has_pending():
             self._gate_flush_timer.start(max(1, gate.ms_until_due()))
 
@@ -1112,12 +1159,16 @@ class CameraDialog(_RpcDialog):
         if state.get('state') == 'running':
             if not self.live_timer.isActive():
                 self.live_timer.start()
-                self.message.setText('连续采集中：原生预览刷新最新缓存帧（无 scene.clear 闪烁；速率受会话 PNG 缓存限制）。')
-            # Nudge a paint even if timer was already running (dialog just opened).
-            self._refit_preview()
+                self._did_live_refit = False
+                self._last_painted_seq = None
+                self.message.setText('连续采集中：原生预览刷新最新缓存帧（JPEG·≤15FPS·丢旧帧；无 scene.clear）。')
+            # One layout heal when status first reports running — not every poll.
+            if not getattr(self, '_did_live_refit', False):
+                self._refit_preview()
         else:
             self.live_timer.stop()
             self._live_pending = False
+            self._did_live_refit = False
 
 
 class TrainingDialog(_RpcDialog):
