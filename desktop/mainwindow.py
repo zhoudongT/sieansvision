@@ -1866,6 +1866,16 @@ class MainWindow(QMainWindow):
     def set_busy(self,busy):
         self.busy=busy
         design=self.app_mode=='design'
+        # Continuous ▶: only flip stop/run enables — full widget disable/enable every
+        # cycle was expensive under GenTL live (paired with show_live_frame hang fix).
+        if self.continuous and busy:
+            try:
+                self.stop_action.setEnabled(True)
+                self.run_action.setEnabled(False)
+                self.cont_action.setEnabled(False)
+            except Exception:
+                pass
+            return
         # In run mode keep view navigable but graph edit locked via scene.edit_locked
         self.flow.setEnabled(not busy)
         self.parameters.setEnabled(not busy and design)
@@ -2061,7 +2071,9 @@ class MainWindow(QMainWindow):
         if self.cloud:params['cloud']=self.cloud
         if self.depth:params['depth']=self.depth
         if effective:params['target']=effective
-        self.set_busy(True);self.results.set_results([])
+        self.set_busy(True)
+        if not self.continuous:
+            self.results.set_results([])
         self.log('开始执行' + ('模块 ' + str(effective) if effective else '流程') + '…')
         if not getattr(self, '_dispatching_triggers', False) and not effective:
             try:
@@ -2078,6 +2090,9 @@ class MainWindow(QMainWindow):
         if value.get('activeStep'):
             step=next((s for s in self.document.project['steps'] if s['id']==value['activeStep']),{})
             self.wb_status.push_log('正在执行：'+step.get('name','流程模块'))
+        # Continuous ▶ run: skip mid-progress HMI image push (annotated payloads).
+        if self.continuous:
+            return
         dialog=self.dialogs.get('hmi')
         if dialog:dialog.set_runtime(value,self.image)
 
@@ -2768,92 +2783,201 @@ class MainWindow(QMainWindow):
         except Exception:
             return None
 
+    def _flush_run_preview_gate(self):
+        """Continuous ▶ run: flush PreviewFrameGate pending paint onto output_view."""
+        gate = getattr(self, '_run_preview_gate', None)
+        if gate is None:
+            return
+        payload = gate.flush_due()
+        if payload:
+            seq = getattr(gate, '_last_taken_seq', None)
+            view = getattr(self, 'output_view', None)
+            if view is not None and hasattr(view, 'show_live_frame'):
+                try:
+                    view.show_live_frame(payload, seq=seq)
+                except TypeError:
+                    view.show_live_frame(payload)
+            elif view is not None:
+                view.show_data(payload)
+        elif gate.has_pending() and hasattr(self, '_run_gate_flush_timer'):
+            self._run_gate_flush_timer.start(max(1, gate.ms_until_due()))
+
+    def _paint_run_live_frame(self, data, seq=None):
+        """Continuous ▶ GenTL/run result paint — gate + show_live_frame (no scene.clear/fit).
+
+        Prior hang: finished() called show_data every cycle → scene.clear + dual fit
+        starved Qt under GenTL continuous, GNOME marked python3 无响应.
+        """
+        if not data or not isinstance(data, str):
+            return
+        gate = getattr(self, '_run_preview_gate', None)
+        if gate is None:
+            try:
+                from desktop.soft_acquisition_chrome import (
+                    PreviewFrameGate, live_preview_ui_min_interval_ms,
+                )
+                from PySide6.QtCore import QTimer
+                gate = PreviewFrameGate(live_preview_ui_min_interval_ms())
+                self._run_preview_gate = gate
+                timer = QTimer(self)
+                timer.setSingleShot(True)
+                timer.timeout.connect(self._flush_run_preview_gate)
+                self._run_gate_flush_timer = timer
+            except Exception:
+                gate = None
+                self._run_preview_gate = None
+        if gate is not None:
+            paintable = gate.offer(data, seq=seq)
+            if paintable is None:
+                if gate.has_pending() and hasattr(self, '_run_gate_flush_timer'):
+                    ms = max(1, gate.ms_until_due())
+                    if not self._run_gate_flush_timer.isActive():
+                        self._run_gate_flush_timer.start(ms)
+                return
+            data = paintable
+        view = getattr(self, 'output_view', None)
+        if view is None:
+            return
+        if hasattr(view, 'show_live_frame'):
+            try:
+                view.show_live_frame(data, seq=seq)
+            except TypeError:
+                view.show_live_frame(data)
+        else:
+            view.show_data(data)
+
+    def _strip_annotated_for_tree(self, records):
+        """Drop megabyte annotatedImage blobs from result-tree rebuilds (continuous)."""
+        light = []
+        for r in records or []:
+            if not isinstance(r, dict):
+                light.append(r)
+                continue
+            rr = dict(r)
+            out = rr.get('output')
+            if isinstance(out, dict) and out.get('annotatedImage'):
+                out = dict(out)
+                out['annotatedImage'] = '(live)'
+                rr['output'] = out
+            light.append(rr)
+        return light
+
+
     def finished(self,result,release=True):
-        self.last_result=result
-        try:
-            vw=(self.dialogs or {}).get('var_watch')
-            if vw is not None and hasattr(vw,'board'):
-                vw.board.set_last_result(result)
-        except Exception:
-            pass
-        try:
-            self._ingest_locate_scoreboard_from_result(result)
-        except Exception:
-            pass
+        continuous_live = bool(self.continuous)
+        # Continuous ▶: keep full last_result for e2e/proof, but never feed megabyte
+        # annotated blobs into var-watch/HMI boards (UI-thread hang / 98% CPU).
+        self.last_result = result
+        result_for_chrome = result
+        if continuous_live and isinstance(result, dict):
+            try:
+                result_for_chrome = dict(result)
+                result_for_chrome['results'] = self._strip_annotated_for_tree(result.get('results') or [])
+            except Exception:
+                result_for_chrome = result
+        if not continuous_live:
+            try:
+                vw=(self.dialogs or {}).get('var_watch')
+                if vw is not None and hasattr(vw,'board'):
+                    vw.board.set_last_result(result)
+            except Exception:
+                pass
+        if not continuous_live:
+            try:
+                self._ingest_locate_scoreboard_from_result(result)
+            except Exception:
+                pass
         # multi-source filmstrip: stash per-path last_result for canvas pick
-        try:
-            path = ''
-            fs = getattr(self, 'filmstrip', None)
-            if fs is not None and hasattr(fs, 'current_path'):
-                path = fs.current_path() or ''
-            if path and isinstance(result, dict) and result.get('state') == 'completed':
-                bag = dict(result)
-                bag['_filmPath'] = path
-                # keep results only (drop huge annotated if needed later)
-                cache = getattr(self, '_filmstrip_results', None)
-                if cache is None:
-                    self._filmstrip_results = {}
-                    cache = self._filmstrip_results
-                cache[path] = bag
-                # cap 32 entries, drop oldest by insertion order
-                while len(cache) > 32:
-                    cache.pop(next(iter(cache)))
-                try:
-                    self._sync_filmstrip_measure_badges()
-                except Exception:
-                    pass
-                try:
-                    self._sync_filmstrip_geom_find_chrome()
-                except Exception:
-                    pass
-                try:
-                    self._sync_filmstrip_match_chrome()
-                except Exception:
-                    pass
-                try:
-                    self._sync_filmstrip_barcode_chrome()
-                except Exception:
-                    pass
-                try:
-                    self._sync_filmstrip_nine_chrome()
-                except Exception:
-                    pass
-                try:
-                    self._sync_filmstrip_ocr_chrome()
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        if release:self.set_busy(False)
+        # Continuous ▶ GenTL/run: skip heavy chrome syncs (badge/panel rebuilds) —
+        # they starved the Qt loop together with show_data scene.clear (hang fix).
+        if not continuous_live:
+            try:
+                path = ''
+                fs = getattr(self, 'filmstrip', None)
+                if fs is not None and hasattr(fs, 'current_path'):
+                    path = fs.current_path() or ''
+                if path and isinstance(result, dict) and result.get('state') == 'completed':
+                    bag = dict(result)
+                    bag['_filmPath'] = path
+                    cache = getattr(self, '_filmstrip_results', None)
+                    if cache is None:
+                        self._filmstrip_results = {}
+                        cache = self._filmstrip_results
+                    cache[path] = bag
+                    while len(cache) > 32:
+                        cache.pop(next(iter(cache)))
+                    try:
+                        self._sync_filmstrip_measure_badges()
+                    except Exception:
+                        pass
+                    try:
+                        self._sync_filmstrip_geom_find_chrome()
+                    except Exception:
+                        pass
+                    try:
+                        self._sync_filmstrip_match_chrome()
+                    except Exception:
+                        pass
+                    try:
+                        self._sync_filmstrip_barcode_chrome()
+                    except Exception:
+                        pass
+                    try:
+                        self._sync_filmstrip_nine_chrome()
+                    except Exception:
+                        pass
+                    try:
+                        self._sync_filmstrip_ocr_chrome()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        # Release busy every cycle. (Keeping busy=True across continuous blocked the
+        # next run() and spun the UI at ~100% CPU — hang was show_data, not set_busy.)
+        if release:
+            self.set_busy(False)
         records=result.get('results',[])
         names={s['id']:s.get('name',s['operation']) for s in self.document.project['steps']}
-        self.results.set_results([{**r,'name':names.get(r['id'],r['id'])} for r in records]);self.scene.show_results(records)
-        try:
-            if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_module_results'):
-                self.filmstrip.push_module_results(records, names)
-            if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_geom_find_summary'):
-                self.filmstrip.push_geom_find_summary(records=records, names=names)
-            if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_match_summary'):
-                self.filmstrip.push_match_summary(records=records, names=names)
-            if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_barcode_summary'):
-                self.filmstrip.push_barcode_summary(records=records, names=names)
-            if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_nine_summary'):
-                self.filmstrip.push_nine_summary(records=records, names=names)
-        except Exception:
-            pass
-        try:
-            self._ingest_geom_find_panel_from_result(result)
-        except Exception:
-            pass
-        try:
-            self._ingest_region_color_panel_from_result(result)
-            self._ingest_pose_correct_panel_from_result(result)
-            self._ingest_preprocess_panel_from_result(result)
-            self._ingest_measure_geom_panel_from_result(result)
-            self._ingest_recognize_panels_from_result(result)
-            self._ingest_nine_var_panels_from_result(result)
-        except Exception:
-            pass
+        if continuous_live:
+            # Node state is cheap; result-tree rebuild still copies large nested dicts —
+            # throttle to ≤2 Hz so continuous GenTL stays responsive.
+            self.scene.show_results(records)
+            import time as _time
+            now = _time.monotonic()
+            last = float(getattr(self, '_cont_results_tree_at', 0) or 0)
+            if now - last >= 0.5:
+                self._cont_results_tree_at = now
+                light = self._strip_annotated_for_tree(records)
+                self.results.set_results([{**r,'name':names.get(r['id'],r['id'])} for r in light])
+        else:
+            self.results.set_results([{**r,'name':names.get(r['id'],r['id'])} for r in records]);self.scene.show_results(records)
+        if not continuous_live:
+            try:
+                if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_module_results'):
+                    self.filmstrip.push_module_results(records, names)
+                if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_geom_find_summary'):
+                    self.filmstrip.push_geom_find_summary(records=records, names=names)
+                if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_match_summary'):
+                    self.filmstrip.push_match_summary(records=records, names=names)
+                if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_barcode_summary'):
+                    self.filmstrip.push_barcode_summary(records=records, names=names)
+                if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_nine_summary'):
+                    self.filmstrip.push_nine_summary(records=records, names=names)
+            except Exception:
+                pass
+            try:
+                self._ingest_geom_find_panel_from_result(result)
+            except Exception:
+                pass
+            try:
+                self._ingest_region_color_panel_from_result(result)
+                self._ingest_pose_correct_panel_from_result(result)
+                self._ingest_preprocess_panel_from_result(result)
+                self._ingest_measure_geom_panel_from_result(result)
+                self._ingest_recognize_panels_from_result(result)
+                self._ingest_nine_var_panels_from_result(result)
+            except Exception:
+                pass
         annotated_live, ann_sid = self._pick_annotated_with_step(records)
         _disp_applied = False
         if annotated_live:
@@ -2861,6 +2985,13 @@ class MainWindow(QMainWindow):
             if disp_step and disp_step.get('operation')=='display':
                 self._apply_display_to_result_pane(disp_step, image=annotated_live)
                 _disp_applied = True
+            elif continuous_live:
+                # Hang fix: in-place live paint (no scene.clear / dual fit every cycle)
+                self._paint_run_live_frame(annotated_live)
+                try:
+                    self.images.setCurrentIndex(1)
+                except Exception:
+                    pass
             else:
                 self.output_view.show_data(annotated_live);self._apply_measure_geom_overlays(records);self._apply_find_overlay_density(records);self.images.setCurrentIndex(1)
                 try:
@@ -2877,8 +3008,9 @@ class MainWindow(QMainWindow):
         for record in reversed(records):
             depth=record.get('output',{}).get('depth')
             if depth:self.show_depth(depth);break
-        dialog=self.dialogs.get('hmi')
-        if dialog:dialog.set_runtime(result,self.image)
+        if not continuous_live:
+            dialog=self.dialogs.get('hmi')
+            if dialog:dialog.set_runtime(result,self.image)
         elapsed=result.get('elapsedMs',0) or 0
         # Approximate VM timing triad from total elapsed
         process_ms=elapsed
@@ -2893,28 +3025,43 @@ class MainWindow(QMainWindow):
                 self._sync_host_sm_state('Alarm', result.get('error') or '运行失败')
             except Exception:
                 pass
-        # A5: update active flow card stats
+        # A5: update active flow card stats (skip ensure/sync churn on continuous)
         try:
             p=self.document.project
-            flow_scheme.ensure_scheme(p)
-            flow_scheme.sync_active_into_flows(p)
             fid=p.get('activeFlowId')
-            for f in p.get('flows') or []:
-                if f.get('id')==fid:
-                    if result.get('state')=='completed':
-                        f['runCount']=int(f.get('runCount') or 0)+1
-                    f['lastElapsedMs']=float(elapsed)
-                    break
-            if hasattr(self,'all_flows_panel') and self.showing_all_flows:
-                self.all_flows_panel.set_flows(p.get('flows') or [])
+            if continuous_live:
+                for f in p.get('flows') or []:
+                    if f.get('id')==fid:
+                        if result.get('state')=='completed':
+                            f['runCount']=int(f.get('runCount') or 0)+1
+                        f['lastElapsedMs']=float(elapsed)
+                        break
+            else:
+                flow_scheme.ensure_scheme(p)
+                flow_scheme.sync_active_into_flows(p)
+                for f in p.get('flows') or []:
+                    if f.get('id')==fid:
+                        if result.get('state')=='completed':
+                            f['runCount']=int(f.get('runCount') or 0)+1
+                        f['lastElapsedMs']=float(elapsed)
+                        break
+                if hasattr(self,'all_flows_panel') and self.showing_all_flows:
+                    self.all_flows_panel.set_flows(p.get('flows') or [])
         except Exception:
             pass
         # Mirror result into run-mode operator HMI
         if hasattr(self,'operator_hmi') and self.operator_hmi is not None:
             try:
-                annotated=self._pick_annotated_image(records) or ''
-                named_recs=[{**r,'name':names.get(r['id'],r.get('name') or r['id'])} for r in records]
-                hmi_result={**result,'results':named_recs}
+                if continuous_live:
+                    # Hang fix: status-only — output_view already got _paint_run_live_frame.
+                    named_recs=[{**r,'name':names.get(r['id'],r.get('name') or r['id'])}
+                                for r in self._strip_annotated_for_tree(records)]
+                    hmi_result={**result_for_chrome,'results':named_recs}
+                    annotated=''
+                else:
+                    annotated=self._pick_annotated_image(records) or ''
+                    named_recs=[{**r,'name':names.get(r['id'],r.get('name') or r['id'])} for r in records]
+                    hmi_result={**result,'results':named_recs}
                 # 细妆⑳：把当前胶片路径 stamp 进结果表行，供行点击定位
                 try:
                     fs = getattr(self, 'filmstrip', None)
@@ -2924,7 +3071,12 @@ class MainWindow(QMainWindow):
                         self.operator_hmi.set_film_stamp(fpath or '', findex)
                 except Exception:
                     pass
-                self.operator_hmi.set_runtime(hmi_result, image=self.image, annotated=annotated)
+                self.operator_hmi.set_runtime(
+                    hmi_result,
+                    image=None if continuous_live else self.image,
+                    annotated=annotated,
+                    live=continuous_live,
+                )
                 # 细妆⑳：测量链/换型试跑后 HMI 判定/配方徽章实跑回填
                 try:
                     if hasattr(self.operator_hmi, 'backfill_after_trial'):
@@ -2945,7 +3097,8 @@ class MainWindow(QMainWindow):
         if not getattr(self, '_dispatching_triggers', False):
             try:
                 if state == 'completed':
-                    self._fire_string_triggers_from_results(records)
+                    if not continuous_live:
+                        self._fire_string_triggers_from_results(records)
                     # 流程结束：连续/运行全部进行中时跳过「再执行」类，避免打断切图
                     if not self.continuous and not self.run_all_filmstrip:
                         self._fire_event_triggers('流程结束')
@@ -6095,7 +6248,11 @@ class MainWindow(QMainWindow):
         return flow_scheme.clamp_run_interval_ms(spin.value())
 
     def _active_run_interval_ms(self):
-        """连续运行延迟：读活动流程 runIntervalMs，缺省 120，钳制 ≤100000。"""
+        """连续运行延迟：读活动流程 runIntervalMs，缺省 120，钳制 ≤100000。
+
+        GenTL/session continuousLive：下限对齐 PreviewFrameGate uiMinIntervalMs（≤15FPS），
+        避免 finished→paint 快于 UI 解码能力再次卡死。
+        """
         try:
             p = self.document.project
             flow_scheme.ensure_scheme(p)
@@ -6103,10 +6260,26 @@ class MainWindow(QMainWindow):
             flow = next((f for f in (p.get('flows') or []) if f.get('id') == fid), None)
             raw = (flow or {}).get('runIntervalMs')
             if raw is None or int(raw) <= 0:
-                return 120
-            return flow_scheme.clamp_run_interval_ms(raw)
+                base = 120
+            else:
+                base = flow_scheme.clamp_run_interval_ms(raw)
         except Exception:
-            return 120
+            base = 120
+        try:
+            live = False
+            for s in (self.document.project.get('steps') or []):
+                if s.get('operation') != 'camera_capture':
+                    continue
+                pp = s.get('params') or {}
+                if pp.get('continuousLive') or pp.get('sessionPersist') or str(pp.get('driver') or '').lower() in ('gentl', 'session', 'uvc'):
+                    live = True
+                    break
+            if live:
+                from desktop.soft_acquisition_chrome import live_preview_ui_min_interval_ms
+                base = max(int(base), int(live_preview_ui_min_interval_ms() or 66))
+        except Exception:
+            pass
+        return base
 
     def _filmstrip_advance_delay_ms(self):
         """胶片条切图间隔：优先 sourceConfig.intervalMs，否则流程连续间隔；下限对齐软预览节流。"""

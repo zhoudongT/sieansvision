@@ -1378,8 +1378,12 @@ class OperatorHmiView(QWidget):
         except Exception:
             pass
 
-    def set_runtime(self, result: dict | None, image=None, annotated=None):
-        """Push last run result / preview into image panes and lamps."""
+    def set_runtime(self, result: dict | None, image=None, annotated=None, live=False):
+        """Push last run result / preview into image panes and lamps.
+
+        live=True (continuous ▶ GenTL/run): paint via show_live_frame so we never
+        scene.clear/fit every cycle (hang fix paired with MainWindow.finished).
+        """
         result = result or {}
         state = result.get('state')
         if state == 'completed':
@@ -1420,11 +1424,19 @@ class OperatorHmiView(QWidget):
                     break
         if not frame:
             frame = image or ''
-        for view in self._image_views:
-            try:
-                view.show_data(frame or '')
-            except Exception:
-                pass
+        # live + empty frame: status-only update (MainWindow already painted output_view)
+        if not (live and not frame):
+            for view in self._image_views:
+                try:
+                    if live and frame and hasattr(view, 'show_live_frame'):
+                        try:
+                            view.show_live_frame(frame)
+                        except TypeError:
+                            view.show_live_frame(frame)
+                    else:
+                        view.show_data(frame or '')
+                except Exception:
+                    pass
 
         for log in self._log_panes:
             if state:

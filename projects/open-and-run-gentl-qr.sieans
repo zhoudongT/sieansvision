@@ -4,11 +4,11 @@
   "name": "打开即跑 · GenTL相机→二维码",
   "meta": {
     "openAndRun": true,
-    "wave": 238,
+    "wave": 240,
     "gentlQr": true,
     "realCamera": true
   },
-  "notes": "t238：Hikrobot MV-CB013 GenTL 持久采集 → 条码/二维码(zxing) → 变量门限。打开工程后点 ▶ 运行：首次开相机并保持连接，后续只取帧；结果变量 barcodeText/barcodeCount/passGate。勿与 MVS / 网页采集同时占 USB。期望串可空（有码即 OK）；现场扫到过顺丰/微信短链 QR。",
+  "notes": "t240：Hikrobot MV-CB013 GenTL 持久采集 → 条码/二维码(zxing QR) → 变量门限。打开工程后点 ▶ 运行：首次开相机并保持连接；连续运行走 show_live_frame+≤15FPS（防卡死）。曝光 exposureTime=2000µs（过曝扫不出码）；types=QRCode。勿与 MVS / 网页采集同时占 USB。",
   "sourcePosition": {
     "x": 300,
     "y": 40
@@ -43,7 +43,9 @@
       "openClosePerGrab": false,
       "backendKind": "gentl",
       "continuousLive": true,
-      "sessionPersist": true
+      "sessionPersist": true,
+      "exposureTime": 2000,
+      "acquisitionFrameRate": 15
     },
     "exposure": 0.0,
     "gain": 0.0,
@@ -67,7 +69,9 @@
         "backendKind": "gentl",
         "continuousLive": true,
         "sessionPersist": true,
-        "reconnectResilient": true
+        "reconnectResilient": true,
+        "exposureTime": 2000,
+        "acquisitionFrameRate": 15
       },
       "reference": "",
       "position": {
@@ -83,7 +87,7 @@
       "name": "二维码/条码识别",
       "params": {
         "maxCodes": 8,
-        "types": "all",
+        "types": "QRCode",
         "showOverlay": true,
         "showBoxes": true,
         "showText": true,
@@ -273,7 +277,8 @@
       "template": "open_and_run_gentl_qr",
       "version": 1,
       "openAndRun": true,
-      "wave": 238
+      "wave": 240,
+      "hangFix": "t240u-continuous-reentry-live-paint"
     }
   }
 }

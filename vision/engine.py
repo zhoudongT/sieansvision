@@ -399,6 +399,40 @@ def measure(image, canvas, p, offset):
             'note': '两点等比例标定，适用于固定平面和垂直拍摄；未补偿透视或镜头畸变'}
 
 
+def _zxing_formats(p):
+    """Map params.types / formats → zxingcpp.BarcodeFormats (None = all)."""
+    raw = p.get('types') if p.get('types') not in (None, '') else p.get('formats')
+    if raw in (None, '', 'all', 'All', '*'):
+        return None
+    try:
+        import zxingcpp
+    except ImportError:
+        return None
+    if isinstance(raw, (list, tuple)):
+        tokens = [str(x).strip() for x in raw if str(x).strip()]
+    else:
+        tokens = [t.strip() for t in str(raw).replace(';', ',').replace('|', ',').split(',') if t.strip()]
+    if not tokens:
+        return None
+    alias = {
+        'qr': 'QRCode', 'qrcode': 'QRCode', 'qr_code': 'QRCode',
+        'matrix': 'AllMatrix', 'allmatrix': 'AllMatrix',
+        'linear': 'AllLinear', 'alllinear': 'AllLinear',
+        'all': 'All', '*': 'All',
+        'datamatrix': 'DataMatrix', 'dm': 'DataMatrix',
+        'pdf417': 'PDF417', 'aztec': 'Aztec',
+    }
+    fmt = None
+    for tok in tokens:
+        name = alias.get(tok.lower(), tok)
+        try:
+            piece = getattr(zxingcpp.BarcodeFormat, name)
+        except AttributeError:
+            continue
+        fmt = piece if fmt is None else (fmt | piece)
+    return fmt
+
+
 def barcode(image, canvas, p, offset):
     try:
         import zxingcpp
@@ -412,7 +446,12 @@ def barcode(image, canvas, p, offset):
     show_format = p.get('showFormat', True) is not False
     max_codes = int(number(p, 'maxCodes', 16, 1, 64))
     results = []
-    for code in zxingcpp.read_barcodes(image):
+    formats = _zxing_formats(p)
+    read_kw = {}
+    if formats is not None:
+        read_kw['formats'] = formats
+    # Keep rotate enabled for QR — disable caused intermittent misses on Mono8.
+    for code in zxingcpp.read_barcodes(image, **read_kw):
         if not code.valid:
             continue
         points = [[getattr(code.position, key).x+offset[0], getattr(code.position, key).y+offset[1]]
