@@ -38,6 +38,15 @@ class CameraManagerDialog(_RpcDialog):
         self._suppress_connect = False
         self._live_pending = False
         self._last_frame = None
+        # wave152: UI throttle + drop-old coalesce for continuous soft preview
+        try:
+            from desktop.soft_acquisition_chrome import PreviewFrameGate, live_preview_ui_min_interval_ms
+            self._preview_gate = PreviewFrameGate(live_preview_ui_min_interval_ms())
+        except Exception:
+            self._preview_gate = None
+        self._gate_flush_timer = QTimer(self)
+        self._gate_flush_timer.setSingleShot(True)
+        self._gate_flush_timer.timeout.connect(self._flush_preview_gate)
 
         root = QVBoxLayout(self)
         head = QLabel('相机管理')
@@ -405,11 +414,7 @@ class CameraManagerDialog(_RpcDialog):
                 pass
             if image:
                 self._last_frame = deepcopy(frame)
-                self.preview.set_image(image)
-                if hasattr(self.preview, 'fit_image') and self.preview.isVisible():
-                    # Ensure first visible paint is KeepAspectRatio full-frame.
-                    if getattr(self.preview, '_needs_fit', False):
-                        self.preview.fit_image()
+                self._paint_live_preview(image, frame)
                 meta = frame.get('result') or {}
                 w = meta.get('width') or meta.get('Width')
                 h = meta.get('height') or meta.get('Height')
@@ -434,18 +439,60 @@ class CameraManagerDialog(_RpcDialog):
             finally:
                 self._live_pending = False
 
+        try:
+            from desktop.soft_acquisition_chrome import live_capture_frame_policy
+            policy = live_capture_frame_policy()
+        except Exception:
+            policy = 'latest'
         self._request(
             'camera/capture',
             {
                 'driver': 'session',
                 'sessionId': sid,
-                'framePolicy': 'latest',
+                'framePolicy': policy,
                 'maxAgeMs': 3000,
                 'timeoutMs': 2500,
             },
             wrap,
             kind='status',
         )
+
+
+    def _paint_live_preview(self, image, frame=None):
+        """wave152: gate + in-place preview paint (drop-old / UI throttle)."""
+        gate = getattr(self, '_preview_gate', None)
+        seq = None
+        if isinstance(frame, dict):
+            meta = frame.get('result') or frame
+            seq = meta.get('frameSequence') if isinstance(meta, dict) else None
+        paintable = image
+        if gate is not None:
+            paintable = gate.offer(image, seq=seq)
+            if paintable is None:
+                # Coalesced — schedule flush when min interval elapses
+                if gate.has_pending() and hasattr(self, '_gate_flush_timer'):
+                    ms = max(1, gate.ms_until_due())
+                    if not self._gate_flush_timer.isActive():
+                        self._gate_flush_timer.start(ms)
+                return
+        self.preview.set_image(paintable)
+        if hasattr(self.preview, 'fit_image') and self.preview.isVisible():
+            if getattr(self.preview, '_needs_fit', False):
+                self.preview.fit_image()
+
+    def _flush_preview_gate(self):
+        gate = getattr(self, '_preview_gate', None)
+        if gate is None:
+            return
+        payload = gate.flush_due()
+        if payload:
+            self.preview.set_image(payload)
+            if hasattr(self.preview, 'fit_image') and self.preview.isVisible():
+                if getattr(self.preview, '_needs_fit', False):
+                    self.preview.fit_image()
+        elif gate.has_pending():
+            ms = max(1, gate.ms_until_due())
+            self._gate_flush_timer.start(ms)
 
     def _push_frame(self):
         if self._last_frame and (

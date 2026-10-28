@@ -1,4 +1,4 @@
-# Open-and-run 样例覆盖（wave148 收口 · wave149 画布图例 · wave150 软采集 · wave151 运行态预览主视图）
+# Open-and-run 样例覆盖（wave148–wave152：软采集 · 运行态预览 · 连续预览节拍）
 
 面向「双击 `.sieans` → 运行」的软平台关闭清单。详细菜单见 `projects/README-open-and-run.md`。
 菜单单一来源：`desktop/open_and_run_catalog.py`（「从模板新建」↔「打开示例」↔ 本表同目录）。
@@ -28,6 +28,10 @@
 
 冒烟：`python3 scripts/smoke-wave148-docs-menu-triggers-e2e.py`；wave149 图例：`python3 scripts/smoke-wave149-canvas-legend-e2e.py`
 
+**wave150**：软模拟采集会话铬 · 无闪烁预览（`LIVE_PREVIEW_POLICY` / in-place pixmap）。
+
 **wave149**：模块结果画布左下角工业暗色图例（OK/NG · ROI · 叠层种类），随 `showOverlay` / overlay bind 开关。
 
 **wave151**：openAndRun → 运行模式默认折叠 Host/配方/通讯「待命」联调墙；主视图为图像预览/画布 + OK/NG + 运行控制（`hmiCobindStatusToggle` 可展开）。
+
+**wave152**：软连续预览节拍 — `PreviewFrameGate` 丢旧帧 + UI 节流；`ImageView.show_live_frame` 同尺寸原地 setPixmap（无 scene.clear 闪烁）；相机管理/会话对话框/`framePolicy=latest` 贯通。

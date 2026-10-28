@@ -1592,6 +1592,19 @@ class OperatorHmiView(QWidget):
             except Exception:
                 pass
 
+    def set_live_preview_image(self, data):
+        """wave152: continuous soft preview into run-mode primary ImageView (in-place)."""
+        if not data:
+            return
+        for view in self._image_views:
+            try:
+                if hasattr(view, 'show_live_frame'):
+                    view.show_live_frame(data)
+                elif not getattr(view, 'bounds', None) or view.bounds.isEmpty():
+                    view.show_data(data)
+            except Exception:
+                pass
+
     def append_log(self, message: str):
         for log in self._log_panes:
             try:

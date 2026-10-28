@@ -182,8 +182,17 @@ class ImageSourceForm(QWidget):
             lambda: self._audit('pixelFormat', self.pixel.currentData()))
         form.addRow('像素格式', self.pixel)
 
-        _spin(form, '取图间隔', cfg.get('intervalMs', 0), 0, 60000,
+        # wave152: continuous soft preview pacing — 0 = 跟随 LIVE_PREVIEW_POLICY
+        spin_iv = _spin(form, '取图间隔', cfg.get('intervalMs', 0), 0, 60000,
               lambda v: self._audit('intervalMs', int(v)))
+        try:
+            from desktop.soft_acquisition_chrome import live_preview_interval_ms, live_preview_ui_min_interval_ms
+            spin_iv.setToolTip(
+                f'连续软预览节拍(ms)。0=跟随策略({live_preview_interval_ms()}ms拉取 / '
+                f'UI≥{live_preview_ui_min_interval_ms()}ms·丢旧帧)。'
+            )
+        except Exception:
+            spin_iv.setToolTip('连续取图间隔(ms)；0 表示跟随默认预览策略')
         self.fmt_filter = QComboBox()
         for lab in ('全部', '.bmp', '.jpg', '.png', '.tif'):
             self.fmt_filter.addItem(lab, lab)

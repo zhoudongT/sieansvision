@@ -32,13 +32,18 @@ PALETTE = {
 
 SESSION_COLUMNS = ['项', '值']
 
-# Live preview policy — anti-flicker (in-place pixmap; no scene.clear per tick).
+# Live preview policy — anti-flicker + continuous timing polish (wave152).
+# Frame pacing: timer interval for pull ticks; uiMinIntervalMs throttles paints;
+# dropOldFrame coalesces to latest so UI never paints a stale backlog.
 LIVE_PREVIEW_POLICY = dict(
     intervalMs=50,
     managerIntervalMs=120,
+    uiMinIntervalMs=33,  # ~30 Hz UI ceiling; drop-old coalesces faster producers
+    dropOldFrame=True,
+    framePolicy='latest',
     antiFlicker='in_place_pixmap',
     refitOnShow=True,
-    note='同尺寸帧原地 setPixmap，禁止每 tick scene.clear+fitInView',
+    note='同尺寸帧原地 setPixmap；UI 节流+丢旧帧；禁止每 tick scene.clear+fitInView',
 )
 
 
@@ -221,6 +226,9 @@ def session_stat_rows(summary: dict | None = None) -> list[list[str]]:
         ['重复缓存', str(s.get('reused') if s.get('reused') is not None else '—')],
         ['帧龄 ms', str(s.get('frameAgeMs') if s.get('frameAgeMs') is not None else '—')],
         ['预览策略', str((s.get('livePolicy') or LIVE_PREVIEW_POLICY).get('antiFlicker') or '—')],
+        ['帧策略', str((s.get('livePolicy') or LIVE_PREVIEW_POLICY).get('framePolicy') or 'latest')],
+        ['丢旧帧', '是' if (s.get('livePolicy') or LIVE_PREVIEW_POLICY).get('dropOldFrame', True) else '否'],
+        ['UI节流 ms', str((s.get('livePolicy') or LIVE_PREVIEW_POLICY).get('uiMinIntervalMs') or '—')],
     ]
     return rows
 
@@ -357,6 +365,119 @@ def capture_result_chrome(result: dict | None = None, *, params: dict | None = N
         summary=f'{badge} · {driver} · {size}',
         ok=bool(ok),
     )
+
+
+
+class PreviewFrameGate:
+    """UI-side continuous-preview gate: throttle paints + drop/coalesce old frames.
+
+    Producers (soft simulator / session cache) may outrun the ImageView paint path.
+    offer() keeps only the latest pending payload when dropOldFrame is on; returns
+    a paintable payload only when the UI min-interval has elapsed. flush_due() is
+    for a short QTimer follow-up after a throttled offer.
+    """
+
+    __slots__ = (
+        'min_interval_ms', 'drop_old',
+        '_last_paint_ms', '_pending', '_pending_seq',
+        '_offered', '_painted', '_dropped',
+    )
+
+    def __init__(self, min_interval_ms: int | None = None, *, drop_old: bool | None = None):
+        pol = LIVE_PREVIEW_POLICY
+        self.min_interval_ms = int(
+            min_interval_ms if min_interval_ms is not None else pol.get('uiMinIntervalMs', 33)
+        )
+        self.drop_old = bool(pol.get('dropOldFrame', True) if drop_old is None else drop_old)
+        self._last_paint_ms = 0.0
+        self._pending = None
+        self._pending_seq = None
+        self._offered = 0
+        self._painted = 0
+        self._dropped = 0
+
+    def reset(self) -> None:
+        self._last_paint_ms = 0.0
+        self._pending = None
+        self._pending_seq = None
+        self._offered = 0
+        self._painted = 0
+        self._dropped = 0
+
+    def _now(self, now_ms: float | None) -> float:
+        if now_ms is not None:
+            return float(now_ms)
+        import time
+        return time.monotonic() * 1000.0
+
+    def offer(self, payload, *, seq=None, now_ms: float | None = None):
+        """Offer a frame for UI. Returns payload to paint now, or None if held/dropped."""
+        if payload is None:
+            return None
+        now = self._now(now_ms)
+        self._offered += 1
+        if self.drop_old and self._pending is not None:
+            self._dropped += 1
+        self._pending = payload
+        self._pending_seq = seq
+        if self._last_paint_ms > 0 and (now - self._last_paint_ms) < self.min_interval_ms:
+            return None
+        return self.take(now_ms=now)
+
+    def take(self, *, now_ms: float | None = None):
+        """Force-take pending latest (caller paints). None if empty."""
+        if self._pending is None:
+            return None
+        now = self._now(now_ms)
+        payload = self._pending
+        self._pending = None
+        self._pending_seq = None
+        self._last_paint_ms = now
+        self._painted += 1
+        return payload
+
+    def flush_due(self, *, now_ms: float | None = None):
+        """If a coalesced frame is waiting and interval elapsed, return it to paint."""
+        if self._pending is None:
+            return None
+        now = self._now(now_ms)
+        if self._last_paint_ms > 0 and (now - self._last_paint_ms) < self.min_interval_ms:
+            return None
+        return self.take(now_ms=now)
+
+    def has_pending(self) -> bool:
+        return self._pending is not None
+
+    def ms_until_due(self, *, now_ms: float | None = None) -> int:
+        if self._pending is None:
+            return 0
+        now = self._now(now_ms)
+        remain = self.min_interval_ms - (now - self._last_paint_ms)
+        return max(0, int(remain)) if self._last_paint_ms > 0 else 0
+
+    def stats(self) -> dict[str, Any]:
+        return dict(
+            offered=self._offered,
+            painted=self._painted,
+            dropped=self._dropped,
+            pending=self._pending is not None,
+            pendingSeq=self._pending_seq,
+            minIntervalMs=self.min_interval_ms,
+            dropOldFrame=self.drop_old,
+            framePolicy=LIVE_PREVIEW_POLICY.get('framePolicy', 'latest'),
+        )
+
+
+def live_preview_ui_min_interval_ms() -> int:
+    return int(LIVE_PREVIEW_POLICY.get('uiMinIntervalMs') or 33)
+
+
+def live_capture_frame_policy() -> str:
+    return str(LIVE_PREVIEW_POLICY.get('framePolicy') or 'latest')
+
+
+def live_preview_drop_old() -> bool:
+    return bool(LIVE_PREVIEW_POLICY.get('dropOldFrame', True))
 
 
 def live_preview_interval_ms(*, manager: bool = False) -> int:

@@ -2993,10 +2993,15 @@ class MainWindow(QMainWindow):
             try:self.operator_hmi.append_log(str(message))
             except Exception:pass
 
-    def _mirror_preview_to_operator(self):
+    def _mirror_preview_to_operator(self, live=False):
         if self.app_mode=='run' and hasattr(self,'operator_hmi') and self.image:
-            try:self.operator_hmi.set_preview_image(self.image)
-            except Exception:pass
+            try:
+                if live and hasattr(self.operator_hmi, 'set_live_preview_image'):
+                    self.operator_hmi.set_live_preview_image(self.image)
+                else:
+                    self.operator_hmi.set_preview_image(self.image)
+            except Exception:
+                pass
 
     def open_template(self, relative):
         if self.busy or not self.engine_ready:return
@@ -3738,9 +3743,13 @@ class MainWindow(QMainWindow):
         self.image = image
         self.cloud = frame.get('cloud')
         self.depth = frame.get('depth')
-        self.input_view.show_data(self.image)
+        # wave152: continuous soft/session preview — in-place live path (no scene.clear flicker)
+        if hasattr(self.input_view, 'show_live_frame'):
+            self.input_view.show_live_frame(self.image)
+        else:
+            self.input_view.show_data(self.image)
         self.images.setCurrentIndex(0)
-        self._mirror_preview_to_operator()
+        self._mirror_preview_to_operator(live=True)
         self.log(f'相机帧已载入 · 设备={cam}')
 
     def open_camera_manager(self):
@@ -6043,15 +6052,20 @@ class MainWindow(QMainWindow):
             return 120
 
     def _filmstrip_advance_delay_ms(self):
-        """胶片条切图间隔：优先 sourceConfig.intervalMs，否则流程连续间隔，最低 50。"""
+        """胶片条切图间隔：优先 sourceConfig.intervalMs，否则流程连续间隔；下限对齐软预览节流。"""
+        try:
+            from desktop.soft_acquisition_chrome import live_preview_interval_ms
+            floor = max(33, int(live_preview_interval_ms() or 50))
+        except Exception:
+            floor = 50
         try:
             cfg = normalize_source(self.document.project.get('sourceConfig'))
             ms = int(cfg.get('intervalMs') or 0)
             if ms > 0:
-                return max(50, min(ms, 100000))
+                return max(floor, min(ms, 100000))
         except Exception:
             pass
-        return max(50, self._active_run_interval_ms())
+        return max(floor, self._active_run_interval_ms())
 
 
     def _sync_filmstrip_blink_prefs_from_project(self, project=None):

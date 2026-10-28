@@ -22,6 +22,8 @@ class ImageView(QGraphicsView):
         self.setBackgroundBrush(QBrush(QColor(CANVAS)))
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.setMinimumSize(230, 180)
+        # Live setPixmap same-size updates must dirty the viewport (wave152).
+        self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.BoundingRectViewportUpdate)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
         # Scrollbars during fitInView shrink the viewport mid-fit and leave a
@@ -39,6 +41,9 @@ class ImageView(QGraphicsView):
         self.bounds = QRectF()
         self._needs_fit = False
         self._fit_mode = 'contain'  # contain | cover | actual (Display 适应模式)
+        # wave152: stable pixmap item for continuous soft preview (in-place setPixmap)
+        self._live_pixmap = QPixmap()
+        self._live_pixmap_item = None
         self._empty_hint = self.scene().addText('打开图像，或载入演示')
         self._empty_hint.setDefaultTextColor(QColor(TEXT_MUTED))
         # wave149: VisionMaster-style on-canvas legend chrome (annotate/display)
@@ -91,10 +96,14 @@ class ImageView(QGraphicsView):
                 pixmap = QPixmap.fromImage(image.convertToFormat(image.Format.Format_RGB32))
         self.scene().clear()
         self.overlay = None
+        self._live_pixmap_item = None
+        self._live_pixmap = QPixmap()
         self.bounds = QRectF()
         self._empty_hint = None
         if not pixmap.isNull():
-            self.scene().addPixmap(pixmap)
+            self._live_pixmap = pixmap
+            self._live_pixmap_item = self.scene().addPixmap(pixmap)
+            self._live_pixmap_item.setZValue(0)
             self.bounds = QRectF(pixmap.rect())
             self.scene().setSceneRect(self.bounds)
             self._needs_fit = True
@@ -106,6 +115,62 @@ class ImageView(QGraphicsView):
             self._empty_hint = self.scene().addText('打开图像，或载入演示')
             self._empty_hint.setDefaultTextColor(QColor(TEXT_MUTED))
             self.scene().setSceneRect(QRectF(0, 0, 400, 300))
+
+    def show_live_frame(self, data):
+        """Continuous soft/session preview: in-place setPixmap (no scene.clear flicker).
+
+        Same-size frames update the stable pixmap item and dirty the viewport only.
+        Size changes or first frame fall back to a single addPixmap + fit.
+        Empty / undecodable data is ignored (keeps last good frame).
+        """
+        if not data or not isinstance(data, str):
+            return False
+        pixmap = QPixmap()
+        try:
+            raw = data.split(',', 1)[-1]
+            if not pixmap.loadFromData(base64.b64decode(raw, validate=False)):
+                return False
+        except Exception:
+            return False
+        image = pixmap.toImage()
+        if image.format() not in (
+            image.Format.Format_RGB32,
+            image.Format.Format_ARGB32,
+            image.Format.Format_ARGB32_Premultiplied,
+        ):
+            pixmap = QPixmap.fromImage(image.convertToFormat(image.Format.Format_RGB32))
+        return self._set_live_pixmap(pixmap)
+
+    def _set_live_pixmap(self, pixmap: QPixmap, *, refit: bool | None = None) -> bool:
+        if pixmap.isNull():
+            return False
+        size_changed = self._live_pixmap.isNull() or pixmap.size() != self._live_pixmap.size()
+        self._live_pixmap = pixmap
+        if self._live_pixmap_item is None:
+            # Drop empty-hint / stale scene once, then keep a stable item.
+            self.clear_geom_overlays()
+            self.scene().clear()
+            self.overlay = None
+            self._empty_hint = None
+            self._live_pixmap_item = self.scene().addPixmap(pixmap)
+            self._live_pixmap_item.setZValue(0)
+            self.bounds = QRectF(pixmap.rect())
+            self.scene().setSceneRect(self.bounds)
+            self._needs_fit = True
+            self.fit()
+            QTimer.singleShot(0, self.fit)
+            return True
+        self._live_pixmap_item.setPixmap(pixmap)
+        if refit is True or (refit is None and size_changed):
+            self.bounds = QRectF(pixmap.rect())
+            self.scene().setSceneRect(self.bounds)
+            self._needs_fit = True
+            self.fit()
+        else:
+            self.viewport().update()
+            if self._needs_fit and self.isVisible():
+                self.fit()
+        return True
 
     def set_roi_mode(self, enabled):
         self.select_roi = enabled

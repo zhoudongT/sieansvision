@@ -481,6 +481,15 @@ class CameraDialog(_RpcDialog):
         self.live_timer = QTimer(self)
         self.live_timer.setInterval(50)  # ~20 Hz; PNG session cache still caps real rate
         self.live_timer.timeout.connect(self._live_tick)
+        # wave152: drop-old + UI throttle gate for continuous soft preview
+        try:
+            from desktop.soft_acquisition_chrome import PreviewFrameGate, live_preview_ui_min_interval_ms
+            self._preview_gate = PreviewFrameGate(live_preview_ui_min_interval_ms())
+        except Exception:
+            self._preview_gate = None
+        self._gate_flush_timer = QTimer(self)
+        self._gate_flush_timer.setSingleShot(True)
+        self._gate_flush_timer.timeout.connect(self._flush_preview_gate)
         self._live_pending = False
         self._action_watchdog = QTimer(self)
         self._action_watchdog.setSingleShot(True)
@@ -787,17 +796,52 @@ class CameraDialog(_RpcDialog):
         def done(value):
             self._live_pending = False
             self.frame = deepcopy(value)
-            image = value.get('annotatedImage', '')
+            image = value.get('annotatedImage', '') or value.get('image', '')
             if image:
-                self.preview.set_image(image)
+                self._paint_live_preview(image, value)
 
-        # kind=status：实时预览不锁住其它按钮；读的是会话已缓存帧。
+        try:
+            from desktop.soft_acquisition_chrome import live_capture_frame_policy
+            policy = live_capture_frame_policy()
+        except Exception:
+            policy = 'latest'
+        # kind=status：实时预览不锁住其它按钮；读的是会话已缓存帧（latest / drop-old）。
         self._request(
             'camera/capture',
-            {'driver': 'session', 'sessionId': self.state.get('id'), 'framePolicy': 'latest', 'maxAgeMs': 2000, 'timeoutMs': 2000},
+            {'driver': 'session', 'sessionId': self.state.get('id'), 'framePolicy': policy, 'maxAgeMs': 2000, 'timeoutMs': 2000},
             done,
             kind='status',
         )
+
+
+    def _paint_live_preview(self, image, frame=None):
+        """wave152: gate + in-place preview (drop-old / UI throttle)."""
+        gate = getattr(self, '_preview_gate', None)
+        seq = None
+        if isinstance(frame, dict):
+            meta = frame.get('result') or frame
+            if isinstance(meta, dict):
+                seq = meta.get('frameSequence')
+        paintable = image
+        if gate is not None:
+            paintable = gate.offer(image, seq=seq)
+            if paintable is None:
+                if gate.has_pending() and hasattr(self, '_gate_flush_timer'):
+                    ms = max(1, gate.ms_until_due())
+                    if not self._gate_flush_timer.isActive():
+                        self._gate_flush_timer.start(ms)
+                return
+        self.preview.set_image(paintable)
+
+    def _flush_preview_gate(self):
+        gate = getattr(self, '_preview_gate', None)
+        if gate is None:
+            return
+        payload = gate.flush_due()
+        if payload:
+            self.preview.set_image(payload)
+        elif gate.has_pending():
+            self._gate_flush_timer.start(max(1, gate.ms_until_due()))
 
     def use_session(self, apply):
         self.camera_selected.emit(dict(driver='session', sessionId=self.state.get('bindingId') or self.state['id'], framePolicy='next', maxAgeMs=1000, timeoutMs=5000), apply)
