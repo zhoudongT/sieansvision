@@ -1190,6 +1190,87 @@ class CommManagerDialog(QDialog):
         tcp_lay.addLayout(sim_row)
         self._refresh_tcp_sim_lamp()
 
+        # --- Real TCP transport (alongside LocalBus soft) ---
+        real_box = QGroupBox('实时 TCP（Soft/LocalBus 旁路 · 真套接字）')
+        real_box.setObjectName('commRealTcpBox')
+        real_lay = QVBoxLayout(real_box)
+        real_form = QFormLayout()
+        self.tcp_transport = QComboBox()
+        self.tcp_transport.setObjectName('commTcpTransport')
+        self.tcp_transport.addItem('Soft / LocalBus（设计态软路径）', 'soft')
+        self.tcp_transport.addItem('TCP 真套接字（listen/connect）', 'tcp')
+        self.tcp_transport.setToolTip(
+            'Soft=既有 LocalBus 软收发/自动应答；TCP=本页真实 bind/listen/connect，'
+            '报文进下方真套接字抄本（无现场 PLC 时用 127.0.0.1 环回）'
+        )
+        self.tcp_transport.currentIndexChanged.connect(self._tcp_transport_changed)
+        self.tcp_role = QComboBox()
+        self.tcp_role.setObjectName('commTcpRole')
+        self.tcp_role.addItem('TCP Server · 监听', 'server')
+        self.tcp_role.addItem('TCP Client · 连接', 'client')
+        self.tcp_real_host = QLineEdit('127.0.0.1')
+        self.tcp_real_host.setObjectName('commTcpRealHost')
+        self.tcp_real_port = QSpinBox()
+        self.tcp_real_port.setObjectName('commTcpRealPort')
+        self.tcp_real_port.setRange(0, 65535)
+        self.tcp_real_port.setValue(19955)
+        self.tcp_real_port.setToolTip('0=系统分配临时端口（仅 Server listen）')
+        self.tcp_real_ack = QLineEdit('OK')
+        self.tcp_real_ack.setObjectName('commTcpRealAck')
+        self.tcp_real_autoack = OrangeSwitch(True)
+        self.tcp_real_payload = QLineEdit('PING')
+        self.tcp_real_payload.setObjectName('commTcpRealPayload')
+        real_form.addRow('传输路径', self.tcp_transport)
+        real_form.addRow('角色', self.tcp_role)
+        real_form.addRow('地址', self.tcp_real_host)
+        real_form.addRow('端口', self.tcp_real_port)
+        real_form.addRow('自动应答', self.tcp_real_autoack)
+        real_form.addRow('应答内容', self.tcp_real_ack)
+        real_form.addRow('发送载荷', self.tcp_real_payload)
+        real_lay.addLayout(real_form)
+        brow = QHBoxLayout()
+        self.tcp_real_status = QLabel('○ Soft / LocalBus')
+        self.tcp_real_status.setObjectName('commTcpRealStatus')
+        self.tcp_real_status.setToolTip('listen/connect 状态灯')
+        self.tcp_real_listen_btn = QPushButton('Listen')
+        self.tcp_real_listen_btn.setObjectName('commTcpRealListen')
+        self.tcp_real_listen_btn.setToolTip('TCP Server：bind+listen 可配置 host:port')
+        self.tcp_real_listen_btn.clicked.connect(self._tcp_real_listen)
+        self.tcp_real_connect_btn = QPushButton('Connect')
+        self.tcp_real_connect_btn.setObjectName('commTcpRealConnect')
+        self.tcp_real_connect_btn.setToolTip('TCP Client：connect 到 host:port')
+        self.tcp_real_connect_btn.clicked.connect(self._tcp_real_connect)
+        self.tcp_real_send_btn = QPushButton('Send')
+        self.tcp_real_send_btn.setObjectName('commTcpRealSend')
+        self.tcp_real_send_btn.clicked.connect(self._tcp_real_send)
+        self.tcp_real_stop_btn = QPushButton('Disconnect')
+        self.tcp_real_stop_btn.setObjectName('commTcpRealStop')
+        self.tcp_real_stop_btn.clicked.connect(self._tcp_real_stop)
+        self.tcp_real_loop_btn = QPushButton('环回 e2e')
+        self.tcp_real_loop_btn.setObjectName('commTcpRealLoopback')
+        self.tcp_real_loop_btn.setToolTip(
+            '127.0.0.1 listen→connect→send→recv→ack（真套接字，无外部 PLC）'
+        )
+        self.tcp_real_loop_btn.clicked.connect(self._tcp_real_loopback)
+        brow.addWidget(self.tcp_real_status, 1)
+        brow.addWidget(self.tcp_real_listen_btn)
+        brow.addWidget(self.tcp_real_connect_btn)
+        brow.addWidget(self.tcp_real_send_btn)
+        brow.addWidget(self.tcp_real_stop_btn)
+        brow.addWidget(self.tcp_real_loop_btn)
+        real_lay.addLayout(brow)
+        self.tcp_real_transcript = QPlainTextEdit()
+        self.tcp_real_transcript.setObjectName('commTcpRealTranscript')
+        self.tcp_real_transcript.setReadOnly(True)
+        self.tcp_real_transcript.setPlaceholderText(
+            '真套接字抄本：LISTEN/ACCEPT/TX/RX/ACK（Soft 模式不写此抄本）…'
+        )
+        self.tcp_real_transcript.setMinimumHeight(120)
+        real_lay.addWidget(self.tcp_real_transcript, 1)
+        tcp_lay.addWidget(real_box)
+        self._tcp_real_session = None
+        self._tcp_transport_changed()
+
         self.tabs.addTab(tcp, 'TCP 测试')
 
         # --- UDP 测试（薄壳）---
@@ -1558,7 +1639,220 @@ class CommManagerDialog(QDialog):
             self.tcp_log.appendPlainText(f'[{ts}] 失败：{err}')
 
 
+
+    # ----- Real TCP transport (wave155) -----
+    def _tcp_transport_changed(self, *_args):
+        mode = 'soft'
+        try:
+            mode = self.tcp_transport.currentData() or 'soft'
+        except Exception:
+            mode = 'soft'
+        is_tcp = mode == 'tcp'
+        for w in (
+            getattr(self, 'tcp_role', None),
+            getattr(self, 'tcp_real_host', None),
+            getattr(self, 'tcp_real_port', None),
+            getattr(self, 'tcp_real_ack', None),
+            getattr(self, 'tcp_real_autoack', None),
+            getattr(self, 'tcp_real_payload', None),
+            getattr(self, 'tcp_real_listen_btn', None),
+            getattr(self, 'tcp_real_connect_btn', None),
+            getattr(self, 'tcp_real_send_btn', None),
+            getattr(self, 'tcp_real_stop_btn', None),
+            getattr(self, 'tcp_real_loop_btn', None),
+        ):
+            if w is not None:
+                try:
+                    w.setEnabled(is_tcp)
+                except Exception:
+                    pass
+        if hasattr(self, 'tcp_real_status') and self.tcp_real_status is not None:
+            if not is_tcp:
+                self.tcp_real_status.setText('○ Soft / LocalBus')
+            else:
+                self._tcp_real_refresh_status()
+
+    def _tcp_real_cfg(self):
+        host = (self.tcp_real_host.text() or '').strip() or '127.0.0.1'
+        port = int(self.tcp_real_port.value())
+        role = self.tcp_role.currentData() or 'server'
+        ack = (self.tcp_real_ack.text() or 'OK').strip() or 'OK'
+        auto = bool(self.tcp_real_autoack.isChecked()) if hasattr(self, 'tcp_real_autoack') else True
+        payload = self.tcp_real_payload.text() if hasattr(self, 'tcp_real_payload') else 'PING'
+        return host, port, role, ack, auto, payload
+
+    def _tcp_real_append_transcript(self, lines):
+        box = getattr(self, 'tcp_real_transcript', None)
+        if box is None:
+            return
+        cur = box.toPlainText().strip()
+        chunk = '\n'.join(lines or [])
+        text = (cur + '\n' + chunk).strip() if cur else chunk
+        # keep last ~120 lines
+        parts = text.splitlines()
+        if len(parts) > 120:
+            parts = parts[-120:]
+        box.setPlainText('\n'.join(parts))
+        try:
+            box.verticalScrollBar().setValue(box.verticalScrollBar().maximum())
+        except Exception:
+            pass
+
+    def _tcp_real_refresh_status(self):
+        sess = getattr(self, '_tcp_real_session', None)
+        lab = getattr(self, 'tcp_real_status', None)
+        if lab is None:
+            return
+        mode = 'soft'
+        try:
+            mode = self.tcp_transport.currentData() or 'soft'
+        except Exception:
+            pass
+        if mode != 'tcp':
+            lab.setText('○ Soft / LocalBus')
+            return
+        if sess is None:
+            lab.setText('○ TCP 空闲')
+            return
+        st = sess.status()
+        lamp = '●' if st.get('status') in ('listening', 'connected') else '○'
+        peer = st.get('peer') or ''
+        lab.setText(
+            f"{lamp} TCP {st.get('role')} · {st.get('status')} · "
+            f"{st.get('host')}:{st.get('port')}"
+            + (f' · peer {peer}' if peer else '')
+            + f" · RX {st.get('recvCount', 0)} TX {st.get('sendCount', 0)}"
+        )
+
+    def _tcp_real_stop(self):
+        sess = getattr(self, '_tcp_real_session', None)
+        if sess is not None:
+            try:
+                sess.stop()
+                self._tcp_real_append_transcript(sess.transcript(20) or ['[sys] stopped'])
+            except Exception as exc:
+                self._tcp_real_append_transcript([f'[err] stop {exc}'])
+        self._tcp_real_session = None
+        self._tcp_real_refresh_status()
+
+    def _tcp_real_listen(self):
+        if (self.tcp_transport.currentData() or 'soft') != 'tcp':
+            self.tcp_transport.setCurrentIndex(self.tcp_transport.findData('tcp'))
+        host, port, _role, ack, auto, _payload = self._tcp_real_cfg()
+        self._tcp_real_stop()
+        from desktop.tcp_realtime import RealTcpSession, ROLE_SERVER
+        sess = RealTcpSession(
+            host=host, port=port, role=ROLE_SERVER,
+            auto_ack=auto, ack=ack, framing='lf',
+        )
+        # Do not touch Qt widgets from the accept/recv worker thread.
+        # Transcript is pulled onto the UI thread via refresh/send/stop.
+        st = sess.start()
+        self._tcp_real_session = sess
+        # reflect ephemeral port
+        try:
+            if int(st.get('port') or 0) > 0:
+                self.tcp_real_port.setValue(int(st['port']))
+        except Exception:
+            pass
+        self.tcp_role.setCurrentIndex(self.tcp_role.findData('server'))
+        self._tcp_real_append_transcript(sess.transcript() or [f"LISTEN {st}"])
+        self._tcp_real_refresh_status()
+        return st
+
+    def _tcp_real_connect(self):
+        if (self.tcp_transport.currentData() or 'soft') != 'tcp':
+            self.tcp_transport.setCurrentIndex(self.tcp_transport.findData('tcp'))
+        host, port, _role, ack, auto, _payload = self._tcp_real_cfg()
+        self._tcp_real_stop()
+        from desktop.tcp_realtime import RealTcpSession, ROLE_CLIENT
+        sess = RealTcpSession(
+            host=host, port=port, role=ROLE_CLIENT,
+            auto_ack=False, ack=ack, framing='lf',
+        )
+        st = sess.start()
+        self._tcp_real_session = sess
+        self.tcp_role.setCurrentIndex(self.tcp_role.findData('client'))
+        self._tcp_real_append_transcript(sess.transcript() or [f"CONNECT {st}"])
+        self._tcp_real_refresh_status()
+        return st
+
+    def _tcp_real_send(self):
+        host, port, role, ack, auto, payload = self._tcp_real_cfg()
+        # expand ${} with demo / project vars when natural
+        try:
+            from desktop.tcp_realtime import expand_payload
+            bag = dict(getattr(self, '_TPL_DEMO_VARS', {}) or {})
+            bag.setdefault('okng', 'OK')
+            bag.setdefault('resultOk', 1)
+            payload = expand_payload(payload, bag)
+        except Exception:
+            pass
+        sess = getattr(self, '_tcp_real_session', None)
+        if sess is None or (sess.status().get('status') not in ('listening', 'connected')):
+            # oneshot against configured host:port
+            from desktop.tcp_realtime import RealTcpSession
+            tmp = RealTcpSession(host=host, port=port, role='client', auto_ack=False)
+            res = tmp.send(payload, wait_reply=True, timeout_s=2.0)
+            self._tcp_real_append_transcript(tmp.transcript() or [str(res)])
+            if res.get('ok'):
+                self._tcp_real_append_transcript([
+                    f"oneshot TX {payload!r} → reply {res.get('reply')!r}"
+                ])
+            else:
+                self._tcp_real_append_transcript([f"oneshot FAIL {res.get('error')}"])
+            self._tcp_real_refresh_status()
+            return res
+        res = sess.send(payload, wait_reply=(role == 'client'), timeout_s=2.0)
+        self._tcp_real_append_transcript(sess.transcript(30))
+        self._tcp_real_refresh_status()
+        return res
+
+    def _tcp_real_loopback(self):
+        """Product smoke from UI: listen→connect→send→recv→ack on 127.0.0.1."""
+        if (self.tcp_transport.currentData() or 'soft') != 'tcp':
+            self.tcp_transport.setCurrentIndex(self.tcp_transport.findData('tcp'))
+        _host, _port, _role, ack, auto, payload = self._tcp_real_cfg()
+        self._tcp_real_stop()
+        from desktop.tcp_realtime import loopback_e2e
+        # Prefer 127.0.0.1 + ephemeral to avoid clashing with sim :19880 / App :19777
+        result = loopback_e2e(
+            host='127.0.0.1', port=0, payload=payload or 'PING',
+            ack=ack or 'OK', auto_ack=bool(auto),
+        )
+        lines = list(result.get('transcript') or [])
+        lines.append(
+            f"e2e {'PASS' if result.get('ok') else 'FAIL'} steps={result.get('steps')} "
+            f"port={result.get('port')} reply={result.get('reply')!r} "
+            f"err={result.get('error') or '—'}"
+        )
+        self._tcp_real_append_transcript(lines)
+        if result.get('port'):
+            try:
+                self.tcp_real_port.setValue(int(result['port']))
+            except Exception:
+                pass
+        self.tcp_real_host.setText('127.0.0.1')
+        self._tcp_real_refresh_status()
+        # Persist last real TCP e2e note on commManager (no Host cobind cascade)
+        try:
+            proj = self.document.project if self.document else {}
+            cm = proj.setdefault('commManager', {}) if isinstance(proj, dict) else {}
+            if isinstance(cm, dict):
+                cm['lastRealTcpE2e'] = {
+                    'ok': bool(result.get('ok')),
+                    'port': result.get('port'),
+                    'steps': result.get('steps'),
+                    'reply': result.get('reply'),
+                    'path': 'tcp-real-loopback',
+                }
+                cm['tcpTransport'] = 'tcp'
+        except Exception:
+            pass
+        return result
+
     def _udp_test_send(self):
+
         import socket
         from datetime import datetime
         host = (self.udp_host.text() or '').strip() or '127.0.0.1'

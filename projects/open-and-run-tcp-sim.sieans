@@ -133,6 +133,15 @@
         "host": "127.0.0.1",
         "port": 19881,
         "remark": "同模拟器 UDP 口"
+      },
+      {
+        "id": "tcp-real-loopback",
+        "name": "TcpRealLoopback",
+        "protocol": "TCP Server",
+        "enabled": true,
+        "host": "127.0.0.1",
+        "port": 19955,
+        "remark": "wave155 真 TCP Server 环回（CommManager Real TCP / tcp_realtime；无 PLC）"
       }
     ],
     "recvEvents": [
@@ -159,7 +168,8 @@
       "enabled": true,
       "timeoutMs": 1000,
       "ack": "OK"
-    }
+    },
+    "tcpTransport": "tcp"
   },
   "globalTriggers": {
     "events": [],
@@ -223,5 +233,5 @@
       "comm": "TcpLoopbackSim"
     }
   },
-  "notes": "打开即跑·TCP环回：先在通信管理「TCP 测试」启动环回模拟器，再单次运行或向 :19880 发 RUN。无现场硬件/无 robot SDK。"
+  "notes": "打开即跑·TCP环回：先在通信管理「TCP 测试」启动环回模拟器，再单次运行或向 :19880 发 RUN。无现场硬件/无 robot SDK。\nwave155: CommManager Soft|TCP — use TCP 测试「实时 TCP」Listen/环回 e2e on 127.0.0.1:19955; TcpLoopbackSim still uses desktop.tcp_device_sim :19880. No field PLC."
 }

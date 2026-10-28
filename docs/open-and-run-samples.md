@@ -1,4 +1,4 @@
-# Open-and-run 样例覆盖（wave148–wave154：软采集 · 运行态预览 · 连续预览 · UVC/GenTL 实采 live）
+# Open-and-run 样例覆盖（wave148–wave155：软采集 · UVC/GenTL 实采 · 真 TCP 环回）
 
 面向「双击 `.sieans` → 运行」的软平台关闭清单。详细菜单见 `projects/README-open-and-run.md`。
 菜单单一来源：`desktop/open_and_run_catalog.py`（「从模板新建」↔「打开示例」↔ 本表同目录）。
@@ -15,7 +15,7 @@
 | **条码/ID** | `barcode` | **码N✓ 多码工业表 + 期望串门限** |
 | **OCR/缺陷** | `ocr-defect-chrome`, `ocr-gate-comm`, `defects`, `locate-measure-defect` | **识N✓缺N✓ 工业表 + 胶片铬 + ROI叠层** |
 | **九点/门限** | `ninepoint` | **九N✓门✓ 残差工业表 + 胶片铬 + 叠层** |
-| 脚本/协议/通信 | `script`, `format-protocol*`, `comm-*`, `group-comm`, `tcp-sim` | LocalBus / 环回模拟 |
+| 脚本/协议/通信 | `script`, `format-protocol*`, `comm-*`, `group-comm`, `tcp-sim` | LocalBus 软路径 + **真 TCP 环回**（wave155） |
 | 变量/触发壳 | （任意样例 + 三级变量 / 全局触发） | **变N✓ / 触N· 徽标 + 命中密度表** |
 
 ## 打开即用检查
@@ -44,3 +44,11 @@ TCP 仍未做（下一波等 Allen）。
 
 **wave154**：UVC `VideoCapture` 实采连续 live（`UvcLiveSession` 开一次 grab 多次）+ GenTL Producer load/enumerate/open/grab（Hikrobot CTI 自动发现；无相机诚实空列表、不伪造帧）；Soft|UVC|GenTL 同一 `PreviewFrameGate` / `show_live_frame` 预览路径。
 冒烟：`python3 scripts/smoke-wave154-uvc-gentl-live-e2e.py`。TCP 仍 pending。
+
+**wave155**：产品化真 TCP（与 LocalBus 软路径并存）— `desktop/tcp_realtime.py` Soft|TCP 传输；
+CommManager「TCP 测试」页：传输路径 Soft/LocalBus vs TCP、地址/端口、Listen/Connect/Send、
+状态灯、真套接字抄本；环回 e2e listen→connect→send→recv→ack（127.0.0.1，无外部 PLC）。
+`${}` 发送载荷展开可用。不重启 Host/Comm cobind 联调墙。
+冒烟：`python3 scripts/smoke-wave155-real-tcp-e2e.py`（PASS 0 FAIL）。
+现场 PLC/长连接池仍下一阶段。
+

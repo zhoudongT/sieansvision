@@ -2,7 +2,7 @@
 
 wave148/wave150: keep App menus and docs in parity with projects/*.sieans soft samples
 (wave150 adds soft simulator camera open-and-run).
-No TCP/Halcon/robot/camera SDK claims — soft open-and-run paths only.
+wave155: TCP loopback (tcp-sim + CommManager real TCP) is productized; still no Halcon/robot/cloud claims. Soft open-and-run remains default.
 """
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ OPEN_AND_RUN_ENTRIES: list[tuple[str, str]] = [
     ('打开即跑 · Format↔Protocol演示', 'projects/open-and-run-format-protocol-demo.sieans'),
     ('打开即跑 · 组合+通信', 'projects/open-and-run-group-comm.sieans'),
     ('打开即跑 · 多协议通信', 'projects/open-and-run-comm-multiproto.sieans'),
-    ('打开即跑 · TCP环回', 'projects/open-and-run-tcp-sim.sieans'),
+    ('打开即跑 · TCP环回（sim+真套接字）', 'projects/open-and-run-tcp-sim.sieans'),
     ('打开即跑 · 软模拟采集', 'projects/open-and-run-soft-camera.sieans'),
 ]
 
