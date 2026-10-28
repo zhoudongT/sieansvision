@@ -337,8 +337,20 @@ class CameraManagerDialog(_RpcDialog):
         text = labels.get(st, st)
         if err:
             text += ' · ' + str(err)[:300]
-        self.preview_meta.setText(text)
-        self.message.setText(text)
+        # wave150: soft acquisition chrome densify on session strip
+        try:
+            from desktop.soft_acquisition_chrome import summarize_session, live_preview_interval_ms
+            summ = summarize_session(state)
+            chrome = summ.get('summary') or text
+            self.preview_meta.setText(chrome)
+            self.preview_meta.setToolTip(text)
+            self.message.setText(chrome if not err else text)
+            want = live_preview_interval_ms(manager=True)
+            if self._live_timer.interval() != want:
+                self._live_timer.setInterval(want)
+        except Exception:
+            self.preview_meta.setText(text)
+            self.message.setText(text)
         active = st in ('opening', 'running', 'reconnecting')
         self._set_connect(active or st == 'running')
         if st == 'running':
@@ -408,7 +420,13 @@ class CameraManagerDialog(_RpcDialog):
                 if age is not None:
                     bits.append(f'龄 {age} ms')
                 bits.append(f"帧 #{meta.get('frameSequence', '—')}")
-                self.preview_meta.setText('预览 · ' + ' · '.join(bits))
+                try:
+                    from desktop.soft_acquisition_chrome import chrome_badge, is_soft_driver
+                    soft = is_soft_driver((self._session.get('config') or {}).get('params', {}).get('driver'))
+                    badge = chrome_badge(soft=soft, frame_seq=meta.get('frameSequence'), ready=True, status='RUNNING')
+                    self.preview_meta.setText(f'{badge} · 预览 · ' + ' · '.join(bits))
+                except Exception:
+                    self.preview_meta.setText('预览 · ' + ' · '.join(bits))
 
         def wrap(value):
             try:

@@ -3051,9 +3051,22 @@ class MainWindow(QMainWindow):
     def _note_camera_session(self, state=None, status=None, **_kw):
         """Cache camera session for fixed-bar live chrome (非阻塞)."""
         text = str(state or status or '').strip()
-        self._camera_session_cache = dict(state=text or 'unknown', status=status)
-        if text:
-            self._last_camera_status_hint = text[:24]
+        cache = dict(state=text or 'unknown', status=status)
+        if isinstance(status, dict):
+            cache.update({k: status.get(k) for k in ('id', 'received', 'frameAgeMs', 'config') if k in status})
+            cache['state'] = status.get('state') or text or 'unknown'
+        self._camera_session_cache = cache
+        try:
+            from desktop.soft_acquisition_chrome import summarize_session, fixed_bar_camera_text
+            summ = summarize_session(cache if isinstance(cache.get('state'), str) and cache.get('config') else (status if isinstance(status, dict) else cache))
+            # When only a short state string is passed, still stamp soft badge into hint.
+            if not isinstance(status, dict):
+                summ = summarize_session({'state': text or 'idle'})
+            self._last_camera_status_hint = (summ.get('badge') or text or '')[:24]
+            self._camera_session_summary = summ
+        except Exception:
+            if text:
+                self._last_camera_status_hint = text[:24]
         try:
             self._refresh_fixed_bar_device_status()
         except Exception:
@@ -3061,10 +3074,24 @@ class MainWindow(QMainWindow):
 
     def maybe_warm_camera(self):
         if self.busy or not self.engine_ready:return
+        # Prefer real freerun devices; else soft simulator for open-and-run session feel (wave150).
         step=next((s for s in self.document.project.get('steps',[])
                    if s.get('operation')=='camera_capture'
                    and (s.get('params') or {}).get('driver') in ('gentl','uvc')
                    and (s.get('params') or {}).get('trigger','freerun')=='freerun'), None)
+        soft_step=None
+        if not step:
+            try:
+                from desktop.soft_acquisition_chrome import normalize_soft_capture_params, is_soft_driver
+                for s in self.document.project.get('steps',[]) or []:
+                    if s.get('operation')!='camera_capture':
+                        continue
+                    p=normalize_soft_capture_params(s.get('params') or {})
+                    if is_soft_driver(p.get('driver')) and p.get('trigger','freerun')=='freerun':
+                        soft_step=dict(s); soft_step['params']=p; break
+            except Exception:
+                soft_step=None
+            step=soft_step
         if not step:return
         params=dict(step.get('params') or {})
         if not params.get('deviceId') and params.get('driver')=='gentl':
@@ -4574,7 +4601,14 @@ class MainWindow(QMainWindow):
             fb = dict(getattr(hmi, '_fixed_bars_cache', None) or {})
             if cam_hint:
                 base = fb.get('cameraBind') or '未绑定'
-                kw['camera'] = f'{base}({cam_hint})' if base and base != '未绑定' else str(cam_hint)
+                try:
+                    from desktop.soft_acquisition_chrome import fixed_bar_camera_text
+                    summ = getattr(self, '_camera_session_summary', None) or {}
+                    kw['camera'] = fixed_bar_camera_text(summ, bind=base if base != '未绑定' else '软采集')
+                    if not summ:
+                        kw['camera'] = f'{base}({cam_hint})' if base and base != '未绑定' else str(cam_hint)
+                except Exception:
+                    kw['camera'] = f'{base}({cam_hint})' if base and base != '未绑定' else str(cam_hint)
             if comm_txt:
                 base = fb.get('commBind') or 'TCP.连接状态'
                 kw['comm'] = f'{base}({comm_txt})'

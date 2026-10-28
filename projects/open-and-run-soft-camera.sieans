@@ -1,0 +1,242 @@
+{
+  "version": 2,
+  "id": "b155b393ee0e4ebeb062bbeca64cec66",
+  "name": "打开即跑 · 软模拟采集",
+  "meta": {
+    "openAndRun": true,
+    "wave": 150,
+    "softCamera": true
+  },
+  "notes": "wave150 soft camera / acquisition open-and-run · 模拟 2D 相机(synthetic-parts) → 轮廓 → 尺寸 → 变量。无真实 GenTL/厂商 SDK。打开后 ▶ 单次即可采集+运行；连续会话见「相机与连续采集」。预览无 scene.clear 闪烁；图像源属性含软采集铬条。",
+  "sourcePosition": {
+    "x": 300,
+    "y": 40
+  },
+  "sourceConfig": {
+    "mode": "local",
+    "pixelFormat": "RGB24",
+    "intervalMs": 0,
+    "saveInSolution": false,
+    "showImageName": true,
+    "snStart": 0,
+    "imageCache": 0,
+    "outputMono8": false,
+    "stitchEnable": false,
+    "stitchStartY": 0,
+    "stitchHeight": 0,
+    "stitchClearOnTrigger": false,
+    "autoSwitch": false,
+    "stopAtLast": false,
+    "charFilterEnable": false,
+    "inputChar": "",
+    "triggerChar": "",
+    "cameraId": "",
+    "cameraParams": {
+      "driver": "simulator",
+      "deviceId": "synthetic-parts",
+      "trigger": "freerun",
+      "timeoutMs": 5000
+    },
+    "exposure": 0.0,
+    "gain": 0.0,
+    "images": [
+      "public/vision/samples/parts.png"
+    ],
+    "currentIndex": 0
+  },
+  "steps": [
+    {
+      "id": "2464fd4cbe9f4963",
+      "name": "软模拟采集",
+      "operation": "camera_capture",
+      "params": {
+        "driver": "simulator",
+        "deviceId": "synthetic-parts",
+        "dataMode": "image",
+        "trigger": "freerun",
+        "timeoutMs": 5000
+      },
+      "reference": "",
+      "position": {
+        "x": 300,
+        "y": 160
+      },
+      "imageFrom": "source",
+      "variables": {}
+    },
+    {
+      "id": "2b222ad87cd7499e",
+      "name": "轮廓检测",
+      "operation": "geometry",
+      "params": {
+        "feature": "contours",
+        "threshold": 127,
+        "minArea": 50
+      },
+      "reference": "",
+      "position": {
+        "x": 300,
+        "y": 280
+      },
+      "imageFrom": "2464fd4cbe9f4963",
+      "variables": {}
+    },
+    {
+      "id": "e60227d813c3477f",
+      "name": "尺寸测量",
+      "operation": "measure",
+      "params": {},
+      "reference": "",
+      "position": {
+        "x": 300,
+        "y": 400
+      },
+      "imageFrom": "2b222ad87cd7499e",
+      "variables": {}
+    },
+    {
+      "id": "612fcf5841c14463",
+      "name": "结果变量·软采集",
+      "operation": "var_calc",
+      "params": {
+        "scope": "flow",
+        "expressions": [
+          {
+            "name": "softCamCount",
+            "expression": "geometry_count",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "passGate",
+            "expression": "geometry_count >= 1",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          }
+        ]
+      },
+      "reference": "",
+      "position": {
+        "x": 300,
+        "y": 520
+      },
+      "imageFrom": "e60227d813c3477f",
+      "variables": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "33b6df43cdea4aa4",
+      "from": "source",
+      "to": "2464fd4cbe9f4963",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "aac7a84ebc474cf8",
+      "from": "2464fd4cbe9f4963",
+      "to": "2b222ad87cd7499e",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "29044276e3174ad2",
+      "from": "2b222ad87cd7499e",
+      "to": "e60227d813c3477f",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "934d055f2284460b",
+      "from": "e60227d813c3477f",
+      "to": "612fcf5841c14463",
+      "fromPort": "bottom",
+      "toPort": "top"
+    }
+  ],
+  "variables": {
+    "softCamCount": 0,
+    "passGate": 0
+  },
+  "runUi": {
+    "split": "4",
+    "placements": [
+      {
+        "name": "图像",
+        "page": 3,
+        "cell": 0,
+        "category": "基础"
+      },
+      {
+        "name": "OK/NG",
+        "page": 3,
+        "cell": 1,
+        "category": "基础"
+      },
+      {
+        "name": "运行控制",
+        "page": 3,
+        "cell": 2,
+        "category": "基础"
+      },
+      {
+        "name": "生产统计",
+        "page": 3,
+        "cell": 3,
+        "category": "图表"
+      }
+    ],
+    "controls": {
+      "图像": {
+        "commands": [],
+        "binding": "source"
+      },
+      "OK/NG": {
+        "commands": [],
+        "binding": ""
+      },
+      "运行控制": {
+        "commands": [
+          {
+            "type": "执行·单次",
+            "config": ""
+          },
+          {
+            "type": "执行·连续",
+            "config": ""
+          },
+          {
+            "type": "执行·停止",
+            "config": ""
+          }
+        ],
+        "binding": ""
+      },
+      "生产统计": {
+        "commands": [],
+        "binding": "stats"
+      }
+    },
+    "fixedBars": {
+      "top": false,
+      "bottom": true,
+      "left": false,
+      "right": false,
+      "cameraBind": "未绑定",
+      "commBind": "TCP.连接状态",
+      "showRunStatus": true,
+      "showOkNg": true,
+      "showCounters": true,
+      "showHistory": true
+    },
+    "meta": {
+      "template": "open_and_run_contour_color",
+      "version": 1,
+      "openAndRun": true,
+      "wave": 145,
+      "softCamera": true
+    }
+  }
+}

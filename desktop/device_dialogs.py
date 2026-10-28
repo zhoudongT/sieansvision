@@ -807,13 +807,27 @@ class CameraDialog(_RpcDialog):
         first = self.state.get('id') != state.get('id')
         self.state = state
         labels = dict(idle='未连接', opening='正在打开设备', running='持续采集中', reconnecting='正在重连', stopping='正在释放设备', stopped='已停止', failed='采集失败', interrupted='应用中断，需手动重连')
-        self.session_label.setText(labels.get(state.get('state'), state.get('state', '')) + (' · ' + state['error'] if state.get('error') else ''))
         config = state.get('config', {})
+        # wave150: densify soft-acquisition session chrome (badge · soft · frame#)
+        try:
+            from desktop.soft_acquisition_chrome import summarize_session, session_stat_rows, live_preview_interval_ms
+            summ = summarize_session(state, params=(config.get('params') or {}))
+            err = (' · ' + state['error']) if state.get('error') else ''
+            self.session_label.setText(summ.get('summary') or (labels.get(state.get('state'), state.get('state', '')) + err))
+            self.session_label.setToolTip('软采集铬 · 无闪烁预览 · ' + str(summ.get('badge') or ''))
+            # Prefer chrome rows (includes soft path + anti-flicker policy) when available
+            chrome_rows = session_stat_rows(summ)
+            _rows(self.statistics, chrome_rows)
+            want_ms = live_preview_interval_ms(manager=False)
+            if self.live_timer.interval() != want_ms:
+                self.live_timer.setInterval(want_ms)
+        except Exception:
+            self.session_label.setText(labels.get(state.get('state'), state.get('state', '')) + (' · ' + state['error'] if state.get('error') else ''))
+            _rows(self.statistics, [('会话编号', state.get('id')), ('设备驱动', config.get('params', {}).get('driver')), ('设备标识', config.get('params', {}).get('deviceId')), ('接收帧数', state.get('received', 0)), ('流程 / 预览取帧次数', state.get('consumed', 0)), ('覆盖未取帧数', state.get('overwritten', 0)), ('重复缓存帧数', state.get('reused', 0)), ('重连次数', state.get('reconnects', 0)), ('缓存帧龄 (ms)', state.get('frameAgeMs'))])
         if first:
             self.interval.setValue(config.get('intervalMs', 100))
             self.retries.setValue(config.get('reconnectAttempts', 0))
             self.reconnect.setValue(config.get('reconnectMs', 1000))
-        _rows(self.statistics, [('会话编号', state.get('id')), ('设备驱动', config.get('params', {}).get('driver')), ('设备标识', config.get('params', {}).get('deviceId')), ('接收帧数', state.get('received', 0)), ('流程 / 预览取帧次数', state.get('consumed', 0)), ('覆盖未取帧数', state.get('overwritten', 0)), ('重复缓存帧数', state.get('reused', 0)), ('重连次数', state.get('reconnects', 0)), ('缓存帧龄 (ms)', state.get('frameAgeMs'))])
         if state.get('state') == 'running':
             if not self.live_timer.isActive():
                 self.live_timer.start()

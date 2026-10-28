@@ -40,6 +40,7 @@
 | `open-and-run-comm-multiproto.sieans` | LocalBus 主路径 + TCP/UDP 写出（模拟回退）；无机器人 SDK |
 | `open-and-run-group-comm.sieans` | Group+Comm；Listen 徽章、`RUN`/`STOP`、HB→变量 |
 | `open-and-run-tcp-sim.sieans` | TCP 环回联调（先启 :19880 模拟器） |
+| `open-and-run-soft-camera.sieans` | 软模拟采集 → 轮廓 → 尺寸（无真实相机 SDK） |
 | `mv-camera-ocr.sieans` | 相机/OCR；需 GenTL 相机或离线帧 |
 
 模板（非双击主推，可「从模板新建」）：`templates/measure-chain.sieans`、`defect-inspection.sieans`、`blank-inspection.sieans`、`mv-gentl-ocr.sieans`。

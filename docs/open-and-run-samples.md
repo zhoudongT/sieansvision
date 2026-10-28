@@ -1,4 +1,4 @@
-# Open-and-run 样例覆盖（wave148 收口 · wave149 画布图例）
+# Open-and-run 样例覆盖（wave148 收口 · wave149 画布图例 · wave150 软采集）
 
 面向「双击 `.sieans` → 运行」的软平台关闭清单。详细菜单见 `projects/README-open-and-run.md`。
 菜单单一来源：`desktop/open_and_run_catalog.py`（「从模板新建」↔「打开示例」↔ 本表同目录）。
@@ -8,6 +8,7 @@
 | 能力簇 | 代表样例 | 结果铬 / 门限 |
 |--------|----------|---------------|
 | 默认产线壳 | `default-platform` | 上位机状态机 + OK/NG 底栏 |
+| **软模拟采集** | `soft-camera` | **采软✓ 会话铬 · 无闪烁预览 · 打开即采跑** |
 | 匹配/定位 | `locate`, `match-locate-chrome`, `fixture-*` | 配N✓ 候选表 / 夹具位姿 |
 | 几何/卡尺/测量 | `caliper*`, `measure*`, `geom-*` | 卡尺铬 / 交点垂距 / 夹角圆距 |
 | 轮廓/色彩 | `contour-color` | 轮廓+HSV 区域表 |

@@ -155,6 +155,14 @@ class ImageSourceForm(QWidget):
         self.root.addWidget(self._cfg_warn)
         self._refresh_cfg_warn()
 
+        # wave150: soft acquisition operator chrome (industrial density strip)
+        self._acq_chrome = QLabel()
+        self._acq_chrome.setObjectName('softAcquisitionChrome')
+        self._acq_chrome.setWordWrap(True)
+        self._acq_chrome.setTextFormat(Qt.TextFormat.RichText)
+        self.root.addWidget(self._acq_chrome)
+        self._refresh_acq_chrome()
+
         basic = QGroupBox('基本参数')
         basic.setObjectName('propertySection')
         form = QFormLayout(basic)
@@ -299,6 +307,29 @@ class ImageSourceForm(QWidget):
         self._apply_mode_visibility()
         self._building = False
 
+    def _refresh_acq_chrome(self, session=None):
+        """wave150: densify soft camera / ImageSource acquisition chrome strip."""
+        if not hasattr(self, '_acq_chrome') or self._acq_chrome is None:
+            return
+        try:
+            from desktop.soft_acquisition_chrome import source_chrome_strip, html_session_strip, summarize_session
+            strip = source_chrome_strip(self._cfg or {}, session=session)
+            # Prefer HTML session strip when a live session is provided; else source strip summary.
+            if session:
+                html = html_session_strip(summarize_session(session, params=(self._cfg or {}).get('cameraParams') or {}))
+            else:
+                html = strip.get('html') or ''
+                if not html:
+                    html = (
+                        f"<div style='background:#1e2430;color:#d7dde8;padding:6px 8px;"
+                        f"border-radius:4px;font-size:12px'>{strip.get('summary') or '采·'}</div>"
+                    )
+            self._acq_chrome.setText(html)
+            self._acq_chrome.setToolTip(strip.get('summary') or '软采集铬')
+            self._acq_chrome.setVisible(True)
+        except Exception as exc:  # pragma: no cover
+            self._acq_chrome.setText(f'采· （铬暂不可用：{exc}）')
+
     def _refresh_cfg_warn(self):
         """Update incomplete banner without rebuilding the form (mode RT while float open)."""
         if not hasattr(self, '_cfg_warn') or self._cfg_warn is None:
@@ -319,6 +350,7 @@ class ImageSourceForm(QWidget):
         self._audit('mode', self.mode.currentData())
         self._apply_mode_visibility()
         self._refresh_cfg_warn()
+        self._refresh_acq_chrome()
 
     def _on_stitch(self, enabled):
         self._audit('stitchEnable', enabled)

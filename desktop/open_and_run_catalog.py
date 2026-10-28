@@ -1,6 +1,7 @@
 """Open-and-run sample catalog — single source for 从模板新建 / 打开示例 / docs.
 
-wave148: keep App menus and docs in parity with projects/*.sieans soft samples.
+wave148/wave150: keep App menus and docs in parity with projects/*.sieans soft samples
+(wave150 adds soft simulator camera open-and-run).
 No TCP/Halcon/robot/camera SDK claims — soft open-and-run paths only.
 """
 from __future__ import annotations
@@ -35,6 +36,7 @@ OPEN_AND_RUN_ENTRIES: list[tuple[str, str]] = [
     ('打开即跑 · 组合+通信', 'projects/open-and-run-group-comm.sieans'),
     ('打开即跑 · 多协议通信', 'projects/open-and-run-comm-multiproto.sieans'),
     ('打开即跑 · TCP环回', 'projects/open-and-run-tcp-sim.sieans'),
+    ('打开即跑 · 软模拟采集', 'projects/open-and-run-soft-camera.sieans'),
 ]
 
 # New-from-template extras (non open-and-run shells / camera-oriented).
