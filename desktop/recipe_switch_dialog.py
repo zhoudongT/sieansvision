@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QPlainTextEdit,
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget,
     QListWidgetItem, QLineEdit, QTextEdit, QMessageBox, QTabWidget, QWidget,
     QFormLayout, QGroupBox, QAbstractItemView, QSplitter, QComboBox, QCheckBox,
@@ -150,6 +151,26 @@ class RecipeSwitchDialog(QDialog):
         self._diff_list.setStyleSheet('QListWidget{font-size:11px;color:#c8d0d8;background:#1a1e24;}')
         self._diff_list.setToolTip('行级差分：模块参数键 / 变量值（只读预览）')
         left.addWidget(self._diff_list)
+
+        # Page chrome: variant list ↔ production_task chain soft preview
+        left.addWidget(QLabel('变体 ↔ 生产链软预览（页铬）'))
+        self._variant_chain_preview = QPlainTextEdit()
+        self._variant_chain_preview.setObjectName('recipeVariantChainPreviewStrip')
+        self._variant_chain_preview.setReadOnly(True)
+        self._variant_chain_preview.setMaximumHeight(110)
+        self._variant_chain_preview.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#1a2430;color:#c5e1a5;'
+        )
+        self._variant_chain_preview.setPlainText('(选配方/变体后软预览 production_task 链)')
+        self._variant_chain_preview.setToolTip(
+            '配方变体列表 ↔ production_task 链软预览页铬（非属性芯片）'
+        )
+        left.addWidget(self._variant_chain_preview)
+        self._variant_chain_meta = QLabel('(变体·链预览待命)')
+        self._variant_chain_meta.setObjectName('recipeVariantChainPreviewMeta')
+        self._variant_chain_meta.setWordWrap(True)
+        self._variant_chain_meta.setStyleSheet('color:#666;font-size:11px;')
+        left.addWidget(self._variant_chain_meta)
         # 换型 dry-run 左右对照
         sb_head = QHBoxLayout()
         sb_lab = QLabel('换型对照（当前 | 配方）')
@@ -425,6 +446,10 @@ class RecipeSwitchDialog(QDialog):
         self._note_edit.setPlainText(str(entry.get('note') or ''))
         if hasattr(self, '_variant_edit'):
             self._variant_edit.setText(str(entry.get('variant') or ''))
+        try:
+            self.soft_preview_variant_prod_chain_page(entry)
+        except Exception:
+            pass
         sc = entry.get('stepCount') or len((entry.get('snapshot') or {}).get('steps') or [])
         ops = ','.join(entry.get('stepOps') or []) or '全部'
         vks = ','.join(entry.get('varKeys') or []) or '全部'
@@ -1049,6 +1074,105 @@ class RecipeSwitchDialog(QDialog):
             )
         except Exception:
             pass
+
+
+    def soft_preview_variant_prod_chain_page(self, entry=None):
+        """Recipe variant list ↔ production_task chain soft preview page chrome."""
+        from datetime import datetime
+        entry = entry or {}
+        if not entry:
+            try:
+                it = self._recipe_list.currentItem() if hasattr(self, '_recipe_list') else None
+                rid = it.data(Qt.ItemDataRole.UserRole) if it is not None else None
+                from desktop import recipe_library as rl
+                entry = next((r for r in rl.list_recipes(self.document.project)
+                              if r.get('id') == rid or r.get('name') == rid), {}) or {}
+            except Exception:
+                entry = {}
+        name = str(entry.get('name') or '')
+        variant = str(entry.get('variant') or '')
+        if not variant and hasattr(self, '_variant_edit'):
+            variant = self._variant_edit.text().strip()
+        modules = list(entry.get('modules') or [])
+        # Also read live production_task chain from project
+        live_chain = []
+        status_var = 'taskStatus'
+        scope = 'global'
+        try:
+            proj = self.document.project if self.document else {}
+            for st in (proj.get('steps') or []):
+                if isinstance(st, dict) and st.get('operation') == 'production_task':
+                    pr = st.get('params') or {}
+                    live_chain = list(pr.get('chain') or [])
+                    status_var = str(pr.get('statusVar') or status_var)
+                    scope = str(pr.get('scope') or scope)
+                    if not name:
+                        name = str(pr.get('recipe') or pr.get('taskName') or name)
+                    break
+        except Exception:
+            pass
+        preview = []
+        if modules:
+            for m in modules:
+                if isinstance(m, dict):
+                    preview.append({
+                        'step': str(m.get('name') or m.get('operation') or '步骤'),
+                        'op': str(m.get('operation') or ''),
+                        'vars': '',
+                    })
+        elif live_chain:
+            for r in live_chain:
+                preview.append({
+                    'step': str(r.get('step') or ''),
+                    'op': str(r.get('op') or ''),
+                    'vars': str(r.get('vars') or ''),
+                })
+        ts = datetime.now().strftime('%H:%M:%S')
+        lines = [
+            '── recipe variant ↔ production_task chain soft preview ──',
+            f'[{ts}] recipe={name or "—"}' + (f'/{variant}' if variant else '') +
+            f' · statusVar={scope}.{status_var} · previewSteps={len(preview)} · liveChain={len(live_chain)}',
+        ]
+        for i, r in enumerate(preview[:24], 1):
+            lines.append(f"  {i:02d}. {r.get('step') or '—'}  ·  op={r.get('op') or '—'}")
+        if not preview:
+            lines.append('  (无模块/链可预览 — 选含 modules 的配方或工程内 production_task)')
+        text = '\n'.join(lines)
+        if hasattr(self, '_variant_chain_preview') and self._variant_chain_preview is not None:
+            self._variant_chain_preview.setPlainText(text)
+        if hasattr(self, '_variant_chain_meta') and self._variant_chain_meta is not None:
+            self._variant_chain_meta.setText(
+                f'软预览 · 配方 {name or "—"}' + (f'/{variant}' if variant else '') +
+                f' · 链 {len(preview)} 步 · {scope}.{status_var} · 页铬非芯片'
+            )
+        # Push to open production_task panel / HMI
+        hmi, host = self._host_hmi()
+        panel = None
+        try:
+            from desktop.production_task_panel import ProductionTaskPanel
+            if host is not None:
+                for w in host.findChildren(ProductionTaskPanel):
+                    panel = w
+                    break
+        except Exception:
+            panel = None
+        if panel is not None and hasattr(panel, 'soft_preview_variant_prod_chain'):
+            try:
+                panel.soft_preview_variant_prod_chain(
+                    recipe=name, variant=variant, modules=modules or preview, note='变体列表预览',
+                )
+            except Exception:
+                pass
+        if hmi is not None and hasattr(hmi, 'apply_variant_chain_preview_chrome'):
+            try:
+                hmi.apply_variant_chain_preview_chrome(
+                    recipe=name, variant=variant, steps=preview,
+                    status_var=f'{scope}.{status_var}', note='变体列表预览',
+                )
+            except Exception:
+                pass
+        return {'recipe': name, 'variant': variant, 'steps': preview}
+
 
     def _co_bind_production_variant_status(self, *, recipe='', variant='', status_var='taskStatus',
                                           scope='global', host_state='Idle'):

@@ -734,6 +734,43 @@ class ProductionTaskPanel(QWidget):
         self._prod_variant_status_meta.setStyleSheet('color:#666;font-size:11px;')
         lay.addWidget(self._prod_variant_status_meta)
 
+        # Page-level result OK/NG → Comm sendEvents soft TX (closed-loop out; LocalBus only)
+        lay.addWidget(QLabel('结果 OK/NG → Comm sendEvents 软 TX（闭环出站 · LocalBus）'))
+        self._prod_result_comm_tx_strip = QPlainTextEdit()
+        self._prod_result_comm_tx_strip.setObjectName('productionTaskResultOkNgCommTxStrip')
+        self._prod_result_comm_tx_strip.setReadOnly(True)
+        self._prod_result_comm_tx_strip.setMaximumHeight(110)
+        self._prod_result_comm_tx_strip.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#1a2030;color:#9ec9f0;'
+        )
+        self._prod_result_comm_tx_strip.setPlainText(
+            '(尚无结果 OK/NG → sendEvents 软 TX — trial→result 后在此汇总)'
+        )
+        lay.addWidget(self._prod_result_comm_tx_strip)
+        self._prod_result_comm_tx_meta = QLabel('(结果→Comm 软 TX 待命)')
+        self._prod_result_comm_tx_meta.setObjectName('productionTaskResultOkNgCommTxMeta')
+        self._prod_result_comm_tx_meta.setWordWrap(True)
+        self._prod_result_comm_tx_meta.setStyleSheet('color:#666;font-size:11px;')
+        lay.addWidget(self._prod_result_comm_tx_meta)
+        self._result_comm_tx_lines = []
+
+        # Page-level recipe variant ↔ chain soft preview chrome
+        lay.addWidget(QLabel('配方变体列表 ↔ 生产链 软预览（页铬）'))
+        self._prod_variant_chain_preview = QPlainTextEdit()
+        self._prod_variant_chain_preview.setObjectName('productionTaskVariantChainPreviewStrip')
+        self._prod_variant_chain_preview.setReadOnly(True)
+        self._prod_variant_chain_preview.setMaximumHeight(110)
+        self._prod_variant_chain_preview.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#1a2430;color:#c5e1a5;'
+        )
+        self._prod_variant_chain_preview.setPlainText('(尚未变体→生产链软预览)')
+        lay.addWidget(self._prod_variant_chain_preview)
+        self._prod_variant_chain_meta = QLabel('(变体·链预览待命)')
+        self._prod_variant_chain_meta.setObjectName('productionTaskVariantChainPreviewMeta')
+        self._prod_variant_chain_meta.setWordWrap(True)
+        self._prod_variant_chain_meta.setStyleSheet('color:#666;font-size:11px;')
+        lay.addWidget(self._prod_variant_chain_meta)
+
         self._prod_result_meta = QLabel()
         self._prod_result_meta.setObjectName('productionTaskResultMeta')
         self._prod_result_meta.setWordWrap(True)
@@ -1140,6 +1177,14 @@ class ProductionTaskPanel(QWidget):
             )
         except Exception:
             pass
+        # Result OK/NG → Comm sendEvents soft TX closed-loop out (LocalBus only)
+        if phase == 'result':
+            try:
+                self._soft_result_okng_comm_send_tx(
+                    judge=j, snap=snap, result=result,
+                )
+            except Exception:
+                pass
         return snap
 
 
@@ -1353,3 +1398,225 @@ class ProductionTaskPanel(QWidget):
             except Exception:
                 pass
         return snap
+
+
+    def _soft_result_okng_comm_send_tx(self, *, judge='OK', snap=None, result=None):
+        """production_task result OK/NG → Comm sendEvents soft TX page strip (LocalBus only)."""
+        from datetime import datetime
+        snap = dict(snap or {})
+        result = result or {}
+        j = str(judge or snap.get('okng') or result.get('judge') or 'OK')
+        upper = j.upper()
+        is_ok = upper in ('OK', 'PASS', '良', '通过', 'TRUE', '1')
+        recipe = str(snap.get('recipe') or self.params.get('recipe') or self.params.get('taskName') or '')
+        sv = str(snap.get('statusVar') or self.params.get('statusVar') or 'taskStatus')
+        scope = str(snap.get('scope') or self.params.get('scope') or 'global')
+        ts = datetime.now().strftime('%H:%M:%S')
+        # Resolve project + sendEvents
+        proj = self.project if isinstance(self.project, dict) else {}
+        w = self.window()
+        if w is not None:
+            try:
+                doc = getattr(w, 'document', None) or getattr(w, 'doc', None)
+                if doc is not None and getattr(doc, 'project', None):
+                    proj = doc.project
+            except Exception:
+                pass
+        cm = (proj.get('commManager') or {}) if isinstance(proj, dict) else {}
+        send_rows = list(cm.get('sendEvents') or [])
+        # Soft expand vars
+        soft_vars = {
+            'flow': {
+                'okng': j, 'judge': j,
+                'resultOk': 1 if is_ok else 0,
+                'resultNg': 0 if is_ok else 1,
+                'lastResult': j,
+                'taskStatus': 'ready' if is_ok else 'alarm',
+                'recipe': recipe,
+            },
+            'global': {
+                'taskStatus': 'ready' if is_ok else 'alarm',
+                'recipe': recipe,
+                sv: 'ready' if is_ok else 'alarm',
+            },
+        }
+        # Prefer live CommManagerDialog when open
+        tx_n = 0
+        devices = []
+        lines = list(getattr(self, '_result_comm_tx_lines', []) or [])
+        entries = []
+        dlg = None
+        if w is not None:
+            try:
+                dlg = getattr(w, 'comm_manager', None) or getattr(w, '_comm_manager', None)
+            except Exception:
+                dlg = None
+            if dlg is None:
+                try:
+                    from desktop.comm_manager import CommManagerDialog
+                    for child in w.findChildren(CommManagerDialog):
+                        dlg = child
+                        break
+                except Exception:
+                    pass
+        if dlg is not None and hasattr(dlg, 'soft_result_okng_send_tx'):
+            try:
+                bag = dlg.soft_result_okng_send_tx(
+                    judge=j, recipe=recipe, status_var=f'{scope}.{sv}',
+                    vars_bag=soft_vars, snapshot=snap,
+                )
+                tx_n = int(bag.get('tx') or 0)
+                devices = list(bag.get('devices') or [])
+                entries = list(bag.get('entries') or [])
+                for e in entries:
+                    lines.append(e.get('line') or str(e))
+            except Exception:
+                dlg = None
+        if not entries:
+            # Local soft expand without dialog
+            if not send_rows:
+                send_rows = [
+                    {'name': 'resultOkNg', 'device': 'LocalLoop',
+                     'message': 'RESULT okng=${flow.okng} ok=${flow.resultOk} ng=${flow.resultNg} recipe=${flow.recipe}'},
+                    {'name': 'status', 'device': 'LocalLoop',
+                     'message': 'status=${flow.taskStatus} judge=${flow.judge}'},
+                ]
+            def _expand(msg, bag):
+                out = str(msg or '')
+                # flatten bag for ${a.b}
+                flat = {}
+                for scope_k, vals in (bag or {}).items():
+                    if isinstance(vals, dict):
+                        for k, v in vals.items():
+                            flat[f'{scope_k}.{k}'] = v
+                            flat[k] = v
+                i = 0
+                while '${' in out and i < 64:
+                    i += 1
+                    s = out.find('${')
+                    e = out.find('}', s)
+                    if s < 0 or e < 0:
+                        break
+                    key = out[s + 2:e].strip()
+                    out = out[:s] + str(flat.get(key, '')) + out[e + 1:]
+                return out
+            for ev in send_rows:
+                if not isinstance(ev, dict):
+                    continue
+                device = str(ev.get('device') or ev.get('deviceName') or 'LocalLoop')
+                channel = str(ev.get('name') or ev.get('channel') or ev.get('topic') or 'result')
+                raw = str(ev.get('message') or '')
+                formatted = _expand(raw or f'RESULT okng={j}', soft_vars)
+                note = 'format_data-expand' if '${' in raw else 'sendEvent-plain'
+                line = (
+                    f'[{ts}] TX→result {device}/{channel} okng={j} path={note} '
+                    f'bytes={len(formatted.encode("utf-8"))} │ {formatted[:80]}'
+                )
+                entries.append({
+                    'device': device, 'channel': channel, 'payload': formatted,
+                    'note': note, 'okng': j, 'line': line,
+                })
+                lines.append(line)
+                if device not in devices:
+                    devices.append(device)
+            tx_n = len(entries)
+            # Optional node engine parity
+            try:
+                import json as _json, subprocess
+                from pathlib import Path as _P
+                root = _P(__file__).resolve().parents[1]
+                eng = {
+                    'commManager': {
+                        'devices': cm.get('devices') or [{'name': 'LocalLoop', 'protocol': 'Local Bus'}],
+                        'sendEvents': send_rows,
+                    }
+                }
+                js = (
+                    "const bus=require('./lib/comm-bus.cjs');bus.reset();"
+                    f"const r=bus.softResultOkNgSendEventsTx({_json.dumps(eng)},{_json.dumps(j)},"
+                    f"{_json.dumps({'recipe': recipe, 'taskStatus': soft_vars['flow']['taskStatus']})});"
+                    "process.stdout.write(JSON.stringify({tx:(r.sendEntries||[]).length,devices:r.devices,okng:r.okng}));"
+                )
+                subprocess.run(
+                    ['node', '-e', js], cwd=str(root),
+                    capture_output=True, text=True, timeout=4,
+                )
+            except Exception:
+                pass
+        self._result_comm_tx_lines = lines[-20:]
+        hdr = '── production_task result OK/NG → Comm sendEvents soft TX ──'
+        text = hdr + '\n' + f'okng={j} · resultOk={1 if is_ok else 0} · TX={tx_n} · devices={",".join(devices) or "—"} · LocalBus\n'
+        text += '\n'.join(self._result_comm_tx_lines)
+        if hasattr(self, '_prod_result_comm_tx_strip') and self._prod_result_comm_tx_strip is not None:
+            self._prod_result_comm_tx_strip.setPlainText(text)
+            if is_ok:
+                self._prod_result_comm_tx_strip.setStyleSheet(
+                    'font-family:monospace;font-size:11px;background:#1c2a1c;color:#9ed9a8;'
+                )
+            else:
+                self._prod_result_comm_tx_strip.setStyleSheet(
+                    'font-family:monospace;font-size:11px;background:#2a1c1c;color:#ffb4b4;'
+                )
+        if hasattr(self, '_prod_result_comm_tx_meta') and self._prod_result_comm_tx_meta is not None:
+            self._prod_result_comm_tx_meta.setText(
+                f'闭环出站 · okng={j} · TX={tx_n} · devices={",".join(devices) or "—"} · '
+                f'{scope}.{sv} · LocalBus · 无现场 TCP'
+            )
+        return {
+            'okng': j, 'tx': tx_n, 'devices': devices, 'entries': entries,
+            'resultOk': 1 if is_ok else 0, 'recipe': recipe,
+        }
+
+    def soft_preview_variant_prod_chain(self, *, recipe=None, variant=None, modules=None, note='变体链预览'):
+        """Recipe variant list → production_task chain soft preview page chrome (not chips)."""
+        from datetime import datetime
+        _mapping, status, sv, scope, name, recipe0, steps_n = self._writeback_map()
+        recipe = str(recipe if recipe is not None else recipe0 or name or '—')
+        variant = str(variant or (self.project or {}).get('activeRecipeVariant') or '')
+        chain = list(self.params.get('chain') or [])
+        mods = list(modules or [])
+        # Soft preview: if recipe modules given, show as alternate chain preview
+        preview_rows = []
+        if mods:
+            for m in mods:
+                if isinstance(m, dict):
+                    preview_rows.append({
+                        'step': str(m.get('name') or m.get('operation') or '步骤'),
+                        'op': str(m.get('operation') or ''),
+                        'vars': '',
+                    })
+        if not preview_rows:
+            preview_rows = [
+                {'step': str(r.get('step') or ''), 'op': str(r.get('op') or ''), 'vars': str(r.get('vars') or '')}
+                for r in chain
+            ]
+        ts = datetime.now().strftime('%H:%M:%S')
+        lines = [
+            f'[{ts}] {note} · recipe={recipe}' + (f'/{variant}' if variant else ''),
+            f'  statusVar={scope}.{sv} · liveChain={steps_n} · previewSteps={len(preview_rows)}',
+            '  ── production_task chain soft preview ──',
+        ]
+        for i, r in enumerate(preview_rows[:24], 1):
+            lines.append(f"  {i:02d}. {r.get('step') or '—'}  ·  op={r.get('op') or '—'}  ·  vars={r.get('vars') or '—'}")
+        if hasattr(self, '_prod_variant_chain_preview') and self._prod_variant_chain_preview is not None:
+            self._prod_variant_chain_preview.setPlainText('\n'.join(lines))
+        if hasattr(self, '_prod_variant_chain_meta') and self._prod_variant_chain_meta is not None:
+            self._prod_variant_chain_meta.setText(
+                f'软预览 · 配方 {recipe}' + (f'/{variant}' if variant else '') +
+                f' · 链 {len(preview_rows)} 步 · statusVar={scope}.{sv} · 页铬非芯片'
+            )
+        # Mirror onto HMI page chrome banner when open
+        w = self.window()
+        hmi = getattr(w, 'operator_hmi', None) if w is not None else None
+        if hmi is not None and hasattr(hmi, 'apply_variant_chain_preview_chrome'):
+            try:
+                hmi.apply_variant_chain_preview_chrome(
+                    recipe=recipe, variant=variant, steps=preview_rows,
+                    status_var=f'{scope}.{sv}', note=note,
+                )
+            except Exception:
+                pass
+        return {
+            'recipe': recipe, 'variant': variant, 'steps': preview_rows,
+            'statusVar': sv, 'scope': scope, 'chainSteps': len(preview_rows),
+        }

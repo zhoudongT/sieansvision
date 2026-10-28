@@ -760,6 +760,16 @@ class HostStateMachineWidget(QWidget):
             'Alarm/OK-NG 看板软条：与操作员 HMI 页铬同步；无现场 SDK'
         )
         lay.addWidget(self._okng_dashboard_strip)
+        self._alarm_okng_cobind_strip = QLabel('报警历史 ↔ OK-NG 共绑 · 待命')
+        self._alarm_okng_cobind_strip.setObjectName('hostAlarmHistOkNgCoBindStrip')
+        self._alarm_okng_cobind_strip.setWordWrap(True)
+        self._alarm_okng_cobind_strip.setStyleSheet(
+            'background:#1a2030;color:#9ec9f0;border:1px solid #3a6a9a;'
+            'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+        )
+        self._alarm_okng_cobind_strip.setToolTip('Host SM 报警历史 ↔ HMI OK-NG 看板页铬共绑')
+        lay.addWidget(self._alarm_okng_cobind_strip)
+
         # wave22: Alarm 历史联调条（试跑清除 / 换型失败 / 报警清除）
         self._liaison_strip = QLabel('联调 · 等待事件（试跑清除 / 换型失败 / 报警清除）')
         self._liaison_strip.setObjectName('hostLiaisonStrip')
@@ -37756,6 +37766,7 @@ class HostStateMachineWidget(QWidget):
         self._alarm_history.clear()
         self._liaison_events.clear()
         self._refresh_alarm_history_ui()
+        self._soft_bump_alarm_okng_cobind()
         self._refresh_liaison_strip()
         self._log_line('报警历史已清空')
 
@@ -37799,6 +37810,7 @@ class HostStateMachineWidget(QWidget):
         if len(self._alarm_history) > self._alarm_history_max:
             self._alarm_history = self._alarm_history[-self._alarm_history_max:]
         self._refresh_alarm_history_ui()
+        self._soft_bump_alarm_okng_cobind()
 
     def _refresh_alarm_history_ui(self):
         lst = getattr(self, '_alarm_list', None)
@@ -37963,6 +37975,51 @@ class HostStateMachineWidget(QWidget):
             + f'  ·  状态 {st_zh}'
         )
         self.set_okng_dashboard_strip(dash, alarm_on=(st == 'Alarm' or open_n > 0))
+
+
+
+    def _soft_bump_alarm_okng_cobind(self):
+        """Soft refresh Alarm history ↔ OK-NG co-bind strip from live hist + production snap."""
+        try:
+            hist = list(self.alarm_history() or [])
+            open_n = sum(1 for e in hist if not e.get('cleared'))
+            snap = getattr(self, '_production_snapshot', None) or {}
+            ok_n = int(snap.get('ok') or getattr(self, '_prod_ok', 0) or 0)
+            ng_n = int(snap.get('ng') or getattr(self, '_prod_ng', 0) or 0)
+            judge = str(snap.get('judge') or getattr(self, '_last_okng', '—') or '—')
+            text = (
+                f'报警历史 ↔ OK-NG 共绑 · 历史 {len(hist)} (开 {open_n}) · '
+                f'OK {ok_n} NG {ng_n} · 判定 {judge} · 状态 {getattr(self, "_state", "Idle")}'
+            )
+            self.set_alarm_okng_cobind_strip(
+                text, hist_n=len(hist), open_n=open_n, ok_n=ok_n, ng_n=ng_n, judge=judge,
+            )
+        except Exception:
+            pass
+
+    def set_alarm_okng_cobind_strip(self, text: str, *, hist_n: int = 0, open_n: int = 0,
+                                   ok_n: int = 0, ng_n: int = 0, judge: str = '—'):
+        """Page-level Alarm history ↔ OK-NG dashboard co-bind mirror (not chips)."""
+        lab = getattr(self, '_alarm_okng_cobind_strip', None)
+        if lab is None:
+            return
+        lab.setText(text or f'报警历史 ↔ OK-NG 共绑 · hist={hist_n} open={open_n} OK={ok_n} NG={ng_n} · {judge}')
+        alarm_on = (getattr(self, '_state', '') == 'Alarm') or int(open_n or 0) > 0 or str(judge).upper() in ('NG', 'FAIL', '不良')
+        if alarm_on:
+            lab.setStyleSheet(
+                'background:#3a1c1c;color:#ffb4b4;border:1px solid #e35d6a;'
+                'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+            )
+        elif str(judge).upper() in ('OK', 'PASS', '良', '通过'):
+            lab.setStyleSheet(
+                'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+            )
+        else:
+            lab.setStyleSheet(
+                'background:#1a2030;color:#9ec9f0;border:1px solid #3a6a9a;'
+                'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+            )
 
     def set_okng_dashboard_strip(self, text: str, *, alarm_on: bool = False):
         """Page-level Alarm/OK-NG dashboard soft strip (no sev-chip cascade)."""

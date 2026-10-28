@@ -805,6 +805,47 @@ class CommManagerDialog(QDialog):
         self.ack_rt_meta.setWordWrap(True)
         self.ack_rt_meta.setStyleSheet('color:#666;font-size:11px;')
         resp_lay.addWidget(self.ack_rt_meta)
+
+        # Page strip: production_task result OK/NG → sendEvents soft TX (closed-loop out)
+        tip_okng = QLabel(
+            '生产任务结果 OK/NG → sendEvents 软 TX：按判定展开 ${flow.okng}/${flow.resultOk} 等并 LocalBus 出站（无现场 TCP）。'
+        )
+        tip_okng.setWordWrap(True)
+        tip_okng.setStyleSheet('color:#888;')
+        resp_lay.addWidget(tip_okng)
+        okng_bar = QHBoxLayout()
+        self.result_okng_tx_btn = QPushButton('结果OK/NG→sendEvents 软TX')
+        self.result_okng_tx_btn.setObjectName('commResultOkNgSendTxBtn')
+        self.result_okng_tx_btn.setToolTip(
+            '用演示判定 OK/NG 驱动 sendEvents format_data 风格展开并 LocalBus 软 TX（闭环出站）'
+        )
+        self.result_okng_tx_btn.clicked.connect(lambda: self.soft_result_okng_send_tx(judge='OK'))
+        okng_bar.addWidget(self.result_okng_tx_btn)
+        self.result_okng_ng_btn = QPushButton('演示 NG 出站')
+        self.result_okng_ng_btn.setObjectName('commResultOkNgSendTxNgBtn')
+        self.result_okng_ng_btn.clicked.connect(lambda: self.soft_result_okng_send_tx(judge='NG'))
+        okng_bar.addWidget(self.result_okng_ng_btn)
+        okng_bar.addStretch(1)
+        resp_lay.addLayout(okng_bar)
+        self.result_okng_tx_strip = QPlainTextEdit()
+        self.result_okng_tx_strip.setObjectName('commResultOkNgSendTxStrip')
+        self.result_okng_tx_strip.setReadOnly(True)
+        self.result_okng_tx_strip.setMaximumHeight(120)
+        self.result_okng_tx_strip.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#1a2030;color:#9ec9f0;'
+        )
+        self.result_okng_tx_strip.setPlainText('(尚无结果 OK/NG → sendEvents 软 TX)')
+        self.result_okng_tx_strip.setToolTip(
+            'production_task result OK/NG → Comm sendEvents soft TX page strip'
+        )
+        resp_lay.addWidget(QLabel('结果 OK/NG → sendEvents 软 TX 条（页铬 · LocalBus）'))
+        resp_lay.addWidget(self.result_okng_tx_strip)
+        self.result_okng_tx_meta = QLabel('(结果→sendEvents 软 TX 待命)')
+        self.result_okng_tx_meta.setObjectName('commResultOkNgSendTxMeta')
+        self.result_okng_tx_meta.setWordWrap(True)
+        self.result_okng_tx_meta.setStyleSheet('color:#666;font-size:11px;')
+        resp_lay.addWidget(self.result_okng_tx_meta)
+
         resp_lay.addStretch(1)
         self.tabs.addTab(resp, '响应')
 
@@ -2069,6 +2110,147 @@ class CommManagerDialog(QDialog):
             'tx': tx_n,
             'devices': list(dict.fromkeys(devices)),
             'pageStrip': page,
+        }
+
+
+    def soft_result_okng_send_tx(self, *, judge='OK', recipe='', status_var='', vars_bag=None, snapshot=None):
+        """production_task result OK/NG → sendEvents soft TX page strip (LocalBus only)."""
+        from datetime import datetime
+        j = str(judge or 'OK')
+        upper = j.upper()
+        is_ok = upper in ('OK', 'PASS', '良', '通过', 'TRUE', '1')
+        snap = dict(snapshot or {})
+        recipe = str(recipe or snap.get('recipe') or '')
+        status_var = str(status_var or '')
+        ts = datetime.now().strftime('%H:%M:%S')
+        # Collect sendEvents from table or project
+        try:
+            send_rows = list(self.send_table.rows() or [])
+        except Exception:
+            send_rows = []
+        proj = {}
+        try:
+            proj = dict(self.document.project or {})
+        except Exception:
+            proj = {}
+        cm = proj.get('commManager') or {}
+        if not send_rows:
+            send_rows = list(cm.get('sendEvents') or [])
+        soft_vars = dict(vars_bag or {})
+        soft_vars.setdefault('flow', {})
+        soft_vars.setdefault('global', {})
+        soft_vars['flow'].update({
+            'okng': j, 'judge': j,
+            'resultOk': 1 if is_ok else 0,
+            'resultNg': 0 if is_ok else 1,
+            'lastResult': j,
+            'taskStatus': 'ready' if is_ok else 'alarm',
+            'recipe': recipe,
+        })
+        soft_vars['global'].update({
+            'taskStatus': soft_vars['flow']['taskStatus'],
+            'recipe': recipe,
+        })
+        # Merge project vars lightly
+        try:
+            for scope_k, bag in (proj.get('variables') or {}).items():
+                if isinstance(bag, dict):
+                    soft_vars.setdefault(scope_k, {}).update(bag)
+        except Exception:
+            pass
+
+        def _expand(msg, bag):
+            out = str(msg or '')
+            flat = {}
+            for sk, vals in (bag or {}).items():
+                if isinstance(vals, dict):
+                    for k, v in vals.items():
+                        flat[f'{sk}.{k}'] = v
+                        flat[k] = v
+            i = 0
+            while '${' in out and i < 64:
+                i += 1
+                s = out.find('${')
+                e = out.find('}', s)
+                if s < 0 or e < 0:
+                    break
+                key = out[s + 2:e].strip()
+                out = out[:s] + str(flat.get(key, '')) + out[e + 1:]
+            return out
+
+        if not send_rows:
+            send_rows = [
+                {'name': 'resultOkNg', 'device': 'LocalLoop',
+                 'message': 'RESULT okng=${flow.okng} ok=${flow.resultOk} ng=${flow.resultNg} recipe=${flow.recipe}'},
+                {'name': 'status', 'device': 'LocalLoop',
+                 'message': 'status=${flow.taskStatus} judge=${flow.judge}'},
+            ]
+        devices = []
+        entries = []
+        for ev in send_rows:
+            if not isinstance(ev, dict):
+                continue
+            device = str(ev.get('device') or ev.get('deviceName') or 'LocalLoop')
+            channel = str(ev.get('name') or ev.get('channel') or ev.get('topic') or 'result')
+            raw = str(ev.get('message') or '')
+            formatted = _expand(raw or f'RESULT okng={j}', soft_vars)
+            note = 'format_data-expand' if '${' in raw else 'sendEvent-plain'
+            line = (
+                f'[{ts}] TX→result {device}/{channel} okng={j} path={note} '
+                f'bytes={len(formatted.encode("utf-8"))} │ {formatted[:80]}'
+            )
+            entries.append({
+                'device': device, 'channel': channel, 'payload': formatted,
+                'note': note, 'okng': j, 'line': line, 'raw': raw,
+            })
+            if device not in devices:
+                devices.append(device)
+        tx_n = len(entries)
+        hdr = '── production_task result OK/NG → Comm sendEvents soft TX ──'
+        page = hdr + '\n' + f'okng={j} · resultOk={1 if is_ok else 0} · TX={tx_n} · devices={",".join(devices) or "—"} · LocalBus\n'
+        page += '\n'.join(e['line'] for e in entries)
+        if hasattr(self, 'result_okng_tx_strip') and self.result_okng_tx_strip is not None:
+            self.result_okng_tx_strip.setPlainText(page)
+            if is_ok:
+                self.result_okng_tx_strip.setStyleSheet(
+                    'font-family:monospace;font-size:11px;background:#1c2a1c;color:#9ed9a8;'
+                )
+            else:
+                self.result_okng_tx_strip.setStyleSheet(
+                    'font-family:monospace;font-size:11px;background:#2a1c1c;color:#ffb4b4;'
+                )
+        if hasattr(self, 'result_okng_tx_meta') and self.result_okng_tx_meta is not None:
+            self.result_okng_tx_meta.setText(
+                f'闭环出站 · okng={j!r} · sendEvents TX={tx_n} · devices={",".join(devices) or "—"} · '
+                f'format_data ${{}} · LocalBus · 无现场 TCP'
+                + (f' · {status_var}' if status_var else '')
+            )
+        # Engine parity
+        try:
+            import subprocess, json as _json
+            from pathlib import Path as _P
+            root = _P(__file__).resolve().parents[1]
+            eng_proj = {
+                'commManager': {
+                    'devices': cm.get('devices') or [{'name': d, 'protocol': 'Local Bus'} for d in (devices or ['LocalLoop'])],
+                    'sendEvents': send_rows,
+                }
+            }
+            js = (
+                "const bus=require('./lib/comm-bus.cjs');bus.reset();"
+                f"const r=bus.softResultOkNgSendEventsTx({_json.dumps(eng_proj)},{_json.dumps(j)},"
+                f"{_json.dumps({'recipe': recipe, 'taskStatus': soft_vars['flow']['taskStatus']})});"
+                "process.stdout.write(JSON.stringify({tx:(r.sendEntries||[]).length,okng:r.okng}));"
+            )
+            subprocess.run(
+                ['node', '-e', js], cwd=str(root),
+                capture_output=True, text=True, timeout=4,
+            )
+        except Exception:
+            pass
+        return {
+            'okng': j, 'tx': tx_n, 'devices': devices, 'entries': entries,
+            'resultOk': 1 if is_ok else 0, 'pageStrip': page,
         }
 
     def _clear_autoack_send_format_roundtrip(self):

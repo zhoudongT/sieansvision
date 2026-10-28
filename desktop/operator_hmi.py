@@ -1019,6 +1019,41 @@ class OperatorHmiView(QWidget):
         )
         root.addWidget(self._okng_dashboard_strip)
 
+        # Host SM Alarm history ↔ OK-NG dashboard page co-bind strip
+        self._alarm_okng_cobind_strip = QLabel('报警历史 ↔ OK-NG 看板共绑 · 待命')
+        self._alarm_okng_cobind_strip.setObjectName('hmiAlarmHistOkNgCoBindStrip')
+        self._alarm_okng_cobind_strip.setWordWrap(True)
+        self._alarm_okng_cobind_strip.setStyleSheet(
+            'background:#1a2030;color:#9ec9f0;border:1px solid #3a6a9a;'
+            'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+        )
+        self._alarm_okng_cobind_strip.setToolTip(
+            'Host SM 报警历史 ↔ HMI OK-NG 看板页铬共绑（非属性芯片）'
+        )
+        root.addWidget(self._alarm_okng_cobind_strip)
+        self._alarm_okng_cobind_detail = QPlainTextEdit()
+        self._alarm_okng_cobind_detail.setObjectName('hmiAlarmHistOkNgCoBindDetail')
+        self._alarm_okng_cobind_detail.setReadOnly(True)
+        self._alarm_okng_cobind_detail.setMaximumHeight(90)
+        self._alarm_okng_cobind_detail.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#141a24;color:#c5d0e0;'
+        )
+        self._alarm_okng_cobind_detail.setPlainText('(尚无报警历史 ↔ OK-NG 共绑明细)')
+        root.addWidget(self._alarm_okng_cobind_detail)
+
+        # Recipe variant ↔ production chain soft preview page chrome
+        self._variant_chain_preview_strip = QLabel('变体·生产链软预览 · 待命')
+        self._variant_chain_preview_strip.setObjectName('hmiVariantChainPreviewStrip')
+        self._variant_chain_preview_strip.setWordWrap(True)
+        self._variant_chain_preview_strip.setStyleSheet(
+            'background:#1a2430;color:#c5e1a5;border:1px solid #3a7a5a;'
+            'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+        )
+        self._variant_chain_preview_strip.setToolTip(
+            '配方变体列表 ↔ production_task 链软预览页铬'
+        )
+        root.addWidget(self._variant_chain_preview_strip)
+
         # Always-available default run strip (also used when layout has no 运行控制)
         self._default_strip = QWidget()
         self._default_strip.setObjectName('hmiDefaultStrip')
@@ -3168,6 +3203,17 @@ class OperatorHmiView(QWidget):
         self._live_hostsm_loop = loop
         return loop
 
+        # Co-bind Alarm history ↔ OK-NG dashboard on closed-loop events
+        try:
+            self.co_bind_alarm_hist_okng_dashboard(
+                judge=j, host_state=str((loop or {}).get('host') or getattr(self, '_host_state', 'Idle') or 'Idle'),
+                recipe=str(snap.get('recipe') or ''),
+                note='HostSM闭环',
+                ok_n=snap.get('okCount'), ng_n=snap.get('ngCount'),
+            )
+        except Exception:
+            pass
+
     def co_bind_variant_status_page_chrome(self, *, recipe='', variant='', status_var='taskStatus',
                                           scope='global', host_state=None, snapshot=None, note='换型手递'):
         """Page-level statusVar + variant co-bind after recipe lock handoff (not chips)."""
@@ -3339,7 +3385,128 @@ class OperatorHmiView(QWidget):
                 host.set_okng_dashboard_strip(text, alarm_on=bool(alarm_on or st == 'Alarm'))
             except Exception:
                 pass
+        # Page-level Alarm history ↔ OK-NG dashboard co-bind
+        try:
+            self.co_bind_alarm_hist_okng_dashboard(
+                ok_n=ok_i, ng_n=ng_i, judge=judge_txt, host_state=st,
+                open_alarms=open_alarms, last_alarm=last_alarm, recipe=recipe_txt,
+                dash_text=text,
+            )
+        except Exception:
+            pass
         return text
+
+
+    def co_bind_alarm_hist_okng_dashboard(self, *, ok_n=0, ng_n=0, judge='—',
+                                          host_state='Idle', open_alarms=0, last_alarm='',
+                                          recipe='', dash_text='', note='共绑'):
+        """Host SM Alarm history ↔ HMI OK-NG dashboard page co-bind strip (not chips)."""
+        from datetime import datetime
+        host = getattr(self, '_host_sm', None) or getattr(self, 'host_state_machine', None)
+        if host is None:
+            for w in getattr(self, '_host_embeds', []) or []:
+                if hasattr(w, 'alarm_history'):
+                    host = w
+                    break
+        hist = []
+        if host is not None and hasattr(host, 'alarm_history'):
+            try:
+                hist = list(host.alarm_history() or [])
+            except Exception:
+                hist = []
+        open_n = int(open_alarms or 0)
+        if open_n == 0 and hist:
+            open_n = sum(1 for e in hist if not e.get('cleared'))
+        cleared_n = sum(1 for e in hist if e.get('cleared'))
+        total = int(ok_n or 0) + int(ng_n or 0)
+        ytxt = f'{(100.0 * int(ok_n or 0) / total):.1f}%' if total else '—'
+        ts = datetime.now().strftime('%H:%M:%S')
+        try:
+            from desktop.host_state_machine import STATE_ZH
+            st_zh = STATE_ZH.get(host_state, host_state)
+        except Exception:
+            st_zh = host_state
+        summary = (
+            f'报警历史 ↔ OK-NG 共绑 · {note} · 历史 {len(hist)} '
+            f'(开 {open_n}/清 {cleared_n}) · OK {ok_n} NG {ng_n} 良率 {ytxt} · '
+            f'判定 {judge} · 状态 {st_zh}'
+            + (f' · 配方 {recipe}' if recipe and recipe != '—' else '')
+            + (f' · 末警 {str(last_alarm)[:28]}' if last_alarm else '')
+        )
+        lab = getattr(self, '_alarm_okng_cobind_strip', None)
+        if lab is not None:
+            lab.setText(summary)
+            alarm_on = (host_state == 'Alarm') or open_n > 0 or str(judge).upper() in ('NG', 'FAIL', '不良')
+            if alarm_on:
+                lab.setStyleSheet(
+                    'background:#3a1c1c;color:#ffb4b4;border:1px solid #e35d6a;'
+                    'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+                )
+            elif str(judge).upper() in ('OK', 'PASS', '良', '通过'):
+                lab.setStyleSheet(
+                    'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                    'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+                )
+            else:
+                lab.setStyleSheet(
+                    'background:#1a2030;color:#9ec9f0;border:1px solid #3a6a9a;'
+                    'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+                )
+        detail = getattr(self, '_alarm_okng_cobind_detail', None)
+        if detail is not None:
+            lines = [
+                f'── Host SM Alarm history ↔ HMI OK-NG dashboard co-bind ──',
+                f'[{ts}] OK={ok_n} NG={ng_n} yield={ytxt} · judge={judge} · host={host_state} · open={open_n}',
+            ]
+            if dash_text:
+                lines.append(f'dash · {dash_text[:120]}')
+            # last few alarm history rows
+            for e in hist[-8:]:
+                clr = 'cleared' if e.get('cleared') else 'OPEN'
+                reason = str(e.get('reason') or e.get('detail') or e.get('kind') or '')
+                ets = str(e.get('ts') or e.get('time') or '')
+                lines.append(f'  [{clr}] {ets} · {reason[:72]}')
+            if not hist:
+                lines.append('  (报警历史空 — Host SM 尚无条目)')
+            detail.setPlainText('\n'.join(lines))
+        # Mirror onto Host SM if available
+        if host is not None and hasattr(host, 'set_alarm_okng_cobind_strip'):
+            try:
+                host.set_alarm_okng_cobind_strip(summary, hist_n=len(hist), open_n=open_n,
+                                                ok_n=ok_n, ng_n=ng_n, judge=judge)
+            except Exception:
+                pass
+        return {'summary': summary, 'hist': len(hist), 'open': open_n, 'ok': ok_n, 'ng': ng_n}
+
+    def apply_variant_chain_preview_chrome(self, *, recipe='', variant='', steps=None,
+                                           status_var='', note='变体链预览'):
+        """Recipe variant ↔ production_task chain soft preview page chrome."""
+        steps = list(steps or [])
+        n = len(steps)
+        ops = ', '.join(
+            str((s.get('op') or s.get('operation') or s.get('step') or '') )[:18]
+            for s in steps[:6]
+        )
+        text = (
+            f'变体·生产链软预览 · {note} · 配方 {recipe or "—"}'
+            + (f'/{variant}' if variant else '')
+            + f' · 链 {n} 步'
+            + (f' · {status_var}' if status_var else '')
+            + (f' · [{ops}{"…" if n > 6 else ""}]' if ops else '')
+        )
+        lab = getattr(self, '_variant_chain_preview_strip', None)
+        if lab is not None:
+            lab.setText(text)
+        # Soft bump page chrome banner without micro chips
+        ban = getattr(self, '_page_chrome_banner', None)
+        if ban is not None:
+            try:
+                prev = ban.text()
+                if '变体链预览' not in prev:
+                    ban.setText(f'{prev}  ·  变体链预览 {recipe or "—"}' + (f'/{variant}' if variant else '') + f' · {n}步')
+            except Exception:
+                pass
+        return {'recipe': recipe, 'variant': variant, 'steps': n, 'text': text}
 
     def set_recipe_chrome(self, name: str = '', variant: str = ''):
 
