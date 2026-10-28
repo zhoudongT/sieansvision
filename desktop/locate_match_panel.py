@@ -575,7 +575,18 @@ class LocateMatchPanel(QWidget):
         self._tpl_trend_lab.setToolTip(
             '匹配分趋势火花线（相对缩放 · Δ · OK率）· 运行/试批写入 · 无硬件'
         )
-        lib_lay.addWidget(self._tpl_trend_lab)
+        trend_row = QHBoxLayout()
+        trend_row.setSpacing(6)
+        try:
+            from desktop.locate_scoreboard import MatchScoreSparkWidget
+            self._tpl_trend_spark = MatchScoreSparkWidget(None, width=128, height=28)
+            if hasattr(self._tpl_trend_spark, 'setObjectName'):
+                pass  # already named inside
+            trend_row.addWidget(self._tpl_trend_spark, 0)
+        except Exception:
+            self._tpl_trend_spark = None
+        trend_row.addWidget(self._tpl_trend_lab, 1)
+        lib_lay.addLayout(trend_row)
         self._restore_score_trend_label()
         self._refresh_batch_scoreboard_table()
 
@@ -996,6 +1007,12 @@ class LocateMatchPanel(QWidget):
                 lab.setToolTip(trend.summary_rich())
         except Exception:
             pass
+        spark = getattr(self, '_tpl_trend_spark', None)
+        if spark is not None and hasattr(spark, 'set_from_trend'):
+            try:
+                spark.set_from_trend(trend)
+            except Exception:
+                pass
 
     def set_last_result(self, result):
         """Cache engine last_result for scoreboard ingest (soft OK)."""
@@ -1034,6 +1051,12 @@ class LocateMatchPanel(QWidget):
                         'QLabel#locateMatchScoreTrend{color:#9ad;font-size:11px;font-family:monospace;'
                         'padding:5px 8px;background:#12161c;border:1px solid #2a3a4a;border-radius:3px;}'
                     )
+            except Exception:
+                pass
+        spark = getattr(self, '_tpl_trend_spark', None)
+        if spark is not None and hasattr(spark, 'set_from_trend'):
+            try:
+                spark.set_from_trend(trend)
             except Exception:
                 pass
         return summary

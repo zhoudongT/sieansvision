@@ -453,6 +453,31 @@ def list_recipe_rollback_stack(project: dict, *,
     return rows
 
 
+def rollback_recipe_to_index(project: dict, index: int = 0, *,
+                             store_key: str = '_recipeRollbackSnap',
+                             stack_key: str = '_recipeRollbackStack') -> dict:
+    """Roll back so that only entries [0:index] remain (index = keep-count).
+
+    index=0 → clear entire stack; index=depth → no-op.
+    Soft / no hardware. Returns same shape as rollback_recipe_n_steps.
+    """
+    if not isinstance(project, dict):
+        return {'ok': False, 'reason': 'no project', 'steps': 0}
+    depth = recipe_rollback_depth(project, store_key=store_key, stack_key=stack_key)
+    want_keep = max(0, min(int(index or 0), depth))
+    n = depth - want_keep
+    if n <= 0:
+        return {
+            'ok': False, 'reason': 'already at index', 'steps': 0,
+            'remaining': depth, 'rolledBack': [],
+        }
+    out = rollback_recipe_n_steps(
+        project, n, store_key=store_key, stack_key=stack_key,
+    )
+    out['targetIndex'] = want_keep
+    return out
+
+
 def rollback_recipe_n_steps(project: dict, n: int = 1, *,
                             store_key: str = '_recipeRollbackSnap',
                             stack_key: str = '_recipeRollbackStack') -> dict:

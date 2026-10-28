@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem, QSplitter, QWidget, QComboBox, QFrame, QTabWidget,
     QMessageBox, QCheckBox, QGroupBox, QFormLayout, QToolBar, QStackedWidget,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QLineEdit,
-    QTextEdit, QDialogButtonBox, QFileDialog,
+    QTextEdit, QDialogButtonBox, QFileDialog, QSpinBox,
 )
 
 from desktop.theme import TEXT, TEXT_MUTED
@@ -433,6 +433,32 @@ class RunUiDesignerDialog(QDialog):
         gf.addRow(QLabel('使能预览开关'), sw)
         rl.addWidget(grp)
 
+        blink_grp = QGroupBox('胶片条 A/B 闪比快捷键')
+        blink_grp.setObjectName('runUiFilmstripBlinkBox')
+        bf = QFormLayout(blink_grp)
+        self.blink_toggle_edit = QLineEdit('Alt+B')
+        self.blink_toggle_edit.setObjectName('runUiBlinkToggleEdit')
+        self.blink_toggle_edit.setPlaceholderText('开关键 · 避开 Ctrl+S / Alt+P 等保留字')
+        self.blink_toggle_edit.setToolTip('写入 runUi.filmstrip.blinkToggle · 无硬件')
+        self.blink_swap_edit = QLineEdit('Shift+Alt+B')
+        self.blink_swap_edit.setObjectName('runUiBlinkSwapEdit')
+        self.blink_swap_edit.setPlaceholderText('交换 A/B')
+        self.blink_swap_edit.setToolTip('写入 runUi.filmstrip.blinkSwap')
+        self.blink_ms_spin = QSpinBox()
+        self.blink_ms_spin.setObjectName('runUiBlinkMsSpin')
+        self.blink_ms_spin.setRange(120, 5000)
+        self.blink_ms_spin.setSingleStep(50)
+        self.blink_ms_spin.setValue(450)
+        self.blink_ms_spin.setSuffix(' ms')
+        self.blink_ms_spin.setToolTip('写入 runUi.filmstrip.blinkMs')
+        bf.addRow(QLabel('开关键'), self.blink_toggle_edit)
+        bf.addRow(QLabel('交换'), self.blink_swap_edit)
+        bf.addRow(QLabel('间隔'), self.blink_ms_spin)
+        for w in (self.blink_toggle_edit, self.blink_swap_edit):
+            w.editingFinished.connect(self._on_blink_prefs_changed)
+        self.blink_ms_spin.valueChanged.connect(lambda *_: self._on_blink_prefs_changed())
+        rl.addWidget(blink_grp)
+
         props = QGroupBox('选中控件属性')
         pf = QFormLayout(props)
         self.prop_name = QLabel('—')
@@ -491,10 +517,12 @@ class RunUiDesignerDialog(QDialog):
                 self.split_combo.setCurrentIndex(SPLIT_PRESETS.index(split))
             meta = ui.get('templateMeta') or {}
             self._template_meta = dict(meta)
+            self._load_blink_prefs_from_run_ui(ui)
             self._apply_placements_to_cells()
             self._refresh_fixed_chrome()
         else:
             self._template_meta = {}
+            self._load_blink_prefs_from_run_ui({})
 
     def _apply_vm_default_shell(self):
         """Highest-impact HMI gap fill from VM p=28–29: Play/Stop + OK/NG layout."""
@@ -679,6 +707,60 @@ class RunUiDesignerDialog(QDialog):
     def _on_bind_changed(self, *_):
         self._refresh_fixed_chrome()
 
+
+    def _blink_prefs_from_fields(self) -> dict:
+        toggle = ''
+        swap = ''
+        ms = 450
+        try:
+            toggle = (self.blink_toggle_edit.text() or '').strip()
+            swap = (self.blink_swap_edit.text() or '').strip()
+            ms = int(self.blink_ms_spin.value())
+        except Exception:
+            pass
+        return {'blinkToggle': toggle or 'Alt+B', 'blinkSwap': swap or 'Shift+Alt+B', 'blinkMs': ms}
+
+    def _load_blink_prefs_from_run_ui(self, run_ui=None):
+        ui = run_ui if isinstance(run_ui, dict) else {}
+        bag = ui.get('filmstrip') if isinstance(ui.get('filmstrip'), dict) else {}
+        toggle = str(bag.get('blinkToggle') or 'Alt+B')
+        swap = str(bag.get('blinkSwap') or 'Shift+Alt+B')
+        try:
+            ms = int(bag.get('blinkMs') or 450)
+        except Exception:
+            ms = 450
+        ms = max(120, min(ms, 5000))
+        try:
+            if getattr(self, 'blink_toggle_edit', None) is not None:
+                self.blink_toggle_edit.setText(toggle)
+            if getattr(self, 'blink_swap_edit', None) is not None:
+                self.blink_swap_edit.setText(swap)
+            if getattr(self, 'blink_ms_spin', None) is not None:
+                self.blink_ms_spin.blockSignals(True)
+                self.blink_ms_spin.setValue(ms)
+                self.blink_ms_spin.blockSignals(False)
+        except Exception:
+            pass
+
+    def _write_blink_prefs_into_run_ui(self, run_ui):
+        prefs = self._blink_prefs_from_fields()
+        try:
+            from desktop.widgets.filmstrip import FilmstripBar
+            FilmstripBar.write_blink_prefs_to_run_ui(run_ui, prefs)
+        except Exception:
+            bag = dict(run_ui.get('filmstrip') or {}) if isinstance(run_ui.get('filmstrip'), dict) else {}
+            bag.update(prefs)
+            run_ui['filmstrip'] = bag
+        return run_ui
+
+    def _on_blink_prefs_changed(self, *_):
+        """Designer field edit → persist runUi.filmstrip blink chords."""
+        try:
+            self._persist()
+        except Exception:
+            pass
+
+
     def _persist(self):
         if self.document is None:
             return
@@ -697,6 +779,7 @@ class RunUiDesignerDialog(QDialog):
         )
         if getattr(self, '_template_meta', None):
             ui['templateMeta'] = deepcopy(self._template_meta)
+        self._write_blink_prefs_into_run_ui(ui)
         try:
             self.document.commit(p)
         except Exception:
@@ -763,6 +846,10 @@ class RunUiDesignerDialog(QDialog):
         self._control_state = deepcopy(data.get('controls') or {})
         self._placements = deepcopy(data.get('placements') or [])
         self._template_meta = deepcopy(data.get('meta') or {})
+        try:
+            self._load_blink_prefs_from_run_ui(data if isinstance(data, dict) else {})
+        except Exception:
+            pass
         split = data.get('split') or '1'
         if split in SPLIT_PRESETS:
             self.split_combo.blockSignals(True)

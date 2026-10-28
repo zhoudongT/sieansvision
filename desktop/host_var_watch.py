@@ -182,6 +182,9 @@ def format_host_watch_open_chip(keys=None, groups=None, *, active: str = '',
         'label': str(label or ''),
         'sampleKeys': keys[:8],
         'groupNames': gnames,
+        'kind': 'hostWatch',
+        'clickAction': 'openVarWatch',
+        'clickHint': '点击打开变量监视板（恢复钉组）',
     }
 
 
@@ -613,6 +616,22 @@ class HostVarWatchBoard(QWidget):
     def active_pin_group(self) -> str:
         return str(self._active_pin_group or '默认')
 
+    def activate_pin_group(self, name: str = '') -> str:
+        """Switch active pin group (restored open-chip click target). Soft / no hardware."""
+        n = str(name or '').strip()
+        if not n:
+            n = self.active_pin_group()
+        if n not in self._pin_groups:
+            # create empty group so UI can still open on named restored group
+            self._pin_groups[n] = list(self._pin_groups.get(n) or [])
+            self._rebuild_pin_group_combo()
+        self._active_pin_group = n
+        self._rebuild_pin_group_combo()
+        keys = list(self._pin_groups.get(n) or [])
+        self.seed_watch_keys(keys, label=f'钉组:{n}')
+        self._sync_pin_group_lab()
+        return n
+
     def set_pin_groups(self, groups: dict | None, *, active: str = ''):
         cleaned = {}
         if isinstance(groups, dict):
@@ -854,6 +873,58 @@ def _fmt(value) -> str:
         return f'{value:.6g}'
     s = str(value)
     return s if len(s) <= 120 else s[:117] + '…'
+
+
+
+
+def open_var_watch_on_restored_group(board, chip=None, *, project=None, label: str = '') -> dict:
+    """Apply open-chip payload onto an existing HostVarWatchBoard (restored group).
+
+    Returns {ok, active, nKeys, nGroups, seeded}. Soft / no hardware.
+    """
+    out = {'ok': False, 'active': '', 'nKeys': 0, 'nGroups': 0, 'seeded': False}
+    if board is None:
+        return out
+    chip = chip if isinstance(chip, dict) else {}
+    act = str(chip.get('active') or '').strip()
+    groups = {}
+    # Prefer live project groups; fall back to chip.groupNames as empty shells
+    if isinstance(project, dict):
+        try:
+            groups, act_proj = pin_groups_from_project(project)
+            if not act:
+                act = str(act_proj or '')
+        except Exception:
+            groups = {}
+    if not groups and chip.get('groupNames'):
+        groups = {str(n): [] for n in (chip.get('groupNames') or []) if str(n or '').strip()}
+        sample = list(chip.get('sampleKeys') or [])
+        if act and act in groups and sample:
+            groups[act] = list(sample)
+        elif sample and groups:
+            first = next(iter(groups))
+            groups[first] = list(sample)
+            if not act:
+                act = first
+    try:
+        if groups:
+            board.set_pin_groups(groups, active=act or '')
+            out['seeded'] = True
+        elif isinstance(project, dict) and hasattr(board, 'seed_from_project'):
+            board.seed_from_project(project, label=label or str(chip.get('label') or ''))
+            out['seeded'] = True
+        elif chip.get('sampleKeys') and hasattr(board, 'seed_watch_keys'):
+            board.seed_watch_keys(chip.get('sampleKeys') or [], label=label or str(chip.get('label') or ''))
+            out['seeded'] = True
+        if act and hasattr(board, 'activate_pin_group'):
+            board.activate_pin_group(act)
+        out['ok'] = True
+        out['active'] = board.active_pin_group() if hasattr(board, 'active_pin_group') else act
+        out['nKeys'] = len(board.pinned_keys()) if hasattr(board, 'pinned_keys') else 0
+        out['nGroups'] = len(board.pin_groups()) if hasattr(board, 'pin_groups') else 0
+    except Exception as err:
+        out['error'] = str(err)
+    return out
 
 
 class HostVarWatchDialog(QDialog):

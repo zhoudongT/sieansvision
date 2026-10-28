@@ -377,6 +377,149 @@ def _spark_char(v: float) -> str:
     return chars[i]
 
 
+
+
+def spark_bar_heights(values, *, width: int = 16, relative: bool = True) -> list:
+    """Normalize scores to [0,1] bar heights (same relative logic as unicode sparkline)."""
+    vals = [float(v) for v in (values or []) if v is not None]
+    if not vals:
+        return []
+    window = vals[-max(4, int(width or 16)):]
+    if relative and len(window) >= 2:
+        lo, hi = min(window), max(window)
+        span = hi - lo
+        if span < 1e-9:
+            return [0.5] * len(window)
+        return [(v - lo) / span for v in window]
+    return [max(0.0, min(1.0, float(v))) for v in window]
+
+
+class MatchScoreSparkWidget:
+    """Painted mini bar-spark for MatchScoreTrend (vs unicode ▁▂▃ blocks).
+
+    Constructed lazily as a real QWidget when Qt is available; otherwise acts as
+    a headless holder exposing set_from_trend / heights for smokes.
+    """
+
+    @staticmethod
+    def create(parent=None, *, width: int = 120, height: int = 28):
+        try:
+            from PySide6.QtWidgets import QWidget
+            from PySide6.QtGui import QPainter, QColor, QPen, QBrush
+            from PySide6.QtCore import Qt, QRect
+        except Exception:
+            return _HeadlessSpark(width=width, height=height)
+
+        class _Painted(QWidget):
+            def __init__(self, parent=None):
+                super().__init__(parent)
+                self.setObjectName('matchScoreSparkWidget')
+                self.setFixedHeight(int(height))
+                self.setMinimumWidth(int(width))
+                self.setToolTip('匹配分趋势 · 绘制柱（相对缩放）· 无硬件')
+                self._heights: list[float] = []
+                self._oks: list = []
+                self._unicode = ''
+                self._summary = ''
+
+            def set_from_trend(self, trend, *, bar_count: int = 16) -> dict:
+                vals = []
+                oks = []
+                if trend is not None and hasattr(trend, 'points'):
+                    pts = trend.points()
+                    vals = [p.get('score') for p in pts]
+                    oks = [p.get('ok') for p in pts]
+                elif trend is not None and hasattr(trend, 'values'):
+                    vals = list(trend.values())
+                self._heights = spark_bar_heights(vals, width=bar_count, relative=True)
+                self._oks = list(oks[-len(self._heights):]) if oks else []
+                try:
+                    self._unicode = trend.sparkline(width=bar_count, relative=True) if trend else ''
+                except Exception:
+                    self._unicode = ''
+                try:
+                    self._summary = trend.summary(industrial=True) if trend else ''
+                except Exception:
+                    self._summary = ''
+                if self._summary:
+                    self.setToolTip(self._summary + '\n（绘制柱 · unicode=' + (self._unicode or '—') + '）')
+                self.update()
+                return {
+                    'n': len(self._heights),
+                    'unicode': self._unicode,
+                    'heights': list(self._heights),
+                    'painted': True,
+                }
+
+            def heights(self) -> list:
+                return list(self._heights)
+
+            def unicode_spark(self) -> str:
+                return self._unicode
+
+            def paintEvent(self, event):  # noqa: N802
+                painter = QPainter(self)
+                try:
+                    painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+                    painter.fillRect(self.rect(), QColor('#12161c'))
+                    painter.setPen(QPen(QColor('#2a3a4a')))
+                    painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
+                    hs = self._heights
+                    if not hs:
+                        painter.setPen(QColor('#556'))
+                        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, '—')
+                        return
+                    n = len(hs)
+                    pad = 3
+                    gap = 1
+                    avail_w = max(1, self.width() - pad * 2)
+                    avail_h = max(1, self.height() - pad * 2)
+                    bar_w = max(1, (avail_w - gap * (n - 1)) // n)
+                    for i, h in enumerate(hs):
+                        bh = max(1, int(round(float(h) * avail_h)))
+                        x = pad + i * (bar_w + gap)
+                        y = pad + (avail_h - bh)
+                        ok = self._oks[i] if i < len(self._oks) else None
+                        if ok is True:
+                            color = QColor('#3d9a5f')
+                        elif ok is False:
+                            color = QColor('#b85a4a')
+                        else:
+                            color = QColor('#4a8ab8')
+                        painter.fillRect(QRect(x, y, bar_w, bh), QBrush(color))
+                finally:
+                    painter.end()
+
+        return _Painted(parent)
+
+    # allow MatchScoreSparkWidget() alias → create()
+    def __new__(cls, parent=None, *, width: int = 120, height: int = 28):
+        return cls.create(parent, width=width, height=height)
+
+
+class _HeadlessSpark:
+    def __init__(self, *, width=120, height=28):
+        self._heights = []
+        self._unicode = ''
+        self._w = width
+        self._h = height
+
+    def set_from_trend(self, trend, *, bar_count: int = 16) -> dict:
+        vals = list(trend.values()) if trend is not None and hasattr(trend, 'values') else []
+        self._heights = spark_bar_heights(vals, width=bar_count, relative=True)
+        try:
+            self._unicode = trend.sparkline(width=bar_count, relative=True) if trend else ''
+        except Exception:
+            self._unicode = ''
+        return {'n': len(self._heights), 'unicode': self._unicode, 'heights': list(self._heights), 'painted': False}
+
+    def heights(self):
+        return list(self._heights)
+
+    def unicode_spark(self):
+        return self._unicode
+
+
 def format_side_by_side_diff(diff: dict | None, *, max_rows: int = 60) -> list:
     """Flatten recipe diff into side-by-side rows: {kind,key,current,recipe,text}."""
     rows = []

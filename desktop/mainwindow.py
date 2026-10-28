@@ -861,14 +861,25 @@ class MainWindow(QMainWindow):
         return keys
 
     def _show_host_watch_open_chip(self, chip):
-        """Clear industrial chip/toast for restored hostWatch pins on project open."""
+        """Industrial chip/toast for restored hostWatch pins; click opens var-watch."""
         if not isinstance(chip, dict) or not chip.get('restored'):
             return
         text = str(chip.get('text') or chip.get('short') or '').strip()
         if not text:
             return
+        # stash payload so canvas chip click can open restored group
+        self._host_watch_open_chip = dict(chip)
+        self._canvas_chip_host_watch = True
         try:
-            self._show_canvas_status_chip(text, ms=4200)
+            self._show_canvas_status_chip(text, ms=5200)
+        except Exception:
+            pass
+        try:
+            chip_w = getattr(self, '_canvas_status_chip', None)
+            if chip_w is not None:
+                hint = chip.get('clickHint') or '点击打开变量监视板（恢复钉组）'
+                chip_w.setToolTip(f'{hint}\n{text}')
+                chip_w.setProperty('hostWatchChip', True)
         except Exception:
             pass
         try:
@@ -877,9 +888,58 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         try:
-            self.statusBar().showMessage(text, 4200)
+            self.statusBar().showMessage(text + ' · 点击打开监视', 5200)
         except Exception:
             pass
+
+    def _open_host_watch_from_chip(self, chip=None):
+        """Chip click → open var-watch dialog on restored pin group (soft)."""
+        bag = chip if isinstance(chip, dict) else getattr(self, '_host_watch_open_chip', None)
+        if not isinstance(bag, dict) or not bag.get('restored'):
+            bag = {
+                'restored': True,
+                'active': getattr(self, '_host_watch_active_pin_group', '') or '',
+                'sampleKeys': list(getattr(self, '_host_watch_seed_keys', None) or []),
+                'groupNames': list((getattr(self, '_host_watch_pin_groups', None) or {}).keys()),
+                'label': getattr(self, '_host_watch_seed_label', '') or '',
+            }
+        try:
+            self.open_panel('var_watch')
+        except Exception:
+            return False
+        dlg = (self.dialogs or {}).get('var_watch')
+        if dlg is None or not hasattr(dlg, 'board'):
+            return False
+        try:
+            from desktop.host_var_watch import open_var_watch_on_restored_group
+            proj = getattr(self.document, 'project', None)
+            out = open_var_watch_on_restored_group(
+                dlg.board, bag, project=proj,
+                label=getattr(self, '_host_watch_seed_label', '') or '',
+            )
+            # also honor cached groups if helper got empty
+            if not out.get('nGroups'):
+                groups = getattr(self, '_host_watch_pin_groups', None) or {}
+                act = bag.get('active') or getattr(self, '_host_watch_active_pin_group', '') or ''
+                if groups:
+                    dlg.board.set_pin_groups(groups, active=act)
+                    if act:
+                        dlg.board.activate_pin_group(act)
+            try:
+                dlg.raise_()
+                dlg.activateWindow()
+            except Exception:
+                pass
+            try:
+                self.log(
+                    f"变量监视已打开 · 钉组「{dlg.board.active_pin_group()}」"
+                    f" · {len(dlg.board.pinned_keys())}键"
+                )
+            except Exception:
+                pass
+            return True
+        except Exception:
+            return False
 
     def _flush_host_watch_pin_groups(self):
         """Persist open watch-board pin groups into project JSON before save."""
@@ -2357,17 +2417,36 @@ class MainWindow(QMainWindow):
                 self._place_canvas_status_chip()
             except Exception:
                 pass
-        # Chip click-to-dismiss / Esc on chip (advances queue)
+        # Chip click: hostWatch → open var-watch on restored group; else dismiss / Esc
         if obj is getattr(self, '_canvas_status_chip', None):
             if event.type() in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease):
                 if event.type() == QEvent.Type.MouseButtonRelease:
                     try:
+                        hw = bool(getattr(self, '_canvas_chip_host_watch', False))
+                        chip_prop = False
+                        try:
+                            chip_prop = bool(obj.property('hostWatchChip'))
+                        except Exception:
+                            chip_prop = False
+                        if hw or chip_prop or isinstance(getattr(self, '_host_watch_open_chip', None), dict):
+                            self._open_host_watch_from_chip(
+                                getattr(self, '_host_watch_open_chip', None)
+                            )
+                            self._canvas_chip_host_watch = False
+                            try:
+                                obj.setProperty('hostWatchChip', False)
+                            except Exception:
+                                pass
                         self._dismiss_canvas_status_chip()
                     except Exception:
-                        pass
+                        try:
+                            self._dismiss_canvas_status_chip()
+                        except Exception:
+                            pass
                 return True
             if event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
                 try:
+                    self._canvas_chip_host_watch = False
                     self._dismiss_canvas_status_chip()
                 except Exception:
                     pass
@@ -4201,6 +4280,20 @@ class MainWindow(QMainWindow):
             if not _from_queue:
                 self._dismiss_canvas_status_chip()
             return
+        # Non-hostWatch chips clear the click-open latch (hostWatch path sets flag before show)
+        if '监视已恢复' not in text and not getattr(self, '_canvas_chip_host_watch', False):
+            try:
+                chip.setProperty('hostWatchChip', False)
+            except Exception:
+                pass
+        elif '监视已恢复' not in text and not _from_queue:
+            # generic new chip overwrites hostWatch latch
+            self._canvas_chip_host_watch = False
+            self._host_watch_open_chip = None
+            try:
+                chip.setProperty('hostWatchChip', False)
+            except Exception:
+                pass
         # Queue when a chip is already visible (don't clobber mid-tip)
         if (not _from_queue) and chip.isVisible() and (chip.text() or '').strip():
             q = getattr(self, '_canvas_chip_queue', None)

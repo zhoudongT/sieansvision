@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget,
     QListWidgetItem, QLineEdit, QTextEdit, QMessageBox, QTabWidget, QWidget,
     QFormLayout, QGroupBox, QAbstractItemView, QSplitter, QComboBox, QCheckBox,
-    QTableWidget, QTableWidgetItem, QHeaderView,
+    QTableWidget, QTableWidgetItem, QHeaderView, QSpinBox,
 )
 
 from desktop.theme import TEXT, TEXT_MUTED, CARD, LINE
@@ -181,6 +181,49 @@ class RecipeSwitchDialog(QDialog):
         )
         self._diff_side.setToolTip('Dry-run 左右对照：当前工程 vs 配方快照（不改工程）')
         left.addWidget(self._diff_side)
+
+        # Rollback history stack panel — pick / n-step (soft, no hardware)
+        stack_box = QGroupBox('回滚历史栈')
+        stack_box.setObjectName('recipeRollbackStackBox')
+        stack_box.setStyleSheet('QGroupBox{font-size:11px;color:#b9a;font-weight:600;}')
+        stack_lay = QVBoxLayout(stack_box)
+        stack_lay.setContentsMargins(6, 8, 6, 6)
+        stack_lay.setSpacing(4)
+        self._rollback_stack_list = QListWidget()
+        self._rollback_stack_list.setObjectName('recipeRollbackStackList')
+        self._rollback_stack_list.setMaximumHeight(110)
+        self._rollback_stack_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._rollback_stack_list.setStyleSheet(
+            'QListWidget{font-size:11px;color:#c8d0d8;background:#1a1e24;}'
+        )
+        self._rollback_stack_list.setToolTip(
+            '换型回滚历史（新→旧）。选中一条后「回滚到选中」会撤销该次及之后的套用。'
+        )
+        stack_lay.addWidget(self._rollback_stack_list)
+        row = QHBoxLayout()
+        self._rollback_n_spin = QSpinBox()
+        self._rollback_n_spin.setObjectName('recipeRollbackNSpin')
+        self._rollback_n_spin.setRange(1, 32)
+        self._rollback_n_spin.setValue(1)
+        self._rollback_n_spin.setToolTip('从栈顶回滚 N 步')
+        self._rollback_n_spin.setFixedWidth(56)
+        row.addWidget(QLabel('N步'))
+        row.addWidget(self._rollback_n_spin)
+        self._rollback_n_btn = QPushButton('回滚N步')
+        self._rollback_n_btn.setObjectName('recipeRollbackNBtn')
+        self._rollback_n_btn.setToolTip('从栈顶回滚 N 步（软回滚 · 无硬件）')
+        self._rollback_n_btn.clicked.connect(self._rollback_n_steps)
+        self._rollback_n_btn.setEnabled(False)
+        row.addWidget(self._rollback_n_btn)
+        self._rollback_pick_btn = QPushButton('回滚到选中')
+        self._rollback_pick_btn.setObjectName('recipeRollbackPickBtn')
+        self._rollback_pick_btn.setToolTip('回滚到选中历史项（含该项）· 软回滚 · 无硬件')
+        self._rollback_pick_btn.clicked.connect(self._rollback_to_selected)
+        self._rollback_pick_btn.setEnabled(False)
+        row.addWidget(self._rollback_pick_btn)
+        row.addStretch(1)
+        stack_lay.addLayout(row)
+        left.addWidget(stack_box)
         lay.addLayout(left, 2)
 
         right = QVBoxLayout()
@@ -607,6 +650,134 @@ class RecipeSwitchDialog(QDialog):
         else:
             btn.setToolTip('无可回滚快照 — 先经「一键换型/部分套用」写入回滚点')
             btn.setText('一键回滚')
+        self._refresh_rollback_stack_list(hist if ready else [], depth=depth)
+
+
+
+    def _refresh_rollback_stack_list(self, hist=None, *, depth: int = 0):
+        """Fill history list (newest first) + enable pick/n buttons."""
+        lst = getattr(self, '_rollback_stack_list', None)
+        if lst is None:
+            return
+        hist = list(hist or [])
+        lst.blockSignals(True)
+        lst.clear()
+        # newest first for operator UX
+        for i, h in enumerate(reversed(hist)):
+            name = h.get('name') or h.get('recipeId') or '—'
+            when = str(h.get('appliedAt') or '')
+            # stack index from oldest (keep-count target for to_index)
+            oldest_idx = len(hist) - 1 - i
+            label = f'#{len(hist) - i}  {name}'
+            if when:
+                label += f'  · {when[-19:]}'
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, {
+                'oldestIndex': oldest_idx,
+                'fromTop': i + 1,  # steps to pop to remove this + newer
+                'name': name,
+            })
+            lst.addItem(item)
+        lst.blockSignals(False)
+        spin = getattr(self, '_rollback_n_spin', None)
+        if spin is not None:
+            spin.setMaximum(max(1, int(depth or 1)))
+            if depth:
+                spin.setValue(min(spin.value(), depth))
+        n_btn = getattr(self, '_rollback_n_btn', None)
+        pick_btn = getattr(self, '_rollback_pick_btn', None)
+        if n_btn is not None:
+            n_btn.setEnabled(bool(depth))
+        if pick_btn is not None:
+            pick_btn.setEnabled(bool(depth) and lst.count() > 0)
+
+    def _rollback_n_steps(self):
+        """N-step rollback from stack top (soft)."""
+        spin = getattr(self, '_rollback_n_spin', None)
+        n = int(spin.value()) if spin is not None else 1
+        p = deepcopy(self.document.project)
+        try:
+            stats = rl.rollback_recipe_n_steps(p, n)
+        except Exception as err:
+            QMessageBox.warning(self, '回滚失败', str(err))
+            return
+        if not stats.get('ok'):
+            QMessageBox.information(self, '回滚', f"未能回滚：{stats.get('reason') or '—'}")
+            self._sync_rollback_btn()
+            return
+        self.document.commit(p)
+        self.refresh()
+        self._sync_rollback_btn()
+        self.recipesChanged.emit()
+        banner = getattr(self, '_post_banner', None)
+        if banner is not None:
+            names = '、'.join(str(x) for x in (stats.get('rolledBack') or []) if x) or '—'
+            banner.setText(
+                f'已回滚 {stats.get("steps")} 步 · {names} · 栈余{stats.get("remaining", 0)} · 无硬件'
+            )
+            banner.setStyleSheet(
+                'background:#2a2430;color:#d9b;border:1px solid #7a5a9a;border-radius:4px;'
+                'padding:6px 8px;font-size:12px;font-weight:600;'
+            )
+        QMessageBox.information(
+            self, '回滚完成',
+            f'已回滚 {stats.get("steps")} 步（软回滚，无硬件）。\n栈余 {stats.get("remaining", 0)}',
+        )
+
+    def _rollback_to_selected(self):
+        """Pick history row → roll back that entry and everything newer."""
+        lst = getattr(self, '_rollback_stack_list', None)
+        if lst is None or lst.currentItem() is None:
+            QMessageBox.information(self, '回滚', '请先在回滚历史栈中选中一条。')
+            return
+        data = lst.currentItem().data(Qt.ItemDataRole.UserRole) or {}
+        from_top = int(data.get('fromTop') or 0)
+        name = data.get('name') or '—'
+        if from_top <= 0:
+            QMessageBox.information(self, '回滚', '选中项无效。')
+            return
+        ans = QMessageBox.question(
+            self, '回滚到选中',
+            f'将回滚 {from_top} 步至「{name}」及之后（软回滚，无硬件）。继续？',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if ans != QMessageBox.StandardButton.Yes:
+            return
+        p = deepcopy(self.document.project)
+        try:
+            if hasattr(rl, 'rollback_recipe_to_index'):
+                # keep entries before selected → oldestIndex means keep that many? 
+                # fromTop = steps to pop; keep = depth - fromTop
+                depth = rl.recipe_rollback_depth(p)
+                keep = max(0, depth - from_top)
+                stats = rl.rollback_recipe_to_index(p, keep)
+            else:
+                stats = rl.rollback_recipe_n_steps(p, from_top)
+        except Exception as err:
+            QMessageBox.warning(self, '回滚失败', str(err))
+            return
+        if not stats.get('ok'):
+            QMessageBox.information(self, '回滚', f"未能回滚：{stats.get('reason') or '—'}")
+            self._sync_rollback_btn()
+            return
+        self.document.commit(p)
+        self.refresh()
+        self._sync_rollback_btn()
+        self.recipesChanged.emit()
+        banner = getattr(self, '_post_banner', None)
+        if banner is not None:
+            banner.setText(
+                f'已回滚到「{name}」· {stats.get("steps")}步 · 栈余{stats.get("remaining", 0)} · 无硬件'
+            )
+            banner.setStyleSheet(
+                'background:#2a2430;color:#d9b;border:1px solid #7a5a9a;border-radius:4px;'
+                'padding:6px 8px;font-size:12px;font-weight:600;'
+            )
+        QMessageBox.information(
+            self, '回滚完成',
+            f'已回滚到「{name}」（{stats.get("steps")} 步 · 软回滚，无硬件）。',
+        )
 
 
     def _update_post_banner(self, stats=None, *, error: str = ''):
