@@ -426,6 +426,14 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆104 · set/toggle dual_origin echo · action checked_preset · truncate from_get prefer · 2026-10-28】
+
+- **set / toggle 出口**：ensure 镜像后回显 `from_set_strategy` / `from_toggle` → `dual_origin_echo` + `ensure_strategy` 进 set_out / toggle out stash（set 仍返 str；toggle 返 dict）。
+- **menu tip_max_len action**：trigger + checked sync 后，将 `checked_preset` / `checked_preset_ok` / `qaction_count` / `checked_synced` / `submenu_restamped` 镜像进 `_…_menu_tip_max_len_action`；menu 侧带 `tip_max_len_action_checked_preset(_ok)`。
+- **truncate 失败路径**：status 弱时 from_get prefer（get stash `策略·*` 且 `status_prop_ok`|`ok`）写入 truncate status + `from_get_prefer`。
+- **FlashMs**：仍不起步（等 flash_* 视觉）。
+- **验证**：`scripts/smoke-wave136-settogglecho-actionchecked-truncateprefer-e2e.py` → 9 PASS。非硬件约 **~99.99%**。
+
 ## 【细妆103 · refresh dual-origin echo · checked preset sync · from_get prefer · 2026-10-28】
 
 - **refresh**：终局 out 回声 ensure 的 `from_set_strategy` / `from_toggle` → `dual_origin_echo` / `ensure_strategy`。
