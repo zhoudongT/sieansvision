@@ -1,21 +1,67 @@
 {
   "version": 2,
   "id": "fd7b0ffe954b479e",
-  "name": "打开即跑 · 条码识别",
+  "name": "打开即跑 · 条码/ID密度铬",
   "steps": [
     {
       "id": "ce0d667af2f546b0",
       "operation": "barcode",
-      "name": "条码识别",
+      "name": "多码识别·铬",
       "params": {
         "maxCodes": 5,
-        "types": "all"
+        "types": "all",
+        "showOverlay": true,
+        "showBoxes": true,
+        "showText": true,
+        "showFormat": true,
+        "showIndex": true,
+        "resultVar": "barcode",
+        "writeFlowVars": true,
+        "judgeEnable": true,
+        "expectedText": "MACHINE-QR-2026",
+        "judgeMinCount": 1,
+        "judgeMaxCount": 0
       },
       "position": {
         "x": 300,
         "y": 160
       },
       "imageFrom": "source"
+    },
+    {
+      "id": "a9b8c7d6e5f40321",
+      "operation": "var_calc",
+      "name": "条码门限·OK/NG",
+      "params": {
+        "scope": "flow",
+        "expressions": [
+          {
+            "name": "barcodeCount",
+            "expr": "(steps[\"ce0d667af2f546b0\"].count or 0)",
+            "enabled": true
+          },
+          {
+            "name": "barcodeText",
+            "expr": "(steps[\"ce0d667af2f546b0\"].items[0].text if (steps[\"ce0d667af2f546b0\"].items) else \"\")",
+            "enabled": true
+          },
+          {
+            "name": "barcodeOk",
+            "expr": "(steps[\"ce0d667af2f546b0\"].count or 0) >= 1",
+            "enabled": true
+          },
+          {
+            "name": "passGate",
+            "expr": "(steps[\"ce0d667af2f546b0\"].count or 0) >= 1",
+            "enabled": true
+          }
+        ]
+      },
+      "position": {
+        "x": 300,
+        "y": 300
+      },
+      "imageFrom": "ce0d667af2f546b0"
     }
   ],
   "edges": [
@@ -25,13 +71,25 @@
       "to": "ce0d667af2f546b0",
       "fromPort": "bottom",
       "toPort": "top"
+    },
+    {
+      "id": "e1f2a3b4c5d60789",
+      "from": "ce0d667af2f546b0",
+      "to": "a9b8c7d6e5f40321",
+      "fromPort": "bottom",
+      "toPort": "top"
     }
   ],
   "sourcePosition": {
     "x": 300,
     "y": 40
   },
-  "variables": {},
+  "variables": {
+    "barcodeCount": 0,
+    "barcodeText": "",
+    "barcodeOk": 0,
+    "passGate": 0
+  },
   "sourceConfig": {
     "mode": "local",
     "pixelFormat": "RGB24",
@@ -55,24 +113,36 @@
     "exposure": 0.0,
     "gain": 0.0,
     "images": [
-      "/home/allen/文档/sieansvision/public/vision/samples/codes.png"
+      "public/vision/samples/codes.png"
     ],
     "currentIndex": 0
   },
   "runUi": {
-    "split": "2",
+    "split": "4",
     "placements": [
       {
         "name": "图像",
-        "page": 1,
+        "page": 3,
         "cell": 0,
         "category": "基础"
       },
       {
-        "name": "上位机状态机",
-        "page": 1,
+        "name": "OK/NG",
+        "page": 3,
         "cell": 1,
         "category": "基础"
+      },
+      {
+        "name": "运行控制",
+        "page": 3,
+        "cell": 2,
+        "category": "基础"
+      },
+      {
+        "name": "生产统计",
+        "page": 3,
+        "cell": 3,
+        "category": "图表"
       }
     ],
     "controls": {
@@ -80,8 +150,16 @@
         "commands": [],
         "binding": "source"
       },
-      "上位机状态机": {
+      "OK/NG": {
+        "commands": [],
+        "binding": ""
+      },
+      "运行控制": {
         "commands": [
+          {
+            "type": "执行·单次",
+            "config": ""
+          },
           {
             "type": "执行·连续",
             "config": ""
@@ -91,7 +169,11 @@
             "config": ""
           }
         ],
-        "binding": "host"
+        "binding": ""
+      },
+      "生产统计": {
+        "commands": [],
+        "binding": "stats"
       }
     },
     "fixedBars": {
@@ -102,12 +184,37 @@
       "cameraBind": "未绑定",
       "commBind": "TCP.连接状态",
       "showRunStatus": true,
-      "showOkNg": true
+      "showOkNg": true,
+      "showCounters": true,
+      "showHistory": true
     },
     "meta": {
-      "template": "host_state_machine",
-      "version": 1
+      "template": "open_and_run_barcode_id_chrome",
+      "version": 1,
+      "openAndRun": true,
+      "wave": 145
     }
   },
-  "notes": "【打开即跑 · 条码】codes.png。▶ 单次识别。"
+  "notes": "wave145：条码/ID denser 结果铬（工业多码表：#/文本/码制/中心/宽高/判定；胶片 码N✓/✗ + OK/NG；叠层角点框+文本）。▶ 单次：barcode(maxCodes=5,期望 MACHINE-QR-2026)→ var_calc(barcodeCount/barcodeText/barcodeOk/passGate)。样张 codes.png。软 zxing / OpenCV · 无 Halcon / 无现场相机 / 无 Comm-HMI cobind / 无 spark 微级联。",
+  "hostWatch": {
+    "watchKeys": [
+      "barcodeCount",
+      "barcodeText",
+      "barcodeOk",
+      "passGate"
+    ],
+    "active": "条码链",
+    "pinGroups": {
+      "条码链": [
+        "barcodeCount",
+        "barcodeText",
+        "barcodeOk",
+        "passGate"
+      ],
+      "门限": [
+        "barcodeOk",
+        "passGate"
+      ]
+    }
+  }
 }

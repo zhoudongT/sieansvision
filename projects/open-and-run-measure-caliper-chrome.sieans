@@ -30,10 +30,10 @@
     "exposure": 0.0,
     "gain": 0.0,
     "images": [
-      "/home/allen/文档/sieansvision/public/vision/samples/caliper-line.png",
-      "/home/allen/文档/sieansvision/public/vision/samples/caliper-vertical-only.png",
-      "/home/allen/文档/sieansvision/public/vision/samples/caliper-width-pass.png",
-      "/home/allen/文档/sieansvision/public/vision/samples/caliper-corner.png"
+      "public/vision/samples/caliper-line.png",
+      "public/vision/samples/caliper-vertical-only.png",
+      "public/vision/samples/caliper-width-pass.png",
+      "public/vision/samples/caliper-corner.png"
     ],
     "currentIndex": 0
   },
@@ -244,5 +244,83 @@
   "variables": {
     "flow": {},
     "global": {}
+  },
+  "runUi": {
+    "split": "4",
+    "placements": [
+      {
+        "name": "图像",
+        "page": 3,
+        "cell": 0,
+        "category": "基础"
+      },
+      {
+        "name": "OK/NG",
+        "page": 3,
+        "cell": 1,
+        "category": "基础"
+      },
+      {
+        "name": "运行控制",
+        "page": 3,
+        "cell": 2,
+        "category": "基础"
+      },
+      {
+        "name": "生产统计",
+        "page": 3,
+        "cell": 3,
+        "category": "图表"
+      }
+    ],
+    "controls": {
+      "图像": {
+        "commands": [],
+        "binding": "source"
+      },
+      "OK/NG": {
+        "commands": [],
+        "binding": ""
+      },
+      "运行控制": {
+        "commands": [
+          {
+            "type": "执行·单次",
+            "config": ""
+          },
+          {
+            "type": "执行·连续",
+            "config": ""
+          },
+          {
+            "type": "执行·停止",
+            "config": ""
+          }
+        ],
+        "binding": ""
+      },
+      "生产统计": {
+        "commands": [],
+        "binding": "stats"
+      }
+    },
+    "fixedBars": {
+      "top": false,
+      "bottom": true,
+      "left": false,
+      "right": false,
+      "cameraBind": "未绑定",
+      "commBind": "TCP.连接状态",
+      "showRunStatus": true,
+      "showOkNg": true,
+      "showCounters": true,
+      "showHistory": true
+    },
+    "meta": {
+      "template": "open_and_run_measure_caliper_chrome",
+      "version": 1,
+      "openAndRun": true,
+      "wave": 145
+    }
   }
 }

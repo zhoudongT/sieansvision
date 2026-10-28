@@ -220,6 +220,19 @@ class FilmstripBar(QWidget):
         root.addWidget(self.match_strip)
         self._frame_match_chrome = {}
         self._frame_match_okng = {}
+        # wave145: barcode/ID denser filmstrip result chrome (码N✓ / OK·NG)
+        self.barcode_strip = QLabel('')
+        self.barcode_strip.setObjectName('filmstripBarcodeIdStrip')
+        self.barcode_strip.setWordWrap(True)
+        self.barcode_strip.setStyleSheet(
+            'color:#c8b88a;font-size:11px;padding:2px 4px;background:#242018;'
+            'border:1px solid #4a3a2a;border-radius:3px;'
+        )
+        self.barcode_strip.setVisible(False)
+        self.barcode_strip.setToolTip('条码/ID胶片铬 · 码N✓/✗ 多码密度 · 结果铬非火花线联级')
+        root.addWidget(self.barcode_strip)
+        self._frame_barcode_chrome = {}
+        self._frame_barcode_okng = {}
         self.set_paths([], 0)
         self._live_fit_mode = 'contain'
         self._actual_letterbox = True  # pad with theme CANVAS when src < thumb
@@ -1486,6 +1499,7 @@ class FilmstripBar(QWidget):
         leaf = _re.sub(r'^\[(OK|NG)\]\s*', '', leaf)
         leaf = _re.sub(r'^\[([LCREBG]\d*[✓✗+]*)\]\s*', '', leaf)
         leaf = _re.sub(r'^\[(配\d*[✓✗·.]*)\]\s*', '', leaf)
+        leaf = _re.sub(r'^\[(码\d*[✓✗·.]*)\]\s*', '', leaf)
         leaf = _re.sub(r'^\[([^\]]{1,16})\]\s*', '', leaf)  # generic prior tags once
         # re-strip common prefixes that may stack
         for _ in range(4):
@@ -1495,15 +1509,19 @@ class FilmstripBar(QWidget):
             leaf = nxt
         gtag = (getattr(self, '_frame_geom_find_chrome', None) or {}).get(path) or ''
         mtag = (getattr(self, '_frame_match_chrome', None) or {}).get(path) or ''
+        btag = (getattr(self, '_frame_barcode_chrome', None) or {}).get(path) or ''
         okng = (getattr(self, '_frame_match_okng', None) or {}).get(path) or ''
+        bokng = (getattr(self, '_frame_barcode_okng', None) or {}).get(path) or ''
         measure = (getattr(self, '_frame_measure_badges', None) or {}).get(path) or ''
-        # prefer explicit measure badge; else match OK/NG
-        jtag = measure or okng
+        # prefer explicit measure badge; else match/barcode OK/NG
+        jtag = measure or okng or bokng
         prefix = ''
         if gtag:
             prefix += f'[{gtag}] '
         if mtag:
             prefix += f'[{mtag}] '
+        if btag:
+            prefix += f'[{btag}] '
         if jtag:
             prefix += f'[{jtag}] '
         tip_bits = []
@@ -1513,18 +1531,24 @@ class FilmstripBar(QWidget):
             tip_bits.append(f'几何查找：{gtag}')
         if mtag:
             tip_bits.append(f'匹配定位：{mtag}')
+        if btag:
+            tip_bits.append(f'条码/ID：{btag}')
         if measure:
             tip_bits.append(f'测量判定：{measure}')
         elif okng:
             tip_bits.append(f'匹配判定：{okng}')
-        # color priority: NG > OK > geom/match chrome > default
+        elif bokng:
+            tip_bits.append(f'条码判定：{bokng}')
+        # color priority: NG > OK > geom/match/barcode chrome > default
         color = '#c8d0d8'
-        if str(jtag).upper() == 'NG' or ('✗' in str(mtag)) or ('✗' in str(gtag)):
+        if str(jtag).upper() == 'NG' or ('✗' in str(mtag)) or ('✗' in str(gtag)) or ('✗' in str(btag)):
             color = '#c62828'
         elif str(jtag).upper() == 'OK':
             color = '#2e7d32'
         elif mtag:
             color = '#7cb342'
+        elif btag:
+            color = '#c9a227'
         elif gtag:
             color = '#4aa3c8'
         return (f'{prefix}{leaf}' if prefix else leaf, '\n'.join(tip_bits), color)
@@ -1605,6 +1629,84 @@ class FilmstripBar(QWidget):
             lab.setVisible(True)
         else:
             lab.setVisible(False)
+
+
+    def set_frame_barcode_chrome(self, chrome=None, okng=None):
+        """Annotate filmstrip thumbs with barcode/ID density (码2✓) + OK/NG.
+
+        Result chrome only — not spark-seek / scoreboard micro-prop cascade.
+        chrome: {path: '码2✓'|str}; okng: {path: 'OK'|'NG'}.
+        """
+        bag = {}
+        for k, v in (chrome or {}).items():
+            key = str(k or '').strip()
+            if not key or not v:
+                continue
+            bag[key] = str(v)[:16]
+        self._frame_barcode_chrome = bag
+        obag = {}
+        for k, v in (okng or {}).items():
+            key = str(k or '').strip()
+            if not key:
+                continue
+            if v is True or str(v).upper() in ('OK', 'PASS', '1', 'TRUE'):
+                obag[key] = 'OK'
+            elif v is False or str(v).upper() in ('NG', 'FAIL', '0', 'FALSE'):
+                obag[key] = 'NG'
+            elif v:
+                obag[key] = str(v).upper()[:8]
+        self._frame_barcode_okng = obag
+        thumbs = getattr(self, 'thumbs', None)
+        if thumbs is None:
+            return bag
+        from PySide6.QtGui import QColor
+        from PySide6.QtCore import Qt
+        for i in range(thumbs.count()):
+            it = thumbs.item(i)
+            if it is None:
+                continue
+            path = it.data(Qt.ItemDataRole.UserRole) or ''
+            from pathlib import Path as _P
+            leaf = _P(path).name if path else (it.text() or '')
+            label, tip, color = self._compose_thumb_chrome_label(path, leaf)
+            it.setText(label)
+            it.setToolTip(tip)
+            it.setForeground(QColor(color))
+        return bag
+
+    def push_barcode_summary(self, text=None, *, records=None, names=None):
+        """Barcode/ID result chrome under filmstrip (码N✓ density)."""
+        lab = getattr(self, 'barcode_strip', None)
+        if lab is None:
+            return
+        if text:
+            lab.setText(str(text))
+            lab.setVisible(True)
+            return
+        bits = []
+        names = names or {}
+        try:
+            from desktop.barcode_id_chrome import summarize_barcode, BARCODE_OPS
+        except Exception:
+            summarize_barcode = None
+            BARCODE_OPS = ('barcode',)
+        for rec in records or []:
+            if not isinstance(rec, dict):
+                continue
+            op = str(rec.get('operation') or rec.get('op') or '')
+            if summarize_barcode is None:
+                continue
+            if op not in BARCODE_OPS:
+                continue
+            summ = summarize_barcode(rec, params={})
+            name = names.get(rec.get('id'), rec.get('name') or '条码')
+            bits.append(f"{name} {summ.get('chrome') or '码·'}")
+        if bits:
+            lab.setText(f"条码/ID · {' ｜ '.join(bits[:8])}")
+            lab.setVisible(True)
+        else:
+            lab.setVisible(False)
+
 
     def push_geom_find_summary(self, text=None, *, records=None, names=None):
         """Geometry-find result chrome under filmstrip (distinct from push_module_results measure strip)."""

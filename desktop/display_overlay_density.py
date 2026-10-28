@@ -274,6 +274,43 @@ def build_unified_overlays(records=None, project=None, *,
                     break
             continue
 
+        if op == 'barcode':
+            try:
+                from desktop.barcode_id_chrome import build_barcode_overlays
+                denser = build_barcode_overlays(bag, params, max_specs=max_per_module)
+                if denser:
+                    specs.extend(denser)
+                    if len(specs) >= max_specs:
+                        break
+                    continue
+            except Exception:
+                pass
+            # fallback: polygon items
+            items = bag.get('items') if isinstance(bag.get('items'), list) else []
+            for i, it in enumerate(_as_list(items)[:max_per_module]):
+                if not isinstance(it, dict):
+                    continue
+                poly = it.get('polygon') or it.get('points')
+                if isinstance(poly, list) and len(poly) >= 2:
+                    pts = []
+                    for pt in poly:
+                        if isinstance(pt, (list, tuple)) and len(pt) >= 2:
+                            try:
+                                pts.append([float(pt[0]), float(pt[1])])
+                            except (TypeError, ValueError):
+                                pass
+                    if len(pts) >= 2:
+                        specs.append({'type': 'polygon', 'points': pts, 'color': '#ffb400', 'width': 1.6})
+                        txt = str(it.get('text') or '')[:18]
+                        if txt and isinstance(pts[0], list):
+                            specs.append({
+                                'type': 'label', 'x': pts[0][0], 'y': pts[0][1] - 8,
+                                'text': txt, 'color': '#ffb400',
+                            })
+                if len(specs) >= max_specs:
+                    break
+            continue
+
         # sieans-regions plugin / color / blobs
         plugin_id = str(params.get('pluginId') or '')
         looks = (

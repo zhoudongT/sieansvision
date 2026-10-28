@@ -155,7 +155,12 @@
     "x": 300,
     "y": 40
   },
-  "variables": {},
+  "variables": {
+    "calibRms": 0,
+    "calibPoints": 0,
+    "calibOk": 0,
+    "passGate": 0
+  },
   "sourceConfig": {
     "mode": "local",
     "pixelFormat": "RGB24",
@@ -179,7 +184,7 @@
     "exposure": 0.0,
     "gain": 0.0,
     "images": [
-      "/home/allen/文档/sieansvision/public/vision/samples/caliper-line.png"
+      "public/vision/samples/caliper-line.png"
     ],
     "currentIndex": 0
   },
@@ -257,8 +262,30 @@
     "meta": {
       "template": "open_and_run_ninepoint",
       "version": 2,
-      "openAndRun": true
+      "openAndRun": true,
+      "wave": 145
     }
   },
-  "notes": "【打开即跑 · 九点】内置 9 组 pixel/world。▶ 单次仿射→残差门限：calibRms/calibPoints/calibOk → passGate(ok且9点且rms<0.5)。无机械手 SDK。"
+  "notes": "【打开即跑 · 九点】内置 9 组 pixel/world。▶ 单次仿射→残差门限：calibRms/calibPoints/calibOk → passGate(ok且9点且rms<0.5)。无机械手 SDK。\n【wave145】补 hostWatch/变量种子；残差门限 passGate 打开即用。",
+  "hostWatch": {
+    "watchKeys": [
+      "calibRms",
+      "calibPoints",
+      "calibOk",
+      "passGate"
+    ],
+    "active": "九点",
+    "pinGroups": {
+      "九点": [
+        "calibRms",
+        "calibPoints",
+        "calibOk",
+        "passGate"
+      ],
+      "门限": [
+        "calibOk",
+        "passGate"
+      ]
+    }
+  }
 }

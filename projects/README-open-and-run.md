@@ -13,29 +13,44 @@
 
 ## 工程一览（双击 → 立刻可跑）
 
-| 文件 | 一句话怎么验 |
-|------|----------------|
-| `open-and-run-demo.sieans` | ▶ 单次：预处理→圆查找→测量→`passGate`；图像窗叠层 + OK/NG |
-| `open-and-run-locate.sieans` | ▶ 单次：图源→模板匹配→位置修正→分数门限；`passGate`/`matchScore`/`poseX·Y`；OK/NG |
-| `open-and-run-geom-find-match.sieans` | ▶ 单次：预处理→Hough直线查找（非卡尺）→多模板匹配密度→`passGate`；胶片铬 L/C + 匹配分表 |
-| `open-and-run-fixture-preprocess.sieans` | ▶ 单次：定位→夹具坐标系/仿射→预处理 ROI（中值）→`passGate`；Host 监视 fixture*/pp* |
-| `open-and-run-caliper.sieans` | ▶ 卡尺直线多边缘；lineCount/lineScore/lineRms/passGate |
-| `open-and-run-caliper-measure.sieans` | ▶ 卡尺→线线交点→点线距；intersectX/Y·pldDist/passGate |
-| `open-and-run-measure.sieans` | ▶ 单次：预处理→圆查找→尺寸测量→门限；有圆且有测量则 OK |
-| `open-and-run-barcode.sieans` | ▶ 单次条码/二维码；解码串进结果（样张 `codes.png`） |
-| `open-and-run-ocr-gate-comm.sieans` | ▶ 单次：OCR→门限 `passGate`→format→LocalBus `send_data`；Host 监视 ocr*；Comm `${}` 报文模板（样张 `text.png`） |
-| `open-and-run-locate-measure-defect.sieans` | ▶ 单次：定位→位姿→圆测量→参考图缺陷→综合 `passGate`；Host 监视 matchScore/measureCount/defect*；Comm `${}` 报文模板 |
-| `open-and-run-defects.sieans` | ▶ 单次参考图缺陷；差异区 + OK/NG 语义 |
-| `open-and-run-ninepoint.sieans` | ▶ 单次：九点标定→残差门限；`calibRms`/`calibPoints`/`passGate`；OK/NG×4（无厂商标定 SDK） |
-| `open-and-run-script.sieans` | ▶ 单次脚本模块；脚本输出写入变量 |
-| `open-and-run-format-protocol.sieans` | LocalBus send→recv→parse→format→`passGate`；flow.recvData/formatted |
-| `open-and-run-comm-multiproto.sieans` | LocalBus 主路径 + TCP Client/UDP 写出（模拟回退）；OK/NG；无机器人 SDK |
+| 文件 | 覆盖能力（一句话怎么验） |
+|------|--------------------------|
+| `default-platform.sieans` | **默认产线壳**：图源 + 上位机状态机 + Comm；底栏 OK/NG；打开即 HMI |
+| `open-and-run-demo.sieans` | 预处理→圆查找→测量→`passGate`；图像窗叠层 + OK/NG |
+| `open-and-run-locate.sieans` | 图源→模板匹配→位置修正→分数门限；`passGate`/`matchScore`/`poseX·Y` |
+| `open-and-run-match-locate-chrome.sieans` | 匹配/定位 denser 候选铬（#/排名/分数/Δmin/裕度/位姿/判定）；胶片 配N✓/✗ |
+| `open-and-run-geom-find-match.sieans` | Hough 直线查找→多模板匹配密度；胶片铬 L/C + 匹配分表 |
+| `open-and-run-geom-script.sieans` | 线夹角/点圆距/圆圆距 + 脚本壳 + 变量计算（软几何） |
+| `open-and-run-fixture-preprocess.sieans` | 定位→夹具坐标系/仿射→预处理 ROI→`passGate` |
+| `open-and-run-fixture-pose-chain.sieans` | 夹具位姿结果铬（矩阵/轴叠层）+ 预处理链密度 |
+| `open-and-run-caliper.sieans` | 卡尺直线多边缘；lineCount/lineScore/lineRms/`passGate` |
+| `open-and-run-caliper-measure.sieans` | 卡尺→线线交点→点线距；intersectX/Y·pldDist/`passGate` |
+| `open-and-run-measure-caliper-chrome.sieans` | 测量/卡尺 denser 铬 + OCR/缺陷工业表 |
+| `open-and-run-measure.sieans` | 预处理→圆查找→尺寸测量→门限 OK/NG |
+| `open-and-run-contour-color.sieans` | 轮廓/斑点 + HSV 色彩区域结果铬 |
+| `open-and-run-barcode.sieans` | **条码/ID denser 铬**：多码表 + 码N✓/✗ 胶片 + 期望串门限；样张 `codes.png` |
+| `open-and-run-ocr-gate-comm.sieans` | OCR→门限→format→LocalBus；Host 监视 ocr*；Comm `${}` |
+| `open-and-run-locate-measure-defect.sieans` | 定位→位姿→圆测量→参考图缺陷→综合门限；Host 监视 |
+| `open-and-run-defects.sieans` | 参考图缺陷；差异区 + OK/NG |
+| `open-and-run-ninepoint.sieans` | 九点标定→残差门限；`calibRms`/`calibPoints`/`passGate`；hostWatch |
+| `open-and-run-script.sieans` | Python 脚本模块；脚本输出写变量 |
+| `open-and-run-format-protocol.sieans` | LocalBus send→recv→parse→format→`passGate` |
 | `open-and-run-format-protocol-demo.sieans` | 无 send：demoPayload 注入→parse→format→`passGate` |
+| `open-and-run-comm-multiproto.sieans` | LocalBus 主路径 + TCP/UDP 写出（模拟回退）；无机器人 SDK |
 | `open-and-run-group-comm.sieans` | Group+Comm；Listen 徽章、`RUN`/`STOP`、HB→变量 |
-| `default-platform.sieans` | 默认产线壳：图源 + **上位机状态机**运行壳 + Comm；底栏 OK/NG；打开即 HMI |
+| `open-and-run-tcp-sim.sieans` | TCP 环回联调（先启 :19880 模拟器） |
 | `mv-camera-ocr.sieans` | 相机/OCR；需 GenTL 相机或离线帧 |
 
 模板（非双击主推，可「从模板新建」）：`templates/measure-chain.sieans`、`defect-inspection.sieans`、`blank-inspection.sieans`、`mv-gentl-ocr.sieans`。
+
+### wave145 打开即跑审计摘要
+
+- **全量样例**：上表 23 个 open-and-run + default-platform；菜单「从模板新建 / 打开示例」已补 geom-script、fixture-preprocess、match-locate-chrome、条码密度铬。
+- **缺 runUi 已补**：contour-color / fixture-pose-chain / measure-caliper-chrome。
+- **条码/ID**：新增 denser 结果铬模块（`desktop/barcode_id_chrome.py` + `BarcodePanel`）；样例带 hostWatch + var_calc 门限。
+- **九点**：补 hostWatch / 变量种子（残差门限仍走既有 var_calc）。
+- **default-platform**：显示名改为「默认产线 · 上位机运行壳」，保持打开即用。
+- **不做**：Comm/HMI cobind、spark/blink 微级联、真机 TCP/Halcon/机器人 SDK。
 
 ## 属性面板：上游字段挑选
 
@@ -129,7 +144,7 @@ node scripts/smoke-ninepoint-comm-alarmexport-e2e.cjs
 
 ## 不要做
 
-- 不 push、不接机器人 SDK、不改 HIK 品牌标识。
+- 不接机器人 SDK、不改 HIK 品牌标识；不宣称真机 TCP / Halcon / CLR。
 
 
 

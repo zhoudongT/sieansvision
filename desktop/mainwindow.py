@@ -80,7 +80,7 @@ class MainWindow(QMainWindow):
         files.addSeparator()
         templates=files.addMenu('从模板新建检测工程')
         for label, relative in [
-            ('打开即跑 · 圆查找', 'projects/default-platform.sieans'),
+            ('默认产线 · 上位机运行壳', 'projects/default-platform.sieans'),
             ('打开即跑 · 模板匹配', 'projects/open-and-run-locate.sieans'),
             ('打开即跑 · 卡尺直线', 'projects/open-and-run-caliper.sieans'),
             ('打开即跑 · 卡尺→几何测量', 'projects/open-and-run-caliper-measure.sieans'),
@@ -90,10 +90,12 @@ class MainWindow(QMainWindow):
             ('打开即跑 · 测量卡尺铬→OCR缺陷表', 'projects/open-and-run-measure-caliper-chrome.sieans'),
             ('打开即跑 · 匹配定位候选铬', 'projects/open-and-run-match-locate-chrome.sieans'),
             ('打开即跑 · 几何查找→多匹配', 'projects/open-and-run-geom-find-match.sieans'),
+            ('打开即跑 · 几何夹角圆距+脚本', 'projects/open-and-run-geom-script.sieans'),
+            ('打开即跑 · 定位→夹具→预处理', 'projects/open-and-run-fixture-preprocess.sieans'),
             ('打开即跑 · 九点标定', 'projects/open-and-run-ninepoint.sieans'),
             ('打开即跑 · 定位→测量→缺陷', 'projects/open-and-run-locate-measure-defect.sieans'),
             ('打开即跑 · 参考图缺陷', 'projects/open-and-run-defects.sieans'),
-            ('打开即跑 · 条码识别', 'projects/open-and-run-barcode.sieans'),
+            ('打开即跑 · 条码/ID密度铬', 'projects/open-and-run-barcode.sieans'),
             ('打开即跑 · OCR→门限→Comm', 'projects/open-and-run-ocr-gate-comm.sieans'),
             ('打开即跑 · 组合+通信', 'projects/open-and-run-group-comm.sieans'),
             ('打开即跑 · 多协议通信', 'projects/open-and-run-comm-multiproto.sieans'),
@@ -1278,13 +1280,13 @@ class MainWindow(QMainWindow):
             pass
 
     def _ingest_recognize_panels_from_result(self, result):
-        """Feed open DefectsPanel / OcrPanel denser industrial tables (wave143)."""
+        """Feed open DefectsPanel / OcrPanel / BarcodePanel denser industrial tables."""
         try:
             pf = getattr(self, 'property_float', None) or getattr(self, 'props', None)
             if pf is None:
                 return
-            from desktop.recognize_panels import DefectsPanel, OcrPanel
-            for cls in (DefectsPanel, OcrPanel):
+            from desktop.recognize_panels import DefectsPanel, OcrPanel, BarcodePanel
+            for cls in (DefectsPanel, OcrPanel, BarcodePanel):
                 for w in pf.findChildren(cls):
                     if hasattr(w, 'set_last_result'):
                         w.set_last_result(result)
@@ -1302,7 +1304,7 @@ class MainWindow(QMainWindow):
         focus = {
             'geometry', 'caliper', 'measure', 'locate', 'match', 'template_match',
             'line_intersect', 'point_distance', 'point_line_distance', 'line_angle', 'point_circle_distance', 'circle_circle_distance',
-            'defects', 'ocr', 'blob', 'fixture',
+            'defects', 'ocr', 'barcode', 'blob', 'fixture',
         }
         saw_ok = False
         saw_ng = False
@@ -1456,6 +1458,43 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         return chrome
+
+    def _sync_filmstrip_barcode_chrome(self):
+        """Push barcode/ID denser chrome (码N✓) + OK/NG onto filmstrip — result chrome only."""
+        cache = getattr(self, '_filmstrip_results', None) or {}
+        steps = []
+        try:
+            steps = (self.document.project.get('steps') or []) if hasattr(self, 'document') else []
+        except Exception:
+            steps = []
+        try:
+            from desktop.barcode_id_chrome import (
+                chrome_map_from_film_cache, okng_map_from_film_cache,
+                strip_summary_from_film_cache,
+            )
+        except Exception:
+            return {}
+        chrome = chrome_map_from_film_cache(cache, project_steps=steps) or {}
+        okng = okng_map_from_film_cache(cache, project_steps=steps) or {}
+        try:
+            fs = getattr(self, 'filmstrip', None)
+            if fs is not None and hasattr(fs, 'set_frame_barcode_chrome'):
+                fs.set_frame_barcode_chrome(chrome, okng)
+            if fs is not None and hasattr(fs, 'push_barcode_summary'):
+                cur = ''
+                try:
+                    cur = fs.current_path() if hasattr(fs, 'current_path') else ''
+                except Exception:
+                    cur = ''
+                text_s = strip_summary_from_film_cache(
+                    cache, current_path=cur or '', project_steps=steps,
+                )
+                if text_s:
+                    fs.push_barcode_summary(text_s)
+        except Exception:
+            pass
+        return chrome
+
 
 
     def open_project_file(self, path):
@@ -2220,6 +2259,11 @@ class MainWindow(QMainWindow):
                             self._sync_filmstrip_geom_find_chrome()
                         except Exception:
                             pass
+                        try:
+                            self._sync_filmstrip_match_chrome()
+                            self._sync_filmstrip_barcode_chrome()
+                        except Exception:
+                            pass
                     elif not multi:
                         strip.clear()
             except Exception:
@@ -2602,6 +2646,7 @@ class MainWindow(QMainWindow):
                     pass
                 try:
                     self._sync_filmstrip_match_chrome()
+                    self._sync_filmstrip_barcode_chrome()
                 except Exception:
                     pass
         except Exception:
@@ -2617,6 +2662,8 @@ class MainWindow(QMainWindow):
                 self.filmstrip.push_geom_find_summary(records=records, names=names)
             if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_match_summary'):
                 self.filmstrip.push_match_summary(records=records, names=names)
+            if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_barcode_summary'):
+                self.filmstrip.push_barcode_summary(records=records, names=names)
         except Exception:
             pass
         try:

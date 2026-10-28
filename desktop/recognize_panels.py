@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""缺陷检测 / OCR 结果显示与判定面板（OpenCV 壳 · 无 Halcon）。
+"""缺陷检测 / OCR / 条码·ID 结果显示与判定面板（OpenCV / zxing 壳 · 无 Halcon）。
 
 与 MeasureGeomPanel / LocateResultPanel 同风格：参数 + 结果叠层 + Host 实况绑定。
 细妆：缺陷参考图绑定 UX · OCR ROI 绘制/绑定。
@@ -53,6 +53,24 @@ def _norm_ocr(params: dict | None) -> dict:
     p.setdefault('roiMode', 'inherit')  # inherit | draw
     if 'roi' not in p:
         p['roi'] = None
+    return p
+
+
+def _norm_barcode(params: dict | None) -> dict:
+    p = dict(params or {})
+    p.setdefault('maxCodes', 5)
+    p.setdefault('types', 'all')
+    p.setdefault('showOverlay', True)
+    p.setdefault('showBoxes', True)
+    p.setdefault('showText', True)
+    p.setdefault('showFormat', True)
+    p.setdefault('showIndex', True)
+    p.setdefault('resultVar', 'barcode')
+    p.setdefault('writeFlowVars', True)
+    p.setdefault('judgeEnable', True)
+    p.setdefault('expectedText', '')
+    p.setdefault('judgeMinCount', 1)
+    p.setdefault('judgeMaxCount', 0)  # 0 = no upper bound
     return p
 
 
@@ -128,7 +146,8 @@ class _RecognizeShell(QWidget):
                         bag = (hit.get('output') or {}).get('result') or hit.get('result') or hit
                 if bag is None and (
                     result.get('text') is not None or result.get('defectRatio') is not None
-                    or result.get('items') is not None
+                    or result.get('items') is not None or result.get('count') is not None
+                    or result.get('format') is not None
                 ):
                     bag = result
             if isinstance(bag, dict):
@@ -138,6 +157,9 @@ class _RecognizeShell(QWidget):
                 elif op in ('defects', 'defect') and hasattr(self, '_apply_defects_density'):
                     from desktop.ocr_defect_chrome import summarize_defect_result
                     self._apply_defects_density(summarize_defect_result(bag, self.params), source='ingest')
+                elif op == 'barcode' and hasattr(self, '_apply_barcode_density'):
+                    from desktop.barcode_id_chrome import summarize_barcode
+                    self._apply_barcode_density(summarize_barcode(bag, params=self.params), source='ingest')
             self._refresh_live()
         except Exception:
             pass
@@ -888,5 +910,268 @@ class OcrPanel(_RecognizeShell):
         try:
             from desktop.ocr_defect_chrome import summarize_ocr_result
             self._apply_ocr_density(summarize_ocr_result(res, self.params), source='engine')
+        except Exception:
+            pass
+
+
+class BarcodePanel(_RecognizeShell):
+    """条码/二维码：类型上限 + 期望串判定 + 多码工业表 + Host 实况（zxing 壳）。"""
+
+    def _build(self):
+        self.params = _norm_barcode(self.params)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(6, 6, 6, 6)
+        tabs = QTabWidget()
+        tabs.setObjectName('barcodeTabs')
+        tabs.addTab(self._build_params_tab(), '基本参数')
+        tabs.addTab(self._build_result_tab(), '结果显示')
+        lay.addWidget(tabs)
+
+    def _build_params_tab(self) -> QWidget:
+        w = QWidget()
+        form = QFormLayout(w)
+        tip = QLabel('ZXing 多码识别 · 软 OpenCV 叠层 · 无 Halcon / 无现场相机要求。')
+        tip.setWordWrap(True)
+        tip.setStyleSheet('color:#888;font-size:11px;')
+        form.addRow(tip)
+
+        name = QLineEdit(self.step.get('name') or '条码识别')
+        name.setObjectName('barcodeStepName')
+        name.editingFinished.connect(lambda: self._set_name(name.text()))
+        form.addRow('模块名', name)
+
+        maxc = QSpinBox(); maxc.setRange(1, 64)
+        maxc.setValue(int(self.params.get('maxCodes') or 5))
+        maxc.setObjectName('barcodeMaxCodes')
+        maxc.valueChanged.connect(lambda v: self._set_param('maxCodes', int(v)))
+        form.addRow('最多识别数', maxc)
+
+        types = QComboBox(); types.setObjectName('barcodeTypes')
+        for lab, val in (('全部', 'all'), ('QR', 'qr'), ('一维', 'linear'), ('DataMatrix', 'datamatrix')):
+            types.addItem(lab, val)
+        cur = str(self.params.get('types') or 'all')
+        idx = max(0, types.findData(cur))
+        types.setCurrentIndex(idx)
+        types.currentIndexChanged.connect(
+            lambda _i: self._set_param('types', types.currentData() or 'all')
+        )
+        form.addRow('码制过滤', types)
+
+        out_var = QLineEdit(str(self.params.get('resultVar') or 'barcode'))
+        out_var.setObjectName('barcodeResultVar')
+        out_var.editingFinished.connect(
+            lambda: self._set_param('resultVar', out_var.text().strip() or 'barcode')
+        )
+        form.addRow('结果变量前缀', out_var)
+
+        je = OrangeSwitch(bool(self.params.get('judgeEnable', True)))
+        je.setObjectName('barcodeJudgeEnable')
+        je.toggled.connect(lambda c: self._set_param('judgeEnable', bool(c)))
+        form.addRow('结果判断使能', je)
+
+        exp = QLineEdit(str(self.params.get('expectedText') or ''))
+        exp.setObjectName('barcodeExpectedText')
+        exp.setPlaceholderText('期望串（空=只看数量门限）')
+        exp.editingFinished.connect(lambda: self._set_param('expectedText', exp.text()))
+        form.addRow('期望文本/ID', exp)
+
+        jmin = QSpinBox(); jmin.setRange(0, 64)
+        jmin.setValue(int(self.params.get('judgeMinCount') or 1))
+        jmin.setObjectName('barcodeJudgeMinCount')
+        jmin.valueChanged.connect(lambda v: self._set_param('judgeMinCount', int(v)))
+        form.addRow('判定最少码数', jmin)
+
+        jmax = QSpinBox(); jmax.setRange(0, 64)
+        jmax.setValue(int(self.params.get('judgeMaxCount') or 0))
+        jmax.setObjectName('barcodeJudgeMaxCount')
+        jmax.setToolTip('0 = 不设上限')
+        jmax.valueChanged.connect(lambda v: self._set_param('judgeMaxCount', int(v)))
+        form.addRow('判定最多码数', jmax)
+
+        for key, lab in (
+            ('showOverlay', '显示叠层'),
+            ('showBoxes', '显示角点框'),
+            ('showText', '显示解码文本'),
+            ('showFormat', '显示码制'),
+            ('showIndex', '显示序号'),
+            ('writeFlowVars', '写入流程变量'),
+        ):
+            sw = OrangeSwitch(bool(self.params.get(key, True)))
+            sw.setObjectName(f'barcode_{key}')
+            sw.toggled.connect(lambda c, k=key: self._set_param(k, bool(c)))
+            form.addRow(lab, sw)
+        return w
+
+    def _set_name(self, name: str):
+        name = (name or '').strip() or '条码识别'
+        if self.step.get('name') != name:
+            self.step['name'] = name
+            self._emit()
+
+    def _build_result_tab(self) -> QWidget:
+        w = QWidget()
+        form = QFormLayout(w)
+
+        self._chrome_lab = QLabel('码·')
+        self._chrome_lab.setObjectName('barcodeChromeBadge')
+        self._chrome_lab.setStyleSheet(
+            'color:#0d0;font-size:14px;font-weight:600;padding:4px 8px;'
+            'background:#1a2220;border-radius:4px;'
+        )
+        form.addRow('结果徽标', self._chrome_lab)
+
+        self._live_lab = QLabel('实况：尚未运行')
+        self._live_lab.setObjectName('barcodeLiveBind')
+        self._live_lab.setWordWrap(True)
+        self._live_lab.setStyleSheet(
+            'color:#9ad;font-size:11px;padding:6px 8px;background:#1e2228;border-radius:4px;'
+        )
+        form.addRow('Host 实况', self._live_lab)
+
+        brow = QHBoxLayout()
+        b_ref = QPushButton('刷新实况')
+        b_ref.setObjectName('barcodeLiveRefreshBtn')
+        b_ref.clicked.connect(self._refresh_live)
+        brow.addWidget(b_ref)
+        b_demo = QPushButton('软演示明细')
+        b_demo.setObjectName('barcodeSoftDemoBtn')
+        b_demo.setToolTip('填入确定性软演示多码 items（无 Halcon / 无相机）')
+        b_demo.clicked.connect(self._soft_demo_barcode_density)
+        brow.addWidget(b_demo)
+        brow.addStretch(1)
+        form.addRow(brow)
+
+        self._items_table = QTableWidget(0, 8)
+        self._items_table.setObjectName('barcodeItemsTable')
+        self._items_table.setHorizontalHeaderLabels(
+            ['#', '文本', '码制', '中心X', '中心Y', '宽', '高', '判定']
+        )
+        self._items_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._items_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._items_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._items_table.setMaximumHeight(180)
+        form.addRow('多码明细', self._items_table)
+
+        self._density_table = QTableWidget(0, 2)
+        self._density_table.setObjectName('barcodeDensityTable')
+        self._density_table.setHorizontalHeaderLabels(['字段', '值'])
+        self._density_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self._density_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
+        self._density_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._density_table.setMaximumHeight(140)
+        form.addRow('密度摘要', self._density_table)
+
+        try:
+            self._refresh_live()
+        except Exception:
+            pass
+        return w
+
+    def _soft_demo_barcode_density(self):
+        from desktop.barcode_id_chrome import soft_demo_barcode_result, summarize_barcode
+        demo = soft_demo_barcode_result(
+            n=2, ok=True,
+            expected=str(self.params.get('expectedText') or 'MACHINE-QR-2026'),
+        )
+        self._apply_barcode_density(summarize_barcode(demo, params=self.params), source='soft-demo')
+
+    def _apply_barcode_density(self, summ, *, source: str = ''):
+        summ = summ if isinstance(summ, dict) else {}
+        chrome = summ.get('chrome') or '码·'
+        lab = getattr(self, '_chrome_lab', None)
+        if lab is not None:
+            lab.setText(str(chrome))
+            jok = summ.get('judgeOk')
+            if jok is True:
+                lab.setStyleSheet(
+                    'color:#0d0;font-size:14px;font-weight:600;padding:4px 8px;'
+                    'background:#1a2220;border-radius:4px;'
+                )
+            elif jok is False:
+                lab.setStyleSheet(
+                    'color:#f55;font-size:14px;font-weight:600;padding:4px 8px;'
+                    'background:#2a1a1a;border-radius:4px;'
+                )
+            else:
+                lab.setStyleSheet(
+                    'color:#fa0;font-size:14px;font-weight:600;padding:4px 8px;'
+                    'background:#2a2418;border-radius:4px;'
+                )
+        self._fill_barcode_items(summ.get('rows') or [])
+        dt = getattr(self, '_density_table', None)
+        if dt is not None:
+            from desktop.barcode_id_chrome import density_summary_rows
+            dt.setRowCount(0)
+            for r in density_summary_rows(summ):
+                i = dt.rowCount(); dt.insertRow(i)
+                dt.setItem(i, 0, QTableWidgetItem(str(r.get('key') or '')))
+                dt.setItem(i, 1, QTableWidgetItem(str(r.get('value'))))
+        live = getattr(self, '_live_lab', None)
+        if live is not None and summ.get('summary'):
+            src = f' · 源:{source}' if source else ''
+            live.setText(f"实况：[{chrome}] {summ.get('summary')}{src}")
+
+    def _fill_barcode_items(self, items):
+        table = getattr(self, '_items_table', None)
+        if table is None:
+            return
+        from desktop.barcode_id_chrome import build_barcode_rows, format_row_cells
+        rows = items
+        if rows and isinstance(rows[0], dict) and 'judgeStatus' in rows[0] and 'format' in rows[0]:
+            pass
+        else:
+            rows = build_barcode_rows(items, params=self.params)
+        table.setRowCount(0)
+        for r in rows:
+            if not isinstance(r, dict):
+                continue
+            i = table.rowCount(); table.insertRow(i)
+            cells = format_row_cells(r)
+            st = str(r.get('judgeStatus') or '—')
+            for c, t in enumerate(cells):
+                it = QTableWidgetItem(t)
+                if st == 'OK':
+                    it.setForeground(Qt.GlobalColor.green)
+                elif st == 'NG':
+                    it.setForeground(Qt.GlobalColor.red)
+                table.setItem(i, c, it)
+
+    def _refresh_live(self):
+        lab = self._live_lab
+        if lab is None:
+            return
+        res = self._find_step_result()
+        if not res:
+            lab.setText('实况：尚无本模块运行结果（先 ▶ 单次）')
+            self._fill_barcode_items([])
+            return
+        bits = []
+        for k in ('status', 'count', 'text', 'passed', 'judgeOk', 'judgeStatus'):
+            if k in res and res[k] is not None:
+                val = res[k]
+                if k == 'text' and isinstance(val, str) and len(val) > 48:
+                    val = val[:48] + '…'
+                bits.append(f'{k}={val}')
+        items = res.get('items') or res.get('codes') or []
+        self._fill_barcode_items(items if isinstance(items, list) else [])
+        flow = ((self._host_last().get('variables') or {}).get('flow') or {})
+        prefix = str(self.params.get('resultVar') or 'barcode')
+        for suffix in ('', '_text', '_count', '_ok', '_judgeOk', 'Count', 'Text', 'Ok'):
+            key = prefix if suffix == '' else (
+                prefix + suffix if suffix.startswith('_') else prefix + suffix
+            )
+            if key in flow:
+                bits.append(f'flow.{key}={flow[key]}')
+        for k in ('barcodeCount', 'barcodeText', 'barcodeOk', 'passGate', 'codeCount', 'codeText'):
+            if k in flow:
+                bits.append(f'flow.{k}={flow[k]}')
+        lab.setText('实况：' + (' · '.join(bits[:12]) if bits else str(list(res.keys())[:8])))
+        try:
+            from desktop.barcode_id_chrome import summarize_barcode
+            self._apply_barcode_density(summarize_barcode(res, params=self.params), source='engine')
         except Exception:
             pass
