@@ -805,6 +805,116 @@ class MainWindow(QMainWindow):
         if not name:return
         self.open_project_file(Path(name))
 
+
+    def _seed_host_var_watch_from_project(self, project=None, *, label: str = ''):
+        """样张/方案打开 → 自动种子 HostVarWatchBoard（watchKeys / resultVar）。"""
+        proj = project
+        if proj is None:
+            try:
+                proj = self.document.project
+            except Exception:
+                proj = None
+        if not isinstance(proj, dict):
+            return []
+        keys = []
+        try:
+            from desktop.host_var_watch import collect_watch_keys_from_project
+            keys = collect_watch_keys_from_project(proj)
+        except Exception:
+            keys = []
+        # Keep on main window for late dialog open
+        self._host_watch_seed_keys = list(keys)
+        self._host_watch_seed_label = label or str(proj.get('name') or '')
+        # Live dialog if already open
+        try:
+            dlg = (self.dialogs or {}).get('var_watch')
+            if dlg is not None and hasattr(dlg, 'board'):
+                dlg.board.bind(self.document, getattr(self, 'last_result', None))
+                dlg.board.seed_watch_keys(keys, label=self._host_watch_seed_label)
+        except Exception:
+            pass
+        if keys:
+            try:
+                self.log(f'变量监视已种子 {len(keys)} 项 · {self._host_watch_seed_label or "—"}')
+            except Exception:
+                pass
+        return keys
+
+    def _measure_badge_for_result(self, bag) -> str:
+        """Derive OK/NG from a cached filmstrip last_result (measure-focused)."""
+        if not isinstance(bag, dict):
+            return ''
+        records = bag.get('results') or []
+        if not isinstance(records, list):
+            records = []
+        focus = {
+            'geometry', 'caliper', 'measure', 'locate', 'match', 'template_match',
+            'line_intersect', 'point_distance', 'point_line_distance',
+            'defects', 'ocr', 'blob', 'fixture',
+        }
+        saw_ok = False
+        saw_ng = False
+        for rec in records:
+            if not isinstance(rec, dict):
+                continue
+            op = str(rec.get('operation') or rec.get('op') or '')
+            judge = rec.get('judgeOk')
+            if judge is None:
+                judge = rec.get('ok')
+            out = rec.get('outputs') if isinstance(rec.get('outputs'), dict) else {}
+            if judge is None and isinstance(out, dict) and 'judgeOk' in out:
+                judge = out.get('judgeOk')
+            # also flow vars in bag
+            if judge is None:
+                vars_bag = (bag.get('variables') or {}).get('flow') if isinstance(bag.get('variables'), dict) else None
+                if isinstance(vars_bag, dict):
+                    for k, v in vars_bag.items():
+                        if str(k).endswith('_judgeOk') or str(k) in ('passGate', 'ixJudge', 'pldJudge'):
+                            if v is False or v == 0 or v == '0' or str(v).lower() in ('false', 'ng', 'fail'):
+                                saw_ng = True
+                            elif v is True or v == 1 or v == '1' or str(v).lower() in ('true', 'ok', 'pass'):
+                                saw_ok = True
+            if judge is None and op and op not in focus:
+                continue
+            if judge is True:
+                saw_ok = True
+            elif judge is False:
+                saw_ng = True
+        if saw_ng:
+            return 'NG'
+        if saw_ok:
+            return 'OK'
+        # overall state fallback
+        st = str(bag.get('state') or '').lower()
+        if st == 'failed':
+            return 'NG'
+        if st == 'completed' and records:
+            return 'OK'
+        return ''
+
+    def _sync_filmstrip_measure_badges(self):
+        """Push OK/NG measure badges onto filmstrip + compare strip from cache."""
+        cache = getattr(self, '_filmstrip_results', None) or {}
+        badges = {}
+        for path, bag in cache.items():
+            tag = self._measure_badge_for_result(bag)
+            if tag:
+                badges[str(path)] = tag
+        try:
+            fs = getattr(self, 'filmstrip', None)
+            if fs is not None and hasattr(fs, 'set_frame_measure_badges'):
+                fs.set_frame_measure_badges(badges)
+        except Exception:
+            pass
+        try:
+            strip = getattr(self, 'compare_strip', None)
+            if strip is not None and hasattr(strip, 'set_path_badges'):
+                # only badge paths currently on compare strip; still store full map
+                strip.set_path_badges(badges, refresh=bool(getattr(strip, '_paths', None)))
+        except Exception:
+            pass
+        return badges
+
     def open_project_file(self, path):
         path=Path(path)
         if not path.is_file():raise ValueError('工程不存在：'+str(path))
@@ -854,6 +964,10 @@ class MainWindow(QMainWindow):
                 self.demo_notice.hide()
             self.refresh_flow_tabs()
             self._remember_recent(path)
+            try:
+                self._seed_host_var_watch_from_project(project, label=path.name)
+            except Exception:
+                pass
             QTimer.singleShot(300, self.maybe_warm_camera)
             # Open-and-run: auto-load first local sourceConfig image into global 图像
             QTimer.singleShot(50, lambda: self.guard(lambda: self._autoload_source_image(force=True)))
@@ -1496,6 +1610,10 @@ class MainWindow(QMainWindow):
                 if strip is not None:
                     if multi and len(multi) >= 2:
                         strip.set_paths(multi, active=self._filmstrip_compare_path)
+                        try:
+                            self._sync_filmstrip_measure_badges()
+                        except Exception:
+                            pass
                     elif not multi:
                         strip.clear()
             except Exception:
@@ -1774,6 +1892,10 @@ class MainWindow(QMainWindow):
                 # cap 32 entries, drop oldest by insertion order
                 while len(cache) > 32:
                     cache.pop(next(iter(cache)))
+                try:
+                    self._sync_filmstrip_measure_badges()
+                except Exception:
+                    pass
         except Exception:
             pass
         if release:self.set_busy(False)
@@ -4285,11 +4407,34 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         try:
+            enter_hint = ''
+            if stats.get('enterRun') and stats.get('trialOnce'):
+                enter_hint = ' · 下一步：运行态单次试跑'
+            elif stats.get('enterRun'):
+                enter_hint = ' · 下一步：运行态 · 点 ▶ 开始'
+            elif stats.get('trialOnce'):
+                enter_hint = ' · 下一步：单次试跑'
+            else:
+                enter_hint = ' · 下一步：点工具栏 ▶ 运行'
             self.statusBar().showMessage(
                 f"换型已落盘 · {name or '—'}"
                 + (f' / {variant}' if variant else '')
-                + f" · 写入{stats.get('applied', 0)} 跳过{stats.get('skipped', 0)}",
-                5000,
+                + f" · 写入{stats.get('applied', 0)} 跳过{stats.get('skipped', 0)}"
+                + enter_hint,
+                8000,
+            )
+        except Exception:
+            pass
+        # Soft-enable run path (no hardware): ensure run action available in design
+        try:
+            if hasattr(self, 'run_action') and self.run_action is not None:
+                self.run_action.setEnabled(not getattr(self, 'busy', False))
+            # toast-like log line for operators
+            self.log(
+                f"换型闭环就绪 · {name or '—'}"
+                + (f'/{variant}' if variant else '')
+                + (' · 将切运行' if stats.get('enterRun') else ' · 可 ▶ 运行')
+                + (' · 将试跑' if stats.get('trialOnce') else '')
             )
         except Exception:
             pass
@@ -5083,6 +5228,17 @@ class MainWindow(QMainWindow):
                     lambda: dialog.board.set_last_result(getattr(self,'last_result',None)))
             except Exception:
                 pass
+            try:
+                keys = getattr(self, '_host_watch_seed_keys', None)
+                if keys:
+                    dialog.board.seed_watch_keys(keys, label=getattr(self, '_host_watch_seed_label', '') or '')
+                else:
+                    dialog.board.seed_from_project(
+                        getattr(self.document, 'project', None),
+                        label=str((getattr(self.document, 'project', None) or {}).get('name') or ''),
+                    )
+            except Exception:
+                pass
         elif key=='variables':
             from desktop.variables_dialog import VariablesDialog
             dialog=VariablesDialog(self.document,self.backend,self)
@@ -5115,6 +5271,10 @@ class MainWindow(QMainWindow):
         if self.busy or not self.confirm_discard():return
         self.document.load(project);self.filename=None;self.image='';self.last_result=None
         self.input_view.show_data('');self.output_view.show_data('');self.clear_cloud();self.results.set_results([]);self.flow.fit()
+        try:
+            self._seed_host_var_watch_from_project(project, label=str((project or {}).get('name') or ''))
+        except Exception:
+            pass
         try:
             self.refresh_variant_chip()
         except Exception:

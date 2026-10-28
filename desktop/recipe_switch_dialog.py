@@ -66,7 +66,26 @@ class RecipeSwitchDialog(QDialog):
         loop.addStretch(1)
         lay.addLayout(loop)
 
+        self._post_banner = QLabel('换型后：套用 → 可选切运行 / 单次试跑 → 状态栏提示可 ▶ 运行')
+        self._post_banner.setObjectName('recipePostApplyBanner')
+        self._post_banner.setWordWrap(True)
+        self._post_banner.setStyleSheet(
+            'background:#1a2430;color:#9ad;border:1px solid #3a5a7a;border-radius:4px;'
+            'padding:6px 8px;font-size:12px;'
+        )
+        self._post_banner.setToolTip('套用成功后此处提示下一步：切运行 / 试跑 / 手动 ▶')
+        lay.addWidget(self._post_banner)
+
         row = QHBoxLayout()
+        # 细妆：明确「去运行」入口（无硬件）
+        self._goto_run_btn = QPushButton('套用并去运行')
+        self._goto_run_btn.setObjectName('recipeGotoRunBtn')
+        self._goto_run_btn.setStyleSheet(
+            'QPushButton{background:#2e7d32;color:#fff;font-weight:600;padding:6px 12px;}'
+        )
+        self._goto_run_btn.setToolTip('勾选切运行态后一键套用当前选中配方并进入运行闭环')
+        self._goto_run_btn.clicked.connect(self._apply_and_goto_run)
+        row.addWidget(self._goto_run_btn)
         close_btn = QPushButton('关闭')
         close_btn.clicked.connect(self.reject)
         row.addStretch(1)
@@ -371,6 +390,55 @@ class RecipeSwitchDialog(QDialog):
                 dlist.addItem(QListWidgetItem(str(err)))
 
 
+
+    def _update_post_banner(self, stats=None, *, error: str = ''):
+        banner = getattr(self, '_post_banner', None)
+        if banner is None:
+            return
+        if error:
+            banner.setText(f'换型失败：{error}')
+            banner.setStyleSheet(
+                'background:#3a1a1a;color:#f88;border:1px solid #a44;border-radius:4px;'
+                'padding:6px 8px;font-size:12px;font-weight:600;'
+            )
+            return
+        stats = stats or {}
+        name = str(stats.get('name') or '')
+        enter = bool(stats.get('enterRun'))
+        trial = bool(stats.get('trialOnce'))
+        applied = stats.get('applied', 0)
+        skipped = stats.get('skipped', 0)
+        bits = [f'已套用「{name or "—"}」· 写入{applied} 跳过{skipped}']
+        if enter and trial:
+            bits.append('下一步：切运行态 → 自动单次试跑')
+        elif enter:
+            bits.append('下一步：已切/将切运行态 · 点 ▶ 开始 或工具栏运行')
+        elif trial:
+            bits.append('下一步：设计态单次试跑（未勾选切运行）')
+        else:
+            bits.append('下一步：关闭本窗 → 点工具栏 ▶ 运行（或勾选上方闭环选项再套用）')
+        banner.setText(' · '.join(bits))
+        banner.setStyleSheet(
+            'background:#1a2e24;color:#8fd98f;border:1px solid #2e7d32;border-radius:4px;'
+            'padding:6px 8px;font-size:12px;font-weight:600;'
+        )
+
+    def _apply_and_goto_run(self):
+        """Force enterRun on, then apply selected (project tab) for clear apply→run path."""
+        if getattr(self, '_chk_enter_run', None) is not None:
+            self._chk_enter_run.setChecked(True)
+        # Prefer project-tab selection; fall back to library measure trial
+        rid = self._selected_id()
+        if rid:
+            self._apply_selected()
+        else:
+            # try library measure chain as soft fallback
+            try:
+                self._load_measure_chain_trial()
+            except Exception:
+                QMessageBox.information(self, '去运行', '请先在「本方案配方」选中一条，或使用工程库换型。')
+                return
+
     def _stamp_post_apply(self, stats: dict) -> dict:
         """细妆⑱：把闭环选项写入 stats，供 MainWindow.sync_after_recipe_apply."""
         stats = dict(stats or {})
@@ -408,9 +476,13 @@ class RecipeSwitchDialog(QDialog):
         stats = self._stamp_post_apply(stats)
         self.recipeApplied.emit(stats)
         self.recipesChanged.emit()
+        self._update_post_banner(stats)
+        next_hint = '已勾选切运行' if stats.get('enterRun') else '可点「套用并去运行」或工具栏 ▶'
+        if stats.get('trialOnce'):
+            next_hint += ' · 将单次试跑'
         QMessageBox.information(
-            self, '换型完成',
-            f"已套用「{stats.get('name')}」\n匹配写入 {stats.get('applied')} · 跳过 {stats.get('skipped')} · 变量 {stats.get('varsApplied')}",
+            self, '换型完成 · 可运行',
+            f"已套用「{stats.get('name')}」\n匹配写入 {stats.get('applied')} · 跳过 {stats.get('skipped')} · 变量 {stats.get('varsApplied')}\n下一步：{next_hint}",
         )
 
     def _parse_csv_field(self, edit):
@@ -472,6 +544,7 @@ class RecipeSwitchDialog(QDialog):
         self.refresh()
         stats = self._stamp_post_apply(stats)
         self.recipeApplied.emit(stats)
+        self._update_post_banner(stats)
         self.recipesChanged.emit()
         QMessageBox.information(
             self, '部分套用完成',

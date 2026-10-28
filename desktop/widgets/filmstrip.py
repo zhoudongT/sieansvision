@@ -2,7 +2,7 @@
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QSettings, Signal, QSize, QTimer, QEvent, QPoint
-from PySide6.QtGui import QIcon, QPixmap, QImage, QAction
+from PySide6.QtGui import QIcon, QPixmap, QImage, QAction, QColor
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QListWidget,
     QListWidgetItem, QAbstractItemView, QFileDialog, QMessageBox, QComboBox,
@@ -787,6 +787,52 @@ class FilmstripBar(QWidget):
         lab.setText(f'{head}<br/>{body}' if body else head)
         lab.setVisible(True)
 
+
+    def set_frame_measure_badges(self, badges=None):
+        """Annotate main filmstrip thumb tooltips/foreground with OK/NG measure tags.
+
+        badges: {path: 'OK'|'NG'|bool}. Does not change path list.
+        """
+        bag = {}
+        for k, v in (badges or {}).items():
+            key = str(k or '').strip()
+            if not key:
+                continue
+            if v is True or str(v).upper() in ('OK', 'PASS', '1', 'TRUE'):
+                bag[key] = 'OK'
+            elif v is False or str(v).upper() in ('NG', 'FAIL', '0', 'FALSE'):
+                bag[key] = 'NG'
+            elif v:
+                bag[key] = str(v)[:8]
+        self._frame_measure_badges = bag
+        thumbs = getattr(self, 'thumbs', None)
+        if thumbs is None:
+            return
+        for i in range(thumbs.count()):
+            it = thumbs.item(i)
+            if it is None:
+                continue
+            path = it.data(Qt.ItemDataRole.UserRole) or ''
+            tag = bag.get(path) or ''
+            # preserve leaf name; prefix badge
+            leaf = Path(path).name if path else (it.text() or '')
+            # strip prior [OK]/[NG] prefix
+            import re as _re
+            leaf = _re.sub(r'^\[(OK|NG)\]\s*', '', leaf)
+            if tag:
+                it.setText(f'[{tag}] {leaf}')
+                if tag == 'OK':
+                    it.setForeground(QColor('#2e7d32'))
+                elif tag == 'NG':
+                    it.setForeground(QColor('#c62828'))
+                tip0 = path or ''
+                it.setToolTip(f'{tip0}\n测量判定：{tag}' if tip0 else f'测量判定：{tag}')
+            else:
+                it.setText(leaf)
+                it.setForeground(QColor('#c8d0d8'))
+                if path:
+                    it.setToolTip(path)
+
     def clear_all(self):
         if not self._paths:
             return
@@ -869,6 +915,7 @@ class CompareThumbStrip(QWidget):
         self.setObjectName('compareThumbStrip')
         self.setFixedWidth(96)
         self._paths = []
+        self._path_badges = {}  # path → 'OK'|'NG'|str tag (measure compare)
         self._baseline_paths = []  # wave26: order at set_paths / unlock baseline
         self._order_locked = False
         self._order_undo_stack = []  # wave27: 复位/重排撤销栈
@@ -1013,9 +1060,20 @@ class CompareThumbStrip(QWidget):
         active_row = -1
         for i, fp in enumerate(paths):
             leaf = Path(fp).name
-            item = QListWidgetItem(leaf)
+            badge = (getattr(self, '_path_badges', {}) or {}).get(fp) or ''
+            label = f'{leaf}'
+            if badge:
+                label = f'[{badge}] {leaf}'
+            item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, fp)
-            item.setToolTip(fp)
+            tip = fp
+            if badge:
+                tip = f'{fp}\n测量判定：{badge}'
+            item.setToolTip(tip)
+            if str(badge).upper() == 'OK':
+                item.setForeground(QColor('#2e7d32'))
+            elif str(badge).upper() == 'NG':
+                item.setForeground(QColor('#c62828'))
             pix = QPixmap(fp)
             if not pix.isNull():
                 item.setIcon(QIcon(pix.scaled(
@@ -1033,6 +1091,46 @@ class CompareThumbStrip(QWidget):
 
     def clear(self):
         self.set_paths([])
+
+    def set_path_badges(self, badges=None, *, refresh=True):
+        """path → 'OK'|'NG'|custom — measure badges on compare strip thumbs."""
+        bag = {}
+        for k, v in (badges or {}).items():
+            key = str(k or '').strip()
+            if not key:
+                continue
+            if v is True:
+                bag[key] = 'OK'
+                continue
+            if v is False:
+                bag[key] = 'NG'
+                continue
+            tag = str(v).strip().upper() if v is not None else ''
+            if tag in ('OK', 'PASS', 'TRUE', '1'):
+                bag[key] = 'OK'
+            elif tag in ('NG', 'FAIL', 'FALSE', '0'):
+                bag[key] = 'NG'
+            elif v:
+                bag[key] = str(v)[:8]
+        self._path_badges = bag
+        if refresh and self._paths:
+            active = ''
+            try:
+                it = self._list.currentItem()
+                if it is not None:
+                    active = it.data(Qt.ItemDataRole.UserRole) or ''
+            except Exception:
+                active = ''
+            self.set_paths(list(self._paths), active=active, as_baseline=False)
+
+    def path_badges(self) -> dict:
+        return dict(getattr(self, '_path_badges', {}) or {})
+
+    def clear_path_badges(self, *, refresh=True):
+        self._path_badges = {}
+        if refresh and self._paths:
+            self.set_paths(list(self._paths), as_baseline=False)
+
 
     def _read_list_paths(self):
         out = []

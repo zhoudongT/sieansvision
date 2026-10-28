@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Host 变量监视板 — 只读实况 + 测量链/Comm/${} 过滤（VisionMaster 变量监视风格）。"""
+"""Host 变量监视板 — 只读实况 + 测量链/Comm/${} 过滤（VisionMaster 变量监视风格）。
+
+细妆 wave：样张 open 自动种子 watchKeys/resultVar；Comm/flow `${}` 实况展开。
+"""
 from __future__ import annotations
 
 import re
@@ -39,6 +42,143 @@ def classify_watch_key(name: str) -> str:
     return 'other'
 
 
+def collect_watch_keys_from_project(project=None) -> list:
+    """Harvest watchKeys / resultVar / judge aliases from a project (sample open seed)."""
+    keys = []
+    seen = set()
+
+    def _add(name):
+        n = str(name or '').strip()
+        if not n or n in seen:
+            return
+        seen.add(n)
+        keys.append(n)
+
+    proj = project if isinstance(project, dict) else {}
+    meta = ((proj.get('runUi') or {}).get('meta') or {})
+    for k in (meta.get('watchKeys') or []):
+        _add(k)
+    # top-level meta / hostWatch aliases
+    for bag in (proj.get('meta') or {}, proj.get('hostWatch') or {}):
+        if isinstance(bag, dict):
+            for k in (bag.get('watchKeys') or bag.get('keys') or []):
+                _add(k)
+        elif isinstance(bag, (list, tuple)):
+            for k in bag:
+                _add(k)
+    for step in (proj.get('steps') or []):
+        if not isinstance(step, dict):
+            continue
+        params = step.get('params') if isinstance(step.get('params'), dict) else {}
+        rv = params.get('resultVar') or step.get('resultVar')
+        if rv:
+            _add(rv)
+            # common judge / scalar aliases seeded for Host board
+            base = str(rv).strip()
+            if base:
+                _add(f'{base}_judgeOk')
+                _add(f'{base}_ok')
+                if params.get('judgeEnable') or step.get('operation') in (
+                    'line_intersect', 'point_line_distance', 'point_distance',
+                    'geometry', 'measure',
+                ):
+                    _add(f'{base}_x')
+                    _add(f'{base}_y')
+                    _add(f'{base}_distance')
+    # seed passGate / common gate when present in variables
+    vars_ = proj.get('variables') or {}
+    if isinstance(vars_, dict):
+        for k in ('passGate', 'ixJudge', 'pldJudge'):
+            if k in vars_:
+                _add(k)
+    return keys
+
+
+def expand_watch_value(project, value, last_result=None):
+    """Live-expand Comm/flow `${}` in a watch value; leave non-templates untouched."""
+    if value is None:
+        return value, False
+    if isinstance(value, (int, float, bool)):
+        return value, False
+    raw = str(value)
+    if '${' not in raw:
+        return value, False
+    # Prefer runtime flow overlay into a shallow project copy for expand
+    proj = project if isinstance(project, dict) else {}
+    try:
+        from desktop.comm_manager import expand_payload_placeholders
+    except Exception:
+        return value, False
+    overlay = None
+    if last_result and isinstance(last_result, dict):
+        vars_bag = last_result.get('variables') or {}
+        flow = vars_bag.get('flow') if isinstance(vars_bag, dict) else None
+        if isinstance(flow, dict) and flow:
+            overlay = dict(proj)
+            merged = dict(proj.get('variables') or {})
+            merged.update(flow)
+            overlay['variables'] = merged
+    try:
+        expanded = expand_payload_placeholders(overlay or proj, raw)
+    except Exception:
+        return value, False
+    if expanded == raw:
+        return value, False
+    return expanded, True
+
+
+def collect_comm_template_entries(document=None, last_result=None) -> list:
+    """Synthesize Comm send-event rows with live-expanded `${}` payloads."""
+    entries = []
+    try:
+        proj = getattr(document, 'project', None) or {}
+    except Exception:
+        proj = {}
+    if not isinstance(proj, dict):
+        return entries
+    cm = proj.get('commManager') or {}
+    events = []
+    if isinstance(cm, dict):
+        for bag_key in ('sendEvents', 'events', 'send'):
+            bag = cm.get(bag_key)
+            if isinstance(bag, list):
+                events.extend(bag)
+    try:
+        from desktop.comm_manager import (
+            expand_payload_placeholders, resolve_send_event_payload,
+        )
+    except Exception:
+        return entries
+    # merge runtime flow for expand
+    overlay = dict(proj)
+    if last_result and isinstance(last_result, dict):
+        vars_bag = last_result.get('variables') or {}
+        flow = vars_bag.get('flow') if isinstance(vars_bag, dict) else None
+        if isinstance(flow, dict):
+            merged = dict(proj.get('variables') or {})
+            merged.update(flow)
+            overlay['variables'] = merged
+    for i, ev in enumerate(events):
+        if not isinstance(ev, dict):
+            continue
+        name = str(ev.get('name') or ev.get('id') or f'send#{i+1}')
+        msg = ev.get('message') if ev.get('message') is not None else ev.get('topic')
+        msg = '' if msg is None else str(msg)
+        try:
+            payload, src = resolve_send_event_payload(overlay, ev)
+        except Exception:
+            payload = expand_payload_placeholders(overlay, msg) if '${' in msg else msg
+            src = 'message' if payload else 'empty'
+        # always expose the template expression itself when present
+        if '${' in msg:
+            entries.append(('comm', f'${{{name}}}', msg))
+            entries.append(('comm', f'commSend:{name}', payload if payload else '(空)'))
+            entries.append(('comm', f'commSend:{name}:src', src))
+        elif payload:
+            entries.append(('comm', f'commSend:{name}', payload))
+    return entries
+
+
 def filter_entries(entries: Iterable[tuple], preset: str, query: str) -> list:
     q = (query or '').strip().lower()
     out = []
@@ -52,7 +192,7 @@ def filter_entries(entries: Iterable[tuple], preset: str, query: str) -> list:
             continue
         if preset == 'template' and cat != 'template':
             # also show keys that look like flow inject commonly used in ${}
-            if '${' not in str(name):
+            if '${' not in str(name) and '${' not in str(value):
                 continue
         if preset == 'inject' and cat == 'other':
             continue
@@ -62,8 +202,12 @@ def filter_entries(entries: Iterable[tuple], preset: str, query: str) -> list:
     return out
 
 
-def collect_flow_entries(document=None, last_result=None, extra_flow: dict | None = None) -> list:
-    """Gather (scope, name, value) from project variables + last_result.variables."""
+def collect_flow_entries(document=None, last_result=None, extra_flow: dict | None = None,
+                         pinned_keys: list | None = None) -> list:
+    """Gather (scope, name, value) from project variables + last_result.variables.
+
+    pinned_keys: seed rows (e.g. watchKeys/resultVar) shown even before first run.
+    """
     entries = []
     seen = set()
 
@@ -115,6 +259,24 @@ def collect_flow_entries(document=None, last_result=None, extra_flow: dict | Non
                     entries[idx[key]] = ('flow', str(k), v)
                 else:
                     entries.append(('flow', str(k), v))
+                    seen.add(key)
+
+    # Seed pinned watch keys (sample open) so board is useful before run
+    for name in (pinned_keys or []):
+        key = ('flow', str(name))
+        if key in seen:
+            continue
+        seen.add(key)
+        entries.append(('flow', str(name), None))  # placeholder → 待运行
+
+    # Comm `${}` live rows
+    for scope, name, value in collect_comm_template_entries(document, last_result):
+        key = (scope, name)
+        if key in seen:
+            continue
+        seen.add(key)
+        entries.append((scope, name, value))
+
     return entries
 
 
@@ -129,6 +291,8 @@ class HostVarWatchBoard(QWidget):
         self._document = None
         self._last_result = None
         self._auto = True
+        self._pinned_keys: list[str] = []
+        self._seed_label = ''
 
         root = QVBoxLayout(self)
         root.setContentsMargins(6, 6, 6, 6)
@@ -143,6 +307,10 @@ class HostVarWatchBoard(QWidget):
         self.count_lab.setObjectName('hostVarWatchCount')
         self.count_lab.setStyleSheet('color:#888;')
         head.addWidget(self.count_lab)
+        self.seed_lab = QLabel('')
+        self.seed_lab.setObjectName('hostVarWatchSeed')
+        self.seed_lab.setStyleSheet('color:#6a9;font-size:11px;')
+        head.addWidget(self.seed_lab)
         head.addStretch(1)
         root.addLayout(head)
 
@@ -169,21 +337,25 @@ class HostVarWatchBoard(QWidget):
         row.addWidget(self.refresh_btn)
         root.addLayout(row)
 
-        tip = QLabel('只读 · 运行后自动跟随 last_result.variables.flow / Comm 注入 / 测量链 resultVar')
+        tip = QLabel(
+            '只读 · 打开样张自动种子 watchKeys/resultVar · '
+            '运行后跟随 last_result · Comm/flow `${}` 实况展开'
+        )
         tip.setStyleSheet('color:#666;font-size:11px;')
         tip.setWordWrap(True)
         root.addWidget(tip)
 
-        self.table = QTableWidget(0, 4)
+        self.table = QTableWidget(0, 5)
         self.table.setObjectName('hostVarWatchTable')
-        self.table.setHorizontalHeaderLabels(['作用域', '名称', '值', '类'])
+        self.table.setHorizontalHeaderLabels(['作用域', '名称', '值', '展开', '类'])
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setAlternatingRowColors(True)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         root.addWidget(self.table, 1)
 
         self.preset.currentIndexChanged.connect(self.render)
@@ -202,6 +374,40 @@ class HostVarWatchBoard(QWidget):
     def set_last_result(self, result):
         self._last_result = result
         self.render()
+
+    def seed_watch_keys(self, keys=None, *, label: str = ''):
+        """Pin keys from sample open (watchKeys / resultVar) so board shows before run."""
+        cleaned = []
+        seen = set()
+        for k in (keys or []):
+            n = str(k or '').strip()
+            if not n or n in seen:
+                continue
+            seen.add(n)
+            cleaned.append(n)
+        self._pinned_keys = cleaned
+        self._seed_label = str(label or '')
+        if cleaned:
+            self.seed_lab.setText(
+                f'已种子 {len(cleaned)}' + (f' · {self._seed_label}' if self._seed_label else '')
+            )
+        else:
+            self.seed_lab.setText('')
+        self.render()
+
+    def seed_from_project(self, project=None, *, label: str = ''):
+        keys = collect_watch_keys_from_project(project)
+        self.seed_watch_keys(keys, label=label or (project or {}).get('name') or '')
+        # Prefer measure preset when measure keys dominate
+        measure_n = sum(1 for k in keys if classify_watch_key(k) == 'measure')
+        if measure_n >= 2:
+            idx = self.preset.findData('measure')
+            if idx >= 0:
+                self.preset.setCurrentIndex(idx)
+        return keys
+
+    def pinned_keys(self) -> list:
+        return list(self._pinned_keys)
 
     def _on_refresh_clicked(self):
         self.refreshRequested.emit()
@@ -225,7 +431,9 @@ class HostVarWatchBoard(QWidget):
             pass
 
     def render(self, *_):
-        entries = collect_flow_entries(self._document, self._last_result)
+        entries = collect_flow_entries(
+            self._document, self._last_result, pinned_keys=self._pinned_keys,
+        )
         preset = self.preset.currentData() or 'all'
         rows = filter_entries(entries, preset if preset != 'all' else 'all', self.search.text())
         # when preset all, filter_entries with 'all' — need to allow all
@@ -237,6 +445,12 @@ class HostVarWatchBoard(QWidget):
                 if q and q not in str(name).lower() and q not in str(scope).lower() and q not in str(value).lower():
                     continue
                 rows.append((scope, name, value, cat))
+
+        proj = {}
+        try:
+            proj = getattr(self._document, 'project', None) or {}
+        except Exception:
+            proj = {}
 
         self.table.setRowCount(0)
         cat_colors = {
@@ -256,12 +470,29 @@ class HostVarWatchBoard(QWidget):
         for scope, name, value, cat in rows:
             r = self.table.rowCount()
             self.table.insertRow(r)
-            texts = [str(scope), str(name), _fmt(value), cat_labels.get(cat, '—')]
+            expanded, did = expand_watch_value(proj, value, self._last_result)
+            # For template-named keys that ARE the expression, expand against project
+            if not did and ('${' in str(name) or cat == 'template'):
+                expr = str(name) if '${' in str(name) else str(value or '')
+                if '${' in expr:
+                    expanded2, did2 = expand_watch_value(proj, expr, self._last_result)
+                    if did2:
+                        expanded, did = expanded2, True
+            val_txt = _fmt(value) if value is not None else '待运行'
+            exp_txt = _fmt(expanded) if did else ('—' if value is not None else '')
+            if did and str(expanded) == str(value):
+                exp_txt = '—'
+                did = False
+            texts = [str(scope), str(name), val_txt, exp_txt, cat_labels.get(cat, '—')]
             bg = cat_colors.get(cat)
             for c, text in enumerate(texts):
                 it = QTableWidgetItem(text)
                 if bg is not None:
                     it.setBackground(QBrush(bg))
+                if c == 3 and did:
+                    it.setForeground(QBrush(QColor('#8fd98f')))
+                if c == 2 and value is None:
+                    it.setForeground(QBrush(QColor('#888')))
                 self.table.setItem(r, c, it)
         self.count_lab.setText(f'{self.table.rowCount()} 项')
 
@@ -284,10 +515,17 @@ class HostVarWatchDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle('Host 变量监视板')
         self.setObjectName('hostVarWatchDialog')
-        self.resize(720, 480)
+        self.resize(780, 500)
         lay = QVBoxLayout(self)
         self.board = HostVarWatchBoard(self)
         self.board.bind(document, last_result)
+        # auto-seed from project if present
+        try:
+            proj = getattr(document, 'project', None)
+            if isinstance(proj, dict):
+                self.board.seed_from_project(proj, label=str(proj.get('name') or ''))
+        except Exception:
+            pass
         lay.addWidget(self.board, 1)
         bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         bb.rejected.connect(self.reject)

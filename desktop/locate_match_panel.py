@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTabWidget,
     QFormLayout, QLineEdit, QComboBox, QDoubleSpinBox, QSpinBox,
     QScrollArea, QFrame, QFileDialog, QCheckBox, QDialog, QDialogButtonBox,
-    QSlider,
+    QSlider, QListWidget, QListWidgetItem, QMessageBox, QInputDialog,
 )
 
 from desktop.widgets.switch import OrangeSwitch
@@ -55,6 +55,10 @@ def normalize_locate_params(params=None):
     p.setdefault('templatePath', '')
     p.setdefault('hasTemplate', False)
     p.setdefault('templateReady', False)
+    # 模板库：[{id,name,path,note}] — 工业 UX 选用/预览/增删（非 Halcon）
+    if not isinstance(p.get('templateLibrary'), list):
+        p['templateLibrary'] = []
+    p.setdefault('activeTemplateId', '')
     p.setdefault('showMatchBox', True)
     p.setdefault('showScore', True)
     p.setdefault('showContour', True)
@@ -371,10 +375,12 @@ class LocateMatchPanel(QWidget):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(10, 10, 10, 10)
+        lay.setSpacing(8)
 
         tip = QLabel(
-            'VisionMaster「灰度模板」：创建 / 载入灰度模板。' if (self.params.get('matchMode') == 'gray') else 'VisionMaster「特征模板」：创建 / 载入 / 编辑模板；对比度阈值与画笔在模板配置子窗。'
-            '创建模板… 打开对比度/画笔子窗；结果显示可开关匹配框/分数/搜索区/全画布描摹。'
+            'VisionMaster「灰度模板」：创建 / 载入 / 模板库选用。' if (self.params.get('matchMode') == 'gray')
+            else 'VisionMaster「特征模板」：创建 / 载入 / 模板库选用；对比度阈值与画笔在模板配置子窗。'
+            ' 模板库支持 加入 / 选用 / 预览 / 移除（本机文件，无 Halcon / 无云）。'
         )
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#555;')
@@ -382,14 +388,19 @@ class LocateMatchPanel(QWidget):
 
         form = QFormLayout()
         path_edit = QLineEdit(str(self.params.get('templatePath') or ''))
-        path_edit.setPlaceholderText('模板文件路径 / 方案内引用')
+        path_edit.setObjectName('locateTemplatePath')
+        path_edit.setPlaceholderText('当前选用模板路径 / 方案内引用')
         path_edit.editingFinished.connect(lambda: self._set_param('templatePath', path_edit.text().strip()))
-        form.addRow('模板路径', path_edit)
+        form.addRow('当前模板', path_edit)
+        self._tpl_path_edit = path_edit
 
         row = QHBoxLayout()
         load_btn = QPushButton('载入模板…')
+        load_btn.setObjectName('locateTplLoadBtn')
         create_btn = QPushButton('创建模板…')
-        clear_btn = QPushButton('清除')
+        create_btn.setObjectName('locateTplCreateBtn')
+        clear_btn = QPushButton('清除当前')
+        clear_btn.setObjectName('locateTplClearBtn')
 
         def _load():
             path, _ = QFileDialog.getOpenFileName(
@@ -399,6 +410,8 @@ class LocateMatchPanel(QWidget):
                 path_edit.setText(path)
                 self._set_param('templatePath', path)
                 self._set_param('hasTemplate', True)
+                self._set_param('templateReady', True)
+                self._sync_tpl_status()
 
         def _mark():
             gray = (self.params.get('matchMode') == 'gray')
@@ -410,16 +423,17 @@ class LocateMatchPanel(QWidget):
             if not str(self.params.get('templatePath') or '').strip():
                 self._set_param('templatePath', '（编辑器创建）')
                 path_edit.setText('（编辑器创建）')
-            status.setText('模板状态：已就绪（已创建/载入）')
-            status.setStyleSheet('font-weight:600;color:#2e7d32;')
+            self._set_param('hasTemplate', True)
+            self._set_param('templateReady', True)
+            self._sync_tpl_status()
 
         def _clear():
             path_edit.clear()
             self.params['templatePath'] = ''
             self.params['hasTemplate'] = False
             self.params['templateReady'] = False
-            status.setText('模板状态：未配置')
-            status.setStyleSheet('font-weight:600;color:#c62828;')
+            self.params['activeTemplateId'] = ''
+            self._sync_tpl_status()
             self._emit()
 
         load_btn.clicked.connect(_load)
@@ -432,14 +446,261 @@ class LocateMatchPanel(QWidget):
         form.addRow('操作', row)
         lay.addLayout(form)
 
+        # ---- 模板库（工业 UX：列表 + 加入/选用/预览/移除）----
+        lib_frame = QFrame()
+        lib_frame.setObjectName('locateTemplateLibraryFrame')
+        lib_frame.setStyleSheet(
+            'QFrame#locateTemplateLibraryFrame{border:1px solid #3a3f46;border-radius:4px;'
+            'background:#1a1e24;}'
+        )
+        lib_lay = QVBoxLayout(lib_frame)
+        lib_lay.setContentsMargins(8, 8, 8, 8)
+        lib_lay.setSpacing(6)
+        lib_head = QHBoxLayout()
+        lib_title = QLabel('模板库')
+        lib_title.setStyleSheet('font-weight:600;color:#c8d0d8;')
+        lib_head.addWidget(lib_title)
+        self._tpl_lib_count = QLabel('0')
+        self._tpl_lib_count.setObjectName('locateTplLibCount')
+        self._tpl_lib_count.setStyleSheet('color:#888;')
+        lib_head.addWidget(self._tpl_lib_count)
+        lib_head.addStretch(1)
+        lib_lay.addLayout(lib_head)
+
+        self._tpl_lib_list = QListWidget()
+        self._tpl_lib_list.setObjectName('locateTemplateLibraryList')
+        self._tpl_lib_list.setMinimumHeight(110)
+        self._tpl_lib_list.setStyleSheet(
+            'QListWidget{background:#12151a;color:#c8d0d8;font-size:12px;}'
+            'QListWidget::item:selected{background:#2a4a3a;}'
+        )
+        self._tpl_lib_list.setToolTip('双击选用 · 选中后可预览/移除')
+        self._tpl_lib_list.itemDoubleClicked.connect(lambda *_: self._tpl_lib_select())
+        self._tpl_lib_list.currentItemChanged.connect(lambda *_: self._tpl_lib_preview())
+        lib_lay.addWidget(self._tpl_lib_list)
+
+        self._tpl_lib_preview_lab = QLabel('预览：选中库条目查看路径/备注')
+        self._tpl_lib_preview_lab.setObjectName('locateTplLibPreview')
+        self._tpl_lib_preview_lab.setWordWrap(True)
+        self._tpl_lib_preview_lab.setStyleSheet('color:#8ab;font-size:11px;padding:2px 0;')
+        lib_lay.addWidget(self._tpl_lib_preview_lab)
+
+        lib_btns = QHBoxLayout()
+        add_btn = QPushButton('加入库')
+        add_btn.setObjectName('locateTplLibAddBtn')
+        add_btn.setToolTip('将当前模板路径加入模板库（可改名）')
+        add_btn.clicked.connect(self._tpl_lib_add)
+        sel_btn = QPushButton('选用')
+        sel_btn.setObjectName('locateTplLibSelectBtn')
+        sel_btn.setToolTip('将选中库条目设为当前模板')
+        sel_btn.clicked.connect(self._tpl_lib_select)
+        prev_btn = QPushButton('预览')
+        prev_btn.setObjectName('locateTplLibPreviewBtn')
+        prev_btn.clicked.connect(lambda *_: self._tpl_lib_preview())
+        rm_btn = QPushButton('移除')
+        rm_btn.setObjectName('locateTplLibRemoveBtn')
+        rm_btn.setToolTip('从模板库移除（不删磁盘文件）')
+        rm_btn.clicked.connect(self._tpl_lib_remove)
+        for b in (add_btn, sel_btn, prev_btn, rm_btn):
+            lib_btns.addWidget(b)
+        lib_btns.addStretch(1)
+        lib_lay.addLayout(lib_btns)
+        lay.addWidget(lib_frame)
+
         ready = bool(self.params.get('hasTemplate') or str(self.params.get('templatePath') or '').strip())
         status = QLabel('模板状态：已就绪（已创建/载入）' if ready else '模板状态：未配置')
         status.setObjectName('locateTemplateStatus')
         status.setStyleSheet('font-weight:600;color:#c62828;' if not ready else 'font-weight:600;color:#2e7d32;')
         lay.addWidget(status)
         self._tpl_status = status
+        self._refresh_tpl_library_list()
         lay.addStretch(1)
         return w
+
+    def _tpl_library(self) -> list:
+        lib = self.params.get('templateLibrary')
+        if not isinstance(lib, list):
+            lib = []
+            self.params['templateLibrary'] = lib
+        return lib
+
+    def _refresh_tpl_library_list(self):
+        lw = getattr(self, '_tpl_lib_list', None)
+        if lw is None:
+            return
+        lib = self._tpl_library()
+        active = str(self.params.get('activeTemplateId') or '')
+        cur_path = str(self.params.get('templatePath') or '').strip()
+        lw.blockSignals(True)
+        lw.clear()
+        restore_row = -1
+        for i, entry in enumerate(lib):
+            if not isinstance(entry, dict):
+                continue
+            name = str(entry.get('name') or entry.get('id') or f'模板{i+1}')
+            path = str(entry.get('path') or '')
+            eid = str(entry.get('id') or '')
+            mark = ''
+            if eid and eid == active:
+                mark = ' ★'
+                restore_row = lw.count()
+            elif path and path == cur_path:
+                mark = ' ●'
+                if restore_row < 0:
+                    restore_row = lw.count()
+            item = QListWidgetItem(f'{name}{mark}')
+            item.setData(Qt.ItemDataRole.UserRole, entry)
+            tip = path or '(无路径)'
+            if entry.get('note'):
+                tip += f"\n{entry.get('note')}"
+            item.setToolTip(tip)
+            lw.addItem(item)
+        if restore_row >= 0:
+            lw.setCurrentRow(restore_row)
+        lw.blockSignals(False)
+        cnt = getattr(self, '_tpl_lib_count', None)
+        if cnt is not None:
+            cnt.setText(f'{lw.count()} 项')
+
+    def _sync_tpl_status(self):
+        status = getattr(self, '_tpl_status', None)
+        path_edit = getattr(self, '_tpl_path_edit', None)
+        ready = bool(self.params.get('hasTemplate') or str(self.params.get('templatePath') or '').strip())
+        if path_edit is not None:
+            path_edit.setText(str(self.params.get('templatePath') or ''))
+        if status is not None:
+            status.setText('模板状态：已就绪（已创建/载入）' if ready else '模板状态：未配置')
+            status.setStyleSheet(
+                'font-weight:600;color:#2e7d32;' if ready else 'font-weight:600;color:#c62828;'
+            )
+        self._refresh_tpl_library_list()
+
+    def _tpl_lib_add(self):
+        path = str(self.params.get('templatePath') or '').strip()
+        if not path:
+            # allow browse-to-add
+            path, _ = QFileDialog.getOpenFileName(
+                self, '加入模板库', '', '模板/图像 (*.png *.bmp *.jpg *.jpeg *.tif *.json);;所有文件 (*)'
+            )
+            if not path:
+                return
+        from pathlib import Path as _P
+        default_name = _P(path).stem or '模板'
+        name, ok = QInputDialog.getText(self, '加入模板库', '模板名称：', text=default_name)
+        if not ok:
+            return
+        name = (name or default_name).strip() or default_name
+        import uuid
+        entry = {
+            'id': uuid.uuid4().hex[:12],
+            'name': name,
+            'path': path,
+            'note': '',
+        }
+        lib = self._tpl_library()
+        # replace same path
+        lib[:] = [e for e in lib if not (isinstance(e, dict) and e.get('path') == path)]
+        lib.append(entry)
+        self._set_param('templateLibrary', list(lib))
+        # if no current template, also select it
+        if not str(self.params.get('templatePath') or '').strip():
+            self._set_param('templatePath', path)
+            self._set_param('hasTemplate', True)
+            self._set_param('templateReady', True)
+            self._set_param('activeTemplateId', entry['id'])
+        self._sync_tpl_status()
+
+    def _tpl_lib_selected_entry(self):
+        lw = getattr(self, '_tpl_lib_list', None)
+        if lw is None:
+            return None
+        it = lw.currentItem()
+        if it is None:
+            return None
+        data = it.data(Qt.ItemDataRole.UserRole)
+        return data if isinstance(data, dict) else None
+
+    def _tpl_lib_select(self):
+        entry = self._tpl_lib_selected_entry()
+        if not entry:
+            QMessageBox.information(self, '模板库', '请先选中一条模板')
+            return
+        path = str(entry.get('path') or '').strip()
+        if not path:
+            QMessageBox.warning(self, '模板库', '该条目无路径')
+            return
+        self._set_param('templatePath', path)
+        self._set_param('hasTemplate', True)
+        self._set_param('templateReady', True)
+        self._set_param('activeTemplateId', str(entry.get('id') or ''))
+        self._sync_tpl_status()
+        prev = getattr(self, '_tpl_lib_preview_lab', None)
+        if prev is not None:
+            prev.setText(f"已选用「{entry.get('name')}」→ {path}")
+            prev.setStyleSheet('color:#2e7d32;font-size:11px;font-weight:600;')
+
+    def _tpl_lib_preview(self, *_):
+        entry = self._tpl_lib_selected_entry()
+        if not entry:
+            # fall back to activeTemplateId after refresh
+            aid = str(self.params.get('activeTemplateId') or '')
+            if aid:
+                for e in self._tpl_library():
+                    if isinstance(e, dict) and str(e.get('id') or '') == aid:
+                        entry = e
+                        break
+        prev = getattr(self, '_tpl_lib_preview_lab', None)
+        if prev is None:
+            return
+        if not entry:
+            prev.setText('预览：选中库条目查看路径/备注')
+            prev.setStyleSheet('color:#8ab;font-size:11px;padding:2px 0;')
+            return
+        name = entry.get('name') or '—'
+        path = entry.get('path') or '(无路径)'
+        note = entry.get('note') or ''
+        active = str(entry.get('id') or '') == str(self.params.get('activeTemplateId') or '')
+        mark = ' · 当前选用' if active else ''
+        txt = f'预览「{name}」{mark}\n路径：{path}'
+        if note:
+            txt += f'\n备注：{note}'
+        # soft existence hint (no Halcon)
+        try:
+            from pathlib import Path as _P
+            exists = _P(path).is_file() if path and not path.startswith('（') else None
+            if exists is True:
+                txt += '\n磁盘：存在'
+            elif exists is False:
+                txt += '\n磁盘：未找到（仍可引用方案内路径）'
+        except Exception:
+            pass
+        prev.setText(txt)
+        prev.setStyleSheet('color:#9ad;font-size:11px;padding:2px 0;')
+
+    def _tpl_lib_remove(self):
+        entry = self._tpl_lib_selected_entry()
+        if not entry:
+            QMessageBox.information(self, '模板库', '请先选中要移除的条目')
+            return
+        ans = QMessageBox.question(
+            self, '移除模板',
+            f"从模板库移除「{entry.get('name')}」？\n（不删除磁盘文件）",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if ans != QMessageBox.StandardButton.Yes:
+            return
+        eid = str(entry.get('id') or '')
+        lib = self._tpl_library()
+        lib[:] = [e for e in lib if not (isinstance(e, dict) and str(e.get('id') or '') == eid)]
+        if str(self.params.get('activeTemplateId') or '') == eid:
+            self.params['activeTemplateId'] = ''
+        self._set_param('templateLibrary', list(lib))
+        self._sync_tpl_status()
+        prev = getattr(self, '_tpl_lib_preview_lab', None)
+        if prev is not None:
+            prev.setText('预览：选中库条目查看路径/备注')
+            prev.setStyleSheet('color:#8ab;font-size:11px;padding:2px 0;')
 
     def _run_tab(self):
         w = QWidget()
