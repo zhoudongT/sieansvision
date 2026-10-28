@@ -426,6 +426,14 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆102 · dual-origin keep · tip_max_len submenu restamp · getter→tip/refresh · 2026-10-28】
+
+- **ensure←toggle/set**：ensure 写 stash 时保留 `from_set_strategy` / `from_toggle`；set 镜像保留 `from_toggle`；toggle 镜像强制双源（`from_toggle`+`from_set_strategy`，因内含 set）。
+- **menu tip_max_len action**：trigger 后重戳 submenu/预设 QAction 的 status/max_len/勾选；menu stash `tip_max_len_submenu_restamped` / `tip_max_len_submenu_status_prop_ok`。
+- **getter→tip/refresh**：tip/refresh 读 tip_ml 后折入 get-stash（tip：`…_get_into_tip` / `…_from_get`；refresh：`tip_max_len_get_into_refresh` / `tip_max_len_from_get`）。
+- **FlashMs**：仍不起步。
+- **验证**：`scripts/smoke-wave134-dualorigin-submenuestamp-getintotip-e2e.py` → 9 PASS。非硬件约 **~99.99%**。
+
 ## 【细妆101 · toggle→ensure/refresh 镜像 · tip_max_len action→menu · getter status · 2026-10-28】
 
 - **toggle**：refresh 后镜像 `toggle_strategy` / `toggle_status` / `toggle_status_prop_ok` 进 refresh stash，并回写 ensure（`from_toggle` / `strategy` / `status_prop_ok`）；toggle out 含 click/menu_bind status。

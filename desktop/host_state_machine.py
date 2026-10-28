@@ -33570,6 +33570,8 @@ class HostStateMachineWidget(QWidget):
             ens = dict(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_ensure', None) or {})
             ens['ok'] = True
             ens['from_set_strategy'] = True
+            # dual-origin: keep prior toggle flag
+            ens['from_toggle'] = bool(ens.get('from_toggle'))
             ens['strategy'] = v
             ens['status'] = set_out.get('status')
             ens['status_prop'] = set_out.get('status_prop')
@@ -33627,6 +33629,17 @@ class HostStateMachineWidget(QWidget):
                 'menu_bind_tip_prop_ok': bool(menu_bind.get('tip_prop_ok')),
                 'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok),
             }
+            # keep dual-origin flags from prior set/toggle mirrors
+            try:
+                prev_ens = dict(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_ensure', None) or {})
+                if prev_ens.get('from_set_strategy'):
+                    out['from_set_strategy'] = True
+                if prev_ens.get('from_toggle'):
+                    out['from_toggle'] = True
+                if prev_ens.get('strategy') and not out.get('strategy'):
+                    out['strategy'] = prev_ens.get('strategy')
+            except Exception:
+                pass
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_ensure = dict(out)
         except Exception as e:
             try:
@@ -33652,6 +33665,16 @@ class HostStateMachineWidget(QWidget):
             tip_ml = self.strategy_badge_hover_tip_max_len()
         except Exception:
             tip_ml = 96
+        # fold getter get-stash into tip attrs
+        try:
+            _get = dict(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_max_len_get', None) or {})
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_max_len_from_get = dict(_get)
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_max_len_get_into_tip = bool(_get.get('ok'))
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_max_len_get_status = _get.get('status')
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_max_len_get_status_prop_ok = bool(_get.get('status_prop_ok'))
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_max_len_get_max_len = _get.get('max_len')
+        except Exception:
+            pass
         last_toast = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_toast', None)
         if last_toast:
             _lt = str(last_toast)
@@ -34132,6 +34155,11 @@ class HostStateMachineWidget(QWidget):
             tip_ml = self.strategy_badge_hover_tip_max_len()
         except Exception:
             tip_ml = 96
+        tip_max_len_from_get = {}
+        try:
+            tip_max_len_from_get = dict(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_max_len_get', None) or {})
+        except Exception:
+            tip_max_len_from_get = {}
         last_tip = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip', None)
         try:
             if badge is not None:
@@ -34182,6 +34210,11 @@ class HostStateMachineWidget(QWidget):
             'last_toast_brief_prop_ok': bool(last_toast_brief_prop_ok),
             'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok),
             'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok),
+            'tip_max_len_from_get': dict(tip_max_len_from_get),
+            'tip_max_len_get_into_refresh': bool(tip_max_len_from_get.get('ok')),
+            'tip_max_len_get_status': tip_max_len_from_get.get('status'),
+            'tip_max_len_get_status_prop_ok': bool(tip_max_len_from_get.get('status_prop_ok')),
+            'tip_max_len_get_max_len': tip_max_len_from_get.get('max_len'),
         }
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge = dict(out)
         click_bind = {}
@@ -34324,6 +34357,8 @@ class HostStateMachineWidget(QWidget):
             ens = dict(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_ensure', None) or {})
             ens['ok'] = True
             ens['from_toggle'] = True
+            # dual-origin: set() always runs inside toggle
+            ens['from_set_strategy'] = True
             ens['strategy'] = nxt
             ens['status'] = out.get('status')
             ens['status_prop'] = out.get('status_prop')
@@ -34394,7 +34429,7 @@ class HostStateMachineWidget(QWidget):
                     host._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_tip_max_len_action = dict(r or {})
                 except Exception:
                     pass
-                # copy action status into menu out stash
+                # copy action status into menu out stash + re-stamp submenu props
                 try:
                     menu_st = dict(getattr(host, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu', None) or {})
                     menu_st['tip_max_len_action_max_len'] = (r or {}).get('max_len')
@@ -34410,6 +34445,39 @@ class HostStateMachineWidget(QWidget):
                         menu_st['tip_max_len_status_ok'] = True
                     if (r or {}).get('max_len') is not None:
                         menu_st['tip_max_len'] = int((r or {}).get('max_len'))
+                    # re-stamp submenu / preset actions with action status + max_len
+                    _st = (r or {}).get('status')
+                    _ml = (r or {}).get('max_len')
+                    sub = getattr(host, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_tip_max_len_submenu', None)
+                    qacts = getattr(host, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_tip_max_len_qactions', None) or []
+                    restamped = False
+                    if sub is not None and _st is not None:
+                        try:
+                            sub.setProperty('dstImportStrategyBadgeStatus', _st)
+                            sub.setProperty('dstImportStrategyBadgeMenuTipMaxLenStatus', _st)
+                            if _ml is not None:
+                                sub.setProperty('dstImportStrategyBadgeHoverTipMaxLen', int(_ml))
+                            for _act in list(qacts) or list(sub.actions()):
+                                _act.setProperty('dstImportStrategyBadgeStatus', _st)
+                                _act.setProperty('dstImportStrategyBadgeMenuTipMaxLenActionStatus', _st)
+                                try:
+                                    aml = int(_act.property('dstImportStrategyBadgeHoverTipMaxLen') or 0)
+                                    if _ml is not None:
+                                        _act.setChecked(aml == int(_ml))
+                                        _act.setText(f'{aml}字' + (' ✓' if aml == int(_ml) else ''))
+                                except Exception:
+                                    pass
+                            restamped = True
+                        except Exception:
+                            restamped = False
+                    menu_st['tip_max_len_submenu_restamped'] = bool(restamped)
+                    menu_st['tip_max_len_action_submenu_status'] = _st
+                    if restamped and sub is not None:
+                        try:
+                            menu_st['tip_max_len_submenu_status_prop'] = sub.property('dstImportStrategyBadgeMenuTipMaxLenStatus')
+                            menu_st['tip_max_len_submenu_status_prop_ok'] = (str(sub.property('dstImportStrategyBadgeMenuTipMaxLenStatus')) == str(_st))
+                        except Exception:
+                            menu_st['tip_max_len_submenu_status_prop_ok'] = False
                     host._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu = dict(menu_st)
                     host._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_tip_max_len_status = menu_st.get('tip_max_len_status')
                     host._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_tip_max_len_status_ok = bool(menu_st.get('tip_max_len_status_ok'))
