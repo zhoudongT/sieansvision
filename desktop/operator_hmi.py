@@ -920,6 +920,21 @@ class OperatorHmiView(QWidget):
         )
         root.addWidget(self._page_chrome_banner)
 
+        # Page-level trial→result strip (co-update with OK-NG dashboard; not chips)
+        self._trial_result_strip = QLabel('试跑→结果 · 待命')
+        self._trial_result_strip.setObjectName('hmiTrialResultStrip')
+        self._trial_result_strip.setWordWrap(True)
+        self._trial_result_strip.setStyleSheet(
+            f'background:{CARD};color:{TEXT_MUTED};border:1px solid {LINE};'
+            f'border-radius:3px;padding:5px 10px;font-size:11px;font-weight:600;'
+        )
+        self._trial_result_strip.setToolTip(
+            'production_task ▶试跑 → 页铬 + OK-NG 看板联更（trial→result）'
+        )
+        root.addWidget(self._trial_result_strip)
+        self._page_chrome_locked = False
+        self._page_chrome_lock_recipe = ''
+
         self._hint = QLabel('')
         self._hint.setObjectName('dialogHint')
         self._hint.setWordWrap(True)
@@ -2205,6 +2220,24 @@ class OperatorHmiView(QWidget):
                 QTimer.singleShot(2400, _rst)
             except Exception:
                 pass
+        # Page-level trial→result co-update (banner + OK-NG dashboard)
+        try:
+            live = dict(getattr(self, '_live_page_chrome', None) or {})
+            live.update({
+                'trial': False,
+                'okng': judge,
+                'runStatus': 'completed' if not failed else 'failed',
+                'hostState': 'Alarm' if failed else 'Idle',
+                'banner': (
+                    f"页铬 · 配方 {recipe} · 试跑结果 {judge}"
+                    + (f' · {elapsed} ms' if elapsed is not None else '')
+                ),
+            })
+            self.apply_trial_result_co_update(
+                phase='result', snapshot=live, judge=judge, result=result,
+            )
+        except Exception:
+            pass
         return True
 
     def _pulse_alarm_cleared(self, state: str, zh: str):
@@ -2798,6 +2831,182 @@ class OperatorHmiView(QWidget):
         except Exception:
             pass
         return snap
+
+
+    def apply_trial_result_co_update(self, *, phase='trial', snapshot=None, judge=None, result=None):
+        """production_task ▶试跑 → live HMI page-chrome + OK-NG dashboard co-update."""
+        snap = dict(snapshot or getattr(self, '_live_page_chrome', None) or {})
+        result = result or {}
+        phase = str(phase or 'trial')
+        j = judge or snap.get('okng') or result.get('judge') or ('—' if phase == 'trial' else 'OK')
+        recipe = str(snap.get('recipe') or getattr(self, '_live_recipe', '') or '—')
+        if phase == 'trial':
+            snap['trial'] = True
+            snap['runStatus'] = '试跑'
+            snap['okng'] = '试跑中'
+            snap['hostState'] = 'Running'
+            banner = str(snap.get('banner') or '') or f'页铬 · 配方 {recipe} · 试跑中'
+            if '试跑' not in banner:
+                banner = banner + ' · 试跑待回填'
+            strip_txt = f'试跑→结果 · TRIAL · 配方 {recipe} · 看板待回填 · Running'
+            strip_ss = (
+                'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                'border-radius:3px;padding:5px 10px;font-size:11px;font-weight:700;'
+            )
+        else:
+            snap['trial'] = False
+            snap['okng'] = j
+            failed = str(j).upper() in ('NG', 'FAIL', '拒', '不良') or result.get('state') == 'failed'
+            snap['runStatus'] = 'failed' if failed else 'completed'
+            snap['hostState'] = 'Alarm' if failed else 'Idle'
+            banner = (
+                f'页铬 · 配方 {recipe} · 试跑结果 {j}'
+                + (f" · {result.get('elapsedMs')} ms" if result.get('elapsedMs') is not None else '')
+            )
+            snap['banner'] = banner
+            strip_txt = (
+                f'试跑→结果 · RESULT {j} · 配方 {recipe} · '
+                f'host={snap["hostState"]} · 页铬+看板已联更'
+            )
+            if failed:
+                strip_ss = (
+                    'background:#3a1c1c;color:#ffb4b4;border:1px solid #e35d6a;'
+                    'border-radius:3px;padding:5px 10px;font-size:11px;font-weight:700;'
+                )
+            else:
+                strip_ss = (
+                    'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                    'border-radius:3px;padding:5px 10px;font-size:11px;font-weight:700;'
+                )
+        # Respect recipe chrome lock (换型中不覆盖锁)
+        if not getattr(self, '_page_chrome_locked', False):
+            try:
+                self.apply_production_page_chrome(snap)
+            except Exception:
+                pass
+        lab = getattr(self, '_trial_result_strip', None)
+        if lab is not None:
+            lab.setText(strip_txt)
+            lab.setStyleSheet(strip_ss)
+            lab.setToolTip(banner)
+        # Soft bump stats panel for OK-NG when result
+        if phase == 'result':
+            try:
+                ok_ish = str(j).upper() in ('OK', 'PASS', '良', '通过')
+                for panel in getattr(self, '_stats_panels', []) or []:
+                    if hasattr(panel, 'record'):
+                        panel.record(ok_ish, elapsed_ms=result.get('elapsedMs') or 0, detail=f'trial→{j}')
+                        break
+            except Exception:
+                pass
+            try:
+                self.refresh_okng_dashboard_strip(
+                    ok_n=snap.get('okCount'),
+                    ng_n=snap.get('ngCount'),
+                    judge=j,
+                    host_state=snap.get('hostState'),
+                    recipe=recipe,
+                    status=snap.get('runStatus'),
+                )
+            except Exception:
+                pass
+        return snap
+
+    def lock_page_chrome_for_recipe_switch(self, locked=True, *, recipe=None, reason='换型'):
+        """Full-page chrome lock during recipe 换型 (page-level; not prop chips)."""
+        self._page_chrome_locked = bool(locked)
+        if recipe is not None:
+            self._page_chrome_lock_recipe = str(recipe or '')
+        lab = getattr(self, '_page_chrome_banner', None)
+        name = self._page_chrome_lock_recipe or getattr(self, '_live_recipe', '') or '—'
+        if lab is not None:
+            if locked:
+                lab.setText(f'页铬 · 锁 · 换型中 · 配方 {name} · 状态轨暂停手递')
+                lab.setStyleSheet(
+                    'background:#3a3420;color:#e0b84a;border:2px solid #e0b84a;'
+                    'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+                )
+                lab.setToolTip(f'{reason} 页铬锁定中 · 配方 {name} · 完成后 Idle↔Running 软手递')
+            else:
+                lab.setText(f'页铬 · 配方 {name} · 换型锁已释 · 可手递')
+                lab.setStyleSheet(
+                    'background:#1a2430;color:#9ec9f0;border:1px solid #3a5a7a;'
+                    'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+                )
+        # Dim state rail while locked
+        rail = getattr(self, '_state_rail_labels', None) or {}
+        for key, rl in rail.items():
+            try:
+                if locked:
+                    rl.setStyleSheet(
+                        'background:#2a2a2a;color:#666;border:1px solid #444;'
+                        'border-radius:3px;padding:3px 8px;font-size:11px;'
+                    )
+                # unlock repaint happens in soft_handoff / _paint_machine_chrome
+            except Exception:
+                pass
+        if not locked:
+            try:
+                self._paint_machine_chrome(getattr(self, '_host_state', None) or 'Idle')
+            except Exception:
+                pass
+        return bool(locked)
+
+    def soft_handoff_idle_running(self, *, recipe=None, to_running=True, note=''):
+        """Status-rail Idle↔Running soft handoff after 换型 chrome unlock."""
+        name = (recipe or self._page_chrome_lock_recipe
+                or getattr(self, '_live_recipe', '') or '—')
+        # Unlock first
+        if getattr(self, '_page_chrome_locked', False):
+            self.lock_page_chrome_for_recipe_switch(False, recipe=name, reason='换型完成')
+        target = 'Running' if to_running else 'Idle'
+        # Brief Idle flash then Running (or reverse) for visible soft handoff
+        try:
+            self._paint_machine_chrome('Idle' if to_running else 'Running')
+        except Exception:
+            pass
+        lab = getattr(self, '_page_chrome_banner', None)
+        if lab is not None:
+            lab.setText(
+                f'页铬 · 手递 Idle→{target} · 配方 {name}'
+                + (f' · {note}' if note else '')
+            )
+            lab.setStyleSheet(
+                'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+            )
+        tr = getattr(self, '_trial_result_strip', None)
+        if tr is not None:
+            tr.setText(f'换型手递 · Idle↔{target} · 配方 {name} · 页铬已解锁')
+            tr.setStyleSheet(
+                'background:#1a2430;color:#9ec9f0;border:1px solid #3a5a7a;'
+                'border-radius:3px;padding:5px 10px;font-size:11px;font-weight:600;'
+            )
+
+        def _arrive(st=target, rname=name):
+            try:
+                self._paint_machine_chrome(st)
+            except Exception:
+                pass
+            try:
+                self.set_recipe_chrome(rname, getattr(self, '_live_variant', '') or '')
+            except Exception:
+                pass
+            try:
+                self.refresh_okng_dashboard_strip(
+                    host_state=st, recipe=rname, status=st,
+                )
+            except Exception:
+                pass
+            ban = getattr(self, '_page_chrome_banner', None)
+            if ban is not None:
+                ban.setText(f'页铬 · 配方 {rname} · 状态 {st} · 换型手递完成')
+        try:
+            QTimer.singleShot(160, _arrive)
+        except Exception:
+            _arrive()
+        return target
+
 
     def refresh_okng_dashboard_strip(self, *, ok_n=None, ng_n=None, judge=None,
                                      open_alarms=None, host_state=None,

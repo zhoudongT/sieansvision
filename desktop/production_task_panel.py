@@ -601,6 +601,7 @@ class ProductionTaskPanel(QWidget):
         self._soft_push_hmi_recipe(trial=True)
         self.applyFlowAndRun.emit(ops)
         self._record_trial_strip('建议链并试跑', ops)
+        self._soft_co_update_trial_result(phase='trial', title='建议链并试跑', ops=ops)
         try:
             self._refresh_production_result()
         except Exception:
@@ -619,6 +620,7 @@ class ProductionTaskPanel(QWidget):
         self._soft_push_hmi_recipe(trial=True)
         self.applyFlowAndRun.emit(ops)
         self._record_trial_strip('OCR链并试跑', ops)
+        self._soft_co_update_trial_result(phase='trial', title='OCR链并试跑', ops=ops)
         try:
             self._refresh_production_result()
         except Exception:
@@ -678,6 +680,22 @@ class ProductionTaskPanel(QWidget):
         self._prod_trial_strip.setStyleSheet('font-family:monospace;font-size:11px;background:#263238;color:#80cbc4;')
         lay.addWidget(QLabel('试跑结果条'))
         lay.addWidget(self._prod_trial_strip)
+
+        # Page-level trial→result co-update strip (HMI page-chrome + OK-NG dashboard)
+        lay.addWidget(QLabel('试跑→结果 页铬联更（HMI 页铬 + OK-NG 看板）'))
+        self._prod_trial_result_strip = QPlainTextEdit()
+        self._prod_trial_result_strip.setObjectName('productionTaskTrialResultStrip')
+        self._prod_trial_result_strip.setReadOnly(True)
+        self._prod_trial_result_strip.setMaximumHeight(110)
+        self._prod_trial_result_strip.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#1c2a1c;color:#9ed9a8;'
+        )
+        lay.addWidget(self._prod_trial_result_strip)
+        self._prod_trial_result_meta = QLabel('(尚无试跑→结果联更)')
+        self._prod_trial_result_meta.setObjectName('productionTaskTrialResultMeta')
+        self._prod_trial_result_meta.setWordWrap(True)
+        self._prod_trial_result_meta.setStyleSheet('color:#666;font-size:11px;')
+        lay.addWidget(self._prod_trial_result_meta)
 
         self._prod_result_meta = QLabel()
         self._prod_result_meta.setObjectName('productionTaskResultMeta')
@@ -970,3 +988,112 @@ class ProductionTaskPanel(QWidget):
                 f'statusVar={sv} · scope={scope} · chainSteps={steps_n} · '
                 f'writebackKeys={len(mapping)}'
             )
+
+    def _soft_co_update_trial_result(self, *, phase='trial', title='', ops=None, judge=None, result=None):
+        """Page-level trial→result co-update: HMI page-chrome + OK-NG dashboard together."""
+        from datetime import datetime
+        result = result or {}
+        snap = self._page_chrome_snapshot(trial=(phase == 'trial'))
+        if phase == 'result':
+            j = judge or result.get('judge') or 'OK'
+            snap['trial'] = False
+            snap['runStatus'] = 'completed'
+            snap['okng'] = j
+            snap['hostState'] = 'Idle' if str(j).upper() in ('OK', 'PASS', '良', '通过') else 'Alarm'
+            snap['banner'] = (
+                f"页铬 · 配方 {snap['recipe']} · 试跑结果 {j} · "
+                f"{snap['scope']}.{snap['statusVar']} · 链 {snap['chainSteps']} 步"
+            )
+            # soft bump project counters for OK-NG dashboard
+            proj = self.project if isinstance(self.project, dict) else {}
+            try:
+                bag = proj.setdefault('softOkNg', {'ok': 0, 'ng': 0})
+                if str(j).upper() in ('OK', 'PASS', '良', '通过'):
+                    bag['ok'] = int(bag.get('ok') or 0) + 1
+                else:
+                    bag['ng'] = int(bag.get('ng') or 0) + 1
+                snap['okCount'] = bag['ok']
+                snap['ngCount'] = bag['ng']
+            except Exception:
+                snap['okCount'] = 1 if str(j).upper() in ('OK', 'PASS') else 0
+                snap['ngCount'] = 0 if str(j).upper() in ('OK', 'PASS') else 1
+        else:
+            snap['okng'] = '试跑中'
+            snap['runStatus'] = '试跑'
+            snap['hostState'] = 'Running'
+            j = '—'
+
+        ts = datetime.now().strftime('%H:%M:%S')
+        op_n = len(ops or [])
+        line = (
+            f'[{ts}] {phase.upper()} · {title or "试跑"} · recipe={snap["recipe"]} · '
+            f'status={snap["status"]} · host={snap["hostState"]} · okng={snap["okng"]} · '
+            f'ops={op_n} · banner={snap["banner"][:48]}'
+        )
+        hist = list(getattr(self, '_trial_result_lines', []) or [])
+        hist.append(line)
+        self._trial_result_lines = hist[-16:]
+        if hasattr(self, '_prod_trial_result_strip') and self._prod_trial_result_strip is not None:
+            hdr = '── trial→result page-chrome co-update (HMI + OK-NG) ──'
+            self._prod_trial_result_strip.setPlainText(hdr + '\n' + '\n'.join(self._trial_result_lines))
+        if hasattr(self, '_prod_trial_result_meta') and self._prod_trial_result_meta is not None:
+            self._prod_trial_result_meta.setText(
+                f'联更 · phase={phase} · recipe={snap["recipe"]} · okng={snap["okng"]} · '
+                f'host={snap["hostState"]} · 页铬+看板同刷 · 非属性芯片'
+            )
+        # Local page chrome preview
+        try:
+            self._soft_bind_hmi_page_chrome(trial=(phase == 'trial'), push_live=False)
+            if hasattr(self, '_prod_page_chrome') and self._prod_page_chrome is not None:
+                extra = (
+                    f"\ncoUpdate = phase={phase} · okng={snap['okng']} · "
+                    f"hostState={snap['hostState']} · targets=pageChrome+okNgDashboard"
+                )
+                self._prod_page_chrome.setPlainText(
+                    self._prod_page_chrome.toPlainText() + extra
+                )
+        except Exception:
+            pass
+        # Live HMI co-update when open
+        w = self.window()
+        hmi = getattr(w, 'operator_hmi', None) if w is not None else None
+        if hmi is not None:
+            try:
+                if hasattr(hmi, 'apply_trial_result_co_update'):
+                    hmi.apply_trial_result_co_update(phase=phase, snapshot=snap, judge=j, result=result)
+                elif hasattr(hmi, 'apply_production_page_chrome'):
+                    hmi.apply_production_page_chrome(snap)
+                    if hasattr(hmi, 'refresh_okng_dashboard_strip'):
+                        hmi.refresh_okng_dashboard_strip(
+                            ok_n=snap.get('okCount'),
+                            ng_n=snap.get('ngCount'),
+                            judge=snap.get('okng'),
+                            host_state=snap.get('hostState'),
+                            recipe=snap.get('recipe'),
+                            status=snap.get('runStatus'),
+                            status_var=f"{snap['scope']}.{snap['statusVar']}",
+                        )
+            except Exception:
+                pass
+        # Soft-simulate result phase shortly after trial when no live engine (design-time)
+        if phase == 'trial' and not getattr(self, '_pending_live_trial', False):
+            try:
+                from PySide6.QtCore import QTimer
+                def _soft_result(t=title, o=list(ops or [])):
+                    try:
+                        self._soft_co_update_trial_result(
+                            phase='result', title=t or '试跑回填', ops=o,
+                            judge='OK', result={'state': 'completed', 'judge': 'OK'},
+                        )
+                    except Exception:
+                        pass
+                QTimer.singleShot(220, _soft_result)
+            except Exception:
+                try:
+                    self._soft_co_update_trial_result(
+                        phase='result', title=title or '试跑回填', ops=ops,
+                        judge='OK', result={'state': 'completed', 'judge': 'OK'},
+                    )
+                except Exception:
+                    pass
+        return snap

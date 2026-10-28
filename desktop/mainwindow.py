@@ -4859,15 +4859,31 @@ class MainWindow(QMainWindow):
             self.refresh_variant_chip()
         except Exception:
             pass
-        # HMI recipe chrome
+        # HMI recipe chrome + full-page lock release / Idle↔Running soft handoff
         try:
             if hasattr(self, 'operator_hmi') and self.operator_hmi is not None:
-                if hasattr(self.operator_hmi, 'set_recipe_chrome'):
-                    self.operator_hmi.set_recipe_chrome(name, variant)
-                if hasattr(self.operator_hmi, 'clear_fail_code_badge'):
-                    self.operator_hmi.clear_fail_code_badge()
+                hmi = self.operator_hmi
+                if hasattr(hmi, 'lock_page_chrome_for_recipe_switch'):
+                    # ensure unlock then soft handoff (dialog may have started lock)
+                    try:
+                        hmi.lock_page_chrome_for_recipe_switch(False, recipe=name)
+                    except Exception:
+                        pass
+                if hasattr(hmi, 'soft_handoff_idle_running'):
+                    try:
+                        hmi.soft_handoff_idle_running(
+                            recipe=name,
+                            to_running=bool(stats.get('enterRun') or stats.get('trialOnce')),
+                            note='sync_after_recipe_apply',
+                        )
+                    except Exception:
+                        pass
+                if hasattr(hmi, 'set_recipe_chrome'):
+                    hmi.set_recipe_chrome(name, variant)
+                if hasattr(hmi, 'clear_fail_code_badge'):
+                    hmi.clear_fail_code_badge()
                 if getattr(self, 'app_mode', 'design') == 'run':
-                    self.operator_hmi.reload_layout(self.document.project)
+                    hmi.reload_layout(self.document.project)
         except Exception:
             pass
         try:

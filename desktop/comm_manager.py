@@ -719,8 +719,9 @@ class CommManagerDialog(QDialog):
 
         # --- 响应 ---
         resp = QWidget()
-        resp_form = QFormLayout(resp)
-        resp_form.setContentsMargins(12, 12, 12, 12)
+        resp_lay = QVBoxLayout(resp)
+        resp_lay.setContentsMargins(12, 12, 12, 12)
+        resp_form = QFormLayout()
         self.resp_enabled = OrangeSwitch(False)
         self.resp_timeout = QSpinBox()
         self.resp_timeout.setRange(0, 120000)
@@ -729,6 +730,51 @@ class CommManagerDialog(QDialog):
         resp_form.addRow('启用应答', self.resp_enabled)
         resp_form.addRow('超时(ms)', self.resp_timeout)
         resp_form.addRow('应答内容', self.resp_ack)
+        resp_lay.addLayout(resp_form)
+        # Page-level soft auto-ack / grouped reply timeline (not prop chips)
+        tip_ack = QLabel(
+            'recvEvents ↔ LocalBus 软自动应答：按接收事件设备分组投递 RX，'
+            '再按上方应答内容回 ACK（设计态；无现场 TCP）。页级时间线，非属性芯片。'
+        )
+        tip_ack.setWordWrap(True)
+        tip_ack.setStyleSheet('color:#888;')
+        resp_lay.addWidget(tip_ack)
+        self.ack_reply_timeline = QPlainTextEdit()
+        self.ack_reply_timeline.setObjectName('commRecvAutoAckTimeline')
+        self.ack_reply_timeline.setReadOnly(True)
+        self.ack_reply_timeline.setMaximumHeight(180)
+        self.ack_reply_timeline.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#1a2430;color:#80cbc4;'
+        )
+        self.ack_reply_timeline.setPlaceholderText(
+            'recvEvents ↔ LocalBus auto-ack / grouped reply timeline'
+        )
+        resp_lay.addWidget(QLabel('自动应答分组时间线（页铬）'))
+        resp_lay.addWidget(self.ack_reply_timeline)
+        self.ack_reply_meta = QLabel('(尚未软收→应答)')
+        self.ack_reply_meta.setObjectName('commRecvAutoAckMeta')
+        self.ack_reply_meta.setWordWrap(True)
+        self.ack_reply_meta.setStyleSheet('color:#666;font-size:11px;')
+        resp_lay.addWidget(self.ack_reply_meta)
+        self._ack_reply_lines = []
+        ack_bar = QHBoxLayout()
+        self.ack_soft_btn = QPushButton('recvEvents 软收→自动应答')
+        self.ack_soft_btn.setObjectName('commRecvAutoAckBtn')
+        self.ack_soft_btn.setToolTip(
+            '把演示载荷软投递到 recvEvents 绑定设备 LocalBus，并按应答配置自动 ACK；刷新分组时间线'
+        )
+        self.ack_soft_btn.clicked.connect(self._soft_recv_auto_ack_timeline)
+        ack_bar.addWidget(self.ack_soft_btn)
+        self.ack_demo_payload = QLineEdit('RESULT ok=1 score=0.92')
+        self.ack_demo_payload.setObjectName('commRecvAutoAckPayload')
+        self.ack_demo_payload.setPlaceholderText('软收演示载荷')
+        ack_bar.addWidget(self.ack_demo_payload, 1)
+        self.ack_clear_btn = QPushButton('清空时间线')
+        self.ack_clear_btn.setObjectName('commRecvAutoAckClear')
+        self.ack_clear_btn.clicked.connect(self._clear_recv_auto_ack_timeline)
+        ack_bar.addWidget(self.ack_clear_btn)
+        resp_lay.addLayout(ack_bar)
+        resp_lay.addStretch(1)
         self.tabs.addTab(resp, '响应')
 
         # --- 消息模板（${} 展开演示 · 无现场 socket）---
@@ -1694,6 +1740,165 @@ class CommManagerDialog(QDialog):
             'body': body,
             'lines': list(self._tpl_inbox_lines),
         }
+
+
+    def _soft_recv_auto_ack_timeline(self):
+        """recvEvents soft RX → LocalBus inbox → auto-ack grouped reply timeline (page chrome)."""
+        try:
+            enabled = bool(self.resp_enabled.isChecked()) if hasattr(self, 'resp_enabled') else False
+        except Exception:
+            enabled = False
+        ack = self.resp_ack.text().strip() if hasattr(self, 'resp_ack') else 'OK'
+        if not ack:
+            ack = 'OK'
+        try:
+            timeout_ms = int(self.resp_timeout.value()) if hasattr(self, 'resp_timeout') else 3000
+        except Exception:
+            timeout_ms = 3000
+        payload = ''
+        if hasattr(self, 'ack_demo_payload') and self.ack_demo_payload is not None:
+            payload = self.ack_demo_payload.text().strip()
+        if not payload:
+            payload = 'RESULT ok=1 score=0.92'
+        recv_rows = []
+        try:
+            recv_rows = list(self.recv_table.rows() or [])
+        except Exception:
+            recv_rows = []
+        devices = []
+        seen = set()
+        for ev in recv_rows:
+            if not isinstance(ev, dict):
+                continue
+            d = str(ev.get('device') or ev.get('deviceName') or '').strip() or 'LocalLoop'
+            if d in seen:
+                continue
+            seen.add(d)
+            devices.append(d)
+        if not devices:
+            for d in (self._devices or []):
+                n = str((d or {}).get('name') or '').strip()
+                if n and n not in seen:
+                    seen.add(n)
+                    devices.append(n)
+            if not devices:
+                devices = ['LocalLoop']
+        from datetime import datetime
+        ts = datetime.now().strftime('%H:%M:%S')
+        lines = list(getattr(self, '_ack_reply_lines', []) or [])
+        lines.append(
+            f'── [{ts}] soft recv→auto-ack · devices={",".join(devices)} · '
+            f'ack={ack!r} · enabled={enabled} · no field TCP'
+        )
+        bytes_n = len(payload.encode('utf-8'))
+        abytes = len(ack.encode('utf-8'))
+        for dev in devices:
+            lines.append(
+                f'[{ts}] RX  {dev}/default path=recvEvent-soft bytes={bytes_n} │ {payload[:80]}'
+            )
+            tag = 'autoAck-reply' if enabled else 'autoAck-reply(forced)'
+            lines.append(
+                f'[{ts}] TX→ack {dev}/default path={tag} bytes={abytes} │ {ack[:80]}'
+            )
+        self._ack_reply_lines = lines[-80:]
+        grouped = self._format_grouped_ack_timeline(self._ack_reply_lines)
+        if hasattr(self, 'ack_reply_timeline') and self.ack_reply_timeline is not None:
+            self.ack_reply_timeline.setPlainText(grouped)
+        if hasattr(self, 'ack_reply_meta') and self.ack_reply_meta is not None:
+            self.ack_reply_meta.setText(
+                f'已软收 {len(devices)} 设备 · ACK={ack!r} · '
+                f'{"应答开" if enabled else "应答关·强制演示"} · '
+                f'timeout={timeout_ms}ms · LocalBus · 无现场 TCP'
+            )
+        try:
+            proj = self.document.project if self.document else {}
+            cm = proj.setdefault('commManager', {}) if isinstance(proj, dict) else {}
+            if isinstance(cm, dict):
+                cm['lastSoftAutoAck'] = {
+                    'devices': devices,
+                    'ack': ack,
+                    'enabled': enabled,
+                    'payload': payload[:200],
+                    'timeoutMs': timeout_ms,
+                }
+        except Exception:
+            pass
+        try:
+            import subprocess, json as _json
+            from pathlib import Path as _P
+            root = _P(__file__).resolve().parents[1]
+            eng_proj = {
+                'commManager': {
+                    'recvEvents': recv_rows or [
+                        {'device': d, 'variable': 'flow.lastRecv'} for d in devices
+                    ],
+                    'response': {
+                        'enabled': True,
+                        'timeoutMs': timeout_ms,
+                        'ack': ack,
+                    },
+                    'devices': [
+                        {'name': d, 'protocol': 'Local Bus'} for d in devices
+                    ],
+                }
+            }
+            js = (
+                "const bus=require('./lib/comm-bus.cjs');bus.reset();"
+                f"const r=bus.softAutoAckFromRecvEvents({_json.dumps(eng_proj)},{_json.dumps(payload)},"
+                f"{{forceAck:true,ack:{_json.dumps(ack)}}});"
+                "process.stdout.write(JSON.stringify({n:r.entries.length,devs:r.devices}));"
+            )
+            subprocess.run(
+                ['node', '-e', js], cwd=str(root),
+                capture_output=True, text=True, timeout=3,
+            )
+        except Exception:
+            pass
+        return {
+            'devices': devices,
+            'ack': ack,
+            'enabled': enabled,
+            'payload': payload,
+            'lines': list(self._ack_reply_lines),
+            'grouped': grouped,
+        }
+
+    def _format_grouped_ack_timeline(self, lines=None):
+        """Page-chrome grouped RX/ACK view by device."""
+        lines = list(lines if lines is not None else getattr(self, '_ack_reply_lines', []) or [])
+        if not lines:
+            return '(recvEvents 自动应答分组时间线空)'
+        grouped = ['── recvEvents ↔ LocalBus auto-ack / grouped reply ──']
+        by = {}
+        headers = []
+        for ln in lines:
+            if ln.startswith('──'):
+                headers.append(ln)
+                continue
+            dev = 'LocalLoop'
+            try:
+                if '] RX  ' in ln:
+                    dev = ln.split('] RX  ', 1)[1].split('/', 1)[0]
+                elif '] TX→ack ' in ln:
+                    dev = ln.split('] TX→ack ', 1)[1].split('/', 1)[0]
+            except Exception:
+                pass
+            by.setdefault(dev, []).append(ln)
+        grouped.extend(headers[-3:])
+        for dev, lst in by.items():
+            rx_n = sum(1 for x in lst if '] RX  ' in x)
+            ack_n = sum(1 for x in lst if 'TX→ack ' in x)
+            grouped.append(f'▶ {dev} · RX {rx_n} · ACK {ack_n}')
+            grouped.extend('  ' + x for x in lst[-10:])
+        return '\n'.join(grouped)
+
+    def _clear_recv_auto_ack_timeline(self):
+        self._ack_reply_lines = []
+        if hasattr(self, 'ack_reply_timeline') and self.ack_reply_timeline is not None:
+            self.ack_reply_timeline.setPlainText('(recvEvents 自动应答分组时间线空)')
+        if hasattr(self, 'ack_reply_meta') and self.ack_reply_meta is not None:
+            self.ack_reply_meta.setText('(尚未软收→应答)')
+
 
     def _tpl_clear_inbox_timeline(self):
         self._tpl_inbox_lines = []

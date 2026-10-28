@@ -77,6 +77,19 @@ class RecipeSwitchDialog(QDialog):
         self._post_banner.setToolTip('套用成功后此处提示下一步：切运行 / 试跑 / 手动 ▶')
         lay.addWidget(self._post_banner)
 
+        # Full-page chrome lock + Idle↔Running soft handoff rail (page-level)
+        self._chrome_lock_rail = QLabel('页铬锁 · 待命 · 一键换型时锁定操作员页铬，完成后 Idle↔Running 软手递')
+        self._chrome_lock_rail.setObjectName('recipeChromeLockRail')
+        self._chrome_lock_rail.setWordWrap(True)
+        self._chrome_lock_rail.setStyleSheet(
+            'background:#1a2430;color:#9ad;border:1px solid #3a5a7a;border-radius:4px;'
+            'padding:6px 8px;font-size:12px;font-weight:600;'
+        )
+        self._chrome_lock_rail.setToolTip(
+            '换型全页铬锁：套用前锁定 HMI 页眉/状态轨；完成后解锁并 Idle↔Running 软手递'
+        )
+        lay.addWidget(self._chrome_lock_rail)
+
         row = QHBoxLayout()
         # 细妆：明确「去运行」入口（无硬件）
         self._goto_run_btn = QPushButton('套用并去运行')
@@ -931,6 +944,77 @@ class RecipeSwitchDialog(QDialog):
         )
 
 
+
+    def _set_chrome_lock_rail(self, text, *, locked=False, handoff=False):
+        lab = getattr(self, '_chrome_lock_rail', None)
+        if lab is None:
+            return
+        lab.setText(text)
+        if locked:
+            lab.setStyleSheet(
+                'background:#3a3420;color:#e0b84a;border:2px solid #e0b84a;border-radius:4px;'
+                'padding:6px 8px;font-size:12px;font-weight:700;'
+            )
+        elif handoff:
+            lab.setStyleSheet(
+                'background:#1a2e24;color:#8fd98f;border:1px solid #2e7d32;border-radius:4px;'
+                'padding:6px 8px;font-size:12px;font-weight:700;'
+            )
+        else:
+            lab.setStyleSheet(
+                'background:#1a2430;color:#9ad;border:1px solid #3a5a7a;border-radius:4px;'
+                'padding:6px 8px;font-size:12px;font-weight:600;'
+            )
+
+    def _host_hmi(self):
+        w = self.parent()
+        # walk up to MainWindow
+        cur = w
+        for _ in range(6):
+            if cur is None:
+                break
+            if hasattr(cur, 'operator_hmi'):
+                return getattr(cur, 'operator_hmi', None), cur
+            cur = cur.parent() if hasattr(cur, 'parent') else None
+        return None, w
+
+    def _lock_hmi_page_chrome(self, *, recipe='', locked=True):
+        hmi, _host = self._host_hmi()
+        self._set_chrome_lock_rail(
+            f'页铬锁 · {"锁定中" if locked else "已释"} · 配方 {recipe or "—"}',
+            locked=locked,
+        )
+        if hmi is not None and hasattr(hmi, 'lock_page_chrome_for_recipe_switch'):
+            try:
+                hmi.lock_page_chrome_for_recipe_switch(locked, recipe=recipe, reason='换型')
+            except Exception:
+                pass
+        return hmi
+
+    def _handoff_after_recipe(self, stats=None):
+        stats = stats or {}
+        name = str(stats.get('name') or '')
+        enter = bool(stats.get('enterRun'))
+        hmi, _host = self._host_hmi()
+        self._set_chrome_lock_rail(
+            f'页铬手递 · Idle↔{"Running" if enter else "Idle"} · 配方 {name or "—"} · 锁已释',
+            handoff=True,
+        )
+        if hmi is not None and hasattr(hmi, 'soft_handoff_idle_running'):
+            try:
+                hmi.soft_handoff_idle_running(
+                    recipe=name, to_running=enter or bool(stats.get('trialOnce')),
+                    note='换型完成',
+                )
+            except Exception:
+                pass
+        elif hmi is not None and hasattr(hmi, 'lock_page_chrome_for_recipe_switch'):
+            try:
+                hmi.lock_page_chrome_for_recipe_switch(False, recipe=name)
+            except Exception:
+                pass
+
+
     def _update_post_banner(self, stats=None, *, error: str = ''):
         banner = getattr(self, '_post_banner', None)
         if banner is None:
@@ -1005,16 +1089,38 @@ class RecipeSwitchDialog(QDialog):
         )
         if ans != QMessageBox.StandardButton.Yes:
             return
+        # Full-page chrome lock before write
+        try:
+            preview_name = ''
+            try:
+                for r in (self.document.project.get('recipes') or []):
+                    if str(r.get('id') or '') == str(rid):
+                        preview_name = str(r.get('name') or '')
+                        break
+            except Exception:
+                pass
+            self._lock_hmi_page_chrome(recipe=preview_name or rid, locked=True)
+        except Exception:
+            pass
         p = deepcopy(self.document.project)
         try:
             stats = rl.apply_recipe_with_rollback(p, rid)
         except Exception as err:
+            try:
+                self._lock_hmi_page_chrome(recipe=preview_name or '', locked=False)
+                self._set_chrome_lock_rail(f'页铬锁 · 换型失败已释 · {err}', locked=False)
+            except Exception:
+                pass
             QMessageBox.warning(self, '换型失败', str(err))
             return
         self.document.commit(p)
         self.refresh()
         self._sync_rollback_btn()
         stats = self._stamp_post_apply(stats)
+        try:
+            self._handoff_after_recipe(stats)
+        except Exception:
+            pass
         self.recipeApplied.emit(stats)
         self.recipesChanged.emit()
         self._update_post_banner(stats)
