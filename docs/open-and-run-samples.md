@@ -56,3 +56,8 @@ CommManager「TCP 测试」页：传输路径 Soft/LocalBus vs TCP、地址/端�
 冒烟：`python3 scripts/smoke-wave156-tcp-camera-adapt-e2e.py`。
 现场 PLC/长连接池仍下一阶段。
 
+
+## GenTL 真机二维码（t238）
+
+- 工程：`projects/open-and-run-gentl-qr.sieans` — Hikrobot MV-CB013 GenTL → `barcode`（zxing）→ 变量门限。
+- 打开后 ▶ 运行即可看采集帧与 `barcodeText`；勿与 MVS 同时占 USB。

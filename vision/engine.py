@@ -406,15 +406,59 @@ def barcode(image, canvas, p, offset):
         raise RuntimeError(
             "条码识别需要 zxing-cpp。请执行：python3 -m pip install --target .pydeps -i https://pypi.tuna.tsinghua.edu.cn/simple 'zxing-cpp==3.1.1'"
         ) from exc
+    show_overlay = p.get('showOverlay', True) is not False
+    show_boxes = p.get('showBoxes', True) is not False
+    show_text = p.get('showText', True) is not False
+    show_format = p.get('showFormat', True) is not False
+    max_codes = int(number(p, 'maxCodes', 16, 1, 64))
     results = []
     for code in zxingcpp.read_barcodes(image):
         if not code.valid:
             continue
         points = [[getattr(code.position, key).x+offset[0], getattr(code.position, key).y+offset[1]]
                   for key in ('top_left', 'top_right', 'bottom_right', 'bottom_left')]
-        polygon(canvas, points)
-        results.append({'text': code.text, 'format': str(code.format), 'polygon': points})
-    return {'count': len(results), 'items': results}
+        if show_overlay and show_boxes:
+            polygon(canvas, points)
+        label = str(code.text or '')
+        if show_overlay and show_text and label:
+            try:
+                x0 = int(min(pt[0] for pt in points)); y0 = int(min(pt[1] for pt in points))
+                tip = label[:48]
+                if show_format:
+                    tip = f"{str(code.format)}:{tip}"
+                cv2.putText(canvas, tip, (x0, max(14, y0 - 6)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 220, 80), 1, cv2.LINE_AA)
+            except Exception:
+                pass
+        cx = float(sum(pt[0] for pt in points) / 4.0)
+        cy = float(sum(pt[1] for pt in points) / 4.0)
+        results.append({
+            'text': code.text, 'format': str(code.format), 'polygon': points,
+            'center': [cx, cy],
+        })
+        if len(results) >= max_codes:
+            break
+    judge_en = bool(p.get('judgeEnable', False))
+    expected = str(p.get('expectedText') or '').strip()
+    min_count = int(number(p, 'judgeMinCount', 1, 0, 64))
+    max_count = int(number(p, 'judgeMaxCount', 0, 0, 64))
+    ok = True
+    if judge_en:
+        ok = len(results) >= min_count
+        if ok and max_count > 0:
+            ok = len(results) <= max_count
+        if ok and expected:
+            joined = '\n'.join(r['text'] for r in results)
+            ok = expected in joined
+    text_joined = '\n'.join(r['text'] for r in results)
+    return {
+        'count': len(results), 'items': results, 'text': text_joined,
+        'status': 'ok' if results else 'empty',
+        'passed': bool(ok) if judge_en else True,
+        'judgeEnable': judge_en, 'judgeOk': bool(ok) if judge_en else True,
+        'judgeStatus': ('OK' if ok else 'NG') if judge_en else 'SKIP',
+        'showOverlay': show_overlay, 'showBoxes': show_boxes, 'showText': show_text,
+    }
 
 
 def ocr(image, canvas, p, offset):

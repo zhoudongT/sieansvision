@@ -1,0 +1,279 @@
+{
+  "version": 2,
+  "id": "open-and-run-gentl-qr-t238",
+  "name": "打开即跑 · GenTL相机→二维码",
+  "meta": {
+    "openAndRun": true,
+    "wave": 238,
+    "gentlQr": true,
+    "realCamera": true
+  },
+  "notes": "t238：Hikrobot MV-CB013 GenTL 持久采集 → 条码/二维码(zxing) → 变量门限。打开工程后点 ▶ 运行：首次开相机并保持连接，后续只取帧；结果变量 barcodeText/barcodeCount/passGate。勿与 MVS / 网页采集同时占 USB。期望串可空（有码即 OK）；现场扫到过顺丰/微信短链 QR。",
+  "sourcePosition": {
+    "x": 300,
+    "y": 40
+  },
+  "sourceConfig": {
+    "mode": "local",
+    "pixelFormat": "RGB24",
+    "intervalMs": 0,
+    "saveInSolution": false,
+    "showImageName": true,
+    "snStart": 0,
+    "imageCache": 0,
+    "outputMono8": false,
+    "stitchEnable": false,
+    "stitchStartY": 0,
+    "stitchHeight": 0,
+    "stitchClearOnTrigger": false,
+    "autoSwitch": false,
+    "stopAtLast": false,
+    "charFilterEnable": false,
+    "inputChar": "",
+    "triggerChar": "",
+    "cameraId": "Hikrobot MV-CB013-A0UM-C (K13917662)",
+    "cameraParams": {
+      "driver": "gentl",
+      "providerId": "8ae6d0c0a0009dd6b793",
+      "deviceId": "Hikrobot MV-CB013-A0UM-C (K13917662)",
+      "dataMode": "image",
+      "trigger": "freerun",
+      "timeoutMs": 5000,
+      "keepConnectionOpen": true,
+      "openClosePerGrab": false,
+      "backendKind": "gentl",
+      "continuousLive": true,
+      "sessionPersist": true
+    },
+    "exposure": 0.0,
+    "gain": 0.0,
+    "images": [],
+    "currentIndex": 0
+  },
+  "steps": [
+    {
+      "id": "a1b2c3d4e5f60718",
+      "name": "MV GenTL 采集",
+      "operation": "camera_capture",
+      "params": {
+        "driver": "gentl",
+        "providerId": "8ae6d0c0a0009dd6b793",
+        "deviceId": "Hikrobot MV-CB013-A0UM-C (K13917662)",
+        "dataMode": "image",
+        "trigger": "freerun",
+        "timeoutMs": 5000,
+        "keepConnectionOpen": true,
+        "openClosePerGrab": false,
+        "backendKind": "gentl",
+        "continuousLive": true,
+        "sessionPersist": true,
+        "reconnectResilient": true
+      },
+      "reference": "",
+      "position": {
+        "x": 300,
+        "y": 160
+      },
+      "imageFrom": "source",
+      "variables": {}
+    },
+    {
+      "id": "b2c3d4e5f6071829",
+      "operation": "barcode",
+      "name": "二维码/条码识别",
+      "params": {
+        "maxCodes": 8,
+        "types": "all",
+        "showOverlay": true,
+        "showBoxes": true,
+        "showText": true,
+        "showFormat": true,
+        "showIndex": true,
+        "resultVar": "barcode",
+        "writeFlowVars": true,
+        "judgeEnable": true,
+        "expectedText": "",
+        "judgeMinCount": 1,
+        "judgeMaxCount": 0
+      },
+      "position": {
+        "x": 300,
+        "y": 300
+      },
+      "imageFrom": "a1b2c3d4e5f60718",
+      "variables": {}
+    },
+    {
+      "id": "c3d4e5f60718293a",
+      "operation": "var_calc",
+      "name": "二维码结果·OK/NG",
+      "params": {
+        "scope": "flow",
+        "expressions": [
+          {
+            "name": "barcodeCount",
+            "expr": "(steps[\"b2c3d4e5f6071829\"].count or 0)",
+            "enabled": true
+          },
+          {
+            "name": "barcodeText",
+            "expr": "(steps[\"b2c3d4e5f6071829\"].items[0].text if (steps[\"b2c3d4e5f6071829\"].items) else \"\")",
+            "enabled": true
+          },
+          {
+            "name": "barcodeAll",
+            "expr": "(\"\\n\".join(i.text for i in (steps[\"b2c3d4e5f6071829\"].items or [])))",
+            "enabled": true
+          },
+          {
+            "name": "barcodeOk",
+            "expr": "(steps[\"b2c3d4e5f6071829\"].count or 0) >= 1",
+            "enabled": true
+          },
+          {
+            "name": "passGate",
+            "expr": "(steps[\"b2c3d4e5f6071829\"].count or 0) >= 1",
+            "enabled": true
+          }
+        ]
+      },
+      "position": {
+        "x": 300,
+        "y": 440
+      },
+      "imageFrom": "b2c3d4e5f6071829",
+      "variables": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "source",
+      "to": "a1b2c3d4e5f60718",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "e2",
+      "from": "a1b2c3d4e5f60718",
+      "to": "b2c3d4e5f6071829",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "e3",
+      "from": "b2c3d4e5f6071829",
+      "to": "c3d4e5f60718293a",
+      "fromPort": "bottom",
+      "toPort": "top"
+    }
+  ],
+  "variables": {
+    "barcodeCount": 0,
+    "barcodeText": "",
+    "barcodeAll": "",
+    "barcodeOk": 0,
+    "passGate": 0
+  },
+  "hostWatch": {
+    "watchKeys": [
+      "barcodeCount",
+      "barcodeText",
+      "barcodeAll",
+      "barcodeOk",
+      "passGate"
+    ],
+    "active": "二维码链",
+    "pinGroups": {
+      "二维码链": [
+        "barcodeCount",
+        "barcodeText",
+        "barcodeAll",
+        "barcodeOk",
+        "passGate"
+      ],
+      "门限": [
+        "barcodeOk",
+        "passGate"
+      ]
+    }
+  },
+  "runUi": {
+    "split": "4",
+    "placements": [
+      {
+        "name": "图像",
+        "page": 3,
+        "cell": 0,
+        "category": "基础"
+      },
+      {
+        "name": "OK/NG",
+        "page": 3,
+        "cell": 1,
+        "category": "基础"
+      },
+      {
+        "name": "运行控制",
+        "page": 3,
+        "cell": 2,
+        "category": "基础"
+      },
+      {
+        "name": "生产统计",
+        "page": 3,
+        "cell": 3,
+        "category": "图表"
+      }
+    ],
+    "controls": {
+      "图像": {
+        "commands": [],
+        "binding": "source"
+      },
+      "OK/NG": {
+        "commands": [],
+        "binding": ""
+      },
+      "运行控制": {
+        "commands": [
+          {
+            "type": "执行·单次",
+            "config": ""
+          },
+          {
+            "type": "执行·连续",
+            "config": ""
+          },
+          {
+            "type": "执行·停止",
+            "config": ""
+          }
+        ],
+        "binding": ""
+      },
+      "生产统计": {
+        "commands": [],
+        "binding": "stats"
+      }
+    },
+    "fixedBars": {
+      "top": false,
+      "bottom": true,
+      "left": false,
+      "right": false,
+      "cameraBind": "未绑定",
+      "commBind": "TCP.连接状态",
+      "showRunStatus": true,
+      "showOkNg": true,
+      "showCounters": true,
+      "showHistory": true
+    },
+    "meta": {
+      "template": "open_and_run_gentl_qr",
+      "version": 1,
+      "openAndRun": true,
+      "wave": 238
+    }
+  }
+}

@@ -37,6 +37,7 @@ OPEN_AND_RUN_ENTRIES: list[tuple[str, str]] = [
     ('打开即跑 · 多协议通信', 'projects/open-and-run-comm-multiproto.sieans'),
     ('打开即跑 · TCP环回（sim+真套接字）', 'projects/open-and-run-tcp-sim.sieans'),
     ('打开即跑 · 软模拟采集', 'projects/open-and-run-soft-camera.sieans'),
+    ('打开即跑 · GenTL相机→二维码', 'projects/open-and-run-gentl-qr.sieans'),
 ]
 
 # New-from-template extras (non open-and-run shells / camera-oriented).
