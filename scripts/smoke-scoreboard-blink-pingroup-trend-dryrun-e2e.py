@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Wave soft: multi-tpl scoreboard · A/B blink · host pin groups/CSV ·
-score trend · recipe dry-run side-by-side.
+"""Wave soft: live scoreboard ingest · filmstrip blink shortcuts ·
+host pin-group project JSON · recipe preview-apply + rollback ·
+score trend · dry-run side-by-side.
 No Halcon / robot / real TCP / cloud. Leave ?? os and :18280 alone.
 """
 from __future__ import annotations
@@ -9,6 +10,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from copy import deepcopy
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -26,6 +28,7 @@ def main():
     from desktop.locate_scoreboard import (
         build_batch_scoreboard, soft_estimate_scores, select_best_template,
         MatchScoreTrend, format_side_by_side_diff, ingest_engine_scores,
+        scores_for_library,
     )
     lib = [
         {'id': 'a1', 'name': '基准A', 'path': '/tmp/a.png'},
@@ -71,6 +74,19 @@ def main():
         ok(f'ingest_engine_scores={eng}')
     else:
         bad(f'ingest={eng}')
+    # richer live engine shapes
+    eng2 = ingest_engine_scores({
+        'results': [{'id': 'L1', 'data': {
+            'templateScores': {'a1': 0.92, 'b2': 0.61, 'c3': 0.80},
+            'matches': [{'templateId': 'a1', 'score': 0.92}],
+            'output': {'score': 0.92},
+        }}],
+    }, step_id='L1')
+    mapped = scores_for_library(eng2, lib)
+    if mapped.get('a1') == 0.92 and mapped.get('b2') == 0.61 and mapped.get('c3') == 0.80:
+        ok(f'scores_for_library live={mapped}')
+    else:
+        bad(f'scores_for_library={mapped} eng2={eng2}')
 
     from PySide6.QtWidgets import QApplication, QWidget, QTableWidget, QPushButton, QLabel, QListWidget
     app = QApplication.instance() or QApplication([])
@@ -143,6 +159,28 @@ def main():
         ok('blink stopped')
     else:
         bad('blink still active')
+    # discoverable conflict-safe shortcuts
+    info = fs.set_blink_shortcuts('Alt+B', 'Shift+Alt+B')
+    swap = str(info.get('swap') or '')
+    # QKeySequence PortableText may reorder to Alt+Shift+B
+    if info.get('toggle') == 'Alt+B' and swap in ('Shift+Alt+B', 'Alt+Shift+B') and info.get('ok'):
+        ok(f'blink shortcuts={info}')
+    else:
+        bad(f'shortcuts={info}')
+    # reserved conflict rejection
+    bad_info = fs.set_blink_shortcuts('Alt+P', 'Alt+B')  # Alt+P reserved
+    if bad_info.get('toggle') != 'Alt+P':
+        ok(f'blink reserved reject toggle stays {bad_info.get("toggle")}')
+    else:
+        bad(f'reserved accepted={bad_info}')
+    if hasattr(fs, 'toggle_blink'):
+        fs.set_blink_pair('/tmp/a.png', '/tmp/b.png')
+        fs.start_blink()
+        fs.toggle_blink()  # should stop
+        (ok if not fs.is_blinking() else bad)('toggle_blink stops')
+        fs.toggle_blink()  # should start
+        (ok if fs.is_blinking() else bad)('toggle_blink starts')
+        fs.stop_blink()
     # auto pick
     fs.set_blink_pair('', '')
     aa, bb = fs.auto_pick_blink_pair()
@@ -191,6 +229,43 @@ def main():
             ok(f'export_csv file={out.name} bytes={out.stat().st_size}')
         else:
             bad(f'export file written={written}')
+
+    
+    # ---- pin groups → project JSON hostWatch ----
+    from desktop.host_var_watch import (
+        write_pin_groups_to_project, pin_groups_from_project, host_watch_bag,
+    )
+    proj_pins = {'name': 'demo', 'steps': []}
+    write_pin_groups_to_project(
+        proj_pins,
+        boardw.pin_groups(),
+        active=boardw.active_pin_group(),
+        watch_keys=boardw.pinned_keys(),
+    )
+    bag = proj_pins.get('hostWatch') or {}
+    if bag.get('pinGroups') and bag.get('activePinGroup') == boardw.active_pin_group():
+        ok(f'hostWatch write pinGroups={list(bag["pinGroups"])} active={bag["activePinGroup"]}')
+    else:
+        bad(f'hostWatch={bag}')
+    g2, a2 = pin_groups_from_project(proj_pins)
+    if g2.get('测量链') == ['ixPt', 'pldDist'] and a2 == '测量链':
+        ok(f'pin_groups_from_project g={g2} a={a2}')
+    else:
+        bad(f'roundtrip g={g2} a={a2}')
+    # board.seed_from_project restores groups
+    boardw2 = HostVarWatchBoard()
+    boardw2.seed_from_project(proj_pins, label='roundtrip')
+    if boardw2.active_pin_group() == '测量链' and boardw2.pinned_keys() == ['ixPt', 'pldDist']:
+        ok(f'seed_from_project restore keys={boardw2.pinned_keys()}')
+    else:
+        bad(f'seed restore group={boardw2.active_pin_group()} keys={boardw2.pinned_keys()}')
+    # persist helper on board
+    proj_pins2 = {'name': 'x'}
+    boardw2.persist_pin_groups_to_project(proj_pins2)
+    if (proj_pins2.get('hostWatch') or {}).get('pinGroups'):
+        ok(f'persist_pin_groups_to_project={proj_pins2["hostWatch"]["pinGroups"]}')
+    else:
+        bad(f'persist={proj_pins2}')
 
     # ---- recipe dry-run side-by-side ----
     from desktop import recipe_library as rl
@@ -242,6 +317,96 @@ def main():
         ok('dry-run empty selection non-blocking')
     else:
         bad(f'empty={empty} banner={dlg._post_banner.text()!r}')
+
+
+    # ---- recipe preview-apply + one-click rollback ----
+    from desktop.recipe_library import (
+        preview_apply_recipe, apply_recipe_with_rollback,
+        rollback_last_recipe_apply, has_recipe_rollback, list_recipes,
+    )
+    # UI object names for new buttons
+    names = {w.objectName() for w in dlg.findChildren(QWidget) if w.objectName()}
+    for need in ('recipePreviewApplyBtn', 'recipeRollbackBtn'):
+        (ok if need in names else bad)(f'recipe {need}' if need in names else f'missing {need}')
+
+    proj_rb = deepcopy(proj)
+    recipes = list_recipes(proj_rb)
+    if not recipes:
+        bad('no recipes for rollback test')
+    else:
+        rid = recipes[0]['id']
+        # mutate live away from recipe snapshot
+        for s in proj_rb.get('steps') or []:
+            if isinstance(s, dict) and s.get('operation') == 'locate':
+                s.setdefault('params', {})['minScore'] = 0.41
+        snap_steps = deepcopy(proj_rb.get('steps'))
+        bag = preview_apply_recipe(proj_rb, rid)
+        if bag.get('mutatedLive') is False and proj_rb.get('steps') == snap_steps:
+            ok(f'preview_apply_recipe chip={bag.get("chip")} would={bag.get("wouldApply")}')
+        else:
+            bad(f'preview mutated? {bag.get("mutatedLive")} steps_eq={proj_rb.get("steps")==snap_steps}')
+        stats = apply_recipe_with_rollback(proj_rb, rid)
+        if stats.get('rollbackReady') and has_recipe_rollback(proj_rb):
+            ok(f'apply_with_rollback ready key={stats.get("rollbackKey")}')
+        else:
+            bad(f'rollbackReady={stats}')
+        # dialog preview + rollback
+        if hasattr(dlg, '_preview_apply') and hasattr(dlg, '_rollback_btn'):
+            dlg.document.project = proj_rb
+            # reselect recipe so preview has a selection
+            if dlg._recipe_list.count() >= 1:
+                dlg._recipe_list.setCurrentRow(0)
+            prev = dlg._preview_apply()
+            (ok if prev and prev.get('mutatedLive') is False else bad)(
+                f'dlg._preview_apply banner={(dlg._post_banner.text()[:60] if dlg._post_banner else "")}')
+            dlg._sync_rollback_btn()
+            (ok if dlg._rollback_btn.isEnabled() else bad)('rollback btn enabled after apply')
+            rb = rollback_last_recipe_apply(proj_rb)
+            if rb.get('ok') and not has_recipe_rollback(proj_rb):
+                ok(f'rollback_last ok rolled={rb.get("rolledBack")}')
+            else:
+                bad(f'rollback={rb}')
+            ms2 = None
+            for s in proj_rb.get('steps') or []:
+                if isinstance(s, dict) and s.get('operation') == 'locate':
+                    ms2 = (s.get('params') or {}).get('minScore')
+            (ok if ms2 is not None and abs(float(ms2) - 0.41) < 1e-9 else bad)(
+                f'rollback restored minScore={ms2}')
+            dlg.document.project = proj_rb
+            dlg._sync_rollback_btn()
+            (ok if not dlg._rollback_btn.isEnabled() else bad)('rollback btn disabled after undo')
+        else:
+            bad('dialog missing preview/rollback UI')
+
+    # ---- locate panel live ingest ----
+    step = {
+        'id': 'Lx', 'name': '定位', 'operation': 'locate',
+        'params': normalize_locate_params({
+            'templateLibrary': lib,
+            'activeTemplateId': 'a1',
+            'batchScoreThreshold': 0.70,
+        }),
+    }
+    panel2 = LocateMatchPanel(step, {}, {'steps': [step], 'variables': {}})
+    live_res = {
+        'results': [{'id': 'Lx', 'data': {
+            'templateScores': {'a1': 0.95, 'b2': 0.60, 'c3': 0.88},
+            'bestScore': 0.95, 'activeTemplateId': 'a1',
+        }}],
+    }
+    if hasattr(panel2, 'ingest_live_match_scores'):
+        got = panel2.ingest_live_match_scores(live_res, soft_fallback=True)
+        (ok if got else bad)(f'panel.ingest_live_match_scores={got}')
+    else:
+        bad('no ingest_live_match_scores')
+    if hasattr(panel2, 'set_last_result'):
+        panel2.set_last_result(live_res)
+        ok('panel.set_last_result')
+    board_live = panel2.run_batch_scoreboard() if hasattr(panel2, 'run_batch_scoreboard') else None
+    if isinstance(board_live, dict):
+        ok(f'run_batch_scoreboard source={board_live.get("source")} best={board_live.get("bestId")}')
+    else:
+        ok(f'run_batch_scoreboard returned {type(board_live).__name__}')
 
     print(f'\nTOTAL pass={pass_n} fail={fail_n}')
     return 0 if fail_n == 0 else 1

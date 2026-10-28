@@ -807,7 +807,7 @@ class MainWindow(QMainWindow):
 
 
     def _seed_host_var_watch_from_project(self, project=None, *, label: str = ''):
-        """样张/方案打开 → 自动种子 HostVarWatchBoard（watchKeys / resultVar）。"""
+        """样张/方案打开 → 自动种子 HostVarWatchBoard（watchKeys / resultVar / pinGroups）。"""
         proj = project
         if proj is None:
             try:
@@ -818,27 +818,135 @@ class MainWindow(QMainWindow):
             return []
         keys = []
         try:
-            from desktop.host_var_watch import collect_watch_keys_from_project
+            from desktop.host_var_watch import collect_watch_keys_from_project, pin_groups_from_project
             keys = collect_watch_keys_from_project(proj)
+            groups, active = pin_groups_from_project(proj)
         except Exception:
             keys = []
+            groups, active = {}, ''
         # Keep on main window for late dialog open
         self._host_watch_seed_keys = list(keys)
         self._host_watch_seed_label = label or str(proj.get('name') or '')
+        self._host_watch_pin_groups = dict(groups) if groups else {}
+        self._host_watch_active_pin_group = str(active or '')
         # Live dialog if already open
         try:
             dlg = (self.dialogs or {}).get('var_watch')
             if dlg is not None and hasattr(dlg, 'board'):
                 dlg.board.bind(self.document, getattr(self, 'last_result', None))
-                dlg.board.seed_watch_keys(keys, label=self._host_watch_seed_label)
+                if groups:
+                    dlg.board.seed_from_project(proj, label=self._host_watch_seed_label)
+                else:
+                    dlg.board.seed_watch_keys(keys, label=self._host_watch_seed_label)
         except Exception:
             pass
-        if keys:
+        if keys or groups:
             try:
-                self.log(f'变量监视已种子 {len(keys)} 项 · {self._host_watch_seed_label or "—"}')
+                ghint = f' · 钉组{len(groups)}' if groups else ''
+                self.log(f'变量监视已种子 {len(keys)} 项{ghint} · {self._host_watch_seed_label or "—"}')
             except Exception:
                 pass
         return keys
+
+    def _flush_host_watch_pin_groups(self):
+        """Persist open watch-board pin groups into project JSON before save."""
+        proj = getattr(self.document, 'project', None)
+        if not isinstance(proj, dict):
+            return
+        try:
+            dlg = (self.dialogs or {}).get('var_watch')
+            if dlg is not None and hasattr(dlg, 'board') and hasattr(dlg.board, 'persist_pin_groups_to_project'):
+                dlg.board.persist_pin_groups_to_project(proj)
+                self._host_watch_pin_groups = dlg.board.pin_groups()
+                self._host_watch_active_pin_group = dlg.board.active_pin_group()
+                return
+        except Exception:
+            pass
+        # fallback: write cached groups if any
+        try:
+            from desktop.host_var_watch import write_pin_groups_to_project
+            cached = getattr(self, '_host_watch_pin_groups', None) or {}
+            if cached:
+                write_pin_groups_to_project(
+                    proj, cached,
+                    active=getattr(self, '_host_watch_active_pin_group', '') or '',
+                    watch_keys=getattr(self, '_host_watch_seed_keys', None),
+                )
+        except Exception:
+            pass
+
+
+    def _ingest_locate_scoreboard_from_result(self, result):
+        """Wire soft-engine match scores into locate step scoreboards / open panel."""
+        if not isinstance(result, dict):
+            return
+        try:
+            from desktop.locate_scoreboard import (
+                ingest_engine_scores, scores_for_library, build_batch_scoreboard,
+            )
+            from desktop.locate_match_panel import normalize_locate_params
+        except Exception:
+            return
+        steps = list((self.document.project or {}).get('steps') or [])
+        locate_steps = [s for s in steps if isinstance(s, dict) and s.get('operation') == 'locate']
+        if not locate_steps:
+            return
+        bag = ingest_engine_scores(result)
+        if not bag:
+            return
+        for step in locate_steps:
+            params = normalize_locate_params(step.get('params'))
+            lib = params.get('templateLibrary') if isinstance(params.get('templateLibrary'), list) else []
+            scores = scores_for_library(bag, lib)
+            # also accept step-scoped best
+            sid = str(step.get('id') or '')
+            if not scores and bag.get(f'step:{sid}') is not None:
+                scores = scores_for_library({'__best__': bag.get(f'step:{sid}')}, lib)
+            if not scores and bag.get('__best__') is not None and lib:
+                scores = scores_for_library(bag, lib)
+            if not scores:
+                continue
+            thr = float(params.get('batchScoreThreshold') or params.get('minScore') or 0.85)
+            board = build_batch_scoreboard(
+                lib, scores, threshold=thr,
+                active_id=str(params.get('activeTemplateId') or ''),
+            )
+            board['source'] = 'engine'
+            board['summary'] = f"{board.get('summary')} · 源:engine"
+            params['lastBatchScoreboard'] = board
+            # trend point
+            try:
+                from desktop.locate_scoreboard import MatchScoreTrend
+                trend = MatchScoreTrend(32)
+                prev = params.get('matchScoreTrend')
+                if isinstance(prev, dict):
+                    trend.load_dict(prev)
+                if board.get('bestScore') is not None:
+                    trend.push(
+                        board['bestScore'], label='engine',
+                        ok=bool(board.get('passCount')),
+                        template_id=str(board.get('bestId') or ''),
+                    )
+                params['matchScoreTrend'] = trend.to_dict()
+            except Exception:
+                pass
+            step['params'] = params
+        # refresh open locate property panel if any
+        try:
+            pf = getattr(self, 'property_float', None)
+            panel = None
+            if pf is not None:
+                from desktop.locate_match_panel import LocateMatchPanel
+                for w in pf.findChildren(LocateMatchPanel):
+                    panel = w
+                    break
+            if panel is not None:
+                if hasattr(panel, 'set_last_result'):
+                    panel.set_last_result(result)
+                if hasattr(panel, 'ingest_live_match_scores'):
+                    panel.ingest_live_match_scores(result, soft_fallback=True)
+        except Exception:
+            pass
 
     def _measure_badge_for_result(self, bag) -> str:
         """Derive OK/NG from a cached filmstrip last_result (measure-focused)."""
@@ -933,7 +1041,7 @@ class MainWindow(QMainWindow):
             project=reply['project']
             # Preserve multi-flow + native editor extension fields (normalize may drop/reshape them).
             # runUi.fixedBars.gateKey (判定门) and sourceConfig must survive save→reopen.
-            for key in ('flows','activeFlowId','flowEdges','runUi','commManager','globalTriggers','notes','sourceConfig'):
+            for key in ('flows','activeFlowId','flowEdges','runUi','commManager','globalTriggers','notes','sourceConfig','hostWatch','recipes','activeRecipeId','activeRecipeVariant'):
                 if key in value:project[key]=value[key]
             try:
                 project = self._rebase_source_images(project)
@@ -993,6 +1101,10 @@ class MainWindow(QMainWindow):
         self._write_scheme_file(Path(name))
 
     def _write_scheme_file(self, destination):
+        try:
+            self._flush_host_watch_pin_groups()
+        except Exception:
+            pass
         snapshot=flow_scheme.scheme_for_disk(self.document.project)
         def saved(reply):
             # Keep multi-flow fields from client snapshot (normalize strips them)
@@ -1001,7 +1113,7 @@ class MainWindow(QMainWindow):
                 if key in reply.get('project',{}):
                     out[key]=reply['project'][key]
             # Prefer client snapshot for HMI / Comm / triggers (判定门 gateKey lives in runUi.fixedBars)
-            for key in ('runUi','commManager','globalTriggers','notes'):
+            for key in ('runUi','commManager','globalTriggers','notes','hostWatch','recipes','activeRecipeId','activeRecipeVariant'):
                 if key in snapshot:
                     out[key]=deepcopy(snapshot[key])
             # Re-sync active into flows after any normalize of top-level
@@ -1872,6 +1984,10 @@ class MainWindow(QMainWindow):
             vw=(self.dialogs or {}).get('var_watch')
             if vw is not None and hasattr(vw,'board'):
                 vw.board.set_last_result(result)
+        except Exception:
+            pass
+        try:
+            self._ingest_locate_scoreboard_from_result(result)
         except Exception:
             pass
         # multi-source filmstrip: stash per-path last_result for canvas pick
@@ -5229,14 +5345,22 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
             try:
-                keys = getattr(self, '_host_watch_seed_keys', None)
-                if keys:
-                    dialog.board.seed_watch_keys(keys, label=getattr(self, '_host_watch_seed_label', '') or '')
-                else:
+                proj = getattr(self.document, 'project', None)
+                groups = getattr(self, '_host_watch_pin_groups', None) or {}
+                if isinstance(proj, dict) and (proj.get('hostWatch') or groups):
                     dialog.board.seed_from_project(
-                        getattr(self.document, 'project', None),
-                        label=str((getattr(self.document, 'project', None) or {}).get('name') or ''),
+                        proj,
+                        label=getattr(self, '_host_watch_seed_label', '') or str((proj or {}).get('name') or ''),
                     )
+                else:
+                    keys = getattr(self, '_host_watch_seed_keys', None)
+                    if keys:
+                        dialog.board.seed_watch_keys(keys, label=getattr(self, '_host_watch_seed_label', '') or '')
+                    else:
+                        dialog.board.seed_from_project(
+                            proj,
+                            label=str((proj or {}).get('name') or ''),
+                        )
             except Exception:
                 pass
         elif key=='variables':

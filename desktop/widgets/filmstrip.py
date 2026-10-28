@@ -2,7 +2,7 @@
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QSettings, Signal, QSize, QTimer, QEvent, QPoint
-from PySide6.QtGui import QIcon, QPixmap, QImage, QAction, QColor
+from PySide6.QtGui import QIcon, QPixmap, QImage, QAction, QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QListWidget,
     QListWidgetItem, QAbstractItemView, QFileDialog, QMessageBox, QComboBox,
@@ -74,13 +74,14 @@ class FilmstripBar(QWidget):
         self.blink_btn.setObjectName('filmstripBlinkBtn')
         self.blink_btn.setCheckable(True)
         self.blink_btn.setToolTip(
-            '帧 A/B 闪烁对比：当前为 A，下一张（或对比条第二帧）为 B；无相机'
+            '帧 A/B 闪烁对比：当前为 A，下一张（或对比条第二帧）为 B；无相机\n'
+            '快捷键 Alt+B（可发现、避冲突）'
         )
         self.blink_btn.toggled.connect(self._on_blink_toggled)
         bar.addWidget(self.blink_btn)
         self.blink_swap_btn = QPushButton('A⇄B')
         self.blink_swap_btn.setObjectName('filmstripBlinkSwapBtn')
-        self.blink_swap_btn.setToolTip('交换 A/B 帧')
+        self.blink_swap_btn.setToolTip('交换 A/B 帧（Shift+Alt+B）')
         self.blink_swap_btn.setFixedWidth(40)
         self.blink_swap_btn.clicked.connect(self.swap_blink_pair)
         bar.addWidget(self.blink_swap_btn)
@@ -95,6 +96,11 @@ class FilmstripBar(QWidget):
         self._blink_timer = QTimer(self)
         self._blink_timer.setInterval(self._blink_ms)
         self._blink_timer.timeout.connect(self._on_blink_tick)
+        self._blink_toggle_key = 'Alt+B'
+        self._blink_swap_key = 'Shift+Alt+B'
+        self._blink_toggle_shortcut = None
+        self._blink_swap_shortcut = None
+        self._ensure_blink_shortcuts()
         bar.addStretch(1)
         self.add_btn = QPushButton('+')
         self.add_btn.setToolTip('添加图像')
@@ -817,6 +823,119 @@ class FilmstripBar(QWidget):
         lab.setVisible(True)
 
 
+
+
+    # ----- A/B blink keyboard (discoverable, conflict-safe) -----
+    BLINK_TOGGLE_DEFAULT = 'Alt+B'
+    BLINK_SWAP_DEFAULT = 'Shift+Alt+B'
+    # Reserved host chords we never steal for blink
+    _BLINK_RESERVED = {
+        'Ctrl+S', 'Ctrl+N', 'Ctrl+O', 'Ctrl+Z', 'Ctrl+Y', 'Ctrl+Return',
+        'Ctrl+Shift+C', 'Ctrl+Shift+V', 'Alt+P', 'Shift+Alt+P', 'Alt+H', 'Alt+L',
+    }
+
+    def blink_toggle_shortcut_key(self) -> str:
+        return str(getattr(self, '_blink_toggle_key', None) or self.BLINK_TOGGLE_DEFAULT)
+
+    def blink_swap_shortcut_key(self) -> str:
+        return str(getattr(self, '_blink_swap_key', None) or self.BLINK_SWAP_DEFAULT)
+
+    def set_blink_shortcuts(self, toggle_key: str = '', swap_key: str = '') -> dict:
+        """Install discoverable blink chords; refuse reserved host conflicts."""
+        out = {'toggle': self.blink_toggle_shortcut_key(), 'swap': self.blink_swap_shortcut_key(),
+               'ok': True, 'conflict': ''}
+        def _norm(k):
+            try:
+                return QKeySequence(str(k or '')).toString(QKeySequence.SequenceFormat.PortableText)
+            except Exception:
+                return str(k or '')
+        if toggle_key:
+            nk = _norm(toggle_key)
+            if nk in self._BLINK_RESERVED:
+                out['ok'] = False
+                out['conflict'] = nk
+                return out
+            self._blink_toggle_key = nk or self.BLINK_TOGGLE_DEFAULT
+        if swap_key:
+            nk = _norm(swap_key)
+            if nk in self._BLINK_RESERVED:
+                out['ok'] = False
+                out['conflict'] = nk
+                return out
+            self._blink_swap_key = nk or self.BLINK_SWAP_DEFAULT
+        self._ensure_blink_shortcuts(force=True)
+        out['toggle'] = self.blink_toggle_shortcut_key()
+        out['swap'] = self.blink_swap_shortcut_key()
+        # refresh tooltips
+        try:
+            self.blink_btn.setToolTip(
+                '帧 A/B 闪烁对比：当前为 A，下一张（或对比条第二帧）为 B；无相机\n'
+                f'快捷键 {self.blink_toggle_shortcut_key()}（可发现、避冲突）'
+            )
+            self.blink_swap_btn.setToolTip(
+                f'交换 A/B 帧（{self.blink_swap_shortcut_key()}）'
+            )
+        except Exception:
+            pass
+        return out
+
+    def _ensure_blink_shortcuts(self, *, force: bool = False):
+        try:
+            from PySide6.QtCore import Qt as _Qt
+        except Exception:
+            return
+        toggle = self.blink_toggle_shortcut_key()
+        swap = self.blink_swap_shortcut_key()
+        # refuse reserved
+        if toggle in self._BLINK_RESERVED:
+            toggle = self.BLINK_TOGGLE_DEFAULT
+            self._blink_toggle_key = toggle
+        if swap in self._BLINK_RESERVED:
+            swap = self.BLINK_SWAP_DEFAULT
+            self._blink_swap_key = swap
+        sc = getattr(self, '_blink_toggle_shortcut', None)
+        if sc is None or force:
+            if sc is not None:
+                try:
+                    sc.setParent(None)
+                    sc.deleteLater()
+                except Exception:
+                    pass
+            sc = QShortcut(QKeySequence(toggle), self)
+            sc.setContext(_Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            sc.setObjectName('filmstripBlinkToggleShortcut')
+            sc.activated.connect(self.toggle_blink)
+            self._blink_toggle_shortcut = sc
+        else:
+            try:
+                sc.setKey(QKeySequence(toggle))
+            except Exception:
+                pass
+        sc2 = getattr(self, '_blink_swap_shortcut', None)
+        if sc2 is None or force:
+            if sc2 is not None:
+                try:
+                    sc2.setParent(None)
+                    sc2.deleteLater()
+                except Exception:
+                    pass
+            sc2 = QShortcut(QKeySequence(swap), self)
+            sc2.setContext(_Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            sc2.setObjectName('filmstripBlinkSwapShortcut')
+            sc2.activated.connect(self.swap_blink_pair)
+            self._blink_swap_shortcut = sc2
+        else:
+            try:
+                sc2.setKey(QKeySequence(swap))
+            except Exception:
+                pass
+
+    def toggle_blink(self):
+        """Keyboard / API toggle for A/B blink."""
+        if self.is_blinking():
+            self.stop_blink()
+            return False
+        return bool(self.start_blink())
 
     # ----- A/B blink compare (no hardware) -----
     def blink_pair(self):

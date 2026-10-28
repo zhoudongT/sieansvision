@@ -239,6 +239,136 @@ def apply_recipe(project: dict, recipe_id: str, *,
     }
 
 
+
+def capture_project_snapshot_for_rollback(project: dict) -> dict:
+    """Deep-copy the mutable halves that apply_recipe can touch (for one-click rollback)."""
+    if not isinstance(project, dict):
+        return {}
+    return {
+        'steps': deepcopy(project.get('steps') or []),
+        'variables': deepcopy(project.get('variables') or {}),
+        'activeRecipeId': project.get('activeRecipeId'),
+        'activeRecipeVariant': project.get('activeRecipeVariant'),
+        'productionRecipe': deepcopy(project.get('productionRecipe'))
+            if isinstance(project.get('productionRecipe'), dict)
+            else project.get('productionRecipe'),
+    }
+
+
+def restore_project_snapshot(project: dict, snap: dict | None) -> dict:
+    """Restore a prior capture_project_snapshot_for_rollback into project. Returns stats."""
+    if not isinstance(project, dict) or not isinstance(snap, dict):
+        return {'ok': False, 'reason': 'empty'}
+    if 'steps' in snap:
+        project['steps'] = deepcopy(snap.get('steps') or [])
+    if 'variables' in snap:
+        project['variables'] = deepcopy(snap.get('variables') or {})
+    for k in ('activeRecipeId', 'activeRecipeVariant', 'productionRecipe'):
+        if k in snap:
+            if snap[k] is None:
+                project.pop(k, None)
+            else:
+                project[k] = deepcopy(snap[k]) if isinstance(snap[k], (dict, list)) else snap[k]
+    return {
+        'ok': True,
+        'steps': len(project.get('steps') or []),
+        'restoredKeys': [k for k in ('steps', 'variables', 'activeRecipeId',
+                                     'activeRecipeVariant', 'productionRecipe') if k in snap],
+    }
+
+
+def preview_apply_recipe(project: dict, recipe_id: str, *,
+                         var_keys=None, step_ops=None,
+                         steps_only: bool = False, vars_only: bool = False) -> dict:
+    """Dry-run apply on a deep copy — never mutates project. Returns preview bag.
+
+    Bag keys:
+      diff          — diff_recipe output
+      wouldApply    — apply_recipe stats against a scratch copy
+      projected     — scratch project after would-be apply (caller may inspect)
+      sideBySide    — format_diff_side_by_side rows
+      chip          — format_diff_chip
+    """
+    live = project if isinstance(project, dict) else {}
+    diff = diff_recipe(
+        live, recipe_id,
+        var_keys=var_keys, step_ops=step_ops,
+        steps_only=steps_only, vars_only=vars_only,
+    )
+    scratch = deepcopy(live)
+    stats = apply_recipe(
+        scratch, recipe_id,
+        var_keys=var_keys, step_ops=step_ops,
+        steps_only=steps_only, vars_only=vars_only,
+    )
+    return {
+        'diff': diff,
+        'wouldApply': stats,
+        'projected': scratch,
+        'sideBySide': format_diff_side_by_side(diff),
+        'chip': format_diff_chip(diff),
+        'name': stats.get('name') or diff.get('name') or '',
+        'id': recipe_id,
+        'mutatedLive': False,
+    }
+
+
+def apply_recipe_with_rollback(project: dict, recipe_id: str, *,
+                               var_keys=None, step_ops=None,
+                               steps_only: bool = False, vars_only: bool = False,
+                               store_key: str = '_recipeRollbackSnap') -> dict:
+    """Apply recipe and stash a rollback snapshot on project[store_key].
+
+    Returns apply stats + {'rollbackReady': True, 'rollbackKey': store_key}.
+    Call rollback_last_recipe_apply(project) to undo.
+    """
+    if not isinstance(project, dict):
+        raise ValueError('project required')
+    snap = capture_project_snapshot_for_rollback(project)
+    stats = apply_recipe(
+        project, recipe_id,
+        var_keys=var_keys, step_ops=step_ops,
+        steps_only=steps_only, vars_only=vars_only,
+    )
+    project[store_key] = {
+        'snapshot': snap,
+        'recipeId': recipe_id,
+        'name': stats.get('name') or '',
+        'appliedAt': _now(),
+        'stats': {
+            'applied': stats.get('applied'),
+            'skipped': stats.get('skipped'),
+            'varsApplied': stats.get('varsApplied'),
+        },
+    }
+    out = dict(stats)
+    out['rollbackReady'] = True
+    out['rollbackKey'] = store_key
+    return out
+
+
+def rollback_last_recipe_apply(project: dict, *,
+                               store_key: str = '_recipeRollbackSnap') -> dict:
+    """One-click undo of the last apply_recipe_with_rollback. Soft / no hardware."""
+    if not isinstance(project, dict):
+        return {'ok': False, 'reason': 'no project'}
+    bag = project.get(store_key)
+    if not isinstance(bag, dict) or not isinstance(bag.get('snapshot'), dict):
+        return {'ok': False, 'reason': 'no rollback snapshot'}
+    stats = restore_project_snapshot(project, bag.get('snapshot'))
+    name = bag.get('name') or bag.get('recipeId') or ''
+    project.pop(store_key, None)
+    stats['ok'] = True
+    stats['rolledBack'] = name
+    stats['recipeId'] = bag.get('recipeId') or ''
+    return stats
+
+
+def has_recipe_rollback(project: dict, *, store_key: str = '_recipeRollbackSnap') -> bool:
+    bag = (project or {}).get(store_key) if isinstance(project, dict) else None
+    return isinstance(bag, dict) and isinstance(bag.get('snapshot'), dict)
+
+
 def diff_recipe(project: dict, recipe_id: str, *,
                 var_keys=None, step_ops=None, steps_only: bool = False,
                 vars_only: bool = False) -> dict:

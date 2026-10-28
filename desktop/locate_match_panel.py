@@ -827,23 +827,78 @@ class LocateMatchPanel(QWidget):
         if lab is not None:
             lab.setText(str(board.get('summary') or '未评分'))
 
+    def _resolve_live_engine_scores(self, last_result=None) -> dict:
+        """Pull soft-engine match scores when available (no Halcon / no camera)."""
+        from desktop.locate_scoreboard import ingest_engine_scores, scores_for_library
+        lr = last_result
+        if lr is None:
+            try:
+                from desktop.upstream_field_picker import host_last_result
+                lr = host_last_result(self)
+            except Exception:
+                lr = None
+        if lr is None:
+            lr = getattr(self, '_last_result', None)
+        bag = ingest_engine_scores(lr, step_id=str(self.step.get('id') or ''))
+        return scores_for_library(bag, self._tpl_library()), bag
+
+    def ingest_live_match_scores(self, last_result=None, *, soft_fallback: bool = True,
+                                 seed: str = '') -> dict:
+        """Wire live engine scores into the batch scoreboard; soft estimates fill gaps."""
+        live, bag = self._resolve_live_engine_scores(last_result)
+        src = 'engine' if live else 'soft'
+        board = self.run_batch_scoreboard(
+            live or None, soft=bool(soft_fallback), seed=seed, source=src,
+        )
+        if bag.get('__best__') is not None:
+            self.push_match_score(
+                bag['__best__'],
+                label='engine',
+                ok=True,
+                template_id=str(
+                    next((k for k in bag if not str(k).startswith('_') and not str(k).startswith('step:')), '')
+                    or board.get('bestId') or ''
+                ),
+            )
+        return board
+
     def run_batch_scoreboard(self, scores_by_id=None, *, soft: bool = True,
-                             seed: str = '') -> dict:
-        """Score all templates; soft=True fills missing with deterministic estimates."""
+                             seed: str = '', source: str = '') -> dict:
+        """Score all templates; prefer injected/engine scores, soft fills missing."""
         from desktop.locate_scoreboard import (
             build_batch_scoreboard, soft_estimate_scores,
         )
         lib = self._tpl_library()
         scores = dict(scores_by_id or {})
+        used_source = source or ('inject' if scores else '')
+        if not scores:
+            # auto-ingest live engine when caller did not supply a map
+            try:
+                live, _bag = self._resolve_live_engine_scores()
+                if live:
+                    scores.update(live)
+                    used_source = used_source or 'engine'
+            except Exception:
+                pass
         if soft:
             est = soft_estimate_scores(lib, seed=seed or str(self.params.get('templatePath') or ''))
             for k, v in est.items():
                 scores.setdefault(k, v)
+            if not used_source:
+                used_source = 'soft'
+            elif used_source == 'engine' and any(
+                k in est and scores.get(k) == est.get(k) for k in est
+            ):
+                used_source = 'engine+soft'
         board = build_batch_scoreboard(
             lib, scores,
             threshold=self._batch_threshold(),
             active_id=str(self.params.get('activeTemplateId') or ''),
         )
+        board['source'] = used_source or 'soft'
+        # annotate summary with source
+        if used_source and used_source != 'soft':
+            board['summary'] = f"{board.get('summary')} · 源:{used_source}"
         self._set_param('lastBatchScoreboard', board)
         self._set_param('batchScoreThreshold', self._batch_threshold())
         self._refresh_batch_scoreboard_table(board)
@@ -851,17 +906,18 @@ class LocateMatchPanel(QWidget):
         if board.get('bestScore') is not None:
             self.push_match_score(
                 board['bestScore'],
-                label='batch',
+                label=used_source or 'batch',
                 ok=bool(board.get('passCount')),
                 template_id=str(board.get('bestId') or ''),
             )
         return board
 
     def _tpl_batch_score(self):
-        board = self.run_batch_scoreboard(soft=True)
+        board = self.ingest_live_match_scores(soft_fallback=True)
         prev = getattr(self, '_tpl_lib_preview_lab', None)
         if prev is not None:
-            prev.setText(f"记分板：{board.get('summary')}")
+            src = board.get('source') or 'soft'
+            prev.setText(f"记分板[{src}]：{board.get('summary')}")
             prev.setStyleSheet('color:#9ad;font-size:11px;padding:2px 0;')
 
     def _tpl_select_best(self):
@@ -932,6 +988,10 @@ class LocateMatchPanel(QWidget):
         if lab is None:
             return
         lab.setText(self._score_trend().summary())
+
+    def set_last_result(self, result):
+        """Cache engine last_result for scoreboard ingest (soft OK)."""
+        self._last_result = result
 
     def push_match_score(self, score, *, label: str = '', ok=None,
                          template_id: str = '', frame: str = '') -> str:

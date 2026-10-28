@@ -147,6 +147,19 @@ class RecipeSwitchDialog(QDialog):
         self._dry_run_btn.setToolTip('只刷新左右对照，不写入工程')
         self._dry_run_btn.clicked.connect(self._dry_run_side_by_side)
         sb_head.addWidget(self._dry_run_btn)
+        self._preview_apply_btn = QPushButton('预览套用')
+        self._preview_apply_btn.setObjectName('recipePreviewApplyBtn')
+        self._preview_apply_btn.setToolTip(
+            '在副本上 dry-run 套用并刷新对照（不写工程）；确认后可用「一键换型」写入并保留回滚点'
+        )
+        self._preview_apply_btn.clicked.connect(self._preview_apply)
+        sb_head.addWidget(self._preview_apply_btn)
+        self._rollback_btn = QPushButton('一键回滚')
+        self._rollback_btn.setObjectName('recipeRollbackBtn')
+        self._rollback_btn.setToolTip('撤销最近一次换型（需先经带回滚点的套用）；无硬件动作')
+        self._rollback_btn.clicked.connect(self._rollback_last_apply)
+        self._rollback_btn.setEnabled(False)
+        sb_head.addWidget(self._rollback_btn)
         sb_head.addStretch(1)
         left.addLayout(sb_head)
         self._diff_side = QTableWidget(0, 3)
@@ -293,6 +306,11 @@ class RecipeSwitchDialog(QDialog):
         self._refresh_library()
         try:
             self._refresh_diff_chip()
+        except Exception:
+            pass
+
+        try:
+            self._sync_rollback_btn()
         except Exception:
             pass
 
@@ -481,6 +499,88 @@ class RecipeSwitchDialog(QDialog):
             )
         return diff
 
+    def _preview_apply(self):
+        """Dry-run apply-preview on a copy — refreshes side-by-side; never mutates project."""
+        rid = self._selected_id()
+        banner = getattr(self, '_post_banner', None)
+        if not rid:
+            if banner is not None:
+                banner.setText('预览套用：请先选中一条配方（未写入工程）')
+            self._fill_side_by_side(None)
+            return None
+        try:
+            bag = rl.preview_apply_recipe(self.document.project, rid)
+        except Exception as err:
+            if banner is not None:
+                banner.setText(f'预览套用失败：{err}')
+                banner.setStyleSheet(
+                    'background:#3a1a1a;color:#f88;border:1px solid #a44;border-radius:4px;'
+                    'padding:6px 8px;font-size:12px;font-weight:600;'
+                )
+            return None
+        diff = bag.get('diff')
+        self._refresh_diff_chip()
+        self._fill_side_by_side(diff)
+        wa = bag.get('wouldApply') or {}
+        if banner is not None:
+            banner.setText(
+                f'预览套用「{bag.get("name") or rid}」· 将写{wa.get("applied", 0)}'
+                f' 跳过{wa.get("skipped", 0)} 变量{wa.get("varsApplied", 0)} · '
+                f'{bag.get("chip") or ""} · 未写入工程 · 确认后点「一键换型」'
+            )
+            banner.setStyleSheet(
+                'background:#1a2430;color:#9ad;border:1px solid #3a5a7a;border-radius:4px;'
+                'padding:6px 8px;font-size:12px;'
+            )
+        return bag
+
+    def _rollback_last_apply(self):
+        """One-click rollback of last apply_recipe_with_rollback — soft, no hardware."""
+        p = deepcopy(self.document.project)
+        try:
+            stats = rl.rollback_last_recipe_apply(p)
+        except Exception as err:
+            QMessageBox.warning(self, '回滚失败', str(err))
+            return
+        if not stats.get('ok'):
+            QMessageBox.information(self, '回滚', f"无可回滚快照：{stats.get('reason') or '—'}")
+            self._sync_rollback_btn()
+            return
+        self.document.commit(p)
+        self.refresh()
+        self._sync_rollback_btn()
+        self.recipesChanged.emit()
+        banner = getattr(self, '_post_banner', None)
+        if banner is not None:
+            banner.setText(
+                f'已回滚换型「{stats.get("rolledBack") or "—"}」· 步骤{stats.get("steps", 0)} · 无硬件动作'
+            )
+            banner.setStyleSheet(
+                'background:#2a2430;color:#d9b;border:1px solid #7a5a9a;border-radius:4px;'
+                'padding:6px 8px;font-size:12px;font-weight:600;'
+            )
+        QMessageBox.information(
+            self, '回滚完成',
+            f'已撤销「{stats.get("rolledBack") or "—"}」的套用（软回滚，无硬件）。',
+        )
+
+    def _sync_rollback_btn(self):
+        btn = getattr(self, '_rollback_btn', None)
+        if btn is None:
+            return
+        try:
+            ready = rl.has_recipe_rollback(self.document.project)
+        except Exception:
+            ready = False
+        btn.setEnabled(bool(ready))
+        if ready:
+            bag = (self.document.project or {}).get('_recipeRollbackSnap') or {}
+            name = bag.get('name') or bag.get('recipeId') or ''
+            btn.setToolTip(f'撤销最近换型「{name}」（软回滚，无硬件）')
+        else:
+            btn.setToolTip('无可回滚快照 — 先经「一键换型/部分套用」写入回滚点')
+
+
     def _update_post_banner(self, stats=None, *, error: str = ''):
         banner = getattr(self, '_post_banner', None)
         if banner is None:
@@ -557,12 +657,13 @@ class RecipeSwitchDialog(QDialog):
             return
         p = deepcopy(self.document.project)
         try:
-            stats = rl.apply_recipe(p, rid)
+            stats = rl.apply_recipe_with_rollback(p, rid)
         except Exception as err:
             QMessageBox.warning(self, '换型失败', str(err))
             return
         self.document.commit(p)
         self.refresh()
+        self._sync_rollback_btn()
         stats = self._stamp_post_apply(stats)
         self.recipeApplied.emit(stats)
         self.recipesChanged.emit()
@@ -570,6 +671,8 @@ class RecipeSwitchDialog(QDialog):
         next_hint = '已勾选切运行' if stats.get('enterRun') else '可点「套用并去运行」或工具栏 ▶'
         if stats.get('trialOnce'):
             next_hint += ' · 将单次试跑'
+        if stats.get('rollbackReady'):
+            next_hint += ' · 可一键回滚'
         QMessageBox.information(
             self, '换型完成 · 可运行',
             f"已套用「{stats.get('name')}」\n匹配写入 {stats.get('applied')} · 跳过 {stats.get('skipped')} · 变量 {stats.get('varsApplied')}\n下一步：{next_hint}",
@@ -623,7 +726,7 @@ class RecipeSwitchDialog(QDialog):
             return
         p = deepcopy(self.document.project)
         try:
-            stats = rl.apply_recipe(
+            stats = rl.apply_recipe_with_rollback(
                 p, rid, var_keys=var_keys, step_ops=step_ops,
                 steps_only=steps_only, vars_only=vars_only,
             )
@@ -632,15 +735,17 @@ class RecipeSwitchDialog(QDialog):
             return
         self.document.commit(p)
         self.refresh()
+        self._sync_rollback_btn()
         stats = self._stamp_post_apply(stats)
         self.recipeApplied.emit(stats)
         self._update_post_banner(stats)
         self.recipesChanged.emit()
         QMessageBox.information(
             self, '部分套用完成',
-            '「%s」变体 %s\n模块写入 %s · 跳过 %s · 变量 %s' % (
+            '「%s」变体 %s\n模块写入 %s · 跳过 %s · 变量 %s%s' % (
                 stats.get('name'), stats.get('variant') or '—',
                 stats.get('applied'), stats.get('skipped'), stats.get('varsApplied'),
+                ' · 可一键回滚' if stats.get('rollbackReady') else '',
             ),
         )
 

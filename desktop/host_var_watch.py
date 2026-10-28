@@ -94,6 +94,77 @@ def collect_watch_keys_from_project(project=None) -> list:
     return keys
 
 
+def host_watch_bag(project=None) -> dict:
+    """Return mutable project['hostWatch'] dict (creates if needed)."""
+    proj = project if isinstance(project, dict) else {}
+    bag = proj.get('hostWatch')
+    if not isinstance(bag, dict):
+        bag = {}
+        if isinstance(project, dict):
+            project['hostWatch'] = bag
+    return bag
+
+
+def pin_groups_from_project(project=None) -> tuple:
+    """Load (groups:dict, active:str) from project.hostWatch for save/open round-trip."""
+    bag = project.get('hostWatch') if isinstance(project, dict) else None
+    if not isinstance(bag, dict):
+        return {}, ''
+    groups = bag.get('pinGroups') or bag.get('pin_groups') or {}
+    if not isinstance(groups, dict):
+        groups = {}
+    cleaned = {}
+    for name, keys in groups.items():
+        n = str(name or '').strip() or '未命名'
+        bag_keys = []
+        seen = set()
+        for k in (keys or []):
+            kk = str(k or '').strip()
+            if kk and kk not in seen:
+                seen.add(kk)
+                bag_keys.append(kk)
+        cleaned[n] = bag_keys
+    active = str(bag.get('activePinGroup') or bag.get('active_pin_group') or '')
+    return cleaned, active
+
+
+def write_pin_groups_to_project(project, groups=None, *, active: str = '',
+                                watch_keys=None) -> dict:
+    """Persist pin groups into project['hostWatch'] for .sieans/.sol save."""
+    if not isinstance(project, dict):
+        return {}
+    bag = host_watch_bag(project)
+    cleaned = {}
+    src = groups if isinstance(groups, dict) else {}
+    for name, keys in src.items():
+        n = str(name or '').strip() or '未命名'
+        lst = []
+        seen = set()
+        for k in (keys or []):
+            kk = str(k or '').strip()
+            if kk and kk not in seen:
+                seen.add(kk)
+                lst.append(kk)
+        cleaned[n] = lst
+    if cleaned:
+        bag['pinGroups'] = cleaned
+    if active:
+        bag['activePinGroup'] = str(active)
+    elif cleaned and not bag.get('activePinGroup'):
+        bag['activePinGroup'] = next(iter(cleaned))
+    if watch_keys is not None:
+        wk = []
+        seen = set()
+        for k in (watch_keys or []):
+            kk = str(k or '').strip()
+            if kk and kk not in seen:
+                seen.add(kk)
+                wk.append(kk)
+        bag['watchKeys'] = wk
+    project['hostWatch'] = bag
+    return bag
+
+
 def expand_watch_value(project, value, last_result=None):
     """Live-expand Comm/flow `${}` in a watch value; leave non-templates untouched."""
     if value is None:
@@ -439,14 +510,42 @@ class HostVarWatchBoard(QWidget):
 
     def seed_from_project(self, project=None, *, label: str = ''):
         keys = collect_watch_keys_from_project(project)
-        self.seed_watch_keys(keys, label=label or (project or {}).get('name') or '')
+        groups, active = pin_groups_from_project(project)
+        if groups:
+            # restore saved pin groups; fall back keys into 默认 if empty
+            if keys and '默认' in groups and not groups.get('默认'):
+                groups['默认'] = list(keys)
+            elif keys and active and active in groups and not groups.get(active):
+                groups[active] = list(keys)
+            self.set_pin_groups(groups, active=active or '')
+        else:
+            self.seed_watch_keys(keys, label=label or (project or {}).get('name') or '')
         # Prefer measure preset when measure keys dominate
-        measure_n = sum(1 for k in keys if classify_watch_key(k) == 'measure')
+        measure_n = sum(1 for k in (self._pinned_keys or keys) if classify_watch_key(k) == 'measure')
         if measure_n >= 2:
             idx = self.preset.findData('measure')
             if idx >= 0:
                 self.preset.setCurrentIndex(idx)
         return keys
+
+    def persist_pin_groups_to_project(self, project=None) -> dict:
+        """Write current pin groups into project JSON (hostWatch)."""
+        proj = project
+        if proj is None and self._document is not None:
+            proj = getattr(self._document, 'project', None)
+        if not isinstance(proj, dict):
+            return {}
+        # flush active group keys first
+        try:
+            self._save_active_pin_group()
+        except Exception:
+            pass
+        return write_pin_groups_to_project(
+            proj,
+            self.pin_groups(),
+            active=self.active_pin_group(),
+            watch_keys=self.pinned_keys(),
+        )
 
     def pinned_keys(self) -> list:
         return list(self._pinned_keys)
@@ -528,6 +627,11 @@ class HostVarWatchBoard(QWidget):
         name = self.active_pin_group()
         self._pin_groups[name] = list(self._pinned_keys)
         self._sync_pin_group_lab()
+        try:
+            if self._document is not None and getattr(self._document, 'project', None):
+                self.persist_pin_groups_to_project(self._document.project)
+        except Exception:
+            pass
 
     def _on_new_pin_group(self):
         name, ok = QInputDialog.getText(self, '新建钉组', '钉组名称：', text='测量')

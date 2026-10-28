@@ -134,7 +134,11 @@ def soft_estimate_scores(template_library: list | None, seed: str = '') -> dict:
 
 
 def ingest_engine_scores(last_result=None, step_id: str = '') -> dict:
-    """Pull match scores from an engine last_result bag (items[].score / bestScore)."""
+    """Pull match scores from an engine last_result bag (items[].score / bestScore).
+
+    Soft-engine friendly: also reads matches[], templateScores{}, output.score,
+    and per-item templateId. No Halcon / real camera required.
+    """
     out = {}
     if not isinstance(last_result, dict):
         return out
@@ -147,26 +151,52 @@ def ingest_engine_scores(last_result=None, step_id: str = '') -> dict:
         rid = str(rec.get('id') or '')
         if step_id and rid and rid != step_id:
             continue
-        data = rec.get('data') or rec.get('result') or rec
+        data = rec.get('data') or rec.get('result') or rec.get('output') or rec
         if not isinstance(data, dict):
             continue
-        items = data.get('items') or []
-        best = normalize_score(data.get('bestScore') or data.get('score'))
+        # explicit per-template map from soft engine
+        tmap = data.get('templateScores') or data.get('scoresById') or data.get('batchScores')
+        if isinstance(tmap, dict):
+            for tk, tv in tmap.items():
+                sc = normalize_score(tv)
+                if sc is not None:
+                    out[str(tk)] = sc
+        items = data.get('items') or data.get('matches') or []
+        if not isinstance(items, list):
+            items = []
+        best = normalize_score(
+            data.get('bestScore') or data.get('score') or data.get('matchScore')
+            or rec.get('score')
+        )
         tpl_id = str(
             (data.get('activeTemplateId') or data.get('templateId')
+             or data.get('bestTemplateId')
              or (rec.get('params') or {}).get('activeTemplateId') or '')
         )
-        if items and isinstance(items[0], dict):
-            sc = normalize_score(items[0].get('score'))
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            sc = normalize_score(it.get('score') or it.get('matchScore'))
+            tid = str(it.get('templateId') or it.get('id') or it.get('name') or '')
             if sc is not None:
+                if tid:
+                    prev = out.get(tid)
+                    out[tid] = sc if prev is None else max(float(prev), sc)
                 best = sc if best is None else max(best, sc)
+                if not tpl_id and tid:
+                    tpl_id = tid
         if best is not None:
             if tpl_id:
-                out[tpl_id] = best
+                prev = out.get(tpl_id)
+                out[tpl_id] = best if prev is None else max(float(prev), best)
             out['__best__'] = best
-            # also stash under step
             if rid:
                 out[f'step:{rid}'] = best
+            op = str(rec.get('operation') or data.get('operation') or '')
+            if op in ('locate', 'match', 'template_match') or rid:
+                out['__step_best__'] = best
+                if rid:
+                    out[f'__step:{rid}__'] = {'score': best, 'templateId': tpl_id}
     # flow vars
     vars_bag = (last_result.get('variables') or {})
     flow = vars_bag.get('flow') if isinstance(vars_bag, dict) else {}
@@ -177,6 +207,32 @@ def ingest_engine_scores(last_result=None, step_id: str = '') -> dict:
                 sc = normalize_score(v)
                 if sc is not None:
                     out[str(k)] = sc
+    return out
+
+
+def scores_for_library(ingest: dict | None, template_library: list | None) -> dict:
+    """Map ingest bag onto template ids/names/paths; drop meta keys."""
+    ingest = ingest if isinstance(ingest, dict) else {}
+    out = {}
+    meta = {'__best__', '__step_best__'}
+    for k, v in ingest.items():
+        if k in meta or str(k).startswith('step:') or str(k).startswith('__step:'):
+            continue
+        if isinstance(v, dict):
+            continue
+        sc = normalize_score(v)
+        if sc is not None:
+            out[str(k)] = sc
+    # If only __best__ / step best, stamp onto active / sole template
+    best = normalize_score(ingest.get('__best__') or ingest.get('__step_best__'))
+    lib = [e for e in (template_library or []) if isinstance(e, dict)]
+    if best is not None and lib:
+        # prefer already-known tpl id; else fill missing only
+        known = any(str(e.get('id') or '') in out for e in lib)
+        if not known:
+            # stamp best onto first / only so scoreboard is non-empty from live engine
+            eid = str(lib[0].get('id') or 't0')
+            out.setdefault(eid, best)
     return out
 
 
