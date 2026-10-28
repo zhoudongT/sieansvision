@@ -207,6 +207,19 @@ class FilmstripBar(QWidget):
         self.geom_find_strip.setToolTip('几何查找胶片铬（非测量卡尺链）· L直线 C圆 R矩形 B轮廓 E边缘')
         root.addWidget(self.geom_find_strip)
         self._frame_geom_find_chrome = {}
+        # wave144: match/locate denser filmstrip result chrome (配N✓ / OK·NG) — not spark-seek
+        self.match_strip = QLabel('')
+        self.match_strip.setObjectName('filmstripMatchLocateStrip')
+        self.match_strip.setWordWrap(True)
+        self.match_strip.setStyleSheet(
+            'color:#b8d4a8;font-size:11px;padding:2px 4px;background:#1a2418;'
+            'border:1px solid #2a4a2a;border-radius:3px;'
+        )
+        self.match_strip.setVisible(False)
+        self.match_strip.setToolTip('匹配/定位胶片铬 · 配N✓/✗ 多候选密度 · 结果铬非火花线联级')
+        root.addWidget(self.match_strip)
+        self._frame_match_chrome = {}
+        self._frame_match_okng = {}
         self.set_paths([], 0)
         self._live_fit_mode = 'contain'
         self._actual_letterbox = True  # pad with theme CANVAS when src < thumb
@@ -1428,36 +1441,11 @@ class FilmstripBar(QWidget):
             if it is None:
                 continue
             path = it.data(Qt.ItemDataRole.UserRole) or ''
-            tag = bag.get(path) or ''
-            # preserve leaf name; prefix badge
             leaf = Path(path).name if path else (it.text() or '')
-            # strip prior [OK]/[NG] and geom-find [L#] prefixes
-            import re as _re
-            leaf = _re.sub(r'^\[(OK|NG)\]\s*', '', leaf)
-            leaf = _re.sub(r'^\[([LCREBG]\d*[✓✗+]*)\]\s*', '', leaf)
-            gtag = (getattr(self, '_frame_geom_find_chrome', None) or {}).get(path) or ''
-            prefix = ''
-            if gtag:
-                prefix += f'[{gtag}] '
-            if tag:
-                prefix += f'[{tag}] '
-            it.setText(f'{prefix}{leaf}' if prefix else leaf)
-            tip_bits = []
-            if path:
-                tip_bits.append(path)
-            if gtag:
-                tip_bits.append(f'几何查找：{gtag}')
-            if tag:
-                tip_bits.append(f'测量判定：{tag}')
-            it.setToolTip('\n'.join(tip_bits) if tip_bits else '')
-            if tag == 'NG':
-                it.setForeground(QColor('#c62828'))
-            elif tag == 'OK' and not gtag:
-                it.setForeground(QColor('#2e7d32'))
-            elif gtag:
-                it.setForeground(QColor('#c62828') if '✗' in gtag else QColor('#4aa3c8'))
-            else:
-                it.setForeground(QColor('#c8d0d8'))
+            label, tip, color = self._compose_thumb_chrome_label(path, leaf)
+            it.setText(label)
+            it.setToolTip(tip)
+            it.setForeground(QColor(color))
 
 
     def set_frame_geom_find_chrome(self, chrome=None):
@@ -1483,38 +1471,140 @@ class FilmstripBar(QWidget):
                 continue
             path = it.data(Qt.ItemDataRole.UserRole) or ''
             leaf = Path(path).name if path else (it.text() or '')
-            # strip prior [OK]/[NG] and [L#] style prefixes
-            leaf = _re.sub(r'^\[(OK|NG)\]\s*', '', leaf)
-            leaf = _re.sub(r'^\[([LCREBG]\d*[✓✗+]*)\]\s*', '', leaf)
-            mtag = measure.get(path) or ''
-            gtag = bag.get(path) or ''
-            prefix = ''
-            if gtag:
-                prefix += f'[{gtag}] '
-            if mtag:
-                prefix += f'[{mtag}] '
-            it.setText(f'{prefix}{leaf}' if prefix else leaf)
-            tip_bits = []
-            if path:
-                tip_bits.append(path)
-            if gtag:
-                tip_bits.append(f'几何查找：{gtag}')
-            if mtag:
-                tip_bits.append(f'测量判定：{mtag}')
-            it.setToolTip('\n'.join(tip_bits) if tip_bits else '')
-            # color: NG measure wins; else geom chrome teal; else OK green
-            if str(mtag).upper() == 'NG':
-                it.setForeground(QColor('#c62828'))
-            elif str(mtag).upper() == 'OK' and not gtag:
-                it.setForeground(QColor('#2e7d32'))
-            elif gtag:
-                if '✗' in gtag:
-                    it.setForeground(QColor('#c62828'))
-                else:
-                    it.setForeground(QColor('#4aa3c8'))
-            else:
-                it.setForeground(QColor('#c8d0d8'))
+            label, tip, color = self._compose_thumb_chrome_label(path, leaf)
+            it.setText(label)
+            it.setToolTip(tip)
+            it.setForeground(QColor(color))
         return bag
+
+
+    def _compose_thumb_chrome_label(self, path: str, leaf: str) -> tuple:
+        """Compose [geom][match][OK/NG] leaf + tip + color for filmstrip thumbs."""
+        import re as _re
+        from pathlib import Path as _P
+        leaf = leaf or (_P(path).name if path else '')
+        leaf = _re.sub(r'^\[(OK|NG)\]\s*', '', leaf)
+        leaf = _re.sub(r'^\[([LCREBG]\d*[✓✗+]*)\]\s*', '', leaf)
+        leaf = _re.sub(r'^\[(配\d*[✓✗·.]*)\]\s*', '', leaf)
+        leaf = _re.sub(r'^\[([^\]]{1,16})\]\s*', '', leaf)  # generic prior tags once
+        # re-strip common prefixes that may stack
+        for _ in range(4):
+            nxt = _re.sub(r'^\[[^\]]{1,16}\]\s*', '', leaf)
+            if nxt == leaf:
+                break
+            leaf = nxt
+        gtag = (getattr(self, '_frame_geom_find_chrome', None) or {}).get(path) or ''
+        mtag = (getattr(self, '_frame_match_chrome', None) or {}).get(path) or ''
+        okng = (getattr(self, '_frame_match_okng', None) or {}).get(path) or ''
+        measure = (getattr(self, '_frame_measure_badges', None) or {}).get(path) or ''
+        # prefer explicit measure badge; else match OK/NG
+        jtag = measure or okng
+        prefix = ''
+        if gtag:
+            prefix += f'[{gtag}] '
+        if mtag:
+            prefix += f'[{mtag}] '
+        if jtag:
+            prefix += f'[{jtag}] '
+        tip_bits = []
+        if path:
+            tip_bits.append(path)
+        if gtag:
+            tip_bits.append(f'几何查找：{gtag}')
+        if mtag:
+            tip_bits.append(f'匹配定位：{mtag}')
+        if measure:
+            tip_bits.append(f'测量判定：{measure}')
+        elif okng:
+            tip_bits.append(f'匹配判定：{okng}')
+        # color priority: NG > OK > geom/match chrome > default
+        color = '#c8d0d8'
+        if str(jtag).upper() == 'NG' or ('✗' in str(mtag)) or ('✗' in str(gtag)):
+            color = '#c62828'
+        elif str(jtag).upper() == 'OK':
+            color = '#2e7d32'
+        elif mtag:
+            color = '#7cb342'
+        elif gtag:
+            color = '#4aa3c8'
+        return (f'{prefix}{leaf}' if prefix else leaf, '\n'.join(tip_bits), color)
+
+    def set_frame_match_chrome(self, chrome=None, okng=None):
+        """Annotate filmstrip thumbs with match/locate density (配3✓) + OK/NG.
+
+        Result chrome only — not spark-seek / scoreboard micro-prop cascade.
+        chrome: {path: '配3✓'|str}; okng: {path: 'OK'|'NG'}.
+        """
+        bag = {}
+        for k, v in (chrome or {}).items():
+            key = str(k or '').strip()
+            if not key or not v:
+                continue
+            bag[key] = str(v)[:16]
+        self._frame_match_chrome = bag
+        obag = {}
+        for k, v in (okng or {}).items():
+            key = str(k or '').strip()
+            if not key:
+                continue
+            if v is True or str(v).upper() in ('OK', 'PASS', '1', 'TRUE'):
+                obag[key] = 'OK'
+            elif v is False or str(v).upper() in ('NG', 'FAIL', '0', 'FALSE'):
+                obag[key] = 'NG'
+            elif v:
+                obag[key] = str(v).upper()[:8]
+        self._frame_match_okng = obag
+        thumbs = getattr(self, 'thumbs', None)
+        if thumbs is None:
+            return bag
+        from PySide6.QtGui import QColor
+        from PySide6.QtCore import Qt
+        for i in range(thumbs.count()):
+            it = thumbs.item(i)
+            if it is None:
+                continue
+            path = it.data(Qt.ItemDataRole.UserRole) or ''
+            from pathlib import Path as _P
+            leaf = _P(path).name if path else (it.text() or '')
+            label, tip, color = self._compose_thumb_chrome_label(path, leaf)
+            it.setText(label)
+            it.setToolTip(tip)
+            it.setForeground(QColor(color))
+        return bag
+
+    def push_match_summary(self, text=None, *, records=None, names=None):
+        """Match/locate result chrome under filmstrip (配N✓ density)."""
+        lab = getattr(self, 'match_strip', None)
+        if lab is None:
+            return
+        if text:
+            lab.setText(str(text))
+            lab.setVisible(True)
+            return
+        bits = []
+        names = names or {}
+        try:
+            from desktop.match_locate_chrome import summarize_match_locate, MATCH_OPS
+        except Exception:
+            summarize_match_locate = None
+            MATCH_OPS = ('locate', 'match', 'template_match')
+        for rec in records or []:
+            if not isinstance(rec, dict):
+                continue
+            op = str(rec.get('operation') or rec.get('op') or '')
+            if op not in MATCH_OPS and summarize_match_locate is None:
+                continue
+            if summarize_match_locate is not None:
+                if op not in MATCH_OPS:
+                    continue
+                summ = summarize_match_locate(rec, params={})
+                name = names.get(rec.get('id'), rec.get('name') or '匹配')
+                bits.append(f"{name} {summ.get('chrome') or '配·'}")
+        if bits:
+            lab.setText(f"匹配定位 · {' ｜ '.join(bits[:8])}")
+            lab.setVisible(True)
+        else:
+            lab.setVisible(False)
 
     def push_geom_find_summary(self, text=None, *, records=None, names=None):
         """Geometry-find result chrome under filmstrip (distinct from push_module_results measure strip)."""

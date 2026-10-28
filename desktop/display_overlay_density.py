@@ -1,7 +1,7 @@
 """Unified image overlay density for find / match / contour / color / fixture (soft).
 
 Not filmstrip spark micro-props — canvas vector overlays only.
-Consumes geometry-find, locate/match, contour/blob, sieans-regions, and pose_correct.
+Consumes geometry-find, locate/match (wave144 denser score chrome), contour/blob, sieans-regions, and pose_correct.
 """
 from __future__ import annotations
 
@@ -246,6 +246,17 @@ def build_unified_overlays(records=None, project=None, *,
             continue
 
         if op in ('locate', 'match', 'template_match'):
+            # wave144: denser multi-candidate match/locate overlays (score+rank chrome)
+            try:
+                from desktop.match_locate_chrome import build_match_overlays
+                denser = build_match_overlays(bag, params, max_specs=max_per_module)
+                if denser:
+                    specs.extend(denser)
+                    if len(specs) >= max_specs:
+                        break
+                    continue
+            except Exception:
+                denser = None
             items = bag.get('matches')
             if not isinstance(items, list):
                 items = bag.get('items')

@@ -1,0 +1,214 @@
+{
+  "version": 2,
+  "id": "48a5705a52cf4bbb",
+  "name": "打开即跑 · 匹配定位候选铬",
+  "steps": [
+    {
+      "id": "a1b2c3d4e5f64789",
+      "operation": "locate",
+      "name": "多候选匹配·铬",
+      "params": {
+        "matchMode": "fast",
+        "minScore": 0.55,
+        "maxMatches": 8,
+        "angleStart": -45,
+        "angleEnd": 45,
+        "angleStep": 15,
+        "scales": [
+          0.85,
+          1.0,
+          1.15
+        ],
+        "scaleStart": 0.85,
+        "scaleEnd": 1.15,
+        "scaleStep": 0.15,
+        "overlapThreshold": 0.35,
+        "maxOverlap": 0.35,
+        "hasTemplate": true,
+        "templateReady": true,
+        "showMatchBox": true,
+        "showScore": true,
+        "showContour": true,
+        "fullSearch": false,
+        "matchPolarity": "consider",
+        "showCross": true,
+        "showRank": true,
+        "showMargin": true,
+        "judgeEnable": true,
+        "judgeMin": 0.55,
+        "judgeMax": 1.0,
+        "resultVar": "matchLocate"
+      },
+      "reference": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABACAIAAAACpWdhAAAEF0lEQVRoBeXBvWpUWxgG4PcbRIJs0OJNsBHBaiDpjLewEATB5r2CBakU2xXruOxstMgtfI3YiLcgpvIHpoyVEKZQGC0GGU514BzyTdYWlGSzn8dIYkyMJMbESGJMjCTGxEhiTIwkxsRIYkyMJMbESCKSUsLvyDnjIpGEiJFEJKWE3nLOuGAkIWIkEUkpoZ+cMy4eSYgYSURSSmjJOeOikoSIkUQkpYQz5ZxxgUlCxEgiklLCejlnXGySEDGSiKSUsEbOGReeJESMJCIpJZySc8ZASELESCKSUsL/5ZwxHJIQMZKIpJTwHzlnDIokRIwkIikl/CvnjKGRhIiRRCSlBCDnjGGShIiRRCSllHPGYElCxEgi4u4YMkmIGElE3B2/abFYzOdzkl3X4bxJQsRIIuLu6Ge5XH7+/Pndu3dfvnyZz+ebm5s3b968ffv2zs7OxsYGzokkRIwkIu6OHlar1cuXLz98+IBTtre3Hz16NJlMcB4kIWIkEXF3tPz69auU8u3bN6xx9erVp0+fXr58Gb2VUtBSa0WLJESMJCLujjP9/Pnz2bNnX79+xZmuX79eSrly5Qr6KaWgpdaKFkmIGElE3B3rrVarV69evX37Fj3cvXv3wYMHk8kEPZRS0FJrRYskRIwkIu6OMx0eHh4dHaGH3d3dvb099FNKQUutFS2SEDGSiLg71lssFgcHB/P5HD2QfPLkSdd16KGUgpZaK1okIWIkEXF3rHd8fHxwcIDeSim3bt1CD6UUtNRa0SIJESOJiLtjvcViUWs9OTlBD5ubm/v7+13XoYdSClpqrWiRhIiRRMTdcabDw8OjoyP0sLu7u7e3h35KKWiptaJFEiJGEhF3x3qr1er169dv3rxBD/fu3bt///5kMkEPpRS01FrRIgkRI4mIu+NMP378ePz4MXp4/vx513Xop5SCllorWiQhYiQRcXe0LJfL/f3979+/Y41r167VWi9duoTeSiloqbWiRRIiRhIRd0cPq9XqxYsXHz9+xCk7OzsPHz6cTCb4HaUUtNRa0SIJESOJiLujn+Vy+enTp/fv3x8fH8/n862trRs3bty5c2d7e3tjYwPnRBIiRhIRd8dvWiwWJycnW1tbXdfhvElCxEgi4u4YMkmIGElE3B1DJgkRI4mIu2PIJCFiJBFxdwyZJESMJCLujiGThIiRRMTdMWSSEDGSiLg7hkwSIkYSEXfHkElCxEgi4u44ZTqd4k+bzWb4CyQhYiQRcXf833Q6xd8xm83wp0lCxEgi4u44ZTqd4k+bzWb4CyQhYiQRcXcMmSREjCQi7o4hk4SIkUTE3TFkkhAxkoi4O4ZMEiJGEhF3x5BJQsRIIuLuGDJJiBhJjImRxJgYSYyJkcSYGEmMiZHEmBhJjImRxJj8A+yWX1Bvb/pTAAAAAElFTkSuQmCC",
+      "position": {
+        "x": 300,
+        "y": 160
+      },
+      "imageFrom": "source"
+    },
+    {
+      "id": "b2c3d4e5f6478901",
+      "operation": "var_calc",
+      "name": "匹配门限·OK/NG",
+      "params": {
+        "scope": "flow",
+        "expressions": [
+          {
+            "name": "matchScore",
+            "expr": "steps[\"a1b2c3d4e5f64789\"].score",
+            "enabled": true
+          },
+          {
+            "name": "matchCount",
+            "expr": "len(steps[\"a1b2c3d4e5f64789\"].matches or steps[\"a1b2c3d4e5f64789\"].items or [])",
+            "enabled": true
+          },
+          {
+            "name": "passGate",
+            "expr": "(steps[\"a1b2c3d4e5f64789\"].score or 0) >= 0.55",
+            "enabled": true
+          },
+          {
+            "name": "matchOk",
+            "expr": "flow.passGate",
+            "enabled": true
+          }
+        ]
+      },
+      "position": {
+        "x": 300,
+        "y": 320
+      },
+      "imageFrom": "a1b2c3d4e5f64789"
+    }
+  ],
+  "edges": [
+    {
+      "id": "4ca11339ef5f4195",
+      "from": "source",
+      "to": "a1b2c3d4e5f64789",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "43d91cb08fe54e84",
+      "from": "a1b2c3d4e5f64789",
+      "to": "b2c3d4e5f6478901",
+      "fromPort": "bottom",
+      "toPort": "top"
+    }
+  ],
+  "sourcePosition": {
+    "x": 300,
+    "y": 40
+  },
+  "variables": {},
+  "sourceConfig": {
+    "mode": "local",
+    "pixelFormat": "RGB24",
+    "intervalMs": 0,
+    "saveInSolution": false,
+    "showImageName": true,
+    "snStart": 0,
+    "imageCache": 0,
+    "outputMono8": false,
+    "stitchEnable": false,
+    "stitchStartY": 0,
+    "stitchHeight": 0,
+    "stitchClearOnTrigger": false,
+    "autoSwitch": false,
+    "stopAtLast": true,
+    "charFilterEnable": false,
+    "inputChar": "",
+    "triggerChar": "",
+    "cameraId": "",
+    "cameraParams": {},
+    "exposure": 0.0,
+    "gain": 0.0,
+    "images": [
+      "/home/allen/文档/sieansvision/public/vision/samples/fixture-multiple.png",
+      "/home/allen/文档/sieansvision/public/vision/samples/fixture-rotated.png",
+      "/home/allen/文档/sieansvision/public/vision/samples/circle-ring.png"
+    ],
+    "currentIndex": 0
+  },
+  "runUi": {
+    "split": "4",
+    "placements": [
+      {
+        "name": "图像",
+        "page": 3,
+        "cell": 0,
+        "category": "基础"
+      },
+      {
+        "name": "OK/NG",
+        "page": 3,
+        "cell": 1,
+        "category": "基础"
+      },
+      {
+        "name": "运行控制",
+        "page": 3,
+        "cell": 2,
+        "category": "基础"
+      },
+      {
+        "name": "生产统计",
+        "page": 3,
+        "cell": 3,
+        "category": "图表"
+      }
+    ],
+    "controls": {
+      "图像": {
+        "commands": [],
+        "binding": "source"
+      },
+      "OK/NG": {
+        "commands": [],
+        "binding": ""
+      },
+      "运行控制": {
+        "commands": [
+          {
+            "type": "执行·单次",
+            "config": ""
+          },
+          {
+            "type": "执行·连续",
+            "config": ""
+          },
+          {
+            "type": "执行·停止",
+            "config": ""
+          }
+        ],
+        "binding": ""
+      },
+      "生产统计": {
+        "commands": [],
+        "binding": "stats"
+      }
+    },
+    "fixedBars": {
+      "top": false,
+      "bottom": true,
+      "left": false,
+      "right": false,
+      "cameraBind": "未绑定",
+      "commBind": "TCP.连接状态",
+      "showRunStatus": true,
+      "showOkNg": true,
+      "showCounters": true,
+      "showHistory": true
+    },
+    "meta": {
+      "template": "open_and_run_match_locate_chrome",
+      "version": 1,
+      "openAndRun": true,
+      "wave": 144
+    }
+  },
+  "notes": "wave144：匹配/定位 denser 候选结果铬（工业多候选表：#/排名/分数/Δmin/裕度/X/Y/角度/缩放/判定；胶片 配N✓/✗ + OK/NG 密度；叠层 score+rank）。▶ 单次：图源→多候选模板匹配→分数门限。无 Comm/HMI cobind；无 spark/scoreboard 微联级；无 Halcon / 无机器人 SDK / 无现场硬件。"
+}

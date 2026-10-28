@@ -1386,7 +1386,14 @@ class LocateMatchPanel(QWidget):
         form.addRow('结果回显', self._result_summary)
 
         # wave140: dense multi-match table (scores/overlays) — not scoreboard micro-prop cascade
-        self._match_density_lab = QLabel('多匹配：尚未运行')
+        self._match_chrome_badge = QLabel('配·')
+        self._match_chrome_badge.setObjectName('locateMatchChromeBadge')
+        self._match_chrome_badge.setStyleSheet(
+            'color:#e8f4ff;font-weight:600;font-size:13px;padding:4px 10px;'
+            'background:#243040;border:1px solid #3a5470;border-radius:4px;'
+        )
+        form.addRow('匹配徽标', self._match_chrome_badge)
+        self._match_density_lab = QLabel('多候选：尚未运行')
         self._match_density_lab.setObjectName('locateMatchDensitySummary')
         self._match_density_lab.setWordWrap(True)
         self._match_density_lab.setStyleSheet(
@@ -1394,11 +1401,11 @@ class LocateMatchPanel(QWidget):
         )
         form.addRow('匹配密度', self._match_density_lab)
 
-        self._match_density_table = QTableWidget(0, 7)
+        # wave144: denser industrial candidate table (rank/Δmin/margin) — result chrome
+        from desktop.match_locate_chrome import CANDIDATE_COLUMNS
+        self._match_density_table = QTableWidget(0, len(CANDIDATE_COLUMNS))
         self._match_density_table.setObjectName('locateMatchDensityTable')
-        self._match_density_table.setHorizontalHeaderLabels(
-            ['#', '分数', 'X', 'Y', '角度°', '缩放', '判定']
-        )
+        self._match_density_table.setHorizontalHeaderLabels(list(CANDIDATE_COLUMNS))
         self._match_density_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self._match_density_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._match_density_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -1420,7 +1427,7 @@ class LocateMatchPanel(QWidget):
 
         tip = QLabel(
             '匹配框/分数/序号/角度/全画布描摹/结果判断已接入 OpenCV 引擎实绘（无 Halcon 核）。'
-            '多匹配表明细独立于模板库记分板；不做火花线/blink 微属性联级。'
+            '多候选工业表含排名/Δmin/裕度；胶片 OK/NG·配N✓ 为结果铬，不做火花线/记分板微属性联级。'
         )
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
@@ -1466,17 +1473,20 @@ class LocateMatchPanel(QWidget):
             pass
 
     def _soft_demo_match_density(self):
-        from desktop.geom_find_chrome import soft_demo_matches, summarize_multi_match
-        n = int(self.params.get('maxMatches') or 4)
-        matches = soft_demo_matches(n=n)
-        bag = {'matches': matches, 'items': matches, 'count': len(matches),
-               'bestScore': matches[0]['score'] if matches else None, 'found': True}
-        summ = summarize_multi_match(bag, params=self.params)
+        from desktop.match_locate_chrome import soft_demo_match_result, summarize_match_locate
+        n = int(self.params.get('maxMatches') or 5)
+        bag = soft_demo_match_result(
+            n=n, ok=True, min_score=float(self.params.get('minScore') or 0.7),
+            judge_enable=bool(self.params.get('resultJudgeEnable')),
+        )
+        summ = summarize_match_locate(bag, params=self.params)
         self._apply_match_density(summ, source='soft-demo')
 
     def refresh_match_density(self, *, keep_rows: bool = False):
-        """Dense multi-match table from last_result / soft empty (no spark cascade)."""
-        from desktop.geom_find_chrome import summarize_multi_match, extract_match_items
+        """Dense multi-candidate table from last_result / soft empty (no spark cascade)."""
+        from desktop.match_locate_chrome import (
+            summarize_match_locate, extract_match_candidates, overlay_flags,
+        )
         lr = getattr(self, '_last_result', None)
         if lr is None:
             try:
@@ -1497,58 +1507,59 @@ class LocateMatchPanel(QWidget):
                 op = str(rec.get('operation') or '')
                 if op in ('locate', 'match', 'template_match') and bag is None:
                     bag = rec
-            if bag is None and extract_match_items(lr):
+            if bag is None and extract_match_candidates(lr):
                 bag = lr
         if bag is None:
             if keep_rows and getattr(self, '_last_match_density', None):
                 summ = dict(self._last_match_density)
-                # refresh overlay flags only
-                summ2 = summarize_multi_match({'matches': []}, params=self.params)
-                summ['overlayFlags'] = summ2.get('overlayFlags')
+                summ['overlayFlags'] = overlay_flags(self.params)
+                best = summ.get('bestScore')
                 summ['summary'] = (
-                    f"匹配×{summ.get('count') or 0}"
-                    + (f" · best={summ['bestScore']:.3f}" if summ.get('bestScore') is not None else '')
+                    f"{summ.get('chrome') or '配·'} · 候选×{summ.get('count') or 0}"
+                    + (f" · best={best:.3f}" if best is not None else '')
                     + (' · 叠层:' + '·'.join(summ.get('overlayFlags') or []) if summ.get('overlayFlags') else '')
                 )
                 self._apply_match_density(summ, source='params')
                 return summ
-            summ = summarize_multi_match({'matches': []}, params=self.params)
+            summ = summarize_match_locate({'matches': []}, params=self.params)
             self._apply_match_density(summ, source='empty')
             return summ
-        summ = summarize_multi_match(bag, params=self.params)
+        summ = summarize_match_locate(bag, params=self.params)
         self._apply_match_density(summ, source='engine')
         return summ
 
     def _apply_match_density(self, summ, *, source: str = ''):
+        from desktop.match_locate_chrome import format_row_cells, CANDIDATE_COLUMNS
         summ = summ if isinstance(summ, dict) else {}
         lab = getattr(self, '_match_density_lab', None)
         if lab is not None:
-            text = summ.get('summary') or '多匹配：空'
+            text = summ.get('summary') or '多候选：空'
+            chrome = summ.get('chrome')
+            if chrome and chrome not in text:
+                text = f'[{chrome}] {text}'
             if source:
                 text = f'{text} · 源:{source}'
             lab.setText(text)
+        badge = getattr(self, '_match_chrome_badge', None)
+        if badge is not None:
+            badge.setText(str(summ.get('chrome') or '配·'))
         table = getattr(self, '_match_density_table', None)
         if table is None:
             return
+        # ensure column count matches denser chrome
+        cols = list(summ.get('columns') or CANDIDATE_COLUMNS)
+        if table.columnCount() != len(cols):
+            table.setColumnCount(len(cols))
+            table.setHorizontalHeaderLabels(cols)
         rows = summ.get('rows') or []
         table.setRowCount(0)
         for r in rows:
             i = table.rowCount()
             table.insertRow(i)
-            sc = r.get('score')
-            sc_txt = f'{float(sc):.3f}' if sc is not None else '—'
-            x = r.get('x'); y = r.get('y')
-            x_txt = f'{float(x):.1f}' if x is not None else '—'
-            y_txt = f'{float(y):.1f}' if y is not None else '—'
-            ang = r.get('angleDeg')
-            ang_txt = f'{float(ang):.1f}' if ang is not None else '—'
-            scale = r.get('scale')
-            sca_txt = f'{float(scale):.3f}' if scale is not None else '—'
             st = str(r.get('judgeStatus') or '—')
-            for c, text in enumerate((
-                str(r.get('index') or i + 1), sc_txt, x_txt, y_txt, ang_txt, sca_txt, st,
-            )):
-                it = QTableWidgetItem(text)
+            cells = format_row_cells(r)
+            for c, cell in enumerate(cells):
+                it = QTableWidgetItem(cell)
                 if st == 'OK':
                     it.setForeground(Qt.GlobalColor.green)
                 elif st == 'NG':

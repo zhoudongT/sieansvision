@@ -88,6 +88,7 @@ class MainWindow(QMainWindow):
             ('打开即跑 · 轮廓→色彩区域', 'projects/open-and-run-contour-color.sieans'),
             ('打开即跑 · 夹具位姿→预处理链', 'projects/open-and-run-fixture-pose-chain.sieans'),
             ('打开即跑 · 测量卡尺铬→OCR缺陷表', 'projects/open-and-run-measure-caliper-chrome.sieans'),
+            ('打开即跑 · 匹配定位候选铬', 'projects/open-and-run-match-locate-chrome.sieans'),
             ('打开即跑 · 几何查找→多匹配', 'projects/open-and-run-geom-find-match.sieans'),
             ('打开即跑 · 九点标定', 'projects/open-and-run-ninepoint.sieans'),
             ('打开即跑 · 定位→测量→缺陷', 'projects/open-and-run-locate-measure-defect.sieans'),
@@ -1420,6 +1421,43 @@ class MainWindow(QMainWindow):
             pass
         return chrome
 
+    def _sync_filmstrip_match_chrome(self):
+        """Push match/locate denser score chrome (配N✓) + OK/NG onto filmstrip — result chrome only."""
+        cache = getattr(self, '_filmstrip_results', None) or {}
+        steps = []
+        try:
+            steps = (self.document.project.get('steps') or []) if hasattr(self, 'document') else []
+        except Exception:
+            steps = []
+        try:
+            from desktop.match_locate_chrome import (
+                chrome_map_from_film_cache, okng_map_from_film_cache,
+                strip_summary_from_film_cache,
+            )
+        except Exception:
+            return {}
+        chrome = chrome_map_from_film_cache(cache, project_steps=steps) or {}
+        okng = okng_map_from_film_cache(cache, project_steps=steps) or {}
+        try:
+            fs = getattr(self, 'filmstrip', None)
+            if fs is not None and hasattr(fs, 'set_frame_match_chrome'):
+                fs.set_frame_match_chrome(chrome, okng)
+            if fs is not None and hasattr(fs, 'push_match_summary'):
+                cur = ''
+                try:
+                    cur = fs.current_path() if hasattr(fs, 'current_path') else ''
+                except Exception:
+                    cur = ''
+                text_s = strip_summary_from_film_cache(
+                    cache, current_path=cur or '', project_steps=steps,
+                )
+                if text_s:
+                    fs.push_match_summary(text_s)
+        except Exception:
+            pass
+        return chrome
+
+
     def open_project_file(self, path):
         path=Path(path)
         if not path.is_file():raise ValueError('工程不存在：'+str(path))
@@ -2562,6 +2600,10 @@ class MainWindow(QMainWindow):
                     self._sync_filmstrip_geom_find_chrome()
                 except Exception:
                     pass
+                try:
+                    self._sync_filmstrip_match_chrome()
+                except Exception:
+                    pass
         except Exception:
             pass
         if release:self.set_busy(False)
@@ -2573,6 +2615,8 @@ class MainWindow(QMainWindow):
                 self.filmstrip.push_module_results(records, names)
             if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_geom_find_summary'):
                 self.filmstrip.push_geom_find_summary(records=records, names=names)
+            if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_match_summary'):
+                self.filmstrip.push_match_summary(records=records, names=names)
         except Exception:
             pass
         try:
