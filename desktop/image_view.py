@@ -158,7 +158,9 @@ class ImageView(QGraphicsView):
             self.scene().setSceneRect(self.bounds)
             self._needs_fit = True
             self.fit()
-            QTimer.singleShot(0, self.fit)
+            QTimer.singleShot(0, self._fit_if_needed)
+            QTimer.singleShot(50, self._fit_if_needed)
+            QTimer.singleShot(200, self._fit_if_needed)
             return True
         self._live_pixmap_item.setPixmap(pixmap)
         if refit is True or (refit is None and size_changed):
@@ -166,10 +168,23 @@ class ImageView(QGraphicsView):
             self.scene().setSceneRect(self.bounds)
             self._needs_fit = True
             self.fit()
+            QTimer.singleShot(50, self._fit_if_needed)
+            QTimer.singleShot(200, self._fit_if_needed)
         else:
             self.viewport().update()
-            if self._needs_fit and self.isVisible():
+            if self._needs_fit or self._transform_looks_like_strip():
                 self.fit()
+            elif self.isVisible():
+                # Periodic heal: live path used to skip fit on same-size frames forever
+                # after a bad first fitInView → permanent 一条线.
+                now = getattr(self, '_last_live_fit_check', 0.0)
+                import time as _time
+                tnow = _time.monotonic()
+                if tnow - now > 1.0:
+                    self._last_live_fit_check = tnow
+                    if self._transform_looks_like_strip():
+                        self._needs_fit = True
+                        self.fit()
         return True
 
     def set_roi_mode(self, enabled):
@@ -196,17 +211,47 @@ class ImageView(QGraphicsView):
         if not self.bounds.isEmpty():
             self.fit()
 
+    def _viewport_ready_for_fit(self) -> bool:
+        """Avoid fitInView while the pane is still a few pixels tall (→ 一条线)."""
+        if not self.isVisible():
+            return False
+        vw = self.viewport().width()
+        vh = self.viewport().height()
+        # 8px was too low: 1280×1024 fit into ~400×10 collapses to a hairline strip.
+        return vw >= 64 and vh >= 64
+
+    def _transform_looks_like_strip(self) -> bool:
+        """True when current transform would paint a full frame as a thin band."""
+        if self.bounds.isEmpty() or self._live_pixmap.isNull():
+            return False
+        vh = max(1, self.viewport().height())
+        vw = max(1, self.viewport().width())
+        bh = max(1.0, float(self.bounds.height()))
+        bw = max(1.0, float(self.bounds.width()))
+        # After KeepAspectRatio fit, displayed height should be min(vh, vw*bh/bw)
+        m11 = abs(float(self.transform().m11()))
+        m22 = abs(float(self.transform().m22()))
+        if m11 < 1e-6 or m22 < 1e-6:
+            return True
+        disp_h = bh * m22
+        disp_w = bw * m11
+        # Hairline: image taller than 64px but draws under ~24px, while viewport is roomy
+        if bh >= 64 and vh >= 64 and disp_h < 24:
+            return True
+        if bw >= 64 and vw >= 64 and disp_w < 24:
+            return True
+        return False
+
     def fit(self):
         """Fit per _fit_mode. Defer when hidden / viewport still tiny."""
         if self.bounds.isEmpty():
             self._needs_fit = False
             return
-        if (
-            not self.isVisible()
-            or self.viewport().width() < 8
-            or self.viewport().height() < 8
-        ):
+        if not self._viewport_ready_for_fit():
             self._needs_fit = True
+            # Retry after layout settles (tab switch / first live frame).
+            QTimer.singleShot(50, self._fit_if_needed)
+            QTimer.singleShot(200, self._fit_if_needed)
             return
         mode = getattr(self, '_fit_mode', 'contain') or 'contain'
         if mode == 'actual':
@@ -228,8 +273,16 @@ class ImageView(QGraphicsView):
         self.fitInView(self.bounds, aspect)
         self.setHorizontalScrollBarPolicy(h_policy)
         self.setVerticalScrollBarPolicy(v_policy)
+        # If Qt still left a strip (race with layout), reset and retry once.
+        if self._transform_looks_like_strip():
+            self.resetTransform()
+            self.fitInView(self.bounds, aspect)
         self._needs_fit = False
         self.viewport().update()
+
+    def _fit_if_needed(self):
+        if self._needs_fit or self._transform_looks_like_strip():
+            self.fit()
 
     def showEvent(self, event):
         super().showEvent(event)
