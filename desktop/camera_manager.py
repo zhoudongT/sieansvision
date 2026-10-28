@@ -657,6 +657,7 @@ class CameraManagerDialog(_RpcDialog):
         self._set_connect(active or st == 'running')
         if st == 'running':
             if not self._live_timer.isActive():
+                self._live_pending = False  # match CameraDialog: abort must not lock reopen
                 self._live_timer.start()
             # Push device params so 图像源 can bind
             cfg = (state.get('config') or {}).get('params') or self._params()

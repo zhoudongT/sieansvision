@@ -126,16 +126,17 @@ def config(params):
                 raise ValueError('请确认所选亮度/置信度分量与 XYZ 栅格逐像素对应')
         # Continuous freerun at the device max (often ~90 FPS) with Harvesters'
         # default 3 buffers overruns when JPEG/UI consume slower → complete=True
-        # frames that are only a top hairline of pixels (rest zeros). Cap rate for
-        # live preview; callers may raise it explicitly.
+        # frames that are only a top hairline of pixels (rest zeros). Default ≤10 FPS
+        # so a 100 ms session_worker interval never lags the GenTL ring; callers /
+        # session_worker may raise it explicitly when they pull faster.
         if 'acquisitionFrameRate' in p:
             p['acquisitionFrameRate'] = number(p['acquisitionFrameRate'], 'acquisitionFrameRate', 1, 240, False)
         else:
-            p['acquisitionFrameRate'] = 15.0
+            p['acquisitionFrameRate'] = 10.0
         if 'previewBufferCount' in p:
             p['previewBufferCount'] = number(p['previewBufferCount'], 'previewBufferCount', 3, 64, True)
         else:
-            p['previewBufferCount'] = 8
+            p['previewBufferCount'] = 16
     return p
 
 
@@ -258,6 +259,22 @@ def set_feature(node_map, name, value, applied):
         raise ValueError('相机参数 ' + name + ' 设置失败：' + str(error)) from error
 
 
+
+def gentl_frame_looks_incomplete(image):
+    """Detect classic USB/GenTL overrun: complete=True but only a top strip is live."""
+    if image is None or not hasattr(image, 'shape') or image.size == 0:
+        return True
+    plane = image if image.ndim == 2 else image.mean(axis=2)
+    h = int(plane.shape[0])
+    if h < 64:
+        return False
+    band = max(8, h // 16)
+    top = float(plane[:band].mean())
+    bot = float(plane[-band:].mean())
+    active = float((plane.mean(axis=1) > 5.0).mean())
+    return bot < 1.5 and top > 5.0 and active < 0.35
+
+
 def pixels(component):
     """Copy SDK memory before re-queueing. Output is explicit 8-bit gray/BGR."""
     w, h = int(component.width), int(component.height)
@@ -340,25 +357,27 @@ def acquire_gentl_frames(p, inspect=False):
                 set_feature(node_map, 'TriggerSource', source, applied)
                 set_feature(node_map, 'TriggerMode', 'On', applied)
             # Cap device freerun so USB/GenTL buffers are not overwritten mid-frame
-            # while the host encodes JPEG / paints ≤15 FPS preview.
+            # while the host encodes JPEG / session_worker paces pulls. Default 10 FPS
+            # matches the 100 ms session interval; more buffers cover jitter.
             if p['trigger'] == 'freerun' and not is_3d:
                 try:
                     from genicam.genapi import is_writable
                     if hasattr(node_map, 'AcquisitionFrameRateEnable') and is_writable(node_map.AcquisitionFrameRateEnable):
                         set_feature(node_map, 'AcquisitionFrameRateEnable', True, applied)
                     if hasattr(node_map, 'AcquisitionFrameRate') and is_writable(node_map.AcquisitionFrameRate):
-                        set_feature(node_map, 'AcquisitionFrameRate', float(p.get('acquisitionFrameRate', 15.0)), applied)
+                        set_feature(node_map, 'AcquisitionFrameRate', float(p.get('acquisitionFrameRate', 10.0)), applied)
                 except Exception as rate_err:
                     # Non-fatal: still try more buffers below.
                     applied.append(dict(name='AcquisitionFrameRate', error=str(rate_err)[:200]))
                 try:
-                    want = int(p.get('previewBufferCount', 8))
+                    want = int(p.get('previewBufferCount', 16))
                     if getattr(ia, 'num_buffers', 0) < want:
                         ia.num_buffers = want
                 except Exception:
                     pass
             ia.start()
             try:
+                strip_skips = 0
                 while True:
                     if p['trigger'] == 'software':
                         node_map.TriggerSoftware.execute()
@@ -373,6 +392,12 @@ def acquire_gentl_frames(p, inspect=False):
                             raise ValueError('多分量/3D 相机需要专用深度适配器，不能按单幅 2D 图像读取')
                         else:
                             image, info = pixels(components[0])
+                            if gentl_frame_looks_incomplete(image):
+                                strip_skips += 1
+                                if strip_skips > 30:
+                                    raise ValueError('相机连续返回不完整条带帧，请降低帧率或检查 USB 带宽')
+                                continue
+                            strip_skips = 0
                         try:
                             info['deviceTimestampNs'] = str(buffer.timestamp_ns)
                         except Exception:

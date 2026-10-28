@@ -27,8 +27,19 @@ def watch_stop():
 def main():
     from adapter import config, capture_frames
     request = json.loads(sys.stdin.readline(110_001))
-    p = config(request['params'])
-    interval = request['intervalMs']/1000
+    params = dict(request['params'])
+    interval_ms = int(request['intervalMs'])
+    # GenTL freerun must not outpace session pulls: producer-faster fills the
+    # ring → incomplete top-strip / bottom-zero frames (is_complete still True).
+    # Tie device rate to ≤0.9× pull rate; leave buffers for JPEG jitter.
+    if params.get('driver') == 'gentl' and params.get('trigger', 'freerun') == 'freerun':
+        if 'acquisitionFrameRate' not in params:
+            params['acquisitionFrameRate'] = round(
+                max(1.0, min(15.0, 900.0 / max(interval_ms, 50))), 2)
+        if 'previewBufferCount' not in params:
+            params['previewBufferCount'] = 16
+    p = config(params)
+    interval = interval_ms / 1000
     attempts = request['reconnectAttempts']
     reconnect = request['reconnectMs']/1000
     if p['driver'] == 'gentl':

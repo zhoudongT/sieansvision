@@ -927,14 +927,21 @@ class CameraDialog(_RpcDialog):
         self._abort_camera_actions('枚举/采集超时未返回；已解除界面锁定，可关闭或重试。')
 
     def _abort_camera_actions(self, message=None):
+        dropped_capture = False
         for request_id, (method, _, _) in list(self.pending.items()):
             if method in ('camera/list', 'camera/inspect', 'camera/capture', 'camera/cancel'):
+                if method == 'camera/capture':
+                    dropped_capture = True
                 if method != 'camera/cancel' and self.backend.is_ready:
                     try:
                         self.backend.request('camera/cancel', {'requestId': request_id})
                     except Exception:
                         pass
                 self.pending.pop(request_id, None)
+        # Abort pops pending without calling done/_error — must unlock live ticks
+        # or reopen shows「连续采集中」with a solid-black LivePreviewLabel forever.
+        if dropped_capture or getattr(self, '_live_pending', False):
+            self._live_pending = False
         if hasattr(self, '_action_watchdog'):
             self._action_watchdog.stop()
         if message:
@@ -994,9 +1001,16 @@ class CameraDialog(_RpcDialog):
         super()._error(request_id, message)
 
     def _live_tick(self):
-        if self._live_pending or not self.backend.is_ready:
+        if not self.backend.is_ready:
             return
         if self.state.get('state') != 'running' or not self.state.get('id'):
+            return
+        # Desync recovery: abort/close can leave the flag set with no pending capture.
+        if self._live_pending and not any(
+            method == 'camera/capture' for method, _, _ in self.pending.values()
+        ):
+            self._live_pending = False
+        if self._live_pending:
             return
         if any(method == 'camera/capture' for method, _, _ in self.pending.values()):
             return
@@ -1004,7 +1018,6 @@ class CameraDialog(_RpcDialog):
         self._ui_heartbeat_n = getattr(self, '_ui_heartbeat_n', 0) + 1
 
         def done(value):
-            self._live_pending = False
             # Engine result is {annotatedImage, result:{frameSequence,…}} — use top-level.
             payload = value if isinstance(value, dict) else {}
             meta = payload.get('result') if isinstance(payload.get('result'), dict) else {}
@@ -1019,6 +1032,12 @@ class CameraDialog(_RpcDialog):
             if image:
                 self._paint_live_preview(image, payload)
 
+        def wrap(value):
+            try:
+                done(value)
+            finally:
+                self._live_pending = False
+
         try:
             from desktop.soft_acquisition_chrome import live_capture_frame_policy
             policy = live_capture_frame_policy()
@@ -1028,7 +1047,7 @@ class CameraDialog(_RpcDialog):
         self._request(
             'camera/capture',
             {'driver': 'session', 'sessionId': self.state.get('id'), 'framePolicy': policy, 'maxAgeMs': 2000, 'timeoutMs': 2000},
-            done,
+            wrap,
             kind='status',
         )
 
@@ -1158,9 +1177,16 @@ class CameraDialog(_RpcDialog):
             self._refit_preview()
         if state.get('state') == 'running':
             if not self.live_timer.isActive():
+                self._live_pending = False  # reopen after abort must not stay locked
                 self.live_timer.start()
                 self._did_live_refit = False
                 self._last_painted_seq = None
+                gate = getattr(self, '_preview_gate', None)
+                if gate is not None and hasattr(gate, 'reset'):
+                    try:
+                        gate.reset()
+                    except Exception:
+                        pass
                 self.message.setText('连续采集中：原生预览刷新最新缓存帧（JPEG·≤15FPS·丢旧帧；无 scene.clear）。')
             # One layout heal when status first reports running — not every poll.
             if not getattr(self, '_did_live_refit', False):
