@@ -272,43 +272,147 @@ class DataIoPanel(QWidget):
         form = QFormLayout(w)
         form.setContentsMargins(10, 10, 10, 10)
         if self.op == 'receive_data':
-            tip = QLabel('运行结果：payload / bytes / device / status / path（inprocess|tcp|udp|echo）。下方用样例载荷做设计态预览。')
+            tip = QLabel(
+                '运行结果：payload / bytes / device / status / path（inprocess|tcp|udp|echo）。'
+                '下方为设计态预览 + denser LocalBus 软笔录（无现场 TCP）。'
+            )
         else:
-            tip = QLabel('运行结果：sent / bytes / device / status / path（inprocess|tcp|udp-simulator）。下方预览将发送正文。')
+            tip = QLabel(
+                '运行结果：sent / bytes / device / status / path（inprocess|tcp|udp-simulator）。'
+                '下方预览将发送正文 + denser LocalBus TX→RX 软笔录（无现场 TCP）。'
+            )
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
         self._io_result_preview = QPlainTextEdit()
         self._io_result_preview.setObjectName('dataIoResultPreview')
         self._io_result_preview.setReadOnly(True)
-        self._io_result_preview.setMaximumHeight(140)
+        self._io_result_preview.setMaximumHeight(100)
         form.addRow('预览', self._io_result_preview)
         self._io_result_meta = QLabel()
         self._io_result_meta.setObjectName('dataIoResultMeta')
         self._io_result_meta.setWordWrap(True)
         form.addRow('摘要', self._io_result_meta)
+        self._io_bus_transcript = QPlainTextEdit()
+        self._io_bus_transcript.setObjectName('dataIoLocalBusTranscript')
+        self._io_bus_transcript.setReadOnly(True)
+        self._io_bus_transcript.setMaximumHeight(180)
+        self._io_bus_transcript.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#1e1e1e;color:#c8e6c9;'
+        )
+        form.addRow('LocalBus 笔录', self._io_bus_transcript)
+        self._io_bus_meta = QLabel()
+        self._io_bus_meta.setObjectName('dataIoLocalBusMeta')
+        self._io_bus_meta.setWordWrap(True)
+        self._io_bus_meta.setStyleSheet('color:#666;font-size:11px;')
+        form.addRow('笔录摘要', self._io_bus_meta)
+        bar = QHBoxLayout()
         btn = QPushButton('刷新结果显示')
         btn.setObjectName('dataIoResultRefresh')
         btn.clicked.connect(self._refresh_data_io_result)
-        form.addRow(btn)
+        bar.addWidget(btn)
+        append_btn = QPushButton('追加软笔录行')
+        append_btn.setObjectName('dataIoLocalBusAppend')
+        append_btn.setToolTip('把当前预览正文追加进 LocalBus 软笔录（设计态；不发现场 TCP）')
+        append_btn.clicked.connect(self._append_soft_bus_line)
+        bar.addWidget(append_btn)
+        clear_btn = QPushButton('清空笔录')
+        clear_btn.setObjectName('dataIoLocalBusClear')
+        clear_btn.clicked.connect(self._clear_soft_bus)
+        bar.addWidget(clear_btn)
+        bar.addStretch(1)
+        form.addRow(bar)
+        self._soft_bus_lines = []
         self._refresh_data_io_result()
         return w
 
-    def _refresh_data_io_result(self):
-        device = self.params.get('device') or '（未选设备）'
-        channel = self.params.get('channel') or ''
+    def _soft_preview_body(self):
+        """Resolved design-time body for send/receive preview (no hardware)."""
         enc = self.params.get('encoding') or 'utf-8'
         if self.op == 'receive_data':
             payload = str(self.params.get('samplePayload') or '')
             if bool(self.params.get('trim')):
                 payload = payload.strip()
-            body = payload if payload else '(无样例载荷 — 在基本参数填写「样例载荷」)'
+            return payload
+        mode = self.params.get('sourceMode') or 'text'
+        if mode == 'variable':
+            svar = self.params.get('sourceVar') or ''
+            body = ('${' + svar + '}') if svar else ''
+        else:
+            body = str(self.params.get('message') or '')
+        prefix = str(self.params.get('prefix') or '')
+        suffix = str(self.params.get('suffix') or '')
+        body = f'{prefix}{body}{suffix}'
+        if bool(self.params.get('appendCrLf')):
+            body = body + '\r\n'
+        return body
+
+    def _format_soft_bus_line(self, direction, body, path='inprocess'):
+        from datetime import datetime
+        device = self.params.get('device') or 'LocalLoop'
+        channel = self.params.get('channel') or 'default'
+        enc = self.params.get('encoding') or 'utf-8'
+        try:
+            nbytes = len(str(body).encode(enc if enc not in ('hex', 'gbk') else 'utf-8', errors='replace'))
+        except Exception:
+            nbytes = len(str(body).encode('utf-8', errors='replace'))
+        ts = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+        clip = str(body).replace('\r', '\\r').replace('\n', '\\n')
+        if len(clip) > 140:
+            clip = clip[:137] + '…'
+        return f'[{ts}] {direction} {device}/{channel} path={path} bytes={nbytes} │ {clip}'
+
+    def _build_soft_roundtrip_transcript(self):
+        """Design-time denser LocalBus transcript: TX then soft RX echo (no field TCP)."""
+        body = self._soft_preview_body()
+        lines = list(self._soft_bus_lines or [])
+        if self.op == 'send_data':
+            tx_body = body if body else '(空报文)'
+            lines.append(self._format_soft_bus_line('TX', tx_body, 'inprocess'))
+            # soft LocalBus echo that a same-run receive_data would see
+            lines.append(self._format_soft_bus_line('RX', tx_body, 'send→inbox'))
+            lines.append(
+                self._format_soft_bus_line('NOTE', 'soft round-trip · LocalLoop inbox mirrored · no field TCP', 'soft')
+            )
+        else:
+            rx_body = body if body else '(无样例载荷)'
+            lines.append(self._format_soft_bus_line('RX', rx_body, 'sample|inprocess'))
+            scope = self.params.get('targetScope') or 'flow'
+            var = self.params.get('targetVar') or 'recvData'
+            lines.append(
+                self._format_soft_bus_line('WRITE', f'{scope}.{var} ← payload', 'var-writeback')
+            )
+        # keep last 24 soft lines for density without flood
+        return lines[-24:]
+
+    def _append_soft_bus_line(self):
+        body = self._soft_preview_body() or '(空)'
+        direction = 'TX' if self.op == 'send_data' else 'RX'
+        line = self._format_soft_bus_line(direction, body, 'soft-append')
+        if not hasattr(self, '_soft_bus_lines') or self._soft_bus_lines is None:
+            self._soft_bus_lines = []
+        self._soft_bus_lines.append(line)
+        while len(self._soft_bus_lines) > 32:
+            self._soft_bus_lines.pop(0)
+        self._refresh_data_io_result()
+
+    def _clear_soft_bus(self):
+        self._soft_bus_lines = []
+        self._refresh_data_io_result()
+
+    def _refresh_data_io_result(self):
+        device = self.params.get('device') or '（未选设备）'
+        channel = self.params.get('channel') or ''
+        enc = self.params.get('encoding') or 'utf-8'
+        body = self._soft_preview_body()
+        if self.op == 'receive_data':
+            show = body if body else '(无样例载荷 — 在基本参数填写「样例载荷」)'
             scope = self.params.get('targetScope') or 'flow'
             var = self.params.get('targetVar') or 'recvData'
             try:
-                nbytes = len(payload.encode(enc if enc not in ('hex', 'gbk') else 'utf-8', errors='replace'))
+                nbytes = len(body.encode(enc if enc not in ('hex', 'gbk') else 'utf-8', errors='replace'))
             except Exception:
-                nbytes = len(payload.encode('utf-8', errors='replace'))
+                nbytes = len(body.encode('utf-8', errors='replace'))
             meta = (
                 f'设备={device} · 通道={channel or "-"} · 编码={enc}'
                 f' · 写入 {scope}.{var} · 约 {nbytes} 字节'
@@ -316,16 +420,7 @@ class DataIoPanel(QWidget):
             )
         else:
             mode = self.params.get('sourceMode') or 'text'
-            if mode == 'variable':
-                svar = self.params.get('sourceVar') or ''
-                body = ('${' + svar + '}') if svar else '(变量模式未填源变量)'
-            else:
-                body = str(self.params.get('message') or '')
-            prefix = str(self.params.get('prefix') or '')
-            suffix = str(self.params.get('suffix') or '')
-            body = f'{prefix}{body}{suffix}'
-            if bool(self.params.get('appendCrLf')):
-                body = body + chr(13) + chr(10)
+            show = body if body else '(空报文)'
             try:
                 nbytes = len(body.encode(enc if enc not in ('hex', 'gbk') else 'utf-8', errors='replace'))
             except Exception:
@@ -336,6 +431,18 @@ class DataIoPanel(QWidget):
                 f' · CRLF={"开" if self.params.get("appendCrLf") else "关"}'
             )
         if hasattr(self, '_io_result_preview') and self._io_result_preview is not None:
-            self._io_result_preview.setPlainText(body)
+            self._io_result_preview.setPlainText(show)
         if hasattr(self, '_io_result_meta') and self._io_result_meta is not None:
             self._io_result_meta.setText(meta)
+        # denser LocalBus soft transcript
+        if hasattr(self, '_io_bus_transcript') and self._io_bus_transcript is not None:
+            lines = self._build_soft_roundtrip_transcript()
+            self._io_bus_transcript.setPlainText('\n'.join(lines) if lines else '(笔录空)')
+            n_tx = sum(1 for L in lines if '] TX ' in L)
+            n_rx = sum(1 for L in lines if '] RX ' in L)
+            bus_meta = (
+                f'软笔录 {len(lines)} 行 · TX={n_tx} RX={n_rx} · LocalLoop/inprocess'
+                f' · 追加历史 {len(getattr(self, "_soft_bus_lines", []) or [])}'
+            )
+            if hasattr(self, '_io_bus_meta') and self._io_bus_meta is not None:
+                self._io_bus_meta.setText(bus_meta)

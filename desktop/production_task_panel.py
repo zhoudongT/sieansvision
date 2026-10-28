@@ -355,6 +355,11 @@ class ProductionTaskPanel(QWidget):
     def _set(self, key, value):
         self.params[key] = value
         self._emit()
+        if key in ('taskName', 'recipe', 'statusVar', 'scope', 'autoStart', 'chain', 'note'):
+            try:
+                self._refresh_production_result()
+            except Exception:
+                pass
 
     def _basic_tab(self):
         w = QWidget()
@@ -592,7 +597,14 @@ class ProductionTaskPanel(QWidget):
         ops = chain_to_operations(self.params.get('chain') or DEFAULT_CHAIN)
         if not ops:
             return
+        self._soft_writeback_status_vars(trial=True)
+        self._soft_push_hmi_recipe(trial=True)
         self.applyFlowAndRun.emit(ops)
+        self._record_trial_strip('建议链并试跑', ops)
+        try:
+            self._refresh_production_result()
+        except Exception:
+            pass
 
     def _apply_ocr_chain_and_run(self):
         """Apply OCR→gate→Comm soft chain then trial-run (no field TCP)."""
@@ -603,16 +615,228 @@ class ProductionTaskPanel(QWidget):
                 item['vars'] = 'passGate,ocrCount,ocrConf,ocrText'
             if item.get('operation') == 'send_data':
                 item['name'] = item.get('name') or 'LocalBus发送'
+        self._soft_writeback_status_vars(trial=True)
+        self._soft_push_hmi_recipe(trial=True)
         self.applyFlowAndRun.emit(ops)
+        self._record_trial_strip('OCR链并试跑', ops)
+        try:
+            self._refresh_production_result()
+        except Exception:
+            pass
 
     def _result_tab(self):
+        """结果显示：statusVar/recipe 写回预览 + HMI 条 + 试跑结果条（无微级 prop  cascade）。"""
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(12, 12, 12, 12)
-        lab = QLabel(
-            '运行结果字段：taskName / recipe / status(ready|running|unconfigured) / statusVar / scope。\n会写入 {statusVar}、{statusVar}_name、{statusVar}_recipe。'
+        tip = QLabel(
+            '运行写回 {statusVar} / {statusVar}_name / {statusVar}_recipe / {statusVar}_steps；'
+            '下方为设计态写回预览、HMI 配方条与试跑结果条（软联调，无机械手 SDK）。'
         )
-        lab.setWordWrap(True)
-        lay.addWidget(lab)
+        tip.setWordWrap(True)
+        tip.setStyleSheet('color:#888;')
+        lay.addWidget(tip)
+
+        self._prod_writeback = QPlainTextEdit()
+        self._prod_writeback.setObjectName('productionTaskWritebackPreview')
+        self._prod_writeback.setReadOnly(True)
+        self._prod_writeback.setMaximumHeight(140)
+        self._prod_writeback.setStyleSheet('font-family:monospace;font-size:11px;background:#1e1e1e;color:#c5e1a5;')
+        lay.addWidget(QLabel('statusVar / recipe 写回'))
+        lay.addWidget(self._prod_writeback)
+
+        self._prod_hmi_strip = QLabel()
+        self._prod_hmi_strip.setObjectName('productionTaskHmiStrip')
+        self._prod_hmi_strip.setWordWrap(True)
+        self._prod_hmi_strip.setStyleSheet(
+            'background:#2a3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+            'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+        )
+        lay.addWidget(QLabel('HMI 配方/状态条（软预览）'))
+        lay.addWidget(self._prod_hmi_strip)
+
+        self._prod_trial_strip = QPlainTextEdit()
+        self._prod_trial_strip.setObjectName('productionTaskTrialStrip')
+        self._prod_trial_strip.setReadOnly(True)
+        self._prod_trial_strip.setMaximumHeight(120)
+        self._prod_trial_strip.setStyleSheet('font-family:monospace;font-size:11px;background:#263238;color:#80cbc4;')
+        lay.addWidget(QLabel('试跑结果条'))
+        lay.addWidget(self._prod_trial_strip)
+
+        self._prod_result_meta = QLabel()
+        self._prod_result_meta.setObjectName('productionTaskResultMeta')
+        self._prod_result_meta.setWordWrap(True)
+        self._prod_result_meta.setStyleSheet('color:#666;font-size:11px;')
+        lay.addWidget(self._prod_result_meta)
+
+        bar = QHBoxLayout()
+        refresh = QPushButton('刷新结果显示')
+        refresh.setObjectName('productionTaskResultRefresh')
+        refresh.clicked.connect(self._refresh_production_result)
+        bar.addWidget(refresh)
+        wb = QPushButton('写回工程变量')
+        wb.setObjectName('productionTaskWritebackBtn')
+        wb.setToolTip('把 recipe / statusVar 软写回工程变量表（设计态；不接产线 SDK）')
+        wb.clicked.connect(lambda: self._soft_writeback_status_vars(trial=False))
+        bar.addWidget(wb)
+        hmi = QPushButton('推送到 HMI 条')
+        hmi.setObjectName('productionTaskHmiPushBtn')
+        hmi.setToolTip('把当前配方名推到运行态 HMI 配方徽章（若已打开）')
+        hmi.clicked.connect(lambda: self._soft_push_hmi_recipe(trial=False))
+        bar.addWidget(hmi)
+        bar.addStretch(1)
+        lay.addLayout(bar)
         lay.addStretch(1)
+        self._trial_strip_lines = list(getattr(self, '_trial_strip_lines', []) or [])
+        self._refresh_production_result()
         return w
+
+    def _compute_status(self):
+        name = str(self.params.get('taskName') or '').strip()
+        if not name:
+            return 'unconfigured'
+        return 'running' if bool(self.params.get('autoStart')) else 'ready'
+
+    def _writeback_map(self):
+        status = self._compute_status()
+        sv = str(self.params.get('statusVar') or 'taskStatus').strip() or 'taskStatus'
+        scope = self.params.get('scope') or 'global'
+        name = str(self.params.get('taskName') or '').strip()
+        recipe = str(self.params.get('recipe') or '').strip()
+        chain = self.params.get('chain') or []
+        steps_n = len([r for r in chain if isinstance(r, dict) and (r.get('step') or r.get('op'))])
+        mapping = {
+            f'{scope}.{sv}': status,
+            f'{scope}.{sv}_name': name or '—',
+            f'{scope}.{sv}_recipe': recipe or '—',
+            f'{scope}.{sv}_steps': steps_n,
+            f'{scope}.hmiRecipe': recipe or name or '—',
+            f'{scope}.hmiTaskStatus': status,
+        }
+        return mapping, status, sv, scope, name, recipe, steps_n
+
+    def _soft_writeback_status_vars(self, *, trial=False):
+        """Design-time soft write-back of recipe/statusVar into project variable bags."""
+        mapping, status, sv, scope, name, recipe, steps_n = self._writeback_map()
+        proj = self.project if isinstance(self.project, dict) else {}
+        bag_key = 'globalVariables' if scope == 'global' else 'variables'
+        # Also mirror into nested variables.{scope} shape used by some hosts
+        try:
+            flat = proj.setdefault('variables', {})
+            if not isinstance(flat, dict):
+                flat = {}
+                proj['variables'] = flat
+            scope_bag = flat.setdefault(scope if scope in ('flow', 'global', 'module') else 'global', {})
+            if not isinstance(scope_bag, dict):
+                scope_bag = {}
+                flat[scope if scope in ('flow', 'global', 'module') else 'global'] = scope_bag
+            for full, val in mapping.items():
+                short = full.split('.', 1)[-1]
+                scope_bag[short] = val
+            # host chrome mirrors
+            proj['activeRecipeName'] = recipe or name or proj.get('activeRecipeName') or ''
+            if trial:
+                proj['lastProductionTrial'] = {
+                    'status': status,
+                    'recipe': recipe,
+                    'taskName': name,
+                    'statusVar': sv,
+                    'scope': scope,
+                    'steps': steps_n,
+                }
+        except Exception:
+            pass
+        w = self.window()
+        if w is not None and hasattr(w, 'document') and getattr(w, 'document', None) is not None:
+            try:
+                w.document.mark_dirty()
+            except Exception:
+                pass
+        try:
+            self._refresh_production_result()
+        except Exception:
+            pass
+        return mapping
+
+    def _soft_push_hmi_recipe(self, *, trial=False):
+        """Push recipe/status soft chrome to operator HMI when available."""
+        _mapping, status, sv, scope, name, recipe, steps_n = self._writeback_map()
+        label = recipe or name or '—'
+        # Update local HMI strip immediately
+        if hasattr(self, '_prod_hmi_strip') and self._prod_hmi_strip is not None:
+            trial_tag = ' · 试跑待回填' if trial else ''
+            self._prod_hmi_strip.setText(
+                f'配方 · {label}  │  状态 {status}  │  {scope}.{sv}  │  链 {steps_n} 步{trial_tag}'
+            )
+        w = self.window()
+        if w is None:
+            return
+        hmi = getattr(w, 'operator_hmi', None)
+        if hmi is not None and hasattr(hmi, 'set_recipe_chrome'):
+            try:
+                variant = ''
+                try:
+                    variant = str((self.project or {}).get('activeRecipeVariant') or '')
+                except Exception:
+                    variant = ''
+                hmi.set_recipe_chrome(label, variant)
+            except Exception:
+                pass
+        if trial and hmi is not None and hasattr(hmi, 'set_trial_backfill_pending'):
+            try:
+                hmi.set_trial_backfill_pending(True)
+            except Exception:
+                pass
+        if hmi is not None and hasattr(hmi, 'update_fixed_bar_live'):
+            try:
+                hmi.update_fixed_bar_live(
+                    run_status='试跑' if trial else status,
+                    okng='—' if trial else ('OK' if status == 'ready' else status.upper()),
+                    counters=f'链{steps_n}',
+                    comm='LocalBus',
+                )
+            except Exception:
+                pass
+
+    def _record_trial_strip(self, title, ops):
+        from datetime import datetime
+        ts = datetime.now().strftime('%H:%M:%S')
+        _mapping, status, sv, scope, name, recipe, steps_n = self._writeback_map()
+        op_names = []
+        for o in (ops or [])[:10]:
+            op_names.append(str(o.get('name') or o.get('operation') or '?'))
+        line = (
+            f'[{ts}] {title} · status={status} · recipe={recipe or "—"} · '
+            f'task={name or "—"} · {scope}.{sv} · ops={len(ops or [])} · '
+            f'{" → ".join(op_names)}'
+        )
+        lines = list(getattr(self, '_trial_strip_lines', []) or [])
+        lines.append(line)
+        self._trial_strip_lines = lines[-12:]
+        if hasattr(self, '_prod_trial_strip') and self._prod_trial_strip is not None:
+            self._prod_trial_strip.setPlainText('\n'.join(self._trial_strip_lines))
+
+    def _refresh_production_result(self):
+        mapping, status, sv, scope, name, recipe, steps_n = self._writeback_map()
+        lines = [f'{k} = {v!r}' for k, v in mapping.items()]
+        if hasattr(self, '_prod_writeback') and self._prod_writeback is not None:
+            self._prod_writeback.setPlainText('\n'.join(lines))
+        label = recipe or name or '—'
+        if hasattr(self, '_prod_hmi_strip') and self._prod_hmi_strip is not None:
+            self._prod_hmi_strip.setText(
+                f'配方 · {label}  │  状态 {status}  │  {scope}.{sv}  │  链 {steps_n} 步'
+            )
+        if hasattr(self, '_prod_trial_strip') and self._prod_trial_strip is not None:
+            hist = list(getattr(self, '_trial_strip_lines', []) or [])
+            if hist:
+                self._prod_trial_strip.setPlainText('\n'.join(hist))
+            else:
+                self._prod_trial_strip.setPlainText(
+                    '(尚无试跑记录 — 点「应用到流程并试跑」或「OCR链并试跑」后在此汇总)'
+                )
+        if hasattr(self, '_prod_result_meta') and self._prod_result_meta is not None:
+            self._prod_result_meta.setText(
+                f'taskName={name or "—"} · recipe={recipe or "—"} · status={status} · '
+                f'statusVar={sv} · scope={scope} · chainSteps={steps_n} · '
+                f'writebackKeys={len(mapping)}'
+            )

@@ -71,6 +71,138 @@ def normalize_text_save_params(params=None):
     return p
 
 
+
+def soft_format_preview(params, env=None):
+    """Design-time format_data preview (mirrors engine soft path; no hardware)."""
+    p = params or {}
+    tpl = str(p.get('template') or '')
+    args = [a.strip() for a in str(p.get('args') or '').split(',') if a.strip()]
+    env = dict(env or {})
+    values = []
+    for tok in args:
+        if tok in env:
+            values.append(env[tok])
+        else:
+            try:
+                values.append(float(tok) if '.' in tok else int(tok))
+            except Exception:
+                values.append(tok)
+    try:
+        if values:
+            try:
+                text = tpl.format(*values)
+            except Exception:
+                try:
+                    text = tpl.format(**{str(i): v for i, v in enumerate(values)})
+                except Exception:
+                    text = tpl
+                    for i, v in enumerate(values):
+                        text = text.replace('{' + str(i) + '}', str(v))
+                    import re as _re
+                    def _named(m):
+                        name = m.group(1)
+                        if name in env:
+                            return str(env[name])
+                        # also map arg names positionally when args are identifiers
+                        if name in args:
+                            return str(values[args.index(name)])
+                        return m.group(0)
+                    text = _re.sub(r'\{([A-Za-z_][A-Za-z0-9_]*)\}', _named, text)
+        else:
+            text = tpl
+    except Exception as exc:
+        text = f'(预览失败: {exc})'
+    if bool(p.get('trim')):
+        text = str(text).strip()
+    return str(text)
+
+
+def soft_protocol_parse_preview(params, sample=None):
+    """Design-time protocol_parse preview → list of 'prefix+field = value' lines."""
+    p = params or {}
+    sample = str(sample if sample is not None else (p.get('sample') or ''))
+    proto = str(p.get('protocol') or 'delimited')
+    delim = str(p.get('delimiter') or ',')
+    fields = [f.strip() for f in str(p.get('fields') or '').split(',') if f.strip()]
+    prefix = str(p.get('targetPrefix') or 'parsed_')
+    lines = []
+    parsed = {}
+    try:
+        if not sample.strip():
+            lines.append('(无样例报文 — 在基本参数填写「样例」)')
+        elif proto == 'json':
+            import json as _json
+            obj = _json.loads(sample)
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    parsed[k] = v
+                    lines.append(f'{prefix}{k} = {v!r}')
+            else:
+                parsed['value'] = obj
+                lines.append(f'{prefix}value = {obj!r}')
+        elif proto == 'fixed':
+            widths = [int(x) for x in str(p.get('fixedWidths') or '8,8,16').split(',') if str(x).strip()]
+            pos = 0
+            for i, wdt in enumerate(widths):
+                chunk = sample[pos:pos + wdt]
+                name = fields[i] if i < len(fields) else f'f{i}'
+                parsed[name] = chunk
+                lines.append(f'{prefix}{name} = {chunk!r}')
+                pos += wdt
+        elif proto == 'regex':
+            import re as _re
+            pat = str(p.get('pattern') or '')
+            m = _re.search(pat, sample) if pat else None
+            if not pat:
+                lines.append('(未填正则)')
+            elif not m:
+                lines.append('(样例未匹配正则)')
+            else:
+                if m.groupdict():
+                    for k, v in m.groupdict().items():
+                        parsed[k] = v
+                        lines.append(f'{prefix}{k} = {v!r}')
+                else:
+                    for i, g in enumerate(m.groups(), 1):
+                        name = fields[i - 1] if i - 1 < len(fields) else f'g{i}'
+                        parsed[name] = g
+                        lines.append(f'{prefix}{name} = {g!r}')
+        else:
+            parts = sample.split(delim)
+            for i, part in enumerate(parts):
+                name = fields[i] if i < len(fields) else f'f{i}'
+                parsed[name] = part
+                lines.append(f'{prefix}{name} = {part!r}')
+    except Exception as exc:
+        lines = [f'(解析失败: {exc})']
+    return lines, parsed
+
+
+def soft_format_protocol_roundtrip(fmt_params, proto_params, env=None):
+    """open-and-run soft path: format_data → (LocalBus body) → protocol_parse preview."""
+    formatted = soft_format_preview(fmt_params, env=env)
+    # if protocol expects delimited/json etc., use formatted as sample
+    proto = dict(proto_params or {})
+    # prefer protocol sample when present for pure-parse demos; else round-trip formatted
+    sample = str(proto.get('sample') or '').strip() or formatted
+    lines, parsed = soft_protocol_parse_preview(proto, sample=sample)
+    scope = (fmt_params or {}).get('scope') or 'flow'
+    tvar = (fmt_params or {}).get('targetVar') or 'formatted'
+    src_scope = proto.get('sourceScope') or 'flow'
+    src_var = proto.get('sourceVar') or 'recvData'
+    meta = (
+        f'round-trip soft · {scope}.{tvar} → LocalBus → {src_scope}.{src_var}'
+        f' · protocol={proto.get("protocol") or "delimited"} · fields={len(parsed)}'
+        f' · out_len={len(formatted)}'
+    )
+    block = [
+        f'── format → {formatted!r}',
+        f'── LocalBus soft TX/RX (inprocess, no field TCP)',
+        f'── protocol parse ({proto.get("protocol") or "delimited"}):',
+        *lines,
+    ]
+    return '\n'.join(block), meta, formatted, parsed
+
 class _ShellBase(QWidget):
     changed = Signal(dict)
 
@@ -284,22 +416,37 @@ class FormatDataPanel(_ShellBase):
 
 
     def _result_tab(self):
-        """结果显示：设计态模板预览 + 目标变量/编码摘要（无硬件）。"""
+        """结果显示：设计态模板预览 + format→protocol round-trip soft（open-and-run 路径）。"""
         w = QWidget()
         form = QFormLayout(w)
         form.setContentsMargins(10, 10, 10, 10)
-        tip = QLabel('运行后引擎写回 formatted / status；下方为设计态预览。')
+        tip = QLabel(
+            '运行后引擎写回 formatted / status；下方为设计态预览 + '
+            'format→LocalBus→protocol 软往返（对齐 open-and-run-format-protocol；无现场 TCP）。'
+        )
+        tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
         self._fmt_result_preview = QPlainTextEdit()
         self._fmt_result_preview.setObjectName('formatDataResultPreview')
         self._fmt_result_preview.setReadOnly(True)
-        self._fmt_result_preview.setMaximumHeight(120)
+        self._fmt_result_preview.setMaximumHeight(100)
         form.addRow('预览输出', self._fmt_result_preview)
         self._fmt_result_meta = QLabel()
         self._fmt_result_meta.setObjectName('formatDataResultMeta')
         self._fmt_result_meta.setWordWrap(True)
         form.addRow('写入摘要', self._fmt_result_meta)
+        self._fmt_roundtrip = QPlainTextEdit()
+        self._fmt_roundtrip.setObjectName('formatDataRoundtripPreview')
+        self._fmt_roundtrip.setReadOnly(True)
+        self._fmt_roundtrip.setMaximumHeight(160)
+        self._fmt_roundtrip.setStyleSheet('font-family:monospace;font-size:11px;background:#1e1e1e;color:#ffe0b2;')
+        form.addRow('软往返', self._fmt_roundtrip)
+        self._fmt_roundtrip_meta = QLabel()
+        self._fmt_roundtrip_meta.setObjectName('formatDataRoundtripMeta')
+        self._fmt_roundtrip_meta.setWordWrap(True)
+        self._fmt_roundtrip_meta.setStyleSheet('color:#666;font-size:11px;')
+        form.addRow('往返摘要', self._fmt_roundtrip_meta)
         btn = QPushButton('刷新结果显示')
         btn.setObjectName('formatDataResultRefresh')
         btn.clicked.connect(self._refresh_format_result)
@@ -308,20 +455,7 @@ class FormatDataPanel(_ShellBase):
         return w
 
     def _refresh_format_result(self):
-        tpl = str(self.params.get('template') or '')
-        args = [a.strip() for a in str(self.params.get('args') or '').split(',') if a.strip()]
-        try:
-            if args:
-                try:
-                    text = tpl.format(*args)
-                except Exception:
-                    text = tpl.format(**{f'{i}': a for i, a in enumerate(args)})
-            else:
-                text = tpl
-        except Exception as exc:
-            text = f'(预览失败: {exc})'
-        if bool(self.params.get('trim')):
-            text = text.strip()
+        text = soft_format_preview(self.params)
         if hasattr(self, '_fmt_result_preview') and self._fmt_result_preview is not None:
             self._fmt_result_preview.setPlainText(text)
         scope = self.params.get('scope') or 'flow'
@@ -331,6 +465,38 @@ class FormatDataPanel(_ShellBase):
         meta = f'{scope}.{var} · 编码 {enc} · 空结果={empty} · 长度 {len(text)}'
         if hasattr(self, '_fmt_result_meta') and self._fmt_result_meta is not None:
             self._fmt_result_meta.setText(meta)
+        # open-and-run soft round-trip: format → protocol_parse(delimited on formatted)
+        proto = {
+            'protocol': 'delimited',
+            'delimiter': ',',
+            'fields': 'f0,f1,f2,f3,f4,f5',
+            'targetPrefix': 'parsed_',
+            'sourceVar': 'recvData',
+            'sourceScope': 'flow',
+            'sample': text,
+        }
+        # Prefer a sibling protocol_parse step sample/fields from project when present
+        try:
+            for s in (self.project or {}).get('steps') or []:
+                if (s or {}).get('operation') == 'protocol_parse':
+                    pp = (s.get('params') or {})
+                    proto['protocol'] = pp.get('protocol') or proto['protocol']
+                    proto['delimiter'] = pp.get('delimiter') or proto['delimiter']
+                    proto['fields'] = pp.get('fields') or proto['fields']
+                    proto['targetPrefix'] = pp.get('targetPrefix') or proto['targetPrefix']
+                    proto['sourceVar'] = pp.get('sourceVar') or proto['sourceVar']
+                    proto['sourceScope'] = pp.get('sourceScope') or proto['sourceScope']
+                    if str(pp.get('sample') or '').strip():
+                        # still round-trip formatted as payload; keep field layout
+                        pass
+                    break
+        except Exception:
+            pass
+        block, rmeta, _fmt, _parsed = soft_format_protocol_roundtrip(self.params, proto)
+        if hasattr(self, '_fmt_roundtrip') and self._fmt_roundtrip is not None:
+            self._fmt_roundtrip.setPlainText(block)
+        if hasattr(self, '_fmt_roundtrip_meta') and self._fmt_roundtrip_meta is not None:
+            self._fmt_roundtrip_meta.setText(rmeta)
 
 class OutputImagePanel(_ShellBase):
     def __init__(self, step, definition, project, parent=None):
@@ -629,22 +795,37 @@ class ProtocolParsePanel(_ShellBase):
 
 
     def _result_tab(self):
-        """结果显示：样例报文解析预览 → 字段表（设计态）。"""
+        """结果显示：样例报文解析预览 + format↔protocol soft round-trip（open-and-run）。"""
         w = QWidget()
         form = QFormLayout(w)
         form.setContentsMargins(10, 10, 10, 10)
-        tip = QLabel('运行写回 parsed_*；下方用「样例」报文做设计态解析预览。')
+        tip = QLabel(
+            '运行写回 parsed_*；下方用「样例」报文做设计态解析预览，'
+            '并给出 format→LocalBus→parse 软往返（对齐 open-and-run-format-protocol）。'
+        )
+        tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
         self._proto_result_preview = QPlainTextEdit()
         self._proto_result_preview.setObjectName('protocolParseResultPreview')
         self._proto_result_preview.setReadOnly(True)
-        self._proto_result_preview.setMaximumHeight(140)
+        self._proto_result_preview.setMaximumHeight(120)
         form.addRow('解析字段', self._proto_result_preview)
         self._proto_result_meta = QLabel()
         self._proto_result_meta.setObjectName('protocolParseResultMeta')
         self._proto_result_meta.setWordWrap(True)
         form.addRow('摘要', self._proto_result_meta)
+        self._proto_roundtrip = QPlainTextEdit()
+        self._proto_roundtrip.setObjectName('protocolParseRoundtripPreview')
+        self._proto_roundtrip.setReadOnly(True)
+        self._proto_roundtrip.setMaximumHeight(160)
+        self._proto_roundtrip.setStyleSheet('font-family:monospace;font-size:11px;background:#1e1e1e;color:#b3e5fc;')
+        form.addRow('软往返', self._proto_roundtrip)
+        self._proto_roundtrip_meta = QLabel()
+        self._proto_roundtrip_meta.setObjectName('protocolParseRoundtripMeta')
+        self._proto_roundtrip_meta.setWordWrap(True)
+        self._proto_roundtrip_meta.setStyleSheet('color:#666;font-size:11px;')
+        form.addRow('往返摘要', self._proto_roundtrip_meta)
         btn = QPushButton('刷新结果显示')
         btn.setObjectName('protocolParseResultRefresh')
         btn.clicked.connect(self._refresh_protocol_result)
@@ -653,62 +834,49 @@ class ProtocolParsePanel(_ShellBase):
         return w
 
     def _refresh_protocol_result(self):
-        sample = str(self.params.get('sample') or '')
-        proto = str(self.params.get('protocol') or 'delimited')
-        delim = str(self.params.get('delimiter') or ',')
-        fields = [f.strip() for f in str(self.params.get('fields') or '').split(',') if f.strip()]
-        prefix = str(self.params.get('targetPrefix') or 'parsed_')
-        lines = []
-        try:
-            if not sample.strip():
-                lines.append('(无样例报文 — 在基本参数填写「样例」)')
-            elif proto == 'json':
-                import json as _json
-                obj = _json.loads(sample)
-                if isinstance(obj, dict):
-                    for k, v in obj.items():
-                        lines.append(f'{prefix}{k} = {v!r}')
-                else:
-                    lines.append(f'{prefix}value = {obj!r}')
-            elif proto == 'fixed':
-                widths = [int(x) for x in str(self.params.get('fixedWidths') or '8,8,16').split(',') if str(x).strip()]
-                pos = 0
-                for i, wdt in enumerate(widths):
-                    chunk = sample[pos:pos + wdt]
-                    name = fields[i] if i < len(fields) else f'f{i}'
-                    lines.append(f'{prefix}{name} = {chunk!r}')
-                    pos += wdt
-            elif proto == 'regex':
-                import re as _re
-                pat = str(self.params.get('pattern') or '')
-                m = _re.search(pat, sample) if pat else None
-                if not pat:
-                    lines.append('(未填正则)')
-                elif not m:
-                    lines.append('(样例未匹配正则)')
-                else:
-                    if m.groupdict():
-                        for k, v in m.groupdict().items():
-                            lines.append(f'{prefix}{k} = {v!r}')
-                    else:
-                        for i, g in enumerate(m.groups(), 1):
-                            name = fields[i - 1] if i - 1 < len(fields) else f'g{i}'
-                            lines.append(f'{prefix}{name} = {g!r}')
-            else:  # delimited
-                parts = sample.split(delim)
-                for i, part in enumerate(parts):
-                    name = fields[i] if i < len(fields) else f'f{i}'
-                    lines.append(f'{prefix}{name} = {part!r}')
-        except Exception as exc:
-            lines = [f'(解析失败: {exc})']
+        lines, parsed = soft_protocol_parse_preview(self.params)
         text = '\n'.join(lines) if lines else '(无字段)'
         if hasattr(self, '_proto_result_preview') and self._proto_result_preview is not None:
             self._proto_result_preview.setPlainText(text)
-        src = self.params.get('sourceVar') or 'recvData'
+        src_var = self.params.get('sourceVar') or 'recvData'
         scope = self.params.get('sourceScope') or 'flow'
-        meta = f'源 {scope}.{src} · 协议={proto} · 字段 {len(lines)}'
+        proto = str(self.params.get('protocol') or 'delimited')
+        meta = f'源 {scope}.{src_var} · 协议={proto} · 字段 {len(parsed) if parsed else len(lines)}'
         if hasattr(self, '_proto_result_meta') and self._proto_result_meta is not None:
             self._proto_result_meta.setText(meta)
+        # soft round-trip using sibling format_data when present
+        fmt = {
+            'template': '{0}',
+            'args': 'sample',
+            'targetVar': 'formatted',
+            'scope': 'flow',
+            'trim': False,
+        }
+        env = {'sample': str(self.params.get('sample') or '')}
+        try:
+            for s in (self.project or {}).get('steps') or []:
+                if (s or {}).get('operation') == 'format_data':
+                    fmt = dict(s.get('params') or fmt)
+                    break
+        except Exception:
+            pass
+        # If no sibling format, synthesize a format that re-emits sample as body
+        if not str(fmt.get('template') or '').strip() or str(fmt.get('template')) == '{0}':
+            sample = str(self.params.get('sample') or '')
+            if sample:
+                fmt = {
+                    'template': sample.replace('{', '{{').replace('}', '}}'),
+                    'args': '',
+                    'targetVar': 'formatted',
+                    'scope': 'flow',
+                    'trim': False,
+                }
+        block, rmeta, _f, _p = soft_format_protocol_roundtrip(fmt, self.params, env=env)
+        if hasattr(self, '_proto_roundtrip') and self._proto_roundtrip is not None:
+            self._proto_roundtrip.setPlainText(block)
+        if hasattr(self, '_proto_roundtrip_meta') and self._proto_roundtrip_meta is not None:
+            self._proto_roundtrip_meta.setText(rmeta)
+
 
 class TextSavePanel(_ShellBase):
     def __init__(self, step, definition, project, parent=None):

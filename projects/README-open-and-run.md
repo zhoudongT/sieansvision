@@ -55,6 +55,28 @@
 
 冒烟：`python3 scripts/smoke-comm-protocol-deepen-e2e.py`
 
+## LocalBus 稠密笔录 + format↔protocol 软往返（无现场 TCP）
+
+发送/接收数据结果页签 → **LocalBus 软笔录**：稠密 TX/RX/WRITE 行（软 preview，进程内总线）。引擎 `lib/comm-bus.cjs` 维护 transcript 环（send=TX、receive=RX），`getTranscript` / `formatTranscript`。
+
+FormatData / ProtocolParse 结果页签 → **format↔protocol 软往返**：模板展开 → LocalBus 软载荷 → 分隔/定长解析字段表（`soft_format_protocol_roundtrip`）。打开即跑：`open-and-run-format-protocol.sieans`。
+
+```bash
+python3 scripts/smoke-localbus-transcript-roundtrip-e2e.py
+```
+
+期望：引擎 TX+RX≥2；DataIoPanel 软笔录含 TX/RX；Format/Protocol 往返 parsed_code/score/gate。
+
+## production_task HMI 配方/statusVar 回写 + 试跑结果条
+
+生产任务属性结果区：**statusVar 回写预览**（`taskStatus` / `*_recipe` / `hmiRecipe` / `hmiTaskStatus`）+ **HMI 配方条** + **试跑结果条**（OCR链并试跑等 applyFlowAndRun 落盘）。引擎 `productionTask` 同步写 bag 与 `hmiStrip`/`writeback`。无机器人 SDK、无微属性级联。
+
+```bash
+python3 scripts/smoke-production-task-hmi-writeback-e2e.py
+```
+
+期望：writebackKeys≥6；HMI strip 含配方/状态/链步；试跑条含 status=ready。
+
 ## 通信速验（group-comm / default-platform / format-protocol）
 
 - 工具栏 Listen 徽章：点击打开通信管理；工程切换后徽章状态应保留。
