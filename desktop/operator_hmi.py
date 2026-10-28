@@ -1407,6 +1407,15 @@ class OperatorHmiView(QWidget):
                 pass
         self._paint_machine_chrome(state)
 
+    def set_bound_flow(self, name: str = '', steps: int = 0, path: str = '', reason: str = ''):
+        """Proxy → Host SM 信息栏流程绑定芯片（开始绑流程 §6 P0）。"""
+        host = getattr(self, '_host_sm', None)
+        if host is not None and hasattr(host, 'set_bound_flow'):
+            try:
+                host.set_bound_flow(name, steps=steps, path=path, reason=reason)
+            except Exception:
+                pass
+
     def set_keep_host_running(self, keep: bool):
         """Continuous / run-all active → cycle completes stay Running on SM."""
         self._keep_host_running = bool(keep)

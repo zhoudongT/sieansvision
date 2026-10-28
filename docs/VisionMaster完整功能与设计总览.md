@@ -305,8 +305,8 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 | 优先级 | 项 | 理由 |
 |--------|----|------|
-| **P0** | 上位机状态机 HMI 做深（默认运行壳嵌入；开始/停止绑流程；信息栏） | p41–43 最大剩余 Shell*；帧控件清晰 |
-| **P0** | `production_task`「应用到流程」可一键跑通 demo 链 | p40 心智图闭环 |
+| **P0** | 上位机状态机 HMI 做深（默认运行壳嵌入；开始/停止绑流程；信息栏）✅ | 信息栏绑定芯片；开始→执行·连续 |
+| **P0** | `production_task`「应用到流程」可一键跑通 demo 链 ✅ | p40；apply+试跑；物理坐标 var_calc |
 | **P1** | CommManager 收发事件 ↔ 流程变量写回；TCP 测试结果进变量 | p10/11/31 |
 | **P1** | N4 红叹号全算子扫盲；属性面板密度贴帧 | 设计可信度 |
 | **P1** | 胶片条/自动切换/运行全部与图像源属性持续对齐 | p4 核心 UX |
@@ -1797,6 +1797,13 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 ### 仍为外依赖
 - 真机 TCP / 现场设备；真实远端云；Halcon 卡尺核；robot SDK；chrome 人工观感签字
+
+## 【产线链一键跑通 + Host SM 开始绑流程 · 2026-10-28】
+
+- **production_task「应用到流程」**：物理坐标行改走 `var_calc`（`locate_x/geometry_x * 0.1`），seed 覆盖 locate/pose/geometry(circles+卡尺)/display/format/send；新增「应用到流程并试跑」；apply 时 ensure LocalLoop + 信息栏同步。
+- **Host SM §6 P0**：信息栏「已绑 · 方案名 · N步」芯片；`set_bound_flow`；开始/停止日志写明绑流程并 `执行·连续/停止`。
+- **P2 壳**：locate 结果显示 +匹配序号；geometry 卡尺参数回显；varCalc 对缺失视觉标量补 0（无 Halcon）。
+- 冒烟：`scripts/smoke-prodchain-apply-hostsm-bind-e2e.py`
 
 ## 【开箱即用 + 薄壳加深 · 2026-10-28】
 

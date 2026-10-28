@@ -135,6 +135,10 @@ class HostStateMachineWidget(QWidget):
         self._current_film_path = ''  # wave27: 运行报警自动带 filmPath
         self._liaison_events = []  # wave22: 联调条 [{ts, kind, code, text}]
         self._liaison_events_max = 12
+        # §6 P0: 开始/停止绑当前流程 — 信息栏显示绑定名
+        self._bound_flow_name = ''
+        self._bound_flow_steps = 0
+        self._bound_flow_path = ''
 
         root = QVBoxLayout(self)
         root.setContentsMargins(4, 4, 4, 4)
@@ -161,7 +165,7 @@ class HostStateMachineWidget(QWidget):
         qrow.setSpacing(4)
         self._q_start = QPushButton('▶ 开始')
         self._q_start.setObjectName('primaryButton')
-        self._q_start.setToolTip('开始连续运行（正常生产）')
+        self._q_start.setToolTip('开始连续运行 · 已绑当前流程（执行·连续）')
         self._q_start.clicked.connect(lambda: self._auto_start(self._mode or '正常生产'))
         self._q_pause = QPushButton('⏸ 暂停')
         self._q_pause.setToolTip('软暂停连续/运行全部')
@@ -195,19 +199,31 @@ class HostStateMachineWidget(QWidget):
             except Exception:
                 pass
 
-        # Info bar
+        # Info bar + 流程绑定 chip（§6 P0：开始绑流程）
+        info_head = QHBoxLayout()
         info_cap = QLabel('信息显示栏')
         info_cap.setStyleSheet(f'color:{TEXT_MUTED};font-size:11px;font-weight:600;')
-        root.addWidget(info_cap)
+        info_head.addWidget(info_cap)
+        info_head.addStretch(1)
+        self._flow_bind_chip = QLabel('流程未绑定')
+        self._flow_bind_chip.setObjectName('hostFlowBindChip')
+        self._flow_bind_chip.setToolTip('「▶ 开始」→ 执行·连续，驱动当前已打开方案/流程')
+        self._flow_bind_chip.setStyleSheet(
+            f'color:{TEXT_DIM};font-size:11px;padding:2px 8px;'
+            f'border:1px solid {LINE};border-radius:3px;background:{PANEL};'
+        )
+        info_head.addWidget(self._flow_bind_chip)
+        root.addLayout(info_head)
         self._log = QPlainTextEdit()
         self._log.setReadOnly(True)
         self._log.setMaximumBlockCount(300)
-        self._log.setPlaceholderText('连接 / 运动 / 生产状态…')
+        self._log.setPlaceholderText('连接 / 运动 / 生产状态 / 流程绑定…')
         self._log.setMaximumHeight(110 if compact else 140)
         self._log.setStyleSheet('font-size:11px;')
         root.addWidget(self._log)
 
         self._log_line('上位机状态机就绪（无机械手 SDK · UI 示意）')
+        self._log_line('开始已绑流程触发 · 执行·连续（打开方案后显示绑定名）')
 
     # ----- public -----
     @property
@@ -278,6 +294,46 @@ class HostStateMachineWidget(QWidget):
 
     def append_info(self, message: str):
         self._log_line(str(message))
+
+    def set_bound_flow(self, name: str = '', steps: int = 0, path: str = '', reason: str = ''):
+        """Bind Host SM 开始/停止 to the current scheme/flow (info-bar chip + logs)."""
+        name = str(name or '').strip() or '未命名方案'
+        try:
+            steps = int(steps or 0)
+        except Exception:
+            steps = 0
+        path = str(path or '')
+        prev = (self._bound_flow_name, self._bound_flow_steps, self._bound_flow_path)
+        self._bound_flow_name = name
+        self._bound_flow_steps = steps
+        self._bound_flow_path = path
+        chip = getattr(self, '_flow_bind_chip', None)
+        label = f'已绑 · {name}'
+        if steps:
+            label += f' · {steps}步'
+        if chip is not None:
+            chip.setText(label)
+            tip = f'「▶ 开始」→ 执行·连续 · 当前流程：{name}'
+            if path:
+                tip += f'\n{path}'
+            tip += '\n无机械手 SDK；停止 → 执行·停止'
+            chip.setToolTip(tip)
+            chip.setStyleSheet(
+                f'color:{OK};font-size:11px;padding:2px 8px;font-weight:600;'
+                f'border:1px solid {OK};border-radius:3px;background:#1c3a2a;'
+            )
+        changed = prev != (name, steps, path)
+        if changed or reason:
+            msg = f'流程绑定 · {name}'
+            if steps:
+                msg += f' · {steps}步'
+            if reason:
+                msg += f' · {reason}'
+            self._log_line(msg)
+
+    @property
+    def bound_flow_name(self) -> str:
+        return self._bound_flow_name or ''
 
     # ----- build -----
     def _build_manual(self) -> QWidget:
@@ -426,7 +482,8 @@ class HostStateMachineWidget(QWidget):
         self._load_alarm_policy_settings()
 
         tip = QLabel(
-            '「开始」→ 连续；「暂停/继续」→ 软暂停；「停止」→ 硬停止。'
+            '「开始」→ 执行·连续（已绑当前方案/流程，见信息栏芯片）；'
+            '「暂停/继续」→ 软暂停；「停止」→ 硬停止。'
             '报警可手动清除，或按策略：下次成功 / 超时自动清除。'
             '九点/旋转标定模式仅切换 UI 上下文（无厂商标定 SDK）。'
         )
@@ -37902,9 +37959,11 @@ class HostStateMachineWidget(QWidget):
             # Prefer resume rather than re-start
             self._auto_resume(mode)
             return
-        self.set_state('Running', f'{mode} · 开始')
+        flow = self._bound_flow_name or '当前流程'
+        self.set_state('Running', f'{mode} · 开始 · {flow}')
+        self._log_line(f'开始绑流程 · {flow} · 执行·连续')
         # Continuous run for production feel; single also available via 运行控制
-        self.triggerCommands.emit([dict(type='执行·连续', config=mode)])
+        self.triggerCommands.emit([dict(type='执行·连续', config=mode or flow)])
 
     def _auto_pause(self, mode: str):
         if self._state != 'Running':
@@ -37920,5 +37979,7 @@ class HostStateMachineWidget(QWidget):
         self.triggerCommands.emit([dict(type='执行·继续', config=mode)])
 
     def _auto_stop(self, mode: str):
-        self.set_state('Stopped', mode)
-        self.triggerCommands.emit([dict(type='执行·停止', config=mode)])
+        flow = self._bound_flow_name or '当前流程'
+        self.set_state('Stopped', f'{mode} · {flow}')
+        self._log_line(f'停止绑流程 · {flow} · 执行·停止')
+        self.triggerCommands.emit([dict(type='执行·停止', config=mode or flow)])

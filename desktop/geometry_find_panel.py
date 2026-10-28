@@ -427,4 +427,15 @@ class GeometryFindPanel(QWidget):
         diag.setObjectName('geometryDiagHint')
         diag.setStyleSheet('color:#9ab;font-size:11px;padding:4px 0;')
         form.addRow('结果诊断', diag)
+        cal = QLabel(
+            f'卡尺级参数：count={int(self.params.get("caliperCount") or 10)} · '
+            f'width={int(self.params.get("caliperWidth") or 20)} · '
+            f'length={int(self.params.get("caliperLength") or 40)} · '
+            f'sigma={float(self.params.get("caliperSigma") or 1):.1f} · '
+            f'method={self.params.get("findMethod") or "caliper"}（无 Halcon 核）。'
+        )
+        cal.setWordWrap(True)
+        cal.setObjectName('geometryCaliperHint')
+        cal.setStyleSheet('color:#9ab;font-size:11px;padding:2px 0;')
+        form.addRow('卡尺回显', cal)
         return w

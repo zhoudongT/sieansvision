@@ -484,14 +484,22 @@ class MainWindow(QMainWindow):
         self.populate_toolbox()
 
 
-    def apply_production_chain(self, ops):
+    def apply_production_chain(self, ops, *, trial_run=False):
         """Insert production_task suggested chain as real flow nodes (p40 demo)."""
         from desktop.production_task_panel import seed_chain_step_params
+        from desktop.comm_manager import ensure_comm_manager
         ops = list(ops or [])
         if not ops:
             self.log('建议链为空'); return
         if self.busy:
             raise ValueError('运行中不可改流程')
+        # Ensure LocalLoop so send_data demo works without peers
+        try:
+            proj0 = __import__('copy').deepcopy(self.document.project)
+            ensure_comm_manager(proj0)
+            self.document.commit(proj0, label='产线链·通讯LocalLoop')
+        except Exception:
+            pass
         parent = self.selected or 'source'
         added = []
         for item in ops:
@@ -499,7 +507,7 @@ class MainWindow(QMainWindow):
             if not key or key not in self.definitions:
                 self.log(f'跳过未知算子：{key}'); continue
             nid = self.document.add(self.definitions[key], parent=parent)
-            # rename + seed runnable demo params (var_calc / format / send)
+            # rename + seed runnable demo params (locate/geometry/var_calc/format/send)
             name = item.get('name') or self.definitions[key].get('name')
             proj = __import__('copy').deepcopy(self.document.project)
             for s in proj['steps']:
@@ -524,7 +532,27 @@ class MainWindow(QMainWindow):
             self.scene.nodes[added[-1]].setSelected(True)
         self.scene.rebuild()
         self.refresh_parameters()
-        self.log(f'已应用生产任务链：{len(added)} 个模块（可▶运行；无机械手 SDK）')
+        names = []
+        for nid in added:
+            st = next((s for s in self.document.project.get('steps', []) if s.get('id') == nid), None)
+            if st:
+                names.append(st.get('name') or st.get('operation') or nid)
+        tip = ' → '.join(names[:12]) + ('…' if len(names) > 12 else '')
+        self.log(f'已应用生产任务链：{len(added)} 个模块（可▶运行；无机械手 SDK）' + (f' · {tip}' if tip else ''))
+        try:
+            self._sync_host_sm_bound_flow(reason=f'产线链·{len(added)}步')
+        except Exception:
+            pass
+        if trial_run and added:
+            self.log('产线链试跑 · ▶单次')
+            try:
+                self.run_once()
+            except Exception as exc:
+                self.log(f'产线链试跑失败：{exc}')
+
+    def apply_production_chain_and_run(self, ops):
+        """Apply suggested chain then single-shot trial run."""
+        self.apply_production_chain(ops, trial_run=True)
 
     def add_node(self,key,position=None):
         if self.busy or not key:return
@@ -560,6 +588,7 @@ class MainWindow(QMainWindow):
             self.property_float.openCameraManager.connect(self.open_camera_manager)
             self.property_float.enterGroup.connect(self.enter_group_module)
             self.property_float.applyProductionChain.connect(lambda ops: self.guard(lambda: self.apply_production_chain(ops)))
+            self.property_float.applyProductionChainAndRun.connect(lambda ops: self.guard(lambda: self.apply_production_chain_and_run(ops)))
             if hasattr(self.property_float, 'hybridCommitted'):
                 self.property_float.hybridCommitted.connect(self.update_hybrid_commit)
         return self.property_float
@@ -810,6 +839,10 @@ class MainWindow(QMainWindow):
             nflows=len(project.get('flows') or [])
             self.log(f'已打开方案：{path.name} · {nflows} 个流程 · 模块：{ops}（含相机采集时无需预先打开图像，直接运行流程）')
             self.reload_comm_listener()
+            try:
+                self._sync_host_sm_bound_flow(reason='打开方案')
+            except Exception:
+                pass
             notes=(project.get('notes') or '').strip()
             if notes:
                 self.demo_notice.setText(notes);self.demo_notice.show()
@@ -3484,6 +3517,29 @@ class MainWindow(QMainWindow):
                 kw['comm'] = f'{base}({comm_txt})'
             if kw:
                 hmi.update_fixed_bar_live(**kw)
+        except Exception:
+            pass
+
+    def _sync_host_sm_bound_flow(self, reason=''):
+        """Push current scheme/flow name into Host SM 信息栏 · 开始绑流程."""
+        try:
+            proj = self.document.project or {}
+            name = (proj.get('name') or '').strip() or '未命名方案'
+            if self.filename:
+                try:
+                    name = f'{name} · {Path(self.filename).name}'
+                except Exception:
+                    pass
+            steps = proj.get('steps') or []
+            n = len(steps)
+            path = str(self.filename or '')
+            hmi = getattr(self, 'operator_hmi', None)
+            if hmi is not None and hasattr(hmi, 'set_bound_flow'):
+                hmi.set_bound_flow(name, steps=n, path=path, reason=reason)
+                return
+            host = getattr(hmi, '_host_sm', None) if hmi else None
+            if host is not None and hasattr(host, 'set_bound_flow'):
+                host.set_bound_flow(name, steps=n, path=path, reason=reason)
         except Exception:
             pass
 

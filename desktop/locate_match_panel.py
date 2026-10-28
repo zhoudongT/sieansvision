@@ -62,6 +62,7 @@ def normalize_locate_params(params=None):
     p.setdefault('showCross', True)
     p.setdefault('showSearchRegion', True)
     p.setdefault('showFeaturePoints', False)
+    p.setdefault('showMatchIndex', True)
     p.setdefault('traceFullCanvas', False)
     p.setdefault('resultJudgeEnable', False)
     p.setdefault('resultJudgeMin', 0.0)
@@ -573,6 +574,7 @@ class LocateMatchPanel(QWidget):
         _sw('showCross', '显示十字准星', True)
         _sw('showSearchRegion', '显示搜索区', True)
         _sw('showFeaturePoints', '显示特征点', False)
+        _sw('showMatchIndex', '显示匹配序号', True)
         _sw('traceFullCanvas', '全画布描摹', False)
         _sw('resultJudgeEnable', '结果判断使能', False)
         jmin = QDoubleSpinBox(); jmin.setRange(0, 1); jmin.setDecimals(3)
@@ -583,7 +585,12 @@ class LocateMatchPanel(QWidget):
         jmax.setValue(float(self.params.get('resultJudgeMax') or 1))
         jmax.valueChanged.connect(lambda v: self._set_param('resultJudgeMax', float(v)))
         form.addRow('判断分数上限', jmax)
-        tip = QLabel('匹配框/分数/搜索区等开关已接入模板匹配引擎实绘。')
+        tip = QLabel(
+            f'匹配框/分数/搜索区/序号已接入引擎实绘。'
+            f'当前 maxMatches={int(self.params.get("maxMatches") or 1)} · '
+            f'minScore={float(self.params.get("minScore") or 0):.2f} · '
+            f'pyramid={int(self.params.get("pyramidLevels") or 4)}（无 Halcon 核）。'
+        )
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)

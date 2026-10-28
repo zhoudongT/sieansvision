@@ -37,6 +37,8 @@ def chain_to_operations(chain):
 
     Composite hints like ``send_data / format_data`` expand to format then send
     so 「应用到流程」 yields a runnable emit path (P0 p40).
+    Physical-coord dual hints (``nine_point / var_calc``) prefer var_calc with
+    demo scale expressions so the chain runs without a calibrated nine-point grid.
     """
     out = []
     for row in chain or []:
@@ -48,8 +50,11 @@ def chain_to_operations(chain):
             out.append({'operation': 'format_data', 'name': f'{step_name}·格式化', 'vars': vars_hint})
             out.append({'operation': 'send_data', 'name': f'{step_name}·发送', 'vars': vars_hint})
             continue
-        # Prefer var_calc when row is clearly calc (偏差 / 移动量) even if nine_point listed
-        if 'var_calc' in op_hint and ('偏差' in step_name or '移动' in step_name or 'nine' not in op_hint):
+        # Prefer var_calc for 偏差 / 移动量 / 物理坐标 even when nine_point listed
+        if 'var_calc' in op_hint and (
+            '偏差' in step_name or '移动' in step_name or '物理' in step_name
+            or 'nine' not in op_hint
+        ):
             out.append({'operation': 'var_calc', 'name': step_name, 'vars': vars_hint})
             continue
         key = None
@@ -66,9 +71,11 @@ def chain_to_operations(chain):
 def seed_chain_step_params(operation, name='', vars_hint='', project=None, existing=None):
     """Seed demo-runnable params for a chain-inserted step (no robot SDK).
 
-    - var_calc: expressions from vars_hint (comma names) with sensible formulas
+    - locate / pose_correct / geometry / display: normalize defaults + demo overlays
+    - var_calc: expressions from vars_hint (物理坐标用 locate_x/geometry_x 比例)
     - format_data: MoveX/MoveY template → flow.formatted
     - send_data: LocalLoop device + variable formatted
+    - nine_point: 3×3 demo grid so status can go ok without arm SDK
     """
     from copy import deepcopy as _dc
     op = str(operation or '')
@@ -88,6 +95,27 @@ def seed_chain_step_params(operation, name='', vars_hint='', project=None, exist
             exprs = [
                 dict(name='MoveX', expression='dx', initial=0, outType='number', initOnRun=False),
                 dict(name='MoveY', expression='dy', initial=0, outType='number', initOnRun=False),
+            ]
+        elif set(names) >= {'start_X_M', 'start_Y_M'} or 'start_X_M' in names:
+            # Demo mm = pixel * 0.1；locate_x 缺失时 varCalc 补 0
+            exprs = [
+                dict(name='start_X_M', expression='locate_x * 0.1', initial=0, outType='number', initOnRun=True),
+                dict(name='start_Y_M', expression='locate_y * 0.1', initial=0, outType='number', initOnRun=True),
+            ]
+        elif set(names) >= {'target_X_M', 'target_Y_M'} or 'target_X_M' in names:
+            exprs = [
+                dict(name='target_X_M', expression='geometry_x * 0.1', initial=0, outType='number', initOnRun=True),
+                dict(name='target_Y_M', expression='geometry_y * 0.1', initial=0, outType='number', initOnRun=True),
+            ]
+        elif '物理' in step and '目标' in step:
+            exprs = [
+                dict(name='target_X_M', expression='geometry_x * 0.1', initial=0, outType='number', initOnRun=True),
+                dict(name='target_Y_M', expression='geometry_y * 0.1', initial=0, outType='number', initOnRun=True),
+            ]
+        elif '物理' in step:
+            exprs = [
+                dict(name='start_X_M', expression='locate_x * 0.1', initial=0, outType='number', initOnRun=True),
+                dict(name='start_Y_M', expression='locate_y * 0.1', initial=0, outType='number', initOnRun=True),
             ]
         elif names:
             # Generic: init named vars to 0 so chain is editable/runnable
@@ -130,10 +158,66 @@ def seed_chain_step_params(operation, name='', vars_hint='', project=None, exist
         params.setdefault('encoding', 'utf-8')
         return params
 
-    if op == 'geometry' and names:
-        # Soft hint only — leave defaults, stash note in unused key if any
-        params.setdefault('note', f'chain vars: {", ".join(names)}')
-        return params
+    if op == 'locate':
+        from desktop.locate_match_panel import normalize_locate_params
+        params.setdefault('minScore', 0.5)
+        params.setdefault('maxMatches', 1)
+        params.setdefault('showMatchBox', True)
+        params.setdefault('showScore', True)
+        params.setdefault('showCross', True)
+        params.setdefault('note', 'prodchain demo · 无模板时仍可透传坐标 0')
+        return normalize_locate_params(params)
+
+    if op == 'pose_correct':
+        from desktop.pose_correct_panel import normalize_pose_correct_params
+        params.setdefault('fixtureSource', 'auto')
+        params.setdefault('followRoi', True)
+        params.setdefault('outputCoord', 'fixture')
+        params.setdefault('bindField', 'matches[0]')
+        return normalize_pose_correct_params(params)
+
+    if op == 'geometry':
+        from desktop.geometry_find_panel import normalize_geometry_params
+        params.setdefault('feature', 'circles')
+        params.setdefault('maxCount', 1)
+        params.setdefault('showOverlay', True)
+        params.setdefault('showCalipers', True)
+        params.setdefault('showPoints', True)
+        params.setdefault('caliperCount', 12)
+        params.setdefault('caliperWidth', 20)
+        params.setdefault('caliperLength', 40)
+        params.setdefault('findMethod', 'caliper')
+        if names:
+            params.setdefault('note', f'chain vars: {", ".join(names)} → geometry_x/y')
+        return normalize_geometry_params(params)
+
+    if op == 'nine_point':
+        from desktop.nine_point_panel import normalize_nine_point_params
+        if not params.get('points'):
+            pts = []
+            for gy in (-1, 0, 1):
+                for gx in (-1, 0, 1):
+                    pts.append({
+                        'index': len(pts) + 1,
+                        'enabled': True,
+                        'pixelX': float(gx * 100),
+                        'pixelY': float(gy * 100),
+                        'worldX': float(gx * 10),
+                        'worldY': float(gy * 10),
+                    })
+            params['points'] = pts
+        params.setdefault('method', 'affine')
+        params.setdefault('unit', 'mm')
+        params.setdefault('showPoints', True)
+        params.setdefault('note', 'prodchain demo 3×3 grid（无臂测）')
+        return normalize_nine_point_params(params)
+
+    if op == 'display':
+        from desktop.wave3_thin_panels import normalize_display_params
+        params.setdefault('showOverlay', True)
+        params.setdefault('showName', True)
+        params.setdefault('fitMode', 'contain')
+        return normalize_display_params(params)
 
     return params or None
 
@@ -180,6 +264,7 @@ def normalize_production_task_params(params=None):
 class ProductionTaskPanel(QWidget):
     changed = Signal(dict)
     applyFlow = Signal(list)  # list of {operation,name,params hint}
+    applyFlowAndRun = Signal(list)  # apply then ▶单次试跑
 
     def __init__(self, step, definition, project, parent=None):
         super().__init__(parent)
@@ -375,7 +460,7 @@ class ProductionTaskPanel(QWidget):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(12, 12, 12, 12)
-        tip = QLabel('p40 典型链（可编辑；点「应用到当前流程」会按序添加算子并串线，可直接▶运行）：')
+        tip = QLabel('p40 典型链（可编辑；「应用到当前流程」串节点；「并试跑」再▶单次。物理坐标用 var_calc 比例，无需九点标定臂）：')
         tip.setStyleSheet('color:#666;')
         lay.addWidget(tip)
         self.table = QTableWidget(0, 3)
@@ -393,9 +478,13 @@ class ProductionTaskPanel(QWidget):
         apply.setObjectName('primaryButton')
         apply.setToolTip('按建议链依次添加算子并串线（可演示运行；无机械手 SDK）')
         apply.clicked.connect(self._apply_chain)
+        trial = QPushButton('应用到流程并试跑')
+        trial.setToolTip('应用建议链后立即▶单次试跑（无机械手 SDK；发送走 LocalLoop）')
+        trial.clicked.connect(self._apply_chain_and_run)
         bar.addWidget(reset)
         bar.addWidget(add)
         bar.addWidget(apply)
+        bar.addWidget(trial)
         bar.addStretch(1)
         lay.addLayout(bar)
         self._reload_chain()
@@ -441,6 +530,12 @@ class ProductionTaskPanel(QWidget):
         if not ops:
             return
         self.applyFlow.emit(ops)
+
+    def _apply_chain_and_run(self):
+        ops = chain_to_operations(self.params.get('chain') or DEFAULT_CHAIN)
+        if not ops:
+            return
+        self.applyFlowAndRun.emit(ops)
 
     def _result_tab(self):
         w = QWidget()

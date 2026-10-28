@@ -21,6 +21,7 @@ class PropertyFloat(QDialog):
     paramAudited = Signal(str, str, object, object)
     openCameraManager = Signal()
     applyProductionChain = Signal(list)
+    applyProductionChainAndRun = Signal(list)
     enterGroup = Signal(object)  # node_id
     hybridCommitted = Signal(object)  # {source, step} atomic OK (single undo tip)
 
@@ -569,6 +570,7 @@ class PropertyFloat(QDialog):
             step['params'] = normalize_production_task_params(step.get('params'))
             panel = ProductionTaskPanel(step, definition, project)
             panel.applyFlow.connect(self.applyProductionChain.emit)
+            panel.applyFlowAndRun.connect(self.applyProductionChainAndRun.emit)
             panel.changed.connect(self._on_step_changed)
             self.body.addWidget(panel)
             self._panel = panel
