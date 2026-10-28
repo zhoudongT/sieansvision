@@ -55,6 +55,7 @@ def config(params):
     allowed = {'driver', 'deviceId', 'timeoutMs', 'trigger', 'width', 'height'} | session_ui | {
         'simulator': set(), 'uvc': {'fps', 'warmupFrames'},
         'gentl': {'providerId', 'exposureTime', 'gain', 'pixelFormat', 'triggerSource', 'dataMode',
+                  'acquisitionFrameRate', 'previewBufferCount',
                   'configure3d','coordinateFormat','rangeComponent','intensityComponent','confidenceComponent',
                   'confidenceThreshold','pointStride','alignedComponents'},
         'realsense': {'fps','warmupFrames','enableColor','colorWidth','colorHeight','pointStride','minDepth','maxDepth'},
@@ -123,6 +124,18 @@ def config(params):
             if len(selected)!=len(set(selected)):raise ValueError('3D 各分量索引不能重复')
             if any(p[key]>=0 for key in ('intensityComponent','confidenceComponent')) and not p.get('alignedComponents',False):
                 raise ValueError('请确认所选亮度/置信度分量与 XYZ 栅格逐像素对应')
+        # Continuous freerun at the device max (often ~90 FPS) with Harvesters'
+        # default 3 buffers overruns when JPEG/UI consume slower → complete=True
+        # frames that are only a top hairline of pixels (rest zeros). Cap rate for
+        # live preview; callers may raise it explicitly.
+        if 'acquisitionFrameRate' in p:
+            p['acquisitionFrameRate'] = number(p['acquisitionFrameRate'], 'acquisitionFrameRate', 1, 240, False)
+        else:
+            p['acquisitionFrameRate'] = 15.0
+        if 'previewBufferCount' in p:
+            p['previewBufferCount'] = number(p['previewBufferCount'], 'previewBufferCount', 3, 64, True)
+        else:
+            p['previewBufferCount'] = 8
     return p
 
 
@@ -326,6 +339,24 @@ def acquire_gentl_frames(p, inspect=False):
                     raise ValueError('外部触发源必须为 Line0–Line3')
                 set_feature(node_map, 'TriggerSource', source, applied)
                 set_feature(node_map, 'TriggerMode', 'On', applied)
+            # Cap device freerun so USB/GenTL buffers are not overwritten mid-frame
+            # while the host encodes JPEG / paints ≤15 FPS preview.
+            if p['trigger'] == 'freerun' and not is_3d:
+                try:
+                    from genicam.genapi import is_writable
+                    if hasattr(node_map, 'AcquisitionFrameRateEnable') and is_writable(node_map.AcquisitionFrameRateEnable):
+                        set_feature(node_map, 'AcquisitionFrameRateEnable', True, applied)
+                    if hasattr(node_map, 'AcquisitionFrameRate') and is_writable(node_map.AcquisitionFrameRate):
+                        set_feature(node_map, 'AcquisitionFrameRate', float(p.get('acquisitionFrameRate', 15.0)), applied)
+                except Exception as rate_err:
+                    # Non-fatal: still try more buffers below.
+                    applied.append(dict(name='AcquisitionFrameRate', error=str(rate_err)[:200]))
+                try:
+                    want = int(p.get('previewBufferCount', 8))
+                    if getattr(ia, 'num_buffers', 0) < want:
+                        ia.num_buffers = want
+                except Exception:
+                    pass
             ia.start()
             try:
                 while True:
