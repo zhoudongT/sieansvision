@@ -53,6 +53,7 @@ class CameraManagerDialog(_RpcDialog):
         self._gate_flush_timer = QTimer(self)
         self._gate_flush_timer.setSingleShot(True)
         self._gate_flush_timer.timeout.connect(self._flush_preview_gate)
+        self._auto_preview_once = False
 
         root = QVBoxLayout(self)
         head = QLabel('相机管理')
@@ -782,6 +783,15 @@ class CameraManagerDialog(_RpcDialog):
             self.preview.show_live_frame(paintable)
         else:
             self.preview.set_image(paintable)
+        # First live frame: jump to「预览」so the operator sees the stream (and showEvent refits).
+        tabs = getattr(self, '_right_tabs', None)
+        if tabs is not None and not getattr(self, '_auto_preview_once', False):
+            for i in range(tabs.count()):
+                if tabs.tabText(i) == '预览':
+                    if tabs.currentIndex() != i:
+                        tabs.setCurrentIndex(i)
+                    self._auto_preview_once = True
+                    break
         # Always heal: frames often start while「预览」tab is hidden → 1:1 corner strip.
         if hasattr(self.preview, 'fit_image') and self.preview.isVisible():
             needs = getattr(self.preview, '_needs_fit', False)

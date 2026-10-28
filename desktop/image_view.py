@@ -265,19 +265,26 @@ class ImageView(QGraphicsView):
         v_policy = self.verticalScrollBarPolicy()
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        aspect = (
-            Qt.AspectRatioMode.KeepAspectRatioByExpanding
-            if mode == 'cover'
-            else Qt.AspectRatioMode.KeepAspectRatio
-        )
-        self.fitInView(self.bounds, aspect)
+        vw = float(max(1, self.viewport().width()))
+        vh = float(max(1, self.viewport().height()))
+        bw = float(max(1.0, self.bounds.width()))
+        bh = float(max(1.0, self.bounds.height()))
+        if mode == 'cover':
+            scale = max(vw / bw, vh / bh)
+        else:
+            scale = min(vw / bw, vh / bh)
+        self.resetTransform()
+        self.scale(scale, scale)
+        self.centerOn(self.bounds.center())
         self.setHorizontalScrollBarPolicy(h_policy)
         self.setVerticalScrollBarPolicy(v_policy)
-        # If Qt still left a strip (race with layout), reset and retry once.
+        # Layout race: keep retrying instead of clearing the flag while still a strip.
         if self._transform_looks_like_strip():
-            self.resetTransform()
-            self.fitInView(self.bounds, aspect)
-        self._needs_fit = False
+            self._needs_fit = True
+            QTimer.singleShot(50, self._fit_if_needed)
+            QTimer.singleShot(200, self._fit_if_needed)
+        else:
+            self._needs_fit = False
         self.viewport().update()
 
     def _fit_if_needed(self):

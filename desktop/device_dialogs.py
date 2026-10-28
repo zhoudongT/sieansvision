@@ -198,7 +198,11 @@ class _Preview(QGraphicsView):
         return False
 
     def fit_image(self):
-        """KeepAspectRatio so the full frame is visible (not a 1:1 corner crop)."""
+        """KeepAspectRatio so the full frame is visible (not a 1:1 corner crop).
+
+        Prefer an explicit scale over fitInView: while a QTabWidget page is
+        settling, Qt's fitInView can leave identity (「只有一条」).
+        """
         if self.pixmap.isNull():
             self._needs_fit = False
             return
@@ -208,11 +212,21 @@ class _Preview(QGraphicsView):
             QTimer.singleShot(200, self._fit_if_needed)
             return
         self.setSceneRect(QRectF(self.pixmap.rect()))
-        self.fitInView(self.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        vw = float(max(1, self.viewport().width()))
+        vh = float(max(1, self.viewport().height()))
+        pw = float(max(1, self.pixmap.width()))
+        ph = float(max(1, self.pixmap.height()))
+        scale = min(vw / pw, vh / ph)
+        self.resetTransform()
+        self.scale(scale, scale)
+        self.centerOn(self.sceneRect().center())
         if self._is_corner_crop_transform():
-            self.resetTransform()
-            self.fitInView(self.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
-        self._needs_fit = False
+            # Still bad (layout race): keep flag and retry.
+            self._needs_fit = True
+            QTimer.singleShot(50, self._fit_if_needed)
+            QTimer.singleShot(200, self._fit_if_needed)
+        else:
+            self._needs_fit = False
         self.viewport().update()
 
     def _fit_if_needed(self):
