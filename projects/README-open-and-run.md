@@ -29,6 +29,7 @@
 | `open-and-run-measure.sieans` | 预处理→圆查找→尺寸测量→门限 OK/NG |
 | `open-and-run-contour-color.sieans` | 轮廓/斑点 + HSV 色彩区域结果铬 |
 | `open-and-run-barcode.sieans` | **条码/ID denser 铬**：多码表 + 码N✓/✗ 胶片 + 期望串门限；样张 `codes.png` |
+| `open-and-run-ocr-defect-chrome.sieans` | **OCR/缺陷 denser 铬**：识N✓缺N✓ 工业表 + 胶片 + ROI叠层；样张 text.png + circle-ring |
 | `open-and-run-ocr-gate-comm.sieans` | OCR→门限→format→LocalBus；Host 监视 ocr*；Comm `${}` |
 | `open-and-run-locate-measure-defect.sieans` | 定位→位姿→圆测量→参考图缺陷→综合门限；Host 监视 |
 | `open-and-run-defects.sieans` | 参考图缺陷；差异区 + OK/NG |
@@ -49,6 +50,7 @@
 - **缺 runUi 已补**：contour-color / fixture-pose-chain / measure-caliper-chrome。
 - **条码/ID**：新增 denser 结果铬模块（`desktop/barcode_id_chrome.py` + `BarcodePanel`）；样例带 hostWatch + var_calc 门限。
 - **九点**：补 hostWatch / 变量种子（残差门限仍走既有 var_calc）。
+- **wave147 OCR/缺陷 denser**：`ocr_defect_chrome.py` 工业 8 列表 + 胶片识N✓缺N✓ + ROI叠层；样例 `open-and-run-ocr-defect-chrome.sieans`。预算收口后暂停。
 - **wave146 九点/门限 denser**：`nine_point_var_gate_chrome.py` + NinePoint/VarCalc 结果表 + 胶片九N✓门✓；样例种子 rmsGate/gateVar。预算收口后暂停。
 - **default-platform**：显示名改为「默认产线 · 上位机运行壳」，保持打开即用。
 - **不做**：Comm/HMI cobind、spark/blink 微级联、真机 TCP/Halcon/机器人 SDK。

@@ -96,6 +96,7 @@ class MainWindow(QMainWindow):
             ('打开即跑 · 定位→测量→缺陷', 'projects/open-and-run-locate-measure-defect.sieans'),
             ('打开即跑 · 参考图缺陷', 'projects/open-and-run-defects.sieans'),
             ('打开即跑 · 条码/ID密度铬', 'projects/open-and-run-barcode.sieans'),
+            ('打开即跑 · OCR/缺陷密度铬', 'projects/open-and-run-ocr-defect-chrome.sieans'),
             ('打开即跑 · OCR→门限→Comm', 'projects/open-and-run-ocr-gate-comm.sieans'),
             ('打开即跑 · 组合+通信', 'projects/open-and-run-group-comm.sieans'),
             ('打开即跑 · 多协议通信', 'projects/open-and-run-comm-multiproto.sieans'),
@@ -1548,6 +1549,44 @@ class MainWindow(QMainWindow):
             pass
         return chrome
 
+
+    def _sync_filmstrip_ocr_chrome(self):
+        """Push OCR/defect denser chrome (识N✓缺N✓) + OK/NG onto filmstrip — result chrome only."""
+        cache = getattr(self, '_filmstrip_results', None) or {}
+        steps = []
+        try:
+            steps = (self.document.project.get('steps') or []) if hasattr(self, 'document') else []
+        except Exception:
+            steps = []
+        try:
+            from desktop.ocr_defect_chrome import (
+                chrome_map_from_film_cache, okng_map_from_film_cache,
+                strip_summary_from_film_cache,
+            )
+        except Exception:
+            return {}
+        chrome = chrome_map_from_film_cache(cache, project_steps=steps) or {}
+        okng = okng_map_from_film_cache(cache, project_steps=steps) or {}
+        try:
+            fs = getattr(self, 'filmstrip', None)
+            if fs is not None and hasattr(fs, 'set_frame_ocr_chrome'):
+                fs.set_frame_ocr_chrome(chrome, okng)
+            if fs is not None and hasattr(fs, 'push_ocr_summary'):
+                cur = ''
+                try:
+                    cur = fs.current_path() if hasattr(fs, 'current_path') else ''
+                except Exception:
+                    cur = ''
+                text_s = strip_summary_from_film_cache(
+                    cache, current_path=cur or '', project_steps=steps,
+                )
+                if text_s:
+                    fs.push_ocr_summary(text_s)
+        except Exception:
+            pass
+        return chrome
+
+
     def open_project_file(self, path):
         path=Path(path)
         if not path.is_file():raise ValueError('工程不存在：'+str(path))
@@ -2322,6 +2361,10 @@ class MainWindow(QMainWindow):
                             self._sync_filmstrip_nine_chrome()
                         except Exception:
                             pass
+                        try:
+                            self._sync_filmstrip_ocr_chrome()
+                        except Exception:
+                            pass
                     elif not multi:
                         strip.clear()
             except Exception:
@@ -2712,6 +2755,10 @@ class MainWindow(QMainWindow):
                     pass
                 try:
                     self._sync_filmstrip_nine_chrome()
+                except Exception:
+                    pass
+                try:
+                    self._sync_filmstrip_ocr_chrome()
                 except Exception:
                     pass
         except Exception:

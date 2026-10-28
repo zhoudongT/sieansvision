@@ -246,6 +246,19 @@ class FilmstripBar(QWidget):
         root.addWidget(self.nine_strip)
         self._frame_nine_chrome = {}
         self._frame_nine_okng = {}
+        # wave147: OCR/defect denser filmstrip result chrome (识N✓缺N✓ / OK·NG)
+        self.ocr_strip = QLabel('')
+        self.ocr_strip.setObjectName('filmstripOcrDefectStrip')
+        self.ocr_strip.setWordWrap(True)
+        self.ocr_strip.setStyleSheet(
+            'color:#c8a8d8;font-size:11px;padding:2px 4px;background:#221828;'
+            'border:1px solid #3a2a4a;border-radius:3px;'
+        )
+        self.ocr_strip.setVisible(False)
+        self.ocr_strip.setToolTip('OCR/缺陷胶片铬 · 识N✓/缺N✓ 字区密度 · 结果铬非火花线联级')
+        root.addWidget(self.ocr_strip)
+        self._frame_ocr_chrome = {}
+        self._frame_ocr_okng = {}
         self.set_paths([], 0)
         self._live_fit_mode = 'contain'
         self._actual_letterbox = True  # pad with theme CANVAS when src < thumb
@@ -1514,6 +1527,8 @@ class FilmstripBar(QWidget):
         leaf = _re.sub(r'^\[(配\d*[✓✗·.]*)\]\s*', '', leaf)
         leaf = _re.sub(r'^\[(码\d*[✓✗·.]*)\]\s*', '', leaf)
         leaf = _re.sub(r'^\[(九\d*[✓✗·.]*门?[✓✗·.]*)\]\s*', '', leaf)
+        leaf = _re.sub(r'^\[(识\d*[✓✗·.]*缺?\d*[✓✗·.]*)\]\s*', '', leaf)
+        leaf = _re.sub(r'^\[(缺\d*[✓✗·.]*)\]\s*', '', leaf)
         leaf = _re.sub(r'^\[([^\]]{1,16})\]\s*', '', leaf)  # generic prior tags once
         # re-strip common prefixes that may stack
         for _ in range(4):
@@ -1525,12 +1540,14 @@ class FilmstripBar(QWidget):
         mtag = (getattr(self, '_frame_match_chrome', None) or {}).get(path) or ''
         btag = (getattr(self, '_frame_barcode_chrome', None) or {}).get(path) or ''
         ntag = (getattr(self, '_frame_nine_chrome', None) or {}).get(path) or ''
+        otag = (getattr(self, '_frame_ocr_chrome', None) or {}).get(path) or ''
         okng = (getattr(self, '_frame_match_okng', None) or {}).get(path) or ''
         bokng = (getattr(self, '_frame_barcode_okng', None) or {}).get(path) or ''
         nokng = (getattr(self, '_frame_nine_okng', None) or {}).get(path) or ''
+        ookng = (getattr(self, '_frame_ocr_okng', None) or {}).get(path) or ''
         measure = (getattr(self, '_frame_measure_badges', None) or {}).get(path) or ''
-        # prefer explicit measure badge; else match/barcode/nine OK/NG
-        jtag = measure or okng or bokng or nokng
+        # prefer explicit measure badge; else match/barcode/nine/ocr OK/NG
+        jtag = measure or okng or bokng or nokng or ookng
         prefix = ''
         if gtag:
             prefix += f'[{gtag}] '
@@ -1540,6 +1557,8 @@ class FilmstripBar(QWidget):
             prefix += f'[{btag}] '
         if ntag:
             prefix += f'[{ntag}] '
+        if otag:
+            prefix += f'[{otag}] '
         if jtag:
             prefix += f'[{jtag}] '
         tip_bits = []
@@ -1553,6 +1572,8 @@ class FilmstripBar(QWidget):
             tip_bits.append(f'条码/ID：{btag}')
         if ntag:
             tip_bits.append(f'九点/门限：{ntag}')
+        if otag:
+            tip_bits.append(f'OCR/缺陷：{otag}')
         if measure:
             tip_bits.append(f'测量判定：{measure}')
         elif okng:
@@ -1561,9 +1582,11 @@ class FilmstripBar(QWidget):
             tip_bits.append(f'条码判定：{bokng}')
         elif nokng:
             tip_bits.append(f'九点门限判定：{nokng}')
-        # color priority: NG > OK > geom/match/barcode/nine chrome > default
+        elif ookng:
+            tip_bits.append(f'OCR缺陷判定：{ookng}')
+        # color priority: NG > OK > geom/match/barcode/nine/ocr chrome > default
         color = '#c8d0d8'
-        if str(jtag).upper() == 'NG' or ('✗' in str(mtag)) or ('✗' in str(gtag)) or ('✗' in str(btag)) or ('✗' in str(ntag)):
+        if str(jtag).upper() == 'NG' or ('✗' in str(mtag)) or ('✗' in str(gtag)) or ('✗' in str(btag)) or ('✗' in str(ntag)) or ('✗' in str(otag)):
             color = '#c62828'
         elif str(jtag).upper() == 'OK':
             color = '#2e7d32'
@@ -1573,6 +1596,8 @@ class FilmstripBar(QWidget):
             color = '#c9a227'
         elif ntag:
             color = '#4a90a8'
+        elif otag:
+            color = '#9b6bb8'
         elif gtag:
             color = '#4aa3c8'
         return (f'{prefix}{leaf}' if prefix else leaf, '\n'.join(tip_bits), color)
@@ -1805,6 +1830,91 @@ class FilmstripBar(QWidget):
         else:
             strip.clear()
             strip.setVisible(False)
+
+
+
+    def set_frame_ocr_chrome(self, chrome=None, okng=None):
+        """Annotate filmstrip thumbs with OCR/defect density (识3✓缺0✓) + OK/NG.
+
+        Result chrome only — not spark-seek / scoreboard micro-prop cascade.
+        chrome: {path: '识3✓'|str}; okng: {path: 'OK'|'NG'}.
+        """
+        bag = {}
+        for k, v in (chrome or {}).items():
+            key = str(k or '').strip()
+            if not key or not v:
+                continue
+            bag[key] = str(v)[:16]
+        self._frame_ocr_chrome = bag
+        obag = {}
+        for k, v in (okng or {}).items():
+            key = str(k or '').strip()
+            if not key:
+                continue
+            if v is True or str(v).upper() in ('OK', 'PASS', '1', 'TRUE'):
+                obag[key] = 'OK'
+            elif v is False or str(v).upper() in ('NG', 'FAIL', '0', 'FALSE'):
+                obag[key] = 'NG'
+            elif v:
+                obag[key] = str(v).upper()[:8]
+        self._frame_ocr_okng = obag
+        thumbs = getattr(self, 'thumbs', None)
+        if thumbs is None:
+            return bag
+        from PySide6.QtGui import QColor
+        from PySide6.QtCore import Qt
+        for i in range(thumbs.count()):
+            it = thumbs.item(i)
+            if it is None:
+                continue
+            path = it.data(Qt.ItemDataRole.UserRole) or ''
+            from pathlib import Path as _P
+            leaf = _P(path).name if path else (it.text() or '')
+            label, tip, color = self._compose_thumb_chrome_label(path, leaf)
+            it.setText(label)
+            it.setToolTip(tip)
+            it.setForeground(QColor(color))
+        return bag
+
+    def push_ocr_summary(self, text=None, *, records=None, names=None):
+        """OCR/defect result chrome under filmstrip (识N✓缺N✓ density)."""
+        lab = getattr(self, 'ocr_strip', None)
+        if lab is None:
+            return
+        if text:
+            lab.setText(str(text))
+            lab.setVisible(True)
+            return
+        bits = []
+        names = names or {}
+        try:
+            from desktop.ocr_defect_chrome import (
+                summarize_ocr_result, summarize_defect_result, OCR_OPS, DEFECT_OPS,
+            )
+        except Exception:
+            summarize_ocr_result = None
+            summarize_defect_result = None
+            OCR_OPS = ('ocr',)
+            DEFECT_OPS = ('defects', 'defect')
+        for rec in records or []:
+            if not isinstance(rec, dict):
+                continue
+            op = str(rec.get('operation') or rec.get('op') or '')
+            if summarize_ocr_result is None:
+                continue
+            name = names.get(rec.get('id'), rec.get('name') or op)
+            if op in OCR_OPS:
+                summ = summarize_ocr_result(rec, {})
+                bits.append(f"{name} {summ.get('chrome') or '识·'}")
+            elif op in DEFECT_OPS:
+                summ = summarize_defect_result(rec, {})
+                bits.append(f"{name} {summ.get('chrome') or '缺·'}")
+        if bits:
+            lab.setText(f"OCR/缺陷 · {' ｜ '.join(bits[:8])}")
+            lab.setVisible(True)
+        else:
+            lab.setVisible(False)
+
 
     def push_geom_find_summary(self, text=None, *, records=None, names=None):
 

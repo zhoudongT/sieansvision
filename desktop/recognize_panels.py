@@ -449,9 +449,9 @@ class DefectsPanel(_RecognizeShell):
         )
         form.addRow('结果徽标', self._chrome_lab)
 
-        self._defects_items_table = QTableWidget(0, 6)
+        self._defects_items_table = QTableWidget(0, 8)
         self._defects_items_table.setObjectName('defectsItemsTable')
-        self._defects_items_table.setHorizontalHeaderLabels(['#', '面积', '中心', 'bbox', '分数', '判定'])
+        self._defects_items_table.setHorizontalHeaderLabels(['#', '面积', '分数', '中心X', '中心Y', '宽', '高', '判定'])
         self._defects_items_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self._defects_items_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._defects_items_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -555,30 +555,22 @@ class DefectsPanel(_RecognizeShell):
         table = getattr(self, '_defects_items_table', None)
         if table is None:
             return
-        from desktop.ocr_defect_chrome import build_defect_rows
+        from desktop.ocr_defect_chrome import build_defect_rows, format_defect_cells
         rows = items
-        if rows and isinstance(rows[0], dict) and 'judgeStatus' in rows[0] and 'bbox' in rows[0]:
+        if rows and isinstance(rows[0], dict) and 'judgeStatus' in rows[0] and (
+            'width' in rows[0] or 'bbox' in rows[0] or 'area' in rows[0]
+        ):
             pass
         else:
-            rows = build_defect_rows(items)
+            rows = build_defect_rows(items, params=getattr(self, 'params', None) or {})
         table.setRowCount(0)
         for r in rows:
             if not isinstance(r, dict):
                 continue
             i = table.rowCount(); table.insertRow(i)
-            area = r.get('area')
-            area_txt = f'{float(area):.0f}' if isinstance(area, (int, float)) else (str(area) if area is not None else '—')
-            score = r.get('score')
-            score_txt = f'{float(score):.3f}' if isinstance(score, (int, float)) else '—'
+            cells = format_defect_cells(r)
             st = str(r.get('judgeStatus') or '—')
-            for c, t in enumerate((
-                str(r.get('index') or i + 1),
-                area_txt,
-                str(r.get('center') or '—'),
-                str(r.get('bbox') or '—'),
-                score_txt,
-                st,
-            )):
+            for c, t in enumerate(cells):
                 it = QTableWidgetItem(t)
                 if st == 'OK':
                     it.setForeground(Qt.GlobalColor.green)
@@ -771,9 +763,9 @@ class OcrPanel(_RecognizeShell):
         )
         form.addRow('结果徽标', self._chrome_lab)
 
-        self._ocr_items_table = QTableWidget(0, 6)
+        self._ocr_items_table = QTableWidget(0, 8)
         self._ocr_items_table.setObjectName('ocrItemsTable')
-        self._ocr_items_table.setHorizontalHeaderLabels(['#', '文本', '置信度', '中心', 'bbox', '判定'])
+        self._ocr_items_table.setHorizontalHeaderLabels(['#', '文本', '置信度', '中心X', '中心Y', '宽', '高', '判定'])
         self._ocr_items_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self._ocr_items_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._ocr_items_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -846,28 +838,22 @@ class OcrPanel(_RecognizeShell):
         table = getattr(self, '_ocr_items_table', None)
         if table is None:
             return
-        from desktop.ocr_defect_chrome import build_ocr_rows
+        from desktop.ocr_defect_chrome import build_ocr_rows, format_ocr_cells
         rows = items
-        if rows and isinstance(rows[0], dict) and 'judgeStatus' in rows[0] and 'bbox' in rows[0]:
+        if rows and isinstance(rows[0], dict) and 'judgeStatus' in rows[0] and (
+            'width' in rows[0] or 'bbox' in rows[0] or 'text' in rows[0]
+        ):
             pass
         else:
-            rows = build_ocr_rows(items)
+            rows = build_ocr_rows(items, params=getattr(self, 'params', None) or {})
         table.setRowCount(0)
         for r in rows:
             if not isinstance(r, dict):
                 continue
             i = table.rowCount(); table.insertRow(i)
-            conf = r.get('confidence')
-            conf_txt = f'{float(conf):.3f}' if isinstance(conf, (int, float)) else '—'
+            cells = format_ocr_cells(r)
             st = str(r.get('judgeStatus') or '—')
-            for c, t in enumerate((
-                str(r.get('index') or i + 1),
-                str(r.get('text') or '')[:48],
-                conf_txt,
-                str(r.get('center') or '—'),
-                str(r.get('bbox') or '—'),
-                st,
-            )):
+            for c, t in enumerate(cells):
                 it = QTableWidgetItem(t)
                 if st == 'OK':
                     it.setForeground(Qt.GlobalColor.green)
