@@ -98,6 +98,104 @@ def expand_payload_placeholders(project, text):
     return _re.sub(r'\$\{([^}]+)\}', _repl, raw)
 
 
+
+# —— 消息模板库（设计态；无现场 socket）——
+DEFAULT_MESSAGE_TEMPLATES = [
+    {
+        'id': 'result-line',
+        'name': 'OK/NG 行报文',
+        'protocol': 'line',
+        'body': 'RESULT ok=${flow.passGate} score=${flow.matchScore} count=${flow.matchCount}',
+    },
+    {
+        'id': 'meas-line',
+        'name': '量测上报',
+        'protocol': 'line',
+        'body': 'MEAS x=${flow.poseX} y=${flow.poseY} score=${flow.matchScore} ok=${flow.passGate}',
+    },
+    {
+        'id': 'defect-line',
+        'name': '缺陷上报',
+        'protocol': 'line',
+        'body': 'DEFECT count=${flow.defectCount} ratio=${flow.defectRatio} ok=${flow.passGate}',
+    },
+    {
+        'id': 'json-status',
+        'name': 'JSON 状态',
+        'protocol': 'json',
+        'body': '{"cmd":"STATUS","ok":${flow.passGate},"score":${flow.matchScore},"defects":${flow.defectCount}}',
+    },
+    {
+        'id': 'json-meas',
+        'name': 'JSON 量测',
+        'protocol': 'json',
+        'body': '{"cmd":"MEAS","x":${flow.poseX},"y":${flow.poseY},"score":${flow.matchScore},"ok":${flow.passGate}}',
+    },
+    {
+        'id': 'delimited',
+        'name': '分隔符字段',
+        'protocol': 'delimited',
+        'body': '${flow.passGate},${flow.matchScore},${flow.measureCount},${flow.defectCount}',
+    },
+    {
+        'id': 'run',
+        'name': 'RUN 触发',
+        'protocol': 'line',
+        'body': 'RUN',
+    },
+    {
+        'id': 'stop',
+        'name': 'STOP 触发',
+        'protocol': 'line',
+        'body': 'STOP',
+    },
+    {
+        'id': 'hb',
+        'name': '心跳 HB',
+        'protocol': 'line',
+        'body': 'HB ts=${flow.hbSeq}',
+    },
+]
+
+
+def builtin_message_templates():
+    """Return a deep copy of built-in industrial message templates."""
+    from copy import deepcopy as _dc
+    return _dc(DEFAULT_MESSAGE_TEMPLATES)
+
+
+def merge_message_templates(project_templates=None):
+    """Merge project-saved templates over builtins (by id); project entries win."""
+    from copy import deepcopy as _dc
+    by_id = {t['id']: _dc(t) for t in DEFAULT_MESSAGE_TEMPLATES if t.get('id')}
+    for t in (project_templates or []):
+        if not isinstance(t, dict):
+            continue
+        tid = str(t.get('id') or '').strip() or None
+        if tid:
+            by_id[tid] = _dc(t)
+        else:
+            # anonymous custom — keep with generated key
+            by_id[f'custom-{len(by_id)}'] = _dc(t)
+    return list(by_id.values())
+
+
+def preview_expand_template(project, body, demo_vars=None):
+    """Expand ${} against project vars; optionally seed demo_vars for empty projects."""
+    from copy import deepcopy as _dc
+    proj = _dc(project) if isinstance(project, dict) else {}
+    variables = proj.setdefault('variables', {})
+    if not isinstance(variables, dict):
+        variables = {}
+        proj['variables'] = variables
+    for k, v in (demo_vars or {}).items():
+        if k not in variables or variables.get(k) in (None, '', 0):
+            # only fill missing/zero for richer demo — keep real values
+            if k not in variables:
+                variables[k] = v
+    return expand_payload_placeholders(proj, body)
+
+
 def resolve_send_event_payload(project, event):
     """Send event → payload: bound variable first, else message with ${} expand.
 
@@ -633,6 +731,106 @@ class CommManagerDialog(QDialog):
         resp_form.addRow('应答内容', self.resp_ack)
         self.tabs.addTab(resp, '响应')
 
+        # --- 消息模板（${} 展开演示 · 无现场 socket）---
+        tpl = QWidget()
+        tpl_lay = QVBoxLayout(tpl)
+        tpl_lay.setContentsMargins(12, 12, 12, 12)
+        tip = QLabel(
+            '工业报文模板库：选模板 → 编辑正文（支持 ${flow.x} / ${global.y}）→ 实况展开预览；'
+            '可填入发送事件或 TCP/UDP「发送」框。设计态演示，不建立现场设备连接。'
+        )
+        tip.setWordWrap(True)
+        tip.setStyleSheet('color:#666;')
+        tpl_lay.addWidget(tip)
+        split = QSplitter(Qt.Orientation.Horizontal)
+        left = QWidget()
+        ll = QVBoxLayout(left)
+        ll.setContentsMargins(0, 0, 0, 0)
+        ll.addWidget(QLabel('模板列表'))
+        self.tpl_list = QListWidget()
+        self.tpl_list.setObjectName('commMessageTemplateList')
+        self.tpl_list.currentRowChanged.connect(self._tpl_load_form)
+        ll.addWidget(self.tpl_list, 1)
+        brow = QHBoxLayout()
+        add_tpl = QPushButton('+ 自定义')
+        add_tpl.setObjectName('commMessageTemplateAdd')
+        add_tpl.clicked.connect(self._tpl_add_custom)
+        reset_tpl = QPushButton('恢复内置')
+        reset_tpl.setObjectName('commMessageTemplateReset')
+        reset_tpl.setToolTip('丢弃工程自定义，恢复内置模板库')
+        reset_tpl.clicked.connect(self._tpl_reset_builtin)
+        brow.addWidget(add_tpl)
+        brow.addWidget(reset_tpl)
+        brow.addStretch(1)
+        ll.addLayout(brow)
+        split.addWidget(left)
+        right = QWidget()
+        form = QFormLayout(right)
+        form.setContentsMargins(12, 8, 12, 8)
+        self.tpl_name = QLineEdit()
+        self.tpl_name.setObjectName('commMessageTemplateName')
+        self.tpl_proto = QComboBox()
+        self.tpl_proto.setObjectName('commMessageTemplateProtocol')
+        for lab, data in (
+            ('行报文', 'line'),
+            ('JSON', 'json'),
+            ('分隔符', 'delimited'),
+            ('TCP Client', 'TCP Client'),
+            ('UDP', 'UDP'),
+            ('Local Bus', 'Local Bus'),
+        ):
+            self.tpl_proto.addItem(lab, data)
+        self.tpl_body = QPlainTextEdit()
+        self.tpl_body.setObjectName('commMessageTemplateBody')
+        self.tpl_body.setPlaceholderText('报文正文，支持 ${flow.passGate} / ${flow.matchScore} …')
+        self.tpl_body.setMinimumHeight(100)
+        self.tpl_preview = QPlainTextEdit()
+        self.tpl_preview.setObjectName('commMessageTemplatePreview')
+        self.tpl_preview.setReadOnly(True)
+        self.tpl_preview.setPlaceholderText('实况展开预览…')
+        self.tpl_preview.setMaximumHeight(90)
+        form.addRow('名称', self.tpl_name)
+        form.addRow('协议风格', self.tpl_proto)
+        form.addRow('正文', self.tpl_body)
+        form.addRow('展开预览', self.tpl_preview)
+        prow = QHBoxLayout()
+        self.tpl_expand_btn = QPushButton('刷新展开')
+        self.tpl_expand_btn.setObjectName('commMessageTemplateExpand')
+        self.tpl_expand_btn.setToolTip('用当前工程变量展开 ${}；缺省时用演示种子值')
+        self.tpl_expand_btn.clicked.connect(self._tpl_refresh_preview)
+        self.tpl_to_send = QPushButton('填入发送事件')
+        self.tpl_to_send.setObjectName('commMessageTemplateToSend')
+        self.tpl_to_send.clicked.connect(self._tpl_apply_to_send_event)
+        self.tpl_to_tcp = QPushButton('填入 TCP 发送')
+        self.tpl_to_tcp.setObjectName('commMessageTemplateToTcp')
+        self.tpl_to_tcp.clicked.connect(lambda: self._tpl_apply_to_test('tcp'))
+        self.tpl_to_udp = QPushButton('填入 UDP 发送')
+        self.tpl_to_udp.setObjectName('commMessageTemplateToUdp')
+        self.tpl_to_udp.clicked.connect(lambda: self._tpl_apply_to_test('udp'))
+        prow.addWidget(self.tpl_expand_btn)
+        prow.addStretch(1)
+        prow.addWidget(self.tpl_to_send)
+        prow.addWidget(self.tpl_to_tcp)
+        prow.addWidget(self.tpl_to_udp)
+        form.addRow(prow)
+        demo = QLabel(
+            '演示种子（工程变量为空时）：passGate=1 matchScore=0.92 measureCount=3 '
+            'defectCount=1 poseX=120 poseY=80'
+        )
+        demo.setWordWrap(True)
+        demo.setStyleSheet('color:#888;font-size:11px;')
+        form.addRow(demo)
+        # live refresh
+        self.tpl_body.textChanged.connect(self._tpl_refresh_preview)
+        self.tpl_name.editingFinished.connect(self._tpl_commit_form)
+        self.tpl_proto.currentIndexChanged.connect(lambda *_: self._tpl_commit_form())
+        split.addWidget(right)
+        split.setStretchFactor(1, 2)
+        tpl_lay.addWidget(split, 1)
+        self.tabs.addTab(tpl, '消息模板')
+        self._tpl_items = []
+
+        # --- TCP 测试（对标 VM 通信管理连通性）---
         # --- TCP 测试（对标 VM 通信管理连通性）---
         tcp = QWidget()
         tcp_lay = QVBoxLayout(tcp)
@@ -730,11 +928,27 @@ class CommManagerDialog(QDialog):
         self.udp_host = QLineEdit('127.0.0.1')
         self.udp_port = QSpinBox(); self.udp_port.setRange(1, 65535); self.udp_port.setValue(9001)
         self.udp_payload = QLineEdit('PING')
+        self.udp_preset = QComboBox()
+        self.udp_preset.setObjectName('udpProtocolPreset')
+        for lab, payload in (
+            ('自定义', ''),
+            ('PING', 'PING'),
+            ('STATUS', 'STATUS'),
+            ('RUN', 'RUN'),
+            ('STOP', 'STOP'),
+            ('MEAS (假量测)', 'MEAS'),
+            ('JSON STATUS', '{"cmd":"STATUS"}'),
+        ):
+            self.udp_preset.addItem(lab, payload)
+        self.udp_preset.setToolTip('UDP 协议预设（环回模拟器 :19881；非现场设备）')
+        self.udp_preset.currentIndexChanged.connect(self._udp_preset_apply)
+
         self.udp_timeout = QSpinBox(); self.udp_timeout.setRange(100, 10000); self.udp_timeout.setValue(1500)
         self.udp_timeout.setSuffix(' ms')
         uform.addRow('主机', self.udp_host)
         uform.addRow('端口', self.udp_port)
         uform.addRow('发送', self.udp_payload)
+        uform.addRow('协议预设', self.udp_preset)
         uform.addRow('超时', self.udp_timeout)
         udp_lay.addLayout(uform)
         urow = QHBoxLayout()
@@ -848,6 +1062,7 @@ class CommManagerDialog(QDialog):
         self.resp_enabled.setChecked(bool(resp.get('enabled')))
         self.resp_timeout.setValue(int(resp.get('timeoutMs') or 3000))
         self.resp_ack.setText(str(resp.get('ack') or 'OK'))
+        self._tpl_load_from_project(cm.get('messageTemplates'))
         self._refresh_tcp_devices()
 
     def _add_device(self):
@@ -1194,11 +1409,192 @@ class CommManagerDialog(QDialog):
                 timeoutMs=int(self.resp_timeout.value()),
                 ack=self.resp_ack.text(),
             ),
+            messageTemplates=self._tpl_collect(),
         )
         self.document.commit(p)
         n = len(p['commManager']['devices'])
         QMessageBox.information(self, '通信管理', f'已保存 {n} 个通讯设备及收发/心跳/响应配置。')
         self.accept()
+
+
+    # ----- 消息模板（${} 展开）-----
+    _TPL_DEMO_VARS = {
+        'passGate': 1,
+        'matchScore': 0.92,
+        'matchCount': 2,
+        'measureCount': 3,
+        'defectCount': 1,
+        'defectRatio': 0.05,
+        'poseX': 120,
+        'poseY': 80,
+        'hbSeq': 1,
+    }
+
+    def _tpl_load_from_project(self, saved=None):
+        """Populate template list from project + builtins."""
+        self._tpl_items = merge_message_templates(saved)
+        self.tpl_list.blockSignals(True)
+        self.tpl_list.clear()
+        for t in self._tpl_items:
+            self.tpl_list.addItem(QListWidgetItem(t.get('name') or t.get('id') or '未命名'))
+        self.tpl_list.blockSignals(False)
+        if self._tpl_items:
+            self.tpl_list.setCurrentRow(0)
+            self._tpl_load_form(0)
+        else:
+            self.tpl_name.clear()
+            self.tpl_body.clear()
+            self.tpl_preview.clear()
+
+    def _tpl_load_form(self, row):
+        if row is None or row < 0 or row >= len(self._tpl_items):
+            return
+        t = self._tpl_items[row]
+        self.tpl_name.blockSignals(True)
+        self.tpl_body.blockSignals(True)
+        self.tpl_proto.blockSignals(True)
+        self.tpl_name.setText(str(t.get('name') or ''))
+        body = str(t.get('body') or t.get('message') or '')
+        self.tpl_body.setPlainText(body)
+        proto = str(t.get('protocol') or 'line')
+        idx = self.tpl_proto.findData(proto)
+        if idx < 0:
+            # try by text
+            idx = max(0, self.tpl_proto.findText(proto))
+        self.tpl_proto.setCurrentIndex(idx if idx >= 0 else 0)
+        self.tpl_name.blockSignals(False)
+        self.tpl_body.blockSignals(False)
+        self.tpl_proto.blockSignals(False)
+        self._tpl_refresh_preview()
+
+    def _tpl_commit_form(self):
+        row = self.tpl_list.currentRow()
+        if row < 0 or row >= len(self._tpl_items):
+            return
+        t = self._tpl_items[row]
+        t['name'] = self.tpl_name.text().strip() or t.get('id') or '未命名'
+        t['body'] = self.tpl_body.toPlainText()
+        t['protocol'] = self.tpl_proto.currentData() or self.tpl_proto.currentText()
+        item = self.tpl_list.item(row)
+        if item is not None:
+            item.setText(t['name'])
+        self._tpl_refresh_preview()
+
+    def _tpl_refresh_preview(self):
+        """Live ${} expand against project variables (+ demo seeds for empties)."""
+        if not hasattr(self, 'tpl_preview'):
+            return
+        body = self.tpl_body.toPlainText() if hasattr(self, 'tpl_body') else ''
+        proj = {}
+        if self.document is not None:
+            proj = getattr(self.document, 'project', None) or {}
+        # Merge current form into item first so preview matches editor
+        row = self.tpl_list.currentRow() if hasattr(self, 'tpl_list') else -1
+        if 0 <= row < len(getattr(self, '_tpl_items', [])):
+            self._tpl_items[row]['body'] = body
+            self._tpl_items[row]['name'] = self.tpl_name.text().strip() or self._tpl_items[row].get('name')
+        expanded = preview_expand_template(proj, body, demo_vars=self._TPL_DEMO_VARS)
+        # If nothing changed and body had placeholders, still show demo expand
+        if expanded == body and '${' in body:
+            # force demo overlay
+            seed = dict(self._TPL_DEMO_VARS)
+            # wipe zeros that blocked fill
+            fake = {'variables': dict(seed)}
+            expanded = expand_payload_placeholders(fake, body)
+        self.tpl_preview.setPlainText(expanded)
+        self.tpl_preview.setProperty('expanded', expanded)
+        self.tpl_preview.setToolTip('展开结果（设计态；无现场发送）')
+
+    def _tpl_collect(self):
+        self._tpl_commit_form()
+        from copy import deepcopy as _dc
+        return _dc(self._tpl_items or [])
+
+    def _tpl_add_custom(self):
+        n = len(self._tpl_items) + 1
+        item = {
+            'id': f'custom-{n}',
+            'name': f'自定义模板{n}',
+            'protocol': 'line',
+            'body': 'RESULT ok=${flow.passGate}',
+        }
+        self._tpl_items.append(item)
+        self.tpl_list.addItem(QListWidgetItem(item['name']))
+        self.tpl_list.setCurrentRow(len(self._tpl_items) - 1)
+
+    def _tpl_reset_builtin(self):
+        self._tpl_items = builtin_message_templates()
+        self.tpl_list.blockSignals(True)
+        self.tpl_list.clear()
+        for t in self._tpl_items:
+            self.tpl_list.addItem(QListWidgetItem(t.get('name') or t.get('id') or '未命名'))
+        self.tpl_list.blockSignals(False)
+        if self._tpl_items:
+            self.tpl_list.setCurrentRow(0)
+
+    def _tpl_apply_to_send_event(self):
+        """Append / fill first send-event row with template body (expanded optional)."""
+        self._tpl_commit_form()
+        body = self.tpl_body.toPlainText()
+        name = self.tpl_name.text().strip() or '模板报文'
+        # Prefer raw template with ${} so runtime expands; also offer expanded in message if user held Shift — keep raw.
+        rows = self.send_table.rows()
+        devices = [d.get('name') or '' for d in (self._devices or [])]
+        dev = devices[0] if devices else 'LocalLoop'
+        rows.append({
+            'name': name,
+            'device': dev,
+            'message': body,
+            'topic': '',
+            'variable': '',
+        })
+        self.send_table.set_rows(rows, devices)
+        # jump UI to send tab
+        try:
+            idx = self.tabs.indexOf(self.send_table)
+            if idx >= 0:
+                self.tabs.setCurrentIndex(idx)
+        except Exception:
+            pass
+        # Offscreen / smoke: skip modal (would hang QT_QPA_PLATFORM=offscreen)
+        import os as _os
+        if _os.environ.get('QT_QPA_PLATFORM') == 'offscreen' or _os.environ.get('SIEANS_SMOKE') == '1':
+            return
+        QMessageBox.information(
+            self, '消息模板',
+            f'已追加发送事件「{name}」。\n报文保留 ${{}} 占位，试发/运行时展开。',
+        )
+
+    def _tpl_apply_to_test(self, which='tcp'):
+        self._tpl_commit_form()
+        # Use expanded preview for immediate test-box fill
+        text = self.tpl_preview.toPlainText() or self.tpl_body.toPlainText()
+        if which == 'udp':
+            self.udp_payload.setText(text)
+            try:
+                idx = self.tabs.indexOf(self.udp_payload.parent())
+            except Exception:
+                idx = -1
+            # find UDP tab by title
+            for i in range(self.tabs.count()):
+                if self.tabs.tabText(i) == 'UDP 测试':
+                    self.tabs.setCurrentIndex(i)
+                    break
+        else:
+            self.tcp_payload.setText(text)
+            for i in range(self.tabs.count()):
+                if self.tabs.tabText(i) == 'TCP 测试':
+                    self.tabs.setCurrentIndex(i)
+                    break
+
+    def _udp_preset_apply(self, _idx=None):
+        """Fill udp_payload from protocol preset (sim verbs; not field HW)."""
+        if not hasattr(self, 'udp_preset'):
+            return
+        payload = self.udp_preset.currentData()
+        if payload:
+            self.udp_payload.setText(str(payload))
+
 
     def _open_global_triggers(self):
         """细妆：通信管理 → 全局触发联调入口。"""

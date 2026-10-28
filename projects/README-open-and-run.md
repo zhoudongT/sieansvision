@@ -21,6 +21,7 @@
 | `open-and-run-caliper-measure.sieans` | ▶ 卡尺→线线交点→点线距；intersectX/Y·pldDist/passGate |
 | `open-and-run-measure.sieans` | ▶ 单次：预处理→圆查找→尺寸测量→门限；有圆且有测量则 OK |
 | `open-and-run-barcode.sieans` | ▶ 单次条码/二维码；解码串进结果（样张 `codes.png`） |
+| `open-and-run-locate-measure-defect.sieans` | ▶ 单次：定位→位姿→圆测量→参考图缺陷→综合 `passGate`；Host 监视 matchScore/measureCount/defect*；Comm `${}` 报文模板 |
 | `open-and-run-defects.sieans` | ▶ 单次参考图缺陷；差异区 + OK/NG 语义 |
 | `open-and-run-ninepoint.sieans` | ▶ 单次：九点标定→残差门限；`calibRms`/`calibPoints`/`passGate`；OK/NG×4（无厂商标定 SDK） |
 | `open-and-run-script.sieans` | ▶ 单次脚本模块；脚本输出写入变量 |
@@ -67,6 +68,15 @@ node scripts/smoke-caliper-measure-runtime-e2e.cjs
 ```
 
 期望：passGate=1；intersectX/Y·pldDist；geometry.lines≥2。
+
+## 定位→测量→缺陷链速验
+
+```bash
+node scripts/smoke-locate-measure-defect-runtime-e2e.cjs
+python3 scripts/smoke-comm-message-templates-e2e.py
+```
+
+期望：passGate=1；matchScore≥0.7；measureCount>0；defectOk=1；Comm 消息模板 `${}` 展开。
 
 ## 定位路径速验
 

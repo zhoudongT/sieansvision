@@ -1,0 +1,694 @@
+{
+  "version": 2,
+  "id": "3be05ab1e4154f08",
+  "name": "打开即跑 · 定位→测量→缺陷链",
+  "steps": [
+    {
+      "id": "52337d482d174d9e",
+      "operation": "locate",
+      "name": "快速模板匹配",
+      "params": {
+        "matchMode": "fast",
+        "minScore": 0.7,
+        "maxMatches": 5,
+        "angleStart": -30,
+        "angleEnd": 30,
+        "angleStep": 15,
+        "scales": [
+          0.8,
+          1,
+          1.2
+        ],
+        "scaleStart": 0.8,
+        "scaleEnd": 1.2,
+        "scaleStep": 0.2,
+        "overlapThreshold": 0.3,
+        "maxOverlap": 0.3,
+        "hasTemplate": true,
+        "templateReady": true,
+        "showMatchBox": true,
+        "showScore": true,
+        "showContour": true,
+        "fullSearch": false,
+        "matchPolarity": "consider"
+      },
+      "reference": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABACAIAAAACpWdhAAAEF0lEQVRoBeXBvWpUWxgG4PcbRIJs0OJNsBHBaiDpjLewEATB5r2CBakU2xXruOxstMgtfI3YiLcgpvIHpoyVEKZQGC0GGU514BzyTdYWlGSzn8dIYkyMJMbESGJMjCTGxEhiTIwkxsRIYkyMJMbESCKSUsLvyDnjIpGEiJFEJKWE3nLOuGAkIWIkEUkpoZ+cMy4eSYgYSURSSmjJOeOikoSIkUQkpYQz5ZxxgUlCxEgiklLCejlnXGySEDGSiKSUsEbOGReeJESMJCIpJZySc8ZASELESCKSUsL/5ZwxHJIQMZKIpJTwHzlnDIokRIwkIikl/CvnjKGRhIiRRCSlBCDnjGGShIiRRCSllHPGYElCxEgi4u4YMkmIGElE3B2/abFYzOdzkl3X4bxJQsRIIuLu6Ge5XH7+/Pndu3dfvnyZz+ebm5s3b968ffv2zs7OxsYGzokkRIwkIu6OHlar1cuXLz98+IBTtre3Hz16NJlMcB4kIWIkEXF3tPz69auU8u3bN6xx9erVp0+fXr58Gb2VUtBSa0WLJESMJCLujjP9/Pnz2bNnX79+xZmuX79eSrly5Qr6KaWgpdaKFkmIGElE3B3rrVarV69evX37Fj3cvXv3wYMHk8kEPZRS0FJrRYskRIwkIu6OMx0eHh4dHaGH3d3dvb099FNKQUutFS2SEDGSiLg71lssFgcHB/P5HD2QfPLkSdd16KGUgpZaK1okIWIkEXF3rHd8fHxwcIDeSim3bt1CD6UUtNRa0SIJESOJiLtjvcViUWs9OTlBD5ubm/v7+13XoYdSClpqrWiRhIiRRMTdcabDw8OjoyP0sLu7u7e3h35KKWiptaJFEiJGEhF3x3qr1er169dv3rxBD/fu3bt///5kMkEPpRS01FrRIgkRI4mIu+NMP378ePz4MXp4/vx513Xop5SCllorWiQhYiQRcXe0LJfL/f3979+/Y41r167VWi9duoTeSiloqbWiRRIiRhIRd0cPq9XqxYsXHz9+xCk7OzsPHz6cTCb4HaUUtNRa0SIJESOJiLujn+Vy+enTp/fv3x8fH8/n862trRs3bty5c2d7e3tjYwPnRBIiRhIRd8dvWiwWJycnW1tbXdfhvElCxEgi4u4YMkmIGElE3B1DJgkRI4mIu2PIJCFiJBFxdwyZJESMJCLujiGThIiRRMTdMWSSEDGSiLg7hkwSIkYSEXfHkElCxEgi4u44ZTqd4k+bzWb4CyQhYiQRcXf833Q6xd8xm83wp0lCxEgi4u44ZTqd4k+bzWb4CyQhYiQRcXcMmSREjCQi7o4hk4SIkUTE3TFkkhAxkoi4O4ZMEiJGEhF3x5BJQsRIIuLuGDJJiBhJjImRxJgYSYyJkcSYGEmMiZHEmBhJjImRxJj8A+yWX1Bvb/pTAAAAAElFTkSuQmCC",
+      "position": {
+        "x": 300,
+        "y": 140
+      },
+      "imageFrom": "source"
+    },
+    {
+      "id": "90db367483a44bb8",
+      "operation": "pose_correct",
+      "name": "位置修正",
+      "params": {
+        "fixtureSource": "auto",
+        "baseX": 0.0,
+        "baseY": 0.0,
+        "baseAngle": 0.0,
+        "followRoi": true,
+        "outputCoord": "fixture",
+        "bindStepId": "52337d482d174d9e",
+        "bindField": "items[0]"
+      },
+      "position": {
+        "x": 300,
+        "y": 260
+      },
+      "imageFrom": "52337d482d174d9e"
+    },
+    {
+      "id": "dbf8ba189855447b",
+      "operation": "measure",
+      "name": "尺寸测量·圆",
+      "params": {
+        "feature": "circles",
+        "threshold": 127,
+        "minArea": 50,
+        "unit": "px",
+        "showOverlay": true,
+        "showLabels": true
+      },
+      "position": {
+        "x": 300,
+        "y": 380
+      },
+      "imageFrom": "90db367483a44bb8"
+    },
+    {
+      "id": "1056b990ce9d4b36",
+      "operation": "defects",
+      "name": "参考图差异缺陷",
+      "params": {
+        "differenceThreshold": 25,
+        "minArea": 20,
+        "maxDefectRatio": 0.5,
+        "judgeEnable": true,
+        "judgeMaxCount": 10,
+        "judgeMaxRatio": 0.5,
+        "showOverlay": true,
+        "showBoxes": true,
+        "showLabels": true,
+        "resultVar": "defectBag",
+        "writeFlowVars": true
+      },
+      "reference": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAeAAAAFoCAIAAAAAVb93AAAGEUlEQVR4Ae3BMQEAAAjAIO2w/lmt4QFsNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP9sNQD8s9UA8M9WA8A/Ww0A/2w1APyz1QDwz1YDwD9bDQD/bDUA/LPVAPDPVgPAP1sNAP8cd/5Vyeq5OWQAAAAASUVORK5CYII=",
+      "position": {
+        "x": 300,
+        "y": 500
+      },
+      "imageFrom": "dbf8ba189855447b"
+    },
+    {
+      "id": "6e6317a727144f71",
+      "operation": "var_calc",
+      "name": "综合门限·OK/NG",
+      "params": {
+        "scope": "flow",
+        "expressions": [
+          {
+            "name": "matchScore",
+            "expression": "locate_score",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "matchCount",
+            "expression": "locate_count",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "poseX",
+            "expression": "locate_x",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "poseY",
+            "expression": "locate_y",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "measureCount",
+            "expression": "measure_count",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "defectCount",
+            "expression": "defects_count",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "defectRatio",
+            "expression": "defects_ratio",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "defectOk",
+            "expression": "defects_passed",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "passGate",
+            "expression": "locate_found > 0 && locate_score >= 0.7 && measure_count > 0 && defects_passed > 0",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          }
+        ]
+      },
+      "position": {
+        "x": 300,
+        "y": 620
+      },
+      "imageFrom": "1056b990ce9d4b36"
+    }
+  ],
+  "edges": [
+    {
+      "id": "f61e194e316b4de6",
+      "from": "source",
+      "to": "52337d482d174d9e",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "ba29b7c0125f474b",
+      "from": "52337d482d174d9e",
+      "to": "90db367483a44bb8",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "80d2591e156f4a52",
+      "from": "90db367483a44bb8",
+      "to": "dbf8ba189855447b",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "cff6b2192b1c4fd5",
+      "from": "dbf8ba189855447b",
+      "to": "1056b990ce9d4b36",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "0622de4050ac4b11",
+      "from": "1056b990ce9d4b36",
+      "to": "6e6317a727144f71",
+      "fromPort": "bottom",
+      "toPort": "top"
+    }
+  ],
+  "sourcePosition": {
+    "x": 300,
+    "y": 40
+  },
+  "variables": {
+    "matchScore": 0,
+    "matchCount": 0,
+    "poseX": 0,
+    "poseY": 0,
+    "measureCount": 0,
+    "defectCount": 0,
+    "defectRatio": 0,
+    "defectOk": 0,
+    "passGate": 0
+  },
+  "sourceConfig": {
+    "mode": "local",
+    "pixelFormat": "RGB24",
+    "intervalMs": 0,
+    "saveInSolution": false,
+    "showImageName": true,
+    "snStart": 0,
+    "imageCache": 0,
+    "outputMono8": false,
+    "stitchEnable": false,
+    "stitchStartY": 0,
+    "stitchHeight": 0,
+    "stitchClearOnTrigger": false,
+    "autoSwitch": false,
+    "stopAtLast": true,
+    "charFilterEnable": false,
+    "inputChar": "",
+    "triggerChar": "",
+    "cameraId": "",
+    "cameraParams": {},
+    "exposure": 0.0,
+    "gain": 0.0,
+    "images": [
+      "public/vision/samples/fixture-multiple.png",
+      "public/vision/samples/fixture-rotated.png"
+    ],
+    "currentIndex": 0
+  },
+  "globalTriggers": {
+    "events": [],
+    "strings": [
+      {
+        "match": "RUN",
+        "partial": true,
+        "commands": [
+          {
+            "type": "执行·单次"
+          }
+        ]
+      },
+      {
+        "match": "CONT",
+        "partial": true,
+        "commands": [
+          {
+            "type": "执行·连续"
+          }
+        ]
+      },
+      {
+        "match": "STOP",
+        "partial": true,
+        "commands": [
+          {
+            "type": "执行·停止"
+          }
+        ]
+      }
+    ]
+  },
+  "commManager": {
+    "devices": [
+      {
+        "name": "LocalLoop",
+        "protocol": "Local Bus",
+        "host": "",
+        "port": 0,
+        "enabled": true,
+        "remark": "进程内总线（打开即跑演示；无现场 TCP）"
+      }
+    ],
+    "recvEvents": [
+      {
+        "name": "触发字串",
+        "device": "LocalLoop",
+        "message": "",
+        "topic": "",
+        "variable": "flow.commLastRecv"
+      }
+    ],
+    "sendEvents": [
+      {
+        "name": "结果上报",
+        "device": "LocalLoop",
+        "message": "RESULT ok=${flow.passGate} score=${flow.matchScore} meas=${flow.measureCount} defect=${flow.defectCount}",
+        "topic": "",
+        "variable": ""
+      },
+      {
+        "name": "JSON状态",
+        "device": "LocalLoop",
+        "message": "{\"cmd\":\"STATUS\",\"ok\":${flow.passGate},\"score\":${flow.matchScore},\"defects\":${flow.defectCount}}",
+        "topic": "",
+        "variable": ""
+      }
+    ],
+    "heartbeat": {
+      "enabled": true,
+      "intervalMs": 5000,
+      "payload": "HB"
+    },
+    "response": {
+      "enabled": true,
+      "timeoutMs": 3000,
+      "ack": "OK"
+    },
+    "messageTemplates": [
+      {
+        "id": "result-line",
+        "name": "OK/NG 行报文",
+        "protocol": "TCP Client",
+        "body": "RESULT ok=${flow.passGate} score=${flow.matchScore} meas=${flow.measureCount} defect=${flow.defectCount}"
+      },
+      {
+        "id": "json-status",
+        "name": "JSON 状态",
+        "protocol": "TCP Client",
+        "body": "{\"cmd\":\"STATUS\",\"ok\":${flow.passGate},\"score\":${flow.matchScore},\"defects\":${flow.defectCount}}"
+      }
+    ]
+  },
+  "runUi": {
+    "split": "4",
+    "placements": [
+      {
+        "name": "图像",
+        "page": 3,
+        "cell": 0,
+        "category": "基础"
+      },
+      {
+        "name": "OK/NG",
+        "page": 3,
+        "cell": 1,
+        "category": "基础"
+      },
+      {
+        "name": "运行控制",
+        "page": 3,
+        "cell": 2,
+        "category": "基础"
+      },
+      {
+        "name": "生产统计",
+        "page": 3,
+        "cell": 3,
+        "category": "图表"
+      }
+    ],
+    "controls": {
+      "图像": {
+        "commands": [],
+        "binding": "source"
+      },
+      "OK/NG": {
+        "commands": [],
+        "binding": "passGate"
+      },
+      "运行控制": {
+        "commands": [
+          {
+            "type": "执行·单次",
+            "config": ""
+          },
+          {
+            "type": "执行·连续",
+            "config": ""
+          },
+          {
+            "type": "执行·停止",
+            "config": ""
+          }
+        ],
+        "binding": ""
+      },
+      "生产统计": {
+        "commands": [],
+        "binding": "stats"
+      }
+    },
+    "fixedBars": {
+      "top": true,
+      "bottom": true,
+      "left": false,
+      "right": false,
+      "cameraBind": "未绑定",
+      "commBind": "TCP.连接状态",
+      "showRunStatus": true,
+      "showOkNg": true,
+      "showCounters": true,
+      "showHistory": true,
+      "gateKey": "passGate"
+    },
+    "meta": {
+      "title": "定位→测量→缺陷 · 打开即跑",
+      "industry": "inspection",
+      "template": "open_and_run_locate_measure_defect",
+      "version": 1,
+      "openAndRun": true,
+      "watchKeys": [
+        "matchScore",
+        "matchCount",
+        "poseX",
+        "poseY",
+        "measureCount",
+        "defectCount",
+        "defectRatio",
+        "defectOk",
+        "passGate"
+      ]
+    }
+  },
+  "hostWatch": {
+    "watchKeys": [
+      "matchScore",
+      "matchCount",
+      "poseX",
+      "poseY",
+      "measureCount",
+      "defectCount",
+      "defectRatio",
+      "defectOk",
+      "passGate"
+    ],
+    "active": "检测链",
+    "pinGroups": {
+      "检测链": [
+        "matchScore",
+        "matchCount",
+        "poseX",
+        "poseY",
+        "measureCount",
+        "defectCount",
+        "defectRatio",
+        "defectOk",
+        "passGate"
+      ],
+      "定位": [
+        "matchScore",
+        "matchCount",
+        "poseX",
+        "poseY",
+        "passGate"
+      ],
+      "缺陷": [
+        "defectCount",
+        "defectRatio",
+        "defectOk",
+        "passGate"
+      ]
+    }
+  },
+  "notes": "【打开即跑 · 定位→测量→缺陷链】fixture 样张 + 嵌入模板/空白参考。▶单次：图源→模板匹配→位置修正→圆尺寸测量→参考图差分缺陷→综合门限 passGate。\nHost 实况：matchScore/measureCount/defectCount·Ratio·Ok / passGate。\nComm 发送事件含 ${flow.*} 报文模板（LocalBus；无现场 TCP）。无 Halcon / 无机器人 SDK。",
+  "recipes": [
+    {
+      "id": "06bc71a0f364441a",
+      "name": "定位测缺·默认",
+      "note": "打开即跑 · 定位→测量→缺陷链",
+      "variant": "A型",
+      "varKeys": [
+        "matchScore",
+        "matchCount",
+        "poseX",
+        "poseY",
+        "measureCount",
+        "defectCount",
+        "defectRatio",
+        "defectOk",
+        "passGate"
+      ],
+      "stepOps": [
+        "locate",
+        "pose_correct",
+        "measure",
+        "defects",
+        "var_calc"
+      ],
+      "updatedAt": "2026-10-28 09:44:22",
+      "stepCount": 5,
+      "snapshot": {
+        "steps": [
+          {
+            "id": "52337d482d174d9e",
+            "operation": "locate",
+            "name": "快速模板匹配",
+            "params": {
+              "matchMode": "fast",
+              "minScore": 0.7,
+              "maxMatches": 5,
+              "angleStart": -30,
+              "angleEnd": 30,
+              "angleStep": 15,
+              "scales": [
+                0.8,
+                1,
+                1.2
+              ],
+              "scaleStart": 0.8,
+              "scaleEnd": 1.2,
+              "scaleStep": 0.2,
+              "overlapThreshold": 0.3,
+              "maxOverlap": 0.3,
+              "hasTemplate": true,
+              "templateReady": true,
+              "showMatchBox": true,
+              "showScore": true,
+              "showContour": true,
+              "fullSearch": false,
+              "matchPolarity": "consider"
+            },
+            "position": {
+              "x": 300,
+              "y": 140
+            },
+            "imageFrom": "source"
+          },
+          {
+            "id": "90db367483a44bb8",
+            "operation": "pose_correct",
+            "name": "位置修正",
+            "params": {
+              "fixtureSource": "auto",
+              "baseX": 0.0,
+              "baseY": 0.0,
+              "baseAngle": 0.0,
+              "followRoi": true,
+              "outputCoord": "fixture",
+              "bindStepId": "52337d482d174d9e",
+              "bindField": "items[0]"
+            },
+            "position": {
+              "x": 300,
+              "y": 260
+            },
+            "imageFrom": "52337d482d174d9e"
+          },
+          {
+            "id": "dbf8ba189855447b",
+            "operation": "measure",
+            "name": "尺寸测量·圆",
+            "params": {
+              "feature": "circles",
+              "threshold": 127,
+              "minArea": 50,
+              "unit": "px",
+              "showOverlay": true,
+              "showLabels": true
+            },
+            "position": {
+              "x": 300,
+              "y": 380
+            },
+            "imageFrom": "90db367483a44bb8"
+          },
+          {
+            "id": "1056b990ce9d4b36",
+            "operation": "defects",
+            "name": "参考图差异缺陷",
+            "params": {
+              "differenceThreshold": 25,
+              "minArea": 20,
+              "maxDefectRatio": 0.5,
+              "judgeEnable": true,
+              "judgeMaxCount": 10,
+              "judgeMaxRatio": 0.5,
+              "showOverlay": true,
+              "showBoxes": true,
+              "showLabels": true,
+              "resultVar": "defectBag",
+              "writeFlowVars": true
+            },
+            "position": {
+              "x": 300,
+              "y": 500
+            },
+            "imageFrom": "dbf8ba189855447b"
+          },
+          {
+            "id": "6e6317a727144f71",
+            "operation": "var_calc",
+            "name": "综合门限·OK/NG",
+            "params": {
+              "scope": "flow",
+              "expressions": [
+                {
+                  "name": "matchScore",
+                  "expression": "locate_score",
+                  "initial": 0,
+                  "outType": "number",
+                  "initOnRun": true
+                },
+                {
+                  "name": "matchCount",
+                  "expression": "locate_count",
+                  "initial": 0,
+                  "outType": "number",
+                  "initOnRun": true
+                },
+                {
+                  "name": "poseX",
+                  "expression": "locate_x",
+                  "initial": 0,
+                  "outType": "number",
+                  "initOnRun": true
+                },
+                {
+                  "name": "poseY",
+                  "expression": "locate_y",
+                  "initial": 0,
+                  "outType": "number",
+                  "initOnRun": true
+                },
+                {
+                  "name": "measureCount",
+                  "expression": "measure_count",
+                  "initial": 0,
+                  "outType": "number",
+                  "initOnRun": true
+                },
+                {
+                  "name": "defectCount",
+                  "expression": "defects_count",
+                  "initial": 0,
+                  "outType": "number",
+                  "initOnRun": true
+                },
+                {
+                  "name": "defectRatio",
+                  "expression": "defects_ratio",
+                  "initial": 0,
+                  "outType": "number",
+                  "initOnRun": true
+                },
+                {
+                  "name": "defectOk",
+                  "expression": "defects_passed",
+                  "initial": 0,
+                  "outType": "number",
+                  "initOnRun": true
+                },
+                {
+                  "name": "passGate",
+                  "expression": "locate_found > 0 && locate_score >= 0.7 && measure_count > 0 && defects_passed > 0",
+                  "initial": 0,
+                  "outType": "number",
+                  "initOnRun": true
+                }
+              ]
+            },
+            "position": {
+              "x": 300,
+              "y": 620
+            },
+            "imageFrom": "1056b990ce9d4b36"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -183,6 +183,11 @@ class FormatDataPanel(_ShellBase):
         super()._set_param(key, value)
         if key == 'template':
             self._refresh_incomplete_banner()
+        if key in ('template', 'args', 'trim', 'targetVar', 'scope', 'encoding', 'onEmpty') and hasattr(self, '_refresh_format_result'):
+            try:
+                self._refresh_format_result()
+            except Exception:
+                pass
 
     def _basic_tab(self):
         w = QWidget(); form = QFormLayout(w); form.setContentsMargins(10, 10, 10, 10)
@@ -270,6 +275,56 @@ class FormatDataPanel(_ShellBase):
         form.addRow(tip)
         return w
 
+
+
+    def _result_tab(self):
+        """结果显示：设计态模板预览 + 目标变量/编码摘要（无硬件）。"""
+        w = QWidget()
+        form = QFormLayout(w)
+        form.setContentsMargins(10, 10, 10, 10)
+        tip = QLabel('运行后引擎写回 formatted / status；下方为设计态预览。')
+        tip.setStyleSheet('color:#888;')
+        form.addRow(tip)
+        self._fmt_result_preview = QPlainTextEdit()
+        self._fmt_result_preview.setObjectName('formatDataResultPreview')
+        self._fmt_result_preview.setReadOnly(True)
+        self._fmt_result_preview.setMaximumHeight(120)
+        form.addRow('预览输出', self._fmt_result_preview)
+        self._fmt_result_meta = QLabel()
+        self._fmt_result_meta.setObjectName('formatDataResultMeta')
+        self._fmt_result_meta.setWordWrap(True)
+        form.addRow('写入摘要', self._fmt_result_meta)
+        btn = QPushButton('刷新结果显示')
+        btn.setObjectName('formatDataResultRefresh')
+        btn.clicked.connect(self._refresh_format_result)
+        form.addRow(btn)
+        self._refresh_format_result()
+        return w
+
+    def _refresh_format_result(self):
+        tpl = str(self.params.get('template') or '')
+        args = [a.strip() for a in str(self.params.get('args') or '').split(',') if a.strip()]
+        try:
+            if args:
+                try:
+                    text = tpl.format(*args)
+                except Exception:
+                    text = tpl.format(**{f'{i}': a for i, a in enumerate(args)})
+            else:
+                text = tpl
+        except Exception as exc:
+            text = f'(预览失败: {exc})'
+        if bool(self.params.get('trim')):
+            text = text.strip()
+        if hasattr(self, '_fmt_result_preview') and self._fmt_result_preview is not None:
+            self._fmt_result_preview.setPlainText(text)
+        scope = self.params.get('scope') or 'flow'
+        var = self.params.get('targetVar') or 'formatted'
+        enc = self.params.get('encoding') or 'utf-8'
+        empty = self.params.get('onEmpty') or 'keep'
+        meta = f'{scope}.{var} · 编码 {enc} · 空结果={empty} · 长度 {len(text)}'
+        if hasattr(self, '_fmt_result_meta') and self._fmt_result_meta is not None:
+            self._fmt_result_meta.setText(meta)
 
 class OutputImagePanel(_ShellBase):
     def __init__(self, step, definition, project, parent=None):
@@ -395,6 +450,11 @@ class ProtocolParsePanel(_ShellBase):
         super()._set_param(key, value)
         if key == 'sourceVar':
             self._refresh_incomplete_banner()
+        if key in ('sample', 'protocol', 'delimiter', 'fields', 'pattern', 'fixedWidths', 'targetPrefix', 'sourceVar', 'sourceScope') and hasattr(self, '_refresh_protocol_result'):
+            try:
+                self._refresh_protocol_result()
+            except Exception:
+                pass
 
     def _basic_tab(self):
         w = QWidget(); form = QFormLayout(w); form.setContentsMargins(10, 10, 10, 10)
@@ -457,6 +517,89 @@ class ProtocolParsePanel(_ShellBase):
         form.addRow(tip)
         return w
 
+
+
+    def _result_tab(self):
+        """结果显示：样例报文解析预览 → 字段表（设计态）。"""
+        w = QWidget()
+        form = QFormLayout(w)
+        form.setContentsMargins(10, 10, 10, 10)
+        tip = QLabel('运行写回 parsed_*；下方用「样例」报文做设计态解析预览。')
+        tip.setStyleSheet('color:#888;')
+        form.addRow(tip)
+        self._proto_result_preview = QPlainTextEdit()
+        self._proto_result_preview.setObjectName('protocolParseResultPreview')
+        self._proto_result_preview.setReadOnly(True)
+        self._proto_result_preview.setMaximumHeight(140)
+        form.addRow('解析字段', self._proto_result_preview)
+        self._proto_result_meta = QLabel()
+        self._proto_result_meta.setObjectName('protocolParseResultMeta')
+        self._proto_result_meta.setWordWrap(True)
+        form.addRow('摘要', self._proto_result_meta)
+        btn = QPushButton('刷新结果显示')
+        btn.setObjectName('protocolParseResultRefresh')
+        btn.clicked.connect(self._refresh_protocol_result)
+        form.addRow(btn)
+        self._refresh_protocol_result()
+        return w
+
+    def _refresh_protocol_result(self):
+        sample = str(self.params.get('sample') or '')
+        proto = str(self.params.get('protocol') or 'delimited')
+        delim = str(self.params.get('delimiter') or ',')
+        fields = [f.strip() for f in str(self.params.get('fields') or '').split(',') if f.strip()]
+        prefix = str(self.params.get('targetPrefix') or 'parsed_')
+        lines = []
+        try:
+            if not sample.strip():
+                lines.append('(无样例报文 — 在基本参数填写「样例」)')
+            elif proto == 'json':
+                import json as _json
+                obj = _json.loads(sample)
+                if isinstance(obj, dict):
+                    for k, v in obj.items():
+                        lines.append(f'{prefix}{k} = {v!r}')
+                else:
+                    lines.append(f'{prefix}value = {obj!r}')
+            elif proto == 'fixed':
+                widths = [int(x) for x in str(self.params.get('fixedWidths') or '8,8,16').split(',') if str(x).strip()]
+                pos = 0
+                for i, wdt in enumerate(widths):
+                    chunk = sample[pos:pos + wdt]
+                    name = fields[i] if i < len(fields) else f'f{i}'
+                    lines.append(f'{prefix}{name} = {chunk!r}')
+                    pos += wdt
+            elif proto == 'regex':
+                import re as _re
+                pat = str(self.params.get('pattern') or '')
+                m = _re.search(pat, sample) if pat else None
+                if not pat:
+                    lines.append('(未填正则)')
+                elif not m:
+                    lines.append('(样例未匹配正则)')
+                else:
+                    if m.groupdict():
+                        for k, v in m.groupdict().items():
+                            lines.append(f'{prefix}{k} = {v!r}')
+                    else:
+                        for i, g in enumerate(m.groups(), 1):
+                            name = fields[i - 1] if i - 1 < len(fields) else f'g{i}'
+                            lines.append(f'{prefix}{name} = {g!r}')
+            else:  # delimited
+                parts = sample.split(delim)
+                for i, part in enumerate(parts):
+                    name = fields[i] if i < len(fields) else f'f{i}'
+                    lines.append(f'{prefix}{name} = {part!r}')
+        except Exception as exc:
+            lines = [f'(解析失败: {exc})']
+        text = '\n'.join(lines) if lines else '(无字段)'
+        if hasattr(self, '_proto_result_preview') and self._proto_result_preview is not None:
+            self._proto_result_preview.setPlainText(text)
+        src = self.params.get('sourceVar') or 'recvData'
+        scope = self.params.get('sourceScope') or 'flow'
+        meta = f'源 {scope}.{src} · 协议={proto} · 字段 {len(lines)}'
+        if hasattr(self, '_proto_result_meta') and self._proto_result_meta is not None:
+            self._proto_result_meta.setText(meta)
 
 class TextSavePanel(_ShellBase):
     def __init__(self, step, definition, project, parent=None):
