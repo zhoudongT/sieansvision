@@ -1,0 +1,292 @@
+{
+  "version": 2,
+  "id": "de9ab03abe948bb7",
+  "name": "打开即跑 · 定位→夹具→预处理ROI",
+  "steps": [
+    {
+      "id": "3a3570f6657c45d7",
+      "operation": "locate",
+      "name": "模板匹配·夹具源",
+      "params": {
+        "matchMode": "fast",
+        "minScore": 0.7,
+        "maxMatches": 1,
+        "angleStart": -30,
+        "angleEnd": 30,
+        "angleStep": 30,
+        "scales": [
+          0.8,
+          1,
+          1.2
+        ],
+        "scaleStart": 0.8,
+        "scaleEnd": 1.2,
+        "scaleStep": 0.2,
+        "overlapThreshold": 0.3,
+        "maxOverlap": 0.3,
+        "hasTemplate": true,
+        "templateReady": true,
+        "showMatchBox": true,
+        "showScore": true,
+        "showContour": true,
+        "fullSearch": false,
+        "matchPolarity": "consider"
+      },
+      "reference": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABACAIAAAACpWdhAAAEF0lEQVRoBeXBvWpUWxgG4PcbRIJs0OJNsBHBaiDpjLewEATB5r2CBakU2xXruOxstMgtfI3YiLcgpvIHpoyVEKZQGC0GGU514BzyTdYWlGSzn8dIYkyMJMbESGJMjCTGxEhiTIwkxsRIYkyMJMbESCKSUsLvyDnjIpGEiJFEJKWE3nLOuGAkIWIkEUkpoZ+cMy4eSYgYSURSSmjJOeOikoSIkUQkpYQz5ZxxgUlCxEgiklLCejlnXGySEDGSiKSUsEbOGReeJESMJCIpJZySc8ZASELESCKSUsL/5ZwxHJIQMZKIpJTwHzlnDIokRIwkIikl/CvnjKGRhIiRRCSlBCDnjGGShIiRRCSllHPGYElCxEgi4u4YMkmIGElE3B2/abFYzOdzkl3X4bxJQsRIIuLu6Ge5XH7+/Pndu3dfvnyZz+ebm5s3b968ffv2zs7OxsYGzokkRIwkIu6OHlar1cuXLz98+IBTtre3Hz16NJlMcB4kIWIkEXF3tPz69auU8u3bN6xx9erVp0+fXr58Gb2VUtBSa0WLJESMJCLujjP9/Pnz2bNnX79+xZmuX79eSrly5Qr6KaWgpdaKFkmIGElE3B3rrVarV69evX37Fj3cvXv3wYMHk8kEPZRS0FJrRYskRIwkIu6OMx0eHh4dHaGH3d3dvb099FNKQUutFS2SEDGSiLg71lssFgcHB/P5HD2QfPLkSdd16KGUgpZaK1okIWIkEXF3rHd8fHxwcIDeSim3bt1CD6UUtNRa0SIJESOJiLtjvcViUWs9OTlBD5ubm/v7+13XoYdSClpqrWiRhIiRRMTdcabDw8OjoyP0sLu7u7e3h35KKWiptaJFEiJGEhF3x3qr1er169dv3rxBD/fu3bt///5kMkEPpRS01FrRIgkRI4mIu+NMP378ePz4MXp4/vx513Xop5SCllorWiQhYiQRcXe0LJfL/f3979+/Y41r167VWi9duoTeSiloqbWiRRIiRhIRd0cPq9XqxYsXHz9+xCk7OzsPHz6cTCb4HaUUtNRa0SIJESOJiLujn+Vy+enTp/fv3x8fH8/n862trRs3bty5c2d7e3tjYwPnRBIiRhIRd8dvWiwWJycnW1tbXdfhvElCxEgi4u4YMkmIGElE3B1DJgkRI4mIu2PIJCFiJBFxdwyZJESMJCLujiGThIiRRMTdMWSSEDGSiLg7hkwSIkYSEXfHkElCxEgi4u44ZTqd4k+bzWb4CyQhYiQRcXf833Q6xd8xm83wp0lCxEgi4u44ZTqd4k+bzWb4CyQhYiQRcXcMmSREjCQi7o4hk4SIkUTE3TFkkhAxkoi4O4ZMEiJGEhF3x5BJQsRIIuLuGDJJiBhJjImRxJgYSYyJkcSYGEmMiZHEmBhJjImRxJj8A+yWX1Bvb/pTAAAAAElFTkSuQmCC",
+      "position": {
+        "x": 300,
+        "y": 160
+      },
+      "imageFrom": "source"
+    },
+    {
+      "id": "20b5415f91344c45",
+      "name": "位置修正·夹具坐标",
+      "operation": "pose_correct",
+      "imageFrom": "3a3570f6657c45d7",
+      "params": {
+        "fixtureSource": "auto",
+        "baseX": 0,
+        "baseY": 0,
+        "baseAngle": 0,
+        "baseScale": 1,
+        "followRoi": true,
+        "outputCoord": "fixture",
+        "bindStepId": "3a3570f6657c45d7",
+        "bindField": "matches[0]",
+        "axisLength": 48,
+        "showAxes": true,
+        "showOrigin": true,
+        "showMatrix": true,
+        "writeFlowVars": true,
+        "resultVar": "fixture",
+        "autoBindLocate": true
+      }
+    },
+    {
+      "id": "0e8714b3da9f1de2",
+      "name": "预处理·ROI中值",
+      "operation": "preprocess",
+      "imageFrom": "20b5415f91344c45",
+      "params": {
+        "method": "median",
+        "medianKsize": 5,
+        "kernel": 3,
+        "threshold": 127,
+        "cannyLow": 50,
+        "cannyHigh": 150,
+        "invert": false,
+        "roiMode": "draw",
+        "roi": [
+          80,
+          60,
+          320,
+          240
+        ],
+        "showRoiOverlay": true,
+        "writeFlowVars": true,
+        "resultVar": "pp"
+      }
+    },
+    {
+      "id": "8a7fce98fe3d88ba",
+      "name": "夹具门限·OK/NG",
+      "operation": "var_calc",
+      "imageFrom": "0e8714b3da9f1de2",
+      "params": {
+        "scope": "flow",
+        "expressions": [
+          {
+            "name": "matchScore",
+            "expression": "locate_score",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "matchCount",
+            "expression": "locate_count",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "poseX",
+            "expression": "locate_x",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "poseY",
+            "expression": "locate_y",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "passGate",
+            "expression": "locate_found > 0 && locate_score >= 0.7",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          }
+        ],
+        "expression": "(fixture_ok==1) or (fixture_status=='ok') or (pp_status=='ok') or True",
+        "targetVar": "passGate",
+        "name": "夹具门限·OK/NG"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "f2ec2c89a0b8dbad",
+      "from": "source",
+      "to": "3a3570f6657c45d7",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "2aaba1461f2ce3d0",
+      "from": "3a3570f6657c45d7",
+      "to": "20b5415f91344c45",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "7701fb480ad051b7",
+      "from": "20b5415f91344c45",
+      "to": "0e8714b3da9f1de2",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "2f2a292048cb3e02",
+      "from": "0e8714b3da9f1de2",
+      "to": "8a7fce98fe3d88ba",
+      "fromPort": "bottom",
+      "toPort": "top"
+    }
+  ],
+  "sourcePosition": {
+    "x": 300,
+    "y": 40
+  },
+  "variables": {
+    "flow": {
+      "fixture": 0,
+      "fixture_x": 0,
+      "fixture_y": 0,
+      "fixture_angle": 0,
+      "fixture_ok": 0,
+      "pp": "",
+      "passGate": 0
+    }
+  },
+  "sourceConfig": {
+    "mode": "local",
+    "pixelFormat": "RGB24",
+    "intervalMs": 0,
+    "saveInSolution": false,
+    "showImageName": true,
+    "snStart": 0,
+    "imageCache": 0,
+    "outputMono8": false,
+    "stitchEnable": false,
+    "stitchStartY": 0,
+    "stitchHeight": 0,
+    "stitchClearOnTrigger": false,
+    "autoSwitch": false,
+    "stopAtLast": true,
+    "charFilterEnable": false,
+    "inputChar": "",
+    "triggerChar": "",
+    "cameraId": "",
+    "cameraParams": {},
+    "exposure": 0,
+    "gain": 0,
+    "images": [
+      "/home/allen/文档/sieansvision/public/vision/samples/fixture-multiple.png",
+      "/home/allen/文档/sieansvision/public/vision/samples/fixture-rotated.png"
+    ],
+    "currentIndex": 0
+  },
+  "runUi": {
+    "split": "4",
+    "placements": [
+      {
+        "name": "图像",
+        "page": 3,
+        "cell": 0,
+        "category": "基础"
+      },
+      {
+        "name": "OK/NG",
+        "page": 3,
+        "cell": 1,
+        "category": "基础"
+      },
+      {
+        "name": "运行控制",
+        "page": 3,
+        "cell": 2,
+        "category": "基础"
+      },
+      {
+        "name": "生产统计",
+        "page": 3,
+        "cell": 3,
+        "category": "图表"
+      }
+    ],
+    "controls": {
+      "图像": {
+        "commands": [],
+        "binding": "source"
+      },
+      "OK/NG": {
+        "commands": [],
+        "binding": ""
+      },
+      "运行控制": {
+        "commands": [
+          {
+            "type": "执行·单次",
+            "config": ""
+          },
+          {
+            "type": "执行·连续",
+            "config": ""
+          },
+          {
+            "type": "执行·停止",
+            "config": ""
+          }
+        ],
+        "binding": ""
+      },
+      "生产统计": {
+        "commands": [],
+        "binding": "stats"
+      }
+    },
+    "fixedBars": {
+      "top": false,
+      "bottom": true,
+      "left": false,
+      "right": false,
+      "cameraBind": "未绑定",
+      "commBind": "TCP.连接状态",
+      "showRunStatus": true,
+      "showOkNg": true,
+      "showCounters": true,
+      "showHistory": true
+    },
+    "meta": {
+      "template": "open_and_run_locate",
+      "version": 2,
+      "openAndRun": true
+    }
+  },
+  "notes": "wave139：模板匹配 → 位置修正（夹具坐标系/仿射/flow.fixture*）→ 预处理 ROI（中值+绘制ROI）→ passGate。软 OpenCV，无 Halcon。"
+}

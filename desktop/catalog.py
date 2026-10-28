@@ -12,9 +12,14 @@ def choices(*values):
 
 CORE = [
     dict(operation='preprocess', name='图像预处理', category='图像处理', parameters=[
-        field('method', '处理方法', 'string', 'grayscale', choices=choices(('grayscale','灰度化'),('blur','高斯模糊'),('threshold','二值化'),('canny','边缘提取'),('open','开运算'),('close','闭运算'))),
+        field('method', '处理方法', 'string', 'grayscale', choices=choices(
+            ('grayscale','灰度化'),('blur','高斯模糊'),('median','中值滤波'),('bilateral','双边滤波'),
+            ('threshold','二值化'),('canny','边缘提取'),('open','开运算'),('close','闭运算'),
+            ('erode','腐蚀'),('dilate','膨胀'))),
         field('threshold','二值阈值',default=127,minimum=0,maximum=255),
-        field('kernel','核大小（奇数）','integer',3,minimum=1,maximum=51)]),
+        field('kernel','核大小（奇数）','integer',3,minimum=1,maximum=51),
+        field('roiMode','ROI模式','string','inherit',choices=choices(('inherit','继承'),('draw','绘制'))),
+        ]),
     dict(operation='geometry', name='几何特征查找', category='定位与测量', parameters=[
         field('feature','特征','string','contours',choices=choices(('contours','轮廓'),('lines','直线'),('circles','圆'),('rects','矩形'),('edges','边缘'))),
         field('threshold','阈值',default=127,minimum=0,maximum=255),field('minArea','最小面积',default=50,minimum=1),field('invert','反色','boolean',False)]),
@@ -101,17 +106,23 @@ def builtin_definitions():
     # Wave2: 位置修正 / 分支模块（设计态壳 + 运行透传）
     definitions['pose_correct'] = dict(
         operation='pose_correct', name='位置修正', category='定位与测量',
-        defaults=dict(fixtureSource='auto', baseX=0.0, baseY=0.0, baseAngle=0.0, followRoi=True,
-                      outputCoord='fixture', bindStepId='', bindField='matches[0]'),
+        defaults=dict(fixtureSource='auto', baseX=0.0, baseY=0.0, baseAngle=0.0, baseScale=1.0,
+                      followRoi=True, outputCoord='fixture', bindStepId='', bindField='matches[0]',
+                      axisLength=40.0, showAxes=True, showOrigin=True, showMatrix=True,
+                      writeFlowVars=True, resultVar='fixture', autoBindLocate=True),
         parameters=[
             field('fixtureSource', '位姿来源', 'string', 'auto',
                   choices=choices(('auto', '自动上游'), ('manual', '手动'), ('bind', '绑定字段'))),
             field('baseX', '基准X', default=0),
             field('baseY', '基准Y', default=0),
             field('baseAngle', '基准角度', default=0),
+            field('baseScale', '基准比例', default=1),
             field('followRoi', '跟随ROI', 'boolean', True),
+            field('axisLength', '坐标轴长度', default=40),
+            field('writeFlowVars', '写入流程变量', 'boolean', True),
+            field('resultVar', '结果变量前缀', 'string', 'fixture'),
         ],
-        description='位置修正：用匹配位姿校正后续 ROI/坐标系（VM p=9）。',
+        description='位置修正：模板-夹具绑定 + 夹具坐标系 + 仿射矩阵（VM p=9，软 OpenCV）。',
     )
     definitions['branch'] = dict(
         operation='branch', name='分支模块', category='流程控制',
@@ -330,6 +341,25 @@ def builtin_definitions():
         ],
         description='生产任务（VM p=40）：任务名/配方/建议流程链写入变量；不接机械手 SDK。请用 locate→pose_correct→nine_point→var_calc→send_data 串接。',
     )
+
+    if 'preprocess' in definitions:
+        extra('preprocess', 'medianKsize', '中值核', 'integer', 5, minimum=3, maximum=51)
+        extra('preprocess', 'bilateralD', '双边直径', 'integer', 9, minimum=1, maximum=31)
+        extra('preprocess', 'bilateralSigmaColor', '双边σColor', default=75, minimum=1, maximum=255)
+        extra('preprocess', 'bilateralSigmaSpace', '双边σSpace', default=75, minimum=1, maximum=255)
+        extra('preprocess', 'roiMode', 'ROI模式', 'string', 'inherit')
+        extra('preprocess', 'showRoiOverlay', '叠加ROI框', 'boolean', True)
+        extra('preprocess', 'writeFlowVars', '写入流程变量', 'boolean', False)
+        extra('preprocess', 'resultVar', '结果变量前缀', 'string', 'preprocess')
+        # refresh method choices on definition
+        for f in definitions['preprocess'].get('parameters') or []:
+            if f.get('key') == 'method':
+                f['choices'] = choices(
+                    ('grayscale', '灰度化'), ('blur', '高斯模糊'), ('median', '中值滤波'),
+                    ('bilateral', '双边滤波'), ('threshold', '二值化'), ('canny', '边缘提取'),
+                    ('open', '开运算'), ('close', '闭运算'), ('erode', '腐蚀'), ('dilate', '膨胀'),
+                )
+                break
 
     if 'locate' in definitions:
         extra('locate', 'matchMode', '匹配模式', 'string', 'fast',

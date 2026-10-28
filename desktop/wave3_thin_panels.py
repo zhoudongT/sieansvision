@@ -5,7 +5,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QTabWidget, QFormLayout, QLineEdit,
     QComboBox, QScrollArea, QFrame, QPlainTextEdit, QSpinBox, QHBoxLayout,
-    QPushButton, QFileDialog,
+    QPushButton, QFileDialog, QTextEdit,
 )
 
 from desktop.widgets.switch import OrangeSwitch
@@ -1069,6 +1069,16 @@ def normalize_preprocess_params(params=None):
     p.setdefault('cannyHigh', 150)
     p.setdefault('invert', False)
     p.setdefault('blur', 1)
+    p.setdefault('medianKsize', 5)
+    p.setdefault('bilateralD', 9)
+    p.setdefault('bilateralSigmaColor', 75)
+    p.setdefault('bilateralSigmaSpace', 75)
+    p.setdefault('roiMode', 'inherit')  # inherit | draw
+    if 'roi' not in p:
+        p['roi'] = None
+    p.setdefault('showRoiOverlay', True)
+    p.setdefault('writeFlowVars', False)
+    p.setdefault('resultVar', 'preprocess')
     return p
 
 
@@ -1083,12 +1093,17 @@ def normalize_display_params(params=None):
 
 
 class PreprocessPanel(_ShellBase):
+    """工业预处理细妆：方法密度 + ROI（对齐 OCR ROI）+ 结果实况。"""
+
     def __init__(self, step, definition, project, parent=None):
         super().__init__(
             step, project, '图像预处理',
-            '对齐 VisionMaster「图像预处理」：灰度 / 模糊 / 二值 / Canny / 形态学。',
+            '对齐 VisionMaster「图像预处理」：灰度 / 模糊 / 中值 / 双边 / 二值 / Canny / 形态学 · ROI 裁剪。',
             normalize_preprocess_params, parent,
         )
+        # Insert ROI tab between 基本参数 and 结果显示
+        self.tabs.insertTab(1, self._wrap(self._roi_tab()), 'ROI')
+        self.tabs.setObjectName('preprocessTabs')
 
     def _missing_fields(self):
         missing = []
@@ -1106,6 +1121,7 @@ class PreprocessPanel(_ShellBase):
         self._name_row(form, '图像预处理')
         self._ensure_incomplete_banner(form)
         image_from = QComboBox()
+        image_from.setObjectName('preprocessImageFrom')
         image_from.addItem('（无图像输入）', None)
         incoming = {e['from'] for e in self.project.get('edges', []) if e.get('to') == self.step.get('id')}
         index_map = {'source': 0}; names = {'source': '图像源1'}
@@ -1120,7 +1136,6 @@ class PreprocessPanel(_ShellBase):
                 continue
             if s.get('operation') in soft_ops and image_from.findData(s['id']) < 0:
                 image_from.addItem(_sub(s['id']) + '（可选）', s['id'])
-        # Always offer source
         if image_from.findData('source') < 0:
             image_from.addItem(_sub('source') + '（可选）', 'source')
         cur = self.step.get('imageFrom')
@@ -1132,40 +1147,271 @@ class PreprocessPanel(_ShellBase):
         form.addRow('输入源', image_from)
 
         method = QComboBox()
+        method.setObjectName('preprocessMethod')
         for val, lab in (
-            ('grayscale', '灰度化'), ('blur', '高斯模糊'), ('threshold', '二值化'),
-            ('canny', '边缘提取'), ('open', '开运算'), ('close', '闭运算'),
+            ('grayscale', '灰度化'),
+            ('blur', '高斯模糊'),
+            ('median', '中值滤波'),
+            ('bilateral', '双边滤波'),
+            ('threshold', '二值化'),
+            ('canny', '边缘提取'),
+            ('open', '开运算'),
+            ('close', '闭运算'),
+            ('erode', '腐蚀'),
+            ('dilate', '膨胀'),
         ):
             method.addItem(lab, val)
         method.setCurrentIndex(max(0, method.findData(self.params.get('method') or 'grayscale')))
         method.currentIndexChanged.connect(lambda _: self._set_param('method', method.currentData()))
         form.addRow('处理方法', method)
 
-        thr = QSpinBox(); thr.setRange(0, 255); thr.setValue(int(self.params.get('threshold') or 127))
+        thr = QSpinBox(); thr.setObjectName('preprocessThreshold')
+        thr.setRange(0, 255); thr.setValue(int(self.params.get('threshold') or 127))
         thr.valueChanged.connect(lambda v: self._set_param('threshold', int(v)))
         form.addRow('二值阈值', thr)
 
-        ker = QSpinBox(); ker.setRange(1, 51); ker.setSingleStep(2)
+        ker = QSpinBox(); ker.setObjectName('preprocessKernel')
+        ker.setRange(1, 51); ker.setSingleStep(2)
         ker.setValue(int(self.params.get('kernel') or 3))
         ker.valueChanged.connect(lambda v: self._set_param('kernel', int(v) if int(v) % 2 else int(v) + 1))
         form.addRow('核大小（奇数）', ker)
 
-        lo = QSpinBox(); lo.setRange(0, 255); lo.setValue(int(self.params.get('cannyLow') or 50))
+        med = QSpinBox(); med.setObjectName('preprocessMedianKsize')
+        med.setRange(3, 51); med.setSingleStep(2)
+        med.setValue(int(self.params.get('medianKsize') or 5))
+        med.valueChanged.connect(lambda v: self._set_param('medianKsize', int(v) if int(v) % 2 else int(v) + 1))
+        form.addRow('中值核（奇数）', med)
+
+        bd = QSpinBox(); bd.setObjectName('preprocessBilateralD')
+        bd.setRange(1, 31); bd.setValue(int(self.params.get('bilateralD') or 9))
+        bd.valueChanged.connect(lambda v: self._set_param('bilateralD', int(v)))
+        form.addRow('双边直径 d', bd)
+        bsc = QSpinBox(); bsc.setObjectName('preprocessBilateralSigmaColor')
+        bsc.setRange(1, 255); bsc.setValue(int(self.params.get('bilateralSigmaColor') or 75))
+        bsc.valueChanged.connect(lambda v: self._set_param('bilateralSigmaColor', int(v)))
+        form.addRow('双边 σColor', bsc)
+        bss = QSpinBox(); bss.setObjectName('preprocessBilateralSigmaSpace')
+        bss.setRange(1, 255); bss.setValue(int(self.params.get('bilateralSigmaSpace') or 75))
+        bss.valueChanged.connect(lambda v: self._set_param('bilateralSigmaSpace', int(v)))
+        form.addRow('双边 σSpace', bss)
+
+        lo = QSpinBox(); lo.setObjectName('preprocessCannyLow')
+        lo.setRange(0, 255); lo.setValue(int(self.params.get('cannyLow') or 50))
         lo.valueChanged.connect(lambda v: self._set_param('cannyLow', int(v)))
         form.addRow('Canny 低阈值', lo)
-        hi = QSpinBox(); hi.setRange(0, 255); hi.setValue(int(self.params.get('cannyHigh') or 150))
+        hi = QSpinBox(); hi.setObjectName('preprocessCannyHigh')
+        hi.setRange(0, 255); hi.setValue(int(self.params.get('cannyHigh') or 150))
         hi.valueChanged.connect(lambda v: self._set_param('cannyHigh', int(v)))
         form.addRow('Canny 高阈值', hi)
 
         inv = OrangeSwitch(bool(self.params.get('invert', False)))
+        inv.setObjectName('preprocessInvert')
         inv.toggled.connect(lambda c: self._set_param('invert', bool(c)))
         form.addRow('反色', inv)
 
-        tip = QLabel('未选输入源时节点红叹号（config_status.preprocess）。')
+        tip = QLabel('ROI 见「ROI」页（与 OCR 同款编辑器）。未选输入源时红叹号。')
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
         self._refresh_incomplete_banner()
         return w
+
+    def _roi_tab(self):
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(10, 10, 10, 10)
+        tip = QLabel(
+            '预处理 ROI：继承=全图/上游；绘制=引擎按 params.roi=[x,y,w,h] 裁剪后再处理（与 OCR ROI 同模式）。'
+        )
+        tip.setWordWrap(True)
+        tip.setStyleSheet('color:#888;font-size:11px;')
+        lay.addWidget(tip)
+
+        form = QFormLayout()
+        roi = QComboBox()
+        roi.setObjectName('preprocessRoiMode')
+        roi.addItem('继承（连线 ROI / 全图）', 'inherit')
+        roi.addItem('绘制 ROI', 'draw')
+        idx = max(0, roi.findData(self.params.get('roiMode') or 'inherit'))
+        roi.setCurrentIndex(idx)
+        roi.currentIndexChanged.connect(lambda _: self._set_param('roiMode', roi.currentData()))
+        form.addRow('ROI 模式', roi)
+
+        self._roi_lab = QLabel(self._roi_summary())
+        self._roi_lab.setObjectName('preprocessRoiSummary')
+        self._roi_lab.setStyleSheet(
+            'color:#9ad;font-size:11px;padding:6px 8px;background:#1e2228;border-radius:4px;'
+        )
+        form.addRow('当前 ROI', self._roi_lab)
+
+        ov = OrangeSwitch(bool(self.params.get('showRoiOverlay', True)))
+        ov.setObjectName('preprocessShowRoiOverlay')
+        ov.toggled.connect(lambda c: self._set_param('showRoiOverlay', bool(c)))
+        form.addRow('结果叠加 ROI 框', ov)
+        lay.addLayout(form)
+
+        row = QHBoxLayout()
+        edit_btn = QPushButton('绘制 / 编辑 ROI…')
+        edit_btn.setObjectName('preprocessRoiEditBtn')
+        edit_btn.clicked.connect(self._edit_roi)
+        clear_btn = QPushButton('清除 ROI')
+        clear_btn.setObjectName('preprocessRoiClearBtn')
+        clear_btn.clicked.connect(self._clear_roi)
+        row.addWidget(edit_btn)
+        row.addWidget(clear_btn)
+        row.addStretch(1)
+        lay.addLayout(row)
+        lay.addStretch(1)
+        return w
+
+    def _roi_summary(self) -> str:
+        mode = self.params.get('roiMode') or 'inherit'
+        roi = self.params.get('roi')
+        if mode != 'draw':
+            return f'模式=继承 · roi={"已忽略" if not roi else roi}'
+        if isinstance(roi, list) and len(roi) == 4:
+            x, y, w, h = roi
+            return f'模式=绘制 · [{x:.0f},{y:.0f},{w:.0f},{h:.0f}]'
+        return '模式=绘制 · 尚未设置矩形（将回退全图）'
+
+    def _sync_roi_lab(self):
+        if getattr(self, '_roi_lab', None):
+            self._roi_lab.setText(self._roi_summary())
+
+    def _host_sample_image(self):
+        try:
+            from desktop.upstream_field_picker import host_last_result
+            last = host_last_result(self) or {}
+            if isinstance(last, dict):
+                if last.get('image'):
+                    return last.get('image')
+                if last.get('annotatedImage'):
+                    return last.get('annotatedImage')
+                frames = last.get('frames') or {}
+                if isinstance(frames, dict):
+                    for v in frames.values():
+                        if isinstance(v, dict) and v.get('image'):
+                            return v.get('image')
+        except Exception:
+            pass
+        return None
+
+    def _edit_roi(self):
+        from desktop.simple_roi_editor import SimpleRoiEditorDialog
+        from PySide6.QtWidgets import QDialog
+        img = self._host_sample_image()
+        dlg = SimpleRoiEditorDialog(self.params, parent=self, image_data=img, title='预处理 ROI 编辑器')
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        for k, v in dlg.result_params().items():
+            self.params[k] = v
+        self._sync_roi_lab()
+        box = self.findChild(QComboBox, 'preprocessRoiMode')
+        if box is not None:
+            idx = max(0, box.findData('draw'))
+            box.blockSignals(True)
+            box.setCurrentIndex(idx)
+            box.blockSignals(False)
+        self._emit()
+
+    def _clear_roi(self):
+        self.params['roi'] = None
+        self.params['roiMode'] = 'inherit'
+        self._sync_roi_lab()
+        try:
+            box = self.findChild(QComboBox, 'preprocessRoiMode')
+            if box is not None:
+                idx = max(0, box.findData('inherit'))
+                box.blockSignals(True)
+                box.setCurrentIndex(idx)
+                box.blockSignals(False)
+        except Exception:
+            pass
+        self._emit()
+
+    def _result_tab(self):
+        w = QWidget()
+        form = QFormLayout(w)
+        form.setContentsMargins(10, 10, 10, 10)
+        tip = QLabel('运行结果字段：method / roiApplied / width / height / status；标注图见模块结果。')
+        tip.setWordWrap(True)
+        tip.setStyleSheet('color:#888;')
+        form.addRow(tip)
+
+        wv = OrangeSwitch(bool(self.params.get('writeFlowVars', False)))
+        wv.setObjectName('preprocessWriteFlowVars')
+        wv.toggled.connect(lambda c: self._set_param('writeFlowVars', bool(c)))
+        form.addRow('写入流程变量', wv)
+        out_var = QLineEdit(str(self.params.get('resultVar') or 'preprocess'))
+        out_var.setObjectName('preprocessResultVar')
+        out_var.editingFinished.connect(
+            lambda: self._set_param('resultVar', out_var.text().strip() or 'preprocess')
+        )
+        form.addRow('结果变量前缀', out_var)
+
+        self._pp_result_box = QTextEdit()
+        self._pp_result_box.setObjectName('preprocessResultBox')
+        self._pp_result_box.setReadOnly(True)
+        self._pp_result_box.setMaximumHeight(100)
+        self._pp_result_box.setPlaceholderText('最近一次预处理结果…')
+        form.addRow('结果预览', self._pp_result_box)
+
+        self._pp_live = QLabel('实况：尚未运行')
+        self._pp_live.setObjectName('preprocessLiveBind')
+        self._pp_live.setWordWrap(True)
+        self._pp_live.setStyleSheet(
+            'color:#9ad;font-size:11px;padding:6px 8px;background:#1e2228;border-radius:4px;'
+        )
+        form.addRow('Host 实况', self._pp_live)
+        brow = QHBoxLayout()
+        b_ref = QPushButton('刷新实况')
+        b_ref.setObjectName('preprocessLiveRefreshBtn')
+        b_ref.clicked.connect(self._refresh_pp_live)
+        brow.addWidget(b_ref)
+        brow.addStretch(1)
+        form.addRow(brow)
+        try:
+            self._refresh_pp_live()
+        except Exception:
+            pass
+        return w
+
+    def _refresh_pp_live(self):
+        lab = getattr(self, '_pp_live', None)
+        if lab is None:
+            return
+        res = None
+        try:
+            from desktop.upstream_field_picker import host_last_result
+            last = host_last_result(self) or {}
+            sid = self.step.get('id')
+            results = last.get('results') if isinstance(last, dict) else None
+            if isinstance(results, list):
+                for row in results:
+                    if isinstance(row, dict) and (row.get('id') == sid or row.get('stepId') == sid):
+                        out = row.get('output') or row.get('result') or row
+                        if isinstance(out, dict) and isinstance(out.get('result'), dict):
+                            res = out['result']
+                        elif isinstance(out, dict):
+                            res = out
+                        break
+        except Exception:
+            res = None
+        if not res:
+            lab.setText('实况：尚无本模块运行结果')
+            if getattr(self, '_pp_result_box', None):
+                self._pp_result_box.setPlainText('')
+            return
+        bits = []
+        for k in ('status', 'method', 'roiApplied', 'width', 'height', 'note'):
+            if k in res and res[k] is not None:
+                bits.append(f'{k}={res[k]}')
+        if getattr(self, '_pp_result_box', None):
+            import json
+            try:
+                self._pp_result_box.setPlainText(json.dumps(res, ensure_ascii=False, indent=2)[:1500])
+            except Exception:
+                self._pp_result_box.setPlainText(str(res)[:1500])
+        lab.setText('实况：' + (' · '.join(bits[:10]) if bits else str(list(res.keys())[:8])))
 
 
 class DisplayPanel(_ShellBase):

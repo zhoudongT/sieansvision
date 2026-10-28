@@ -17,6 +17,7 @@
 |------|----------------|
 | `open-and-run-demo.sieans` | ▶ 单次：预处理→圆查找→测量→`passGate`；图像窗叠层 + OK/NG |
 | `open-and-run-locate.sieans` | ▶ 单次：图源→模板匹配→位置修正→分数门限；`passGate`/`matchScore`/`poseX·Y`；OK/NG |
+| `open-and-run-fixture-preprocess.sieans` | ▶ 单次：定位→夹具坐标系/仿射→预处理 ROI（中值）→`passGate`；Host 监视 fixture*/pp* |
 | `open-and-run-caliper.sieans` | ▶ 卡尺直线多边缘；lineCount/lineScore/lineRms/passGate |
 | `open-and-run-caliper-measure.sieans` | ▶ 卡尺→线线交点→点线距；intersectX/Y·pldDist/passGate |
 | `open-and-run-measure.sieans` | ▶ 单次：预处理→圆查找→尺寸测量→门限；有圆且有测量则 OK |

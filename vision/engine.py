@@ -519,15 +519,29 @@ def defects(image, canvas, p, offset, reference):
 
 
 def preprocess(image, canvas, p, offset):
+    """Industrial preprocess (soft OpenCV). ROI already applied by run() when roiMode=draw."""
     mode = p.get('method', 'grayscale')
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
     if mode == 'grayscale':
         out = gray
     elif mode == 'blur':
         kernel = int(number(p, 'kernel', 5, 1, 51))
         if kernel % 2 != 1:
             raise ValueError('kernel 必须是奇数')
-        out = cv2.GaussianBlur(image, (kernel, kernel), 0)
+        src = image if image.ndim == 3 else cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        out = cv2.GaussianBlur(src, (kernel, kernel), 0)
+    elif mode == 'median':
+        k = int(number(p, 'medianKsize', 5, 3, 51))
+        if k % 2 != 1:
+            raise ValueError('medianKsize 必须是奇数')
+        src = image if image.ndim == 3 else cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        out = cv2.medianBlur(src, k)
+    elif mode == 'bilateral':
+        d = int(number(p, 'bilateralD', 9, 1, 31))
+        sc = number(p, 'bilateralSigmaColor', 75, 1, 255)
+        ss = number(p, 'bilateralSigmaSpace', 75, 1, 255)
+        src = image if image.ndim == 3 else cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        out = cv2.bilateralFilter(src, d, sc, ss)
     elif mode == 'threshold':
         _, out = cv2.threshold(gray, number(p, 'threshold', 127, 0, 255), 255,
                                cv2.THRESH_BINARY_INV if p.get('invert') else cv2.THRESH_BINARY)
@@ -542,7 +556,23 @@ def preprocess(image, canvas, p, offset):
     if out.ndim == 2:
         out = cv2.cvtColor(out, cv2.COLOR_GRAY2BGR)
     canvas[offset[1]:offset[1]+out.shape[0], offset[0]:offset[0]+out.shape[1]] = out
-    return {'method': mode}
+    roi_applied = bool(offset and (offset[0] or offset[1])) or (
+        str(p.get('roiMode') or 'inherit') == 'draw' and isinstance(p.get('roi'), list)
+    )
+    if p.get('showRoiOverlay', True) and isinstance(p.get('roi'), list) and len(p['roi']) == 4 and str(p.get('roiMode') or '') == 'draw':
+        x, y, w, h = [int(v) for v in p['roi']]
+        cv2.rectangle(canvas, (x, y), (x + max(1, w) - 1, y + max(1, h) - 1), (0, 165, 255), 2)
+    return {
+        'method': mode,
+        'roiApplied': bool(roi_applied),
+        'roi': p.get('roi') if str(p.get('roiMode') or 'inherit') == 'draw' else None,
+        'roiMode': str(p.get('roiMode') or 'inherit'),
+        'width': int(out.shape[1]),
+        'height': int(out.shape[0]),
+        'offset': [int(offset[0]), int(offset[1])],
+        'status': 'ok',
+        'note': f'预处理 {mode}' + (' · ROI 裁剪' if roi_applied else ''),
+    }
 
 
 def yolo(image, canvas, p, offset):
