@@ -1,7 +1,8 @@
-"""相机管理 — Soft / UVC / GenTL pluggable backends (wave153 real camera path).
+"""相机管理 — Soft / UVC / GenTL live preview (wave153–154 real camera path).
 
 Enumerate → connect → persistent session → continuous live preview (PreviewFrameGate).
-GenTL is an honest shell when no Producer is loaded (no fake frames).
+wave154: UVC VideoCapture real grab + GenTL producer open/grab into same preview path.
+GenTL never fakes frames (empty device list when producer loaded but no camera).
 """
 from __future__ import annotations
 
@@ -57,10 +58,10 @@ class CameraManagerDialog(_RpcDialog):
         head.setObjectName('dialogTitle')
         root.addWidget(head)
         hint = QLabel(
-            'wave153：采集后端 Soft / USB UVC / GenTL(壳)。'
-            'UVC 用 OpenCV VideoCapture 持久会话（跨帧保持连接，不每帧开关）；'
-            'GenTL 无 Producer 时如实显示未加载，不伪造帧。'
-            '连接后预览走 PreviewFrameGate 丢旧帧·UI 节流 → 全局图像。'
+            'wave154：采集后端 Soft / USB UVC / GenTL 均可连续 live 预览。'
+            'UVC：OpenCV VideoCapture 打开一次、跨帧 grab（不每帧开关）；'
+            'GenTL：加载 Hikrobot CTI → 枚举 → 开流；无相机则空列表、不伪造帧。'
+            '预览走 PreviewFrameGate 丢旧帧·UI 节流 → ImageView.show_live_frame / 全局图像。'
         )
         hint.setObjectName('dialogHint')
         hint.setWordWrap(True)
@@ -285,6 +286,26 @@ class CameraManagerDialog(_RpcDialog):
                         self.message.setText(f'引擎未就绪；本机 UVC 枚举到 {len(items)} 台（连接仍需引擎）。')
                 except Exception as exc:
                     self.message.setText(f'引擎未就绪，无法枚举：{exc}')
+            elif kind == 'gentl':
+                try:
+                    from desktop.camera_backends import GentlBackend, gentl_load_producer
+                    load = gentl_load_producer()
+                    items = GentlBackend().enumerate_local() if load.get('loaded') else []
+                    self._on_list({'result': {'items': items}})
+                    if load.get('loaded') and not items:
+                        self.message.setText(
+                            (load.get('statusZh') or 'Producer 已加载')
+                            + ' — 未发现相机（诚实空列表，不伪造帧）。连接仍需引擎。'
+                        )
+                    elif items:
+                        self.message.setText(
+                            f"引擎未就绪；本机 GenTL 枚举到 {len(items)} 台（连接仍需引擎）。"
+                        )
+                    else:
+                        self.message.setText(load.get('statusZh') or '引擎未就绪且 GenTL 未加载。')
+                    self._refresh_backend_status()
+                except Exception as exc:
+                    self.message.setText(f'引擎未就绪，无法枚举 GenTL：{exc}')
             else:
                 self.message.setText('引擎未就绪，无法枚举。')
             return
@@ -594,8 +615,16 @@ class CameraManagerDialog(_RpcDialog):
                 bits.append(f"帧 #{meta.get('frameSequence', '—')}")
                 try:
                     from desktop.soft_acquisition_chrome import chrome_badge, is_soft_driver
-                    soft = is_soft_driver((self._session.get('config') or {}).get('params', {}).get('driver'))
-                    badge = chrome_badge(soft=soft, frame_seq=meta.get('frameSequence'), ready=True, status='RUNNING')
+                    from desktop.camera_backends import kind_of_driver
+                    params = (self._session.get('config') or {}).get('params') or {}
+                    soft = is_soft_driver(params.get('driver'))
+                    bkind = params.get('backendKind') or kind_of_driver(
+                        params.get('driver'), nested=self._session.get('config')
+                    ) or self._current_kind()
+                    badge = chrome_badge(
+                        soft=soft, frame_seq=meta.get('frameSequence'), ready=True,
+                        status='RUNNING', backend_kind=bkind, driver=params.get('driver'),
+                    )
                     self.preview_meta.setText(f'{badge} · 预览 · ' + ' · '.join(bits))
                 except Exception:
                     self.preview_meta.setText('预览 · ' + ' · '.join(bits))
@@ -642,7 +671,10 @@ class CameraManagerDialog(_RpcDialog):
                     if not self._gate_flush_timer.isActive():
                         self._gate_flush_timer.start(ms)
                 return
-        self.preview.set_image(paintable)
+        if hasattr(self.preview, 'show_live_frame'):
+            self.preview.show_live_frame(paintable)
+        else:
+            self.preview.set_image(paintable)
         if hasattr(self.preview, 'fit_image') and self.preview.isVisible():
             if getattr(self.preview, '_needs_fit', False):
                 self.preview.fit_image()
@@ -653,7 +685,10 @@ class CameraManagerDialog(_RpcDialog):
             return
         payload = gate.flush_due()
         if payload:
-            self.preview.set_image(payload)
+            if hasattr(self.preview, 'show_live_frame'):
+                self.preview.show_live_frame(payload)
+            else:
+                self.preview.set_image(payload)
             if hasattr(self.preview, 'fit_image') and self.preview.isVisible():
                 if getattr(self.preview, '_needs_fit', False):
                     self.preview.fit_image()

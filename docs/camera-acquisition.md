@@ -1,3 +1,27 @@
+## wave154 UVC 实采连续 live + GenTL Producer 开流
+
+在 wave153 可插拔壳之上：
+
+| 能力 | 实现 | 无硬件 / CI |
+|------|------|-------------|
+| UVC 实采 | `UvcLiveSession`：`VideoCapture` **打开一次**，`grab_many` 连续取帧 → PNG → `PreviewFrameGate` / `show_live_frame` | 无设备时 Soft 回退（不假装 UVC） |
+| GenTL 开流 | `discover_gentl_ctis`（`SIEANS_GENTL_CTI` + Hikrobot `/opt/MVS` 自动发现）→ `gentl_load_producer` → `gentl_enumerate_devices` → `GentlLiveSession` 开流 grab | Producer 在但无相机 → **空设备列表**，grab 拒绝假帧 |
+| 对话框 | 相机管理 / 设备工作台 Soft \| UVC \| GenTL 均可走同一 live 预览路径 | Soft 始终可预览 |
+
+启动脚本 `scripts/launch-sieans-vision.sh` 默认设置：
+
+```sh
+export SIEANS_GENTL_CTI=/opt/MVS/lib/64/MvProducerU3V.cti:/opt/MVS/lib/64/MvProducerGEV.cti
+export MVCAM_COMMON_RUNENV=/opt/MVS/lib
+export LD_LIBRARY_PATH=/opt/MVS/lib/64:$LD_LIBRARY_PATH
+```
+
+冒烟：`python3 scripts/smoke-wave154-uvc-gentl-live-e2e.py`（不要求物理相机；有 UVC/海康时额外走实采断言）。
+
+本波**不含** TCP 产品化、Halcon/CLR、机器人 SDK、云。
+
+---
+
 ## wave153 真机路径（Soft / UVC / GenTL 壳）
 
 桌面端新增可插拔后端 `desktop/camera_backends.py`：

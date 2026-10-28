@@ -250,7 +250,7 @@ class ImageSourceForm(QWidget):
         cam_form.addRow('关联相机', cam_wrap)
         self.camera_combo.currentIndexChanged.connect(
             lambda: self._audit('cameraId', self.camera_combo.currentData() or ''))
-        # wave153: Soft / UVC / GenTL picker (mirrors camera_manager)
+        # wave153–154: Soft / UVC / GenTL picker (live preview) (mirrors camera_manager)
         self.acq_backend = QComboBox()
         self.acq_backend.setObjectName('imageSourceAcqBackend')
         try:
@@ -281,7 +281,7 @@ class ImageSourceForm(QWidget):
         self.sdk_box.setObjectName('propertySection')
         sdk_layout = QVBoxLayout(self.sdk_box)
         note = QLabel(
-            'wave153：相机管理支持 Soft / USB UVC / GenTL(壳)。'
+            'wave154：相机管理 Soft / USB UVC / GenTL 均可连续 live 预览（UVC VideoCapture · GenTL CTI）。'
             'UVC 持久 VideoCapture 会话；GenTL 无 Producer 时如实未加载。'
             '请点下方打开「相机管理」：选后端 → 枚举 → 连接；预览进「全局图像」。'
         )

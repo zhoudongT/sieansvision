@@ -397,7 +397,7 @@ class CameraDialog(_RpcDialog):
         device_page = QWidget()
         device_layout = QVBoxLayout(device_page)
         selectors = QFormLayout()
-        # wave153: Soft(sim) / UVC / GenTL first-class; depth SDKs remain optional
+        # wave153–154: Soft(sim) / UVC / GenTL first-class live preview; depth SDKs remain optional
         self.driver = _combo([('模拟 2D 相机', 'simulator'), ('USB UVC', 'uvc'), ('GenTL 工业相机', 'gentl'), ('RealSense 深度相机', 'realsense'), ('Orbbec 深度相机', 'orbbec'), ('模拟 RGB-D 相机', 'rgbd_simulator')])
         self.driver.setObjectName('cameraDriver')
         self.provider = QComboBox()
@@ -605,7 +605,7 @@ class CameraDialog(_RpcDialog):
 
     def params(self):
         params = {'driver': self.driver.currentData(), 'deviceId': self.device_id.text().strip(), **self._parameter_values()}
-        # wave153: persistent session contract for Soft/UVC/GenTL
+        # wave153–154: persistent session + continuous live contract for Soft/UVC/GenTL
         try:
             from desktop.camera_backends import session_persist_flags, kind_of_driver
             flags = session_persist_flags()
@@ -842,7 +842,10 @@ class CameraDialog(_RpcDialog):
                     if not self._gate_flush_timer.isActive():
                         self._gate_flush_timer.start(ms)
                 return
-        self.preview.set_image(paintable)
+        if hasattr(self.preview, 'show_live_frame'):
+            self.preview.show_live_frame(paintable)
+        else:
+            self.preview.set_image(paintable)
 
     def _flush_preview_gate(self):
         gate = getattr(self, '_preview_gate', None)
@@ -850,7 +853,10 @@ class CameraDialog(_RpcDialog):
             return
         payload = gate.flush_due()
         if payload:
-            self.preview.set_image(payload)
+            if hasattr(self.preview, 'show_live_frame'):
+                self.preview.show_live_frame(payload)
+            else:
+                self.preview.set_image(payload)
         elif gate.has_pending():
             self._gate_flush_timer.start(max(1, gate.ms_until_due()))
 
