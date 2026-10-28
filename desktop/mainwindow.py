@@ -1198,6 +1198,25 @@ class MainWindow(QMainWindow):
                     panel.set_last_result(result)
                 if hasattr(panel, 'ingest_live_match_scores'):
                     panel.ingest_live_match_scores(result, soft_fallback=True)
+                # wave140: also densify multi-match result table when present
+                if hasattr(panel, 'refresh_match_density'):
+                    try:
+                        panel.refresh_match_density()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    def _ingest_geom_find_panel_from_result(self, result):
+        """Feed open GeometryFindPanel with last_result for find-density table (soft)."""
+        try:
+            pf = getattr(self, 'property_float', None)
+            if pf is None:
+                return
+            from desktop.geometry_find_panel import GeometryFindPanel
+            for w in pf.findChildren(GeometryFindPanel):
+                if hasattr(w, 'set_last_result'):
+                    w.set_last_result(result)
         except Exception:
             pass
 
@@ -1275,6 +1294,34 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         return badges
+
+    def _sync_filmstrip_geom_find_chrome(self):
+        """Push geometry-find feature chrome (L/C/R/B) — distinct from measure OK/NG."""
+        cache = getattr(self, '_filmstrip_results', None) or {}
+        try:
+            from desktop.geom_find_chrome import chrome_map_from_film_cache, strip_summary_from_film_cache
+        except Exception:
+            return {}
+        chrome = chrome_map_from_film_cache(cache)
+        try:
+            fs = getattr(self, 'filmstrip', None)
+            if fs is not None and hasattr(fs, 'set_frame_geom_find_chrome'):
+                fs.set_frame_geom_find_chrome(chrome)
+            if fs is not None and hasattr(fs, 'push_geom_find_summary'):
+                cur = ''
+                try:
+                    cur = fs.current_path() if hasattr(fs, 'current_path') else ''
+                except Exception:
+                    cur = ''
+                text = strip_summary_from_film_cache(cache, current_path=cur or '')
+                if text:
+                    fs.push_geom_find_summary(text)
+                else:
+                    # still push from live records if available
+                    pass
+        except Exception:
+            pass
+        return chrome
 
     def open_project_file(self, path):
         path=Path(path)
@@ -2034,6 +2081,10 @@ class MainWindow(QMainWindow):
                             self._sync_filmstrip_measure_badges()
                         except Exception:
                             pass
+                        try:
+                            self._sync_filmstrip_geom_find_chrome()
+                        except Exception:
+                            pass
                     elif not multi:
                         strip.clear()
             except Exception:
@@ -2348,6 +2399,10 @@ class MainWindow(QMainWindow):
                     self._sync_filmstrip_measure_badges()
                 except Exception:
                     pass
+                try:
+                    self._sync_filmstrip_geom_find_chrome()
+                except Exception:
+                    pass
         except Exception:
             pass
         if release:self.set_busy(False)
@@ -2357,6 +2412,12 @@ class MainWindow(QMainWindow):
         try:
             if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_module_results'):
                 self.filmstrip.push_module_results(records, names)
+            if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_geom_find_summary'):
+                self.filmstrip.push_geom_find_summary(records=records, names=names)
+        except Exception:
+            pass
+        try:
+            self._ingest_geom_find_panel_from_result(result)
         except Exception:
             pass
         annotated_live, ann_sid = self._pick_annotated_with_step(records)

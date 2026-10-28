@@ -1346,7 +1346,7 @@ class LocateMatchPanel(QWidget):
         lay = QVBoxLayout(w)
         lay.setContentsMargins(10, 10, 10, 10)
 
-        tip = QLabel('对应 VM「结果显示」：匹配框 / 分数 / 轮廓 / 原点等叠加开关。')
+        tip = QLabel('对应 VM「结果显示」：匹配框 / 分数 / 轮廓 / 原点等叠加开关 + 多匹配明细表。')
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#555;')
         lay.addWidget(tip)
@@ -1384,9 +1384,43 @@ class LocateMatchPanel(QWidget):
             'color:#9ad;font-size:11px;padding:6px 8px;background:#1e2228;border-radius:4px;'
         )
         form.addRow('结果回显', self._result_summary)
+
+        # wave140: dense multi-match table (scores/overlays) — not scoreboard micro-prop cascade
+        self._match_density_lab = QLabel('多匹配：尚未运行')
+        self._match_density_lab.setObjectName('locateMatchDensitySummary')
+        self._match_density_lab.setWordWrap(True)
+        self._match_density_lab.setStyleSheet(
+            'color:#9ad;font-size:11px;padding:6px 8px;background:#182028;border-radius:4px;'
+        )
+        form.addRow('匹配密度', self._match_density_lab)
+
+        self._match_density_table = QTableWidget(0, 7)
+        self._match_density_table.setObjectName('locateMatchDensityTable')
+        self._match_density_table.setHorizontalHeaderLabels(
+            ['#', '分数', 'X', 'Y', '角度°', '缩放', '判定']
+        )
+        self._match_density_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._match_density_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._match_density_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._match_density_table.setMaximumHeight(180)
+        form.addRow('匹配明细', self._match_density_table)
+
+        brow = QHBoxLayout()
+        b_live = QPushButton('刷新匹配明细')
+        b_live.setObjectName('locateMatchDensityRefreshBtn')
+        b_live.clicked.connect(self.refresh_match_density)
+        b_demo = QPushButton('软演示多匹配')
+        b_demo.setObjectName('locateMatchSoftDemoBtn')
+        b_demo.setToolTip('填入确定性软多匹配行（无硬件 / 无火花线联级）')
+        b_demo.clicked.connect(self._soft_demo_match_density)
+        brow.addWidget(b_live)
+        brow.addWidget(b_demo)
+        brow.addStretch(1)
+        form.addRow(brow)
+
         tip = QLabel(
             '匹配框/分数/序号/角度/全画布描摹/结果判断已接入 OpenCV 引擎实绘（无 Halcon 核）。'
-            '关角度搜索使能 → 仅单角；判断使能 → items[].judgeOk / judgeStatus。'
+            '多匹配表明细独立于模板库记分板；不做火花线/blink 微属性联级。'
         )
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
@@ -1394,6 +1428,10 @@ class LocateMatchPanel(QWidget):
         lay.addLayout(form)
         lay.addStretch(1)
         self._refresh_result_summary()
+        try:
+            self.refresh_match_density()
+        except Exception:
+            pass
         return w
 
     def _refresh_result_summary(self):
@@ -1421,3 +1459,99 @@ class LocateMatchPanel(QWidget):
             f'maxMatches={int(p.get("maxMatches") or 1)} · minScore={float(p.get("minScore") or 0):.2f} · '
             f'pyramid={int(p.get("pyramidLevels") or 4)}'
         )
+        # keep density summary in sync with overlay toggles
+        try:
+            self.refresh_match_density(keep_rows=True)
+        except Exception:
+            pass
+
+    def _soft_demo_match_density(self):
+        from desktop.geom_find_chrome import soft_demo_matches, summarize_multi_match
+        n = int(self.params.get('maxMatches') or 4)
+        matches = soft_demo_matches(n=n)
+        bag = {'matches': matches, 'items': matches, 'count': len(matches),
+               'bestScore': matches[0]['score'] if matches else None, 'found': True}
+        summ = summarize_multi_match(bag, params=self.params)
+        self._apply_match_density(summ, source='soft-demo')
+
+    def refresh_match_density(self, *, keep_rows: bool = False):
+        """Dense multi-match table from last_result / soft empty (no spark cascade)."""
+        from desktop.geom_find_chrome import summarize_multi_match, extract_match_items
+        lr = getattr(self, '_last_result', None)
+        if lr is None:
+            try:
+                from desktop.upstream_field_picker import host_last_result
+                lr = host_last_result(self)
+            except Exception:
+                lr = None
+        # Prefer this step's record
+        bag = None
+        sid = str(self.step.get('id') or '')
+        if isinstance(lr, dict):
+            for rec in (lr.get('results') or []):
+                if not isinstance(rec, dict):
+                    continue
+                if sid and str(rec.get('id') or '') == sid:
+                    bag = rec
+                    break
+                op = str(rec.get('operation') or '')
+                if op in ('locate', 'match', 'template_match') and bag is None:
+                    bag = rec
+            if bag is None and extract_match_items(lr):
+                bag = lr
+        if bag is None:
+            if keep_rows and getattr(self, '_last_match_density', None):
+                summ = dict(self._last_match_density)
+                # refresh overlay flags only
+                summ2 = summarize_multi_match({'matches': []}, params=self.params)
+                summ['overlayFlags'] = summ2.get('overlayFlags')
+                summ['summary'] = (
+                    f"匹配×{summ.get('count') or 0}"
+                    + (f" · best={summ['bestScore']:.3f}" if summ.get('bestScore') is not None else '')
+                    + (' · 叠层:' + '·'.join(summ.get('overlayFlags') or []) if summ.get('overlayFlags') else '')
+                )
+                self._apply_match_density(summ, source='params')
+                return summ
+            summ = summarize_multi_match({'matches': []}, params=self.params)
+            self._apply_match_density(summ, source='empty')
+            return summ
+        summ = summarize_multi_match(bag, params=self.params)
+        self._apply_match_density(summ, source='engine')
+        return summ
+
+    def _apply_match_density(self, summ, *, source: str = ''):
+        summ = summ if isinstance(summ, dict) else {}
+        lab = getattr(self, '_match_density_lab', None)
+        if lab is not None:
+            text = summ.get('summary') or '多匹配：空'
+            if source:
+                text = f'{text} · 源:{source}'
+            lab.setText(text)
+        table = getattr(self, '_match_density_table', None)
+        if table is None:
+            return
+        rows = summ.get('rows') or []
+        table.setRowCount(0)
+        for r in rows:
+            i = table.rowCount()
+            table.insertRow(i)
+            sc = r.get('score')
+            sc_txt = f'{float(sc):.3f}' if sc is not None else '—'
+            x = r.get('x'); y = r.get('y')
+            x_txt = f'{float(x):.1f}' if x is not None else '—'
+            y_txt = f'{float(y):.1f}' if y is not None else '—'
+            ang = r.get('angleDeg')
+            ang_txt = f'{float(ang):.1f}' if ang is not None else '—'
+            scale = r.get('scale')
+            sca_txt = f'{float(scale):.3f}' if scale is not None else '—'
+            st = str(r.get('judgeStatus') or '—')
+            for c, text in enumerate((
+                str(r.get('index') or i + 1), sc_txt, x_txt, y_txt, ang_txt, sca_txt, st,
+            )):
+                it = QTableWidgetItem(text)
+                if st == 'OK':
+                    it.setForeground(Qt.GlobalColor.green)
+                elif st == 'NG':
+                    it.setForeground(Qt.GlobalColor.red)
+                table.setItem(i, c, it)
+        self._last_match_density = dict(summ)

@@ -5,11 +5,12 @@
 """
 from copy import deepcopy
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QTabWidget, QFormLayout, QLineEdit,
     QComboBox, QDoubleSpinBox, QSpinBox, QScrollArea, QFrame, QCheckBox,
-    QPushButton, QHBoxLayout,
+    QPushButton, QHBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView,
+    QAbstractItemView,
 )
 
 from desktop.widgets.switch import OrangeSwitch
@@ -450,8 +451,146 @@ class GeometryFindPanel(QWidget):
         tip_j.setWordWrap(True)
         tip_j.setStyleSheet('color:#888;')
         form.addRow(tip_j)
+
+        # wave140: geometry-find result density table (non-measure)
+        self._find_summary = QLabel('查找结果：尚未运行')
+        self._find_summary.setObjectName('geometryFindSummary')
+        self._find_summary.setWordWrap(True)
+        self._find_summary.setStyleSheet(
+            'color:#9ad;font-size:11px;padding:6px 8px;background:#1e2228;border-radius:4px;'
+        )
+        form.addRow('查找摘要', self._find_summary)
+
+        self._find_table = QTableWidget(0, 6)
+        self._find_table.setObjectName('geometryFindResultTable')
+        self._find_table.setHorizontalHeaderLabels(['#', '度量', '分数', 'rms', '角度°', '判定'])
+        self._find_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._find_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._find_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._find_table.setMaximumHeight(160)
+        form.addRow('查找明细', self._find_table)
+
+        brow = QHBoxLayout()
+        b_live = QPushButton('刷新查找实况')
+        b_live.setObjectName('geometryFindLiveRefreshBtn')
+        b_live.setToolTip('从 Host last_result 拉取本模块 geometry items（无硬件）')
+        b_live.clicked.connect(self.refresh_find_density)
+        b_demo = QPushButton('软演示明细')
+        b_demo.setObjectName('geometryFindSoftDemoBtn')
+        b_demo.setToolTip('填入确定性软演示 items，便于 UI 点测')
+        b_demo.clicked.connect(self._soft_demo_find_density)
+        brow.addWidget(b_live)
+        brow.addWidget(b_demo)
+        brow.addStretch(1)
+        form.addRow(brow)
+
+        tip_f = QLabel(
+            '几何查找胶片铬：特征标签 L/C/R/B/E + 个数 + ✓/✗（与测量卡尺链 OK/NG 徽章分离）。'
+            'OpenCV 壳 · 无 Halcon · 无火花线微联级。'
+        )
+        tip_f.setWordWrap(True)
+        tip_f.setStyleSheet('color:#888;font-size:11px;')
+        form.addRow(tip_f)
+
         self._refresh_caliper_hint()
+        try:
+            self.refresh_find_density()
+        except Exception:
+            pass
         return w
+
+    def set_last_result(self, result):
+        """Cache engine last_result for geometry-find density (soft OK)."""
+        self._last_result = result
+        try:
+            self.refresh_find_density()
+        except Exception:
+            pass
+
+    def _host_last_result(self):
+        lr = getattr(self, '_last_result', None)
+        if lr is not None:
+            return lr
+        try:
+            from desktop.upstream_field_picker import host_last_result
+            return host_last_result(self)
+        except Exception:
+            return None
+
+    def _find_step_result_bag(self):
+        lr = self._host_last_result()
+        if not isinstance(lr, dict):
+            return None
+        sid = str(self.step.get('id') or '')
+        for rec in (lr.get('results') or []):
+            if not isinstance(rec, dict):
+                continue
+            if sid and str(rec.get('id') or '') == sid:
+                return rec
+            op = str(rec.get('operation') or '')
+            if op == 'geometry' and not sid:
+                return rec
+        return None
+
+    def _soft_demo_find_density(self):
+        from desktop.geom_find_chrome import soft_demo_geom_items, summarize_geom_find_result
+        feat = self.params.get('feature') or 'lines'
+        items = soft_demo_geom_items(feat, n=int(self.params.get('maxCount') or 3))
+        bag = {'feature': feat, 'items': items, 'count': len(items), 'judgeOk': True}
+        self._apply_find_density(summarize_geom_find_result(bag), source='soft-demo')
+
+    def refresh_find_density(self):
+        from desktop.geom_find_chrome import summarize_geom_find_result
+        rec = self._find_step_result_bag()
+        if rec is None:
+            # empty state: still show feature chrome hint
+            feat = self.params.get('feature') or 'lines'
+            summ = summarize_geom_find_result({'feature': feat, 'items': [], 'count': 0})
+            self._apply_find_density(summ, source='empty')
+            return summ
+        summ = summarize_geom_find_result(rec)
+        self._apply_find_density(summ, source='engine')
+        return summ
+
+    def _apply_find_density(self, summ, *, source: str = ''):
+        summ = summ if isinstance(summ, dict) else {}
+        lab = getattr(self, '_find_summary', None)
+        if lab is not None:
+            chrome = summ.get('chrome') or ''
+            text = summ.get('summary') or '查找结果：空'
+            if source:
+                text = f'{text} · 源:{source}'
+            if chrome:
+                text = f'[{chrome}] {text}'
+            lab.setText(text)
+        table = getattr(self, '_find_table', None)
+        if table is None:
+            return
+        rows = summ.get('rows') or []
+        table.setRowCount(0)
+        for r in rows:
+            i = table.rowCount()
+            table.insertRow(i)
+            mlab = r.get('metricLabel') or '—'
+            mval = r.get('metric')
+            mtxt = f'{mlab}={mval:.3g}' if isinstance(mval, (int, float)) else mlab
+            sc = r.get('score')
+            sc_txt = f'{float(sc):.3f}' if sc is not None else '—'
+            rms = r.get('rms')
+            rms_txt = f'{float(rms):.3f}' if rms is not None else '—'
+            ang = r.get('angleDeg')
+            ang_txt = f'{float(ang):.1f}' if ang is not None else '—'
+            st = str(r.get('judgeStatus') or '—')
+            for c, text in enumerate((
+                str(r.get('index') or i + 1), mtxt, sc_txt, rms_txt, ang_txt, st,
+            )):
+                it = QTableWidgetItem(text)
+                if st == 'OK':
+                    it.setForeground(Qt.GlobalColor.green)
+                elif st == 'NG':
+                    it.setForeground(Qt.GlobalColor.red)
+                table.setItem(i, c, it)
+        self._last_find_density = dict(summ)
 
     def _refresh_caliper_hint(self):
         lab = getattr(self, '_caliper_hint', None)

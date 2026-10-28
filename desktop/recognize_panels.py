@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QFormLayout, QLabel, QComboBox, QDoubleSpinBox,
     QSpinBox, QLineEdit, QHBoxLayout, QPushButton, QTabWidget, QTextEdit,
     QFileDialog, QMessageBox,
+    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
 )
 
 from desktop.widgets.switch import OrangeSwitch
@@ -383,6 +384,15 @@ class DefectsPanel(_RecognizeShell):
         brow.addWidget(b_ref)
         brow.addStretch(1)
         form.addRow(brow)
+
+        self._defects_items_table = QTableWidget(0, 4)
+        self._defects_items_table.setObjectName('defectsItemsTable')
+        self._defects_items_table.setHorizontalHeaderLabels(['#', '面积', 'bbox', '判定'])
+        self._defects_items_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._defects_items_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._defects_items_table.setMaximumHeight(120)
+        form.addRow('缺陷明细', self._defects_items_table)
+
         try:
             self._refresh_live()
         except Exception:
@@ -396,6 +406,7 @@ class DefectsPanel(_RecognizeShell):
         res = self._find_step_result()
         if not res:
             lab.setText('实况：尚无本模块运行结果')
+            self._fill_defects_items([])
             return
         bits = []
         for k in ('status', 'count', 'defectRatio', 'passed', 'judgeOk', 'judgeStatus', 'method'):
@@ -403,6 +414,7 @@ class DefectsPanel(_RecognizeShell):
                 bits.append(f'{k}={res[k]}')
         items = res.get('items') or []
         bits.append(f'items={len(items) if isinstance(items, list) else items}')
+        self._fill_defects_items(items if isinstance(items, list) else [])
         flow = ((self._host_last().get('variables') or {}).get('flow') or {})
         prefix = str(self.params.get('resultVar') or 'defects')
         for suffix in ('', '_count', '_ratio', '_passed', '_judgeOk', '_ok'):
@@ -590,11 +602,36 @@ class OcrPanel(_RecognizeShell):
         brow.addWidget(b_ref)
         brow.addStretch(1)
         form.addRow(brow)
+
+        self._ocr_items_table = QTableWidget(0, 3)
+        self._ocr_items_table.setObjectName('ocrItemsTable')
+        self._ocr_items_table.setHorizontalHeaderLabels(['#', '文本', '置信度'])
+        self._ocr_items_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._ocr_items_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._ocr_items_table.setMaximumHeight(120)
+        form.addRow('识别明细', self._ocr_items_table)
+
         try:
             self._refresh_live()
         except Exception:
             pass
         return w
+
+    def _fill_ocr_items(self, items):
+        table = getattr(self, '_ocr_items_table', None)
+        if table is None:
+            return
+        table.setRowCount(0)
+        for i, it in enumerate((items or [])[:40]):
+            if not isinstance(it, dict):
+                continue
+            txt = str(it.get('text') or '')[:48]
+            conf = it.get('confidence')
+            conf_txt = f'{float(conf):.3f}' if conf is not None else '—'
+            row = table.rowCount()
+            table.insertRow(row)
+            for c, t in enumerate((str(i + 1), txt, conf_txt)):
+                table.setItem(row, c, QTableWidgetItem(t))
 
     def _refresh_live(self):
         lab = self._live_lab
@@ -605,6 +642,7 @@ class OcrPanel(_RecognizeShell):
             lab.setText('实况：尚无本模块运行结果')
             if getattr(self, '_text_preview', None):
                 self._text_preview.setPlainText('')
+            self._fill_ocr_items([])
             return
         bits = []
         for k in ('status', 'count', 'text', 'confidence', 'passed', 'judgeOk', 'judgeStatus'):
@@ -615,6 +653,8 @@ class OcrPanel(_RecognizeShell):
                 bits.append(f'{k}={val}')
         if getattr(self, '_text_preview', None):
             self._text_preview.setPlainText(str(res.get('text') or ''))
+        items = res.get('items') or []
+        self._fill_ocr_items(items if isinstance(items, list) else [])
         flow = ((self._host_last().get('variables') or {}).get('flow') or {})
         prefix = str(self.params.get('resultVar') or 'ocr')
         for suffix in ('', '_text', '_count', '_confidence', '_judgeOk', '_ok'):

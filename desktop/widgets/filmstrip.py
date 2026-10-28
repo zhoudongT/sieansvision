@@ -196,6 +196,17 @@ class FilmstripBar(QWidget):
         )
         self.result_strip.setVisible(False)
         root.addWidget(self.result_strip)
+        # wave140: geometry-find chrome strip (feature L/C/R/B — distinct from measure OK/NG)
+        self.geom_find_strip = QLabel('')
+        self.geom_find_strip.setObjectName('filmstripGeomFindStrip')
+        self.geom_find_strip.setWordWrap(True)
+        self.geom_find_strip.setStyleSheet(
+            'color:#9ab;font-size:11px;padding:2px 4px;background:#182028;border:1px solid #2a3a4a;border-radius:3px;'
+        )
+        self.geom_find_strip.setVisible(False)
+        self.geom_find_strip.setToolTip('几何查找胶片铬（非测量卡尺链）· L直线 C圆 R矩形 B轮廓 E边缘')
+        root.addWidget(self.geom_find_strip)
+        self._frame_geom_find_chrome = {}
         self.set_paths([], 0)
         self._live_fit_mode = 'contain'
         self._actual_letterbox = True  # pad with theme CANVAS when src < thumb
@@ -1420,22 +1431,142 @@ class FilmstripBar(QWidget):
             tag = bag.get(path) or ''
             # preserve leaf name; prefix badge
             leaf = Path(path).name if path else (it.text() or '')
-            # strip prior [OK]/[NG] prefix
+            # strip prior [OK]/[NG] and geom-find [L#] prefixes
             import re as _re
             leaf = _re.sub(r'^\[(OK|NG)\]\s*', '', leaf)
+            leaf = _re.sub(r'^\[([LCREBG]\d*[✓✗+]*)\]\s*', '', leaf)
+            gtag = (getattr(self, '_frame_geom_find_chrome', None) or {}).get(path) or ''
+            prefix = ''
+            if gtag:
+                prefix += f'[{gtag}] '
             if tag:
-                it.setText(f'[{tag}] {leaf}')
-                if tag == 'OK':
-                    it.setForeground(QColor('#2e7d32'))
-                elif tag == 'NG':
-                    it.setForeground(QColor('#c62828'))
-                tip0 = path or ''
-                it.setToolTip(f'{tip0}\n测量判定：{tag}' if tip0 else f'测量判定：{tag}')
+                prefix += f'[{tag}] '
+            it.setText(f'{prefix}{leaf}' if prefix else leaf)
+            tip_bits = []
+            if path:
+                tip_bits.append(path)
+            if gtag:
+                tip_bits.append(f'几何查找：{gtag}')
+            if tag:
+                tip_bits.append(f'测量判定：{tag}')
+            it.setToolTip('\n'.join(tip_bits) if tip_bits else '')
+            if tag == 'NG':
+                it.setForeground(QColor('#c62828'))
+            elif tag == 'OK' and not gtag:
+                it.setForeground(QColor('#2e7d32'))
+            elif gtag:
+                it.setForeground(QColor('#c62828') if '✗' in gtag else QColor('#4aa3c8'))
             else:
-                it.setText(leaf)
                 it.setForeground(QColor('#c8d0d8'))
-                if path:
-                    it.setToolTip(path)
+
+
+    def set_frame_geom_find_chrome(self, chrome=None):
+        """Annotate filmstrip thumbs with geometry-find tags (L3✓ / C2✗), not measure OK/NG.
+
+        chrome: {path: 'L3✓'|'C2'|str}. Leaves measure badges intact when both present.
+        """
+        bag = {}
+        for k, v in (chrome or {}).items():
+            key = str(k or '').strip()
+            if not key or not v:
+                continue
+            bag[key] = str(v)[:16]
+        self._frame_geom_find_chrome = bag
+        thumbs = getattr(self, 'thumbs', None)
+        if thumbs is None:
+            return bag
+        measure = getattr(self, '_frame_measure_badges', None) or {}
+        import re as _re
+        for i in range(thumbs.count()):
+            it = thumbs.item(i)
+            if it is None:
+                continue
+            path = it.data(Qt.ItemDataRole.UserRole) or ''
+            leaf = Path(path).name if path else (it.text() or '')
+            # strip prior [OK]/[NG] and [L#] style prefixes
+            leaf = _re.sub(r'^\[(OK|NG)\]\s*', '', leaf)
+            leaf = _re.sub(r'^\[([LCREBG]\d*[✓✗+]*)\]\s*', '', leaf)
+            mtag = measure.get(path) or ''
+            gtag = bag.get(path) or ''
+            prefix = ''
+            if gtag:
+                prefix += f'[{gtag}] '
+            if mtag:
+                prefix += f'[{mtag}] '
+            it.setText(f'{prefix}{leaf}' if prefix else leaf)
+            tip_bits = []
+            if path:
+                tip_bits.append(path)
+            if gtag:
+                tip_bits.append(f'几何查找：{gtag}')
+            if mtag:
+                tip_bits.append(f'测量判定：{mtag}')
+            it.setToolTip('\n'.join(tip_bits) if tip_bits else '')
+            # color: NG measure wins; else geom chrome teal; else OK green
+            if str(mtag).upper() == 'NG':
+                it.setForeground(QColor('#c62828'))
+            elif str(mtag).upper() == 'OK' and not gtag:
+                it.setForeground(QColor('#2e7d32'))
+            elif gtag:
+                if '✗' in gtag:
+                    it.setForeground(QColor('#c62828'))
+                else:
+                    it.setForeground(QColor('#4aa3c8'))
+            else:
+                it.setForeground(QColor('#c8d0d8'))
+        return bag
+
+    def push_geom_find_summary(self, text=None, *, records=None, names=None):
+        """Geometry-find result chrome under filmstrip (distinct from push_module_results measure strip)."""
+        lab = getattr(self, 'geom_find_strip', None)
+        if lab is None:
+            return
+        if text:
+            lab.setText(str(text))
+            lab.setVisible(True)
+            return
+        records = records or []
+        name_map = names or {}
+        bits = []
+        try:
+            from desktop.geom_find_chrome import summarize_geom_find_result, feature_tag
+        except Exception:
+            feature_tag = lambda f: 'G'
+            summarize_geom_find_result = None
+        for i, rec in enumerate(records):
+            if not isinstance(rec, dict):
+                continue
+            op = str(rec.get('operation') or rec.get('op') or '')
+            if op not in ('geometry', 'blob') and summarize_geom_find_result is None:
+                continue
+            if op not in ('geometry', 'blob', ''):
+                # still try if feature present
+                out = rec.get('output') if isinstance(rec.get('output'), dict) else {}
+                res = out.get('result') if isinstance(out.get('result'), dict) else out
+                if not (isinstance(res, dict) and (res.get('feature') or res.get('items'))):
+                    if op not in ('geometry', 'blob'):
+                        continue
+            rid = str(rec.get('id') or '')
+            name = ''
+            if isinstance(name_map, dict):
+                name = str(name_map.get(rid) or '')
+            name = name or str(rec.get('name') or rid or op or f'#{i+1}')
+            if summarize_geom_find_result is not None:
+                summ = summarize_geom_find_result(rec)
+                bits.append(f"{name} {summ.get('chrome') or feature_tag(summ.get('feature'))}")
+            else:
+                bits.append(name)
+        if not bits:
+            lab.setVisible(False)
+            lab.setText('')
+            return
+        head = f'<b>几何查找</b> · {len(bits)}'
+        body = ' ｜ '.join(bits[:10])
+        if len(bits) > 10:
+            body += f' ｜ …+{len(bits)-10}'
+        lab.setText(f'{head}<br/>{body}')
+        lab.setVisible(True)
+
 
     def clear_all(self):
         if not self._paths:
