@@ -43,6 +43,7 @@ class ImageView(QGraphicsView):
         self._fit_mode = 'contain'  # contain | cover | actual (Display 适应模式)
         # wave152: stable pixmap item for continuous soft preview (in-place setPixmap)
         self._live_pixmap = QPixmap()
+        self._live_source = QPixmap()
         self._live_pixmap_item = None
         self._empty_hint = self.scene().addText('打开图像，或载入演示')
         self._empty_hint.setDefaultTextColor(QColor(TEXT_MUTED))
@@ -98,6 +99,7 @@ class ImageView(QGraphicsView):
         self.overlay = None
         self._live_pixmap_item = None
         self._live_pixmap = QPixmap()
+        self._live_source = QPixmap()
         self.bounds = QRectF()
         self._empty_hint = None
         if not pixmap.isNull():
@@ -117,10 +119,11 @@ class ImageView(QGraphicsView):
             self.scene().setSceneRect(QRectF(0, 0, 400, 300))
 
     def show_live_frame(self, data):
-        """Continuous soft/session preview: in-place setPixmap (no scene.clear flicker).
+        """Continuous soft/session preview — Wayland-safe full-frame fill.
 
-        Same-size frames update the stable pixmap item and dirty the viewport only.
-        Size changes or first frame fall back to a single addPixmap + fit.
+        Pre-scale KeepAspectRatio into the viewport, then place the pixmap at
+        1:1 with identity transform. Never relies on fitInView (which leaves a
+        hairline strip when the first fit races a tiny/hidden viewport).
         Empty / undecodable data is ignored (keeps last good frame).
         """
         if not data or not isinstance(data, str):
@@ -144,47 +147,55 @@ class ImageView(QGraphicsView):
     def _set_live_pixmap(self, pixmap: QPixmap, *, refit: bool | None = None) -> bool:
         if pixmap.isNull():
             return False
-        size_changed = self._live_pixmap.isNull() or pixmap.size() != self._live_pixmap.size()
-        self._live_pixmap = pixmap
-        if self._live_pixmap_item is None:
-            # Drop empty-hint / stale scene once, then keep a stable item.
+        self._live_source = pixmap  # full-res; display copy may be pre-scaled
+        return self._paint_live_scaled(force_item=(self._live_pixmap_item is None) or (refit is True))
+
+    def _paint_live_scaled(self, *, force_item: bool = False) -> bool:
+        source = getattr(self, '_live_source', None) or self._live_pixmap
+        if source is None or source.isNull():
+            return False
+        vw = max(1, self.viewport().width())
+        vh = max(1, self.viewport().height())
+        # Still settling (hidden tab / first layout): keep source, retry shortly.
+        if not self.isVisible() or vw < 64 or vh < 64:
+            self._needs_fit = True
+            self._live_pixmap = source
+            if self._live_pixmap_item is None:
+                self.clear_geom_overlays()
+                self.scene().clear()
+                self.overlay = None
+                self._empty_hint = None
+                self._live_pixmap_item = self.scene().addPixmap(source)
+                self._live_pixmap_item.setZValue(0)
+                self.bounds = QRectF(source.rect())
+                self.scene().setSceneRect(self.bounds)
+            QTimer.singleShot(50, self._fit_if_needed)
+            QTimer.singleShot(200, self._fit_if_needed)
+            return True
+        scaled = source.scaled(
+            vw, vh,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.FastTransformation,
+        )
+        self._live_pixmap = scaled
+        if self._live_pixmap_item is None or force_item:
             self.clear_geom_overlays()
             self.scene().clear()
             self.overlay = None
             self._empty_hint = None
-            self._live_pixmap_item = self.scene().addPixmap(pixmap)
+            self._live_pixmap_item = self.scene().addPixmap(scaled)
             self._live_pixmap_item.setZValue(0)
-            self.bounds = QRectF(pixmap.rect())
-            self.scene().setSceneRect(self.bounds)
-            self._needs_fit = True
-            self.fit()
-            QTimer.singleShot(0, self._fit_if_needed)
-            QTimer.singleShot(50, self._fit_if_needed)
-            QTimer.singleShot(200, self._fit_if_needed)
-            return True
-        self._live_pixmap_item.setPixmap(pixmap)
-        if refit is True or (refit is None and size_changed):
-            self.bounds = QRectF(pixmap.rect())
-            self.scene().setSceneRect(self.bounds)
-            self._needs_fit = True
-            self.fit()
-            QTimer.singleShot(50, self._fit_if_needed)
-            QTimer.singleShot(200, self._fit_if_needed)
         else:
-            self.viewport().update()
-            if self._needs_fit or self._transform_looks_like_strip():
-                self.fit()
-            elif self.isVisible():
-                # Periodic heal: live path used to skip fit on same-size frames forever
-                # after a bad first fitInView → permanent 一条线.
-                now = getattr(self, '_last_live_fit_check', 0.0)
-                import time as _time
-                tnow = _time.monotonic()
-                if tnow - now > 1.0:
-                    self._last_live_fit_check = tnow
-                    if self._transform_looks_like_strip():
-                        self._needs_fit = True
-                        self.fit()
+            self._live_pixmap_item.setPixmap(scaled)
+        self.bounds = QRectF(scaled.rect())
+        self.scene().setSceneRect(self.bounds)
+        # Identity transform: scene pixels == viewport letterbox; cannot strip.
+        self.resetTransform()
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.centerOn(self.bounds.center())
+        self._needs_fit = False
+        self.viewport().update()
         return True
 
     def set_roi_mode(self, enabled):
@@ -244,6 +255,10 @@ class ImageView(QGraphicsView):
 
     def fit(self):
         """Fit per _fit_mode. Defer when hidden / viewport still tiny."""
+        # Live path: always re-pre-scale (identity) — never fitInView on live frames.
+        if getattr(self, '_live_source', None) is not None and not self._live_source.isNull():
+            if self._paint_live_scaled():
+                return
         if self.bounds.isEmpty():
             self._needs_fit = False
             return

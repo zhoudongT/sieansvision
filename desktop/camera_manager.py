@@ -62,7 +62,7 @@ class CameraManagerDialog(_RpcDialog):
         hint = QLabel(
             'wave156：Soft / UVC / GenTL 连续 live · 曝光/增益/触发软控 · 多设备选择器 · 记忆上次设备 · 断线重连。'
             'UVC：VideoCapture 打开一次跨帧 grab；GenTL：CTI→枚举→开流（无相机空列表）。'
-            '预览 PreviewFrameGate → ImageView.show_live_frame / 全局图像。'
+            '预览 PreviewFrameGate → LivePreviewLabel.paintEvent / 全局图像 ImageView 预缩放。'
         )
         hint.setObjectName('dialogHint')
         hint.setWordWrap(True)

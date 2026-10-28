@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal, QRectF, QPointF
-from PySide6.QtGui import QPixmap, QColor, QPen, QPolygonF, QDesktopServices
+from PySide6.QtGui import QPixmap, QColor, QPen, QPolygonF, QDesktopServices, QPainter, QPalette
 from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMessageBox,
     QPushButton, QScrollArea, QSpinBox, QSplitter, QTabWidget, QTableWidget,
     QTableWidgetItem, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
+    QSizePolicy,
 )
 
 from .catalog import builtin_definitions
@@ -434,19 +435,32 @@ class _RpcDialog(QDialog):
 
 
 class LivePreviewLabel(QLabel):
-    """CameraDialog live view: QLabel scaled pixmap — no QGraphicsView 1:1 strip.
+    """CameraDialog / 相机管理 live view: paintEvent aspect-fit (Wayland-safe).
 
-    Training / ROI annotation still uses _Preview (needs scene coordinates).
+    Avoids QGraphicsView fitInView「一条线」and QLabel setPixmap+stylesheet
+    paint races on Wayland. Training / ROI annotation still uses _Preview.
     """
 
     def __init__(self):
         super().__init__()
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setMinimumSize(360, 240)
-        self.setStyleSheet('background:#0c0c0e; color:#888;')
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        # Palette fill — no stylesheet background (can hide setPixmap on Wayland).
+        self.setStyleSheet('color:#888;')
+        self.setAutoFillBackground(True)
+        pal = self.palette()
+        pal.setColor(self.backgroundRole(), QColor('#0c0c0e'))
+        self.setPalette(pal)
         self.setText('等待预览帧…')
         self.setScaledContents(False)
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
         self._source = QPixmap()
+        self._hint = '等待预览帧…'
+
+    def sizeHint(self):
+        # Ignore pixmap sizeHint so layout stretch owns the pane height.
+        return self.minimumSize()
 
     def set_image(self, data):
         try:
@@ -457,36 +471,46 @@ class LivePreviewLabel(QLabel):
             if not pm.loadFromData(pixels):
                 raise ValueError('decode')
             self._source = pm
-            self._apply_scale()
+            self._hint = ''
+            self.setText('')
+            self.setPixmap(QPixmap())  # paintEvent owns drawing
+            self.update()
         except Exception:
             self._source = QPixmap()
+            self._hint = '暂无可显示图像'
             self.setPixmap(QPixmap())
-            self.setText('暂无可显示图像')
+            self.setText(self._hint)
+            self.update()
 
     def show_live_frame(self, data):
         self.set_image(data)
 
     def fit_image(self):
-        self._apply_scale()
+        self.update()
 
-    def _apply_scale(self):
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor('#0c0c0e'))
         if self._source.isNull():
+            painter.setPen(QColor('#888888'))
+            painter.drawText(self.rect(), int(Qt.AlignmentFlag.AlignCenter), self._hint or '等待预览帧…')
             return
-        w = max(1, self.width() - 4)
-        h = max(1, self.height() - 4)
-        if w < 32 or h < 32:
+        w = max(1, self.width())
+        h = max(1, self.height())
+        if w < 8 or h < 8:
             return
         scaled = self._source.scaled(
             w, h,
             Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
+            Qt.TransformationMode.FastTransformation,
         )
-        self.setPixmap(scaled)
-        self.setText('')
+        x = (w - scaled.width()) // 2
+        y = (h - scaled.height()) // 2
+        painter.drawPixmap(x, y, scaled)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self._apply_scale()
+        self.update()
 
     # Compatibility shims used by CameraDialog heal paths
     @property
@@ -503,7 +527,7 @@ class LivePreviewLabel(QLabel):
     @_needs_fit.setter
     def _needs_fit(self, value):
         if value:
-            self._apply_scale()
+            self.update()
 
 
 class CameraDialog(_RpcDialog):
