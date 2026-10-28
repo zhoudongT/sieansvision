@@ -21,6 +21,7 @@
 | `open-and-run-caliper-measure.sieans` | ▶ 卡尺→线线交点→点线距；intersectX/Y·pldDist/passGate |
 | `open-and-run-measure.sieans` | ▶ 单次：预处理→圆查找→尺寸测量→门限；有圆且有测量则 OK |
 | `open-and-run-barcode.sieans` | ▶ 单次条码/二维码；解码串进结果（样张 `codes.png`） |
+| `open-and-run-ocr-gate-comm.sieans` | ▶ 单次：OCR→门限 `passGate`→format→LocalBus `send_data`；Host 监视 ocr*；Comm `${}` 报文模板（样张 `text.png`） |
 | `open-and-run-locate-measure-defect.sieans` | ▶ 单次：定位→位姿→圆测量→参考图缺陷→综合 `passGate`；Host 监视 matchScore/measureCount/defect*；Comm `${}` 报文模板 |
 | `open-and-run-defects.sieans` | ▶ 单次参考图缺陷；差异区 + OK/NG 语义 |
 | `open-and-run-ninepoint.sieans` | ▶ 单次：九点标定→残差门限；`calibRms`/`calibPoints`/`passGate`；OK/NG×4（无厂商标定 SDK） |
@@ -69,6 +70,14 @@ node scripts/smoke-caliper-measure-runtime-e2e.cjs
 
 期望：passGate=1；intersectX/Y·pldDist；geometry.lines≥2。
 
+## OCR→门限→Comm 模板速验
+
+```bash
+PYTHONPATH=.pydeps node scripts/smoke-ocr-gate-comm-runtime-e2e.cjs
+```
+
+期望：passGate=1；ocrCount≥1；ocrText 含 BATCH；Comm sendEvents/messageTemplates 含 `${flow.}`；LocalBus send_data 展开。
+
 ## 定位→测量→缺陷链速验
 
 ```bash
@@ -98,6 +107,10 @@ node scripts/smoke-ninepoint-comm-alarmexport-e2e.cjs
 
 - 不 push、不接机器人 SDK、不改 HIK 品牌标识。
 
+
+
+## open-and-run-ocr-gate-comm.sieans
+打开即跑 · OCR→门限→Comm 模板。样张 `text.png`（BATCH / SN）；流程：ocr(expectedText=BATCH) → var_calc(ocrCount/ocrConf/ocrText/ocrOk/passGate/commPayload) → format_data → send_data LocalBus（`${flow.*}`）。Host watch + Comm messageTemplates。无现场 TCP / 无 Halcon / 无机器人 SDK。
 
 ## open-and-run-caliper-measure.sieans
 打开即跑 · 卡尺→几何测量链。样张同卡尺；流程：预处理 → geometry(caliper, maxCount=3) → line_intersect(lines[0]×lines[1]) → point_line_distance(交点→lines[2]) → 门限(intersectX/Y·pldDist/passGate)。叠层含交点+垂距。无 Halcon / 无现场硬件。

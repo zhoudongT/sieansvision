@@ -29,6 +29,7 @@ CHAIN_OP_MAP = [
     ('send_data', 'send_data'),
     ('receive_data', 'receive_data'),
     ('display', 'display'),
+    ('ocr', 'ocr'),
 ]
 
 
@@ -117,6 +118,15 @@ def seed_chain_step_params(operation, name='', vars_hint='', project=None, exist
                 dict(name='start_X_M', expression='locate_x * 0.1', initial=0, outType='number', initOnRun=True),
                 dict(name='start_Y_M', expression='locate_y * 0.1', initial=0, outType='number', initOnRun=True),
             ]
+        elif 'OCR' in step or 'ocr' in step.lower() or set(names) >= {'ocrCount', 'passGate'} or 'ocrCount' in names:
+            exprs = [
+                dict(name='ocrCount', expression='ocr_count', initial=0, outType='number', initOnRun=True),
+                dict(name='ocrConf', expression='ocr_confidence', initial=0, outType='number', initOnRun=True),
+                dict(name='ocrText', expression='ocr_text', initial='', outType='string', initOnRun=True),
+                dict(name='ocrOk', expression='ocr_judgeOk', initial=0, outType='number', initOnRun=True),
+                dict(name='passGate', expression='ocr_count > 0 && ocr_confidence >= 0.5 && ocr_judgeOk > 0', initial=0, outType='number', initOnRun=True),
+                dict(name='commPayload', expression='"OCR ok=" + passGate + " count=" + ocrCount + " conf=" + ocrConf', initial='', outType='string', initOnRun=True),
+            ]
         elif names:
             # Generic: init named vars to 0 so chain is editable/runnable
             for i, n in enumerate(names[:8]):
@@ -130,10 +140,14 @@ def seed_chain_step_params(operation, name='', vars_hint='', project=None, exist
         return normalize_var_calc_params(params)
 
     if op == 'format_data':
-        params.setdefault('template', 'MoveX={MoveX},MoveY={MoveY}')
         params.setdefault('targetVar', 'formatted')
         params.setdefault('scope', 'flow')
-        params.setdefault('args', 'MoveX,MoveY')
+        if 'OCR' in step or 'ocr' in step.lower() or 'ocrCount' in names or 'passGate' in names:
+            params.setdefault('template', 'OCR ok={0} count={1} conf={2} text={3}')
+            params.setdefault('args', 'passGate,ocrCount,ocrConf,ocrText')
+        else:
+            params.setdefault('template', 'MoveX={MoveX},MoveY={MoveY}')
+            params.setdefault('args', 'MoveX,MoveY')
         return params
 
     if op == 'send_data':
@@ -151,11 +165,21 @@ def seed_chain_step_params(operation, name='', vars_hint='', project=None, exist
             except Exception:
                 pass
         params['device'] = device
-        params['sourceMode'] = 'variable'
-        params['sourceScope'] = 'flow'
-        params['sourceVar'] = str(params.get('sourceVar') or 'formatted')
-        params.setdefault('message', '')
+        params.setdefault('channel', 'default')
         params.setdefault('encoding', 'utf-8')
+        params.setdefault('appendCrLf', False)
+        if 'OCR' in step or 'ocr' in step.lower() or 'LocalBus' in step:
+            params['sourceMode'] = 'text'
+            params.setdefault(
+                'message',
+                'RESULT ok=${flow.passGate} count=${flow.ocrCount} conf=${flow.ocrConf} text=${flow.ocrText}',
+            )
+            params.setdefault('sourceVar', '')
+        else:
+            params['sourceMode'] = 'variable'
+            params['sourceScope'] = 'flow'
+            params['sourceVar'] = str(params.get('sourceVar') or 'formatted')
+            params.setdefault('message', '')
         return params
 
     if op == 'locate':
@@ -219,7 +243,35 @@ def seed_chain_step_params(operation, name='', vars_hint='', project=None, exist
         params.setdefault('fitMode', 'contain')
         return normalize_display_params(params)
 
+    if op == 'ocr':
+        from desktop.recognize_panels import _norm_ocr
+        params.setdefault('minConfidence', 0.5)
+        params.setdefault('judgeEnable', True)
+        params.setdefault('expectedText', params.get('expectedText') or 'BATCH')
+        params.setdefault('judgeMinConfidence', 0.5)
+        params.setdefault('resultVar', 'ocr')
+        params.setdefault('writeFlowVars', True)
+        params.setdefault('showOverlay', True)
+        params.setdefault('showBoxes', True)
+        params.setdefault('showText', True)
+        # vars_hint may carry expected text token
+        for tok in names:
+            if tok and tok not in ('ocr', 'ocrText', 'passGate') and not tok.startswith('ocr'):
+                params['expectedText'] = tok
+                break
+        return _norm_ocr(params)
+
     return params or None
+
+
+OCR_GATE_COMM_CHAIN = [
+    {'step': '读取图像', 'op': '图像源', 'vars': ''},
+    {'step': '字符识别 OCR', 'op': 'ocr', 'vars': 'BATCH'},
+    {'step': 'OCR门限·OK/NG', 'op': 'var_calc', 'vars': 'ocrCount,ocrConf,ocrText,ocrOk,passGate,commPayload'},
+    {'step': '格式化OCR报文', 'op': 'format_data', 'vars': ''},
+    {'step': 'LocalBus发送', 'op': 'send_data', 'vars': ''},
+    {'step': '结果显示', 'op': 'display', 'vars': ''},
+]
 
 DEFAULT_CHAIN = [
     {'step': '读取图像', 'op': '图像源 / camera_capture', 'vars': ''},
@@ -481,10 +533,15 @@ class ProductionTaskPanel(QWidget):
         trial = QPushButton('应用到流程并试跑')
         trial.setToolTip('应用建议链后立即▶单次试跑（无机械手 SDK；发送走 LocalLoop）')
         trial.clicked.connect(self._apply_chain_and_run)
+        ocr_trial = QPushButton('OCR链并试跑')
+        ocr_trial.setObjectName('productionTaskOcrChainTrialBtn')
+        ocr_trial.setToolTip('套用 OCR→门限→format→LocalBus 发送链并▶单次（样张 text.png；无现场 TCP）')
+        ocr_trial.clicked.connect(self._apply_ocr_chain_and_run)
         bar.addWidget(reset)
         bar.addWidget(add)
         bar.addWidget(apply)
         bar.addWidget(trial)
+        bar.addWidget(ocr_trial)
         bar.addStretch(1)
         lay.addLayout(bar)
         self._reload_chain()
@@ -535,6 +592,17 @@ class ProductionTaskPanel(QWidget):
         ops = chain_to_operations(self.params.get('chain') or DEFAULT_CHAIN)
         if not ops:
             return
+        self.applyFlowAndRun.emit(ops)
+
+    def _apply_ocr_chain_and_run(self):
+        """Apply OCR→gate→Comm soft chain then trial-run (no field TCP)."""
+        ops = chain_to_operations(OCR_GATE_COMM_CHAIN)
+        for item in ops:
+            if item.get('operation') == 'format_data':
+                item['name'] = item.get('name') or '格式化OCR报文'
+                item['vars'] = 'passGate,ocrCount,ocrConf,ocrText'
+            if item.get('operation') == 'send_data':
+                item['name'] = item.get('name') or 'LocalBus发送'
         self.applyFlowAndRun.emit(ops)
 
     def _result_tab(self):

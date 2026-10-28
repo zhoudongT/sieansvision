@@ -1,0 +1,448 @@
+{
+  "version": 2,
+  "id": "3ea0c842cb75496b",
+  "name": "打开即跑 · OCR→门限→Comm模板",
+  "sourcePosition": {
+    "x": 300,
+    "y": 40
+  },
+  "sourceConfig": {
+    "mode": "local",
+    "pixelFormat": "RGB24",
+    "intervalMs": 0,
+    "saveInSolution": false,
+    "showImageName": true,
+    "snStart": 0,
+    "imageCache": 0,
+    "outputMono8": false,
+    "stitchEnable": false,
+    "stitchStartY": 0,
+    "stitchHeight": 0,
+    "stitchClearOnTrigger": false,
+    "autoSwitch": false,
+    "stopAtLast": true,
+    "charFilterEnable": false,
+    "inputChar": "",
+    "triggerChar": "",
+    "cameraId": "",
+    "cameraParams": {},
+    "exposure": 0.0,
+    "gain": 0.0,
+    "images": [
+      "public/vision/samples/text.png",
+      "public/vision/samples/codes.png"
+    ],
+    "currentIndex": 0
+  },
+  "variables": {
+    "ocrCount": 0,
+    "ocrConf": 0,
+    "ocrText": "",
+    "ocrOk": 0,
+    "passGate": 0,
+    "commPayload": "",
+    "formatted": ""
+  },
+  "steps": [
+    {
+      "id": "c4ec6d8581864e28",
+      "operation": "ocr",
+      "name": "字符识别 OCR",
+      "params": {
+        "lang": "ch",
+        "minConfidence": 0.5,
+        "maxItems": 50,
+        "showOverlay": true,
+        "showBoxes": true,
+        "showText": true,
+        "resultVar": "ocr",
+        "writeFlowVars": true,
+        "judgeEnable": true,
+        "expectedText": "BATCH",
+        "judgeMinConfidence": 0.5,
+        "roiMode": "inherit",
+        "roi": null
+      },
+      "reference": "",
+      "position": {
+        "x": 300,
+        "y": 140
+      },
+      "imageFrom": "source",
+      "variables": {}
+    },
+    {
+      "id": "196f343a52b24732",
+      "operation": "var_calc",
+      "name": "OCR门限·OK/NG",
+      "params": {
+        "scope": "flow",
+        "expressions": [
+          {
+            "name": "ocrCount",
+            "expression": "ocr_count",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "ocrConf",
+            "expression": "ocr_confidence",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "ocrText",
+            "expression": "ocr_text",
+            "initial": "",
+            "outType": "string",
+            "initOnRun": true
+          },
+          {
+            "name": "ocrOk",
+            "expression": "ocr_judgeOk",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "passGate",
+            "expression": "ocr_count > 0 && ocr_confidence >= 0.5 && ocr_judgeOk > 0",
+            "initial": 0,
+            "outType": "number",
+            "initOnRun": true
+          },
+          {
+            "name": "commPayload",
+            "expression": "\"OCR ok=\" + passGate + \" count=\" + ocrCount + \" conf=\" + ocrConf",
+            "initial": "",
+            "outType": "string",
+            "initOnRun": true
+          }
+        ]
+      },
+      "reference": "",
+      "position": {
+        "x": 300,
+        "y": 280
+      },
+      "imageFrom": "c4ec6d8581864e28",
+      "variables": {}
+    },
+    {
+      "id": "d4e1d821f0d644f2",
+      "operation": "format_data",
+      "name": "格式化OCR报文",
+      "params": {
+        "template": "OCR ok={0} count={1} conf={2} text={3}",
+        "args": "passGate,ocrCount,ocrConf,ocrText",
+        "targetVar": "formatted",
+        "scope": "flow",
+        "emptyDefault": ""
+      },
+      "reference": "",
+      "position": {
+        "x": 300,
+        "y": 400
+      },
+      "imageFrom": "196f343a52b24732",
+      "variables": {}
+    },
+    {
+      "id": "3c73043c57ef4e82",
+      "operation": "send_data",
+      "name": "LocalBus发送·模板",
+      "params": {
+        "device": "LocalLoop",
+        "channel": "default",
+        "sourceMode": "text",
+        "sourceScope": "flow",
+        "sourceVar": "",
+        "message": "RESULT ok=${flow.passGate} count=${flow.ocrCount} conf=${flow.ocrConf} text=${flow.ocrText}",
+        "encoding": "utf-8",
+        "appendCrLf": false,
+        "prefix": "",
+        "suffix": ""
+      },
+      "reference": "",
+      "position": {
+        "x": 300,
+        "y": 520
+      },
+      "imageFrom": "d4e1d821f0d644f2",
+      "variables": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "92d8f8e526794ba0",
+      "from": "source",
+      "to": "c4ec6d8581864e28",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "dda4dbc124d44847",
+      "from": "c4ec6d8581864e28",
+      "to": "196f343a52b24732",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "cab3531af6514f6e",
+      "from": "196f343a52b24732",
+      "to": "d4e1d821f0d644f2",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "8d3fa1a4ee0b4b09",
+      "from": "d4e1d821f0d644f2",
+      "to": "3c73043c57ef4e82",
+      "fromPort": "bottom",
+      "toPort": "top"
+    }
+  ],
+  "commManager": {
+    "devices": [
+      {
+        "name": "LocalLoop",
+        "protocol": "Local Bus",
+        "host": "",
+        "port": 0,
+        "enabled": true,
+        "remark": "进程内总线（OCR→门限→模板发送演示；无现场 TCP）"
+      }
+    ],
+    "recvEvents": [
+      {
+        "name": "总线回读",
+        "device": "LocalLoop",
+        "message": "",
+        "topic": "",
+        "variable": "flow.lastRecv"
+      }
+    ],
+    "sendEvents": [
+      {
+        "name": "OCR结果行",
+        "device": "LocalLoop",
+        "message": "RESULT ok=${flow.passGate} count=${flow.ocrCount} conf=${flow.ocrConf} text=${flow.ocrText}",
+        "topic": "",
+        "variable": ""
+      },
+      {
+        "name": "OCR JSON",
+        "device": "LocalLoop",
+        "message": "{\"cmd\":\"OCR\",\"ok\":${flow.passGate},\"count\":${flow.ocrCount},\"conf\":${flow.ocrConf}}",
+        "topic": "",
+        "variable": ""
+      }
+    ],
+    "heartbeat": {
+      "enabled": false,
+      "intervalMs": 5000,
+      "payload": "HB"
+    },
+    "response": {
+      "enabled": true,
+      "timeoutMs": 3000,
+      "ack": "OK"
+    },
+    "messageTemplates": [
+      {
+        "id": "ocr-result-line",
+        "name": "OCR OK/NG 行报文",
+        "protocol": "TCP Client",
+        "body": "RESULT ok=${flow.passGate} count=${flow.ocrCount} conf=${flow.ocrConf} text=${flow.ocrText}"
+      },
+      {
+        "id": "ocr-json-status",
+        "name": "OCR JSON 状态",
+        "protocol": "TCP Client",
+        "body": "{\"cmd\":\"OCR\",\"ok\":${flow.passGate},\"count\":${flow.ocrCount},\"conf\":${flow.ocrConf}}"
+      }
+    ]
+  },
+  "globalTriggers": {
+    "events": [],
+    "strings": [
+      {
+        "match": "RUN",
+        "partial": true,
+        "commands": [
+          {
+            "type": "执行·单次"
+          }
+        ]
+      },
+      {
+        "match": "CONT",
+        "partial": true,
+        "commands": [
+          {
+            "type": "执行·连续"
+          }
+        ]
+      },
+      {
+        "match": "STOP",
+        "partial": true,
+        "commands": [
+          {
+            "type": "执行·停止"
+          }
+        ]
+      }
+    ]
+  },
+  "hostWatch": {
+    "watchKeys": [
+      "ocrCount",
+      "ocrConf",
+      "ocrText",
+      "ocrOk",
+      "passGate",
+      "commPayload",
+      "formatted"
+    ],
+    "active": "OCR链",
+    "pinGroups": {
+      "OCR链": [
+        "ocrCount",
+        "ocrConf",
+        "ocrText",
+        "ocrOk",
+        "passGate",
+        "commPayload",
+        "formatted"
+      ],
+      "门限": [
+        "ocrOk",
+        "passGate",
+        "ocrConf"
+      ],
+      "报文": [
+        "commPayload",
+        "formatted",
+        "passGate"
+      ]
+    }
+  },
+  "runUi": {
+    "split": "4",
+    "placements": [
+      {
+        "name": "图像",
+        "page": 3,
+        "cell": 0,
+        "category": "基础"
+      },
+      {
+        "name": "OK/NG",
+        "page": 3,
+        "cell": 1,
+        "category": "基础"
+      },
+      {
+        "name": "运行控制",
+        "page": 3,
+        "cell": 2,
+        "category": "基础"
+      },
+      {
+        "name": "生产统计",
+        "page": 3,
+        "cell": 3,
+        "category": "图表"
+      }
+    ],
+    "controls": {
+      "图像": {
+        "commands": [],
+        "binding": "source"
+      },
+      "OK/NG": {
+        "commands": [],
+        "binding": "passGate"
+      },
+      "运行控制": {
+        "commands": [
+          {
+            "type": "执行·单次",
+            "config": ""
+          },
+          {
+            "type": "执行·连续",
+            "config": ""
+          },
+          {
+            "type": "执行·停止",
+            "config": ""
+          }
+        ],
+        "binding": ""
+      },
+      "生产统计": {
+        "commands": [],
+        "binding": "stats"
+      }
+    },
+    "fixedBars": {
+      "top": true,
+      "bottom": true,
+      "left": false,
+      "right": false,
+      "cameraBind": "未绑定",
+      "commBind": "LocalBus",
+      "showRunStatus": true,
+      "showOkNg": true,
+      "showCounters": true,
+      "showHistory": true,
+      "gateKey": "passGate"
+    },
+    "meta": {
+      "title": "OCR→门限→Comm · 打开即跑",
+      "industry": "ocr",
+      "template": "open_and_run_ocr_gate_comm",
+      "version": 1,
+      "openAndRun": true,
+      "watchKeys": [
+        "ocrCount",
+        "ocrConf",
+        "ocrText",
+        "ocrOk",
+        "passGate",
+        "commPayload",
+        "formatted"
+      ]
+    }
+  },
+  "recipes": [
+    {
+      "id": "655670e259bd4641",
+      "name": "OCR门限·默认",
+      "note": "打开即跑 · OCR→门限→Comm 模板",
+      "variant": "标签批号",
+      "varKeys": [
+        "ocrCount",
+        "ocrConf",
+        "ocrText",
+        "ocrOk",
+        "passGate",
+        "commPayload",
+        "formatted"
+      ],
+      "stepOps": [
+        "ocr",
+        "var_calc",
+        "format_data",
+        "send_data"
+      ],
+      "updatedAt": "2026-10-28 09:57:50",
+      "stepCount": 4
+    }
+  ],
+  "notes": "【打开即跑 · OCR→门限→Comm模板】样张 text.png（BATCH / SN）。▶单次：图源→RapidOCR→var_calc(passGate/ocr*)→format_data→send_data LocalBus（报文含 ${flow.*}）。Host 实况：ocrCount/ocrConf/ocrText/ocrOk/passGate；Comm messageTemplates + sendEvents。无现场 TCP / 无 Halcon / 无机器人 SDK。"
+}
