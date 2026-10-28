@@ -1,12 +1,12 @@
 {
   "version": 2,
   "id": "071255d8a8554ca6",
-  "name": "打开即跑 · 九点标定 OK/NG",
+  "name": "打开即跑 · 九点/门限密度铬",
   "steps": [
     {
       "id": "7ecf5e4659c9417a",
       "operation": "nine_point",
-      "name": "九点标定",
+      "name": "九点标定·铬",
       "params": {
         "coordSystem": "机械坐标系",
         "unit": "mm",
@@ -84,7 +84,15 @@
             "worldY": 70,
             "enabled": true
           }
-        ]
+        ],
+        "resultVar": "calibTransform",
+        "rmsGate": 0.5,
+        "judgeMinPoints": 9,
+        "judgeEnable": true,
+        "showOverlay": true,
+        "showResiduals": true,
+        "showPoints": true,
+        "showTransform": true
       },
       "position": {
         "x": 300,
@@ -94,7 +102,7 @@
     {
       "id": "e81e35deff8e4e48",
       "operation": "var_calc",
-      "name": "残差门限·OK/NG",
+      "name": "残差门限·门✓",
       "params": {
         "scope": "flow",
         "expressions": [
@@ -126,7 +134,8 @@
             "outType": "number",
             "initOnRun": true
           }
-        ]
+        ],
+        "gateVar": "passGate"
       },
       "position": {
         "x": 300,
@@ -264,9 +273,11 @@
       "version": 2,
       "openAndRun": true,
       "wave": 145
-    }
+    },
+    "showOkNg": true,
+    "showFilmstrip": true
   },
-  "notes": "【打开即跑 · 九点】内置 9 组 pixel/world。▶ 单次仿射→残差门限：calibRms/calibPoints/calibOk → passGate(ok且9点且rms<0.5)。无机械手 SDK。\n【wave145】补 hostWatch/变量种子；残差门限 passGate 打开即用。",
+  "notes": "【打开即跑 · 九点/门限密度铬】内置 9 组 pixel/world。▶ 单次仿射→残差门限：calibRms/calibPoints/calibOk → passGate(ok且9点且rms<0.5)。结果显示：九9✓ / 门✓ 工业残差表 + 胶片铬 + 叠层。无机械手 SDK。\n【wave146】denser 结果铬（九N✓门✓）+ 软演示密度按钮；hostWatch/变量种子保留。",
   "hostWatch": {
     "watchKeys": [
       "calibRms",

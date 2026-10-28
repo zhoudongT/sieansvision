@@ -32,7 +32,7 @@
 | `open-and-run-ocr-gate-comm.sieans` | OCR→门限→format→LocalBus；Host 监视 ocr*；Comm `${}` |
 | `open-and-run-locate-measure-defect.sieans` | 定位→位姿→圆测量→参考图缺陷→综合门限；Host 监视 |
 | `open-and-run-defects.sieans` | 参考图缺陷；差异区 + OK/NG |
-| `open-and-run-ninepoint.sieans` | 九点标定→残差门限；`calibRms`/`calibPoints`/`passGate`；hostWatch |
+| `open-and-run-ninepoint.sieans` | **九点/门限 denser 铬**：九N✓门✓ 残差工业表 + 胶片 + 叠层；`calibRms`/`passGate`；hostWatch |
 | `open-and-run-script.sieans` | Python 脚本模块；脚本输出写变量 |
 | `open-and-run-format-protocol.sieans` | LocalBus send→recv→parse→format→`passGate` |
 | `open-and-run-format-protocol-demo.sieans` | 无 send：demoPayload 注入→parse→format→`passGate` |
@@ -49,6 +49,7 @@
 - **缺 runUi 已补**：contour-color / fixture-pose-chain / measure-caliper-chrome。
 - **条码/ID**：新增 denser 结果铬模块（`desktop/barcode_id_chrome.py` + `BarcodePanel`）；样例带 hostWatch + var_calc 门限。
 - **九点**：补 hostWatch / 变量种子（残差门限仍走既有 var_calc）。
+- **wave146 九点/门限 denser**：`nine_point_var_gate_chrome.py` + NinePoint/VarCalc 结果表 + 胶片九N✓门✓；样例种子 rmsGate/gateVar。预算收口后暂停。
 - **default-platform**：显示名改为「默认产线 · 上位机运行壳」，保持打开即用。
 - **不做**：Comm/HMI cobind、spark/blink 微级联、真机 TCP/Halcon/机器人 SDK。
 

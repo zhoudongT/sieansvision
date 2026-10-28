@@ -41,6 +41,12 @@ def normalize_nine_point_params(params=None):
     p.setdefault('method', 'affine')  # affine | perspective
     p.setdefault('resultVar', 'calibTransform')
     p.setdefault('showPoints', True)
+    p.setdefault('showOverlay', True)
+    p.setdefault('showIndex', True)
+    p.setdefault('showResiduals', True)
+    p.setdefault('judgeEnable', True)
+    p.setdefault('rmsGate', 0.5)
+    p.setdefault('judgeMinPoints', 9)
     p.setdefault('rms', None)
     return p
 
@@ -177,14 +183,14 @@ class NinePointPanel(QWidget):
         w = QWidget()
         form = QFormLayout(w)
         form.setContentsMargins(10, 10, 10, 10)
-        tip = QLabel('运行结果：transform（3×3）/ rms / usedPoints / unit。设计态保存对照表即可。')
+        tip = QLabel('工业结果显示：九N✓ 徽标 / RMS 门限 / 残差表 / 3×3 变换。无机械手 SDK。')
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
         out_var = QLineEdit(str(self.params.get('resultVar') or 'calibTransform'))
+        out_var.setObjectName('ninePointResultVar')
         out_var.editingFinished.connect(lambda: self._set_param('resultVar', out_var.text().strip() or 'calibTransform'))
         from desktop.upstream_field_picker import fill_line_from_picker
-        from PySide6.QtWidgets import QHBoxLayout, QPushButton
         ovrow = QHBoxLayout()
         ovpick = QPushButton('插入上游字段')
         ovpick.setToolTip('也可挑选上游字段写入参考；结果变量名仍可手填')
@@ -195,22 +201,67 @@ class NinePointPanel(QWidget):
         ovrow.addWidget(out_var, 1)
         ovrow.addWidget(ovpick)
         form.addRow('结果变量', ovrow)
-        tip2 = QLabel('至少填入一组非零像素/世界坐标，否则节点红叹号。无机械手 SDK。')
-        tip2.setWordWrap(True)
-        tip2.setStyleSheet('color:#888;')
-        form.addRow(tip2)
-        # 细妆⑯：live bind 实况（跟 last_result）
+
+        gate = QDoubleSpinBox()
+        gate.setObjectName('ninePointRmsGate')
+        gate.setDecimals(4)
+        gate.setRange(0.0, 100.0)
+        gate.setSingleStep(0.05)
+        gate.setValue(float(self.params.get('rmsGate') or 0.5))
+        gate.valueChanged.connect(lambda v: self._set_param('rmsGate', float(v)))
+        form.addRow('RMS 门限', gate)
+
+        self._chrome_lab = QLabel('九·')
+        self._chrome_lab.setObjectName('ninePointChromeBadge')
+        self._chrome_lab.setStyleSheet(
+            'color:#0d0;font-size:14px;font-weight:600;padding:4px 8px;'
+            'background:#1a2220;border-radius:4px;'
+        )
+        form.addRow('结果徽标', self._chrome_lab)
+
         self._live_lab = QLabel('实况：尚未运行')
         self._live_lab.setObjectName('ninePointLiveBind')
         self._live_lab.setWordWrap(True)
         self._live_lab.setStyleSheet('color:#9ad;font-size:11px;padding:4px;background:#1e2228;border-radius:4px;')
         form.addRow(self._live_lab)
+
+        self._density_table = QTableWidget(0, 2)
+        self._density_table.setObjectName('ninePointDensityTable')
+        self._density_table.setHorizontalHeaderLabels(['字段', '值'])
+        self._density_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self._density_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self._density_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._density_table.setMaximumHeight(140)
+        form.addRow('密度摘要', self._density_table)
+
+        from desktop.nine_point_var_gate_chrome import RESIDUAL_COLUMNS, TRANSFORM_COLUMNS
+        self._residual_table = QTableWidget(0, len(RESIDUAL_COLUMNS))
+        self._residual_table.setObjectName('ninePointResidualTable')
+        self._residual_table.setHorizontalHeaderLabels(list(RESIDUAL_COLUMNS))
+        self._residual_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._residual_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._residual_table.setMinimumHeight(160)
+        form.addRow('残差工业表', self._residual_table)
+
+        self._transform_table = QTableWidget(0, len(TRANSFORM_COLUMNS))
+        self._transform_table.setObjectName('ninePointTransformTable')
+        self._transform_table.setHorizontalHeaderLabels(list(TRANSFORM_COLUMNS))
+        self._transform_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._transform_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._transform_table.setMaximumHeight(110)
+        form.addRow('变换矩阵', self._transform_table)
+
         brow = QHBoxLayout()
         b_ref = QPushButton('刷新实况')
         b_ref.setObjectName('ninePointLiveRefreshBtn')
         b_ref.setToolTip('从最近一次运行结果读取 rms / usedPoints / transform')
         b_ref.clicked.connect(self._refresh_live_bind)
+        b_demo = QPushButton('软演示密度')
+        b_demo.setObjectName('ninePointSoftDemoBtn')
+        b_demo.setToolTip('不经流程：注入九点软演示残差/门限铬')
+        b_demo.clicked.connect(self._soft_demo_nine_density)
         brow.addWidget(b_ref)
+        brow.addWidget(b_demo)
         brow.addStretch(1)
         form.addRow(brow)
         try:
@@ -219,16 +270,88 @@ class NinePointPanel(QWidget):
             pass
         return w
 
+    def set_last_result(self, result):
+        """Ingest host last_result for denser nine-point chrome."""
+        self._host_last_result = result if isinstance(result, dict) else None
+        try:
+            self._refresh_live_bind()
+        except Exception:
+            pass
+
+    def _soft_demo_nine_density(self):
+        from desktop.nine_point_var_gate_chrome import (
+            soft_demo_nine_point_result, summarize_nine_point,
+        )
+        demo = soft_demo_nine_point_result(ok=True, n=9)
+        # merge demo points into params for overlay/residual lookup without overwrite persist
+        params = dict(self.params)
+        params.setdefault('points', demo.get('points'))
+        params.setdefault('rmsGate', 0.5)
+        self._apply_nine_density(summarize_nine_point(demo, params=params), source='soft-demo')
+
+    def _apply_nine_density(self, summ, *, source: str = ''):
+        chrome = summ.get('chrome') or '九·'
+        lab = getattr(self, '_chrome_lab', None)
+        if lab is not None:
+            lab.setText(str(chrome))
+            jok = summ.get('judgeOk')
+            color = '#00d250' if jok is True else ('#ff5252' if jok is False else '#ffb400')
+            lab.setStyleSheet(
+                f'color:{color};font-size:14px;font-weight:600;padding:4px 8px;'
+                'background:#1a2220;border-radius:4px;'
+            )
+        live = getattr(self, '_live_lab', None)
+        if live is not None:
+            src = f' [{source}]' if source else ''
+            live.setText(f"实况：[{chrome}] {summ.get('summary')}{src}")
+        dt = getattr(self, '_density_table', None)
+        if dt is not None:
+            from desktop.nine_point_var_gate_chrome import density_summary_rows_nine
+            rows = density_summary_rows_nine(summ)
+            dt.setRowCount(len(rows))
+            for i, r in enumerate(rows):
+                dt.setItem(i, 0, QTableWidgetItem(str(r.get('key') or '')))
+                dt.setItem(i, 1, QTableWidgetItem(str(r.get('value') if r.get('value') is not None else '—')))
+        rt = getattr(self, '_residual_table', None)
+        if rt is not None:
+            from desktop.nine_point_var_gate_chrome import format_residual_cells, RESIDUAL_COLUMNS
+            rows = summ.get('rows') or []
+            rt.setColumnCount(len(RESIDUAL_COLUMNS))
+            rt.setHorizontalHeaderLabels(list(RESIDUAL_COLUMNS))
+            rt.setRowCount(len(rows))
+            for i, row in enumerate(rows):
+                for c, cell in enumerate(format_residual_cells(row)):
+                    item = QTableWidgetItem(cell)
+                    if c == len(RESIDUAL_COLUMNS) - 1:
+                        st = str(row.get('judgeStatus') or '')
+                        if st == 'OK':
+                            item.setForeground(__import__('PySide6.QtGui', fromlist=['QColor']).QColor('#00d250'))
+                        elif st == 'NG':
+                            item.setForeground(__import__('PySide6.QtGui', fromlist=['QColor']).QColor('#ff5252'))
+                    rt.setItem(i, c, item)
+        tt = getattr(self, '_transform_table', None)
+        if tt is not None:
+            from desktop.nine_point_var_gate_chrome import TRANSFORM_COLUMNS
+            trows = summ.get('transformRows') or []
+            tt.setColumnCount(len(TRANSFORM_COLUMNS))
+            tt.setHorizontalHeaderLabels(list(TRANSFORM_COLUMNS))
+            tt.setRowCount(len(trows))
+            for i, row in enumerate(trows):
+                tt.setItem(i, 0, QTableWidgetItem(str(row.get('row'))))
+                tt.setItem(i, 1, QTableWidgetItem(str(row.get('c0'))))
+                tt.setItem(i, 2, QTableWidgetItem(str(row.get('c1'))))
+                tt.setItem(i, 3, QTableWidgetItem(str(row.get('c2'))))
+
     def _refresh_live_bind(self):
-        """细妆⑯：九点 last_result live bind."""
+        """Denser nine-point last_result live bind + industrial tables."""
         lab = getattr(self, '_live_lab', None)
         if lab is None:
             return
         try:
             from desktop.upstream_field_picker import host_last_result
-            lr = host_last_result(self) or {}
+            lr = getattr(self, '_host_last_result', None) or host_last_result(self) or {}
         except Exception:
-            lr = {}
+            lr = getattr(self, '_host_last_result', None) or {}
         sid = self.step.get('id')
         hit = None
         for rec in (lr.get('results') or []):
@@ -236,30 +359,14 @@ class NinePointPanel(QWidget):
                 hit = rec
                 break
         if not hit:
-            lab.setText('实况：尚无本模块运行结果（先 ▶ 单次运行）')
+            lab.setText('实况：尚无本模块运行结果（先 ▶ 单次运行或点软演示密度）')
             return
         res = (hit.get('output') or {}).get('result') or {}
-        rms = res.get('rms')
-        used = res.get('usedPoints')
-        ok = res.get('ok', res.get('status'))
-        tf = res.get('transform')
-        bits = []
-        if rms is not None:
-            bits.append(f'rms={rms}')
-        if used is not None:
-            bits.append(f'used={used}')
-        if ok is not None:
-            bits.append(f'ok={ok}')
-        if isinstance(tf, (list, tuple)) and tf:
-            bits.append(f'transform[{len(tf)}]')
-        elif isinstance(tf, dict):
-            bits.append('transform=dict')
-        # also flow vars often mirrored
-        flow = ((lr.get('variables') or {}).get('flow') or {})
-        for k in ('nine_point_rms', 'nine_point_count', 'nine_point_ok'):
-            if k in flow:
-                bits.append(f'{k}={flow[k]}')
-        lab.setText('实况：' + (' · '.join(bits) if bits else str(list(res.keys())[:8])))
+        try:
+            from desktop.nine_point_var_gate_chrome import summarize_nine_point
+            self._apply_nine_density(summarize_nine_point(res, params=self.params), source='engine')
+        except Exception as exc:
+            lab.setText(f'实况：解析失败 {exc}')
 
     def _reload_table(self):
         self._syncing = True

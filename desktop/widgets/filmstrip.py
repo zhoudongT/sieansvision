@@ -233,6 +233,19 @@ class FilmstripBar(QWidget):
         root.addWidget(self.barcode_strip)
         self._frame_barcode_chrome = {}
         self._frame_barcode_okng = {}
+        # wave146: nine-point / var-gate denser filmstrip result chrome (九N✓门✓ / OK·NG)
+        self.nine_strip = QLabel('')
+        self.nine_strip.setObjectName('filmstripNinePointGateStrip')
+        self.nine_strip.setWordWrap(True)
+        self.nine_strip.setStyleSheet(
+            'color:#a8c8d8;font-size:11px;padding:2px 4px;background:#182028;'
+            'border:1px solid #2a3a4a;border-radius:3px;'
+        )
+        self.nine_strip.setVisible(False)
+        self.nine_strip.setToolTip('九点/门限胶片铬 · 九N✓/门✓ 残差密度 · 结果铬非火花线联级')
+        root.addWidget(self.nine_strip)
+        self._frame_nine_chrome = {}
+        self._frame_nine_okng = {}
         self.set_paths([], 0)
         self._live_fit_mode = 'contain'
         self._actual_letterbox = True  # pad with theme CANVAS when src < thumb
@@ -1500,6 +1513,7 @@ class FilmstripBar(QWidget):
         leaf = _re.sub(r'^\[([LCREBG]\d*[✓✗+]*)\]\s*', '', leaf)
         leaf = _re.sub(r'^\[(配\d*[✓✗·.]*)\]\s*', '', leaf)
         leaf = _re.sub(r'^\[(码\d*[✓✗·.]*)\]\s*', '', leaf)
+        leaf = _re.sub(r'^\[(九\d*[✓✗·.]*门?[✓✗·.]*)\]\s*', '', leaf)
         leaf = _re.sub(r'^\[([^\]]{1,16})\]\s*', '', leaf)  # generic prior tags once
         # re-strip common prefixes that may stack
         for _ in range(4):
@@ -1510,11 +1524,13 @@ class FilmstripBar(QWidget):
         gtag = (getattr(self, '_frame_geom_find_chrome', None) or {}).get(path) or ''
         mtag = (getattr(self, '_frame_match_chrome', None) or {}).get(path) or ''
         btag = (getattr(self, '_frame_barcode_chrome', None) or {}).get(path) or ''
+        ntag = (getattr(self, '_frame_nine_chrome', None) or {}).get(path) or ''
         okng = (getattr(self, '_frame_match_okng', None) or {}).get(path) or ''
         bokng = (getattr(self, '_frame_barcode_okng', None) or {}).get(path) or ''
+        nokng = (getattr(self, '_frame_nine_okng', None) or {}).get(path) or ''
         measure = (getattr(self, '_frame_measure_badges', None) or {}).get(path) or ''
-        # prefer explicit measure badge; else match/barcode OK/NG
-        jtag = measure or okng or bokng
+        # prefer explicit measure badge; else match/barcode/nine OK/NG
+        jtag = measure or okng or bokng or nokng
         prefix = ''
         if gtag:
             prefix += f'[{gtag}] '
@@ -1522,6 +1538,8 @@ class FilmstripBar(QWidget):
             prefix += f'[{mtag}] '
         if btag:
             prefix += f'[{btag}] '
+        if ntag:
+            prefix += f'[{ntag}] '
         if jtag:
             prefix += f'[{jtag}] '
         tip_bits = []
@@ -1533,15 +1551,19 @@ class FilmstripBar(QWidget):
             tip_bits.append(f'匹配定位：{mtag}')
         if btag:
             tip_bits.append(f'条码/ID：{btag}')
+        if ntag:
+            tip_bits.append(f'九点/门限：{ntag}')
         if measure:
             tip_bits.append(f'测量判定：{measure}')
         elif okng:
             tip_bits.append(f'匹配判定：{okng}')
         elif bokng:
             tip_bits.append(f'条码判定：{bokng}')
-        # color priority: NG > OK > geom/match/barcode chrome > default
+        elif nokng:
+            tip_bits.append(f'九点门限判定：{nokng}')
+        # color priority: NG > OK > geom/match/barcode/nine chrome > default
         color = '#c8d0d8'
-        if str(jtag).upper() == 'NG' or ('✗' in str(mtag)) or ('✗' in str(gtag)) or ('✗' in str(btag)):
+        if str(jtag).upper() == 'NG' or ('✗' in str(mtag)) or ('✗' in str(gtag)) or ('✗' in str(btag)) or ('✗' in str(ntag)):
             color = '#c62828'
         elif str(jtag).upper() == 'OK':
             color = '#2e7d32'
@@ -1549,6 +1571,8 @@ class FilmstripBar(QWidget):
             color = '#7cb342'
         elif btag:
             color = '#c9a227'
+        elif ntag:
+            color = '#4a90a8'
         elif gtag:
             color = '#4aa3c8'
         return (f'{prefix}{leaf}' if prefix else leaf, '\n'.join(tip_bits), color)
@@ -1708,7 +1732,82 @@ class FilmstripBar(QWidget):
             lab.setVisible(False)
 
 
+    def set_frame_nine_chrome(self, chrome=None, okng=None):
+        """Annotate filmstrip thumbs with nine-point/gate density (九9✓门✓) + OK/NG.
+
+        Result chrome only — not spark-seek / scoreboard micro-prop cascade.
+        chrome: {path: '九9✓'|str}; okng: {path: 'OK'|'NG'}.
+        """
+        bag = {}
+        for k, v in (chrome or {}).items():
+            key = str(k or '').strip()
+            if not key or not v:
+                continue
+            bag[key] = str(v)[:16]
+        self._frame_nine_chrome = bag
+        obag = {}
+        for k, v in (okng or {}).items():
+            key = str(k or '').strip()
+            if not key:
+                continue
+            if v is True or str(v).upper() in ('OK', 'PASS', '1', 'TRUE'):
+                obag[key] = 'OK'
+            elif v is False or str(v).upper() in ('NG', 'FAIL', '0', 'FALSE'):
+                obag[key] = 'NG'
+            elif v:
+                obag[key] = str(v).upper()[:8]
+        self._frame_nine_okng = obag
+        # refresh visible thumbs
+        try:
+            for i in range(self.thumbs.count()):
+                it = self.thumbs.item(i)
+                if it is None:
+                    continue
+                path = it.data(Qt.ItemDataRole.UserRole) or ''
+                leaf = it.text() or ''
+                label, tip, color = self._compose_thumb_chrome_label(path, leaf)
+                it.setText(label)
+                it.setToolTip(tip)
+                from PySide6.QtGui import QColor
+                it.setForeground(QColor(color))
+        except Exception:
+            pass
+        return bag
+
+    def push_nine_summary(self, text=None, *, records=None, names=None):
+        """Nine-point / var-gate result chrome under filmstrip (九N✓门✓ density)."""
+        strip = getattr(self, 'nine_strip', None)
+        if strip is None:
+            return
+        body = (text or '').strip()
+        if not body and records:
+            try:
+                from desktop.nine_point_var_gate_chrome import (
+                    summarize_nine_point, summarize_var_gate, NINE_OPS, VAR_GATE_OPS,
+                )
+                bits = []
+                for rec in records or []:
+                    if not isinstance(rec, dict):
+                        continue
+                    op = str(rec.get('operation') or '')
+                    name = str((names or {}).get(rec.get('id')) or rec.get('name') or op)
+                    if op in NINE_OPS:
+                        bits.append(f"{name} {summarize_nine_point(rec).get('chrome') or '九·'}")
+                    elif op in VAR_GATE_OPS:
+                        bits.append(f"{name} {summarize_var_gate(rec).get('chrome') or '门·'}")
+                if bits:
+                    body = f"九点/门限 · {len(bits)} · " + ' ｜ '.join(bits[:8])
+            except Exception:
+                body = ''
+        if body:
+            strip.setText(body[:480])
+            strip.setVisible(True)
+        else:
+            strip.clear()
+            strip.setVisible(False)
+
     def push_geom_find_summary(self, text=None, *, records=None, names=None):
+
         """Geometry-find result chrome under filmstrip (distinct from push_module_results measure strip)."""
         lab = getattr(self, 'geom_find_strip', None)
         if lab is None:

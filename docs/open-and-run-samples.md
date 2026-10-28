@@ -1,4 +1,4 @@
-# Open-and-run 样例覆盖（wave145 审计）
+# Open-and-run 样例覆盖（wave146 收口）
 
 面向「双击 `.sieans` → 运行」的软平台关闭清单。详细菜单见 `projects/README-open-and-run.md`。
 
@@ -12,7 +12,7 @@
 | 轮廓/色彩 | `contour-color` | 轮廓+HSV 区域表 |
 | **条码/ID** | `barcode` | **码N✓ 多码工业表 + 期望串门限** |
 | OCR/缺陷 | `ocr-gate-comm`, `defects`, `locate-measure-defect` | OCR/缺陷工业表 + Comm 模板 |
-| 九点标定 | `ninepoint` | calibRms / passGate + hostWatch |
+| **九点/门限** | `ninepoint` | **九N✓门✓ 残差工业表 + 胶片铬 + 叠层** |
 | 脚本/协议/通信 | `script`, `format-protocol*`, `comm-*`, `group-comm`, `tcp-sim` | LocalBus / 环回模拟 |
 
 ## 打开即用检查

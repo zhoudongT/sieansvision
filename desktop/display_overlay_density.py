@@ -380,6 +380,14 @@ def build_unified_overlays(records=None, project=None, *,
                         pass
                     continue
 
+        if op == 'nine_point':
+            try:
+                from desktop.nine_point_var_gate_chrome import build_nine_point_overlays
+                specs.extend(build_nine_point_overlays(bag, params, max_specs=max_per_module))
+            except Exception:
+                pass
+            continue
+
         if op == 'ocr':
             try:
                 from desktop.ocr_defect_chrome import build_ocr_overlays

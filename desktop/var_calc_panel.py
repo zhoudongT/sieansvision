@@ -43,6 +43,7 @@ def normalize_var_calc_params(params=None):
         ))
     p['expressions'] = cleaned
     p.setdefault('scope', 'flow')
+    p.setdefault('gateVar', 'passGate')
     return p
 
 
@@ -141,30 +142,70 @@ class VarCalcPanel(QWidget):
         w = QWidget()
         form = QFormLayout(w)
         form.setContentsMargins(10, 10, 10, 10)
-        tip = QLabel('运行结果：values（名→值）、errors（求值失败项）。')
+        tip = QLabel('工业结果显示：门✓ 徽标 / 变量值表 / passGate 判定。结果铬非火花联级。')
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
-        # 细妆⑯：live bind 实况
+
+        gate_var = QLineEdit(str(self.params.get('gateVar') or 'passGate'))
+        gate_var.setObjectName('varCalcGateVar')
+        gate_var.editingFinished.connect(
+            lambda: self._set_param('gateVar', gate_var.text().strip() or 'passGate')
+        )
+        form.addRow('门限变量名', gate_var)
+
+        self._chrome_lab = QLabel('门·')
+        self._chrome_lab.setObjectName('varCalcChromeBadge')
+        self._chrome_lab.setStyleSheet(
+            'color:#0d0;font-size:14px;font-weight:600;padding:4px 8px;'
+            'background:#1a2220;border-radius:4px;'
+        )
+        form.addRow('结果徽标', self._chrome_lab)
+
         self._live_lab = QLabel('实况：尚未运行')
         self._live_lab.setObjectName('varCalcLiveBind')
         self._live_lab.setWordWrap(True)
         self._live_lab.setStyleSheet('color:#9ad;font-size:11px;padding:4px;background:#1e2228;border-radius:4px;')
         form.addRow(self._live_lab)
+
+        self._density_table = QTableWidget(0, 2)
+        self._density_table.setObjectName('varCalcDensityTable')
+        self._density_table.setHorizontalHeaderLabels(['字段', '值'])
+        self._density_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self._density_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self._density_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._density_table.setMaximumHeight(130)
+        form.addRow('密度摘要', self._density_table)
+
+        from desktop.nine_point_var_gate_chrome import GATE_COLUMNS
+        self._gate_table = QTableWidget(0, len(GATE_COLUMNS))
+        self._gate_table.setObjectName('varCalcGateTable')
+        self._gate_table.setHorizontalHeaderLabels(list(GATE_COLUMNS))
+        self._gate_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._gate_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._gate_table.setMinimumHeight(140)
+        form.addRow('变量工业表', self._gate_table)
+
         self._result_box = QTextEdit()
         self._result_box.setObjectName('varCalcResultBox')
         self._result_box.setReadOnly(True)
-        self._result_box.setMinimumHeight(140)
+        self._result_box.setMaximumHeight(90)
         self._result_box.setStyleSheet(
             'background:#141820;color:#cde;font-family:Menlo,monospace;font-size:11px;'
         )
-        form.addRow(self._result_box)
+        form.addRow('原始 JSON', self._result_box)
+
         brow = QHBoxLayout()
         b_ref = QPushButton('刷新实况')
         b_ref.setObjectName('varCalcLiveRefreshBtn')
         b_ref.setToolTip('从最近一次运行读取本模块 values / errors')
         b_ref.clicked.connect(self._refresh_live_bind)
+        b_demo = QPushButton('软演示门限')
+        b_demo.setObjectName('varCalcSoftDemoBtn')
+        b_demo.setToolTip('不经流程：注入 passGate 软演示铬')
+        b_demo.clicked.connect(self._soft_demo_gate_density)
         brow.addWidget(b_ref)
+        brow.addWidget(b_demo)
         brow.addStretch(1)
         form.addRow(brow)
         try:
@@ -173,16 +214,76 @@ class VarCalcPanel(QWidget):
             pass
         return w
 
+    def set_last_result(self, result):
+        self._host_last_result = result if isinstance(result, dict) else None
+        try:
+            self._refresh_live_bind()
+        except Exception:
+            pass
+
+    def _soft_demo_gate_density(self):
+        from desktop.nine_point_var_gate_chrome import (
+            soft_demo_var_gate_result, summarize_var_gate,
+        )
+        gname = str(self.params.get('gateVar') or 'passGate')
+        demo = soft_demo_var_gate_result(ok=True, gate_name=gname)
+        self._apply_gate_density(
+            summarize_var_gate(demo, params=self.params, gate_name=gname),
+            source='soft-demo',
+        )
+
+    def _apply_gate_density(self, summ, *, source: str = ''):
+        chrome = summ.get('chrome') or '门·'
+        lab = getattr(self, '_chrome_lab', None)
+        if lab is not None:
+            lab.setText(str(chrome))
+            jok = summ.get('judgeOk')
+            color = '#00d250' if jok is True else ('#ff5252' if jok is False else '#ffb400')
+            lab.setStyleSheet(
+                f'color:{color};font-size:14px;font-weight:600;padding:4px 8px;'
+                'background:#1a2220;border-radius:4px;'
+            )
+        live = getattr(self, '_live_lab', None)
+        if live is not None:
+            src = f' [{source}]' if source else ''
+            live.setText(f"实况：[{chrome}] {summ.get('summary')}{src}")
+        dt = getattr(self, '_density_table', None)
+        if dt is not None:
+            from desktop.nine_point_var_gate_chrome import density_summary_rows_gate
+            rows = density_summary_rows_gate(summ)
+            dt.setRowCount(len(rows))
+            for i, r in enumerate(rows):
+                dt.setItem(i, 0, QTableWidgetItem(str(r.get('key') or '')))
+                dt.setItem(i, 1, QTableWidgetItem(str(r.get('value') if r.get('value') is not None else '—')))
+        gt = getattr(self, '_gate_table', None)
+        if gt is not None:
+            from desktop.nine_point_var_gate_chrome import format_gate_cells, GATE_COLUMNS
+            from PySide6.QtGui import QColor
+            rows = summ.get('rows') or []
+            gt.setColumnCount(len(GATE_COLUMNS))
+            gt.setHorizontalHeaderLabels(list(GATE_COLUMNS))
+            gt.setRowCount(len(rows))
+            for i, row in enumerate(rows):
+                for c, cell in enumerate(format_gate_cells(row)):
+                    item = QTableWidgetItem(cell)
+                    if c == len(GATE_COLUMNS) - 1:
+                        st = str(row.get('judgeStatus') or '')
+                        if st == 'OK':
+                            item.setForeground(QColor('#00d250'))
+                        elif st in ('NG', 'ERR'):
+                            item.setForeground(QColor('#ff5252'))
+                    gt.setItem(i, c, item)
+
     def _refresh_live_bind(self):
-        """细妆⑯：var_calc last_result live bind."""
+        """Denser var_calc / gate last_result live bind."""
         lab = getattr(self, '_live_lab', None)
         if lab is None:
             return
         try:
             from desktop.upstream_field_picker import host_last_result
-            lr = host_last_result(self) or {}
+            lr = getattr(self, '_host_last_result', None) or host_last_result(self) or {}
         except Exception:
-            lr = {}
+            lr = getattr(self, '_host_last_result', None) or {}
         sid = self.step.get('id')
         hit = None
         for rec in (lr.get('results') or []):
@@ -190,34 +291,33 @@ class VarCalcPanel(QWidget):
                 hit = rec
                 break
         if not hit:
-            lab.setText('实况：尚无本模块运行结果（先 ▶ 单次运行）')
+            lab.setText('实况：尚无本模块运行结果（先 ▶ 单次运行或点软演示门限）')
             box = getattr(self, '_result_box', None)
             if box is not None:
                 box.setPlainText('（等待流程运行）')
             return
         res = (hit.get('output') or {}).get('result') or {}
         vals = res.get('values') if isinstance(res.get('values'), dict) else {}
-        errs = res.get('errors') if isinstance(res.get('errors'), dict) else {}
-        bits = []
-        for k, v in list(vals.items())[:8]:
-            bits.append(f'{k}={v}')
-        if errs:
-            bits.append('errors=' + ','.join(f'{k}:{errs[k]}' for k in list(errs)[:3]))
-        # also show mirrored flow vars for expression names
-        scope = self.params.get('scope') or 'flow'
-        flow = ((lr.get('variables') or {}).get(scope) or {})
-        for row in (self.params.get('expressions') or [])[:6]:
-            nm = row.get('name')
-            if nm and nm in flow and nm not in vals:
-                bits.append(f'{scope}.{nm}={flow[nm]}')
-        lab.setText('实况：' + (' · '.join(bits) if bits else (str(list(res.keys())[:8]) or '空')))
+        errs = res.get('errors') if isinstance(res.get('errors'), (dict, list)) else {}
         box = getattr(self, '_result_box', None)
         if box is not None:
             import json
             try:
-                box.setPlainText(json.dumps({'values': vals, 'errors': errs, 'rawKeys': list(res.keys())[:24]}, ensure_ascii=False, indent=2, default=str)[:6000])
+                box.setPlainText(json.dumps(
+                    {'values': vals, 'errors': errs, 'rawKeys': list(res.keys())[:24]},
+                    ensure_ascii=False, indent=2, default=str,
+                )[:6000])
             except Exception:
                 box.setPlainText(str(res)[:6000])
+        try:
+            from desktop.nine_point_var_gate_chrome import summarize_var_gate
+            gname = str(self.params.get('gateVar') or 'passGate')
+            self._apply_gate_density(
+                summarize_var_gate(res, params=self.params, gate_name=gname),
+                source='engine',
+            )
+        except Exception as exc:
+            lab.setText(f'实况：解析失败 {exc}')
 
     def _reload(self):
         self._syncing = True

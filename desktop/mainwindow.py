@@ -92,7 +92,7 @@ class MainWindow(QMainWindow):
             ('打开即跑 · 几何查找→多匹配', 'projects/open-and-run-geom-find-match.sieans'),
             ('打开即跑 · 几何夹角圆距+脚本', 'projects/open-and-run-geom-script.sieans'),
             ('打开即跑 · 定位→夹具→预处理', 'projects/open-and-run-fixture-preprocess.sieans'),
-            ('打开即跑 · 九点标定', 'projects/open-and-run-ninepoint.sieans'),
+            ('打开即跑 · 九点/门限密度铬', 'projects/open-and-run-ninepoint.sieans'),
             ('打开即跑 · 定位→测量→缺陷', 'projects/open-and-run-locate-measure-defect.sieans'),
             ('打开即跑 · 参考图缺陷', 'projects/open-and-run-defects.sieans'),
             ('打开即跑 · 条码/ID密度铬', 'projects/open-and-run-barcode.sieans'),
@@ -1293,6 +1293,22 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+    def _ingest_nine_var_panels_from_result(self, result):
+        """Feed open NinePointPanel / VarCalcPanel denser industrial tables (wave146)."""
+        try:
+            pf = getattr(self, 'property_float', None) or getattr(self, 'props', None)
+            if pf is None:
+                return
+            from desktop.nine_point_panel import NinePointPanel
+            from desktop.var_calc_panel import VarCalcPanel
+            for cls in (NinePointPanel, VarCalcPanel):
+                for w in pf.findChildren(cls):
+                    if hasattr(w, 'set_last_result'):
+                        w.set_last_result(result)
+        except Exception:
+            pass
+
+
 
     def _measure_badge_for_result(self, bag) -> str:
         """Derive OK/NG from a cached filmstrip last_result (measure-focused)."""
@@ -1496,6 +1512,41 @@ class MainWindow(QMainWindow):
         return chrome
 
 
+    def _sync_filmstrip_nine_chrome(self):
+        """Push nine-point/var-gate denser chrome (九N✓门✓) + OK/NG onto filmstrip — result chrome only."""
+        cache = getattr(self, '_filmstrip_results', None) or {}
+        steps = []
+        try:
+            steps = (self.document.project.get('steps') or []) if hasattr(self, 'document') else []
+        except Exception:
+            steps = []
+        try:
+            from desktop.nine_point_var_gate_chrome import (
+                chrome_map_from_film_cache, okng_map_from_film_cache,
+                strip_summary_from_film_cache,
+            )
+        except Exception:
+            return {}
+        chrome = chrome_map_from_film_cache(cache, project_steps=steps) or {}
+        okng = okng_map_from_film_cache(cache, project_steps=steps) or {}
+        try:
+            fs = getattr(self, 'filmstrip', None)
+            if fs is not None and hasattr(fs, 'set_frame_nine_chrome'):
+                fs.set_frame_nine_chrome(chrome, okng)
+            if fs is not None and hasattr(fs, 'push_nine_summary'):
+                cur = ''
+                try:
+                    cur = fs.current_path() if hasattr(fs, 'current_path') else ''
+                except Exception:
+                    cur = ''
+                text_s = strip_summary_from_film_cache(
+                    cache, current_path=cur or '', project_steps=steps,
+                )
+                if text_s:
+                    fs.push_nine_summary(text_s)
+        except Exception:
+            pass
+        return chrome
 
     def open_project_file(self, path):
         path=Path(path)
@@ -2261,7 +2312,14 @@ class MainWindow(QMainWindow):
                             pass
                         try:
                             self._sync_filmstrip_match_chrome()
+                        except Exception:
+                            pass
+                        try:
                             self._sync_filmstrip_barcode_chrome()
+                        except Exception:
+                            pass
+                        try:
+                            self._sync_filmstrip_nine_chrome()
                         except Exception:
                             pass
                     elif not multi:
@@ -2646,7 +2704,14 @@ class MainWindow(QMainWindow):
                     pass
                 try:
                     self._sync_filmstrip_match_chrome()
+                except Exception:
+                    pass
+                try:
                     self._sync_filmstrip_barcode_chrome()
+                except Exception:
+                    pass
+                try:
+                    self._sync_filmstrip_nine_chrome()
                 except Exception:
                     pass
         except Exception:
@@ -2664,6 +2729,8 @@ class MainWindow(QMainWindow):
                 self.filmstrip.push_match_summary(records=records, names=names)
             if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_barcode_summary'):
                 self.filmstrip.push_barcode_summary(records=records, names=names)
+            if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_nine_summary'):
+                self.filmstrip.push_nine_summary(records=records, names=names)
         except Exception:
             pass
         try:
@@ -2676,6 +2743,7 @@ class MainWindow(QMainWindow):
             self._ingest_preprocess_panel_from_result(result)
             self._ingest_measure_geom_panel_from_result(result)
             self._ingest_recognize_panels_from_result(result)
+            self._ingest_nine_var_panels_from_result(result)
         except Exception:
             pass
         annotated_live, ann_sid = self._pick_annotated_with_step(records)
