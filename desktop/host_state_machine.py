@@ -33889,7 +33889,15 @@ class HostStateMachineWidget(QWidget):
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_toast = toast
         except Exception:
             pass
-        out = {'ok': True, 'copied': True, 'orig_len': orig, 'text': text, 'toast': toast}
+        status = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status', None)
+        status_prop = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop', None)
+        status_prop_ok = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop_ok', False))
+        tip_prop_ok = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_prop_ok', False))
+        out = {
+            'ok': True, 'copied': True, 'orig_len': orig, 'text': text, 'toast': toast,
+            'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok),
+            'tip_prop_ok': bool(tip_prop_ok),
+        }
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_copy_orig_len = dict(out)
         return out
 
@@ -34049,7 +34057,15 @@ class HostStateMachineWidget(QWidget):
             badge = self.refresh_toast_curve_png_datetime_tz_city_dst_calendar_year_range_recent_apply_all_undo_clear_undo_ttl_preset_customs_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge()
         except Exception:
             badge = {}
-        out = {'ok': True, 'from': cur, 'to': nxt, 'strategy': nxt, 'badge': dict(badge or {})}
+        badge = dict(badge or {})
+        out = {
+            'ok': True, 'from': cur, 'to': nxt, 'strategy': nxt, 'badge': badge,
+            'status': badge.get('status'),
+            'status_prop': badge.get('status_prop'),
+            'status_prop_ok': bool(badge.get('status_prop_ok')),
+            'strategy_prop_ok': bool(badge.get('strategy_prop_ok')),
+            'tip_prop_ok': bool(badge.get('tip_prop_ok')),
+        }
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_toggle = dict(out)
         return out
 
