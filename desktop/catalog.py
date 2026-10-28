@@ -351,6 +351,11 @@ def builtin_definitions():
         extra('preprocess', 'showRoiOverlay', '叠加ROI框', 'boolean', True)
         extra('preprocess', 'writeFlowVars', '写入流程变量', 'boolean', False)
         extra('preprocess', 'resultVar', '结果变量前缀', 'string', 'preprocess')
+        extra('preprocess', 'methodChain', '处理链', 'array', [])
+        extra('pose_correct', 'showAxes', '显示坐标轴', 'boolean', True)
+        extra('pose_correct', 'showOrigin', '显示原点', 'boolean', True)
+        extra('pose_correct', 'showMatrix', '附带矩阵', 'boolean', True)
+        extra('pose_correct', 'axisLength', '轴长度', 'number', 40)
         # refresh method choices on definition
         for f in definitions['preprocess'].get('parameters') or []:
             if f.get('key') == 'method':

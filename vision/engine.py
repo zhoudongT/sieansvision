@@ -535,9 +535,8 @@ def defects(image, canvas, p, offset, reference):
     return out
 
 
-def preprocess(image, canvas, p, offset):
-    """Industrial preprocess (soft OpenCV). ROI already applied by run() when roiMode=draw."""
-    mode = p.get('method', 'grayscale')
+def _preprocess_one(image, mode, p):
+    """Apply a single preprocess method; returns BGR or gray ndarray."""
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
     if mode == 'grayscale':
         out = gray
@@ -570,6 +569,48 @@ def preprocess(image, canvas, p, offset):
                                     'erode': cv2.MORPH_ERODE, 'dilate': cv2.MORPH_DILATE}[mode], kernel)
     else:
         raise ValueError('不支持的预处理 method')
+    return out
+
+
+def preprocess(image, canvas, p, offset):
+    """Industrial preprocess (soft OpenCV). ROI already applied by run() when roiMode=draw.
+
+    Optional methodChain: sequential soft methods; result includes before/after + chainSteps.
+    """
+    before_w, before_h = int(image.shape[1]), int(image.shape[0])
+    chain_raw = p.get('methodChain')
+    chain = []
+    if isinstance(chain_raw, list) and chain_raw:
+        for item in chain_raw:
+            if isinstance(item, str) and item.strip():
+                chain.append({'method': item.strip()})
+            elif isinstance(item, dict) and item.get('method'):
+                chain.append(dict(item))
+    if not chain:
+        chain = [{'method': p.get('method', 'grayscale')}]
+
+    cur = image
+    chain_steps = []
+    for i, step in enumerate(chain):
+        mode = str(step.get('method') or 'grayscale')
+        # per-step overrides fall back to parent params
+        step_p = dict(p)
+        step_p.update(step)
+        out = _preprocess_one(cur, mode, step_p)
+        if out.ndim == 2:
+            # keep gray as gray for next morph/threshold/canny; colorize only for display end
+            cur = out
+        else:
+            cur = out
+        chain_steps.append({
+            'index': i + 1,
+            'method': mode,
+            'width': int(out.shape[1]),
+            'height': int(out.shape[0]),
+            'status': 'ok',
+        })
+
+    out = cur
     if out.ndim == 2:
         out = cv2.cvtColor(out, cv2.COLOR_GRAY2BGR)
     canvas[offset[1]:offset[1]+out.shape[0], offset[0]:offset[0]+out.shape[1]] = out
@@ -579,16 +620,34 @@ def preprocess(image, canvas, p, offset):
     if p.get('showRoiOverlay', True) and isinstance(p.get('roi'), list) and len(p['roi']) == 4 and str(p.get('roiMode') or '') == 'draw':
         x, y, w, h = [int(v) for v in p['roi']]
         cv2.rectangle(canvas, (x, y), (x + max(1, w) - 1, y + max(1, h) - 1), (0, 165, 255), 2)
+    final_method = chain[-1]['method'] if chain else p.get('method', 'grayscale')
+    labels = {
+        'grayscale': '灰度化', 'blur': '高斯模糊', 'median': '中值滤波', 'bilateral': '双边滤波',
+        'threshold': '二值化', 'canny': '边缘提取', 'open': '开运算', 'close': '闭运算',
+        'erode': '腐蚀', 'dilate': '膨胀',
+    }
+    for st in chain_steps:
+        st['label'] = labels.get(st['method'], st['method'])
+    note = '预处理链 ' + '→'.join(st['method'] for st in chain_steps) if len(chain_steps) > 1 else f'预处理 {final_method}'
+    if roi_applied:
+        note += ' · ROI 裁剪'
     return {
-        'method': mode,
+        'method': final_method,
+        'methodChain': [{'method': st['method']} for st in chain_steps],
+        'chainSteps': chain_steps,
+        'chainLen': len(chain_steps),
         'roiApplied': bool(roi_applied),
         'roi': p.get('roi') if str(p.get('roiMode') or 'inherit') == 'draw' else None,
         'roiMode': str(p.get('roiMode') or 'inherit'),
+        'beforeWidth': before_w,
+        'beforeHeight': before_h,
+        'afterWidth': int(out.shape[1]),
+        'afterHeight': int(out.shape[0]),
         'width': int(out.shape[1]),
         'height': int(out.shape[0]),
         'offset': [int(offset[0]), int(offset[1])],
         'status': 'ok',
-        'note': f'预处理 {mode}' + (' · ROI 裁剪' if roi_applied else ''),
+        'note': note,
     }
 
 

@@ -86,6 +86,7 @@ class MainWindow(QMainWindow):
             ('打开即跑 · 卡尺→几何测量', 'projects/open-and-run-caliper-measure.sieans'),
             ('打开即跑 · 几何测量', 'projects/open-and-run-measure.sieans'),
             ('打开即跑 · 轮廓→色彩区域', 'projects/open-and-run-contour-color.sieans'),
+            ('打开即跑 · 夹具位姿→预处理链', 'projects/open-and-run-fixture-pose-chain.sieans'),
             ('打开即跑 · 几何查找→多匹配', 'projects/open-and-run-geom-find-match.sieans'),
             ('打开即跑 · 九点标定', 'projects/open-and-run-ninepoint.sieans'),
             ('打开即跑 · 定位→测量→缺陷', 'projects/open-and-run-locate-measure-defect.sieans'),
@@ -1230,6 +1231,32 @@ class MainWindow(QMainWindow):
                 return
             from desktop.region_color_panel import RegionColorPanel
             for w in pf.findChildren(RegionColorPanel):
+                if hasattr(w, 'set_last_result'):
+                    w.set_last_result(result)
+        except Exception:
+            pass
+
+    def _ingest_pose_correct_panel_from_result(self, result):
+        """Feed open PoseCorrectPanel with fixture/matrix density (soft)."""
+        try:
+            pf = getattr(self, 'property_float', None)
+            if pf is None:
+                return
+            from desktop.pose_correct_panel import PoseCorrectPanel
+            for w in pf.findChildren(PoseCorrectPanel):
+                if hasattr(w, 'set_last_result'):
+                    w.set_last_result(result)
+        except Exception:
+            pass
+
+    def _ingest_preprocess_panel_from_result(self, result):
+        """Feed open PreprocessPanel with chain before/after density (soft)."""
+        try:
+            pf = getattr(self, 'property_float', None)
+            if pf is None:
+                return
+            from desktop.wave3_thin_panels import PreprocessPanel
+            for w in pf.findChildren(PreprocessPanel):
                 if hasattr(w, 'set_last_result'):
                     w.set_last_result(result)
         except Exception:
@@ -2505,6 +2532,8 @@ class MainWindow(QMainWindow):
             pass
         try:
             self._ingest_region_color_panel_from_result(result)
+            self._ingest_pose_correct_panel_from_result(result)
+            self._ingest_preprocess_panel_from_result(result)
         except Exception:
             pass
         annotated_live, ann_sid = self._pick_annotated_with_step(records)
@@ -5612,6 +5641,7 @@ class MainWindow(QMainWindow):
             'projects/open-and-run-caliper-measure.sieans',
             'projects/open-and-run-measure.sieans',
             'projects/open-and-run-contour-color.sieans',
+            'projects/open-and-run-fixture-pose-chain.sieans',
             'projects/open-and-run-geom-find-match.sieans',
             'projects/open-and-run-ninepoint.sieans',
             'projects/open-and-run-script.sieans',

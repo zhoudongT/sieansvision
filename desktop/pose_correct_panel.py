@@ -13,7 +13,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTabWidget, QFormLayout, QLineEdit,
     QPushButton, QComboBox, QDoubleSpinBox, QScrollArea, QFrame, QSpinBox,
-    QTextEdit, QCheckBox,
+    QTextEdit, QCheckBox, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
 )
 
 from desktop.widgets.switch import OrangeSwitch
@@ -462,7 +462,7 @@ class PoseCorrectPanel(QWidget):
 
         tip = QLabel(
             '运行结果字段：fixtureX / fixtureY / fixtureAngle / fixtureScale / matrix / '
-            'axisX / axisY / boundOk / status。'
+            'axisX / axisY / boundOk / status。矩阵表 + 轴向量 + 画布叠层（wave142）。'
         )
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
@@ -481,12 +481,47 @@ class PoseCorrectPanel(QWidget):
         )
         form.addRow('结果变量前缀', out_var)
 
+        self._chrome_lab = QLabel('夹·')
+        self._chrome_lab.setObjectName('poseCorrectChromeBadge')
+        self._chrome_lab.setStyleSheet(
+            'color:#0d0;font-size:14px;font-weight:600;padding:4px 8px;'
+            'background:#1a2220;border-radius:4px;'
+        )
+        form.addRow('结果徽标', self._chrome_lab)
+
+        self._axis_live = QLabel('轴向量：—')
+        self._axis_live.setObjectName('poseCorrectAxisLive')
+        self._axis_live.setWordWrap(True)
+        self._axis_live.setStyleSheet(
+            'color:#9ad;font-size:11px;padding:6px 8px;background:#1e2228;border-radius:4px;'
+        )
+        form.addRow('轴向量实况', self._axis_live)
+
+        self._matrix_table = QTableWidget(3, 3)
+        self._matrix_table.setObjectName('poseCorrectMatrixTable')
+        self._matrix_table.setHorizontalHeaderLabels(['c0', 'c1', 'c2'])
+        self._matrix_table.setVerticalHeaderLabels(['R0', 'R1', 'R2'])
+        self._matrix_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._matrix_table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self._matrix_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._matrix_table.setMaximumHeight(110)
+        form.addRow('仿射矩阵 3×3', self._matrix_table)
+
+        self._density_table = QTableWidget(0, 2)
+        self._density_table.setObjectName('poseCorrectDensityTable')
+        self._density_table.setHorizontalHeaderLabels(['字段', '值'])
+        self._density_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self._density_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self._density_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._density_table.setMaximumHeight(160)
+        form.addRow('位姿密度表', self._density_table)
+
         self._result_box = QTextEdit()
         self._result_box.setObjectName('poseCorrectResultBox')
         self._result_box.setReadOnly(True)
-        self._result_box.setMaximumHeight(120)
-        self._result_box.setPlaceholderText('最近一次位置修正结果…')
-        form.addRow('结果预览', self._result_box)
+        self._result_box.setMaximumHeight(90)
+        self._result_box.setPlaceholderText('最近一次位置修正结果 JSON…')
+        form.addRow('结果 JSON', self._result_box)
 
         self._live_lab = QLabel('实况：尚未运行')
         self._live_lab.setObjectName('poseCorrectLiveBind')
@@ -500,7 +535,11 @@ class PoseCorrectPanel(QWidget):
         b_ref = QPushButton('刷新实况')
         b_ref.setObjectName('poseCorrectLiveRefreshBtn')
         b_ref.clicked.connect(self._refresh_live)
+        b_demo = QPushButton('软演示密度')
+        b_demo.setObjectName('poseCorrectSoftDemoBtn')
+        b_demo.clicked.connect(self._soft_demo_pose_density)
         brow.addWidget(b_ref)
+        brow.addWidget(b_demo)
         brow.addStretch(1)
         form.addRow(brow)
         try:
@@ -526,13 +565,114 @@ class PoseCorrectPanel(QWidget):
                     if isinstance(out, dict) and 'result' in out and isinstance(out['result'], dict):
                         return out['result']
                     return out if isinstance(out, dict) else None
-        # map form
         if isinstance(results, dict) and sid in results:
             out = results[sid]
             if isinstance(out, dict) and 'result' in out:
                 return out['result']
             return out
         return None
+
+    def _fill_matrix_table(self, matrix):
+        tbl = getattr(self, '_matrix_table', None)
+        if tbl is None:
+            return
+        from desktop.fixture_pose_chrome import format_matrix_rows
+        rows = format_matrix_rows(matrix)
+        for r, row in enumerate(rows[:3]):
+            for c, key in enumerate(('c0', 'c1', 'c2')):
+                val = row.get(key)
+                try:
+                    text = f'{float(val):.6g}'
+                except (TypeError, ValueError):
+                    text = str(val)
+                tbl.setItem(r, c, QTableWidgetItem(text))
+
+    def _fill_density_table(self, result):
+        tbl = getattr(self, '_density_table', None)
+        if tbl is None:
+            return
+        from desktop.fixture_pose_chrome import density_pose_rows
+        rows = density_pose_rows(result)
+        tbl.setRowCount(len(rows))
+        for i, row in enumerate(rows):
+            tbl.setItem(i, 0, QTableWidgetItem(str(row.get('key') or '')))
+            tbl.setItem(i, 1, QTableWidgetItem(str(row.get('value'))))
+
+    def _apply_fixture_chrome(self, res):
+        from desktop.fixture_pose_chrome import summarize_fixture_result, axis_vector_bits
+        summ = summarize_fixture_result(res, self.params)
+        if getattr(self, '_chrome_lab', None):
+            self._chrome_lab.setText(str(summ.get('chrome') or '夹·'))
+        axis = summ.get('axis') or axis_vector_bits(res.get('axisX') if isinstance(res, dict) else None,
+                                                    res.get('axisY') if isinstance(res, dict) else None)
+        if getattr(self, '_axis_live', None):
+            bits = [axis.get('axisXText') or '', axis.get('axisYText') or '']
+            self._axis_live.setText('轴向量：' + (' · '.join(b for b in bits if b) or '—'))
+        if isinstance(res, dict) and res.get('matrix') is not None:
+            self._fill_matrix_table(res.get('matrix'))
+        self._fill_density_table(res if isinstance(res, dict) else {})
+
+    def _soft_demo_pose_density(self):
+        from desktop.fixture_pose_chrome import soft_demo_fixture_result
+        demo = soft_demo_fixture_result()
+        self._apply_fixture_chrome(demo)
+        if getattr(self, '_result_box', None):
+            import json
+            try:
+                self._result_box.setPlainText(json.dumps(demo, ensure_ascii=False, indent=2)[:2000])
+            except Exception:
+                self._result_box.setPlainText(str(demo)[:2000])
+        if getattr(self, '_live_lab', None):
+            from desktop.fixture_pose_chrome import summarize_fixture_result
+            self._live_lab.setText('实况(软演示)：' + summarize_fixture_result(demo).get('summary', ''))
+
+    def set_last_result(self, result):
+        """Ingest host last_result bag (or step result) into density chrome."""
+        bag = result if isinstance(result, dict) else {}
+        # Prefer this step's record when a full run bag is passed
+        sid = self.step.get('id')
+        res = None
+        records = bag.get('results')
+        if isinstance(records, list) and sid:
+            for row in records:
+                if isinstance(row, dict) and (row.get('id') == sid or row.get('stepId') == sid):
+                    out = row.get('output') or row.get('result') or row
+                    if isinstance(out, dict) and isinstance(out.get('result'), dict):
+                        res = out['result']
+                    elif isinstance(out, dict):
+                        res = out
+                    break
+        if res is None and isinstance(bag.get('result'), dict):
+            res = bag['result']
+        if res is None and any(k in bag for k in ('fixtureX', 'matrix', 'axisX')):
+            res = bag
+        if res is None:
+            res = self._find_step_result()
+        if not res:
+            return
+        self._apply_fixture_chrome(res)
+        if getattr(self, '_result_box', None):
+            import json
+            try:
+                self._result_box.setPlainText(json.dumps(res, ensure_ascii=False, indent=2)[:2000])
+            except Exception:
+                self._result_box.setPlainText(str(res)[:2000])
+        if getattr(self, '_live_lab', None):
+            from desktop.fixture_pose_chrome import summarize_fixture_result
+            self._live_lab.setText('实况：' + summarize_fixture_result(res, self.params).get('summary', ''))
+        fl = getattr(self, '_frame_live', None)
+        if fl is not None and res.get('fixtureAngle') is not None:
+            try:
+                ang = float(res.get('fixtureAngle') or 0)
+                L = float(self.params.get('axisLength') or 40)
+                rad = math.radians(ang)
+                dx, dy = L * math.cos(rad), L * math.sin(rad)
+                fl.setText(
+                    f'实况轴：X=({dx:.1f},{dy:.1f}) · Y=({-dy:.1f},{dx:.1f}) · '
+                    f'原点=({res.get("fixtureX")},{res.get("fixtureY")})'
+                )
+            except Exception:
+                pass
 
     def _refresh_live(self):
         lab = getattr(self, '_live_lab', None)
@@ -543,7 +683,10 @@ class PoseCorrectPanel(QWidget):
             lab.setText('实况：尚无本模块运行结果')
             if getattr(self, '_result_box', None):
                 self._result_box.setPlainText('')
+            if getattr(self, '_chrome_lab', None):
+                self._chrome_lab.setText('夹·')
             return
+        self._apply_fixture_chrome(res)
         bits = []
         for k in (
             'status', 'boundOk', 'fixtureX', 'fixtureY', 'fixtureAngle', 'fixtureScale',
@@ -563,8 +706,9 @@ class PoseCorrectPanel(QWidget):
             key = prefix if suffix == '' else prefix + suffix
             if key in flow:
                 bits.append(f'flow.{key}={flow[key]}')
-        lab.setText('实况：' + (' · '.join(bits[:14]) if bits else str(list(res.keys())[:8])))
-        # update frame hint from live angle when present
+        from desktop.fixture_pose_chrome import summarize_fixture_result
+        summ = summarize_fixture_result(res, self.params).get('summary') or ''
+        lab.setText('实况：' + (summ or (' · '.join(bits[:14]) if bits else str(list(res.keys())[:8]))))
         fl = getattr(self, '_frame_live', None)
         if fl is not None and res.get('fixtureAngle') is not None:
             try:

@@ -1,7 +1,7 @@
-"""Unified image overlay density for find / match / contour / color (soft).
+"""Unified image overlay density for find / match / contour / color / fixture (soft).
 
 Not filmstrip spark micro-props — canvas vector overlays only.
-Consumes geometry-find, locate/match, contour/blob, and sieans-regions results.
+Consumes geometry-find, locate/match, contour/blob, sieans-regions, and pose_correct.
 """
 from __future__ import annotations
 
@@ -275,6 +275,27 @@ def build_unified_overlays(records=None, project=None, *,
                     roi=bag.get('roi') if isinstance(bag.get('roi'), dict) else None,
                 )
                 specs.extend(region_specs)
+            except Exception:
+                pass
+            continue
+
+        if op == 'pose_correct' or (
+            isinstance(bag.get('matrix'), list) and bag.get('fixtureX') is not None
+        ):
+            try:
+                from desktop.fixture_pose_chrome import build_fixture_overlays
+                axes_on = params.get('showAxes', True) not in (False, 0, 'false')
+                origin_on = params.get('showOrigin', True) not in (False, 0, 'false')
+                if axes_on or origin_on:
+                    specs.extend(build_fixture_overlays(bag, params, max_specs=max_per_module))
+            except Exception:
+                pass
+            continue
+
+        if op == 'preprocess':
+            try:
+                from desktop.preprocess_chain_chrome import build_preprocess_roi_overlays
+                specs.extend(build_preprocess_roi_overlays(bag, params))
             except Exception:
                 pass
             continue

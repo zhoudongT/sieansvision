@@ -5,7 +5,8 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QTabWidget, QFormLayout, QLineEdit,
     QComboBox, QScrollArea, QFrame, QPlainTextEdit, QSpinBox, QHBoxLayout,
-    QPushButton, QFileDialog, QTextEdit,
+    QPushButton, QFileDialog, QTextEdit, QTableWidget, QTableWidgetItem,
+    QHeaderView, QAbstractItemView, QListWidget, QListWidgetItem,
 )
 
 from desktop.widgets.switch import OrangeSwitch
@@ -1079,6 +1080,11 @@ def normalize_preprocess_params(params=None):
     p.setdefault('showRoiOverlay', True)
     p.setdefault('writeFlowVars', False)
     p.setdefault('resultVar', 'preprocess')
+    # soft multi-step chain (empty → single method)
+    if 'methodChain' not in p or p.get('methodChain') is None:
+        p['methodChain'] = []
+    elif not isinstance(p.get('methodChain'), list):
+        p['methodChain'] = []
     return p
 
 
@@ -1093,16 +1099,17 @@ def normalize_display_params(params=None):
 
 
 class PreprocessPanel(_ShellBase):
-    """工业预处理细妆：方法密度 + ROI（对齐 OCR ROI）+ 结果实况。"""
+    """工业预处理细妆：方法密度 + 多步链 + ROI + before/after 结果实况。"""
 
     def __init__(self, step, definition, project, parent=None):
         super().__init__(
             step, project, '图像预处理',
-            '对齐 VisionMaster「图像预处理」：灰度 / 模糊 / 中值 / 双边 / 二值 / Canny / 形态学 · ROI 裁剪。',
+            '对齐 VisionMaster「图像预处理」：灰度 / 模糊 / 中值 / 双边 / 二值 / Canny / 形态学 · 多步链 · ROI 裁剪。',
             normalize_preprocess_params, parent,
         )
-        # Insert ROI tab between 基本参数 and 结果显示
-        self.tabs.insertTab(1, self._wrap(self._roi_tab()), 'ROI')
+        # Insert Chain + ROI tabs between 基本参数 and 结果显示
+        self.tabs.insertTab(1, self._wrap(self._chain_tab()), '处理链')
+        self.tabs.insertTab(2, self._wrap(self._roi_tab()), 'ROI')
         self.tabs.setObjectName('preprocessTabs')
 
     def _missing_fields(self):
@@ -1214,6 +1221,129 @@ class PreprocessPanel(_ShellBase):
         form.addRow(tip)
         self._refresh_incomplete_banner()
         return w
+
+
+    def _chain_tab(self):
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(10, 10, 10, 10)
+        tip = QLabel(
+            '多步预处理链（软 OpenCV）：按序执行；空链则只用「基本参数」单方法。'
+            '结果页显示 before→after 与逐步密度。'
+        )
+        tip.setWordWrap(True)
+        tip.setStyleSheet('color:#888;font-size:11px;')
+        lay.addWidget(tip)
+
+        self._chain_list = QListWidget()
+        self._chain_list.setObjectName('preprocessChainList')
+        self._chain_list.setMaximumHeight(160)
+        lay.addWidget(self._chain_list)
+        self._reload_chain_list()
+
+        row = QHBoxLayout()
+        add = QComboBox()
+        add.setObjectName('preprocessChainAddMethod')
+        for val, lab in (
+            ('grayscale', '灰度化'), ('blur', '高斯模糊'), ('median', '中值滤波'),
+            ('bilateral', '双边滤波'), ('threshold', '二值化'), ('canny', '边缘提取'),
+            ('open', '开运算'), ('close', '闭运算'), ('erode', '腐蚀'), ('dilate', '膨胀'),
+        ):
+            add.addItem(lab, val)
+        self._chain_add = add
+        row.addWidget(add, 1)
+        b_add = QPushButton('追加步骤')
+        b_add.setObjectName('preprocessChainAddBtn')
+        b_add.clicked.connect(self._chain_add_step)
+        b_rm = QPushButton('移除选中')
+        b_rm.setObjectName('preprocessChainRemoveBtn')
+        b_rm.clicked.connect(self._chain_remove_step)
+        b_up = QPushButton('上移')
+        b_up.setObjectName('preprocessChainUpBtn')
+        b_up.clicked.connect(lambda: self._chain_move(-1))
+        b_dn = QPushButton('下移')
+        b_dn.setObjectName('preprocessChainDownBtn')
+        b_dn.clicked.connect(lambda: self._chain_move(1))
+        b_clear = QPushButton('清空链')
+        b_clear.setObjectName('preprocessChainClearBtn')
+        b_clear.clicked.connect(self._chain_clear)
+        for b in (b_add, b_rm, b_up, b_dn, b_clear):
+            row.addWidget(b)
+        lay.addLayout(row)
+
+        hint = QLabel('链非空时引擎按 methodChain 顺序执行；否则回退 method。')
+        hint.setStyleSheet('color:#666;font-size:11px;')
+        lay.addWidget(hint)
+        lay.addStretch(1)
+        return w
+
+    def _reload_chain_list(self):
+        lst = getattr(self, '_chain_list', None)
+        if lst is None:
+            return
+        from desktop.preprocess_chain_chrome import method_label
+        lst.clear()
+        chain = self.params.get('methodChain') or []
+        if not isinstance(chain, list):
+            chain = []
+        for i, item in enumerate(chain):
+            m = item.get('method') if isinstance(item, dict) else item
+            m = str(m or '')
+            QListWidgetItem(f'{i+1}. {method_label(m)} ({m})', lst)
+
+    def _persist_chain_from_list(self):
+        # rebuild from list labels is fragile — keep params.methodChain as source of truth
+        chain = self.params.get('methodChain') or []
+        if not isinstance(chain, list):
+            chain = []
+        self.params['methodChain'] = chain
+        self._emit()
+
+    def _chain_add_step(self):
+        add = getattr(self, '_chain_add', None)
+        method = add.currentData() if add is not None else 'grayscale'
+        chain = list(self.params.get('methodChain') or [])
+        chain.append({'method': method})
+        self.params['methodChain'] = chain
+        # sync primary method to last step for catalog/legacy
+        self.params['method'] = method
+        self._reload_chain_list()
+        self._emit()
+
+    def _chain_remove_step(self):
+        lst = getattr(self, '_chain_list', None)
+        if lst is None:
+            return
+        row = lst.currentRow()
+        chain = list(self.params.get('methodChain') or [])
+        if 0 <= row < len(chain):
+            chain.pop(row)
+            self.params['methodChain'] = chain
+            if chain:
+                last = chain[-1]
+                self.params['method'] = last.get('method') if isinstance(last, dict) else last
+            self._reload_chain_list()
+            self._emit()
+
+    def _chain_move(self, delta):
+        lst = getattr(self, '_chain_list', None)
+        if lst is None:
+            return
+        row = lst.currentRow()
+        chain = list(self.params.get('methodChain') or [])
+        j = row + delta
+        if row < 0 or j < 0 or j >= len(chain):
+            return
+        chain[row], chain[j] = chain[j], chain[row]
+        self.params['methodChain'] = chain
+        self._reload_chain_list()
+        lst.setCurrentRow(j)
+        self._emit()
+
+    def _chain_clear(self):
+        self.params['methodChain'] = []
+        self._reload_chain_list()
+        self._emit()
 
     def _roi_tab(self):
         w = QWidget()
@@ -1332,7 +1462,10 @@ class PreprocessPanel(_ShellBase):
         w = QWidget()
         form = QFormLayout(w)
         form.setContentsMargins(10, 10, 10, 10)
-        tip = QLabel('运行结果字段：method / roiApplied / width / height / status；标注图见模块结果。')
+        tip = QLabel(
+            '运行结果：method / chainSteps / before→after / roiApplied / status；'
+            '标注图见模块结果（wave142 链密度）。'
+        )
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
@@ -1348,10 +1481,34 @@ class PreprocessPanel(_ShellBase):
         )
         form.addRow('结果变量前缀', out_var)
 
+        self._pp_chrome = QLabel('预·')
+        self._pp_chrome.setObjectName('preprocessChromeBadge')
+        self._pp_chrome.setStyleSheet(
+            'color:#0d0;font-size:14px;font-weight:600;padding:4px 8px;'
+            'background:#1a2220;border-radius:4px;'
+        )
+        form.addRow('结果徽标', self._pp_chrome)
+
+        self._pp_ba = QLabel('before→after：—')
+        self._pp_ba.setObjectName('preprocessBeforeAfter')
+        self._pp_ba.setWordWrap(True)
+        self._pp_ba.setStyleSheet(
+            'color:#9ad;font-size:11px;padding:6px 8px;background:#1e2228;border-radius:4px;'
+        )
+        form.addRow('前后尺寸', self._pp_ba)
+
+        self._pp_chain_table = QTableWidget(0, 4)
+        self._pp_chain_table.setObjectName('preprocessChainResultTable')
+        self._pp_chain_table.setHorizontalHeaderLabels(['#', '方法', '尺寸', '状态'])
+        self._pp_chain_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._pp_chain_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._pp_chain_table.setMaximumHeight(140)
+        form.addRow('链密度表', self._pp_chain_table)
+
         self._pp_result_box = QTextEdit()
         self._pp_result_box.setObjectName('preprocessResultBox')
         self._pp_result_box.setReadOnly(True)
-        self._pp_result_box.setMaximumHeight(100)
+        self._pp_result_box.setMaximumHeight(90)
         self._pp_result_box.setPlaceholderText('最近一次预处理结果…')
         form.addRow('结果预览', self._pp_result_box)
 
@@ -1366,7 +1523,11 @@ class PreprocessPanel(_ShellBase):
         b_ref = QPushButton('刷新实况')
         b_ref.setObjectName('preprocessLiveRefreshBtn')
         b_ref.clicked.connect(self._refresh_pp_live)
+        b_demo = QPushButton('软演示链密度')
+        b_demo.setObjectName('preprocessSoftDemoBtn')
+        b_demo.clicked.connect(self._soft_demo_pp_density)
         brow.addWidget(b_ref)
+        brow.addWidget(b_demo)
         brow.addStretch(1)
         form.addRow(brow)
         try:
@@ -1374,6 +1535,77 @@ class PreprocessPanel(_ShellBase):
         except Exception:
             pass
         return w
+
+    def _apply_pp_chrome(self, res):
+        from desktop.preprocess_chain_chrome import (
+            summarize_preprocess_result, build_chain_rows, before_after_meta,
+        )
+        summ = summarize_preprocess_result(res, self.params)
+        if getattr(self, '_pp_chrome', None):
+            self._pp_chrome.setText(str(summ.get('chrome') or '预·'))
+        meta = summ.get('beforeAfter') or before_after_meta(res)
+        if getattr(self, '_pp_ba', None):
+            self._pp_ba.setText(
+                f'before→after：{meta.get("before")} → {meta.get("after")}'
+                f' · ROI={meta.get("roiText")} · {meta.get("methodLabel") or ""}'
+            )
+        rows = summ.get('chainRows') or build_chain_rows(res, self.params)
+        tbl = getattr(self, '_pp_chain_table', None)
+        if tbl is not None:
+            tbl.setRowCount(len(rows))
+            for i, row in enumerate(rows):
+                wh = ''
+                if row.get('width') and row.get('height'):
+                    wh = f"{row['width']}×{row['height']}"
+                vals = [str(row.get('index') or i + 1), str(row.get('label') or row.get('method') or ''),
+                        wh, str(row.get('status') or '')]
+                for c, v in enumerate(vals):
+                    tbl.setItem(i, c, QTableWidgetItem(v))
+
+    def _soft_demo_pp_density(self):
+        from desktop.preprocess_chain_chrome import soft_demo_chain_result, summarize_preprocess_result
+        demo = soft_demo_chain_result()
+        self._apply_pp_chrome(demo)
+        if getattr(self, '_pp_result_box', None):
+            import json
+            try:
+                self._pp_result_box.setPlainText(json.dumps(demo, ensure_ascii=False, indent=2)[:1500])
+            except Exception:
+                self._pp_result_box.setPlainText(str(demo)[:1500])
+        if getattr(self, '_pp_live', None):
+            self._pp_live.setText('实况(软演示)：' + summarize_preprocess_result(demo).get('summary', ''))
+
+    def set_last_result(self, result):
+        bag = result if isinstance(result, dict) else {}
+        sid = self.step.get('id')
+        res = None
+        records = bag.get('results')
+        if isinstance(records, list) and sid:
+            for row in records:
+                if isinstance(row, dict) and (row.get('id') == sid or row.get('stepId') == sid):
+                    out = row.get('output') or row.get('result') or row
+                    if isinstance(out, dict) and isinstance(out.get('result'), dict):
+                        res = out['result']
+                    elif isinstance(out, dict):
+                        res = out
+                    break
+        if res is None and isinstance(bag.get('result'), dict):
+            res = bag['result']
+        if res is None and any(k in bag for k in ('method', 'chainSteps', 'beforeWidth')):
+            res = bag
+        if not res:
+            self._refresh_pp_live()
+            return
+        self._apply_pp_chrome(res)
+        if getattr(self, '_pp_result_box', None):
+            import json
+            try:
+                self._pp_result_box.setPlainText(json.dumps(res, ensure_ascii=False, indent=2)[:1500])
+            except Exception:
+                self._pp_result_box.setPlainText(str(res)[:1500])
+        from desktop.preprocess_chain_chrome import summarize_preprocess_result
+        if getattr(self, '_pp_live', None):
+            self._pp_live.setText('实况：' + summarize_preprocess_result(res, self.params).get('summary', ''))
 
     def _refresh_pp_live(self):
         lab = getattr(self, '_pp_live', None)
@@ -1400,18 +1632,18 @@ class PreprocessPanel(_ShellBase):
             lab.setText('实况：尚无本模块运行结果')
             if getattr(self, '_pp_result_box', None):
                 self._pp_result_box.setPlainText('')
+            if getattr(self, '_pp_chrome', None):
+                self._pp_chrome.setText('预·')
             return
-        bits = []
-        for k in ('status', 'method', 'roiApplied', 'width', 'height', 'note'):
-            if k in res and res[k] is not None:
-                bits.append(f'{k}={res[k]}')
+        self._apply_pp_chrome(res)
         if getattr(self, '_pp_result_box', None):
             import json
             try:
                 self._pp_result_box.setPlainText(json.dumps(res, ensure_ascii=False, indent=2)[:1500])
             except Exception:
                 self._pp_result_box.setPlainText(str(res)[:1500])
-        lab.setText('实况：' + (' · '.join(bits[:10]) if bits else str(list(res.keys())[:8])))
+        from desktop.preprocess_chain_chrome import summarize_preprocess_result
+        lab.setText('实况：' + summarize_preprocess_result(res, self.params).get('summary', ''))
 
 
 class DisplayPanel(_ShellBase):
