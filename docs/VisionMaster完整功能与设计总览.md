@@ -426,6 +426,14 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆99 · ensure→bind 镜像 · tip 失败 stash · menu tip_max_len status · 2026-10-28】
+
+- **ensure**：创建/已有均走 click/menu_bind（`_strategy_badge_ensure_binding` 防 tip 重入），stash `click_status_prop_ok` / `menu_bind_status_prop_ok` / `status`（对齐 refresh）。
+- **tip 失败路径**：属性同步异常时清空 status/tip props，`hover_tip_ok=False` + `hover_tip_fail_reason`；成功置 `tip_ok=True`。
+- **menu tip_max_len**：子菜单/预设动作戳 `dstImportStrategyBadgeStatus`；`_menu_sync` 增 `tip_max_len_status` / `tip_max_len_status_ok`；动作触发 stash `menu_tip_max_len_action`。
+- **FlashMs**：仍不起步。
+- **验证**：`scripts/smoke-wave131-ensurebind-tipfail-menutipmaxlen-e2e.py` → 10 PASS。非硬件约 **~99.98%**。
+
 ## 【细妆98 · copy tip 失败路径 status · refresh→bind 镜像 · tip_max_len strategy · 2026-10-28】
 
 - **copy_*_hover_tip 失败路径**：tip/clipboard 异常 out 级联 `status` / `status_prop_ok` / `tip_prop_ok`。
