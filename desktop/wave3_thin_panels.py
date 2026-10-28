@@ -35,6 +35,9 @@ def normalize_output_image_params(params=None):
     p.setdefault('filePrefix', 'img')
     p.setdefault('createDir', True)
     p.setdefault('overwrite', True)
+    p.setdefault('dateSubdir', False)       # YYYY-MM-DD under path
+    p.setdefault('ngSubdir', 'NG')          # when onlyOnOk and NG: optional side folder name (soft)
+    p.setdefault('saveAnnotated', True)    # prefer annotated if upstream has it (soft hint)
     return p
 
 
@@ -62,6 +65,9 @@ def normalize_text_save_params(params=None):
     p.setdefault('newline', True)
     p.setdefault('bom', False)
     p.setdefault('timestampPrefix', False)
+    p.setdefault('createDir', True)
+    p.setdefault('maxLinesSoft', 0)   # 0=unlimited; design-time tip only
+    p.setdefault('separator', '\t')  # between timestamp and body when timestampPrefix
     return p
 
 
@@ -346,11 +352,24 @@ class OutputImagePanel(_ShellBase):
         super()._set_param(key, value)
         if key == 'path':
             self._refresh_incomplete_banner()
+        if key in (
+            'path', 'format', 'quality', 'useTimestamp', 'onlyOnOk', 'okVar',
+            'filePrefix', 'createDir', 'overwrite', 'dateSubdir', 'ngSubdir', 'saveAnnotated',
+        ) and hasattr(self, '_refresh_output_image_result'):
+            try:
+                self._refresh_output_image_result()
+            except Exception:
+                pass
 
     def _set_top(self, key, value):
         super()._set_top(key, value)
         if key == 'imageFrom':
             self._refresh_incomplete_banner()
+            if hasattr(self, '_refresh_output_image_result'):
+                try:
+                    self._refresh_output_image_result()
+                except Exception:
+                    pass
 
     def _basic_tab(self):
         w = QWidget(); form = QFormLayout(w); form.setContentsMargins(10, 10, 10, 10)
@@ -366,12 +385,14 @@ class OutputImagePanel(_ShellBase):
         for node in sorted(incoming, key=lambda n: (index_map.get(n, 999), n)):
             image_from.addItem(_sub(node), node)
         # Soft candidates: locate/geometry/preprocess even without edge (densify picker)
-        soft_ops = ('locate', 'geometry_find', 'preprocess', 'pose_correct', 'distort_correct')
+        soft_ops = ('locate', 'geometry_find', 'preprocess', 'pose_correct', 'distort_correct', 'display')
         for s in self.project.get('steps', []):
             if s.get('id') == self.step.get('id'):
                 continue
             if s.get('operation') in soft_ops and image_from.findData(s['id']) < 0:
                 image_from.addItem(_sub(s['id']) + '（可选）', s['id'])
+        if image_from.findData('source') < 0:
+            image_from.addItem(_sub('source') + '（可选）', 'source')
         cur = self.step.get('imageFrom')
         if cur and image_from.findData(cur) < 0:
             image_from.addItem('已断开：'+_sub(cur), cur)
@@ -387,6 +408,11 @@ class OutputImagePanel(_ShellBase):
             self.params['path'] = (text or '').strip()
             self.step['params'] = self.params
             self._refresh_incomplete_banner()
+            if hasattr(self, '_refresh_output_image_result'):
+                try:
+                    self._refresh_output_image_result()
+                except Exception:
+                    pass
         path.textChanged.connect(_live_path)
         self._path_edit = path
         browse = QPushButton('浏览…')
@@ -420,16 +446,99 @@ class OutputImagePanel(_ShellBase):
         ok_var.editingFinished.connect(lambda: self._set_param('okVar', ok_var.text().strip() or 'passGate'))
         ok_var.setToolTip('仅 OK 时保存：读取流程/全局变量（默认 passGate）')
         form.addRow('OK 变量', ok_var)
+        date_sub = OrangeSwitch(bool(self.params.get('dateSubdir', False)))
+        date_sub.toggled.connect(lambda c: self._set_param('dateSubdir', bool(c)))
+        form.addRow('按日期建子目录', date_sub)
+        ng = QLineEdit(str(self.params.get('ngSubdir') or 'NG'))
+        ng.setPlaceholderText('NG 旁路子目录名（软提示）')
+        ng.editingFinished.connect(lambda: self._set_param('ngSubdir', ng.text().strip() or 'NG'))
+        form.addRow('NG 子目录', ng)
+        ann = OrangeSwitch(bool(self.params.get('saveAnnotated', True)))
+        ann.toggled.connect(lambda c: self._set_param('saveAnnotated', bool(c)))
+        form.addRow('优先保存标注图', ann)
         mkdir = OrangeSwitch(bool(self.params.get('createDir', True)))
         mkdir.toggled.connect(lambda c: self._set_param('createDir', bool(c)))
         form.addRow('自动建目录', mkdir)
         ow = OrangeSwitch(bool(self.params.get('overwrite', True)))
         ow.toggled.connect(lambda c: self._set_param('overwrite', bool(c)))
         form.addRow('允许覆盖', ow)
-        tip = QLabel('未选输入源或路径为空时节点红叹号。')
+        tip = QLabel('未选输入源或路径为空时节点红叹号。结果显示页可预览目标文件名。')
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
         return w
+
+    def _result_tab(self):
+        """结果显示：设计态目标路径/文件名预览 + OK 门控摘要（无硬件）。"""
+        w = QWidget()
+        form = QFormLayout(w)
+        form.setContentsMargins(10, 10, 10, 10)
+        tip = QLabel('运行写回 path / status / bytes（skipped_ng / no_image / ok）；下方为设计态预览。')
+        tip.setStyleSheet('color:#888;')
+        form.addRow(tip)
+        self._oi_result_preview = QPlainTextEdit()
+        self._oi_result_preview.setObjectName('outputImageResultPreview')
+        self._oi_result_preview.setReadOnly(True)
+        self._oi_result_preview.setMaximumHeight(140)
+        form.addRow('目标文件', self._oi_result_preview)
+        self._oi_result_meta = QLabel()
+        self._oi_result_meta.setObjectName('outputImageResultMeta')
+        self._oi_result_meta.setWordWrap(True)
+        form.addRow('摘要', self._oi_result_meta)
+        btn = QPushButton('刷新结果显示')
+        btn.setObjectName('outputImageResultRefresh')
+        btn.clicked.connect(self._refresh_output_image_result)
+        form.addRow(btn)
+        self._refresh_output_image_result()
+        return w
+
+    def _refresh_output_image_result(self):
+        from datetime import datetime
+        path = str(self.params.get('path') or '').strip()
+        fmt = str(self.params.get('format') or 'png').lower().lstrip('.')
+        prefix = str(self.params.get('filePrefix') or 'img').strip() or 'img'
+        use_ts = bool(self.params.get('useTimestamp', True))
+        date_sub = bool(self.params.get('dateSubdir', False))
+        only_ok = bool(self.params.get('onlyOnOk', False))
+        ok_var = str(self.params.get('okVar') or 'passGate')
+        img_from = self.step.get('imageFrom')
+        lines = []
+        if not path:
+            lines.append('(未配置保存路径)')
+        else:
+            base = path.rstrip('/\\')
+            if date_sub:
+                base = f"{base}/{datetime.now().strftime('%Y-%m-%d')}"
+            ts = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+            # Heuristic: no extension → directory mode
+            import os as _os
+            looks_dir = (not _os.path.splitext(path)[1]) or path.endswith(('/', '\\'))
+            if looks_dir:
+                name = f"{prefix}_{ts}.{fmt}" if use_ts else f"{prefix}.{fmt}"
+                dest = f"{base}/{name}"
+            else:
+                root, ext = _os.path.splitext(path)
+                if use_ts:
+                    dest = f"{root}_{ts}{ext or ('.' + fmt)}"
+                else:
+                    dest = path
+                if date_sub:
+                    dest = f"{_os.path.dirname(base)}/{datetime.now().strftime('%Y-%m-%d')}/{_os.path.basename(dest)}"
+            lines.append(dest)
+            if only_ok:
+                lines.append(f'门控: onlyOnOk → 变量 {ok_var} 非 OK 时 status=skipped_ng')
+                ng = str(self.params.get('ngSubdir') or 'NG')
+                lines.append(f'NG 旁路提示目录: {base}/{ng}/…（软提示，引擎仍跳过写入）')
+        text = '\n'.join(lines) if lines else '(无预览)'
+        if hasattr(self, '_oi_result_preview') and self._oi_result_preview is not None:
+            self._oi_result_preview.setPlainText(text)
+        src = img_from or '（未选）'
+        meta = (
+            f'输入源={src} · 格式={fmt} · 质量={int(self.params.get("quality") or 95)}'
+            f' · 时间戳={"开" if use_ts else "关"} · 覆盖={"开" if self.params.get("overwrite", True) else "关"}'
+            f' · 标注优先={"开" if self.params.get("saveAnnotated", True) else "关"}'
+        )
+        if hasattr(self, '_oi_result_meta') and self._oi_result_meta is not None:
+            self._oi_result_meta.setText(meta)
 
 
 class ProtocolParsePanel(_ShellBase):
@@ -619,6 +728,14 @@ class TextSavePanel(_ShellBase):
         super()._set_param(key, value)
         if key == 'path':
             self._refresh_incomplete_banner()
+        if key in (
+            'path', 'content', 'sourceVar', 'append', 'encoding', 'newline',
+            'bom', 'timestampPrefix', 'createDir', 'maxLinesSoft', 'separator',
+        ) and hasattr(self, '_refresh_text_save_result'):
+            try:
+                self._refresh_text_save_result()
+            except Exception:
+                pass
 
     def _basic_tab(self):
         w = QWidget(); form = QFormLayout(w); form.setContentsMargins(10, 10, 10, 10)
@@ -632,6 +749,11 @@ class TextSavePanel(_ShellBase):
             self.params['path'] = (text or '').strip()
             self.step['params'] = self.params
             self._refresh_incomplete_banner()
+            if hasattr(self, '_refresh_text_save_result'):
+                try:
+                    self._refresh_text_save_result()
+                except Exception:
+                    pass
         path.textChanged.connect(_live_path)
         browse = QPushButton('浏览…')
         def _b():
@@ -643,7 +765,17 @@ class TextSavePanel(_ShellBase):
         form.addRow('文件路径', row)
         content = QPlainTextEdit(); content.setPlainText(str(self.params.get('content') or ''))
         content.setMaximumHeight(100)
-        content.textChanged.connect(lambda: self._set_param('content', content.toPlainText()))
+        content.setObjectName('textSaveContentEdit')
+        def _live_content():
+            self.params['content'] = content.toPlainText()
+            self.step['params'] = self.params
+            self._emit()
+            if hasattr(self, '_refresh_text_save_result'):
+                try:
+                    self._refresh_text_save_result()
+                except Exception:
+                    pass
+        content.textChanged.connect(_live_content)
         form.addRow('内容', content)
         svar = QLineEdit(str(self.params.get('sourceVar') or ''))
         svar.setPlaceholderText('若填写则优先用变量内容')
@@ -674,10 +806,90 @@ class TextSavePanel(_ShellBase):
         tsp = OrangeSwitch(bool(self.params.get('timestampPrefix', False)))
         tsp.toggled.connect(lambda c: self._set_param('timestampPrefix', bool(c)))
         form.addRow('行首时间戳', tsp)
-        tip = QLabel('路径为空时节点红叹号。')
+        sep = QLineEdit(str(self.params.get('separator') if self.params.get('separator') is not None else '\t'))
+        sep.setPlaceholderText('时间戳与正文分隔符')
+        sep.editingFinished.connect(lambda: self._set_param('separator', sep.text()))
+        form.addRow('时间戳分隔', sep)
+        mkdir = OrangeSwitch(bool(self.params.get('createDir', True)))
+        mkdir.toggled.connect(lambda c: self._set_param('createDir', bool(c)))
+        form.addRow('自动建目录', mkdir)
+        ml = QSpinBox(); ml.setRange(0, 1000000); ml.setSpecialValueText('不限')
+        ml.setValue(int(self.params.get('maxLinesSoft') or 0))
+        ml.setToolTip('软上限提示（0=不限）；引擎不截断，仅结果显示参考')
+        ml.valueChanged.connect(lambda v: self._set_param('maxLinesSoft', int(v)))
+        form.addRow('软行数上限', ml)
+        tip = QLabel('路径为空时节点红叹号。源变量优先于「内容」；结果显示页预览将写入正文。')
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
         return w
+
+    def _result_tab(self):
+        """结果显示：设计态正文预览 + 字节/编码/模式摘要。"""
+        w = QWidget()
+        form = QFormLayout(w)
+        form.setContentsMargins(10, 10, 10, 10)
+        tip = QLabel('运行写回 path / bytes / bom / timestampPrefix / status；下方为设计态预览。')
+        tip.setStyleSheet('color:#888;')
+        form.addRow(tip)
+        self._ts_result_preview = QPlainTextEdit()
+        self._ts_result_preview.setObjectName('textSaveResultPreview')
+        self._ts_result_preview.setReadOnly(True)
+        self._ts_result_preview.setMaximumHeight(140)
+        form.addRow('将写入', self._ts_result_preview)
+        self._ts_result_meta = QLabel()
+        self._ts_result_meta.setObjectName('textSaveResultMeta')
+        self._ts_result_meta.setWordWrap(True)
+        form.addRow('摘要', self._ts_result_meta)
+        btn = QPushButton('刷新结果显示')
+        btn.setObjectName('textSaveResultRefresh')
+        btn.clicked.connect(self._refresh_text_save_result)
+        form.addRow(btn)
+        self._refresh_text_save_result()
+        return w
+
+    def _refresh_text_save_result(self):
+        from datetime import datetime
+        path = str(self.params.get('path') or '').strip()
+        body = str(self.params.get('content') or '')
+        svar = str(self.params.get('sourceVar') or '').strip()
+        if svar:
+            # design-time: show variable placeholder; runtime resolves
+            body = f'${{{svar}}}' + (f'  # fallback content len={len(self.params.get("content") or "")}' if self.params.get('content') else '')
+            preview_note = f'(运行时取变量 {svar})'
+        else:
+            preview_note = '(使用内容字段)'
+        if bool(self.params.get('timestampPrefix')):
+            ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            sep = self.params.get('separator')
+            if sep is None:
+                sep = '\t'
+            body = f'{ts}{sep}{body}'
+        if bool(self.params.get('newline', True)) and body and not str(body).endswith('\n'):
+            body = str(body) + '\n'
+        enc = str(self.params.get('encoding') or 'utf-8')
+        try:
+            nbytes = len(str(body).encode(enc if enc != 'gbk' else 'utf-8', errors='replace'))
+        except Exception:
+            nbytes = len(str(body).encode('utf-8', errors='replace'))
+        if bool(self.params.get('bom')) and not bool(self.params.get('append', True)):
+            nbytes += 3
+        lines = str(body).splitlines()
+        soft = int(self.params.get('maxLinesSoft') or 0)
+        soft_note = ''
+        if soft > 0 and len(lines) > soft:
+            soft_note = f' · ⚠ 超过软行数上限 {soft}（当前 {len(lines)}）'
+        text = body if body else '(空正文)'
+        if hasattr(self, '_ts_result_preview') and self._ts_result_preview is not None:
+            self._ts_result_preview.setPlainText(text)
+        mode = '追加' if self.params.get('append', True) else '覆盖'
+        meta = (
+            f'路径={path or "（未填）"} · {mode} · 编码 {enc} · 约 {nbytes} 字节'
+            f' · BOM={"开" if self.params.get("bom") else "关"}'
+            f' · 时间戳={"开" if self.params.get("timestampPrefix") else "关"}'
+            f' · {preview_note}{soft_note}'
+        )
+        if hasattr(self, '_ts_result_meta') and self._ts_result_meta is not None:
+            self._ts_result_meta.setText(meta)
 
 
 def normalize_preprocess_params(params=None):

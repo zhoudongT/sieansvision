@@ -8,7 +8,7 @@ from copy import deepcopy
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTabWidget,
-    QFormLayout, QLineEdit, QComboBox, QTableWidget, QTableWidgetItem,
+    QFormLayout, QLineEdit, QComboBox, QTableWidget, QTableWidgetItem, QPlainTextEdit,
     QHeaderView, QAbstractItemView, QScrollArea, QFrame,
 )
 
@@ -371,6 +371,11 @@ class ConditionBranchPanel(QWidget):
             rules.append(dict(left=left, comparison=comparison, right=right, enabled=enabled))
         self.params['rules'] = rules
         self._emit()
+        if hasattr(self, '_refresh_condition_result'):
+            try:
+                self._refresh_condition_result()
+            except Exception:
+                pass
 
     def _paths_tab(self):
         w = QWidget()
@@ -479,6 +484,11 @@ class ConditionBranchPanel(QWidget):
             ))
         self.params['paths'] = paths
         self._emit()
+        if hasattr(self, '_refresh_condition_result'):
+            try:
+                self._refresh_condition_result()
+            except Exception:
+                pass
 
     def _result_tab(self):
         w = QWidget()
@@ -486,26 +496,36 @@ class ConditionBranchPanel(QWidget):
         form.setContentsMargins(10, 10, 10, 10)
         if self.op == 'branch':
             tip = QLabel(
-                '运行输出：matchedPath / matchedPathId / passed。\n'
+                '运行输出：pathId / pathName / passed / default。'
                 '画布连线 when=路径名；禁用路径跳过。默认路径兜底。'
             )
         else:
             tip = QLabel(
-                '运行输出：passed / matchedRuleCount。\n'
+                '运行输出：passed / rules[]。'
                 '真出边 when=true，假出边 when=false。禁用规则不参与 AND/OR。'
             )
         tip.setWordWrap(True)
-        tip.setStyleSheet('color:#555;')
+        tip.setStyleSheet('color:#888;')
         form.addRow(tip)
-        # Quick preview labels from current harvest
         summary = QLabel(self._summary_text())
         summary.setObjectName('conditionSummary')
         summary.setWordWrap(True)
         form.addRow('当前配置', summary)
         self._result_summary = summary
-        refresh = QPushButton('刷新摘要')
-        refresh.clicked.connect(lambda: summary.setText(self._summary_text()))
+        self._cond_result_preview = QPlainTextEdit()
+        self._cond_result_preview.setObjectName('conditionResultPreview')
+        self._cond_result_preview.setReadOnly(True)
+        self._cond_result_preview.setMaximumHeight(160)
+        form.addRow('设计态求值', self._cond_result_preview)
+        self._cond_result_meta = QLabel()
+        self._cond_result_meta.setObjectName('conditionResultMeta')
+        self._cond_result_meta.setWordWrap(True)
+        form.addRow('摘要', self._cond_result_meta)
+        refresh = QPushButton('刷新结果显示')
+        refresh.setObjectName('conditionResultRefresh')
+        refresh.clicked.connect(self._refresh_condition_result)
         form.addRow(refresh)
+        self._refresh_condition_result()
         return w
 
     def _summary_text(self):
@@ -516,3 +536,126 @@ class ConditionBranchPanel(QWidget):
         rules = self.params.get('rules') or []
         on = [r for r in rules if r.get('enabled', True)]
         return f'规则 {len(rules)} 条（启用 {len(on)}）；逻辑={self.params.get("logic") or "and"}'
+
+    def _eval_one_design(self, left, comparison, right):
+        """Design-time constant eval (no variable resolve). Returns (passed, note)."""
+        cmp = comparison or 'eq'
+        # Treat bare identifiers as unresolved vars
+        def _is_varish(v):
+            s = str(v).strip()
+            if s == '':
+                return False
+            if s.replace('.', '', 1).replace('-', '', 1).isdigit():
+                return False
+            if s.lower() in ('true', 'false', '1', '0', 'yes', 'no', 'ok', 'ng'):
+                return False
+            if (s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'")):
+                return False
+            return True
+
+        if cmp in ('empty', 'not_empty'):
+            empty = left is None or str(left).strip() == ''
+            return ((empty if cmp == 'empty' else not empty), f'{cmp}({left!r})')
+        if cmp in ('is_true', 'is_false'):
+            truth = str(left).strip().lower() in ('1', 'true', 'yes', 'ok', 'y')
+            if _is_varish(left):
+                return (None, f'变量 {left!r} 运行时求值 → {cmp}')
+            return ((truth if cmp == 'is_true' else not truth), f'{cmp}({left!r})')
+        if _is_varish(left) or _is_varish(right):
+            return (None, f'{left!r} {cmp} {right!r}（含变量，运行时求值）')
+        # unwrap quotes
+        def _coerce(v):
+            s = str(v).strip()
+            if (s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'")):
+                return s[1:-1]
+            if s.lower() in ('true', 'yes', 'ok'):
+                return True
+            if s.lower() in ('false', 'no', 'ng'):
+                return False
+            try:
+                if s.replace('.', '', 1).replace('-', '', 1).isdigit():
+                    return float(s) if '.' in s else int(s)
+            except Exception:
+                pass
+            return s
+        a, b = _coerce(left), _coerce(right)
+        try:
+            if cmp == 'eq':
+                return (a == b, f'{a!r} == {b!r}')
+            if cmp == 'ne':
+                return (a != b, f'{a!r} != {b!r}')
+            if cmp == 'gt':
+                return (a > b, f'{a!r} > {b!r}')
+            if cmp == 'gte':
+                return (a >= b, f'{a!r} >= {b!r}')
+            if cmp == 'lt':
+                return (a < b, f'{a!r} < {b!r}')
+            if cmp == 'lte':
+                return (a <= b, f'{a!r} <= {b!r}')
+            if cmp == 'contains':
+                return (str(b) in str(a), f'{b!r} in {a!r}')
+            if cmp == 'starts_with':
+                return (str(a).startswith(str(b)), f'{a!r}.startswith({b!r})')
+            if cmp == 'ends_with':
+                return (str(a).endswith(str(b)), f'{a!r}.endswith({b!r})')
+            if cmp == 'regex':
+                import re
+                return (bool(re.search(str(b), str(a))), f're.search({b!r}, {a!r})')
+        except Exception as exc:
+            return (None, f'求值失败: {exc}')
+        return (None, f'未知比较 {cmp}')
+
+    def _refresh_condition_result(self):
+        if hasattr(self, '_result_summary') and self._result_summary is not None:
+            self._result_summary.setText(self._summary_text())
+        lines = []
+        if self.op == 'branch':
+            paths = self.params.get('paths') or []
+            default_id = self.params.get('defaultPathId') or 'default'
+            hit = None
+            for i, p in enumerate(paths):
+                if not p.get('enabled', True):
+                    lines.append(f'#{i+1} {p.get("name") or p.get("id")} [禁用]')
+                    continue
+                if (p.get('id') or '') == default_id or (p.get('name') or '') == '默认':
+                    lines.append(f'#{i+1} {p.get("name") or p.get("id")} [默认兜底]')
+                    continue
+                passed, note = self._eval_one_design(p.get('left'), p.get('comparison'), p.get('right'))
+                mark = '✓' if passed is True else ('·' if passed is None else '✗')
+                lines.append(f'#{i+1} {p.get("name") or p.get("id")} {mark} {note}')
+                if hit is None and passed is True:
+                    hit = p
+            if hit:
+                verdict = f'设计态命中 → {hit.get("name") or hit.get("id")}（when={hit.get("name") or hit.get("id")}）'
+            else:
+                verdict = f'设计态未命中常量 → 默认 {default_id}'
+            meta = verdict
+        else:
+            rules = self.params.get('rules') or []
+            logic = self.params.get('logic') or 'and'
+            flags = []
+            any_runtime = False
+            for i, r in enumerate(rules):
+                if not r.get('enabled', True):
+                    lines.append(f'#{i+1} [禁用] {r.get("left")!r} {r.get("comparison")} {r.get("right")!r}')
+                    continue
+                passed, note = self._eval_one_design(r.get('left'), r.get('comparison'), r.get('right'))
+                if passed is None:
+                    any_runtime = True
+                    mark = '?'
+                else:
+                    mark = '✓' if passed else '✗'
+                    flags.append(passed)
+                lines.append(f'#{i+1} {mark} {note}')
+            if any_runtime or not flags:
+                verdict = f'逻辑={logic} · 含变量或空规则 → 运行时求值'
+                passed_preview = None
+            else:
+                passed_preview = any(flags) if logic == 'or' else all(flags)
+                verdict = f'逻辑={logic} · 设计态 passed={passed_preview} → when={"true" if passed_preview else "false"}'
+            meta = verdict
+        text = '\n'.join(lines) if lines else '(无规则/路径)'
+        if hasattr(self, '_cond_result_preview') and self._cond_result_preview is not None:
+            self._cond_result_preview.setPlainText(text)
+        if hasattr(self, '_cond_result_meta') and self._cond_result_meta is not None:
+            self._cond_result_meta.setText(meta)

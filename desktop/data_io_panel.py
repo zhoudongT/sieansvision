@@ -59,6 +59,8 @@ def normalize_receive_params(params=None):
     p.setdefault('targetScope', 'flow')
     p.setdefault('targetVar', 'recvData')
     p.setdefault('triggerOnReceive', True)
+    p.setdefault('samplePayload', '')  # design-time preview only
+    p.setdefault('trim', False)
     return p
 
 
@@ -72,6 +74,8 @@ def normalize_send_params(params=None):
     p.setdefault('sourceVar', '')
     p.setdefault('encoding', 'utf-8')
     p.setdefault('appendCrLf', False)
+    p.setdefault('prefix', '')
+    p.setdefault('suffix', '')
     return p
 
 
@@ -122,6 +126,7 @@ class DataIoPanel(QWidget):
         if self.params.get(key) != value:
             self.params[key] = deepcopy(value)
             self._emit()
+            self._maybe_refresh_io()
 
     def _set_top(self, key, value):
         if self.step.get(key) != value:
@@ -225,20 +230,112 @@ class DataIoPanel(QWidget):
             crlf.toggled.connect(lambda c: self._set_param('appendCrLf', bool(c)))
             form.addRow('追加 CRLF', crlf)
 
+        if self.op == 'receive_data':
+            sample = QPlainTextEdit()
+            sample.setPlainText(str(self.params.get('samplePayload') or ''))
+            sample.setPlaceholderText('样例载荷（仅设计态结果显示预览）')
+            sample.setMaximumHeight(70)
+            sample.setObjectName('dataIoSamplePayload')
+            def _live_sample():
+                self.params['samplePayload'] = sample.toPlainText()
+                self.step['params'] = self.params
+                self._emit()
+                self._maybe_refresh_io()
+            sample.textChanged.connect(_live_sample)
+            form.addRow('样例载荷', sample)
+            trim = OrangeSwitch(bool(self.params.get('trim', False)))
+            trim.toggled.connect(lambda c: self._set_param('trim', bool(c)))
+            form.addRow('去空白', trim)
+        else:
+            prefix = QLineEdit(str(self.params.get('prefix') or ''))
+            prefix.setPlaceholderText('发送前缀（可选）')
+            prefix.editingFinished.connect(lambda: self._set_param('prefix', prefix.text()))
+            form.addRow('前缀', prefix)
+            suffix = QLineEdit(str(self.params.get('suffix') or ''))
+            suffix.setPlaceholderText('发送后缀（可选）')
+            suffix.editingFinished.connect(lambda: self._set_param('suffix', suffix.text()))
+            form.addRow('后缀', suffix)
         tip = QLabel('可在「工具 → 通信管理」中维护设备；默认 LocalLoop=进程内总线。')
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
         return w
+
+    def _maybe_refresh_io(self):
+        if hasattr(self, '_refresh_data_io_result'):
+            try:
+                self._refresh_data_io_result()
+            except Exception:
+                pass
 
     def _result_tab(self):
         w = QWidget()
         form = QFormLayout(w)
         form.setContentsMargins(10, 10, 10, 10)
         if self.op == 'receive_data':
-            tip = QLabel('运行结果：payload / bytes / device / status / path（inprocess|tcp|udp|echo）。')
+            tip = QLabel('运行结果：payload / bytes / device / status / path（inprocess|tcp|udp|echo）。下方用样例载荷做设计态预览。')
         else:
-            tip = QLabel('运行结果：sent / bytes / device / status / path（inprocess|tcp|udp-simulator）。')
+            tip = QLabel('运行结果：sent / bytes / device / status / path（inprocess|tcp|udp-simulator）。下方预览将发送正文。')
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
+        self._io_result_preview = QPlainTextEdit()
+        self._io_result_preview.setObjectName('dataIoResultPreview')
+        self._io_result_preview.setReadOnly(True)
+        self._io_result_preview.setMaximumHeight(140)
+        form.addRow('预览', self._io_result_preview)
+        self._io_result_meta = QLabel()
+        self._io_result_meta.setObjectName('dataIoResultMeta')
+        self._io_result_meta.setWordWrap(True)
+        form.addRow('摘要', self._io_result_meta)
+        btn = QPushButton('刷新结果显示')
+        btn.setObjectName('dataIoResultRefresh')
+        btn.clicked.connect(self._refresh_data_io_result)
+        form.addRow(btn)
+        self._refresh_data_io_result()
         return w
+
+    def _refresh_data_io_result(self):
+        device = self.params.get('device') or '（未选设备）'
+        channel = self.params.get('channel') or ''
+        enc = self.params.get('encoding') or 'utf-8'
+        if self.op == 'receive_data':
+            payload = str(self.params.get('samplePayload') or '')
+            if bool(self.params.get('trim')):
+                payload = payload.strip()
+            body = payload if payload else '(无样例载荷 — 在基本参数填写「样例载荷」)'
+            scope = self.params.get('targetScope') or 'flow'
+            var = self.params.get('targetVar') or 'recvData'
+            try:
+                nbytes = len(payload.encode(enc if enc not in ('hex', 'gbk') else 'utf-8', errors='replace'))
+            except Exception:
+                nbytes = len(payload.encode('utf-8', errors='replace'))
+            meta = (
+                f'设备={device} · 通道={channel or "-"} · 编码={enc}'
+                f' · 写入 {scope}.{var} · 约 {nbytes} 字节'
+                f' · 超时={int(self.params.get("timeoutMs") or 1000)} ms'
+            )
+        else:
+            mode = self.params.get('sourceMode') or 'text'
+            if mode == 'variable':
+                svar = self.params.get('sourceVar') or ''
+                body = ('${' + svar + '}') if svar else '(变量模式未填源变量)'
+            else:
+                body = str(self.params.get('message') or '')
+            prefix = str(self.params.get('prefix') or '')
+            suffix = str(self.params.get('suffix') or '')
+            body = f'{prefix}{body}{suffix}'
+            if bool(self.params.get('appendCrLf')):
+                body = body + chr(13) + chr(10)
+            try:
+                nbytes = len(body.encode(enc if enc not in ('hex', 'gbk') else 'utf-8', errors='replace'))
+            except Exception:
+                nbytes = len(body.encode('utf-8', errors='replace'))
+            meta = (
+                f'设备={device} · 通道={channel or "-"} · 编码={enc}'
+                f' · 来源={mode} · 约 {nbytes} 字节'
+                f' · CRLF={"开" if self.params.get("appendCrLf") else "关"}'
+            )
+        if hasattr(self, '_io_result_preview') and self._io_result_preview is not None:
+            self._io_result_preview.setPlainText(body)
+        if hasattr(self, '_io_result_meta') and self._io_result_meta is not None:
+            self._io_result_meta.setText(meta)
