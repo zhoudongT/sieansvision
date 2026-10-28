@@ -46,7 +46,7 @@ def config(params):
     p = dict(params)
     if p.get('driver') not in ('simulator', 'uvc', 'gentl', 'realsense', 'orbbec', 'rgbd_simulator'):
         raise ValueError('请选择支持的 2D 或深度相机驱动')
-    allowed = {'driver', 'deviceId', 'timeoutMs', 'trigger', 'width', 'height'} | {
+    allowed = {'driver', 'deviceId', 'timeoutMs', 'trigger', 'width', 'height', 'backendKind', 'keepConnectionOpen', 'openClosePerGrab'} | {
         'simulator': set(), 'uvc': {'fps', 'warmupFrames'},
         'gentl': {'providerId', 'exposureTime', 'gain', 'pixelFormat', 'triggerSource', 'dataMode',
                   'configure3d','coordinateFormat','rangeComponent','intensityComponent','confidenceComponent',

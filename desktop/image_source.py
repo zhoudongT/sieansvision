@@ -271,6 +271,7 @@ class ImageSourceForm(QWidget):
         self.acq_backend_hint.setWordWrap(True)
         cam_form.addRow(self.acq_backend_hint)
         self._refresh_acq_backend_hint()
+        self._refresh_camera_devices()
         _dspin(cam_form, '控制曝光', cfg.get('exposure', 0.0), 0, 1e9,
                lambda v: self._audit('exposure', float(v)))
         _dspin(cam_form, '控制增益', cfg.get('gain', 0.0), 0, 1e6,
@@ -351,7 +352,120 @@ class ImageSourceForm(QWidget):
             params['driver'] = {'soft': 'simulator', 'uvc': 'uvc', 'gentl': 'gentl'}.get(kind, 'simulator')
         self._audit('cameraParams', params)
         self._refresh_acq_backend_hint()
+        self._refresh_camera_devices()
         self._refresh_acq_chrome()
+
+    def _refresh_camera_devices(self):
+        """Fill 关联相机 / SDK combo from Soft·UVC·GenTL enumerate (so dropdown is not empty)."""
+        if not hasattr(self, 'camera_combo'):
+            return
+        kind = 'soft'
+        if hasattr(self, 'acq_backend') and self.acq_backend is not None:
+            kind = self.acq_backend.currentData() or 'soft'
+        cur = ''
+        try:
+            cur = self.camera_combo.currentData() or ''
+        except Exception:
+            cur = (self._cfg or {}).get('cameraId') or ''
+        items = []  # list[(label, deviceId, extra_params)]
+        try:
+            if kind == 'soft':
+                items = [('软模拟 Soft · sim-0', 'soft:sim-0', {'driver': 'simulator', 'backendKind': 'soft'})]
+            elif kind == 'uvc':
+                import cv2
+                for i in range(6):
+                    cap = cv2.VideoCapture(i)
+                    ok = cap.isOpened()
+                    cap.release()
+                    if ok:
+                        did = f'uvc:{i}'
+                        items.append((f'/dev/video{i} (UVC)', did, {'driver': 'uvc', 'backendKind': 'uvc', 'deviceId': str(i)}))
+            elif kind == 'gentl':
+                from desktop.camera_backends import discover_gentl_ctis, gentl_load_producer, gentl_enumerate_devices, format_device_picker_label
+                seen = set()
+                ctis = [c for c in (discover_gentl_ctis() or []) if c.get('available')]
+                # Prefer 64-bit U3V producer first (USB industrial cameras)
+                def _rank(c):
+                    path = str(c.get('path') or '')
+                    name = str(c.get('name') or '')
+                    score = 0
+                    if '/64/' in path or 'Win64' in path:
+                        score += 10
+                    if 'U3V' in name or 'U3V' in path:
+                        score += 5
+                    return -score
+                ctis.sort(key=_rank)
+                for c in ctis:
+                    pid = c.get('id')
+                    try:
+                        gentl_load_producer(pid)
+                        for d in gentl_enumerate_devices(pid) or []:
+                            did = d.get('deviceId') or ''
+                            if not did or did in seen:
+                                continue
+                            seen.add(did)
+                            try:
+                                lab = format_device_picker_label(d, kind='gentl')
+                            except Exception:
+                                lab = d.get('name') or did
+                            items.append((lab, did, {
+                                'driver': 'gentl', 'backendKind': 'gentl',
+                                'deviceId': did, 'providerId': d.get('providerId') or pid,
+                            }))
+                    except Exception as exc:
+                        items.append((f'GenTL 枚举失败: {exc}', '', {}))
+                        break
+        except Exception as exc:
+            items = [(f'枚举失败: {exc}', '', {})]
+        # rebuild combos
+        for combo_name in ('camera_combo', 'sdk_camera'):
+            combo = getattr(self, combo_name, None)
+            if combo is None:
+                continue
+            combo.blockSignals(True)
+            combo.clear()
+            if not items or (len(items) == 1 and not items[0][1]):
+                combo.addItem('请选择（先切换采集后端或点📷）', '')
+                for lab, did, _ in items:
+                    if lab and not did:
+                        combo.addItem(lab, '')
+            else:
+                combo.addItem('请选择', '')
+                for lab, did, _ in items:
+                    if did:
+                        combo.addItem(lab, did)
+                # restore selection
+                if cur:
+                    ix = combo.findData(cur)
+                    if ix < 0:
+                        combo.addItem(str(cur), cur)
+                        ix = combo.findData(cur)
+                    if ix >= 0:
+                        combo.setCurrentIndex(ix)
+                elif kind == 'gentl' and any(i[1] for i in items):
+                    # auto-select first real GenTL device to unblock Allen
+                    for i, (lab, did, _) in enumerate(items):
+                        if did:
+                            combo.setCurrentIndex(combo.findData(did))
+                            cur = did
+                            break
+            combo.blockSignals(False)
+        # if we auto-picked, audit + stash cameraParams
+        if cur and kind == 'gentl':
+            extra = None
+            for lab, did, ex in items:
+                if did == cur:
+                    extra = ex
+                    break
+            if extra:
+                params = dict(self._cfg.get('cameraParams') or {})
+                params.update(extra)
+                self._audit('cameraId', cur)
+                self._audit('cameraParams', params)
+            elif self.camera_combo.currentData():
+                self._audit('cameraId', self.camera_combo.currentData())
+        if hasattr(self, 'acq_backend_hint') and kind == 'gentl' and not any(i[1] for i in items):
+            self.acq_backend_hint.setText(self.acq_backend_hint.text() + ' · 未枚举到设备，确认 USB 海康已插入')
 
     def _refresh_acq_backend_hint(self):
         if not hasattr(self, 'acq_backend_hint'):
