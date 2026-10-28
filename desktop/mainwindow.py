@@ -3277,14 +3277,27 @@ class MainWindow(QMainWindow):
             self._autoload_source_image(force=True)
             if getattr(self, 'app_mode', 'design') != 'run':
                 self.set_app_mode('run')
+            # wave151: seed soft/last-frame preview into run-mode image panes (not cobind wall)
+            try:
+                if hasattr(self, 'operator_hmi') and self.operator_hmi is not None:
+                    try:
+                        self.operator_hmi.set_cobind_drawer_expanded(False)
+                    except Exception:
+                        pass
+                    if self.image:
+                        self.operator_hmi.set_preview_image(self.image)
+                    elif self.last_result:
+                        self.operator_hmi.set_runtime(self.last_result, image=self.image)
+            except Exception:
+                pass
             try:
                 self.statusBar().showMessage(
-                    '开箱即跑就绪 · 样张已载入 · 点上位机「▶ 开始」或工具栏连续/单次',
+                    '开箱即跑就绪 · 图像预览已载入 · 点 ▶ 单次/连续（联调状态条默认折叠）',
                     8000,
                 )
             except Exception:
                 pass
-            self.log('开箱即跑：已进入运行模式（openAndRun）· 可立即开始采集/识别')
+            self.log('开箱即跑：已进入运行模式（openAndRun）· 图像预览 + 运行控制为主视图')
         except Exception as err:
             self.log(f'开箱即跑进入运行态失败：{err}')
 

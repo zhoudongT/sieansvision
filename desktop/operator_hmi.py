@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit, QGridLayout, QSizePolicy, QLineEdit, QListWidget,
     QTableWidget, QTableWidgetItem, QProgressBar, QHeaderView,
     QComboBox, QTabWidget, QStackedWidget, QFileDialog, QApplication,
-    QSpinBox,
+    QSpinBox, QToolButton, QScrollArea,
 )
 
 from desktop.image_view import ImageView
@@ -920,6 +920,14 @@ class OperatorHmiView(QWidget):
         )
         root.addWidget(self._page_chrome_banner)
 
+        # wave151: Host/配方/通讯 cobind status wall → secondary drawer (collapsed by default).
+        # Primary run surface stays: header · state rail · page chrome · IMAGE grid · OK/NG · run strip.
+        self._cobind_drawer = QWidget()
+        self._cobind_drawer.setObjectName('hmiCobindStatusDrawer')
+        _drawer_lay = QVBoxLayout(self._cobind_drawer)
+        _drawer_lay.setContentsMargins(0, 0, 0, 0)
+        _drawer_lay.setSpacing(4)
+
         # Page-level trial→result strip (co-update with OK-NG dashboard; not chips)
         self._trial_result_strip = QLabel('试跑→结果 · 待命')
         self._trial_result_strip.setObjectName('hmiTrialResultStrip')
@@ -931,7 +939,7 @@ class OperatorHmiView(QWidget):
         self._trial_result_strip.setToolTip(
             'production_task ▶试跑 → 页铬 + OK-NG 看板联更（trial→result）'
         )
-        root.addWidget(self._trial_result_strip)
+        _drawer_lay.addWidget(self._trial_result_strip)
 
         # Page-level Host SM liaison / Alarm clear closed-loop strip
         self._hostsm_closed_loop_strip = QLabel('Host SM 闭环 · 待命 · trial→result → 联调/报警清除')
@@ -944,7 +952,7 @@ class OperatorHmiView(QWidget):
         self._hostsm_closed_loop_strip.setToolTip(
             'production_task trial→result ↔ Host SM 联调条 / 报警清除闭环（页铬，非芯片）'
         )
-        root.addWidget(self._hostsm_closed_loop_strip)
+        _drawer_lay.addWidget(self._hostsm_closed_loop_strip)
 
         # Page-level variant + statusVar co-bind strip (recipe handoff)
         self._variant_status_cobind_strip = QLabel('变体·statusVar 共绑 · 待命')
@@ -957,7 +965,7 @@ class OperatorHmiView(QWidget):
         self._variant_status_cobind_strip.setToolTip(
             '换型手递 → production_task statusVar + 变体 页铬共绑（非属性芯片）'
         )
-        root.addWidget(self._variant_status_cobind_strip)
+        _drawer_lay.addWidget(self._variant_status_cobind_strip)
 
         self._page_chrome_locked = False
         self._page_chrome_lock_recipe = ''
@@ -1004,7 +1012,7 @@ class OperatorHmiView(QWidget):
         self._fix_bottom.hide()
         root.addWidget(self._fix_bottom)
 
-        # Alarm / OK-NG dashboard soft strip (page-level; not micro chips)
+        # Alarm / OK-NG dashboard soft strip — PRIMARY result strip (always visible)
         self._okng_dashboard_strip = QLabel(
             '看板 · OK —  NG —  良率 —  ·  判定 —  ·  报警开 —  ·  状态 空闲'
         )
@@ -1030,7 +1038,7 @@ class OperatorHmiView(QWidget):
         self._alarm_okng_cobind_strip.setToolTip(
             'Host SM 报警历史 ↔ HMI OK-NG 看板页铬共绑（非属性芯片）'
         )
-        root.addWidget(self._alarm_okng_cobind_strip)
+        _drawer_lay.addWidget(self._alarm_okng_cobind_strip)
         self._alarm_okng_cobind_detail = QPlainTextEdit()
         self._alarm_okng_cobind_detail.setObjectName('hmiAlarmHistOkNgCoBindDetail')
         self._alarm_okng_cobind_detail.setReadOnly(True)
@@ -1039,7 +1047,7 @@ class OperatorHmiView(QWidget):
             'font-family:monospace;font-size:11px;background:#141a24;color:#c5d0e0;'
         )
         self._alarm_okng_cobind_detail.setPlainText('(尚无报警历史 ↔ OK-NG 共绑明细)')
-        root.addWidget(self._alarm_okng_cobind_detail)
+        _drawer_lay.addWidget(self._alarm_okng_cobind_detail)
 
         # Recipe variant ↔ production chain soft preview page chrome
         self._variant_chain_preview_strip = QLabel('变体·生产链软预览 · 待命')
@@ -1052,7 +1060,7 @@ class OperatorHmiView(QWidget):
         self._variant_chain_preview_strip.setToolTip(
             '配方变体列表 ↔ production_task 链软预览页铬'
         )
-        root.addWidget(self._variant_chain_preview_strip)
+        _drawer_lay.addWidget(self._variant_chain_preview_strip)
 
         # Comm sendEvents → Host SM / HMI status rail closed-loop page chrome
         self._comm_tx_status_rail_loop_strip = QLabel('出站→状态轨闭环 · 待命')
@@ -1065,7 +1073,7 @@ class OperatorHmiView(QWidget):
         self._comm_tx_status_rail_loop_strip.setToolTip(
             'Comm sendEvents result-out → Host SM / HMI status rail closed-loop page chrome'
         )
-        root.addWidget(self._comm_tx_status_rail_loop_strip)
+        _drawer_lay.addWidget(self._comm_tx_status_rail_loop_strip)
 
         # Recipe variant apply → chain dry-run → OK-NG dashboard co-update
         self._variant_dryrun_okng_strip = QLabel('变体套用·链 dry-run → OK-NG 看板 · 待命')
@@ -1078,7 +1086,7 @@ class OperatorHmiView(QWidget):
         self._variant_dryrun_okng_strip.setToolTip(
             '配方变体套用 → production_task 链 dry-run → OK-NG 看板页共更'
         )
-        root.addWidget(self._variant_dryrun_okng_strip)
+        _drawer_lay.addWidget(self._variant_dryrun_okng_strip)
 
         # Alarm hist export/filter ↔ OK-NG sequence page co-bind
         self._alarm_okng_seq_cobind_strip = QLabel('报警导出/筛选 ↔ OK-NG 序列共绑 · 待命')
@@ -1091,7 +1099,7 @@ class OperatorHmiView(QWidget):
         self._alarm_okng_seq_cobind_strip.setToolTip(
             'Host SM 报警历史导出/筛选 ↔ HMI OK-NG 序列页铬共绑'
         )
-        root.addWidget(self._alarm_okng_seq_cobind_strip)
+        _drawer_lay.addWidget(self._alarm_okng_seq_cobind_strip)
         self._alarm_okng_seq_cobind_detail = QPlainTextEdit()
         self._alarm_okng_seq_cobind_detail.setObjectName('hmiAlarmHistOkNgSeqCoBindDetail')
         self._alarm_okng_seq_cobind_detail.setReadOnly(True)
@@ -1100,7 +1108,7 @@ class OperatorHmiView(QWidget):
             'font-family:monospace;font-size:11px;background:#141a24;color:#c5d0e0;'
         )
         self._alarm_okng_seq_cobind_detail.setPlainText('(尚无报警导出/筛选 ↔ OK-NG 序列共绑明细)')
-        root.addWidget(self._alarm_okng_seq_cobind_detail)
+        _drawer_lay.addWidget(self._alarm_okng_seq_cobind_detail)
         self._okng_seq_bits = []  # soft OK/NG sequence for co-bind (page chrome; not chips)
 
         # Host SM liaison ↔ Comm sendEvents ack/response page co-bind
@@ -1114,7 +1122,7 @@ class OperatorHmiView(QWidget):
         self._liaison_send_ack_cobind_strip.setToolTip(
             'Host SM liaison timeline ↔ Comm sendEvents ack/response page co-bind'
         )
-        root.addWidget(self._liaison_send_ack_cobind_strip)
+        _drawer_lay.addWidget(self._liaison_send_ack_cobind_strip)
 
         # Recipe chrome lock ↔ statusVar writeback closed-loop
         self._chrome_lock_statusvar_loop_strip = QLabel('页铬锁 ↔ statusVar 写回闭环 · 待命')
@@ -1127,7 +1135,7 @@ class OperatorHmiView(QWidget):
         self._chrome_lock_statusvar_loop_strip.setToolTip(
             'Recipe chrome lock ↔ production_task statusVar writeback closed-loop page'
         )
-        root.addWidget(self._chrome_lock_statusvar_loop_strip)
+        _drawer_lay.addWidget(self._chrome_lock_statusvar_loop_strip)
         self._chrome_lock_statusvar_loop_detail = QPlainTextEdit()
         self._chrome_lock_statusvar_loop_detail.setObjectName('hmiChromeLockStatusVarLoopDetail')
         self._chrome_lock_statusvar_loop_detail.setReadOnly(True)
@@ -1136,7 +1144,7 @@ class OperatorHmiView(QWidget):
             'font-family:monospace;font-size:11px;background:#141a24;color:#e0d0a0;'
         )
         self._chrome_lock_statusvar_loop_detail.setPlainText('(尚无页铬锁 ↔ statusVar 写回闭环明细)')
-        root.addWidget(self._chrome_lock_statusvar_loop_detail)
+        _drawer_lay.addWidget(self._chrome_lock_statusvar_loop_detail)
 
         # OK-NG dashboard ↔ Comm recvEvents auto-ack co-update
         self._okng_recv_autoack_co_update_strip = QLabel('OK-NG ↔ recv自动应答共更 · 待命')
@@ -1149,7 +1157,36 @@ class OperatorHmiView(QWidget):
         self._okng_recv_autoack_co_update_strip.setToolTip(
             'OK-NG dashboard ↔ Comm recvEvents auto-ack page co-update'
         )
-        root.addWidget(self._okng_recv_autoack_co_update_strip)
+        _drawer_lay.addWidget(self._okng_recv_autoack_co_update_strip)
+
+        # Compact toggle + scrollable drawer (collapsed → image/canvas dominates)
+        self._cobind_toggle = QToolButton()
+        self._cobind_toggle.setObjectName('hmiCobindStatusToggle')
+        self._cobind_toggle.setCheckable(True)
+        self._cobind_toggle.setChecked(False)
+        self._cobind_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self._cobind_toggle.setArrowType(Qt.ArrowType.RightArrow)
+        self._cobind_toggle.setText('联调 / Host·配方·通讯状态（折叠）· 点此展开')
+        self._cobind_toggle.setStyleSheet(
+            f'QToolButton{{background:{CARD};color:{TEXT_MUTED};border:1px solid {LINE};'
+            f'border-radius:3px;padding:4px 8px;font-size:11px;text-align:left;}}'
+            f'QToolButton:checked{{color:#9ec9f0;border-color:#3a6a9a;}}'
+        )
+        self._cobind_toggle.setToolTip(
+            'wave151：开箱运行默认折叠 Host/配方/看板/通讯「待命」墙，主视图留给图像预览与运行控制'
+        )
+        self._cobind_toggle.toggled.connect(self._on_cobind_drawer_toggled)
+        root.addWidget(self._cobind_toggle)
+
+        self._cobind_scroll = QScrollArea()
+        self._cobind_scroll.setObjectName('hmiCobindStatusScroll')
+        self._cobind_scroll.setWidgetResizable(True)
+        self._cobind_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._cobind_scroll.setMaximumHeight(220)
+        self._cobind_scroll.setWidget(self._cobind_drawer)
+        self._cobind_scroll.hide()  # collapsed by default
+        root.addWidget(self._cobind_scroll)
+        self._cobind_drawer_expanded = False
 
         # Always-available default run strip (also used when layout has no 运行控制)
         self._default_strip = QWidget()
@@ -1205,6 +1242,34 @@ class OperatorHmiView(QWidget):
         self._sync_strip_buttons('Idle')
 
         self.reload_layout({})
+
+
+    def _on_cobind_drawer_toggled(self, expanded: bool):
+        """wave151: expand/collapse Host·配方·通讯 cobind status drawer."""
+        self._cobind_drawer_expanded = bool(expanded)
+        scroll = getattr(self, '_cobind_scroll', None)
+        toggle = getattr(self, '_cobind_toggle', None)
+        if scroll is not None:
+            scroll.setVisible(bool(expanded))
+        if toggle is not None:
+            toggle.setArrowType(
+                Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
+            )
+            toggle.setText(
+                '联调 / Host·配方·通讯状态（展开）· 点此折叠'
+                if expanded else
+                '联调 / Host·配方·通讯状态（折叠）· 点此展开'
+            )
+
+    def is_cobind_drawer_expanded(self) -> bool:
+        return bool(getattr(self, '_cobind_drawer_expanded', False))
+
+    def set_cobind_drawer_expanded(self, expanded: bool = True):
+        toggle = getattr(self, '_cobind_toggle', None)
+        if toggle is not None:
+            toggle.setChecked(bool(expanded))
+        else:
+            self._on_cobind_drawer_toggled(bool(expanded))
 
     # ----- public API -----
     def reload_layout(self, project: dict | None):
@@ -4176,10 +4241,12 @@ class OperatorHmiView(QWidget):
         left.setSpacing(6)
         cell = self._make_cell_frame('图像')
         view = ImageView()
-        view.setMinimumHeight(200)
+        view.setObjectName('hmiPrimaryImageView')
+        view.setMinimumHeight(280)
+        view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._image_views.append(view)
         cell.layout().addWidget(view, 1)
-        left.addWidget(cell, 3)
+        left.addWidget(cell, 5)
 
         row = QHBoxLayout()
         lamp = StatusLamp('OK/NG')
@@ -4272,7 +4339,8 @@ class OperatorHmiView(QWidget):
         if name in ('图像', '多图像', '图片'):
             cell = self._make_cell_frame(name + (f' · {binding}' if binding else ''))
             view = ImageView()
-            view.setMinimumHeight(160)
+            view.setObjectName('hmiPrimaryImageView')
+            view.setMinimumHeight(240)
             view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             self._image_views.append(view)
             cell.layout().addWidget(view, 1)
