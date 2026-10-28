@@ -1,0 +1,209 @@
+{
+  "version": 2,
+  "id": "3563f5aaec47710b",
+  "name": "打开即跑 · 轮廓→色彩区域",
+  "notes": "wave141 soft contour/blob + color-region result chrome · OpenCV soft path · 无 Halcon / 无 robot SDK",
+  "sourcePosition": {
+    "x": 300,
+    "y": 40
+  },
+  "sourceConfig": {
+    "mode": "local",
+    "pixelFormat": "RGB24",
+    "intervalMs": 0,
+    "saveInSolution": false,
+    "showImageName": true,
+    "snStart": 0,
+    "imageCache": 0,
+    "outputMono8": false,
+    "stitchEnable": false,
+    "stitchStartY": 0,
+    "stitchHeight": 0,
+    "stitchClearOnTrigger": false,
+    "autoSwitch": false,
+    "stopAtLast": true,
+    "charFilterEnable": false,
+    "inputChar": "",
+    "triggerChar": "",
+    "cameraId": "",
+    "cameraParams": {},
+    "exposure": 0,
+    "gain": 0,
+    "images": [
+      "/home/allen/文档/sieansvision/public/vision/samples/parts.png",
+      "/home/allen/文档/sieansvision/public/vision/samples/color-regions.png"
+    ]
+  },
+  "steps": [
+    {
+      "id": "cc77395a3705442c",
+      "operation": "preprocess",
+      "name": "预处理·灰度",
+      "params": {
+        "method": "grayscale",
+        "kernel": 3,
+        "threshold": 128,
+        "cannyLow": 50,
+        "cannyHigh": 150,
+        "invert": false,
+        "roiMode": "inherit",
+        "showRoiOverlay": false
+      },
+      "position": {
+        "x": 300,
+        "y": 140
+      },
+      "imageFrom": "source"
+    },
+    {
+      "id": "9b50fcac703f4fc1",
+      "operation": "geometry",
+      "name": "轮廓/斑点查找",
+      "params": {
+        "feature": "contours",
+        "roiMode": "inherit",
+        "threshold": 80,
+        "minArea": 80,
+        "invert": false,
+        "maxCount": 8,
+        "showOverlay": true,
+        "showPoints": true,
+        "showLabels": true,
+        "judgeEnable": true,
+        "judgeMin": 100,
+        "judgeMax": 999999,
+        "findMethod": "auto",
+        "cannyLow": 40,
+        "cannyHigh": 140
+      },
+      "position": {
+        "x": 300,
+        "y": 240
+      },
+      "imageFrom": "previous"
+    },
+    {
+      "id": "dce0800a4a7d4d3f",
+      "operation": "plugin",
+      "name": "HSV色彩区域",
+      "params": {
+        "pluginId": "sieans-regions",
+        "pluginVersion": "1.0.0",
+        "operatorId": "color",
+        "arguments": {
+          "method": "hsv",
+          "hueMin": 170,
+          "hueMax": 10,
+          "saturationMin": 80,
+          "saturationMax": 255,
+          "valueMin": 60,
+          "valueMax": 255,
+          "roiX": 0,
+          "roiY": 0,
+          "roiWidth": 0,
+          "roiHeight": 0,
+          "minimumArea": 200,
+          "maximumArea": 100000000,
+          "minimumCount": 1,
+          "maximumCount": 10,
+          "excludeBorder": false,
+          "connectivity": 8,
+          "morphology": "none",
+          "kernelSize": 3,
+          "outputImage": "annotated",
+          "showOverlay": true,
+          "showBox": true,
+          "showCross": true,
+          "showLabels": true,
+          "showEllipse": false
+        },
+        "outputBindings": [
+          {
+            "field": "count",
+            "scope": "flow",
+            "name": "colorCount"
+          },
+          {
+            "field": "areaPixels",
+            "scope": "flow",
+            "name": "colorArea"
+          },
+          {
+            "field": "passed",
+            "scope": "flow",
+            "name": "colorPassed"
+          }
+        ]
+      },
+      "position": {
+        "x": 300,
+        "y": 340
+      },
+      "imageFrom": "source"
+    },
+    {
+      "id": "c15195a0737744cf",
+      "operation": "var_calc",
+      "name": "门限·色彩通过",
+      "params": {
+        "scope": "flow",
+        "expressions": [
+          {
+            "name": "contourCount",
+            "expression": "geometry_count"
+          },
+          {
+            "name": "colorCount",
+            "expression": "colorCount"
+          },
+          {
+            "name": "passGate",
+            "expression": "(geometry_count >= 1) or (colorCount >= 1)"
+          }
+        ]
+      },
+      "position": {
+        "x": 300,
+        "y": 440
+      },
+      "imageFrom": "previous"
+    }
+  ],
+  "edges": [
+    {
+      "id": "7cd9bd171dca42a4",
+      "from": "source",
+      "to": "cc77395a3705442c",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "cd544bce951240b2",
+      "from": "cc77395a3705442c",
+      "to": "9b50fcac703f4fc1",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "a50231a0a56a4851",
+      "from": "9b50fcac703f4fc1",
+      "to": "dce0800a4a7d4d3f",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "18e2b8bef957432d",
+      "from": "dce0800a4a7d4d3f",
+      "to": "c15195a0737744cf",
+      "fromPort": "bottom",
+      "toPort": "top"
+    }
+  ],
+  "variables": {
+    "flow": {}
+  },
+  "meta": {
+    "openAndRun": true,
+    "wave": 141
+  }
+}

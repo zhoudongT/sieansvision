@@ -156,6 +156,50 @@ def build_geom_find_rows(items=None, feature: str = 'lines', *, max_rows: int = 
         status = it.get('judgeStatus')
         if status is None and judge is not None:
             status = 'OK' if judge else 'NG'
+        # contour/blob extras (soft density)
+        cx = cy = peri = fill = circ = None
+        if str(feature or '').lower() in ('contours', 'blob'):
+            try:
+                cx = float(it['centerX']) if it.get('centerX') is not None else None
+            except (TypeError, ValueError):
+                cx = None
+            try:
+                cy = float(it['centerY']) if it.get('centerY') is not None else None
+            except (TypeError, ValueError):
+                cy = None
+            if cx is None or cy is None:
+                c = it.get('center')
+                if isinstance(c, (list, tuple)) and len(c) >= 2:
+                    try:
+                        cx, cy = float(c[0]), float(c[1])
+                    except (TypeError, ValueError):
+                        pass
+            if cx is None:
+                bb = it.get('bbox')
+                if isinstance(bb, (list, tuple)) and len(bb) >= 4:
+                    try:
+                        cx = float(bb[0]) + float(bb[2]) / 2.0
+                        cy = float(bb[1]) + float(bb[3]) / 2.0
+                    except (TypeError, ValueError):
+                        pass
+            try:
+                peri = float(it['perimeterPixels']) if it.get('perimeterPixels') is not None else None
+            except (TypeError, ValueError):
+                peri = None
+            try:
+                fill = float(it['fillRatio']) if it.get('fillRatio') is not None else None
+            except (TypeError, ValueError):
+                fill = None
+            try:
+                circ = float(it['circularity']) if it.get('circularity') is not None else None
+            except (TypeError, ValueError):
+                circ = None
+            if circ is None and mval and peri and peri > 0:
+                # 4πA/P² soft estimate
+                try:
+                    circ = float(4.0 * 3.141592653589793 * float(mval) / (float(peri) ** 2))
+                except (TypeError, ValueError, ZeroDivisionError):
+                    circ = None
         rows.append({
             'index': int(it.get('index') or it.get('lineIndex') or (i + 1)),
             'feature': feature,
@@ -164,6 +208,11 @@ def build_geom_find_rows(items=None, feature: str = 'lines', *, max_rows: int = 
             'score': score_f,
             'rms': rms_f,
             'angleDeg': ang_f,
+            'centerX': cx,
+            'centerY': cy,
+            'perimeter': peri,
+            'fillRatio': fill,
+            'circularity': circ,
             'judgeOk': judge if judge is None else bool(judge),
             'judgeStatus': status or '—',
             'raw': it,
@@ -457,9 +506,25 @@ def soft_demo_geom_items(feature: str = 'lines', n: int = 3) -> list:
                 'judgeOk': True, 'judgeStatus': 'OK',
             })
         else:
+            # contours / blob soft demo — industrial density fields
+            bx, by = 20 + i * 35, 30 + i * 12
+            bw, bh = 28 + i * 4, 24 + i * 3
+            area = float(bw * bh) * (0.72 + i * 0.04)
+            peri = 2.0 * (bw + bh) * 0.9
             items.append({
-                'index': i + 1, 'bbox': [10 + i * 5, 10, 20 + i, 20 + i],
-                'areaPixels': 400.0 + i * 50, 'judgeOk': True, 'judgeStatus': 'OK',
+                'index': i + 1,
+                'bbox': [bx, by, bw, bh],
+                'areaPixels': area,
+                'perimeterPixels': peri,
+                'centerX': bx + bw / 2.0,
+                'centerY': by + bh / 2.0,
+                'fillRatio': round(area / max(1.0, float(bw * bh)), 3),
+                'circularity': round(4.0 * 3.141592653589793 * area / max(1.0, peri ** 2), 3),
+                'points': [
+                    [bx, by], [bx + bw, by], [bx + bw, by + bh], [bx, by + bh],
+                ],
+                'judgeOk': i < n - 1 or n == 1,
+                'judgeStatus': 'OK' if (i < n - 1 or n == 1) else 'NG',
             })
     return items
 
@@ -479,3 +544,81 @@ def soft_demo_matches(n: int = 4) -> list:
             'judgeStatus': 'OK' if i < 3 else 'NG',
         })
     return out
+
+
+
+def build_contour_blob_overlays(items=None, feature: str = 'contours', *,
+                                max_items: int = 32,
+                                show_poly: bool = True,
+                                show_bbox: bool = True,
+                                show_cross: bool = True,
+                                show_labels: bool = True,
+                                color_ok: str = '#00d250',
+                                color_ng: str = '#ff4d4f') -> list:
+    """Vector overlays for soft contour/blob find (polygon + bbox + cross)."""
+    specs = []
+    f = str(feature or 'contours').lower()
+    for i, it in enumerate(_as_list(items)[: max(1, int(max_items))]):
+        if not isinstance(it, dict):
+            continue
+        ok = it.get('judgeOk')
+        color = color_ok if ok is not False else color_ng
+        pts = it.get('points')
+        if show_poly and isinstance(pts, list) and len(pts) >= 2:
+            poly = []
+            for p in pts:
+                if isinstance(p, (list, tuple)) and len(p) >= 2:
+                    try:
+                        poly.append([float(p[0]), float(p[1])])
+                    except (TypeError, ValueError):
+                        pass
+            if len(poly) >= 2:
+                specs.append({'type': 'polygon', 'points': poly, 'color': color, 'width': 1.5})
+        bb = it.get('bbox')
+        if show_bbox and isinstance(bb, (list, tuple)) and len(bb) >= 4:
+            try:
+                specs.append({
+                    'type': 'rect',
+                    'x': float(bb[0]), 'y': float(bb[1]),
+                    'w': float(bb[2]), 'h': float(bb[3]),
+                    'color': color, 'width': 1.5,
+                })
+            except (TypeError, ValueError):
+                pass
+        cx = it.get('centerX')
+        cy = it.get('centerY')
+        if cx is None or cy is None:
+            c = it.get('center')
+            if isinstance(c, (list, tuple)) and len(c) >= 2:
+                cx, cy = c[0], c[1]
+        if cx is None and isinstance(bb, (list, tuple)) and len(bb) >= 4:
+            try:
+                cx = float(bb[0]) + float(bb[2]) / 2.0
+                cy = float(bb[1]) + float(bb[3]) / 2.0
+            except (TypeError, ValueError):
+                cx = cy = None
+        if show_cross and cx is not None and cy is not None:
+            try:
+                specs.append({
+                    'type': 'cross', 'x': float(cx), 'y': float(cy),
+                    'size': 8, 'color': color, 'width': 1.5,
+                })
+            except (TypeError, ValueError):
+                pass
+        if show_labels and cx is not None and cy is not None:
+            idx = it.get('index') or (i + 1)
+            area = it.get('areaPixels')
+            lab = f'#{idx}'
+            if area is not None:
+                try:
+                    lab += f' {float(area):.0f}px'
+                except (TypeError, ValueError):
+                    pass
+            try:
+                specs.append({
+                    'type': 'label', 'x': float(cx) + 6, 'y': float(cy) - 8,
+                    'text': lab, 'color': color,
+                })
+            except (TypeError, ValueError):
+                pass
+    return specs

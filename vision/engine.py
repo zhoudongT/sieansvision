@@ -254,8 +254,25 @@ def geometry(image, canvas, p, offset):
                 cv2.circle(canvas, (int(pt0[0]), int(pt0[1])), 3, (0, 165, 255), -1, cv2.LINE_AA)
             if show_labels:
                 cv2.putText(canvas, str(idx+1), (x, max(12, y-4)), cv2.FONT_HERSHEY_SIMPLEX, .45, (0, 210, 80), 1, cv2.LINE_AA)
-            result.append({'bbox': [x, y, w, h], 'areaPixels': cv2.contourArea(c),
-                           'perimeterPixels': cv2.arcLength(c, True), 'points': c[:, 0].tolist()})
+            area = float(cv2.contourArea(c))
+            peri = float(cv2.arcLength(c, True))
+            fill = float(area / max(1.0, float(w * h)))
+            circ = float(4.0 * 3.141592653589793 * area / max(1.0, peri ** 2)) if peri > 0 else 0.0
+            M = cv2.moments(c)
+            if M.get('m00'):
+                cx = float(M['m10'] / M['m00'])
+                cy = float(M['m01'] / M['m00'])
+            else:
+                cx, cy = float(x + w / 2.0), float(y + h / 2.0)
+            result.append({
+                'index': idx + 1,
+                'bbox': [x, y, w, h],
+                'areaPixels': area,
+                'perimeterPixels': peri,
+                'centerX': cx, 'centerY': cy,
+                'fillRatio': fill, 'circularity': circ,
+                'points': c[:, 0].tolist(),
+            })
             if len(result) >= max_count:
                 break
     else:

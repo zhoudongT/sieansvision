@@ -190,8 +190,12 @@ class ImageView(QGraphicsView):
           {'type':'point','x','y','color'?}
           {'type':'label','x','y','text','color'?}
           {'type':'rect','x','y','w','h','color'?}
+          {'type':'ellipse','x','y','rx','ry','color'?}  # center + radii
+          {'type':'circle','x','y','r','color'?}
+          {'type':'cross','x','y','size'?, 'color'?}
+          {'type':'polygon','points':[[x,y],...],'color'?}
         """
-        from PySide6.QtWidgets import QGraphicsLineItem, QGraphicsEllipseItem, QGraphicsSimpleTextItem, QGraphicsRectItem
+        from PySide6.QtWidgets import QGraphicsLineItem, QGraphicsEllipseItem, QGraphicsSimpleTextItem, QGraphicsRectItem, QGraphicsPolygonItem
         from PySide6.QtGui import QFont
         self.clear_geom_overlays()
         items = []
@@ -224,6 +228,40 @@ class ImageView(QGraphicsView):
             elif kind == 'rect':
                 item = QGraphicsRectItem(float(spec['x']), float(spec['y']), float(spec['w']), float(spec['h']))
                 item.setPen(pen); item.setZValue(19); items.append(item); self.scene().addItem(item)
+            elif kind == 'ellipse':
+                cx, cy = float(spec['x']), float(spec['y'])
+                rx = float(spec.get('rx') or spec.get('r') or 8)
+                ry = float(spec.get('ry') or rx)
+                item = QGraphicsEllipseItem(cx - rx, cy - ry, rx * 2, ry * 2)
+                item.setPen(pen); item.setZValue(19); items.append(item); self.scene().addItem(item)
+            elif kind == 'circle':
+                cx, cy = float(spec['x']), float(spec['y'])
+                r = float(spec.get('r') or spec.get('rx') or 8)
+                item = QGraphicsEllipseItem(cx - r, cy - r, r * 2, r * 2)
+                item.setPen(pen); item.setZValue(19); items.append(item); self.scene().addItem(item)
+            elif kind == 'cross':
+                cx, cy = float(spec['x']), float(spec['y'])
+                sz = float(spec.get('size') or 8)
+                h = QGraphicsLineItem(cx - sz, cy, cx + sz, cy)
+                v = QGraphicsLineItem(cx, cy - sz, cx, cy + sz)
+                h.setPen(pen); v.setPen(pen)
+                h.setZValue(21); v.setZValue(21)
+                items.append(h); items.append(v)
+                self.scene().addItem(h); self.scene().addItem(v)
+            elif kind == 'polygon':
+                from PySide6.QtCore import QPointF
+                from PySide6.QtGui import QPolygonF, QBrush as _QB
+                pts = spec.get('points') or []
+                poly = QPolygonF()
+                for p in pts:
+                    if isinstance(p, (list, tuple)) and len(p) >= 2:
+                        poly.append(QPointF(float(p[0]), float(p[1])))
+                if poly.count() >= 2:
+                    item = QGraphicsPolygonItem(poly)
+                    item.setPen(pen)
+                    # hollow fill — industrial outline
+                    item.setBrush(_QB(Qt.BrushStyle.NoBrush))
+                    item.setZValue(19); items.append(item); self.scene().addItem(item)
         self._geom_items = items
 
     def set_geom_pick_mode(self, enabled, kind='line', pickables=None, tol=14.0):

@@ -591,6 +591,21 @@ class PropertyFloat(QDialog):
             self.show(); self.raise_(); self.activateWindow()
             return
 
+        # wave141: sieans-regions 色彩/斑点结果密度面板
+        if step and step.get('operation') == 'plugin':
+            params = step.get('params') or {}
+            if str(params.get('pluginId') or '') == 'sieans-regions':
+                from desktop.region_color_panel import RegionColorPanel, normalize_region_color_params
+                step = deepcopy(step)
+                step['params'] = normalize_region_color_params(step.get('params'))
+                panel = RegionColorPanel(step, definition, project)
+                panel.changed.connect(self._on_step_changed)
+                self.body.addWidget(panel)
+                self._panel = panel
+                self._last_step = deepcopy(step)
+                self.show(); self.raise_(); self.activateWindow()
+                return
+
         if step and step.get('operation') == 'production_task':
             from desktop.production_task_panel import ProductionTaskPanel, normalize_production_task_params
             step = deepcopy(step)

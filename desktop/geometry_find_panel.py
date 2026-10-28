@@ -580,6 +580,20 @@ class GeometryFindPanel(QWidget):
             rms_txt = f'{float(rms):.3f}' if rms is not None else '—'
             ang = r.get('angleDeg')
             ang_txt = f'{float(ang):.1f}' if ang is not None else '—'
+            # wave141: contour/blob soft density — peri / fill in rms/angle columns
+            feat = str(r.get('feature') or self.params.get('feature') or '').lower()
+            if feat in ('contours', 'blob'):
+                peri = r.get('perimeter')
+                fill = r.get('fillRatio')
+                if peri is not None:
+                    rms_txt = f'P={float(peri):.1f}'
+                if fill is not None:
+                    ang_txt = f'f={float(fill):.2f}'
+                elif r.get('circularity') is not None:
+                    ang_txt = f'c={float(r["circularity"]):.2f}'
+                cx, cy = r.get('centerX'), r.get('centerY')
+                if sc is None and cx is not None and cy is not None:
+                    sc_txt = f'{float(cx):.0f},{float(cy):.0f}'
             st = str(r.get('judgeStatus') or '—')
             for c, text in enumerate((
                 str(r.get('index') or i + 1), mtxt, sc_txt, rms_txt, ang_txt, st,

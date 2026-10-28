@@ -85,6 +85,8 @@ class MainWindow(QMainWindow):
             ('打开即跑 · 卡尺直线', 'projects/open-and-run-caliper.sieans'),
             ('打开即跑 · 卡尺→几何测量', 'projects/open-and-run-caliper-measure.sieans'),
             ('打开即跑 · 几何测量', 'projects/open-and-run-measure.sieans'),
+            ('打开即跑 · 轮廓→色彩区域', 'projects/open-and-run-contour-color.sieans'),
+            ('打开即跑 · 几何查找→多匹配', 'projects/open-and-run-geom-find-match.sieans'),
             ('打开即跑 · 九点标定', 'projects/open-and-run-ninepoint.sieans'),
             ('打开即跑 · 定位→测量→缺陷', 'projects/open-and-run-locate-measure-defect.sieans'),
             ('打开即跑 · 参考图缺陷', 'projects/open-and-run-defects.sieans'),
@@ -1220,6 +1222,19 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+    def _ingest_region_color_panel_from_result(self, result):
+        """Feed open RegionColorPanel with last_result for color/blob density (soft)."""
+        try:
+            pf = getattr(self, 'property_float', None)
+            if pf is None:
+                return
+            from desktop.region_color_panel import RegionColorPanel
+            for w in pf.findChildren(RegionColorPanel):
+                if hasattr(w, 'set_last_result'):
+                    w.set_last_result(result)
+        except Exception:
+            pass
+
     def _measure_badge_for_result(self, bag) -> str:
         """Derive OK/NG from a cached filmstrip last_result (measure-focused)."""
         if not isinstance(bag, dict):
@@ -1296,13 +1311,32 @@ class MainWindow(QMainWindow):
         return badges
 
     def _sync_filmstrip_geom_find_chrome(self):
-        """Push geometry-find feature chrome (L/C/R/B) — distinct from measure OK/NG."""
+        """Push geometry-find (L/C/R/B) + color-region (色/斑) chrome — distinct from measure OK/NG."""
         cache = getattr(self, '_filmstrip_results', None) or {}
         try:
             from desktop.geom_find_chrome import chrome_map_from_film_cache, strip_summary_from_film_cache
         except Exception:
             return {}
-        chrome = chrome_map_from_film_cache(cache)
+        chrome = dict(chrome_map_from_film_cache(cache) or {})
+        # wave141: merge sieans-regions color/blob chrome
+        try:
+            from desktop.region_color_chrome import (
+                chrome_map_from_film_cache as region_chrome_map,
+                strip_summary_from_film_cache as region_strip_summary,
+            )
+            steps = []
+            try:
+                steps = (self.document.project.get('steps') or []) if hasattr(self, 'document') else []
+            except Exception:
+                steps = []
+            for path, tag in (region_chrome_map(cache, project_steps=steps) or {}).items():
+                if path in chrome and tag:
+                    chrome[path] = (str(chrome[path]) + '+' + str(tag))[:16]
+                elif tag:
+                    chrome[path] = str(tag)[:16]
+        except Exception:
+            region_strip_summary = None
+            steps = []
         try:
             fs = getattr(self, 'filmstrip', None)
             if fs is not None and hasattr(fs, 'set_frame_geom_find_chrome'):
@@ -1314,6 +1348,13 @@ class MainWindow(QMainWindow):
                 except Exception:
                     cur = ''
                 text = strip_summary_from_film_cache(cache, current_path=cur or '')
+                try:
+                    from desktop.region_color_chrome import strip_summary_from_film_cache as _rs
+                    rtext = _rs(cache, current_path=cur or '', project_steps=steps)
+                    if rtext:
+                        text = (text + ' ｜ ' + rtext) if text else rtext
+                except Exception:
+                    pass
                 if text:
                     fs.push_geom_find_summary(text)
                 else:
@@ -2104,6 +2145,47 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+
+    def _apply_find_overlay_density(self, records):
+        """Unified soft overlays for geometry-find / match / contour / color-region.
+
+        Merges with measure-geom overlays when both present (append after measure).
+        """
+        view = getattr(self, 'output_view', None)
+        if view is None or not hasattr(view, 'set_geom_overlays'):
+            return
+        try:
+            from desktop.display_overlay_density import build_unified_overlays, summarize_overlay_density
+        except Exception:
+            return
+        project = None
+        try:
+            project = self.document.project
+        except Exception:
+            project = None
+        specs = build_unified_overlays(records, project)
+        if not specs:
+            return
+        # If measure overlays already drawn this tick, merge by re-reading is hard;
+        # call sites invoke measure first then this — so we append via get if available.
+        existing = []
+        try:
+            existing = list(getattr(view, '_last_overlay_specs', None) or [])
+        except Exception:
+            existing = []
+        merged = existing + specs
+        # de-dup soft cap
+        if len(merged) > 240:
+            merged = merged[:240]
+        try:
+            view.set_geom_overlays(merged)
+            view._last_overlay_specs = merged
+            tip = summarize_overlay_density(merged).get('summary') or ''
+            if tip:
+                self.statusBar().showMessage(tip, 2500)
+        except Exception:
+            pass
+
     def _apply_measure_geom_overlays(self, records):
         """Canvas draw path: vector overlays for measure_geom when annotatedImage already baked
         or as fallback from result scalars + step show* params."""
@@ -2184,6 +2266,7 @@ class MainWindow(QMainWindow):
                     specs.append(dict(type='label', x=mx, y=my, text=f"{float(result['distance']):.3f}{result.get('unit') or 'px'}"))
         try:
             view.set_geom_overlays(specs)
+            view._last_overlay_specs = list(specs or [])
         except Exception:
             pass
 
@@ -2420,6 +2503,10 @@ class MainWindow(QMainWindow):
             self._ingest_geom_find_panel_from_result(result)
         except Exception:
             pass
+        try:
+            self._ingest_region_color_panel_from_result(result)
+        except Exception:
+            pass
         annotated_live, ann_sid = self._pick_annotated_with_step(records)
         _disp_applied = False
         if annotated_live:
@@ -2428,7 +2515,7 @@ class MainWindow(QMainWindow):
                 self._apply_display_to_result_pane(disp_step, image=annotated_live)
                 _disp_applied = True
             else:
-                self.output_view.show_data(annotated_live);self._apply_measure_geom_overlays(records);self.images.setCurrentIndex(1)
+                self.output_view.show_data(annotated_live);self._apply_measure_geom_overlays(records);self._apply_find_overlay_density(records);self.images.setCurrentIndex(1)
                 try:
                     if hasattr(self,'filmstrip') and self.filmstrip is not None:
                         if hasattr(self.filmstrip,'set_live_result'):
@@ -5524,6 +5611,8 @@ class MainWindow(QMainWindow):
             'projects/open-and-run-caliper.sieans',
             'projects/open-and-run-caliper-measure.sieans',
             'projects/open-and-run-measure.sieans',
+            'projects/open-and-run-contour-color.sieans',
+            'projects/open-and-run-geom-find-match.sieans',
             'projects/open-and-run-ninepoint.sieans',
             'projects/open-and-run-script.sieans',
             'projects/open-and-run-barcode.sieans',
