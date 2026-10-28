@@ -426,6 +426,14 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆100 · set→ensure/refresh 镜像 · tip_max_len QAction.fire · truncate 失败 · 2026-10-28】
+
+- **set-strategy**：refresh 后镜像 `set_strategy` / `set_status_prop_ok` 进 refresh stash，并回写 ensure stash（`from_set_strategy` / `strategy` / `status_prop_ok`）；set stash 含 click/menu_bind status。
+- **menu tip_max_len**：stash `menu_tip_max_len_qactions` + submenu；冒烟 `QAction.trigger()` → `menu_tip_max_len_action`（max_len/status_prop_ok）。
+- **truncate 失败路径**：属性异常 → `ok/truncate_ok=False` + `fail_reason`；仍返回 `(tip, truncated)` tuple。
+- **FlashMs**：仍不起步。
+- **验证**：`scripts/smoke-wave132-setmirror-tipmaxlenfire-truncatefail-e2e.py` → 9 PASS。非硬件约 **~99.99%**。
+
 ## 【细妆99 · ensure→bind 镜像 · tip 失败 stash · menu tip_max_len status · 2026-10-28】
 
 - **ensure**：创建/已有均走 click/menu_bind（`_strategy_badge_ensure_binding` 防 tip 重入），stash `click_status_prop_ok` / `menu_bind_status_prop_ok` / `status`（对齐 refresh）。

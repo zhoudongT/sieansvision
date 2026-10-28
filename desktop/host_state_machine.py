@@ -33555,8 +33555,28 @@ class HostStateMachineWidget(QWidget):
                 'strategy_prop_ok': bool(refreshed.get('strategy_prop_ok')),
                 'tip_prop': refreshed.get('tip_prop'),
                 'tip_prop_ok': bool(refreshed.get('tip_prop_ok')),
+                'click_status_prop_ok': bool(refreshed.get('click_status_prop_ok')),
+                'menu_bind_status_prop_ok': bool(refreshed.get('menu_bind_status_prop_ok')),
             }
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_set = dict(set_out)
+            # mirror status into refresh + ensure stashes
+            ref = dict(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge', None) or refreshed or {})
+            ref['set_strategy'] = v
+            ref['set_status'] = set_out.get('status')
+            ref['set_status_prop_ok'] = bool(set_out.get('status_prop_ok'))
+            ref['status'] = set_out.get('status') if set_out.get('status') is not None else ref.get('status')
+            ref['status_prop_ok'] = bool(set_out.get('status_prop_ok') or ref.get('status_prop_ok'))
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge = dict(ref)
+            ens = dict(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_ensure', None) or {})
+            ens['ok'] = True
+            ens['from_set_strategy'] = True
+            ens['strategy'] = v
+            ens['status'] = set_out.get('status')
+            ens['status_prop'] = set_out.get('status_prop')
+            ens['status_prop_ok'] = bool(set_out.get('status_prop_ok'))
+            ens['click_status_prop_ok'] = bool(set_out.get('click_status_prop_ok') or ens.get('click_status_prop_ok'))
+            ens['menu_bind_status_prop_ok'] = bool(set_out.get('menu_bind_status_prop_ok') or ens.get('menu_bind_status_prop_ok'))
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_ensure = dict(ens)
         except Exception:
             pass
         return v
@@ -33861,6 +33881,8 @@ class HostStateMachineWidget(QWidget):
         status = None
         status_prop = None
         status_prop_ok = False
+        truncate_ok = True
+        fail_reason = None
         try:
             badge = getattr(self, '_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge', None)
             if badge is None:
@@ -33875,12 +33897,16 @@ class HostStateMachineWidget(QWidget):
                 badge.setProperty('dstImportStrategyBadgeStatus', status)
                 status_prop = badge.property('dstImportStrategyBadgeStatus')
                 status_prop_ok = (str(status_prop) == status)
-        except Exception:
+        except Exception as e:
             status = None
             status_prop = None
             status_prop_ok = False
+            truncate_ok = False
+            fail_reason = str(e)
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_truncate = {
-            'ok': True, 'len': len(s), 'max_len': ml, 'truncated': out[1], 'tip': out[0],
+            'ok': bool(truncate_ok), 'truncate_ok': bool(truncate_ok),
+            'reason': fail_reason, 'fail_reason': fail_reason,
+            'len': len(s), 'max_len': ml, 'truncated': out[1], 'tip': out[0],
             'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok)}
         return out
 
@@ -34270,6 +34296,7 @@ class HostStateMachineWidget(QWidget):
         sub_ml = menu.addMenu(f'截断长度 · {cur_ml}字')
         sub_ml.setProperty('isDstImportStrategyBadgeMenuTipMaxLen', True)
         tip_len_actions = []
+        tip_len_qactions = []
         for ml in (48, 96, 160, 240):
             act_ml = QAction(f'{ml}字' + (' ✓' if int(cur_ml) == int(ml) else ''), sub_ml)
             act_ml.setCheckable(True)
@@ -34286,6 +34313,12 @@ class HostStateMachineWidget(QWidget):
             act_ml.triggered.connect(lambda *_ , fn=_on_tip_max_len: fn())
             sub_ml.addAction(act_ml)
             tip_len_actions.append(str(ml))
+            tip_len_qactions.append(act_ml)
+        try:
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_tip_max_len_qactions = list(tip_len_qactions)
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_tip_max_len_submenu = sub_ml
+        except Exception:
+            pass
         strategy_prop = None
         strategy_prop_ok = False
         tip_max_len_prop = None
@@ -34377,6 +34410,7 @@ class HostStateMachineWidget(QWidget):
             'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok),
             'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok),
             'tip_max_len_status': tip_max_len_status, 'tip_max_len_status_ok': bool(tip_max_len_status_ok),
+            'tip_max_len_qaction_count': len(tip_len_qactions),
         }
         if getattr(self, '_dst_reorder_shortcut_conflict_history_menu_no_exec', False) or getattr(self, '_dst_reorder_shortcut_conflict_quiet', False):
             out = {'ok': True, 'shown': False, 'strategy': cur, 'actions': ['merge', 'overwrite', 'toggle', 'copy', 'copy_orig_len', 'tip_max_len'], 'tip_max_len': int(cur_ml), 'tip_max_len_presets': tip_len_actions}
