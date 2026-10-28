@@ -995,16 +995,44 @@ class RecipeSwitchDialog(QDialog):
         stats = stats or {}
         name = str(stats.get('name') or '')
         enter = bool(stats.get('enterRun'))
-        hmi, _host = self._host_hmi()
+        hmi, host = self._host_hmi()
+        # Resolve variant + statusVar for page-level co-bind (not micro chips)
+        variant = ''
+        status_var = 'taskStatus'
+        scope = 'global'
+        try:
+            proj = self.document.project if self.document else {}
+            variant = str(stats.get('variant') or proj.get('activeRecipeVariant') or '')
+            if not variant and hasattr(self, '_variant_edit'):
+                variant = self._variant_edit.text().strip()
+            # Prefer production_task step statusVar when present
+            for st in (proj.get('steps') or []):
+                if isinstance(st, dict) and st.get('operation') == 'production_task':
+                    pr = st.get('params') or {}
+                    status_var = str(pr.get('statusVar') or status_var)
+                    scope = str(pr.get('scope') or scope)
+                    if not name:
+                        name = str(pr.get('recipe') or pr.get('taskName') or name)
+                    break
+            if variant:
+                proj['activeRecipeVariant'] = variant
+            if name:
+                proj['activeRecipeName'] = name
+        except Exception:
+            pass
         self._set_chrome_lock_rail(
-            f'页铬手递 · Idle↔{"Running" if enter else "Idle"} · 配方 {name or "—"} · 锁已释',
+            f'页铬手递 · Idle↔{"Running" if enter else "Idle"} · 配方 {name or "—"}'
+            + (f'/{variant}' if variant else '')
+            + f' · {scope}.{status_var} 共绑 · 锁已释',
             handoff=True,
         )
+        to_run = enter or bool(stats.get('trialOnce'))
         if hmi is not None and hasattr(hmi, 'soft_handoff_idle_running'):
             try:
                 hmi.soft_handoff_idle_running(
-                    recipe=name, to_running=enter or bool(stats.get('trialOnce')),
+                    recipe=name, to_running=to_run,
                     note='换型完成',
+                    variant=variant, status_var=status_var, scope=scope,
                 )
             except Exception:
                 pass
@@ -1013,6 +1041,55 @@ class RecipeSwitchDialog(QDialog):
                 hmi.lock_page_chrome_for_recipe_switch(False, recipe=name)
             except Exception:
                 pass
+        # production_task statusVar + variant page co-bind
+        try:
+            self._co_bind_production_variant_status(
+                recipe=name, variant=variant, status_var=status_var, scope=scope,
+                host_state='Running' if to_run else 'Idle',
+            )
+        except Exception:
+            pass
+
+    def _co_bind_production_variant_status(self, *, recipe='', variant='', status_var='taskStatus',
+                                          scope='global', host_state='Idle'):
+        """Find open production_task panel / HMI and co-bind statusVar+variant page chrome."""
+        hmi, host = self._host_hmi()
+        panel = None
+        # Walk host for property float / open panels
+        roots = [host]
+        if host is not None:
+            try:
+                roots.append(getattr(host, 'centralWidget', lambda: None)())
+            except Exception:
+                pass
+        try:
+            from desktop.production_task_panel import ProductionTaskPanel
+        except Exception:
+            ProductionTaskPanel = None
+        if ProductionTaskPanel is not None and host is not None:
+            try:
+                for w in host.findChildren(ProductionTaskPanel):
+                    panel = w
+                    break
+            except Exception:
+                panel = None
+        if panel is not None and hasattr(panel, 'soft_co_bind_variant_status_page_chrome'):
+            try:
+                return panel.soft_co_bind_variant_status_page_chrome(
+                    recipe=recipe, variant=variant, status_var=status_var,
+                    scope=scope, host_state=host_state, note='换型手递',
+                )
+            except Exception:
+                pass
+        if hmi is not None and hasattr(hmi, 'co_bind_variant_status_page_chrome'):
+            try:
+                return hmi.co_bind_variant_status_page_chrome(
+                    recipe=recipe, variant=variant, status_var=status_var,
+                    scope=scope, host_state=host_state, note='换型手递',
+                )
+            except Exception:
+                pass
+        return None
 
 
     def _update_post_banner(self, stats=None, *, error: str = ''):

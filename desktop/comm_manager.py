@@ -773,7 +773,38 @@ class CommManagerDialog(QDialog):
         self.ack_clear_btn.setObjectName('commRecvAutoAckClear')
         self.ack_clear_btn.clicked.connect(self._clear_recv_auto_ack_timeline)
         ack_bar.addWidget(self.ack_clear_btn)
+        self.ack_rt_btn = QPushButton('应答→sendEvents/format 软往返')
+        self.ack_rt_btn.setObjectName('commAutoAckSendFormatRoundTripBtn')
+        self.ack_rt_btn.setToolTip(
+            'recvEvents 软收→自动应答后，按 sendEvents 做 format_data 风格 ${} 展开并 LocalBus 软 TX；页级往返条'
+        )
+        self.ack_rt_btn.clicked.connect(self._soft_autoack_sendevents_format_roundtrip)
+        ack_bar.addWidget(self.ack_rt_btn)
         resp_lay.addLayout(ack_bar)
+        # Page strip: auto-ack → sendEvents / format_data soft round-trip
+        tip_rt = QLabel(
+            '自动应答闭环 → sendEvents / format_data 软往返：ACK 后按发送事件展开 ${flow.*} 并 LocalBus 软投递（无现场 TCP）。'
+        )
+        tip_rt.setWordWrap(True)
+        tip_rt.setStyleSheet('color:#888;')
+        resp_lay.addWidget(tip_rt)
+        self.ack_rt_strip = QPlainTextEdit()
+        self.ack_rt_strip.setObjectName('commAutoAckSendFormatRoundTripStrip')
+        self.ack_rt_strip.setReadOnly(True)
+        self.ack_rt_strip.setMaximumHeight(150)
+        self.ack_rt_strip.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#1c2a1c;color:#c5e1a5;'
+        )
+        self.ack_rt_strip.setPlaceholderText(
+            'auto-ack → sendEvents / format_data soft round-trip page strip'
+        )
+        resp_lay.addWidget(QLabel('应答→发送/格式化 软往返条（页铬）'))
+        resp_lay.addWidget(self.ack_rt_strip)
+        self.ack_rt_meta = QLabel('(尚未应答→发送往返)')
+        self.ack_rt_meta.setObjectName('commAutoAckSendFormatRoundTripMeta')
+        self.ack_rt_meta.setWordWrap(True)
+        self.ack_rt_meta.setStyleSheet('color:#666;font-size:11px;')
+        resp_lay.addWidget(self.ack_rt_meta)
         resp_lay.addStretch(1)
         self.tabs.addTab(resp, '响应')
 
@@ -1898,6 +1929,153 @@ class CommManagerDialog(QDialog):
             self.ack_reply_timeline.setPlainText('(recvEvents 自动应答分组时间线空)')
         if hasattr(self, 'ack_reply_meta') and self.ack_reply_meta is not None:
             self.ack_reply_meta.setText('(尚未软收→应答)')
+
+
+    def _soft_autoack_sendevents_format_roundtrip(self):
+        """auto-ack reply → sendEvents / format_data soft round-trip page strip (no field TCP)."""
+        ack_result = self._soft_recv_auto_ack_timeline() or {}
+        ack = ack_result.get('ack') or (self.resp_ack.text().strip() if hasattr(self, 'resp_ack') else 'OK') or 'OK'
+        payload = ack_result.get('payload') or ''
+        if hasattr(self, 'ack_demo_payload') and self.ack_demo_payload is not None and not payload:
+            payload = self.ack_demo_payload.text().strip()
+        if not payload:
+            payload = 'RESULT ok=1 score=0.92'
+        send_rows = []
+        try:
+            send_rows = list(self.send_table.rows() or [])
+        except Exception:
+            send_rows = []
+        from datetime import datetime
+        import re
+        ts = datetime.now().strftime('%H:%M:%S')
+        # Soft vars bag for ${} expand (format_data style)
+        vars_bag = {
+            'flow': {'lastRecv': payload, 'ack': ack, 'score': '0.92'},
+            'global': {'taskStatus': 'ready', 'hmiRecipe': '—'},
+        }
+        try:
+            proj = self.document.project if self.document else {}
+            if isinstance(proj, dict):
+                g = (proj.get('variables') or {}).get('global') or {}
+                f = (proj.get('variables') or {}).get('flow') or {}
+                if isinstance(g, dict):
+                    vars_bag['global'].update({k: str(v) for k, v in g.items()})
+                if isinstance(f, dict):
+                    vars_bag['flow'].update({k: str(v) for k, v in f.items()})
+                vars_bag['flow']['lastRecv'] = payload
+                vars_bag['flow']['ack'] = ack
+        except Exception:
+            pass
+
+        def _expand(text):
+            raw = text if text is not None else ''
+            raw = str(raw)
+            if '${' not in raw:
+                return raw
+            def repl(m):
+                inner = (m.group(1) or '').strip()
+                if '.' in inner:
+                    scope, name = inner.split('.', 1)
+                else:
+                    scope, name = 'flow', inner
+                bag = vars_bag.get(scope) or {}
+                if name in bag:
+                    return str(bag[name])
+                return m.group(0)
+            return re.sub(r'\$\{([^}]+)\}', repl, raw)
+
+        if not send_rows:
+            devs = ack_result.get('devices') or ['LocalLoop']
+            send_rows = [{
+                'name': 'format→send soft',
+                'device': devs[0],
+                'message': 'FMT ${flow.lastRecv} ACK=${flow.ack} status=${global.taskStatus}',
+                'topic': '', 'variable': '',
+            }]
+        lines = [
+            '── auto-ack → sendEvents / format_data soft round-trip ──',
+            f'[{ts}] ACK devices={",".join(ack_result.get("devices") or [])} · ack={ack!r}',
+        ]
+        # Mirror a few ack timeline lines
+        for ln in list(ack_result.get('lines') or [])[-4:]:
+            if not str(ln).startswith('──'):
+                lines.append(str(ln))
+        tx_n = 0
+        devices = []
+        for ev in send_rows:
+            if not isinstance(ev, dict):
+                continue
+            dev = str(ev.get('device') or ev.get('deviceName') or 'LocalLoop').strip() or 'LocalLoop'
+            devices.append(dev)
+            raw = str(ev.get('message') or '')
+            formatted = _expand(raw or 'RESULT ${flow.lastRecv}')
+            note = 'format_data-expand' if '${' in raw else 'sendEvent-plain'
+            lines.append(
+                f'[{ts}] TX→send {dev}/default path={note} bytes={len(formatted.encode("utf-8"))} │ {formatted[:80]}'
+            )
+            tx_n += 1
+        page = '\n'.join(lines)
+        if hasattr(self, 'ack_rt_strip') and self.ack_rt_strip is not None:
+            self.ack_rt_strip.setPlainText(page)
+        if hasattr(self, 'ack_rt_meta') and self.ack_rt_meta is not None:
+            self.ack_rt_meta.setText(
+                f'软往返 · ACK={ack!r} · sendEvents TX={tx_n} · devices={",".join(dict.fromkeys(devices))} · '
+                f'format_data ${{}} · LocalBus · 无现场 TCP'
+            )
+        try:
+            proj = self.document.project if self.document else {}
+            cm = proj.setdefault('commManager', {}) if isinstance(proj, dict) else {}
+            if isinstance(cm, dict):
+                cm['lastSoftAckSendFormatRt'] = {
+                    'ack': ack, 'payload': payload[:200], 'tx': tx_n, 'devices': list(dict.fromkeys(devices)),
+                }
+        except Exception:
+            pass
+        # Engine soft path
+        try:
+            import subprocess, json as _json
+            from pathlib import Path as _P
+            root = _P(__file__).resolve().parents[1]
+            eng_proj = {
+                'commManager': {
+                    'recvEvents': [
+                        {'device': d, 'variable': 'flow.lastRecv'}
+                        for d in (ack_result.get('devices') or ['LocalLoop'])
+                    ],
+                    'sendEvents': send_rows,
+                    'response': {'enabled': True, 'timeoutMs': 3000, 'ack': ack},
+                    'devices': [
+                        {'name': d, 'protocol': 'Local Bus'}
+                        for d in list(dict.fromkeys(
+                            list(ack_result.get('devices') or []) + devices
+                        )) or ['LocalLoop']
+                    ],
+                }
+            }
+            js = (
+                "const bus=require('./lib/comm-bus.cjs');bus.reset();"
+                f"const r=bus.softAutoAckSendEventsFormatRoundTrip({_json.dumps(eng_proj)},{_json.dumps(payload)},"
+                f"{{forceAck:true,ack:{_json.dumps(ack)}}});"
+                "process.stdout.write(JSON.stringify({tx:r.sendEntries.length,devs:r.devices,ack:r.ack&&r.ack.ack}));"
+            )
+            subprocess.run(
+                ['node', '-e', js], cwd=str(root),
+                capture_output=True, text=True, timeout=3,
+            )
+        except Exception:
+            pass
+        return {
+            'ack': ack_result,
+            'tx': tx_n,
+            'devices': list(dict.fromkeys(devices)),
+            'pageStrip': page,
+        }
+
+    def _clear_autoack_send_format_roundtrip(self):
+        if hasattr(self, 'ack_rt_strip') and self.ack_rt_strip is not None:
+            self.ack_rt_strip.setPlainText('(应答→发送/格式化 软往返条空)')
+        if hasattr(self, 'ack_rt_meta') and self.ack_rt_meta is not None:
+            self.ack_rt_meta.setText('(尚未应答→发送往返)')
 
 
     def _tpl_clear_inbox_timeline(self):

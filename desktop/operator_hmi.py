@@ -932,6 +932,33 @@ class OperatorHmiView(QWidget):
             'production_task ▶试跑 → 页铬 + OK-NG 看板联更（trial→result）'
         )
         root.addWidget(self._trial_result_strip)
+
+        # Page-level Host SM liaison / Alarm clear closed-loop strip
+        self._hostsm_closed_loop_strip = QLabel('Host SM 闭环 · 待命 · trial→result → 联调/报警清除')
+        self._hostsm_closed_loop_strip.setObjectName('hmiHostSmClosedLoopStrip')
+        self._hostsm_closed_loop_strip.setWordWrap(True)
+        self._hostsm_closed_loop_strip.setStyleSheet(
+            f'background:{CARD};color:{TEXT_MUTED};border:1px solid {LINE};'
+            f'border-radius:3px;padding:5px 10px;font-size:11px;font-weight:600;'
+        )
+        self._hostsm_closed_loop_strip.setToolTip(
+            'production_task trial→result ↔ Host SM 联调条 / 报警清除闭环（页铬，非芯片）'
+        )
+        root.addWidget(self._hostsm_closed_loop_strip)
+
+        # Page-level variant + statusVar co-bind strip (recipe handoff)
+        self._variant_status_cobind_strip = QLabel('变体·statusVar 共绑 · 待命')
+        self._variant_status_cobind_strip.setObjectName('hmiVariantStatusCoBindStrip')
+        self._variant_status_cobind_strip.setWordWrap(True)
+        self._variant_status_cobind_strip.setStyleSheet(
+            f'background:{CARD};color:{TEXT_MUTED};border:1px solid {LINE};'
+            f'border-radius:3px;padding:5px 10px;font-size:11px;font-weight:600;'
+        )
+        self._variant_status_cobind_strip.setToolTip(
+            '换型手递 → production_task statusVar + 变体 页铬共绑（非属性芯片）'
+        )
+        root.addWidget(self._variant_status_cobind_strip)
+
         self._page_chrome_locked = False
         self._page_chrome_lock_recipe = ''
 
@@ -2910,6 +2937,13 @@ class OperatorHmiView(QWidget):
                 )
             except Exception:
                 pass
+        # Soft Host SM closed-loop page chrome (fresh loop; production panel may enrich after)
+        try:
+            self.apply_host_sm_alarm_closed_loop(
+                phase=phase, judge=j, snapshot=snap, result=result, loop={},
+            )
+        except Exception:
+            pass
         return snap
 
     def lock_page_chrome_for_recipe_switch(self, locked=True, *, recipe=None, reason='换型'):
@@ -2952,10 +2986,16 @@ class OperatorHmiView(QWidget):
                 pass
         return bool(locked)
 
-    def soft_handoff_idle_running(self, *, recipe=None, to_running=True, note=''):
+    def soft_handoff_idle_running(self, *, recipe=None, to_running=True, note='',
+                                  variant=None, status_var=None, scope=None):
         """Status-rail Idle↔Running soft handoff after 换型 chrome unlock."""
         name = (recipe or self._page_chrome_lock_recipe
                 or getattr(self, '_live_recipe', '') or '—')
+        self._pending_handoff_cobind = {
+            'variant': variant if variant is not None else getattr(self, '_live_variant', '') or '',
+            'status_var': status_var or (getattr(self, '_live_page_chrome', {}) or {}).get('statusVar') or 'taskStatus',
+            'scope': scope or (getattr(self, '_live_page_chrome', {}) or {}).get('scope') or 'global',
+        }
         # Unlock first
         if getattr(self, '_page_chrome_locked', False):
             self.lock_page_chrome_for_recipe_switch(False, recipe=name, reason='换型完成')
@@ -2988,24 +3028,192 @@ class OperatorHmiView(QWidget):
                 self._paint_machine_chrome(st)
             except Exception:
                 pass
+            cob = dict(getattr(self, '_pending_handoff_cobind', None) or {})
+            var = cob.get('variant') if cob.get('variant') is not None else (getattr(self, '_live_variant', '') or '')
             try:
-                self.set_recipe_chrome(rname, getattr(self, '_live_variant', '') or '')
+                self.set_recipe_chrome(rname, var or '')
             except Exception:
                 pass
             try:
                 self.refresh_okng_dashboard_strip(
                     host_state=st, recipe=rname, status=st,
+                    status_var=f"{cob.get('scope', 'global')}.{cob.get('status_var', 'taskStatus')}",
+                )
+            except Exception:
+                pass
+            try:
+                self.co_bind_variant_status_page_chrome(
+                    recipe=rname, variant=var or '',
+                    status_var=cob.get('status_var') or 'taskStatus',
+                    scope=cob.get('scope') or 'global',
+                    host_state=st, note='换型手递',
                 )
             except Exception:
                 pass
             ban = getattr(self, '_page_chrome_banner', None)
             if ban is not None:
-                ban.setText(f'页铬 · 配方 {rname} · 状态 {st} · 换型手递完成')
+                ban.setText(
+                    f'页铬 · 配方 {rname}'
+                    + (f'/{var}' if var else '')
+                    + f' · 状态 {st} · 换型手递完成 · statusVar共绑'
+                )
         try:
             QTimer.singleShot(160, _arrive)
         except Exception:
             _arrive()
         return target
+
+
+    def apply_host_sm_alarm_closed_loop(self, *, phase='trial', judge='—', snapshot=None,
+                                        loop=None, result=None):
+        """Page chrome: trial→result ↔ Host SM liaison / Alarm clear closed loop."""
+        snap = dict(snapshot or getattr(self, '_live_page_chrome', None) or {})
+        loop = dict(loop or {})
+        result = result or {}
+        phase = str(phase or 'trial')
+        j = str(judge or snap.get('okng') or '—')
+        recipe = str(snap.get('recipe') or getattr(self, '_live_recipe', '') or '—')
+        host = getattr(self, '_host_sm', None)
+        # Drive host if production panel did not (standalone HMI path)
+        if host is not None and not loop.get('driven'):
+            try:
+                if phase == 'trial':
+                    if hasattr(host, 'set_state'):
+                        host.set_state('Running', f'试跑 · {recipe}')
+                    if hasattr(host, 'push_liaison_event'):
+                        host.push_liaison_event(
+                            f'试跑启动 · 配方 {recipe}', kind='试跑启动', code='TRIAL_FIRE',
+                        )
+                    loop['liaison'] = ['TRIAL_FIRE']
+                    loop['host'] = getattr(host, '_state', 'Running')
+                else:
+                    failed = str(j).upper() in ('NG', 'FAIL', '拒', '不良') or result.get('state') == 'failed'
+                    if failed:
+                        if hasattr(host, 'set_state'):
+                            host.set_state('Alarm', f'试跑结果 {j}')
+                        if hasattr(host, 'push_liaison_event'):
+                            host.push_liaison_event(
+                                f'试跑报警 · {j} · {recipe}', kind='试跑报警', code='TRIAL_ALARM',
+                            )
+                        loop['liaison'] = ['TRIAL_ALARM']
+                        loop['alarm'] = True
+                        loop['host'] = 'Alarm'
+                    else:
+                        was = getattr(host, '_state', '') == 'Alarm'
+                        if was and hasattr(host, '_clear_alarm'):
+                            host._clear_alarm()
+                            loop['cleared'] = True
+                        elif hasattr(host, 'set_state'):
+                            host.set_state('Idle', f'试跑结果 OK · {recipe}')
+                        if hasattr(host, 'push_liaison_event'):
+                            code = 'ALARM_CLEAR' if was else 'TRIAL_OK'
+                            host.push_liaison_event(
+                                f'试跑闭环 · {code} · {recipe}',
+                                kind='报警清除' if code == 'ALARM_CLEAR' else '试跑通过',
+                                code=code,
+                            )
+                        loop['liaison'] = [code if was else 'TRIAL_OK']
+                        loop['cleared'] = bool(was)
+                        loop['alarm'] = False
+                        loop['host'] = getattr(host, '_state', 'Idle')
+            except Exception:
+                pass
+            else:
+                loop['driven'] = True
+        # Paint page strip
+        lab = getattr(self, '_hostsm_closed_loop_strip', None)
+        host_st = loop.get('host') or getattr(self, '_host_state', '') or '—'
+        lia = ','.join(loop.get('liaison') or []) or '—'
+        if lab is not None:
+            if phase == 'trial':
+                txt = f'Host SM 闭环 · TRIAL · 配方 {recipe} · host={host_st} · liaison={lia}'
+                ss = (
+                    'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                    'border-radius:3px;padding:5px 10px;font-size:11px;font-weight:700;'
+                )
+            elif loop.get('alarm'):
+                txt = (
+                    f'Host SM 闭环 · ALARM · 判定 {j} · 配方 {recipe} · '
+                    f'liaison={lia} · 待清除'
+                )
+                ss = (
+                    'background:#3a1c1c;color:#ffb4b4;border:1px solid #e35d6a;'
+                    'border-radius:3px;padding:5px 10px;font-size:11px;font-weight:700;'
+                )
+            else:
+                cleared = '已清除' if loop.get('cleared') else '通过'
+                txt = (
+                    f'Host SM 闭环 · CLOSED · {cleared} · 判定 {j} · 配方 {recipe} · '
+                    f'host={host_st} · liaison={lia}'
+                )
+                ss = (
+                    'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                    'border-radius:3px;padding:5px 10px;font-size:11px;font-weight:700;'
+                )
+            lab.setText(txt)
+            lab.setStyleSheet(ss)
+            lab.setToolTip(txt)
+        # Sync banner tip when not chrome-locked
+        if not getattr(self, '_page_chrome_locked', False):
+            ban = getattr(self, '_page_chrome_banner', None)
+            if ban is not None and phase == 'result':
+                try:
+                    base = ban.text().split(' · 闭环')[0]
+                    if loop.get('alarm'):
+                        ban.setText(base + ' · 闭环·报警待清除')
+                    elif loop.get('cleared') or str(j).upper() in ('OK', 'PASS', '良', '通过', '—'):
+                        ban.setText(base + ' · 闭环·已闭合')
+                except Exception:
+                    pass
+        self._live_hostsm_loop = loop
+        return loop
+
+    def co_bind_variant_status_page_chrome(self, *, recipe='', variant='', status_var='taskStatus',
+                                          scope='global', host_state=None, snapshot=None, note='换型手递'):
+        """Page-level statusVar + variant co-bind after recipe lock handoff (not chips)."""
+        snap = dict(snapshot or getattr(self, '_live_page_chrome', None) or {})
+        recipe = str(recipe or snap.get('recipe') or getattr(self, '_live_recipe', '') or '—')
+        variant = str(variant if variant is not None else snap.get('variant') or getattr(self, '_live_variant', '') or '')
+        sv = str(status_var or snap.get('statusVar') or 'taskStatus')
+        scope = str(scope or snap.get('scope') or 'global')
+        host_state = host_state or snap.get('hostState') or getattr(self, '_host_state', None) or 'Idle'
+        snap.update({
+            'recipe': recipe, 'variant': variant, 'statusVar': sv, 'scope': scope,
+            'hostState': host_state,
+            'banner': (
+                f'页铬 · 配方 {recipe}' + (f'/{variant}' if variant else '')
+                + f' · {scope}.{sv} · 手递共绑 · {host_state}'
+            ),
+        })
+        if not getattr(self, '_page_chrome_locked', False):
+            try:
+                self.apply_production_page_chrome(snap)
+            except Exception:
+                pass
+        else:
+            # still stamp live bags while locked
+            self._live_page_chrome = snap
+            try:
+                self.set_recipe_chrome(recipe, variant)
+            except Exception:
+                pass
+        lab = getattr(self, '_variant_status_cobind_strip', None)
+        if lab is not None:
+            lab.setText(
+                f'变体·statusVar 共绑 · {note} · 配方 {recipe}'
+                + (f'/{variant}' if variant else '')
+                + f' · {scope}.{sv} · host={host_state}'
+            )
+            lab.setStyleSheet(
+                'background:#1a2430;color:#c5e1a5;border:1px solid #5a8a5a;'
+                'border-radius:3px;padding:5px 10px;font-size:11px;font-weight:700;'
+            )
+            lab.setToolTip(
+                f'{note} · statusVar={scope}.{sv} · variant={variant or "—"} · '
+                f'targets=pageChrome/recipeBadge/statusRail/fixedBars'
+            )
+        return snap
+
 
 
     def refresh_okng_dashboard_strip(self, *, ok_n=None, ng_n=None, judge=None,

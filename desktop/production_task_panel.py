@@ -697,6 +697,43 @@ class ProductionTaskPanel(QWidget):
         self._prod_trial_result_meta.setStyleSheet('color:#666;font-size:11px;')
         lay.addWidget(self._prod_trial_result_meta)
 
+        # Page-level Host SM liaison / Alarm clear closed loop (not micro chips)
+        lay.addWidget(QLabel('试跑→结果 · Host SM 联调 / 报警清除闭环（页铬）'))
+        self._prod_hostsm_loop_strip = QPlainTextEdit()
+        self._prod_hostsm_loop_strip.setObjectName('productionTaskHostSmClosedLoopStrip')
+        self._prod_hostsm_loop_strip.setReadOnly(True)
+        self._prod_hostsm_loop_strip.setMaximumHeight(110)
+        self._prod_hostsm_loop_strip.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#2a1c1c;color:#ffb4b4;'
+        )
+        self._prod_hostsm_loop_strip.setPlainText(
+            '(尚无 Host SM 联调/报警清除闭环 — trial→result 后在此汇总)'
+        )
+        lay.addWidget(self._prod_hostsm_loop_strip)
+        self._prod_hostsm_loop_meta = QLabel('(Host SM 闭环待命)')
+        self._prod_hostsm_loop_meta.setObjectName('productionTaskHostSmClosedLoopMeta')
+        self._prod_hostsm_loop_meta.setWordWrap(True)
+        self._prod_hostsm_loop_meta.setStyleSheet('color:#666;font-size:11px;')
+        lay.addWidget(self._prod_hostsm_loop_meta)
+        self._hostsm_loop_lines = []
+
+        # Page-level variant + statusVar co-bind strip (recipe handoff target)
+        lay.addWidget(QLabel('换型手递 · statusVar + 变体 页铬共绑（非属性芯片）'))
+        self._prod_variant_status_strip = QPlainTextEdit()
+        self._prod_variant_status_strip.setObjectName('productionTaskVariantStatusCoBindStrip')
+        self._prod_variant_status_strip.setReadOnly(True)
+        self._prod_variant_status_strip.setMaximumHeight(90)
+        self._prod_variant_status_strip.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#1a2430;color:#c5e1a5;'
+        )
+        self._prod_variant_status_strip.setPlainText('(尚未换型手递共绑 statusVar/变体)')
+        lay.addWidget(self._prod_variant_status_strip)
+        self._prod_variant_status_meta = QLabel('(变体·statusVar 共绑待命)')
+        self._prod_variant_status_meta.setObjectName('productionTaskVariantStatusCoBindMeta')
+        self._prod_variant_status_meta.setWordWrap(True)
+        self._prod_variant_status_meta.setStyleSheet('color:#666;font-size:11px;')
+        lay.addWidget(self._prod_variant_status_meta)
+
         self._prod_result_meta = QLabel()
         self._prod_result_meta.setObjectName('productionTaskResultMeta')
         self._prod_result_meta.setWordWrap(True)
@@ -1096,4 +1133,223 @@ class ProductionTaskPanel(QWidget):
                     )
                 except Exception:
                     pass
+        # Host SM liaison / Alarm clear closed loop (page chrome)
+        try:
+            self._soft_host_sm_liaison_alarm_closed_loop(
+                phase=phase, snap=snap, judge=j if phase == 'result' else '—', result=result,
+            )
+        except Exception:
+            pass
+        return snap
+
+
+    def _soft_host_sm_liaison_alarm_closed_loop(self, *, phase='trial', snap=None, judge='—', result=None):
+        """trial→result → Host SM liaison + Alarm clear closed loop (page chrome; no chips)."""
+        from datetime import datetime
+        snap = dict(snap or {})
+        result = result or {}
+        phase = str(phase or 'trial')
+        j = str(judge or snap.get('okng') or '—')
+        recipe = str(snap.get('recipe') or self.params.get('recipe') or '—')
+        sv = str(snap.get('statusVar') or self.params.get('statusVar') or 'taskStatus')
+        scope = str(snap.get('scope') or self.params.get('scope') or 'global')
+        ts = datetime.now().strftime('%H:%M:%S')
+        lines = list(getattr(self, '_hostsm_loop_lines', []) or [])
+        host = None
+        hmi = None
+        w = self.window()
+        if w is not None:
+            hmi = getattr(w, 'operator_hmi', None)
+            host = getattr(w, 'host_state_machine', None) or getattr(w, 'host_sm', None)
+            if host is None and hmi is not None:
+                host = getattr(hmi, '_host_sm', None)
+        loop = {
+            'phase': phase, 'judge': j, 'recipe': recipe,
+            'statusVar': f'{scope}.{sv}', 'host': None,
+            'liaison': [], 'alarm': None, 'cleared': False,
+        }
+        if phase == 'trial':
+            lines.append(
+                f'[{ts}] TRIAL · recipe={recipe} · {scope}.{sv} · host→Running · liaison=TRIAL_FIRE'
+            )
+            if host is not None:
+                try:
+                    if hasattr(host, 'set_state'):
+                        host.set_state('Running', f'试跑 · {recipe}')
+                    if hasattr(host, 'push_liaison_event'):
+                        host.push_liaison_event(
+                            f'试跑启动 · 配方 {recipe} · {scope}.{sv}',
+                            kind='试跑启动', code='TRIAL_FIRE',
+                        )
+                        loop['liaison'].append('TRIAL_FIRE')
+                    loop['host'] = getattr(host, '_state', None) or 'Running'
+                except Exception:
+                    pass
+            loop['alarm'] = False
+        else:
+            failed = str(j).upper() in ('NG', 'FAIL', '拒', '不良') or result.get('state') == 'failed'
+            if failed:
+                lines.append(
+                    f'[{ts}] RESULT NG · recipe={recipe} · host→Alarm · liaison=TRIAL_ALARM · 闭环待清除'
+                )
+                if host is not None:
+                    try:
+                        if hasattr(host, 'set_state'):
+                            host.set_state('Alarm', f'试跑结果 {j} · {recipe}')
+                        if hasattr(host, 'push_liaison_event'):
+                            host.push_liaison_event(
+                                f'试跑报警 · {j} · 配方 {recipe}',
+                                kind='试跑报警', code='TRIAL_ALARM',
+                            )
+                            loop['liaison'].append('TRIAL_ALARM')
+                        loop['host'] = getattr(host, '_state', None) or 'Alarm'
+                    except Exception:
+                        pass
+                loop['alarm'] = True
+                loop['cleared'] = False
+            else:
+                was_alarm = False
+                if host is not None:
+                    try:
+                        was_alarm = getattr(host, '_state', '') == 'Alarm'
+                    except Exception:
+                        was_alarm = False
+                lines.append(
+                    f'[{ts}] RESULT OK · recipe={recipe} · '
+                    + ('Alarm→Clear→Idle' if was_alarm else 'host→Idle')
+                    + ' · liaison=ALARM_CLEAR/TRIAL_OK · 闭环闭合'
+                )
+                if host is not None:
+                    try:
+                        if was_alarm and hasattr(host, '_clear_alarm'):
+                            host._clear_alarm()
+                            loop['cleared'] = True
+                        elif hasattr(host, 'set_state'):
+                            host.set_state('Idle', f'试跑结果 OK · {recipe}')
+                        if hasattr(host, 'push_liaison_event'):
+                            code = 'ALARM_CLEAR' if was_alarm or loop.get('cleared') else 'TRIAL_OK'
+                            kind = '报警清除' if code == 'ALARM_CLEAR' else '试跑通过'
+                            host.push_liaison_event(
+                                f'试跑闭环 · {kind} · 配方 {recipe} · {scope}.{sv}',
+                                kind=kind, code=code,
+                            )
+                            loop['liaison'].append(code)
+                        loop['host'] = getattr(host, '_state', None) or 'Idle'
+                    except Exception:
+                        pass
+                loop['alarm'] = False
+                if was_alarm:
+                    loop['cleared'] = True
+        self._hostsm_loop_lines = lines[-16:]
+        hdr = '── trial→result ↔ Host SM liaison / Alarm clear closed loop ──'
+        text = hdr + '\n' + '\n'.join(self._hostsm_loop_lines)
+        if hasattr(self, '_prod_hostsm_loop_strip') and self._prod_hostsm_loop_strip is not None:
+            self._prod_hostsm_loop_strip.setPlainText(text)
+            if loop.get('alarm'):
+                self._prod_hostsm_loop_strip.setStyleSheet(
+                    'font-family:monospace;font-size:11px;background:#2a1c1c;color:#ffb4b4;'
+                )
+            elif loop.get('cleared') or (phase == 'result' and not loop.get('alarm')):
+                self._prod_hostsm_loop_strip.setStyleSheet(
+                    'font-family:monospace;font-size:11px;background:#1c2a1c;color:#9ed9a8;'
+                )
+            else:
+                self._prod_hostsm_loop_strip.setStyleSheet(
+                    'font-family:monospace;font-size:11px;background:#1a2430;color:#9ec9f0;'
+                )
+        if hasattr(self, '_prod_hostsm_loop_meta') and self._prod_hostsm_loop_meta is not None:
+            self._prod_hostsm_loop_meta.setText(
+                f"闭环 · phase={phase} · judge={j} · host={loop.get('host') or '—'} · "
+                f"liaison={','.join(loop['liaison']) or '—'} · "
+                f"{'已清除' if loop.get('cleared') else ('报警中' if loop.get('alarm') else '空闲')} · 页铬非芯片"
+            )
+        loop['driven'] = True
+        if hmi is not None and hasattr(hmi, 'apply_host_sm_alarm_closed_loop'):
+            try:
+                hmi.apply_host_sm_alarm_closed_loop(
+                    phase=phase, judge=j, snapshot=snap, loop=loop, result=result,
+                )
+            except Exception:
+                pass
+        return loop
+
+    def soft_co_bind_variant_status_page_chrome(self, *, recipe=None, variant=None,
+                                               status_var=None, scope=None, host_state=None,
+                                               note='换型手递'):
+        """Recipe lock handoff → statusVar + variant page-level co-bind (not micro chips)."""
+        from datetime import datetime
+        _mapping, status, sv0, scope0, name, recipe0, steps_n = self._writeback_map()
+        recipe = str(recipe if recipe is not None else recipe0 or name or '—')
+        sv = str(status_var if status_var is not None else sv0)
+        scope = str(scope if scope is not None else scope0)
+        if variant is None:
+            try:
+                variant = str((self.project or {}).get('activeRecipeVariant') or '')
+            except Exception:
+                variant = ''
+        variant = str(variant or '')
+        try:
+            if recipe and recipe != '—':
+                self.params['recipe'] = recipe
+            self.params['statusVar'] = sv
+            proj = self.project if isinstance(self.project, dict) else {}
+            if variant:
+                proj['activeRecipeVariant'] = variant
+            proj['activeRecipeName'] = recipe
+            chip = getattr(self, '_variant_chip', None)
+            if chip is not None and variant:
+                i = chip.findData(variant)
+                if i < 0:
+                    chip.addItem(variant, variant)
+                    i = chip.findData(variant)
+                if i >= 0:
+                    chip.blockSignals(True)
+                    chip.setCurrentIndex(i)
+                    chip.blockSignals(False)
+        except Exception:
+            pass
+        host_state = host_state or ('Running' if status == 'running' else 'Idle')
+        ts = datetime.now().strftime('%H:%M:%S')
+        snap = self._page_chrome_snapshot(trial=False)
+        snap['recipe'] = recipe
+        snap['variant'] = variant
+        snap['statusVar'] = sv
+        snap['scope'] = scope
+        snap['hostState'] = host_state
+        snap['banner'] = (
+            f"页铬 · 配方 {recipe}"
+            + (f"/{variant}" if variant else '')
+            + f" · {scope}.{sv}={snap['status']} · 手递共绑 · {host_state}"
+        )
+        lines = [
+            f'[{ts}] {note} · recipe={recipe}' + (f'/{variant}' if variant else ''),
+            f'  statusVar = {scope}.{sv} = {snap["status"]}',
+            f'  hostState = {host_state} · chainSteps = {snap["chainSteps"]}',
+            f'  targets   = pageChromeBanner · recipeBadge · variantChip · statusRail · fixedBars',
+            f'  banner    = {snap["banner"]}',
+        ]
+        if hasattr(self, '_prod_variant_status_strip') and self._prod_variant_status_strip is not None:
+            self._prod_variant_status_strip.setPlainText('\n'.join(lines))
+        if hasattr(self, '_prod_variant_status_meta') and self._prod_variant_status_meta is not None:
+            self._prod_variant_status_meta.setText(
+                f'共绑 · {scope}.{sv} · 变体 {variant or "—"} · 配方 {recipe} · '
+                f'host={host_state} · 页铬非芯片'
+            )
+        try:
+            self._soft_bind_hmi_page_chrome(trial=False, push_live=True)
+        except Exception:
+            pass
+        w = self.window()
+        hmi = getattr(w, 'operator_hmi', None) if w is not None else None
+        if hmi is not None:
+            try:
+                if hasattr(hmi, 'co_bind_variant_status_page_chrome'):
+                    hmi.co_bind_variant_status_page_chrome(
+                        recipe=recipe, variant=variant, status_var=sv,
+                        scope=scope, host_state=host_state, snapshot=snap, note=note,
+                    )
+                elif hasattr(hmi, 'apply_production_page_chrome'):
+                    hmi.apply_production_page_chrome(snap)
+            except Exception:
+                pass
         return snap
