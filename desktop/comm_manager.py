@@ -10,6 +10,7 @@ from datetime import datetime
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QScrollArea,
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTabWidget,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QComboBox, QLineEdit, QWidget, QFormLayout, QSpinBox, QMessageBox,
@@ -300,12 +301,18 @@ PROTOCOLS = [
 
 
 def default_comm_manager():
+    try:
+        from desktop.tcp_realtime import tcp_persist_defaults
+        tcp_real = tcp_persist_defaults()
+    except Exception:
+        tcp_real = dict(host='127.0.0.1', port=19955, role='server', framing='lf')
     return dict(
         devices=[],
         recvEvents=[],
         sendEvents=[],
         heartbeat=dict(enabled=False, intervalMs=5000, payload='HB'),
         response=dict(enabled=False, timeoutMs=3000, ack='OK'),
+        tcpReal=tcp_real,
     )
 
 
@@ -1227,7 +1234,54 @@ class CommManagerDialog(QDialog):
         real_form.addRow('自动应答', self.tcp_real_autoack)
         real_form.addRow('应答内容', self.tcp_real_ack)
         real_form.addRow('发送载荷', self.tcp_real_payload)
+        # wave156: framing LF | Len4 · keep-alive · reconnect
+        self.tcp_real_framing = QComboBox()
+        self.tcp_real_framing.setObjectName('commTcpRealFraming')
+        try:
+            from desktop.tcp_realtime import FRAMINGS, framing_label
+            for f in FRAMINGS:
+                self.tcp_real_framing.addItem(framing_label(f), f)
+        except Exception:
+            self.tcp_real_framing.addItem('LF (\\n)', 'lf')
+            self.tcp_real_framing.addItem('CRLF', 'crlf')
+            self.tcp_real_framing.addItem('Raw', 'raw')
+            self.tcp_real_framing.addItem('Len4 长度前缀', 'len4')
+        self.tcp_real_framing.setToolTip('分帧：LF/CRLF 行协议，或 Len4 大端长度前缀（软选项，无 PLC）')
+        real_form.addRow('分帧', self.tcp_real_framing)
+        self.tcp_real_keepalive = OrangeSwitch(True)
+        self.tcp_real_keepalive.setObjectName('commTcpRealKeepAlive')
+        real_form.addRow('Keep-Alive', self.tcp_real_keepalive)
+        self.tcp_real_reconnect = OrangeSwitch(True)
+        self.tcp_real_reconnect.setObjectName('commTcpRealReconnect')
+        real_form.addRow('断线重连(Client)', self.tcp_real_reconnect)
         real_lay.addLayout(real_form)
+        # transcript filter row
+        frow = QHBoxLayout()
+        frow.addWidget(QLabel('抄本过滤'))
+        self.tcp_real_filter = QComboBox()
+        self.tcp_real_filter.setObjectName('commTcpRealFilter')
+        for lab, data in (
+            ('全部', 'ALL'),
+            ('仅 TX', 'TX'),
+            ('仅 RX', 'RX'),
+            ('TX+RX', 'TX,RX'),
+            ('SYS', 'SYS'),
+            ('ERR', 'ERR'),
+        ):
+            self.tcp_real_filter.addItem(lab, data)
+        self.tcp_real_filter.currentIndexChanged.connect(self._tcp_real_apply_filter)
+        frow.addWidget(self.tcp_real_filter)
+        self.tcp_real_filter_text = QLineEdit()
+        self.tcp_real_filter_text.setObjectName('commTcpRealFilterText')
+        self.tcp_real_filter_text.setPlaceholderText('包含文本…')
+        self.tcp_real_filter_text.textChanged.connect(self._tcp_real_apply_filter)
+        frow.addWidget(self.tcp_real_filter_text, 1)
+        self.tcp_real_persist_btn = QPushButton('存入方案')
+        self.tcp_real_persist_btn.setObjectName('commTcpRealPersist')
+        self.tcp_real_persist_btn.setToolTip('把 host/port/分帧/Keep-Alive 写入 project.commManager.tcpReal')
+        self.tcp_real_persist_btn.clicked.connect(self._tcp_real_persist_to_project)
+        frow.addWidget(self.tcp_real_persist_btn)
+        real_lay.addLayout(frow)
         brow = QHBoxLayout()
         self.tcp_real_status = QLabel('○ Soft / LocalBus')
         self.tcp_real_status.setObjectName('commTcpRealStatus')
@@ -1269,9 +1323,26 @@ class CommManagerDialog(QDialog):
         real_lay.addWidget(self.tcp_real_transcript, 1)
         tcp_lay.addWidget(real_box)
         self._tcp_real_session = None
+        self._tcp_transcript_raw: list = []
         self._tcp_transport_changed()
+        try:
+            self._tcp_real_load_persist()
+        except Exception:
+            pass
 
-        self.tabs.addTab(tcp, 'TCP 测试')
+        tcp_scroll = QScrollArea()
+        tcp_scroll.setObjectName('commTcpScroll')
+        tcp_scroll.setWidgetResizable(True)
+        tcp_scroll.setFrameShape(tcp_scroll.frameShape().NoFrame if hasattr(tcp_scroll.frameShape(), 'NoFrame') else tcp_scroll.frameShape())
+        try:
+            from PySide6.QtWidgets import QFrame
+            tcp_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        except Exception:
+            pass
+        tcp_scroll.setWidget(tcp)
+        tcp.setMinimumWidth(480)
+        self.tcp_real_transcript.setMinimumHeight(80)
+        self.tabs.addTab(tcp_scroll, 'TCP 测试')
 
         # --- UDP 测试（薄壳）---
         udp = QWidget()
@@ -1676,25 +1747,117 @@ class CommManagerDialog(QDialog):
         host = (self.tcp_real_host.text() or '').strip() or '127.0.0.1'
         port = int(self.tcp_real_port.value())
         role = self.tcp_role.currentData() or 'server'
-        ack = (self.tcp_real_ack.text() or 'OK').strip() or 'OK'
+        ack = self.tcp_real_ack.text() if hasattr(self, 'tcp_real_ack') else 'OK'
         auto = bool(self.tcp_real_autoack.isChecked()) if hasattr(self, 'tcp_real_autoack') else True
         payload = self.tcp_real_payload.text() if hasattr(self, 'tcp_real_payload') else 'PING'
-        return host, port, role, ack, auto, payload
+        framing = 'lf'
+        try:
+            framing = self.tcp_real_framing.currentData() or 'lf'
+        except Exception:
+            pass
+        keepalive = True
+        try:
+            keepalive = bool(self.tcp_real_keepalive.isChecked())
+        except Exception:
+            pass
+        reconnect = True
+        try:
+            reconnect = bool(self.tcp_real_reconnect.isChecked())
+        except Exception:
+            pass
+        return host, port, role, ack, auto, payload, framing, keepalive, reconnect
+
 
     def _tcp_real_append_transcript(self, lines):
         box = getattr(self, 'tcp_real_transcript', None)
         if box is None:
             return
-        cur = box.toPlainText().strip()
-        chunk = '\n'.join(lines or [])
-        text = (cur + '\n' + chunk).strip() if cur else chunk
-        # keep last ~120 lines
-        parts = text.splitlines()
+        raw = getattr(self, '_tcp_transcript_raw', None)
+        if raw is None:
+            self._tcp_transcript_raw = []
+            raw = self._tcp_transcript_raw
+        for ln in (lines or []):
+            if ln is None:
+                continue
+            raw.append(str(ln))
+        if len(raw) > 200:
+            del raw[:-200]
+        self._tcp_real_apply_filter()
+
+    def _tcp_real_apply_filter(self, *_):
+        box = getattr(self, 'tcp_real_transcript', None)
+        if box is None:
+            return
+        raw = list(getattr(self, '_tcp_transcript_raw', []) or [])
+        dirs = None
+        contains = ''
+        try:
+            key = self.tcp_real_filter.currentData() or 'ALL'
+            if key and key != 'ALL':
+                dirs = [x.strip() for x in str(key).split(',') if x.strip()]
+        except Exception:
+            pass
+        try:
+            contains = (self.tcp_real_filter_text.text() or '').strip()
+        except Exception:
+            pass
+        try:
+            from desktop.tcp_realtime import filter_transcript
+            parts = filter_transcript(raw, directions=dirs, text_contains=contains)
+        except Exception:
+            parts = raw
         if len(parts) > 120:
             parts = parts[-120:]
         box.setPlainText('\n'.join(parts))
         try:
             box.verticalScrollBar().setValue(box.verticalScrollBar().maximum())
+        except Exception:
+            pass
+
+    def _tcp_real_persist_to_project(self):
+        host, port, role, ack, auto, _payload, framing, keepalive, reconnect = self._tcp_real_cfg()
+        try:
+            from desktop.tcp_realtime import save_tcp_persist
+            proj = self.document.project if self.document else {}
+            saved = save_tcp_persist(
+                proj, host=host, port=port, role=role, framing=framing,
+                autoAck=bool(auto), ack=ack or 'OK', keepAlive=bool(keepalive),
+                reconnect=bool(reconnect),
+            )
+            self._tcp_real_append_transcript([
+                f"[SYS] persisted tcpReal host={saved.get('host')}:{saved.get('port')} "
+                f"framing={saved.get('framing')} keepAlive={saved.get('keepAlive')}"
+            ])
+        except Exception as exc:
+            self._tcp_real_append_transcript([f'[ERR] persist {exc}'])
+
+    def _tcp_real_load_persist(self):
+        try:
+            from desktop.tcp_realtime import load_tcp_persist
+            proj = self.document.project if self.document else {}
+            cfg = load_tcp_persist(proj)
+        except Exception:
+            return
+        try:
+            if cfg.get('host'):
+                self.tcp_real_host.setText(str(cfg['host']))
+            if cfg.get('port') is not None:
+                self.tcp_real_port.setValue(int(cfg['port']) or 19955)
+            idx = self.tcp_role.findData(cfg.get('role') or 'server')
+            if idx >= 0:
+                self.tcp_role.setCurrentIndex(idx)
+            if hasattr(self, 'tcp_real_framing'):
+                fi = self.tcp_real_framing.findData(cfg.get('framing') or 'lf')
+                if fi >= 0:
+                    self.tcp_real_framing.setCurrentIndex(fi)
+            if hasattr(self, 'tcp_real_keepalive'):
+                self.tcp_real_keepalive.setChecked(bool(cfg.get('keepAlive', True)))
+            if hasattr(self, 'tcp_real_reconnect'):
+                self.tcp_real_reconnect.setChecked(bool(cfg.get('reconnect', True)))
+            if hasattr(self, 'tcp_real_ack') and cfg.get('ack') is not None:
+                self.tcp_real_ack.setText(str(cfg.get('ack') or 'OK'))
+            if hasattr(self, 'tcp_real_autoack'):
+                self.tcp_real_autoack.setChecked(bool(cfg.get('autoAck', True)))
         except Exception:
             pass
 
@@ -1738,12 +1901,13 @@ class CommManagerDialog(QDialog):
     def _tcp_real_listen(self):
         if (self.tcp_transport.currentData() or 'soft') != 'tcp':
             self.tcp_transport.setCurrentIndex(self.tcp_transport.findData('tcp'))
-        host, port, _role, ack, auto, _payload = self._tcp_real_cfg()
+        host, port, _role, ack, auto, _payload, framing, keepalive, reconnect = self._tcp_real_cfg()
         self._tcp_real_stop()
         from desktop.tcp_realtime import RealTcpSession, ROLE_SERVER
         sess = RealTcpSession(
             host=host, port=port, role=ROLE_SERVER,
-            auto_ack=auto, ack=ack, framing='lf',
+            auto_ack=auto, ack=ack, framing=framing,
+            keep_alive=keepalive, reconnect=False,
         )
         # Do not touch Qt widgets from the accept/recv worker thread.
         # Transcript is pulled onto the UI thread via refresh/send/stop.
@@ -1763,12 +1927,13 @@ class CommManagerDialog(QDialog):
     def _tcp_real_connect(self):
         if (self.tcp_transport.currentData() or 'soft') != 'tcp':
             self.tcp_transport.setCurrentIndex(self.tcp_transport.findData('tcp'))
-        host, port, _role, ack, auto, _payload = self._tcp_real_cfg()
+        host, port, _role, ack, auto, _payload, framing, keepalive, reconnect = self._tcp_real_cfg()
         self._tcp_real_stop()
         from desktop.tcp_realtime import RealTcpSession, ROLE_CLIENT
         sess = RealTcpSession(
             host=host, port=port, role=ROLE_CLIENT,
-            auto_ack=False, ack=ack, framing='lf',
+            auto_ack=False, ack=ack, framing=framing,
+            keep_alive=keepalive, reconnect=reconnect,
         )
         st = sess.start()
         self._tcp_real_session = sess
@@ -1778,7 +1943,7 @@ class CommManagerDialog(QDialog):
         return st
 
     def _tcp_real_send(self):
-        host, port, role, ack, auto, payload = self._tcp_real_cfg()
+        host, port, role, ack, auto, payload, framing, keepalive, reconnect = self._tcp_real_cfg()
         # expand ${} with demo / project vars when natural
         try:
             from desktop.tcp_realtime import expand_payload
@@ -1812,13 +1977,14 @@ class CommManagerDialog(QDialog):
         """Product smoke from UI: listen→connect→send→recv→ack on 127.0.0.1."""
         if (self.tcp_transport.currentData() or 'soft') != 'tcp':
             self.tcp_transport.setCurrentIndex(self.tcp_transport.findData('tcp'))
-        _host, _port, _role, ack, auto, payload = self._tcp_real_cfg()
+        _host, _port, _role, ack, auto, payload, framing, keepalive, _reconnect = self._tcp_real_cfg()
         self._tcp_real_stop()
         from desktop.tcp_realtime import loopback_e2e
         # Prefer 127.0.0.1 + ephemeral to avoid clashing with sim :19880 / App :19777
         result = loopback_e2e(
             host='127.0.0.1', port=0, payload=payload or 'PING',
             ack=ack or 'OK', auto_ack=bool(auto),
+            framing=framing, keep_alive=bool(keepalive), use_pool=False,
         )
         lines = list(result.get('transcript') or [])
         lines.append(
@@ -1845,8 +2011,18 @@ class CommManagerDialog(QDialog):
                     'steps': result.get('steps'),
                     'reply': result.get('reply'),
                     'path': 'tcp-real-loopback',
+                    'framing': result.get('framing') or framing,
                 }
                 cm['tcpTransport'] = 'tcp'
+                try:
+                    from desktop.tcp_realtime import save_tcp_persist
+                    save_tcp_persist(
+                        proj, host='127.0.0.1', port=result.get('port') or 0,
+                        framing=framing, autoAck=bool(auto), ack=ack or 'OK',
+                        keepAlive=bool(keepalive),
+                    )
+                except Exception:
+                    pass
         except Exception:
             pass
         return result

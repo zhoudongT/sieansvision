@@ -1,4 +1,4 @@
-# Open-and-run 样例覆盖（wave148–wave155：软采集 · UVC/GenTL 实采 · 真 TCP 环回）
+# Open-and-run 样例覆盖（wave148–wave156：软采集 · UVC/GenTL 实采 · 真 TCP 环回）
 
 面向「双击 `.sieans` → 运行」的软平台关闭清单。详细菜单见 `projects/README-open-and-run.md`。
 菜单单一来源：`desktop/open_and_run_catalog.py`（「从模板新建」↔「打开示例」↔ 本表同目录）。
@@ -50,5 +50,9 @@ CommManager「TCP 测试」页：传输路径 Soft/LocalBus vs TCP、地址/端�
 状态灯、真套接字抄本；环回 e2e listen→connect→send→recv→ack（127.0.0.1，无外部 PLC）。
 `${}` 发送载荷展开可用。不重启 Host/Comm cobind 联调墙。
 冒烟：`python3 scripts/smoke-wave155-real-tcp-e2e.py`（PASS 0 FAIL）。
+
+
+**wave156**：TCP 加深（Len4 分帧 · Keep-Alive/重连 · session pool · transcript filter · tcpReal persist）+ 相机软控（曝光/增益/触发 · last-device · reconnect）+ 整屏适配 （MainWindow min 1024×640 · responsive splitters · Comm/Camera 对话框滚动/min size；冒烟尺寸 1280×720 / 1600×900 / 1920×1080 / 1280×1024）。
+冒烟：`python3 scripts/smoke-wave156-tcp-camera-adapt-e2e.py`。
 现场 PLC/长连接池仍下一阶段。
 

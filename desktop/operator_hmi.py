@@ -4255,7 +4255,8 @@ class OperatorHmiView(QWidget):
         cell = self._make_cell_frame('图像')
         view = ImageView()
         view.setObjectName('hmiPrimaryImageView')
-        view.setMinimumHeight(280)
+        view.setMinimumHeight(160)  # wave156: ok at 720p
+        view.setMinimumWidth(200)
         view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._image_views.append(view)
         cell.layout().addWidget(view, 1)
@@ -4353,7 +4354,7 @@ class OperatorHmiView(QWidget):
             cell = self._make_cell_frame(name + (f' · {binding}' if binding else ''))
             view = ImageView()
             view.setObjectName('hmiPrimaryImageView')
-            view.setMinimumHeight(240)
+            view.setMinimumHeight(140)  # wave156: ok at 720p
             view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             self._image_views.append(view)
             cell.layout().addWidget(view, 1)

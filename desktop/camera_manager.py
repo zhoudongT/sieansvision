@@ -36,6 +36,7 @@ class CameraManagerDialog(_RpcDialog):
         self.setWindowTitle('相机管理')
         self.setObjectName('cameraManager')
         self.resize(860, 560)
+        self.setMinimumSize(640, 420)
         self.setModal(True)
         self._devices = []  # enumerated GenTL/UVC items
         self._session = {'state': 'idle'}
@@ -58,10 +59,9 @@ class CameraManagerDialog(_RpcDialog):
         head.setObjectName('dialogTitle')
         root.addWidget(head)
         hint = QLabel(
-            'wave154：采集后端 Soft / USB UVC / GenTL 均可连续 live 预览。'
-            'UVC：OpenCV VideoCapture 打开一次、跨帧 grab（不每帧开关）；'
-            'GenTL：加载 Hikrobot CTI → 枚举 → 开流；无相机则空列表、不伪造帧。'
-            '预览走 PreviewFrameGate 丢旧帧·UI 节流 → ImageView.show_live_frame / 全局图像。'
+            'wave156：Soft / UVC / GenTL 连续 live · 曝光/增益/触发软控 · 多设备选择器 · 记忆上次设备 · 断线重连。'
+            'UVC：VideoCapture 打开一次跨帧 grab；GenTL：CTI→枚举→开流（无相机空列表）。'
+            '预览 PreviewFrameGate → ImageView.show_live_frame / 全局图像。'
         )
         hint.setObjectName('dialogHint')
         hint.setWordWrap(True)
@@ -158,7 +158,39 @@ class CameraManagerDialog(_RpcDialog):
         self.level = QComboBox()
         self.level.addItems(['高电平有效', '低电平有效'])
         cform.addRow('有效电平', self.level)
-        note = QLabel('曝光 / 增益 / Gamma 与触发源在完整相机工作台「采集参数」中配置，避免与持久会话冲突。')
+        self.exposure_us = QSpinBox()
+        self.exposure_us.setObjectName('cameraExposureUs')
+        self.exposure_us.setRange(100, 10_000_000)
+        self.exposure_us.setValue(10000)
+        self.exposure_us.setSuffix(' µs')
+        self.exposure_us.setToolTip('软曝光：UVC 尝试 CAP_PROP_EXPOSURE；Soft 在预览帧上仿真')
+        cform.addRow('曝光', self.exposure_us)
+        self.gain_db = QSpinBox()
+        self.gain_db.setObjectName('cameraGainDb')
+        self.gain_db.setRange(0, 48)
+        self.gain_db.setValue(0)
+        self.gain_db.setSuffix(' dB')
+        self.gain_db.setToolTip('软增益：UVC CAP_PROP_GAIN（若驱动允许）；Soft 仿真')
+        cform.addRow('增益', self.gain_db)
+        self.trigger_mode = QComboBox()
+        self.trigger_mode.setObjectName('cameraTriggerMode')
+        try:
+            from desktop.camera_backends import TRIGGER_MODES
+            for t in TRIGGER_MODES:
+                self.trigger_mode.addItem(
+                    {'freerun': '自由运行', 'software': '软触发', 'line0': 'Line0'}.get(t, t), t
+                )
+        except Exception:
+            self.trigger_mode.addItem('自由运行', 'freerun')
+            self.trigger_mode.addItem('软触发', 'software')
+            self.trigger_mode.addItem('Line0', 'line0')
+        cform.addRow('触发', self.trigger_mode)
+        apply_btn = QPushButton('应用曝光/增益到会话')
+        apply_btn.setObjectName('cameraApplySoftControls')
+        apply_btn.setToolTip('对已打开的 UVC/Soft live 会话热更新；否则下次连接生效')
+        apply_btn.clicked.connect(self._apply_soft_controls)
+        cform.addRow(apply_btn)
+        note = QLabel('后端允许时写入驱动；Soft 始终在预览帧仿真。完整工作台仍可调 Gamma 等高级项。')
         note.setWordWrap(True)
         cform.addRow(note)
         right.addTab(control, '设备控制')
@@ -179,6 +211,11 @@ class CameraManagerDialog(_RpcDialog):
 
         split.addWidget(right)
         split.setSizes([220, 620])
+        split.setStretchFactor(0, 0)
+        split.setStretchFactor(1, 1)
+        split.setChildrenCollapsible(False)
+        left.setMinimumWidth(160)
+        right.setMinimumWidth(360)
         root.addWidget(split, 1)
 
         root.addWidget(self.message)
@@ -371,20 +408,42 @@ class CameraManagerDialog(_RpcDialog):
         self.camera_pick.blockSignals(True)
         self.camera_pick.clear()
         self.camera_pick.addItem('Close', '')
+        kind = self._current_kind()
+        try:
+            from desktop.camera_backends import format_device_picker_label, load_last_device, pick_last_or_first
+        except Exception:
+            format_device_picker_label = None
+            load_last_device = None
+            pick_last_or_first = None
         for d in self._devices:
-            label = d.get('name') or d.get('deviceId') or '?'
-            extra = d.get('serial') or d.get('model') or ''
-            if extra:
-                label = f'{label} · {extra}'
+            if format_device_picker_label:
+                label = format_device_picker_label(d, kind=kind)
+            else:
+                label = d.get('name') or d.get('deviceId') or '?'
+                extra = d.get('serial') or d.get('model') or ''
+                if extra:
+                    label = f'{label} · {extra}'
             self.camera_pick.addItem(label, d.get('deviceId') or '')
-        idx = self.camera_pick.findData(current) if current else -1
+        prefer = current
+        if not prefer and load_last_device:
+            last = load_last_device()
+            if last.get('kind') == kind and last.get('deviceId'):
+                prefer = last.get('deviceId')
+        idx = self.camera_pick.findData(prefer) if prefer else -1
         if idx < 0 and self._devices:
-            idx = 1  # first real device (0 is Close)
+            if pick_last_or_first:
+                chosen = pick_last_or_first(self._devices, kind=kind)
+                if chosen:
+                    idx = self.camera_pick.findData(chosen.get('deviceId') or '')
+            if idx < 0:
+                idx = 1  # first real device (0 is Close)
         self.camera_pick.setCurrentIndex(max(0, idx))
         self.camera_pick.blockSignals(False)
         n = len(self._devices)
         if n:
-            self.message.setText(f'枚举完成：{n} 台。选择相机后打开「连接相机」。')
+            self.message.setText(
+                f'枚举完成：{n} 台 · 后端 {kind}。选择相机后打开「连接相机」（已记忆上次设备）。'
+            )
             # mirror into left list as selectable slots
             if self.devices.count() == 0:
                 self.devices.addItem(QListWidgetItem('1 全局相机1'))
@@ -420,12 +479,30 @@ class CameraManagerDialog(_RpcDialog):
     def _params(self):
         device_id = self.camera_pick.currentData() or ''
         kind = self._current_kind()
+        exposure = int(self.exposure_us.value()) if hasattr(self, 'exposure_us') else 10000
+        gain = float(self.gain_db.value()) if hasattr(self, 'gain_db') else 0.0
+        trigger = 'freerun'
         try:
-            from desktop.camera_backends import get_backend
-            return get_backend(kind).connect_params(
+            trigger = self.trigger_mode.currentData() or 'freerun'
+        except Exception:
+            pass
+        try:
+            from desktop.camera_backends import get_backend, save_last_device, format_device_picker_label
+            params = get_backend(kind).connect_params(
                 device_id or ('synthetic-parts' if kind == 'soft' else '0'),
                 provider_id=self.provider.currentData() or '',
+                exposureUs=exposure,
+                gainDb=gain,
+                trigger=trigger,
             )
+            if device_id:
+                try:
+                    lab = self.camera_pick.currentText() or device_id
+                    save_last_device(kind=kind, device_id=device_id, label=lab,
+                                     extra=dict(exposureUs=exposure, gainDb=gain, trigger=trigger))
+                except Exception:
+                    pass
+            return params
         except Exception:
             if kind == 'gentl' or self.gentl.isChecked():
                 return {
@@ -433,31 +510,55 @@ class CameraManagerDialog(_RpcDialog):
                     'providerId': self.provider.currentData() or '',
                     'deviceId': device_id,
                     'timeoutMs': 5000,
-                    'trigger': 'freerun',
-                    'keepConnectionOpen': True,
-                    'openClosePerGrab': False,
-                    'backendKind': 'gentl',
+                    'trigger': trigger,
+                    'exposureUs': exposure,
+                    'gainDb': gain,
+                    'sessionPersist': True,
                 }
             if kind == 'soft':
                 return {
                     'driver': 'simulator',
                     'deviceId': device_id or 'synthetic-parts',
                     'timeoutMs': 5000,
-                    'trigger': 'freerun',
-                    'keepConnectionOpen': True,
-                    'openClosePerGrab': False,
-                    'backendKind': 'soft',
+                    'trigger': trigger,
+                    'exposureUs': exposure,
+                    'gainDb': gain,
+                    'sessionPersist': True,
                 }
             return {
                 'driver': 'uvc',
                 'deviceId': device_id or '0',
                 'timeoutMs': 5000,
-                'trigger': 'freerun',
-                'keepConnectionOpen': True,
-                'openClosePerGrab': False,
-                'backendKind': 'uvc',
-                'warmupFrames': 3,
+                'trigger': trigger,
+                'exposureUs': exposure,
+                'gainDb': gain,
+                'sessionPersist': True,
             }
+
+    def _apply_soft_controls(self):
+        exposure = int(self.exposure_us.value()) if hasattr(self, 'exposure_us') else 10000
+        gain = float(self.gain_db.value()) if hasattr(self, 'gain_db') else 0.0
+        trigger = 'freerun'
+        try:
+            trigger = self.trigger_mode.currentData() or 'freerun'
+        except Exception:
+            pass
+        live = getattr(self, '_uvc_live', None) or getattr(self, '_live_session', None)
+        if live is not None and hasattr(live, 'set_soft_controls'):
+            try:
+                st = live.set_soft_controls(exposure_us=exposure, gain_db=gain, trigger=trigger)
+                self.message.setText(
+                    f"已应用软控 exposure={st.get('exposureUs')}µs gain={st.get('gainDb')}dB "
+                    f"trigger={st.get('trigger')}"
+                )
+                return
+            except Exception as exc:
+                self.message.setText(f'软控应用失败：{exc}')
+                return
+        self.message.setText(
+            f'软控已记录（下次连接生效）：exposure={exposure}µs gain={gain}dB trigger={trigger}'
+        )
+
 
     def _on_connect_toggled(self, on):
         if self._suppress_connect:

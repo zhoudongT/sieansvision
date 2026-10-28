@@ -1,3 +1,11 @@
+## wave156 软控 + 设备选择 + 整屏适配
+
+- Soft/UVC：**曝光 / 增益 / 触发**软控（UVC 尝试 CAP_PROP；Soft 在预览帧仿真）
+- 多设备 picker 富标签；**last-device** JSON 持久化；UVC/GenTL 会话 reconnect 韧性标志
+- 相机管理对话框 `setMinimumSize(640,420)` + splitter stretch
+- 主窗 `setMinimumSize(1024,640)` + `apply_responsive_layout`；运行态预览 minH 下调适配 720p
+- 冒烟：`python3 scripts/smoke-wave156-tcp-camera-adapt-e2e.py`（1280×720 / 1600×900 / 1920×1080 / 1280×1024）
+
 ## wave154 UVC 实采连续 live + GenTL Producer 开流
 
 在 wave153 可插拔壳之上：

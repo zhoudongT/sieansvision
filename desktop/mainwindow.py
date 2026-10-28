@@ -36,7 +36,7 @@ class MainWindow(QMainWindow):
         self.pending={};self.closing=False;self.engine_stopped=not start_engine;self.engine_ready=False
         self.cloud=None;self.depth=None;self.dialogs={};self.last_result=None;self._filmstrip_results={}
         self.demo_backup=None;self.demo_loading=False;self.demo_request=None
-        self.setWindowTitle('SIEANS Vision · 视觉检测平台');self.resize(1600,950);self.setMinimumSize(1080,700)
+        self.setWindowTitle('SIEANS Vision · 视觉检测平台');self.resize(1600,950);self.setMinimumSize(1024,640)
         self.setStyleSheet(STYLE)
         self.backend=Backend(self)
         self.backend.ready.connect(self.engine_online);self.backend.result.connect(self.engine_result)
@@ -252,7 +252,7 @@ class MainWindow(QMainWindow):
         self.toolbox.operatorActivated.connect(lambda key:self.guard(lambda:self.add_node(key)))
         self.search.textChanged.connect(self.populate_toolbox)
         left_l.addWidget(library,1)
-        left.setMinimumWidth(220);left.setMaximumWidth(320)
+        left.setMinimumWidth(180);left.setMaximumWidth(360)
         self._left_pane=left
         horizontal.addWidget(left)
 
@@ -390,7 +390,22 @@ class MainWindow(QMainWindow):
         self.parameters=ParameterPanel();self.parameters.hide();self.parameters.changed.connect(self.update_step)
         horizontal.addWidget(right)
         self._image_pane=right
-        horizontal.setSizes([300,560,520,0]);horizontal.setChildrenCollapsible(False)
+        horizontal.setSizes([280,560,520,0]);horizontal.setChildrenCollapsible(False)
+        try:
+            horizontal.setStretchFactor(0, 0)
+            horizontal.setStretchFactor(1, 2)
+            horizontal.setStretchFactor(2, 2)
+            horizontal.setStretchFactor(3, 3)
+        except Exception:
+            pass
+        # wave156: keep toolbox usable at 1280×720 without crushing preview
+        try:
+            self._flow_pane.setMinimumWidth(240)
+            self._image_pane.setMinimumWidth(280)
+            if hasattr(self, 'operator_hmi') and self.operator_hmi is not None:
+                self.operator_hmi.setMinimumWidth(320)
+        except Exception:
+            pass
         self._main_horizontal=horizontal
         root_split.addWidget(horizontal)
 
@@ -401,6 +416,12 @@ class MainWindow(QMainWindow):
         help_pad.setPlainText('帮助：双击「0 图像源1」配置本地/相机/SDK；工具栏 ▶单次 / ↻连续 / ■停止；胶片条可批量跑本地图。')
         bottom.addTab(help_pad,'帮助')
         root_split.addWidget(bottom);root_split.setSizes([700,220]);root_split.setChildrenCollapsible(False)
+        try:
+            root_split.setStretchFactor(0, 4)
+            root_split.setStretchFactor(1, 1)
+            bottom.setMinimumHeight(100)
+        except Exception:
+            pass
 
         self.wb_status=WorkbenchStatusBar(self);self.setStatusBar(self.wb_status)
         self.wb_status.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -416,6 +437,42 @@ class MainWindow(QMainWindow):
         except Exception as err:
             self.log(str(err))
         QTimer.singleShot(0,self._place_minimap)
+
+    def apply_responsive_layout(self, width: int = 0, height: int = 0):
+        """wave156: scale splitter defaults for common desktop sizes (no hard-lock to one res)."""
+        w = int(width or self.width() or 1600)
+        h = int(height or self.height() or 900)
+        horiz = getattr(self, '_main_horizontal', None)
+        if horiz is not None:
+            try:
+                if w <= 1366:
+                    # 1280×720 class: shrink toolbox, keep flow+image usable
+                    if self.operator_hmi.isVisible():
+                        horiz.setSizes([0, 0, 0, max(640, w - 40)])
+                    else:
+                        horiz.setSizes([200, max(320, w // 3), max(320, w // 3), 0])
+                elif w <= 1680:
+                    if self.operator_hmi.isVisible():
+                        horiz.setSizes([0, 0, 0, max(800, w - 40)])
+                    else:
+                        horiz.setSizes([240, max(400, w * 2 // 5), max(400, w * 2 // 5), 0])
+                else:
+                    if self.operator_hmi.isVisible():
+                        horiz.setSizes([0, 0, 0, max(1000, w - 40)])
+                    else:
+                        horiz.setSizes([280, 560, 520, 0])
+            except Exception:
+                pass
+        # vertical: keep result panel readable
+        try:
+            root = self.centralWidget()
+            if root is not None and hasattr(root, 'setSizes'):
+                bottom_h = 140 if h <= 720 else (180 if h <= 900 else 220)
+                top_h = max(360, h - bottom_h - 80)
+                root.setSizes([top_h, bottom_h])
+        except Exception:
+            pass
+        return dict(width=w, height=h)
 
     def guard(self,callback):
         try:callback()

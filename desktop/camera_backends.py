@@ -2,6 +2,7 @@
 
 wave153: Soft / UVC / GenTL pluggable shell + persistent session contract.
 wave154: UVC real grab + continuous live; GenTL producer load/enumerate/open/grab
+wave156: soft exposure/gain/trigger · multi-device picker polish · last-device persist · reconnect
          into the same PreviewFrameGate / show_live_frame path.
 
 Real path toward industrial desktop use:
@@ -176,6 +177,164 @@ def _soft_synthetic_bgr(width: int = 640, height: int = 400, seq: int = 0):
     return image
 
 
+
+# ----- wave156 soft acquisition controls + last-device persist -----
+TRIGGER_MODES = ('freerun', 'software', 'line0')
+DEFAULT_EXPOSURE_US = 10000
+DEFAULT_GAIN_DB = 0.0
+
+_LAST_DEVICE_PATH = Path(__file__).resolve().parents[1] / 'data' / 'camera-last-device.json'
+
+
+def soft_controls_defaults() -> dict[str, Any]:
+    return dict(
+        exposureUs=DEFAULT_EXPOSURE_US,
+        gainDb=DEFAULT_GAIN_DB,
+        trigger='freerun',
+        triggerModes=list(TRIGGER_MODES),
+        softSimulated=True,
+    )
+
+
+def clamp_exposure_us(v) -> int:
+    try:
+        n = int(float(v))
+    except (TypeError, ValueError):
+        n = DEFAULT_EXPOSURE_US
+    return max(100, min(10_000_000, n))
+
+
+def clamp_gain_db(v) -> float:
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        n = DEFAULT_GAIN_DB
+    return max(0.0, min(48.0, n))
+
+
+def normalize_trigger(v) -> str:
+    s = str(v or 'freerun').lower().strip()
+    return s if s in TRIGGER_MODES else 'freerun'
+
+
+def apply_soft_controls_to_bgr(image, *, exposure_us: int = DEFAULT_EXPOSURE_US, gain_db: float = 0.0, seq: int = 0):
+    """Simulate exposure/gain on a BGR frame (Soft + UVC soft-fallback)."""
+    import cv2
+    import numpy as np
+    if image is None:
+        return image
+    img = image.copy()
+    # exposure: map 100..1e6 us → brightness scale ~0.35..1.8
+    exp = clamp_exposure_us(exposure_us)
+    scale = 0.35 + min(1.45, (exp / 10000.0) * 0.65)
+    g = clamp_gain_db(gain_db)
+    scale *= (1.0 + g / 24.0)
+    out = np.clip(img.astype(np.float32) * scale, 0, 255).astype(np.uint8)
+    # stamp tiny HUD so live preview proves control took effect
+    label = f'exp={exp}us gain={g:.1f}dB #{seq}'
+    cv2.putText(out, label, (8, max(16, out.shape[0] - 8)), cv2.FONT_HERSHEY_SIMPLEX,
+                max(0.35, min(out.shape[0], out.shape[1]) / 900.0), (40, 220, 40), 1, cv2.LINE_AA)
+    return out
+
+
+def apply_uvc_soft_controls(cap, *, exposure_us: int | None = None, gain_db: float | None = None) -> dict[str, Any]:
+    """Best-effort CAP_PROP_EXPOSURE / CAP_PROP_GAIN when backend allows; never raise."""
+    applied = dict(exposure=False, gain=False, notes=[])
+    if cap is None:
+        return applied
+    try:
+        import cv2
+    except Exception as exc:
+        applied['notes'].append(str(exc))
+        return applied
+    if exposure_us is not None:
+        exp = clamp_exposure_us(exposure_us)
+        try:
+            # Many UVC cams want auto-exposure off first; value units vary — soft best-effort.
+            if hasattr(cv2, 'CAP_PROP_AUTO_EXPOSURE'):
+                cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # manual on some backends
+            ok = bool(cap.set(cv2.CAP_PROP_EXPOSURE, float(exp) / 1000.0))
+            applied['exposure'] = ok
+            if not ok:
+                applied['notes'].append('CAP_PROP_EXPOSURE rejected')
+        except Exception as exc:
+            applied['notes'].append(f'exposure: {exc}')
+    if gain_db is not None:
+        g = clamp_gain_db(gain_db)
+        try:
+            ok = bool(cap.set(cv2.CAP_PROP_GAIN, float(g)))
+            applied['gain'] = ok
+            if not ok:
+                applied['notes'].append('CAP_PROP_GAIN rejected')
+        except Exception as exc:
+            applied['notes'].append(f'gain: {exc}')
+    return applied
+
+
+def format_device_picker_label(device: dict | None, *, kind: str = '') -> str:
+    """Rich multi-device picker label: name · model · id · kind."""
+    d = device if isinstance(device, dict) else {}
+    name = d.get('name') or d.get('display_name') or d.get('deviceId') or '?'
+    bits = [str(name)]
+    model = d.get('model') or d.get('serial') or ''
+    if model and str(model) not in bits[0]:
+        bits.append(str(model))
+    did = d.get('deviceId') or ''
+    if did and str(did) not in bits[0]:
+        bits.append(str(did)[:24])
+    k = kind or d.get('backendKind') or d.get('driver') or ''
+    if k:
+        bits.append(f'[{k}]')
+    idx = d.get('index')
+    if idx is not None and str(idx) not in bits[0]:
+        bits.append(f'#{idx}')
+    return ' · '.join(bits)
+
+
+def load_last_device() -> dict[str, Any]:
+    try:
+        import json
+        if _LAST_DEVICE_PATH.is_file():
+            data = json.loads(_LAST_DEVICE_PATH.read_text(encoding='utf-8'))
+            if isinstance(data, dict):
+                return data
+    except Exception:
+        pass
+    return {}
+
+
+def save_last_device(*, kind: str, device_id: str, label: str = '', extra: dict | None = None) -> dict[str, Any]:
+    import json
+    row = dict(
+        kind=str(kind or ''),
+        deviceId=str(device_id or ''),
+        label=str(label or ''),
+        savedAt=time.strftime('%Y-%m-%dT%H:%M:%S%z'),
+    )
+    if isinstance(extra, dict):
+        row.update({k: v for k, v in extra.items() if k not in row})
+    try:
+        _LAST_DEVICE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _LAST_DEVICE_PATH.write_text(json.dumps(row, ensure_ascii=False, indent=2), encoding='utf-8')
+    except Exception:
+        pass
+    return row
+
+
+def pick_last_or_first(devices: list[dict], *, kind: str = '') -> dict | None:
+    """Prefer persisted last device when still present; else first."""
+    items = list(devices or [])
+    if not items:
+        return None
+    last = load_last_device()
+    want = str(last.get('deviceId') or '')
+    if want and (not kind or last.get('kind') == kind):
+        match = next((d for d in items if str(d.get('deviceId') or '') == want), None)
+        if match is not None:
+            return match
+    return items[0]
+
+
 class CameraBackend:
     """Minimal pluggable backend surface shared by Soft / UVC / GenTL."""
 
@@ -198,6 +357,10 @@ class CameraBackend:
             requiresHardware=self.kind != BACKEND_SOFT,
             pluggable=True,
             previewPath='PreviewFrameGate+show_live_frame',
+            softControls=soft_controls_defaults(),
+            exposureGain=True,
+            triggerModes=list(TRIGGER_MODES),
+            reconnectResilient=True,
         )
 
     def availability(self) -> dict[str, Any]:
@@ -216,17 +379,20 @@ class CameraBackend:
         return body
 
     def connect_params(self, device_id: str, *, provider_id: str = '', **extra) -> dict[str, Any]:
-        """Params for camera/session/start — freerun persistent session."""
+        """Params for camera/session/start — freerun persistent session + soft controls."""
         params: dict[str, Any] = {
             'driver': self.driver,
             'deviceId': device_id,
             'timeoutMs': int(extra.get('timeoutMs', 5000)),
-            'trigger': 'freerun',
+            'trigger': normalize_trigger(extra.get('trigger', 'freerun')),
+            'exposureUs': clamp_exposure_us(extra.get('exposureUs', DEFAULT_EXPOSURE_US)),
+            'gainDb': clamp_gain_db(extra.get('gainDb', DEFAULT_GAIN_DB)),
             'sessionPersist': True,
             'keepConnectionOpen': True,
             'openClosePerGrab': False,
             'backendKind': self.kind,
             'continuousLive': True,
+            'reconnectResilient': True,
         }
         if self.kind == BACKEND_GENTL:
             params['providerId'] = provider_id or ''
@@ -429,17 +595,29 @@ class UvcLiveSession:
         soft_fallback: bool = True,
         width: int = 0,
         height: int = 0,
+        exposure_us: int = DEFAULT_EXPOSURE_US,
+        gain_db: float = DEFAULT_GAIN_DB,
+        trigger: str = 'freerun',
+        auto_reconnect: bool = True,
+        reconnect_max: int = 2,
     ):
         self.device_id = device_id or ''
         self.warmup_frames = max(0, int(warmup_frames))
         self.soft_fallback = bool(soft_fallback)
         self.width = int(width or 0)
         self.height = int(height or 0)
+        self.exposure_us = clamp_exposure_us(exposure_us)
+        self.gain_db = clamp_gain_db(gain_db)
+        self.trigger = normalize_trigger(trigger)
+        self.auto_reconnect = bool(auto_reconnect)
+        self.reconnect_max = max(0, int(reconnect_max))
         self._cap = None
         self._device: dict[str, Any] | None = None
         self._soft = False
         self._seq = 0
         self._opened = False
+        self._reconnect_count = 0
+        self._controls_applied: dict[str, Any] = {}
         self.backend_kind = BACKEND_UVC
 
     @property
@@ -490,6 +668,18 @@ class UvcLiveSession:
             self.backend_kind = BACKEND_UVC
             # stash last warmup as seq0 buffer
             self._last = image
+            self._controls_applied = apply_uvc_soft_controls(
+                cap, exposure_us=self.exposure_us, gain_db=self.gain_db,
+            )
+            try:
+                save_last_device(
+                    kind=BACKEND_UVC,
+                    device_id=self.device_id or match.get('deviceId') or '',
+                    label=format_device_picker_label(match, kind=BACKEND_UVC),
+                    extra=dict(trigger=self.trigger, exposureUs=self.exposure_us, gainDb=self.gain_db),
+                )
+            except Exception:
+                pass
             return self.status()
         except Exception:
             if self._cap is not None:
@@ -516,6 +706,13 @@ class UvcLiveSession:
             openClosePerGrab=False,
             frameSequence=self._seq,
             captureApi='VideoCapture' if not self._soft else 'soft',
+            exposureUs=self.exposure_us,
+            gainDb=self.gain_db,
+            trigger=self.trigger,
+            autoReconnect=self.auto_reconnect,
+            reconnectCount=self._reconnect_count,
+            controlsApplied=dict(self._controls_applied or {}),
+            reconnectResilient=True,
         )
 
     def grab(self) -> dict[str, Any]:
@@ -525,6 +722,9 @@ class UvcLiveSession:
         started = time.monotonic()
         if self._soft:
             img = _soft_synthetic_bgr(seq=self._seq)
+            img = apply_soft_controls_to_bgr(
+                img, exposure_us=self.exposure_us, gain_db=self.gain_db, seq=self._seq,
+            )
             url = _encode_bgr_png_data_url(img)
             self._seq += 1
             return dict(
@@ -537,18 +737,29 @@ class UvcLiveSession:
                     frameSequence=self._seq - 1,
                     simulated=True, softFallback=True,
                     keepConnectionOpen=True, openClosePerGrab=False,
+                    exposureUs=self.exposure_us, gainDb=self.gain_db, trigger=self.trigger,
                     elapsedMs=round((time.monotonic() - started) * 1000, 2),
                 ),
             )
         import cv2
-        # Prefer fresh read; fall back to last warmup buffer once.
-        ok, image = self._cap.read()
+        # Prefer fresh read; fall back to last warmup buffer once; then reconnect.
+        ok, image = (False, None)
+        try:
+            ok, image = self._cap.read()
+        except Exception:
+            ok, image = False, None
         if (not ok or image is None) and getattr(self, '_last', None) is not None:
             image = self._last
             self._last = None
             ok = image is not None
         if not ok or image is None:
-            raise RuntimeError('UVC grab failed')
+            if self.auto_reconnect and self._reconnect_once():
+                try:
+                    ok, image = self._cap.read()
+                except Exception:
+                    ok, image = False, None
+            if not ok or image is None:
+                raise RuntimeError('UVC grab failed')
         url = _encode_bgr_png_data_url(image)
         self._seq += 1
         return dict(
@@ -562,9 +773,41 @@ class UvcLiveSession:
                 device=self._device,
                 simulated=False,
                 keepConnectionOpen=True, openClosePerGrab=False,
+                exposureUs=self.exposure_us, gainDb=self.gain_db, trigger=self.trigger,
+                reconnectCount=self._reconnect_count,
                 elapsedMs=round((time.monotonic() - started) * 1000, 2),
             ),
         )
+
+    def set_soft_controls(self, *, exposure_us=None, gain_db=None, trigger=None) -> dict[str, Any]:
+        if exposure_us is not None:
+            self.exposure_us = clamp_exposure_us(exposure_us)
+        if gain_db is not None:
+            self.gain_db = clamp_gain_db(gain_db)
+        if trigger is not None:
+            self.trigger = normalize_trigger(trigger)
+        if self._cap is not None and not self._soft:
+            self._controls_applied = apply_uvc_soft_controls(
+                self._cap, exposure_us=self.exposure_us, gain_db=self.gain_db,
+            )
+        return self.status()
+
+    def _reconnect_once(self) -> bool:
+        if self._reconnect_count >= self.reconnect_max:
+            return False
+        self._reconnect_count += 1
+        try:
+            if self._cap is not None:
+                try:
+                    self._cap.release()
+                except Exception:
+                    pass
+            self._cap = None
+            self._opened = False
+            self.open()
+            return bool(self._opened and not self._soft and self._cap is not None)
+        except Exception:
+            return False
 
     def grab_many(self, n: int = 3) -> list[dict[str, Any]]:
         return [self.grab() for _ in range(max(1, int(n)))]
@@ -943,3 +1186,20 @@ def assert_uvc_session_persist_contract(flags: dict | None = None) -> list[str]:
     if f.get('reuseAcrossFrames') is not True:
         fails.append('reuseAcrossFrames must be True')
     return fails
+
+
+
+def soft_controls_roundtrip(exposure_us: int = 8000, gain_db: float = 3.0) -> dict[str, Any]:
+    """CI-safe: soft session applies exposure/gain; frame result echoes controls."""
+    with UvcLiveSession(device_id='', soft_fallback=True, exposure_us=exposure_us, gain_db=gain_db) as sess:
+        st = sess.status()
+        frame = sess.grab()
+        return dict(
+            ok=True,
+            status=st,
+            exposureUs=frame['result'].get('exposureUs'),
+            gainDb=frame['result'].get('gainDb'),
+            trigger=frame['result'].get('trigger'),
+            pipeline=live_preview_pipeline_ok(frame),
+            soft=sess.is_soft,
+        )
