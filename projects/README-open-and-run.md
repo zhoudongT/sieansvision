@@ -46,6 +46,8 @@
 
 ### wave145 打开即跑审计摘要
 
+- **wave148 docs/菜单对齐**：`desktop/open_and_run_catalog.py` 为「从模板新建 / 打开示例」单一来源；补齐 match-locate-chrome、geom-script、fixture-preprocess、ocr-defect-chrome、format-protocol*、demo、script、group-comm、comm-multiproto。触发/变量结果条 denser（触N· / 变N✓）。预算收口后暂停。
+
 - **全量样例**：上表 23 个 open-and-run + default-platform；菜单「从模板新建 / 打开示例」已补 geom-script、fixture-preprocess、match-locate-chrome、条码密度铬。
 - **缺 runUi 已补**：contour-color / fixture-pose-chain / measure-caliper-chrome。
 - **条码/ID**：新增 denser 结果铬模块（`desktop/barcode_id_chrome.py` + `BarcodePanel`）；样例带 hostWatch + var_calc 门限。

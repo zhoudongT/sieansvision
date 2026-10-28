@@ -398,13 +398,34 @@ class GlobalTriggersDialog(QDialog):
         self.tabs.addTab(self.event_table, '事件触发')
         self.tabs.addTab(self.string_table, '字符串触发')
         root.addWidget(self.tabs, 1)
+        chrome_row = QHBoxLayout()
+        self.result_badge = QLabel('触·')
+        self.result_badge.setObjectName('triggersResultBadge')
+        self.result_badge.setStyleSheet(
+            'color:#9ad;font-weight:700;font-size:12px;padding:4px 10px;'
+            'background:#1e2228;border-radius:4px;min-width:48px;'
+        )
+        chrome_row.addWidget(self.result_badge)
         self.result_chrome = QLabel('触发实况：尚未试匹配')
         self.result_chrome.setObjectName('triggersResultChrome')
         self.result_chrome.setWordWrap(True)
         self.result_chrome.setStyleSheet(
             'color:#9ad;font-size:11px;padding:5px 8px;background:#1e2228;border-radius:4px;'
         )
-        root.addWidget(self.result_chrome)
+        chrome_row.addWidget(self.result_chrome, 1)
+        root.addLayout(chrome_row)
+        # wave148: denser hit industrial strip (parity with var-gate / barcode chrome density)
+        self.hit_table = QTableWidget(0, 4)
+        self.hit_table.setObjectName('triggersHitDensityTable')
+        self.hit_table.setHorizontalHeaderLabels(['#', '规则', '命令', '判定'])
+        self.hit_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.hit_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.hit_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.hit_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.hit_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.hit_table.setMaximumHeight(110)
+        self.hit_table.setAlternatingRowColors(True)
+        root.addWidget(self.hit_table)
         test = QHBoxLayout()
         test.addWidget(QLabel('试匹配（字符串）'))
         self.test_input = QLineEdit()
@@ -459,10 +480,14 @@ class GlobalTriggersDialog(QDialog):
         n_ev = len(self.event_table.rows()) if hasattr(self, 'event_table') else 0
         n_st = len(self.string_table.rows()) if hasattr(self, 'string_table') else 0
         stamp = _dt.now().strftime('%H:%M:%S')
+        hit_n = len(hits or [])
+        cmd_n = len(cmds or [])
+        badge = getattr(self, 'result_badge', None)
         if hits:
-            cmd_n = len(cmds or [])
+            mark = '✓' if executed or cmd_n else '·'
+            chrome = f'触{hit_n}{mark}'
             lab.setText(
-                f'触发实况 [{stamp}]：命中 {len(hits)} · 命令 {cmd_n}'
+                f'触发实况 [{stamp}]：命中 {hit_n} · 命令 {cmd_n}'
                 + (' · 已执行' if executed else ' · 仅匹配')
                 + f' · 表 事件{n_ev}/字符{n_st} · 报文「{(text or "")[:40]}」'
                 + ' · ' + '，'.join(hits[:4])
@@ -470,7 +495,14 @@ class GlobalTriggersDialog(QDialog):
             lab.setStyleSheet(
                 'color:#8d8;font-size:11px;padding:5px 8px;background:#1e2a22;border-radius:4px;'
             )
+            if badge is not None:
+                badge.setText(chrome)
+                badge.setStyleSheet(
+                    'color:#8d8;font-weight:700;font-size:12px;padding:4px 10px;'
+                    'background:#1e2a22;border-radius:4px;min-width:48px;'
+                )
         else:
+            chrome = '触0✗'
             lab.setText(
                 f'触发实况 [{stamp}]：无命中 · 表 事件{n_ev}/字符{n_st}'
                 + f' · 报文「{(text or "")[:40]}」'
@@ -478,6 +510,33 @@ class GlobalTriggersDialog(QDialog):
             lab.setStyleSheet(
                 'color:#e88;font-size:11px;padding:5px 8px;background:#2a1e1e;border-radius:4px;'
             )
+            if badge is not None:
+                badge.setText(chrome)
+                badge.setStyleSheet(
+                    'color:#e88;font-weight:700;font-size:12px;padding:4px 10px;'
+                    'background:#2a1e1e;border-radius:4px;min-width:48px;'
+                )
+        self._fill_hit_density_table(hits or [], cmds or [], executed=executed, payload=text)
+
+    def _fill_hit_density_table(self, hits, cmds, *, executed=False, payload=''):
+        """wave148 soft densify: industrial hit rows under 触N chrome."""
+        tbl = getattr(self, 'hit_table', None)
+        if tbl is None:
+            return
+        rows = []
+        for i, h in enumerate(hits):
+            cmd = ''
+            if i < len(cmds) and isinstance(cmds[i], dict):
+                cmd = str(cmds[i].get('type') or '')
+            judge = '已执行' if executed and hits else ('命中' if hits else '未命中')
+            rows.append((str(i + 1), str(h), cmd or '—', judge))
+        if not rows:
+            preview = (payload or '')[:48] or '（空报文）'
+            rows.append(('—', preview, '—', '未命中'))
+        tbl.setRowCount(len(rows))
+        for r, cells in enumerate(rows):
+            for c, val in enumerate(cells):
+                tbl.setItem(r, c, QTableWidgetItem(str(val)))
 
     def _test_match(self):
         text = self.test_input.text()

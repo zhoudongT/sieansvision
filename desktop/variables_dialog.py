@@ -262,14 +262,23 @@ class VariablesDialog(QDialog):
         row.addWidget(self.search, 1); row.addWidget(self.count_label)
         refresh = QPushButton('重新读取（撤销当前值编辑）'); refresh.clicked.connect(self.refresh); row.addWidget(refresh)
         self.hint = QLabel(); self.hint.setWordWrap(True); layout.addWidget(self.hint)
-        # 细妆：结果实况条（几何/脚本写回）
+        # 细妆：结果实况条（几何/脚本写回）— wave148 denser badge parity
+        chrome_row = QHBoxLayout()
+        self.result_badge = QLabel('变·')
+        self.result_badge.setObjectName('varsResultBadge')
+        self.result_badge.setStyleSheet(
+            'color:#9ad;font-weight:700;font-size:12px;padding:4px 10px;'
+            'background:#1e2228;border-radius:4px;min-width:48px;margin:2px 0;'
+        )
+        chrome_row.addWidget(self.result_badge)
         self.result_chrome = QLabel('结果实况：尚未读取')
         self.result_chrome.setObjectName('varsResultChrome')
         self.result_chrome.setWordWrap(True)
         self.result_chrome.setStyleSheet(
             'color:#9ad;font-size:11px;padding:5px 8px;background:#1e2228;border-radius:4px;margin:2px 0;'
         )
-        layout.addWidget(self.result_chrome)
+        chrome_row.addWidget(self.result_chrome, 1)
+        layout.addLayout(chrome_row)
         self.table = QTableWidget(0, 8); self.table.setObjectName('variableTable')
         self.table.setHorizontalHeaderLabels(['作用域', '名称', '固定类型', '工程初始值', '运行当前值', '备注', '持久', '校验'])
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -712,7 +721,7 @@ class VariablesDialog(QDialog):
         self.dup_button.setEnabled(editable); self.copy_name_button.setEnabled(self.table.rowCount() > 0)
 
     def _refresh_result_chrome(self):
-        """细妆：变量页结果实况 — 几何/脚本写回摘要。"""
+        """细妆：变量页结果实况 — 几何/脚本写回摘要 + 变N 徽标。"""
         lab = getattr(self, 'result_chrome', None)
         if lab is None:
             return
@@ -744,10 +753,30 @@ class VariablesDialog(QDialog):
         if script:
             bits.append('脚本 ' + ' · '.join(script[:6]))
         n = len(flow)
+        g_n, s_n = len(geom), len(script)
+        badge = getattr(self, 'result_badge', None)
+        if badge is not None:
+            if g_n or s_n:
+                badge.setText(f'变{n}✓')
+                badge.setStyleSheet(
+                    'color:#8d8;font-weight:700;font-size:12px;padding:4px 10px;'
+                    'background:#1e2a22;border-radius:4px;min-width:48px;margin:2px 0;'
+                )
+            else:
+                badge.setText(f'变{n}·')
+                badge.setStyleSheet(
+                    'color:#9ad;font-weight:700;font-size:12px;padding:4px 10px;'
+                    'background:#1e2228;border-radius:4px;min-width:48px;margin:2px 0;'
+                )
         if bits:
-            lab.setText(f'结果实况：flow {n} 项 · ' + ' │ '.join(bits))
+            lab.setText(
+                f'结果实况：flow {n} 项 · 几何{g_n}/脚本{s_n} · ' + ' │ '.join(bits)
+            )
         else:
-            lab.setText(f'结果实况：flow {n} 项 · （无几何/脚本写回键；运行测量或脚本后刷新）')
+            lab.setText(
+                f'结果实况：flow {n} 项 · 几何{g_n}/脚本{s_n}'
+                ' · （无几何/脚本写回键；运行测量或脚本后刷新）'
+            )
 
     def _selected(self):
         row = self.table.currentRow()
