@@ -426,6 +426,14 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆98 · copy tip 失败路径 status · refresh→bind 镜像 · tip_max_len strategy · 2026-10-28】
+
+- **copy_*_hover_tip 失败路径**：tip/clipboard 异常 out 级联 `status` / `status_prop_ok` / `tip_prop_ok`。
+- **refresh→bind**：捕获 click/menu_bind 返回，镜像 `click_status_prop_ok` / `menu_bind_status_prop_ok`（及 tip）；stash 回写。
+- **tip_max_len setter**：写回 `dstImportStrategyBadgeStrategy`，out 增 `strategy_prop` / `strategy_prop_ok`；tip 刷新时对齐 hover stash。
+- **FlashMs**：仍不起步。
+- **验证**：`scripts/smoke-wave130-copytiperr-refreshbind-tipmaxlenpolish-e2e.py` → 9 PASS。非硬件约 **~99.98%**。
+
 ## 【细妆97 · bind_click/menu_bind 顶层 status · copy_orig_len 失败路径 · 2026-10-28】
 
 - **bind_click_toggle / bind_context_menu**：成功与 already 路径 tip 后顶层表面 `status` / `status_prop_ok` / `strategy_prop_ok` / `tip_prop_ok`；失败路径显式 False。
