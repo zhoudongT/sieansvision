@@ -46,7 +46,13 @@ def config(params):
     p = dict(params)
     if p.get('driver') not in ('simulator', 'uvc', 'gentl', 'realsense', 'orbbec', 'rgbd_simulator'):
         raise ValueError('请选择支持的 2D 或深度相机驱动')
-    allowed = {'driver', 'deviceId', 'timeoutMs', 'trigger', 'width', 'height', 'backendKind', 'keepConnectionOpen', 'openClosePerGrab'} | {
+    # Soft/UI session chrome from camera_backends.connect_params (wave154–156).
+    # Accepted for 2D Soft/UVC/GenTL so camera/session/start is not rejected.
+    session_ui = {
+        'backendKind', 'keepConnectionOpen', 'openClosePerGrab',
+        'exposureUs', 'gainDb', 'sessionPersist', 'continuousLive', 'reconnectResilient',
+    }
+    allowed = {'driver', 'deviceId', 'timeoutMs', 'trigger', 'width', 'height'} | session_ui | {
         'simulator': set(), 'uvc': {'fps', 'warmupFrames'},
         'gentl': {'providerId', 'exposureTime', 'gain', 'pixelFormat', 'triggerSource', 'dataMode',
                   'configure3d','coordinateFormat','rangeComponent','intensityComponent','confidenceComponent',
@@ -60,6 +66,12 @@ def config(params):
         del p['providerId']
     if set(p) - allowed:
         raise ValueError('当前驱动不支持参数：' + ', '.join(sorted(set(p) - allowed)))
+    # Map soft µs/dB controls onto GenTL native names when only soft keys are present.
+    if p['driver'] == 'gentl':
+        if 'exposureTime' not in p and 'exposureUs' in p:
+            p['exposureTime'] = p['exposureUs']
+        if 'gain' not in p and 'gainDb' in p:
+            p['gain'] = p['gainDb']
     p['timeoutMs'] = number(p.get('timeoutMs', 5000), '采集超时', 100, 30000, True)
     for name, bounds in {'width': (16, 8192), 'height': (16, 8192), 'fps': (1, 240),
                          'exposureTime': (1, 10_000_000), 'gain': (0, 1000)}.items():
