@@ -382,6 +382,35 @@ def format_diff_chip(diff: dict | None) -> str:
     return s or '无变化'
 
 
+def format_diff_detail(diff: dict | None, *, max_steps: int = 40, max_vars: int = 30) -> list:
+    """行级差分列表，供换型对话框详情区显示。"""
+    rows = []
+    if not isinstance(diff, dict):
+        return [{'kind': 'info', 'text': '无差分'}]
+    for d in (diff.get('stepDeltas') or [])[:max_steps]:
+        name = d.get('name') or d.get('op') or d.get('id') or '?'
+        op = d.get('op') or ''
+        sample = d.get('sample') or ','.join(d.get('changedKeys') or [])
+        keys = d.get('changedKeys') or []
+        kind = 'missing' if sample == '缺失' or (keys and keys[0] == '(无匹配模块)') else 'step'
+        rows.append({
+            'kind': kind,
+            'text': f"[模块] {name} ({op}) · {sample}",
+            'id': d.get('id'), 'op': op, 'name': name,
+            'changedKeys': keys, 'from': d.get('from'), 'to': d.get('to'),
+        })
+    for vd in (diff.get('varDeltas') or [])[:max_vars]:
+        rows.append({
+            'kind': 'var',
+            'text': f"[变量] {vd.get('scope')}.{vd.get('key')}: {vd.get('from')!r} → {vd.get('to')!r}",
+            'scope': vd.get('scope'), 'key': vd.get('key'),
+            'from': vd.get('from'), 'to': vd.get('to'),
+        })
+    if not rows:
+        rows.append({'kind': 'info', 'text': '与当前工程无参数/变量差异'})
+    return rows
+
+
 def list_variants(project: dict) -> list:
     """Unique product variant labels present on recipes (stable order)."""
     seen = []

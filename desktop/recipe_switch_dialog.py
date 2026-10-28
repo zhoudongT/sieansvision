@@ -111,6 +111,12 @@ class RecipeSwitchDialog(QDialog):
         self._diff_chip.setStyleSheet('color:#9ad;font-size:11px;padding:2px 4px;')
         self._diff_chip.setToolTip('套用前的参数/变量差分预览（不改工程）')
         left.addWidget(self._diff_chip)
+        self._diff_list = QListWidget()
+        self._diff_list.setObjectName('recipeDiffDetailList')
+        self._diff_list.setMaximumHeight(140)
+        self._diff_list.setStyleSheet('QListWidget{font-size:11px;color:#c8d0d8;background:#1a1e24;}')
+        self._diff_list.setToolTip('行级差分：模块参数键 / 变量值（只读预览）')
+        left.addWidget(self._diff_list)
         lay.addLayout(left, 2)
 
         right = QVBoxLayout()
@@ -313,20 +319,24 @@ class RecipeSwitchDialog(QDialog):
 
 
     def _refresh_diff_chip(self, *_):
-        """细妆⑯：选中配方 → 参数差分 chip 预览."""
+        """细妆⑯：选中配方 → 参数差分 chip + 行级详情列表."""
         chip = getattr(self, '_diff_chip', None)
+        dlist = getattr(self, '_diff_list', None)
         if chip is None:
             return
         rid = self._selected_id()
         if not rid:
             chip.setText('参数差分：选中配方后预览')
             chip.setStyleSheet('color:#9ad;font-size:11px;padding:2px 4px;')
+            if dlist is not None:
+                dlist.clear()
             return
         try:
             diff = rl.diff_recipe(self.document.project, rid)
             chip_txt = rl.format_diff_chip(diff)
             n = ((diff.get('summary') or {}).get('stepsChanged', 0)
-                 + (diff.get('summary') or {}).get('varsChanged', 0))
+                 + (diff.get('summary') or {}).get('varsChanged', 0)
+                 + (diff.get('summary') or {}).get('stepsMissing', 0))
             color = '#e87722' if n else '#3ecf8e'
             chip.setStyleSheet(f'color:{color};font-size:11px;padding:2px 4px;')
             chip.setText(f'参数差分：{chip_txt}')
@@ -341,9 +351,24 @@ class RecipeSwitchDialog(QDialog):
                     f"· {vd['scope']}.{vd['key']}: {vd.get('from')!r}→{vd.get('to')!r}"
                 )
             chip.setToolTip('\n'.join(tip_lines))
+            if dlist is not None:
+                dlist.clear()
+                for row in rl.format_diff_detail(diff):
+                    item = QListWidgetItem(row.get('text') or '')
+                    kind = row.get('kind') or 'info'
+                    if kind == 'missing':
+                        item.setForeground(Qt.GlobalColor.red)
+                    elif kind == 'var':
+                        item.setForeground(Qt.GlobalColor.cyan)
+                    elif kind == 'step':
+                        item.setForeground(Qt.GlobalColor.yellow)
+                    dlist.addItem(item)
         except Exception as err:
             chip.setText(f'参数差分：{err}')
             chip.setStyleSheet('color:#e35d6a;font-size:11px;padding:2px 4px;')
+            if dlist is not None:
+                dlist.clear()
+                dlist.addItem(QListWidgetItem(str(err)))
 
 
     def _stamp_post_apply(self, stats: dict) -> dict:

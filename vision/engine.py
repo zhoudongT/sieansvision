@@ -407,14 +407,47 @@ def ocr(image, canvas, p, offset):
         OCR = RapidOCR(intra_op_num_threads=2, inter_op_num_threads=2)
     result, _ = OCR(image)
     minimum = number(p, 'minConfidence', 0.5, 0, 1)
+    show_overlay = p.get('showOverlay', True) is not False
+    show_boxes = p.get('showBoxes', True) is not False
+    show_text = p.get('showText', True) is not False
+    max_items = int(number(p, 'maxItems', 50, 1, 500))
     items = []
     for points, text, confidence in result or []:
         if confidence < minimum:
             continue
         points = np.array(points)+np.array(offset)
-        polygon(canvas, points)
+        if show_overlay and show_boxes:
+            polygon(canvas, points)
+        if show_overlay and show_text and text:
+            try:
+                x0 = int(points[:, 0].min()); y0 = int(points[:, 1].min())
+                cv2.putText(canvas, str(text)[:40], (x0, max(12, y0 - 4)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 220, 255), 1, cv2.LINE_AA)
+            except Exception:
+                pass
         items.append({'text': text, 'confidence': float(confidence), 'polygon': points.tolist()})
-    return {'text': '\n'.join(item['text'] for item in items), 'count': len(items), 'items': items}
+        if len(items) >= max_items:
+            break
+    text_joined = '\n'.join(item['text'] for item in items)
+    confs = [float(it['confidence']) for it in items]
+    mean_conf = float(sum(confs) / len(confs)) if confs else 0.0
+    judge_en = bool(p.get('judgeEnable', False))
+    judge_min_c = number(p, 'judgeMinConfidence', minimum, 0, 1)
+    expected = str(p.get('expectedText') or '').strip()
+    ok = True
+    if judge_en:
+        ok = (mean_conf >= judge_min_c) if items else False
+        if ok and expected:
+            ok = expected in text_joined
+    out = {
+        'text': text_joined, 'count': len(items), 'items': items,
+        'confidence': mean_conf, 'status': 'ok' if items else 'empty',
+        'passed': bool(ok) if judge_en else True,
+        'judgeEnable': judge_en, 'judgeOk': bool(ok) if judge_en else True,
+        'judgeStatus': ('OK' if ok else 'NG') if judge_en else 'SKIP',
+        'showOverlay': show_overlay, 'showBoxes': show_boxes, 'showText': show_text,
+    }
+    return out
 
 
 def defects(image, canvas, p, offset, reference):
@@ -422,11 +455,26 @@ def defects(image, canvas, p, offset, reference):
         raise ValueError('缺陷检测需要同尺寸、同位置、相同光照的良品参考图')
     if image.shape != reference.shape:
         raise ValueError('良品参考图必须与检测区域尺寸一致')
-    a = cv2.GaussianBlur(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), (3, 3), 0)
-    b = cv2.GaussianBlur(cv2.cvtColor(reference, cv2.COLOR_BGR2GRAY), (3, 3), 0)
+    blur_k = int(number(p, 'blur', 3, 0, 31))
+    if blur_k > 0 and blur_k % 2 == 0:
+        blur_k += 1
+    thr_key = 'threshold' if 'threshold' in p else 'differenceThreshold'
+    thr = number(p, thr_key, 30, 1, 255)
+    a = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    b = cv2.cvtColor(reference, cv2.COLOR_BGR2GRAY)
+    if blur_k >= 3:
+        a = cv2.GaussianBlur(a, (blur_k, blur_k), 0)
+        b = cv2.GaussianBlur(b, (blur_k, blur_k), 0)
+    else:
+        a = cv2.GaussianBlur(a, (3, 3), 0)
+        b = cv2.GaussianBlur(b, (3, 3), 0)
     delta = cv2.absdiff(a, b)
-    _, mask = cv2.threshold(delta, number(p, 'differenceThreshold', 30, 1, 255), 255, cv2.THRESH_BINARY)
+    _, mask = cv2.threshold(delta, thr, 255, cv2.THRESH_BINARY)
     minimum = number(p, 'minArea', 20, 1, MAX_PIXELS)
+    max_count = int(number(p, 'maxCount', 200, 1, 5000))
+    show_overlay = p.get('showOverlay', True) is not False
+    show_boxes = p.get('showBoxes', True) is not False
+    show_labels = p.get('showLabels', True) is not False
     regions, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     items = []
     accepted = np.zeros_like(mask)
@@ -437,12 +485,37 @@ def defects(image, canvas, p, offset, reference):
         cv2.drawContours(accepted, [c], -1, 255, -1)
         c = c+np.array([[[offset[0], offset[1]]]])
         x, y, w, h = cv2.boundingRect(c)
-        cv2.drawContours(canvas, [c], -1, (0, 0, 255), 2)
-        items.append({'bbox': [x, y, w, h], 'areaPixels': area})
-    ratio = float(np.count_nonzero(accepted))/mask.size
-    allowed = number(p, 'maxDefectRatio', 0, 0, 1)
-    return {'passed': ratio <= allowed, 'count': len(items), 'defectRatio': ratio, 'items': items,
-            'note': '参考图差分结果为疑似缺陷；位移、光照变化也会产生差异，不自动分类划痕或污点'}
+        if show_overlay and show_boxes:
+            cv2.drawContours(canvas, [c], -1, (0, 0, 255), 2)
+            if show_labels:
+                cv2.putText(canvas, f'A{int(area)}', (x, max(12, y - 4)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 180, 255), 1, cv2.LINE_AA)
+        items.append({'bbox': [x, y, w, h], 'areaPixels': float(area)})
+        if len(items) >= max_count:
+            break
+    ratio = float(np.count_nonzero(accepted))/mask.size if mask.size else 0.0
+    # legacy maxDefectRatio still honored as soft pass gate
+    allowed_ratio_legacy = number(p, 'maxDefectRatio', 1, 0, 1)
+    passed_legacy = ratio <= allowed_ratio_legacy
+    judge_en = bool(p.get('judgeEnable', True))
+    judge_max_count = int(number(p, 'judgeMaxCount', 0, 0, 5000))
+    judge_max_ratio = number(p, 'judgeMaxRatio', 0.05, 0, 1)
+    ok = True
+    if judge_en:
+        ok = (len(items) <= judge_max_count) and (ratio <= judge_max_ratio)
+    out = {
+        'passed': bool(ok) if judge_en else bool(passed_legacy),
+        'count': len(items), 'defectRatio': ratio, 'items': items,
+        'method': str(p.get('method') or 'absdiff'),
+        'status': 'ok',
+        'judgeEnable': judge_en, 'judgeOk': bool(ok) if judge_en else True,
+        'judgeStatus': ('OK' if ok else 'NG') if judge_en else 'SKIP',
+        'judgeMaxCount': judge_max_count if judge_en else None,
+        'judgeMaxRatio': judge_max_ratio if judge_en else None,
+        'showOverlay': show_overlay, 'showBoxes': show_boxes, 'showLabels': show_labels,
+        'note': '参考图差分结果为疑似缺陷；位移、光照变化也会产生差异，不自动分类划痕或污点',
+    }
+    return out
 
 
 def preprocess(image, canvas, p, offset):

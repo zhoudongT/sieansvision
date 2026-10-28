@@ -557,6 +557,28 @@ class PropertyFloat(QDialog):
             self._last_step = deepcopy(step)
             self.show(); self.raise_(); self.activateWindow()
             return
+        if step and step.get('operation') == 'defects':
+            from desktop.recognize_panels import DefectsPanel, _norm_defects
+            step = deepcopy(step)
+            step['params'] = _norm_defects(step.get('params'))
+            panel = DefectsPanel(step, definition, project)
+            panel.changed.connect(self._on_step_changed)
+            self.body.addWidget(panel)
+            self._panel = panel
+            self._last_step = deepcopy(step)
+            self.show(); self.raise_(); self.activateWindow()
+            return
+        if step and step.get('operation') == 'ocr':
+            from desktop.recognize_panels import OcrPanel, _norm_ocr
+            step = deepcopy(step)
+            step['params'] = _norm_ocr(step.get('params'))
+            panel = OcrPanel(step, definition, project)
+            panel.changed.connect(self._on_step_changed)
+            self.body.addWidget(panel)
+            self._panel = panel
+            self._last_step = deepcopy(step)
+            self.show(); self.raise_(); self.activateWindow()
+            return
         if step and step.get('operation') == 'csharp_script':
             from desktop.csharp_script_panel import CsharpScriptPanel, normalize_csharp_params
             step = deepcopy(step)

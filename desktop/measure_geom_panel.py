@@ -48,6 +48,17 @@ def normalize_measure_geom_params(op, params=None):
     p.setdefault('showLines', True)
     p.setdefault('showLabels', True)
     p.setdefault('showDistanceText', True)
+    # 测量链 → 流程变量 / 结果判断 / Host 显示
+    p.setdefault('resultVar', {
+        'line_intersect': 'intersectPt',
+        'point_distance': 'pointDist',
+        'point_line_distance': 'pointLineDist',
+    }.get(op, 'measureGeom'))
+    p.setdefault('writeFlowVars', True)
+    p.setdefault('judgeEnable', False)
+    p.setdefault('judgeMin', 0.0)
+    p.setdefault('judgeMax', 99999.0)
+    p.setdefault('hostDisplayFields', True)
     return p
 
 
@@ -279,13 +290,125 @@ class MeasureGeomPanel(QWidget):
             sw = OrangeSwitch(bool(self.params.get(key, True)))
             sw.toggled.connect(lambda c, k=key: self._set_param(k, bool(c)))
             form.addRow(lab, sw)
+
+        # 测量链 → 流程变量
+        wv = OrangeSwitch(bool(self.params.get('writeFlowVars', True)))
+        wv.toggled.connect(lambda c: self._set_param('writeFlowVars', bool(c)))
+        form.addRow('写入流程变量', wv)
+        default_var = {
+            'line_intersect': 'intersectPt',
+            'point_distance': 'pointDist',
+            'point_line_distance': 'pointLineDist',
+        }.get(self.op, 'measureGeom')
+        out_var = QLineEdit(str(self.params.get('resultVar') or default_var))
+        out_var.setObjectName('measureGeomResultVar')
+        out_var.editingFinished.connect(
+            lambda: self._set_param('resultVar', out_var.text().strip() or default_var)
+        )
+        form.addRow('结果变量前缀', out_var)
+        tip_var = QLabel(
+            '运行后写入 flow：{prefix} / {prefix}_x/_y/_distance/_dx/_dy/_ok/_judgeOk '
+            '（与 var_calc 注入的 point_distance_* / line_intersect_* 并存）。'
+        )
+        tip_var.setWordWrap(True)
+        tip_var.setStyleSheet('color:#888;font-size:11px;')
+        form.addRow(tip_var)
+
+        je = OrangeSwitch(bool(self.params.get('judgeEnable', False)))
+        je.toggled.connect(lambda c: self._set_param('judgeEnable', bool(c)))
+        form.addRow('结果判断使能', je)
+        jmin = QDoubleSpinBox(); jmin.setRange(-1e9, 1e9); jmin.setDecimals(4)
+        jmin.setValue(float(self.params.get('judgeMin') or 0))
+        jmin.valueChanged.connect(lambda v: self._set_param('judgeMin', float(v)))
+        form.addRow('判断下限', jmin)
+        jmax = QDoubleSpinBox(); jmax.setRange(-1e9, 1e9); jmax.setDecimals(4)
+        jmax.setValue(float(self.params.get('judgeMax') or 99999))
+        jmax.valueChanged.connect(lambda v: self._set_param('judgeMax', float(v)))
+        form.addRow('判断上限', jmax)
+        tip_j = QLabel(
+            '交点：用 status==ok 且非 parallel；点距/点线距：用 distance 落在 [下限,上限] → judgeOk。'
+        )
+        tip_j.setWordWrap(True)
+        tip_j.setStyleSheet('color:#888;font-size:11px;')
+        form.addRow(tip_j)
+
         tip = {
-            'line_intersect': '结果：intersectX / intersectY / parallel / status · 叠层随开关',
-            'point_distance': '结果：distance / dx / dy / status · 叠层随开关',
-            'point_line_distance': '结果：distance / footX / footY / status · 叠层随开关',
+            'line_intersect': '结果：intersectX / intersectY / parallel / status / judgeOk',
+            'point_distance': '结果：distance / dx / dy / status / judgeOk',
+            'point_line_distance': '结果：distance / footX / footY / status / judgeOk',
         }.get(self.op, '结果字段见引擎')
-        lab = QLabel((tip or '') + ' · 叠层开关已接入引擎 annotate_geom + 画布矢量层（关则不画）。'); lab.setWordWrap(True); lab.setStyleSheet('color:#888;'); form.addRow(lab)
+        lab = QLabel((tip or '') + ' · 叠层开关已接入 annotate_geom（关则不画）。')
+        lab.setWordWrap(True); lab.setStyleSheet('color:#888;'); form.addRow(lab)
+
+        self._live_lab = QLabel('实况：尚未运行')
+        self._live_lab.setObjectName('measureGeomLiveBind')
+        self._live_lab.setWordWrap(True)
+        self._live_lab.setStyleSheet(
+            'color:#9ad;font-size:11px;padding:6px 8px;background:#1e2228;border-radius:4px;'
+        )
+        form.addRow('Host 实况', self._live_lab)
+        brow = QHBoxLayout()
+        b_ref = QPushButton('刷新实况')
+        b_ref.setObjectName('measureGeomLiveRefreshBtn')
+        b_ref.clicked.connect(self._refresh_live_bind)
+        brow.addWidget(b_ref)
+        brow.addStretch(1)
+        form.addRow(brow)
+        try:
+            self._refresh_live_bind()
+        except Exception:
+            pass
         return w
+
+    def _refresh_live_bind(self):
+        """测量链 last_result → Host 显示字段。"""
+        lab = getattr(self, '_live_lab', None)
+        if lab is None:
+            return
+        try:
+            from desktop.upstream_field_picker import host_last_result
+            lr = host_last_result(self) or {}
+        except Exception:
+            lr = {}
+        sid = self.step.get('id')
+        hit = None
+        for rec in (lr.get('results') or []):
+            if isinstance(rec, dict) and rec.get('id') == sid:
+                hit = rec
+                break
+        # also map-style
+        if not hit and isinstance(lr.get('results'), dict):
+            hit = lr['results'].get(sid)
+        if not hit:
+            # bind summary from params even without run
+            binds = []
+            for k in ('line1From', 'line2From', 'point1From', 'point2From', 'pointFrom', 'lineFrom'):
+                if self.params.get(k):
+                    binds.append(f'{k}={self.params.get(k)}')
+            lab.setText(
+                '实况：尚无本模块运行结果 · 绑定 '
+                + (' · '.join(binds) if binds else '（未绑定）')
+            )
+            return
+        res = (hit.get('output') or {}).get('result') or hit.get('result') or {}
+        bits = []
+        for k in ('status', 'distance', 'intersectX', 'intersectY', 'dx', 'dy',
+                  'footX', 'footY', 'parallel', 'judgeOk', 'judgeStatus', 'unit'):
+            if k in res and res[k] is not None:
+                bits.append(f'{k}={res[k]}')
+        flow = ((lr.get('variables') or {}).get('flow') or {})
+        prefix = str(self.params.get('resultVar') or '')
+        if prefix:
+            for suffix in ('', '_x', '_y', '_distance', '_ok', '_judgeOk'):
+                key = prefix if suffix == '' else prefix + suffix
+                if key in flow:
+                    bits.append(f'flow.{key}={flow[key]}')
+        # also injected op scalars
+        for k, v in list(flow.items())[:40]:
+            if any(k.startswith(p) for p in ('point_distance', 'line_intersect', 'point_line')):
+                if k not in [b.split('=')[0].replace('flow.', '') for b in bits]:
+                    bits.append(f'flow.{k}={v}')
+        lab.setText('实况：' + (' · '.join(bits[:14]) if bits else str(list(res.keys())[:8])))
 
 
     def _bind_slots(self):
