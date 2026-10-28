@@ -479,10 +479,17 @@ class CameraDialog(_RpcDialog):
         device_layout.addWidget(self.device_table)
         split = QSplitter()
         self.preview = _Preview()
+        self.preview.setMinimumSize(360, 240)
         self.details = QTreeWidget()
         self.details.setHeaderLabels(['参数 / 结果', '值'])
+        self.details.setMinimumWidth(200)
         split.addWidget(self.preview)
         split.addWidget(self.details)
+        split.setStretchFactor(0, 3)
+        split.setStretchFactor(1, 2)
+        split.setSizes([640, 360])
+        self._preview_split = split
+        split.splitterMoved.connect(lambda *_: self._refit_preview())
         device_layout.addWidget(split, 1)
         actions = QHBoxLayout()
         self.use_frame_button = _button('用预览帧作为流程输入', self.use_frame, actions)
@@ -559,6 +566,13 @@ class CameraDialog(_RpcDialog):
     def showEvent(self, event):
         super().showEvent(event)
         self.timer.start()
+        # Ensure preview pane is wide enough before first live frames arrive.
+        split = getattr(self, '_preview_split', None)
+        if split is not None and sum(split.sizes()) > 0:
+            total = max(1, sum(split.sizes()))
+            if split.sizes()[0] < 280:
+                split.setSizes([max(360, int(total * 0.62)), max(200, int(total * 0.38))])
+        self._refit_preview()
         if self.backend.is_ready:
             self.refresh()
             if not self._has('camera/providers'):
@@ -865,10 +879,13 @@ class CameraDialog(_RpcDialog):
 
         def done(value):
             self._live_pending = False
-            self.frame = deepcopy(value)
-            image = value.get('annotatedImage', '') or value.get('image', '')
+            frame = value.get('result', value) if isinstance(value, dict) else {}
+            if not isinstance(frame, dict):
+                frame = {}
+            self.frame = deepcopy(frame)
+            image = frame.get('annotatedImage') or frame.get('image') or ''
             if image:
-                self._paint_live_preview(image, value)
+                self._paint_live_preview(image, frame)
 
         try:
             from desktop.soft_acquisition_chrome import live_capture_frame_policy
@@ -883,6 +900,20 @@ class CameraDialog(_RpcDialog):
             kind='status',
         )
 
+
+    def _refit_preview(self):
+        """Keep full frame visible after splitter / layout changes."""
+        prev = getattr(self, 'preview', None)
+        if prev is None or not hasattr(prev, 'fit_image'):
+            return
+        try:
+            prev._needs_fit = True
+        except Exception:
+            pass
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, prev.fit_image)
+        QTimer.singleShot(50, prev.fit_image)
+        QTimer.singleShot(200, prev.fit_image)
 
     def _paint_live_preview(self, image, frame=None):
         """wave152: gate + in-place preview (drop-old / UI throttle)."""
@@ -905,6 +936,7 @@ class CameraDialog(_RpcDialog):
             self.preview.show_live_frame(paintable)
         else:
             self.preview.set_image(paintable)
+        self._refit_preview()
 
     def _flush_preview_gate(self):
         gate = getattr(self, '_preview_gate', None)
@@ -916,6 +948,7 @@ class CameraDialog(_RpcDialog):
                 self.preview.show_live_frame(payload)
             else:
                 self.preview.set_image(payload)
+            self._refit_preview()
         elif gate.has_pending():
             self._gate_flush_timer.start(max(1, gate.ms_until_due()))
 
@@ -924,6 +957,10 @@ class CameraDialog(_RpcDialog):
         self.accept()
 
     def _session(self, state):
+        if isinstance(state, dict) and 'session' in state and isinstance(state.get('session'), dict):
+            state = state['session']
+        if not isinstance(state, dict):
+            return
         first = self.state.get('id') != state.get('id')
         self.state = state
         labels = dict(idle='未连接', opening='正在打开设备', running='持续采集中', reconnecting='正在重连', stopping='正在释放设备', stopped='已停止', failed='采集失败', interrupted='应用中断，需手动重连')
@@ -948,10 +985,38 @@ class CameraDialog(_RpcDialog):
             self.interval.setValue(config.get('intervalMs', 100))
             self.retries.setValue(config.get('reconnectAttempts', 0))
             self.reconnect.setValue(config.get('reconnectMs', 1000))
+        # Reflect live session driver/device in the selectors (UI often still shows 模拟).
+        params = (config.get('params') or {}) if isinstance(config, dict) else {}
+        live_driver = params.get('driver') or params.get('backendKind')
+        if live_driver and state.get('state') in ('running', 'opening', 'reconnecting'):
+            idx = self.driver.findData(live_driver)
+            if idx < 0 and live_driver == 'gentl':
+                idx = self.driver.findData('gentl')
+            if idx >= 0 and self.driver.currentIndex() != idx:
+                self.driver.blockSignals(True)
+                self.driver.setCurrentIndex(idx)
+                self.driver.blockSignals(False)
+                self._driver = self.driver.currentData()
+                self._build_parameters()
+            did = params.get('deviceId') or ''
+            if did and self.device_id.text() != did:
+                self.device_id.blockSignals(True)
+                self.device_id.setText(did)
+                self.device_id.blockSignals(False)
+            # Surface the live device in the empty table so operators see what is streaming.
+            if did and self.device_table.rowCount() == 0:
+                self.device_table.setRowCount(1)
+                vals = [did, did, params.get('model') or params.get('backendKind') or live_driver or '', params.get('serial') or '', live_driver or '']
+                from PySide6.QtWidgets import QTableWidgetItem
+                for c, v in enumerate(vals):
+                    self.device_table.setItem(0, c, QTableWidgetItem(str(v)))
+            self._refit_preview()
         if state.get('state') == 'running':
             if not self.live_timer.isActive():
                 self.live_timer.start()
                 self.message.setText('连续采集中：原生预览刷新最新缓存帧（无 scene.clear 闪烁；速率受会话 PNG 缓存限制）。')
+            # Nudge a paint even if timer was already running (dialog just opened).
+            self._refit_preview()
         else:
             self.live_timer.stop()
             self._live_pending = False
