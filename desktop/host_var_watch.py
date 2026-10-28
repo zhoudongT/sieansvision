@@ -128,6 +128,63 @@ def pin_groups_from_project(project=None) -> tuple:
     return cleaned, active
 
 
+
+def format_host_watch_open_chip(keys=None, groups=None, *, active: str = '',
+                                label: str = '') -> dict:
+    """Industrial open-chip bag when a project restores hostWatch pins/keys.
+
+    Returns {text, short, nKeys, nGroups, active, restored, tone}.
+    Soft / no hardware — for canvas chip + status bar on open.
+    """
+    keys = [str(k).strip() for k in (keys or []) if str(k or '').strip()]
+    groups = groups if isinstance(groups, dict) else {}
+    gnames = [str(n) for n in groups.keys() if str(n or '').strip()]
+    n_keys = len(keys)
+    n_groups = len(gnames)
+    act = str(active or '').strip()
+    if not act and gnames:
+        act = gnames[0]
+    restored = bool(n_keys or n_groups)
+    if not restored:
+        return {
+            'text': '', 'short': '', 'nKeys': 0, 'nGroups': 0,
+            'active': '', 'restored': False, 'tone': 'dim',
+            'label': str(label or ''),
+        }
+    # sample keys (compact)
+    sample = '、'.join(keys[:4])
+    if n_keys > 4:
+        sample += f'…(+{n_keys - 4})'
+    ghint = ''
+    if n_groups:
+        ghint = f'钉组×{n_groups}'
+        if act:
+            ghint += f'·活动「{act}」'
+    parts = ['监视已恢复']
+    if ghint:
+        parts.append(ghint)
+    if n_keys:
+        parts.append(f'键{n_keys}')
+        if sample:
+            parts.append(sample)
+    if label:
+        parts.append(str(label))
+    text_full = ' · '.join(parts)
+    short = f'监视·{ghint or f"键{n_keys}"}' if (ghint or n_keys) else '监视已恢复'
+    return {
+        'text': text_full,
+        'short': short,
+        'nKeys': n_keys,
+        'nGroups': n_groups,
+        'active': act,
+        'restored': True,
+        'tone': 'ok',
+        'label': str(label or ''),
+        'sampleKeys': keys[:8],
+        'groupNames': gnames,
+    }
+
+
 def write_pin_groups_to_project(project, groups=None, *, active: str = '',
                                 watch_keys=None) -> dict:
     """Persist pin groups into project['hostWatch'] for .sieans/.sol save."""

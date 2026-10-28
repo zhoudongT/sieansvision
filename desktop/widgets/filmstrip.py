@@ -101,6 +101,14 @@ class FilmstripBar(QWidget):
         self._blink_toggle_shortcut = None
         self._blink_swap_shortcut = None
         self._ensure_blink_shortcuts()
+        try:
+            self.blink_btn.setContextMenuPolicy(
+                __import__('PySide6.QtCore', fromlist=['Qt']).Qt.ContextMenuPolicy.CustomContextMenu
+            )
+            self.blink_btn.customContextMenuRequested.connect(self._on_blink_prefs_menu)
+            self.blink_btn.setObjectName('filmstripBlinkBtn')  # already set; keep
+        except Exception:
+            pass
         bar.addStretch(1)
         self.add_btn = QPushButton('+')
         self.add_btn.setToolTip('添加图像')
@@ -879,6 +887,66 @@ class FilmstripBar(QWidget):
             pass
         return out
 
+
+    def blink_prefs_dict(self) -> dict:
+        """Export current blink chords for runUi.filmstrip persistence."""
+        return {
+            'blinkToggle': self.blink_toggle_shortcut_key(),
+            'blinkSwap': self.blink_swap_shortcut_key(),
+            'blinkMs': int(getattr(self, '_blink_ms', 450) or 450),
+        }
+
+    def apply_blink_prefs(self, prefs=None) -> dict:
+        """Apply blinkToggle/blinkSwap/blinkMs from a prefs dict (runUi.filmstrip).
+
+        Refuses reserved host chords; returns {ok, conflict, toggle, swap, blinkMs}.
+        """
+        prefs = prefs if isinstance(prefs, dict) else {}
+        toggle = str(prefs.get('blinkToggle') or prefs.get('toggle') or '').strip()
+        swap = str(prefs.get('blinkSwap') or prefs.get('swap') or '').strip()
+        out = self.set_blink_shortcuts(toggle or '', swap or '')
+        ms = prefs.get('blinkMs') or prefs.get('ms')
+        if ms is not None:
+            try:
+                ms_i = int(ms)
+                ms_i = max(120, min(ms_i, 5000))
+                self._blink_ms = ms_i
+                if getattr(self, '_blink_timer', None) is not None:
+                    self._blink_timer.setInterval(ms_i)
+            except Exception:
+                pass
+        out['blinkMs'] = int(getattr(self, '_blink_ms', 450) or 450)
+        return out
+
+    def apply_blink_prefs_from_run_ui(self, run_ui=None) -> dict:
+        """Pull filmstrip blink prefs from project.runUi (filmstrip or meta)."""
+        ui = run_ui if isinstance(run_ui, dict) else {}
+        bag = ui.get('filmstrip') if isinstance(ui.get('filmstrip'), dict) else {}
+        if not bag:
+            meta = ui.get('meta') if isinstance(ui.get('meta'), dict) else {}
+            bag = meta.get('filmstrip') if isinstance(meta.get('filmstrip'), dict) else {}
+        if not bag:
+            return self.blink_prefs_dict() | {'ok': True, 'conflict': '', 'fromRunUi': False}
+        out = self.apply_blink_prefs(bag)
+        out['fromRunUi'] = True
+        return out
+
+    @staticmethod
+    def write_blink_prefs_to_run_ui(run_ui, prefs=None) -> dict:
+        """Merge blink prefs into runUi.filmstrip (mutates + returns runUi)."""
+        ui = run_ui if isinstance(run_ui, dict) else {}
+        bag = dict(ui.get('filmstrip') or {}) if isinstance(ui.get('filmstrip'), dict) else {}
+        src = prefs if isinstance(prefs, dict) else {}
+        for k_src, k_dst in (
+            ('blinkToggle', 'blinkToggle'), ('toggle', 'blinkToggle'),
+            ('blinkSwap', 'blinkSwap'), ('swap', 'blinkSwap'),
+            ('blinkMs', 'blinkMs'), ('ms', 'blinkMs'),
+        ):
+            if k_src in src and src[k_src] not in (None, ''):
+                bag[k_dst] = src[k_src]
+        ui['filmstrip'] = bag
+        return ui
+
     def _ensure_blink_shortcuts(self, *, force: bool = False):
         try:
             from PySide6.QtCore import Qt as _Qt
@@ -929,6 +997,61 @@ class FilmstripBar(QWidget):
                 sc2.setKey(QKeySequence(swap))
             except Exception:
                 pass
+
+    def _on_blink_prefs_menu(self, pos):
+        """Right-click blink btn: edit/persist runUi.filmstrip chords (no reserved)."""
+        try:
+            from PySide6.QtWidgets import QMenu, QInputDialog, QMessageBox
+        except Exception:
+            return
+        menu = QMenu(self)
+        menu.setObjectName('filmstripBlinkPrefsMenu')
+        act_edit = menu.addAction('编辑闪比快捷键…')
+        act_reset = menu.addAction('恢复默认 Alt+B / Shift+Alt+B')
+        act_show = menu.addAction(
+            f'当前：{self.blink_toggle_shortcut_key()} · {self.blink_swap_shortcut_key()}'
+        )
+        act_show.setEnabled(False)
+        chosen = menu.exec(self.blink_btn.mapToGlobal(pos))
+        if chosen is act_reset:
+            info = self.set_blink_shortcuts(self.BLINK_TOGGLE_DEFAULT, self.BLINK_SWAP_DEFAULT)
+            self._emit_blink_prefs_changed(info)
+            return
+        if chosen is act_edit:
+            cur_t = self.blink_toggle_shortcut_key()
+            cur_s = self.blink_swap_shortcut_key()
+            t, ok1 = QInputDialog.getText(
+                self, '闪比开关键', '开关键快捷键（避开 Ctrl+S/Alt+P 等保留字）', text=cur_t
+            )
+            if not ok1:
+                return
+            s, ok2 = QInputDialog.getText(
+                self, '闪比交换', '交换快捷键', text=cur_s
+            )
+            if not ok2:
+                return
+            info = self.set_blink_shortcuts(t, s)
+            if not info.get('ok'):
+                QMessageBox.warning(
+                    self, '快捷键冲突',
+                    f'保留字冲突：{info.get("conflict")}（未修改）',
+                )
+                return
+            self._emit_blink_prefs_changed(info)
+
+    def _emit_blink_prefs_changed(self, info=None):
+        """Notify host (MainWindow) to persist into runUi.filmstrip when available."""
+        info = info if isinstance(info, dict) else self.blink_prefs_dict()
+        host = self.window()
+        try:
+            if host is not None and hasattr(host, '_persist_filmstrip_blink_prefs'):
+                host._persist_filmstrip_blink_prefs(self.blink_prefs_dict())
+            elif host is not None and hasattr(host, 'set_filmstrip_blink_shortcuts'):
+                # already set; just persist via host helper if edit path used
+                pass
+        except Exception:
+            pass
+        return info
 
     def toggle_blink(self):
         """Keyboard / API toggle for A/B blink."""

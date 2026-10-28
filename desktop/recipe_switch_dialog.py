@@ -156,10 +156,15 @@ class RecipeSwitchDialog(QDialog):
         sb_head.addWidget(self._preview_apply_btn)
         self._rollback_btn = QPushButton('一键回滚')
         self._rollback_btn.setObjectName('recipeRollbackBtn')
-        self._rollback_btn.setToolTip('撤销最近一次换型（需先经带回滚点的套用）；无硬件动作')
+        self._rollback_btn.setToolTip('撤销最近一次换型（多步回滚栈）；无硬件动作')
         self._rollback_btn.clicked.connect(self._rollback_last_apply)
         self._rollback_btn.setEnabled(False)
         sb_head.addWidget(self._rollback_btn)
+        self._rollback_depth_lab = QLabel('')
+        self._rollback_depth_lab.setObjectName('recipeRollbackDepthLab')
+        self._rollback_depth_lab.setStyleSheet('color:#b9a;font-size:11px;')
+        self._rollback_depth_lab.setToolTip('换型回滚历史栈深度（多步 · 无硬件）')
+        sb_head.addWidget(self._rollback_depth_lab)
         sb_head.addStretch(1)
         left.addLayout(sb_head)
         self._diff_side = QTableWidget(0, 3)
@@ -552,8 +557,13 @@ class RecipeSwitchDialog(QDialog):
         self.recipesChanged.emit()
         banner = getattr(self, '_post_banner', None)
         if banner is not None:
+            rem = stats.get('remaining')
+            if rem is None:
+                rem = stats.get('rollbackDepth')
+            rem_txt = f' · 栈余{rem}' if rem is not None else ''
             banner.setText(
-                f'已回滚换型「{stats.get("rolledBack") or "—"}」· 步骤{stats.get("steps", 0)} · 无硬件动作'
+                f'已回滚换型「{stats.get("rolledBack") or "—"}」· 步骤{stats.get("steps", 0)}'
+                f'{rem_txt} · 无硬件动作'
             )
             banner.setStyleSheet(
                 'background:#2a2430;color:#d9b;border:1px solid #7a5a9a;border-radius:4px;'
@@ -570,15 +580,33 @@ class RecipeSwitchDialog(QDialog):
             return
         try:
             ready = rl.has_recipe_rollback(self.document.project)
+            depth = rl.recipe_rollback_depth(self.document.project) if hasattr(rl, 'recipe_rollback_depth') else (1 if ready else 0)
+            hist = rl.list_recipe_rollback_stack(self.document.project) if hasattr(rl, 'list_recipe_rollback_stack') else []
         except Exception:
             ready = False
+            depth = 0
+            hist = []
         btn.setEnabled(bool(ready))
+        lab = getattr(self, '_rollback_depth_lab', None)
+        if lab is not None:
+            if depth:
+                names = ' → '.join((h.get('name') or h.get('recipeId') or '?') for h in hist[-4:])
+                lab.setText(f'栈×{depth}' + (f' · {names}' if names else ''))
+            else:
+                lab.setText('')
         if ready:
-            bag = (self.document.project or {}).get('_recipeRollbackSnap') or {}
-            name = bag.get('name') or bag.get('recipeId') or ''
-            btn.setToolTip(f'撤销最近换型「{name}」（软回滚，无硬件）')
+            top = hist[-1] if hist else {}
+            name = top.get('name') or top.get('recipeId') or ''
+            if not name:
+                bag = (self.document.project or {}).get('_recipeRollbackSnap') or {}
+                name = bag.get('name') or bag.get('recipeId') or ''
+            btn.setToolTip(
+                f'撤销最近换型「{name}」（栈深 {depth} · 软回滚 · 无硬件）'
+            )
+            btn.setText('一键回滚' if depth <= 1 else f'一键回滚×{depth}')
         else:
             btn.setToolTip('无可回滚快照 — 先经「一键换型/部分套用」写入回滚点')
+            btn.setText('一键回滚')
 
 
     def _update_post_banner(self, stats=None, *, error: str = ''):

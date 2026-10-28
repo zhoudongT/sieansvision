@@ -316,11 +316,13 @@ def preview_apply_recipe(project: dict, recipe_id: str, *,
 def apply_recipe_with_rollback(project: dict, recipe_id: str, *,
                                var_keys=None, step_ops=None,
                                steps_only: bool = False, vars_only: bool = False,
-                               store_key: str = '_recipeRollbackSnap') -> dict:
-    """Apply recipe and stash a rollback snapshot on project[store_key].
+                               store_key: str = '_recipeRollbackSnap',
+                               stack_key: str = '_recipeRollbackStack',
+                               stack_cap: int = 16) -> dict:
+    """Apply recipe and push a rollback snapshot onto a multi-step history stack.
 
-    Returns apply stats + {'rollbackReady': True, 'rollbackKey': store_key}.
-    Call rollback_last_recipe_apply(project) to undo.
+    Also mirrors the top entry at project[store_key] for one-shot callers.
+    Soft / no hardware. Cap defaults to 16.
     """
     if not isinstance(project, dict):
         raise ValueError('project required')
@@ -330,7 +332,7 @@ def apply_recipe_with_rollback(project: dict, recipe_id: str, *,
         var_keys=var_keys, step_ops=step_ops,
         steps_only=steps_only, vars_only=vars_only,
     )
-    project[store_key] = {
+    entry = {
         'snapshot': snap,
         'recipeId': recipe_id,
         'name': stats.get('name') or '',
@@ -341,32 +343,144 @@ def apply_recipe_with_rollback(project: dict, recipe_id: str, *,
             'varsApplied': stats.get('varsApplied'),
         },
     }
+    stack = project.get(stack_key)
+    if not isinstance(stack, list):
+        stack = []
+        # migrate legacy one-shot snap into stack if present
+        legacy = project.get(store_key)
+        if isinstance(legacy, dict) and isinstance(legacy.get('snapshot'), dict):
+            stack.append(legacy)
+    stack.append(entry)
+    cap = max(1, int(stack_cap or 16))
+    if len(stack) > cap:
+        stack = stack[-cap:]
+    project[stack_key] = stack
+    project[store_key] = entry  # top mirror for one-shot API
     out = dict(stats)
     out['rollbackReady'] = True
     out['rollbackKey'] = store_key
+    out['rollbackStackKey'] = stack_key
+    out['rollbackDepth'] = len(stack)
     return out
 
 
 def rollback_last_recipe_apply(project: dict, *,
-                               store_key: str = '_recipeRollbackSnap') -> dict:
-    """One-click undo of the last apply_recipe_with_rollback. Soft / no hardware."""
+                               store_key: str = '_recipeRollbackSnap',
+                               stack_key: str = '_recipeRollbackStack') -> dict:
+    """Pop one step from the rollback history stack (soft / no hardware).
+
+    Falls back to legacy project[store_key] when the stack is empty.
+    """
     if not isinstance(project, dict):
         return {'ok': False, 'reason': 'no project'}
-    bag = project.get(store_key)
+    stack = project.get(stack_key)
+    bag = None
+    if isinstance(stack, list) and stack:
+        bag = stack.pop()
+        project[stack_key] = stack
+        if stack:
+            project[store_key] = stack[-1]
+        else:
+            project.pop(store_key, None)
+    else:
+        bag = project.get(store_key)
+        project.pop(store_key, None)
+        project.pop(stack_key, None)
     if not isinstance(bag, dict) or not isinstance(bag.get('snapshot'), dict):
         return {'ok': False, 'reason': 'no rollback snapshot'}
     stats = restore_project_snapshot(project, bag.get('snapshot'))
     name = bag.get('name') or bag.get('recipeId') or ''
-    project.pop(store_key, None)
     stats['ok'] = True
     stats['rolledBack'] = name
     stats['recipeId'] = bag.get('recipeId') or ''
+    depth = len(project.get(stack_key) or []) if isinstance(project.get(stack_key), list) else 0
+    stats['rollbackDepth'] = depth
+    stats['remaining'] = depth
     return stats
 
 
-def has_recipe_rollback(project: dict, *, store_key: str = '_recipeRollbackSnap') -> bool:
-    bag = (project or {}).get(store_key) if isinstance(project, dict) else None
+def has_recipe_rollback(project: dict, *, store_key: str = '_recipeRollbackSnap',
+                        stack_key: str = '_recipeRollbackStack') -> bool:
+    if not isinstance(project, dict):
+        return False
+    stack = project.get(stack_key)
+    if isinstance(stack, list) and any(
+        isinstance(e, dict) and isinstance(e.get('snapshot'), dict) for e in stack
+    ):
+        return True
+    bag = project.get(store_key)
     return isinstance(bag, dict) and isinstance(bag.get('snapshot'), dict)
+
+
+def recipe_rollback_depth(project: dict, *,
+                          store_key: str = '_recipeRollbackSnap',
+                          stack_key: str = '_recipeRollbackStack') -> int:
+    """How many soft rollback steps are available."""
+    if not isinstance(project, dict):
+        return 0
+    stack = project.get(stack_key)
+    if isinstance(stack, list):
+        return sum(
+            1 for e in stack
+            if isinstance(e, dict) and isinstance(e.get('snapshot'), dict)
+        )
+    bag = project.get(store_key)
+    return 1 if isinstance(bag, dict) and isinstance(bag.get('snapshot'), dict) else 0
+
+
+def list_recipe_rollback_stack(project: dict, *,
+                               stack_key: str = '_recipeRollbackStack',
+                               store_key: str = '_recipeRollbackSnap') -> list:
+    """Newest-last list of {name,recipeId,appliedAt,stats} (no heavy snapshots)."""
+    if not isinstance(project, dict):
+        return []
+    stack = project.get(stack_key)
+    rows = []
+    if isinstance(stack, list):
+        src = stack
+    else:
+        bag = project.get(store_key)
+        src = [bag] if isinstance(bag, dict) else []
+    for e in src:
+        if not isinstance(e, dict) or not isinstance(e.get('snapshot'), dict):
+            continue
+        rows.append({
+            'name': e.get('name') or '',
+            'recipeId': e.get('recipeId') or '',
+            'appliedAt': e.get('appliedAt') or '',
+            'stats': dict(e.get('stats') or {}),
+        })
+    return rows
+
+
+def rollback_recipe_n_steps(project: dict, n: int = 1, *,
+                            store_key: str = '_recipeRollbackSnap',
+                            stack_key: str = '_recipeRollbackStack') -> dict:
+    """Roll back up to n history steps (soft). Returns aggregate stats."""
+    if not isinstance(project, dict):
+        return {'ok': False, 'reason': 'no project', 'steps': 0}
+    want = max(0, int(n or 0))
+    if want <= 0:
+        return {'ok': False, 'reason': 'n<=0', 'steps': 0}
+    rolled = []
+    last = None
+    for _ in range(want):
+        last = rollback_last_recipe_apply(
+            project, store_key=store_key, stack_key=stack_key,
+        )
+        if not last.get('ok'):
+            break
+        rolled.append(last.get('rolledBack') or last.get('recipeId') or '')
+    return {
+        'ok': bool(rolled),
+        'steps': len(rolled),
+        'rolledBack': list(rolled),
+        'remaining': recipe_rollback_depth(
+            project, store_key=store_key, stack_key=stack_key,
+        ),
+        'last': last,
+        'reason': (None if rolled else (last or {}).get('reason') or 'empty'),
+    }
 
 
 def diff_recipe(project: dict, recipe_id: str, *,

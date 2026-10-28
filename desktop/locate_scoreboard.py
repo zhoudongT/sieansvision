@@ -269,7 +269,36 @@ class MatchScoreTrend:
     def values(self) -> list:
         return [p['score'] for p in self._points]
 
-    def summary(self) -> str:
+    def sparkline(self, *, width: int = 16, relative: bool = True) -> str:
+        """Industrial block sparkline; relative scales to window min/max."""
+        vals = self.values()
+        if not vals:
+            return ''
+        window = vals[-max(4, int(width or 16)):]
+        if relative and len(window) >= 2:
+            lo, hi = min(window), max(window)
+            span = hi - lo
+            if span < 1e-9:
+                normed = [0.5] * len(window)
+            else:
+                normed = [(v - lo) / span for v in window]
+        else:
+            normed = [max(0.0, min(1.0, float(v))) for v in window]
+        return ''.join(_spark_char(v) for v in normed)
+
+    def delta(self) -> float | None:
+        vals = self.values()
+        if len(vals) < 2:
+            return None
+        return float(vals[-1] - vals[-2])
+
+    def ok_rate(self) -> float | None:
+        pts = [p for p in self._points if p.get('ok') is not None]
+        if not pts:
+            return None
+        return sum(1 for p in pts if p.get('ok')) / len(pts)
+
+    def summary(self, *, industrial: bool = True) -> str:
         vals = self.values()
         if not vals:
             return '趋势：暂无分数'
@@ -277,8 +306,51 @@ class MatchScoreTrend:
         avg = sum(vals) / n
         lo, hi = min(vals), max(vals)
         last = vals[-1]
-        spark = ''.join(_spark_char(v) for v in vals[-16:])
+        spark = self.sparkline(width=16, relative=True)
+        dlt = self.delta()
+        if dlt is None:
+            arrow = '·'
+            dtxt = ''
+        elif dlt > 1e-6:
+            arrow = '↑'
+            dtxt = f' Δ+{dlt:.3f}'
+        elif dlt < -1e-6:
+            arrow = '↓'
+            dtxt = f' Δ{dlt:.3f}'
+        else:
+            arrow = '→'
+            dtxt = ' Δ0'
+        ok_r = self.ok_rate()
+        ok_txt = f' OK{ok_r*100:.0f}%' if ok_r is not None else ''
+        # last point OK glyph
+        last_ok = self._points[-1].get('ok') if self._points else None
+        mark = ''
+        if last_ok is True:
+            mark = '✓'
+        elif last_ok is False:
+            mark = '✗'
+        if industrial:
+            return (
+                f'趋势 n={n} 末={last:.3f}{mark}{dtxt} 均={avg:.3f} '
+                f'[{lo:.2f},{hi:.2f}]{ok_txt} {arrow}{spark}'
+            )
         return f'趋势 n={n} 末={last:.3f} 均={avg:.3f} [{lo:.2f},{hi:.2f}] {spark}'
+
+    def summary_rich(self) -> str:
+        """HTML-ish tip text for industrial tooltip (plain-safe)."""
+        base = self.summary(industrial=True)
+        pts = self.points()[-8:]
+        if not pts:
+            return base
+        lines = [base, '— 近点 —']
+        for p in pts:
+            ok = p.get('ok')
+            mark = '✓' if ok is True else ('✗' if ok is False else '·')
+            lines.append(
+                f"{mark} {p.get('label') or '—'}  {float(p['score']):.3f}"
+                + (f"  tpl={p.get('templateId')}" if p.get('templateId') else '')
+            )
+        return '\n'.join(lines)
 
     def to_dict(self) -> dict:
         return {'capacity': self.capacity, 'points': deepcopy(self._points)}
@@ -299,7 +371,7 @@ class MatchScoreTrend:
 
 
 def _spark_char(v: float) -> str:
-    # 8-level block sparkline
+    # 8-level block sparkline (v expected in [0,1])
     chars = '▁▂▃▄▅▆▇█'
     i = int(max(0.0, min(0.999, float(v))) * len(chars))
     return chars[i]

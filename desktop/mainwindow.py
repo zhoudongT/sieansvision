@@ -846,7 +846,40 @@ class MainWindow(QMainWindow):
                 self.log(f'变量监视已种子 {len(keys)} 项{ghint} · {self._host_watch_seed_label or "—"}')
             except Exception:
                 pass
+            # Industrial open chip / toast when pin groups or watch keys restored
+            try:
+                from desktop.host_var_watch import format_host_watch_open_chip
+                chip = format_host_watch_open_chip(
+                    keys, groups,
+                    active=getattr(self, '_host_watch_active_pin_group', '') or '',
+                    label=self._host_watch_seed_label or '',
+                )
+                if chip.get('restored') and chip.get('text'):
+                    self._show_host_watch_open_chip(chip)
+            except Exception:
+                pass
         return keys
+
+    def _show_host_watch_open_chip(self, chip):
+        """Clear industrial chip/toast for restored hostWatch pins on project open."""
+        if not isinstance(chip, dict) or not chip.get('restored'):
+            return
+        text = str(chip.get('text') or chip.get('short') or '').strip()
+        if not text:
+            return
+        try:
+            self._show_canvas_status_chip(text, ms=4200)
+        except Exception:
+            pass
+        try:
+            if hasattr(self, 'wb_status') and hasattr(self.wb_status, 'push_log'):
+                self.wb_status.push_log(chip.get('short') or text)
+        except Exception:
+            pass
+        try:
+            self.statusBar().showMessage(text, 4200)
+        except Exception:
+            pass
 
     def _flush_host_watch_pin_groups(self):
         """Persist open watch-board pin groups into project JSON before save."""
@@ -1074,6 +1107,10 @@ class MainWindow(QMainWindow):
             self._remember_recent(path)
             try:
                 self._seed_host_var_watch_from_project(project, label=path.name)
+            except Exception:
+                pass
+            try:
+                self._sync_filmstrip_blink_prefs_from_project(project)
             except Exception:
                 pass
             QTimer.singleShot(300, self.maybe_warm_camera)
@@ -5193,6 +5230,90 @@ class MainWindow(QMainWindow):
         return max(50, self._active_run_interval_ms())
 
 
+    def _sync_filmstrip_blink_prefs_from_project(self, project=None):
+        """Load runUi.filmstrip blink chords into FilmstripBar (conflict-safe)."""
+        proj = project
+        if proj is None:
+            try:
+                proj = self.document.project
+            except Exception:
+                proj = None
+        if not isinstance(proj, dict):
+            return {}
+        fs = getattr(self, 'filmstrip', None)
+        if fs is None or not hasattr(fs, 'apply_blink_prefs_from_run_ui'):
+            return {}
+        ui = proj.get('runUi') if isinstance(proj.get('runUi'), dict) else {}
+        try:
+            out = fs.apply_blink_prefs_from_run_ui(ui)
+        except Exception as err:
+            try:
+                self.log(f'胶片闪比快捷键恢复失败：{err}')
+            except Exception:
+                pass
+            return {}
+        if out.get('fromRunUi'):
+            try:
+                self.log(
+                    f'胶片闪比快捷键：{out.get("toggle")} / {out.get("swap")} '
+                    f'(runUi.filmstrip)'
+                )
+            except Exception:
+                pass
+        return out
+
+    def _persist_filmstrip_blink_prefs(self, prefs=None):
+        """Write current (or given) blink chords into project.runUi.filmstrip."""
+        if self.busy:
+            return {}
+        fs = getattr(self, 'filmstrip', None)
+        if fs is None:
+            return {}
+        try:
+            from copy import deepcopy
+            p = deepcopy(self.document.project)
+            runUi = dict(p.get('runUi') or {})
+            bag = prefs if isinstance(prefs, dict) else (
+                fs.blink_prefs_dict() if hasattr(fs, 'blink_prefs_dict') else {}
+            )
+            if hasattr(fs, 'write_blink_prefs_to_run_ui'):
+                runUi = fs.write_blink_prefs_to_run_ui(runUi, bag)
+            else:
+                runUi['filmstrip'] = dict(bag)
+            p['runUi'] = runUi
+            self.document.commit(p, label='胶片闪比快捷键')
+            return dict(runUi.get('filmstrip') or {})
+        except Exception as err:
+            try:
+                self.log(f'胶片闪比快捷键保存失败：{err}')
+            except Exception:
+                pass
+            return {}
+
+    def set_filmstrip_blink_shortcuts(self, toggle_key: str = '', swap_key: str = ''):
+        """Edit blink chords (refuse reserved), persist into runUi.filmstrip."""
+        fs = getattr(self, 'filmstrip', None)
+        if fs is None or not hasattr(fs, 'set_blink_shortcuts'):
+            return {'ok': False, 'conflict': 'no filmstrip'}
+        info = fs.set_blink_shortcuts(toggle_key, swap_key)
+        if info.get('ok'):
+            self._persist_filmstrip_blink_prefs(fs.blink_prefs_dict() if hasattr(fs, 'blink_prefs_dict') else info)
+            try:
+                self.statusBar().showMessage(
+                    f'闪比快捷键：{info.get("toggle")} / {info.get("swap")}', 2500
+                )
+            except Exception:
+                pass
+        else:
+            try:
+                self.statusBar().showMessage(
+                    f'快捷键冲突（保留字）：{info.get("conflict")}', 3500
+                )
+            except Exception:
+                pass
+        return info
+
+
     def _on_hmi_run_ui_changed(self, patch):
         """Persist OperatorHmiView patches (e.g. 判定门 → runUi.fixedBars.gateKey)."""
         if self.busy or not isinstance(patch, dict):
@@ -5397,6 +5518,10 @@ class MainWindow(QMainWindow):
         self.input_view.show_data('');self.output_view.show_data('');self.clear_cloud();self.results.set_results([]);self.flow.fit()
         try:
             self._seed_host_var_watch_from_project(project, label=str((project or {}).get('name') or ''))
+        except Exception:
+            pass
+        try:
+            self._sync_filmstrip_blink_prefs_from_project(project)
         except Exception:
             pass
         try:

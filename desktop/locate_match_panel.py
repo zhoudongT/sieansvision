@@ -569,10 +569,12 @@ class LocateMatchPanel(QWidget):
         self._tpl_trend_lab.setObjectName('locateMatchScoreTrend')
         self._tpl_trend_lab.setWordWrap(True)
         self._tpl_trend_lab.setStyleSheet(
-            'color:#9ad;font-size:11px;padding:4px 6px;background:#151a20;'
-            'border:1px solid #2a3340;border-radius:3px;'
+            'QLabel#locateMatchScoreTrend{color:#9ad;font-size:11px;font-family:monospace;'
+            'padding:5px 8px;background:#12161c;border:1px solid #2a3a4a;border-radius:3px;}'
         )
-        self._tpl_trend_lab.setToolTip('最近匹配分趋势（运行/试批写入，无硬件）')
+        self._tpl_trend_lab.setToolTip(
+            '匹配分趋势火花线（相对缩放 · Δ · OK率）· 运行/试批写入 · 无硬件'
+        )
         lib_lay.addWidget(self._tpl_trend_lab)
         self._restore_score_trend_label()
         self._refresh_batch_scoreboard_table()
@@ -987,7 +989,13 @@ class LocateMatchPanel(QWidget):
         lab = getattr(self, '_tpl_trend_lab', None)
         if lab is None:
             return
-        lab.setText(self._score_trend().summary())
+        trend = self._score_trend()
+        lab.setText(trend.summary(industrial=True) if hasattr(trend, 'summary') else '趋势：暂无分数')
+        try:
+            if hasattr(trend, 'summary_rich'):
+                lab.setToolTip(trend.summary_rich())
+        except Exception:
+            pass
 
     def set_last_result(self, result):
         """Cache engine last_result for scoreboard ingest (soft OK)."""
@@ -1000,9 +1008,34 @@ class LocateMatchPanel(QWidget):
         trend.push(score, label=label, ok=ok, template_id=template_id, frame=frame)
         self._set_param('matchScoreTrend', trend.to_dict())
         lab = getattr(self, '_tpl_trend_lab', None)
-        summary = trend.summary()
+        summary = trend.summary(industrial=True)
         if lab is not None:
             lab.setText(summary)
+            try:
+                rich = trend.summary_rich() if hasattr(trend, 'summary_rich') else summary
+                lab.setToolTip(rich)
+            except Exception:
+                pass
+            # soft color cue on last delta
+            try:
+                dlt = trend.delta() if hasattr(trend, 'delta') else None
+                if dlt is not None and dlt > 1e-6:
+                    lab.setStyleSheet(
+                        'QLabel#locateMatchScoreTrend{color:#8d8;font-size:11px;font-family:monospace;'
+                        'padding:5px 8px;background:#12161c;border:1px solid #2a4a3a;border-radius:3px;}'
+                    )
+                elif dlt is not None and dlt < -1e-6:
+                    lab.setStyleSheet(
+                        'QLabel#locateMatchScoreTrend{color:#d98;font-size:11px;font-family:monospace;'
+                        'padding:5px 8px;background:#1a1412;border:1px solid #4a3a2a;border-radius:3px;}'
+                    )
+                else:
+                    lab.setStyleSheet(
+                        'QLabel#locateMatchScoreTrend{color:#9ad;font-size:11px;font-family:monospace;'
+                        'padding:5px 8px;background:#12161c;border:1px solid #2a3a4a;border-radius:3px;}'
+                    )
+            except Exception:
+                pass
         return summary
 
     def _run_tab(self):
