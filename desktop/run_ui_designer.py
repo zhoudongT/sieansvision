@@ -1135,7 +1135,10 @@ class RunUiDesignerDialog(QDialog):
 
 
 def default_host_run_ui():
-    """p41–43 style layout metadata: split-2 with 图像 + 上位机状态机."""
+    """p41–43 style layout metadata: split-2 with 图像 + 上位机状态机.
+
+    Includes pause/continue/alarm trigger commands for p28/29 shell.
+    """
     return {
         'split': '2',
         'placements': [
@@ -1147,7 +1150,10 @@ def default_host_run_ui():
             '上位机状态机': {
                 'commands': [
                     {'type': '执行·连续', 'config': ''},
+                    {'type': '执行·暂停', 'config': ''},
+                    {'type': '执行·继续', 'config': ''},
                     {'type': '执行·停止', 'config': ''},
+                    {'type': '状态·清除报警', 'config': ''},
                 ],
                 'binding': 'host',
             },
@@ -1157,5 +1163,5 @@ def default_host_run_ui():
             'cameraBind': '未绑定', 'commBind': 'TCP.连接状态',
             'showRunStatus': True, 'showOkNg': True,
         },
-        'meta': {'template': 'host_state_machine', 'version': 1},
+        'meta': {'template': 'host_state_machine', 'version': 2},
     }

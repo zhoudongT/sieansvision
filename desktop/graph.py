@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt, QPointF, QRectF, QRect, Signal, QTimer
 from PySide6.QtGui import QColor, QPen, QBrush, QPainter, QPainterPath, QFont, QPolygonF
 from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsObject, QGraphicsItem, QGraphicsPathItem, QMenu, QApplication
 from desktop.theme import ACCENT, CANVAS, CANVAS_DOT, CARD, LINE, SELECTED, TEXT, TEXT_MUTED, OK, WARN
-from desktop.config_status import node_needs_bang
+from desktop.config_status import node_needs_bang, node_incomplete_reason
 
 
 class Port(QGraphicsObject):
@@ -23,11 +23,12 @@ class Port(QGraphicsObject):
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
         self.highlight = None
         kind = '图像订阅' if side in ('top', 'bottom') else '数据/控制'
-        self.setToolTip(
+        self._base_tip = (
             ('输出' if output else '输入') + ' · ' + kind
             + '（' + ('实线=图像订阅' if side in ('top', 'bottom') else '虚线=数据/控制')
             + '）：拖到目标端口；下方模块订阅上方；Esc 取消'
         )
+        self.setToolTip(self._base_tip)
         self.setCursor(Qt.CursorShape.CrossCursor)
 
     def boundingRect(self):
@@ -249,7 +250,8 @@ class FlowScene(QGraphicsScene):
             item.needs_config = node_needs_bang(p, n['id'])
             tip = label+'\n序号 '+str(i)+' · 拖动移动 · 双击配置 · 端口拖拽订阅（下方←上方）'
             if item.needs_config:
-                tip += '\n⚠ 组件参数未配置完整'
+                why = node_incomplete_reason(p, n['id']) or '请检查必填项'
+                tip += '\n⚠ 组件参数未配置完整：' + why
             item.setToolTip(tip)
             self.addItem(item);self.nodes[n['id']]=item
             if n['id'] in ids:item.setSelected(True)
@@ -312,7 +314,16 @@ class FlowScene(QGraphicsScene):
         for node in self.nodes.values():
             for port in node.ports.values():
                 highlight=('valid' if port.output!=self.link[2] and port.node_id!=self.link[0] else 'invalid') if port is target else None
-                if port.highlight!=highlight:port.highlight=highlight;port.update()
+                if port.highlight!=highlight:
+                    port.highlight=highlight
+                    port.update()
+                    base = getattr(port, '_base_tip', None) or (port.toolTip() or '')
+                    if highlight == 'invalid':
+                        port.setToolTip(base + '\n✗ 无效：同向端口或连到自身 — 请拖到对端输入/输出')
+                    elif highlight == 'valid':
+                        port.setToolTip(base + '\n✓ 可连：松开完成订阅')
+                    else:
+                        port.setToolTip(base)
         end=target.scenePos() if target else point
         a,b=(start,end) if self.link[2] else (end,start)
         side=self.link[1] if self.link[2] else target.side if target else 'bottom'

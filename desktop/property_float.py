@@ -355,15 +355,17 @@ class PropertyFloat(QDialog):
         if not keep_step:
             self._step_baseline = None
             self._step_dirty = False
+        why = ''
         try:
-            from desktop.config_status import source_incomplete
-            bang = source_incomplete(config)
+            from desktop.config_status import source_incomplete_reason
+            why = source_incomplete_reason(config) or ''
         except Exception:
-            bang = False
-        self._set_chrome(
-            ('⚠ ' if bang else '') + title,
-            '图像采集 · 本地 / 相机 / SDK · 确定提交 / Esc·✕·取消放弃',
-        )
+            why = ''
+        bang = bool(why)
+        sub = '图像采集 · 本地 / 相机 / SDK · 确定提交 / Esc·✕·取消放弃'
+        if bang:
+            sub = '⚠ ' + why + ' · 确定提交 / Esc·✕·取消放弃'
+        self._set_chrome(('⚠ ' if bang else '') + title, sub)
         form = ImageSourceForm(config)
         form.changed.connect(self._on_source_draft)
         form.openCameraManager.connect(self.openCameraManager.emit)
@@ -387,15 +389,18 @@ class PropertyFloat(QDialog):
             self._source_baseline = None
             self._source_dirty = False
         name = (definition or {}).get('name') or (step or {}).get('name') or '模块'
-        bang = False
+        why = ''
         try:
-            from desktop.config_status import step_incomplete
-            bang = step_incomplete(step, project)
+            from desktop.config_status import step_incomplete_reason
+            why = step_incomplete_reason(step, project) or ''
         except Exception:
-            bang = False
+            why = ''
+        bang = bool(why)
         op = (step or {}).get('operation') or ''
         cat = (definition or {}).get('category') or ''
         sub = (cat + ' · ' + op) if op else cat
+        if bang:
+            sub = ('⚠ ' + why) + ((' · ' + sub) if sub else '')
         if sub:
             sub = sub + ' · 确定提交 / Esc·✕·取消放弃'
         else:

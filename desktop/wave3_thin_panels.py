@@ -122,12 +122,14 @@ class _ShellBase(QWidget):
     def _refresh_incomplete_banner(self):
         if not hasattr(self, '_incomplete_banner') or self._incomplete_banner is None:
             return
-        from desktop.config_status import step_incomplete
+        from desktop.config_status import step_incomplete, step_incomplete_reason
         bang = step_incomplete(self.step, self.project)
         if bang:
+            why = step_incomplete_reason(self.step, self.project) or ''
             missing = self._missing_fields()
+            detail = why or ('、'.join(missing) if missing else '请检查必填项')
             self._incomplete_banner.setText(
-                '⚠ 组件参数未配置完整：' + ('、'.join(missing) or '请检查必填项')
+                '⚠ 组件参数未配置完整：' + detail
             )
             self._incomplete_banner.setStyleSheet(
                 'color:#c62828;background:#ffebee;padding:6px 8px;border-radius:3px;'

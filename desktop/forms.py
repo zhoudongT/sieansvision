@@ -858,18 +858,16 @@ class ParameterPanel(QWidget):
         bang_lab = getattr(self, '_incomplete_banner', None)
         if bang_lab is None or self._step is None:
             return
+        why = ''
         try:
-            from desktop.config_status import step_incomplete
-            bang = step_incomplete(self._step, getattr(self, '_project_for_banner', None) or {})
+            from desktop.config_status import step_incomplete_reason
+            why = step_incomplete_reason(
+                self._step, getattr(self, '_project_for_banner', None) or {}
+            ) or ''
         except Exception:
-            bang = False
-        if bang:
-            missing = []
-            if not self._step.get('imageFrom') and (self._step.get('operation') or '') in (
-                'preprocess', 'display', 'geometry', 'measure', 'locate', 'barcode', 'ocr', 'blob', 'fixture', 'defects', 'yolo', 'pose_correct',
-            ):
-                missing.append('输入源(imageFrom)')
-            bang_lab.setText('⚠ 组件参数未配置完整：' + ('、'.join(missing) or '请检查必填项'))
+            why = ''
+        if why:
+            bang_lab.setText('⚠ 组件参数未配置完整：' + why)
             bang_lab.setStyleSheet('color:#c62828;background:#ffebee;padding:6px 8px;border-radius:3px;')
         else:
             bang_lab.setText('组件配置完成')

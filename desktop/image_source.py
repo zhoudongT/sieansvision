@@ -34,6 +34,7 @@ DEFAULT_SOURCE = dict(
     gain=0.0,
     images=[],
     currentIndex=0,
+    imageFormatFilter='全部',
 )
 
 
@@ -175,6 +176,15 @@ class ImageSourceForm(QWidget):
 
         _spin(form, '取图间隔', cfg.get('intervalMs', 0), 0, 60000,
               lambda v: self._audit('intervalMs', int(v)))
+        self.fmt_filter = QComboBox()
+        for lab in ('全部', '.bmp', '.jpg', '.png', '.tif'):
+            self.fmt_filter.addItem(lab, lab)
+        cur_fmt = cfg.get('imageFormatFilter') or '全部'
+        self.fmt_filter.setCurrentIndex(max(0, self.fmt_filter.findData(cur_fmt)))
+        self.fmt_filter.currentIndexChanged.connect(
+            lambda: self._audit('imageFormatFilter', self.fmt_filter.currentData() or '全部'))
+        self.fmt_filter.setToolTip('与胶片条格式过滤双向对齐')
+        form.addRow('胶片格式过滤', self.fmt_filter)
         _row_switch(form, '方案存图', cfg.get('saveInSolution', False),
                     lambda v: self._audit('saveInSolution', v))
         _row_switch(form, '显示图像名称', cfg.get('showImageName', True),
@@ -293,16 +303,11 @@ class ImageSourceForm(QWidget):
         """Update incomplete banner without rebuilding the form (mode RT while float open)."""
         if not hasattr(self, '_cfg_warn') or self._cfg_warn is None:
             return
-        from desktop.config_status import source_incomplete
+        from desktop.config_status import source_incomplete_reason
         cfg = self._cfg or {}
-        if source_incomplete(cfg):
-            mode = cfg.get('mode') or 'local'
-            if mode == 'local':
-                tip = '⚠ 组件参数未配置完整：请在下方胶片条添加本地图像（或点 + / 📁）。'
-            elif mode == 'camera':
-                tip = '⚠ 组件参数未配置完整：请选择关联相机（📷 打开相机管理）。'
-            else:
-                tip = '⚠ 组件参数未配置完整：请在相机管理中连接 SDK 设备。'
+        why = source_incomplete_reason(cfg)
+        if why:
+            tip = '⚠ 组件参数未配置完整：' + why
             self._cfg_warn.setText(tip)
             self._cfg_warn.setStyleSheet('color:#c62828;background:#ffebee;padding:6px 8px;border-radius:3px;')
         else:

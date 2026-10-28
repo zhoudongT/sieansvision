@@ -79,6 +79,46 @@ def read_project_variable(project, raw_ref, default=''):
     return default
 
 
+def expand_payload_placeholders(project, text):
+    """Expand ${name} / ${flow.name} / ${global.name} in send payloads (design + preview)."""
+    import re as _re
+    raw = '' if text is None else str(text)
+    if '${' not in raw:
+        return raw
+
+    def _repl(m):
+        ref = (m.group(1) or '').strip()
+        if not ref:
+            return m.group(0)
+        val = read_project_variable(project, ref, None)
+        if val is None:
+            return m.group(0)
+        return str(val)
+
+    return _re.sub(r'\$\{([^}]+)\}', _repl, raw)
+
+
+def resolve_send_event_payload(project, event):
+    """Send event → payload: bound variable first, else message with ${} expand.
+
+    Mirrors lib/comm-bus resolveSendMessage for design-time 试发 / 填报文.
+    Returns (payload:str, source:str) where source is 'variable'|'message'|'empty'.
+    """
+    ev = event if isinstance(event, dict) else {}
+    ref = (ev.get('variable') or ev.get('var') or '').strip()
+    if ref:
+        val = read_project_variable(project, ref, None)
+        if val is not None:
+            return str(val), 'variable'
+    msg = ev.get('message') if ev.get('message') is not None else ev.get('topic')
+    if msg is None:
+        msg = ''
+    expanded = expand_payload_placeholders(project, msg)
+    if str(expanded):
+        return str(expanded), 'message'
+    return '', 'empty'
+
+
 def parse_protocol_writeback_extras(text):
     """Parse sim/live protocol replies into extra var writes (no field-HW claim).
 
@@ -210,7 +250,7 @@ class _EventTable(QWidget):
         tip = QLabel(
             '接收：报文写入「流程变量」；发送：从「流程变量」取文本（空则用报文列）。'
             if var_role == 'write' else
-            '发送事件可绑定流程变量；运行时 send_data 优先读该变量。'
+            '发送事件可绑定流程变量；运行时 send_data / 试发优先读该变量，报文支持 ${flow.x} 占位。'
         )
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;font-size:11px;')
@@ -238,9 +278,16 @@ class _EventTable(QWidget):
             bar.addWidget(sim)
         else:
             fill = QPushButton('从变量填报文')
-            fill.setToolTip('用绑定变量当前值覆盖「报文」列（设计态预览）')
+            fill.setToolTip('用绑定变量当前值覆盖「报文」列（设计态预览）；支持 ${var} 展开')
             fill.clicked.connect(self._fill_from_variables)
             bar.addWidget(fill)
+            trial = QPushButton('试发(读变量)')
+            trial.setToolTip(
+                '按「读变量优先 → 报文 ${} 展开」解析载荷，写入 flow.lastSendPayload '
+                '并投递 LocalLoop（无真实 TCP）'
+            )
+            trial.clicked.connect(self._trial_send_from_variables)
+            bar.addWidget(trial)
         pick = QPushButton('挑选变量…')
         pick.setToolTip('从工程流程/全局变量表挑选，写入当前行「变量」列')
         pick.clicked.connect(self._pick_variable_into_row)
@@ -338,18 +385,62 @@ class _EventTable(QWidget):
         if doc is None:
             return
         p = doc.project or {}
+        n = 0
         for r in range(self.table.rowCount()):
             var_w = self.table.cellWidget(r, 4)
             msg_w = self.table.cellWidget(r, 3)
             if not var_w or not msg_w:
                 continue
             ref = var_w.text().strip()
-            if not ref:
+            msg = msg_w.text()
+            if ref:
+                val = read_project_variable(p, ref, None)
+                if val is not None:
+                    msg_w.setText(str(val))
+                    n += 1
+                    continue
+            if '${' in (msg or ''):
+                expanded = expand_payload_placeholders(p, msg)
+                if expanded != msg:
+                    msg_w.setText(expanded)
+                    n += 1
+        if n:
+            QMessageBox.information(self, '发送事件', f'已从变量/占位展开 {n} 行报文。')
+
+    def _trial_send_from_variables(self):
+        """Design-time 试发：resolve payload → flow.lastSendPayload + LocalLoop inbox note."""
+        doc = getattr(self, '_document', None)
+        if doc is None:
+            QMessageBox.information(self, '试发', '无工程文档。')
+            return
+        rows = self.rows()
+        if not rows:
+            QMessageBox.information(self, '试发', '发送事件表为空。')
+            return
+        p = deepcopy(doc.project)
+        lines = []
+        for row in rows:
+            payload, src = resolve_send_event_payload(p, row)
+            name = (row.get('name') or '').strip() or '事件'
+            device = (row.get('device') or '').strip() or 'LocalLoop'
+            if not payload:
+                lines.append(f'· {name} @ {device}：空载荷（跳过）')
                 continue
-            val = read_project_variable(p, ref, '')
-            if val is None:
-                continue
-            msg_w.setText(str(val))
+            write_project_variable(p, 'flow.lastSendPayload', payload)
+            write_project_variable(p, 'flow.lastSendDevice', device)
+            write_project_variable(p, 'flow.lastSendEvent', name)
+            write_project_variable(p, 'flow.lastSendSource', src)
+            # Stamp device-bound var if present so recv/demo can round-trip
+            ref = (row.get('variable') or row.get('var') or '').strip()
+            if ref and src != 'variable':
+                # keep variable as-is; payload came from message
+                pass
+            lines.append(f'· {name} @ {device} ← {src}：{payload[:80]!r}')
+        doc.commit(p)
+        QMessageBox.information(
+            self, '试发(读变量)',
+            '已解析并写入 flow.lastSendPayload（无真实 TCP）：\n' + '\n'.join(lines),
+        )
 
     def set_rows(self, rows, devices=None):
         self._devices = list(devices or [])
