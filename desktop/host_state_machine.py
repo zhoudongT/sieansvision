@@ -14339,6 +14339,11 @@ class HostStateMachineWidget(QWidget):
         act_open.triggered.connect(lambda *_: self.show_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_history_menu())
         menu.addAction(act_open)
         actions.append('open')
+        act_p = QAction('夹紧预览', menu)
+        act_p.setProperty('isUndoEyedropperBatchRemoveUndoToastHistoryBadgeMenuClampPreview', True)
+        act_p.triggered.connect(lambda *_: self.preview_clamp_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_history_badge())
+        menu.addAction(act_p)
+        actions.append('clamp_preview')
         try:
             cur_fm = self.batch_remove_undo_toast_history_badge_flash_ms()
         except Exception:
@@ -14492,6 +14497,111 @@ class HostStateMachineWidget(QWidget):
             return out
         out = {'ok': True, 'bound': True}
         self._last_ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_hist_badge_drag = dict(out)
+        return out
+
+    def clamp_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_history_badge_pos(self, x: int, y: int, badge=None) -> tuple:
+        """wave125: clamp 短史 badge xy into parent client rect."""
+        try:
+            nx, ny = int(x), int(y)
+        except Exception:
+            nx, ny = 0, 0
+        if badge is None:
+            badge = getattr(self, '_ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_hist_badge', None)
+        max_x = max_y = None
+        try:
+            parent = badge.parent() if badge is not None and hasattr(badge, 'parent') else self
+            pw = int(parent.width()) if parent is not None else 0
+            ph = int(parent.height()) if parent is not None else 0
+            bw = int(badge.width()) if badge is not None else 0
+            bh = int(badge.height()) if badge is not None else 0
+            if pw > 0 and ph > 0:
+                max_x = max(0, pw - max(1, bw))
+                max_y = max(0, ph - max(1, bh))
+        except Exception:
+            max_x = max_y = None
+        if max_x is not None:
+            nx = max(0, min(int(max_x), nx))
+        else:
+            nx = max(0, nx)
+        if max_y is not None:
+            ny = max(0, min(int(max_y), ny))
+        else:
+            ny = max(0, ny)
+        out = (nx, ny)
+        self._last_ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_hist_badge_clamp = {
+            'ok': True, 'x': nx, 'y': ny, 'max_x': max_x, 'max_y': max_y, 'clamped': True}
+        return out
+
+
+    def preview_clamp_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_history_badge(self) -> dict:
+        """wave125: RMB「夹紧预览」— show clamp bounds toast / tip+status for 短史 badge."""
+        badge = getattr(self, '_ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_hist_badge', None)
+        if badge is None:
+            try:
+                badge = self.ensure_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_history_badge()
+            except Exception:
+                badge = None
+        pw = ph = bw = bh = 0
+        try:
+            parent = badge.parent() if badge is not None and hasattr(badge, 'parent') else self
+            pw = int(parent.width()) if parent is not None else 0
+            ph = int(parent.height()) if parent is not None else 0
+            bw = int(badge.width()) if badge is not None else 0
+            bh = int(badge.height()) if badge is not None else 0
+        except Exception:
+            pass
+        max_x = max(0, pw - max(1, bw)) if pw > 0 else 0
+        max_y = max(0, ph - max(1, bh)) if ph > 0 else 0
+        try:
+            cur = getattr(self, '_ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_hist_badge_pos', None)
+            if isinstance(cur, (tuple, list)) and len(cur) >= 2:
+                cx, cy = int(cur[0]), int(cur[1])
+            elif badge is not None:
+                cx, cy = int(badge.x()), int(badge.y())
+            else:
+                cx, cy = 8, 172
+        except Exception:
+            cx, cy = 8, 172
+        nx, ny = self.clamp_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_history_badge_pos(cx, cy, badge)
+        msg = f'夹紧预览 · 区(0,0)–({max_x},{max_y}) · 现({cx},{cy})→({nx},{ny})'
+        try:
+            self._flash_host_toast(msg, kind='ok', ms=1200)
+        except Exception:
+            pass
+        flashed = False
+        try:
+            fr = self.flash_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_history_badge()
+            flashed = bool(fr.get('flashed'))
+        except Exception:
+            flashed = False
+        status = '夹紧预览'
+        status_prop = None
+        status_prop_ok = False
+        tip = ''
+        tip_prop = None
+        tip_prop_ok = False
+        try:
+            tip = self.tip_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_history_badge_hover()
+        except Exception:
+            tip = ''
+        try:
+            badge = getattr(self, '_ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_hist_badge', None)
+            if badge is not None:
+                badge.setProperty('batchRemoveUndoToastHistoryBadgeStatus', status)
+                if tip:
+                    badge.setToolTip(tip)
+                    badge.setProperty('batchRemoveUndoToastHistoryBadgeHoverTip', tip)
+                status_prop = badge.property('batchRemoveUndoToastHistoryBadgeStatus')
+                tip_prop = badge.property('batchRemoveUndoToastHistoryBadgeHoverTip')
+                status_prop_ok = (str(status_prop) == status)
+                tip_prop_ok = (str(tip_prop) == tip) if tip else False
+        except Exception:
+            status_prop = None
+            status_prop_ok = False
+            tip_prop = None
+            tip_prop_ok = False
+        out = {'ok': True, 'preview': True, 'flashed': flashed, 'max_x': max_x, 'max_y': max_y, 'x': cx, 'y': cy, 'clamped_x': nx, 'clamped_y': ny, 'toast': msg, 'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok), 'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok)}
+        self._last_ics_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_hist_badge_clamp_preview = dict(out)
         return out
 
     def move_stale_prune_undo_eyedropper_history_order_shortcut_conflict_fix_candidate_confirm_undo_import_conflict_strategy_shortcut_conflict_ignore_by_role_merge_strategy_overlap_batch_remove_undo_toast_history_badge_to(self, x: int = 8, y: int = 172, *, persist: bool = True) -> dict:
@@ -33921,6 +34031,10 @@ class HostStateMachineWidget(QWidget):
         tip = ''
         tip_prop = None
         tip_prop_ok = False
+        _st_label = '合并' if str(cur) == 'merge' else ('覆盖' if str(cur) == 'overwrite' else str(cur))
+        status = f'策略·{_st_label}'
+        status_prop = None
+        status_prop_ok = False
         last_toast_brief = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_toast_brief', None)
         if last_toast_brief is None:
             last_toast_brief = '无'
@@ -33938,6 +34052,7 @@ class HostStateMachineWidget(QWidget):
                 badge.setProperty('dstImportStrategyBadgeStrategy', str(cur))
                 badge.setProperty('dstImportStrategyBadgeHoverTipMaxLen', int(cur_ml))
                 badge.setProperty('dstImportStrategyBadgeLastToastBrief', str(last_toast_brief))
+                badge.setProperty('dstImportStrategyBadgeStatus', status)
                 if tip:
                     badge.setToolTip(tip)
                     badge.setProperty('dstImportStrategyBadgeHoverTip', tip)
@@ -33945,6 +34060,7 @@ class HostStateMachineWidget(QWidget):
                 tip_max_len_prop = badge.property('dstImportStrategyBadgeHoverTipMaxLen')
                 last_toast_brief_prop = badge.property('dstImportStrategyBadgeLastToastBrief')
                 tip_prop = badge.property('dstImportStrategyBadgeHoverTip')
+                status_prop = badge.property('dstImportStrategyBadgeStatus')
                 strategy_prop_ok = (str(strategy_prop) == str(cur))
                 try:
                     tip_max_len_prop_ok = (int(tip_max_len_prop) == int(cur_ml))
@@ -33952,6 +34068,7 @@ class HostStateMachineWidget(QWidget):
                     tip_max_len_prop_ok = False
                 last_toast_brief_prop_ok = (str(last_toast_brief_prop) == str(last_toast_brief))
                 tip_prop_ok = (str(tip_prop) == tip) if tip else False
+                status_prop_ok = (str(status_prop) == status)
         except Exception:
             strategy_prop = None
             strategy_prop_ok = False
@@ -33961,6 +34078,8 @@ class HostStateMachineWidget(QWidget):
             last_toast_brief_prop_ok = False
             tip_prop = None
             tip_prop_ok = False
+            status_prop = None
+            status_prop_ok = False
         try:
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_strategy_prop = strategy_prop
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_strategy_prop_ok = bool(strategy_prop_ok)
@@ -33968,6 +34087,8 @@ class HostStateMachineWidget(QWidget):
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_toast_brief_prop_ok = bool(last_toast_brief_prop_ok)
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_tip_prop = tip_prop
             self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_tip_prop_ok = bool(tip_prop_ok)
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_status_prop = status_prop
+            self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_status_prop_ok = bool(status_prop_ok)
         except Exception:
             pass
         _menu_sync = {
@@ -33976,6 +34097,7 @@ class HostStateMachineWidget(QWidget):
             'last_toast_brief': str(last_toast_brief), 'last_toast_brief_prop': last_toast_brief_prop,
             'last_toast_brief_prop_ok': bool(last_toast_brief_prop_ok),
             'tip': tip, 'tip_prop': tip_prop, 'tip_prop_ok': bool(tip_prop_ok),
+            'status': status, 'status_prop': status_prop, 'status_prop_ok': bool(status_prop_ok),
         }
         if getattr(self, '_dst_reorder_shortcut_conflict_history_menu_no_exec', False) or getattr(self, '_dst_reorder_shortcut_conflict_quiet', False):
             out = {'ok': True, 'shown': False, 'strategy': cur, 'actions': ['merge', 'overwrite', 'toggle', 'copy', 'copy_orig_len', 'tip_max_len'], 'tip_max_len': int(cur_ml), 'tip_max_len_presets': tip_len_actions}

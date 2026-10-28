@@ -426,6 +426,13 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆93 · 策略菜单 status_prop_ok · 短史夹紧 tip/status · 菜单 flash+tip+status 三联回归 · 2026-10-28】
+
+- **DST 策略徽章右键菜单**：同步 `dstImportStrategyBadgeStatus`（`策略·合并/覆盖`），out/`_menu_sync` 含 `status` / `status_prop` / `status_prop_ok`（对齐 tip 往返）。
+- **撤销短史夹紧预览**：新增 `clamp_*_pos` + `preview_clamp_*`，写回 Status=`夹紧预览` / HoverTip，含 `tip_prop_ok` / `status_prop_ok`；右键增加「夹紧预览」action。
+- **三联回归**：再预览 / 短史 / 档差 / 步进菜单 `flash_ms_prop_ok` + `tip_prop_ok` + `status_prop_ok`；策略 tip+status+strategy。
+- **验证**：`scripts/smoke-wave125-…-e2e.py`；regress wave124/123。非硬件约 **~99.98%**。
+
 ## 【细妆92 · 夹紧预览 tip_prop_ok · 右键菜单 status_prop_ok 镜像 · 2026-10-28】
 
 - **夹紧预览**：再预览 / 档差 / 步进 clamp out 同步 `*HoverTip`，含 `tip` / `tip_prop` / `tip_prop_ok`（保留既有 `status_prop_ok`）。
