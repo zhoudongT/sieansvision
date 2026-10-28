@@ -2398,6 +2398,12 @@ class MainWindow(QMainWindow):
             tip = summarize_overlay_density(merged).get('summary') or ''
             if tip:
                 self.statusBar().showMessage(tip, 2500)
+            # wave149: bind VisionMaster-style on-canvas legend
+            if hasattr(view, 'bind_legend_from_specs'):
+                try:
+                    view.bind_legend_from_specs(merged)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -2426,6 +2432,11 @@ class MainWindow(QMainWindow):
             if specs:
                 view.set_geom_overlays(specs)
                 view._last_overlay_specs = list(specs or [])
+                if hasattr(view, 'bind_legend_from_specs'):
+                    try:
+                        view.bind_legend_from_specs(specs)
+                    except Exception:
+                        pass
                 return
         except Exception:
             specs = []
@@ -2502,6 +2513,11 @@ class MainWindow(QMainWindow):
         try:
             view.set_geom_overlays(specs)
             view._last_overlay_specs = list(specs or [])
+            if hasattr(view, 'bind_legend_from_specs'):
+                try:
+                    view.bind_legend_from_specs(specs)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -2560,6 +2576,18 @@ class MainWindow(QMainWindow):
                     self.images.setCurrentIndex(1)
             elif hasattr(ov, 'bounds') and not ov.bounds.isEmpty():
                 ov.fit()
+            # wave149: display showOverlay toggles on-canvas legend chrome
+            try:
+                show_ov = params.get('showOverlay', True) not in (False, 0, 'false', 'False')
+                if hasattr(ov, 'set_legend_visible'):
+                    ov.set_legend_visible(bool(show_ov))
+                # Rebind from last overlay specs when overlay re-enabled
+                if show_ov and hasattr(ov, 'bind_legend_from_specs'):
+                    last = getattr(ov, '_last_overlay_specs', None) or []
+                    if last:
+                        ov.bind_legend_from_specs(last)
+            except Exception:
+                pass
         # Filmstrip live thumb (channelled frame + fit tip + actual pad from theme/channel)
         fit_only = False
         try:

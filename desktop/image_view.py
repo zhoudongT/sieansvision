@@ -1,9 +1,9 @@
 import base64
-from PySide6.QtCore import Qt, Signal, QRectF, QTimer
+from PySide6.QtCore import Qt, Signal, QRectF, QTimer, QPoint
 from PySide6.QtGui import QPixmap, QColor, QPen, QPainter, QBrush
-from PySide6.QtWidgets import QGraphicsView, QGraphicsScene
+from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QFrame, QLabel, QVBoxLayout
 
-from desktop.theme import CANVAS, TEXT_MUTED
+from desktop.theme import CANVAS, TEXT_MUTED, PANEL, LINE, TEXT
 
 
 class ImageView(QGraphicsView):
@@ -41,6 +41,13 @@ class ImageView(QGraphicsView):
         self._fit_mode = 'contain'  # contain | cover | actual (Display 适应模式)
         self._empty_hint = self.scene().addText('打开图像，或载入演示')
         self._empty_hint.setDefaultTextColor(QColor(TEXT_MUTED))
+        # wave149: VisionMaster-style on-canvas legend chrome (annotate/display)
+        self._legend_frame = None
+        self._legend_label = None
+        self._legend_visible = True
+        self._legend_entries = []
+        self._legend_bound = False
+        QTimer.singleShot(0, self._ensure_legend_chrome)
 
     def drawBackground(self, painter, rect):
         # VisionMaster-style dark gray checkerboard when empty / around image
@@ -62,6 +69,11 @@ class ImageView(QGraphicsView):
 
     def show_data(self, data):
         self.clear_geom_overlays()
+        # keep legend visibility preference; clear bound rows until overlays rebind
+        try:
+            self.clear_canvas_legend()
+        except Exception:
+            pass
         pixmap = QPixmap()
         if data and isinstance(data, str):
             try:
@@ -163,6 +175,10 @@ class ImageView(QGraphicsView):
         super().resizeEvent(event)
         if not self.bounds.isEmpty():
             self.fit()
+        try:
+            self._position_legend_chrome()
+        except Exception:
+            pass
 
     def wheelEvent(self, event):
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
@@ -171,6 +187,106 @@ class ImageView(QGraphicsView):
                 self.scale(scale, scale)
         else:
             super().wheelEvent(event)
+
+
+    # —— wave149 on-canvas legend chrome ————————————————
+
+    def _ensure_legend_chrome(self):
+        """Lazy-create floating industrial-dark legend on the viewport."""
+        if self._legend_frame is not None:
+            return self._legend_frame
+        frame = QFrame(self.viewport())
+        frame.setObjectName('canvasLegendChrome')
+        frame.setStyleSheet(
+            f'QFrame#canvasLegendChrome {{'
+            f'  background-color: rgba(26,27,29,210);'
+            f'  border: 1px solid {LINE};'
+            f'  border-radius: 2px;'
+            f'}}'
+            f'QLabel#canvasLegendBody {{'
+            f'  background: transparent; color: {TEXT}; padding: 4px 6px;'
+            f'}}'
+        )
+        lay = QVBoxLayout(frame)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        lab = QLabel(frame)
+        lab.setObjectName('canvasLegendBody')
+        lab.setTextFormat(Qt.TextFormat.RichText)
+        lab.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        lay.addWidget(lab)
+        frame.hide()
+        self._legend_frame = frame
+        self._legend_label = lab
+        return frame
+
+    def legend_visible(self) -> bool:
+        return bool(getattr(self, '_legend_visible', True))
+
+    def set_legend_visible(self, visible: bool):
+        self._legend_visible = bool(visible)
+        self._refresh_legend_chrome()
+
+    def toggle_legend(self) -> bool:
+        self.set_legend_visible(not self.legend_visible())
+        return self.legend_visible()
+
+    def canvas_legend_entries(self) -> list:
+        return list(getattr(self, '_legend_entries', None) or [])
+
+    def set_canvas_legend(self, entries=None):
+        """Push explicit legend rows (list of dicts from canvas_legend_chrome)."""
+        self._legend_entries = [e for e in (entries or []) if isinstance(e, dict)]
+        self._legend_bound = bool(self._legend_entries)
+        self._refresh_legend_chrome()
+
+    def bind_legend_from_specs(self, specs=None, *, judge_ok=None, show_roi: bool = True):
+        """Infer + show legend from overlay specs (annotate/display path)."""
+        try:
+            from desktop.canvas_legend_chrome import entries_from_overlay_specs
+            entries = entries_from_overlay_specs(
+                specs, judge_ok=judge_ok, show_roi=show_roi)
+        except Exception:
+            entries = []
+        self.set_canvas_legend(entries)
+        return entries
+
+    def clear_canvas_legend(self):
+        self._legend_entries = []
+        self._legend_bound = False
+        self._refresh_legend_chrome()
+
+    def _refresh_legend_chrome(self):
+        frame = self._ensure_legend_chrome()
+        lab = self._legend_label
+        entries = list(getattr(self, '_legend_entries', None) or [])
+        show = bool(getattr(self, '_legend_visible', True)) and bool(entries)
+        if not show:
+            frame.hide()
+            return
+        try:
+            from desktop.canvas_legend_chrome import html_legend_block
+            lab.setText(html_legend_block(entries))
+        except Exception:
+            bits = ' · '.join(
+                f"{e.get('label') or e.get('key')}" for e in entries)
+            lab.setText(f'图例\n{bits}' if bits else '图例')
+        frame.adjustSize()
+        self._position_legend_chrome()
+        frame.show()
+        frame.raise_()
+
+    def _position_legend_chrome(self):
+        frame = getattr(self, '_legend_frame', None)
+        if frame is None:
+            return
+        margin = 8
+        vp = self.viewport()
+        frame.adjustSize()
+        # Bottom-left — VisionMaster-style compact key, clear of top chrome.
+        x = margin
+        y = max(margin, vp.height() - frame.height() - margin)
+        frame.move(QPoint(x, y))
 
     
     def clear_geom_overlays(self):

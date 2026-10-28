@@ -1,4 +1,4 @@
-# Open-and-run 样例覆盖（wave148 收口）
+# Open-and-run 样例覆盖（wave148 收口 · wave149 画布图例）
 
 面向「双击 `.sieans` → 运行」的软平台关闭清单。详细菜单见 `projects/README-open-and-run.md`。
 菜单单一来源：`desktop/open_and_run_catalog.py`（「从模板新建」↔「打开示例」↔ 本表同目录）。
@@ -25,4 +25,6 @@
 
 环境：`SIEANS_FORCE=1` 强制单实例。默认调试口 `:19777`。**勿动** `:18280` 与未跟踪的 `os`。
 
-冒烟：`python3 scripts/smoke-wave148-docs-menu-triggers-e2e.py`
+冒烟：`python3 scripts/smoke-wave148-docs-menu-triggers-e2e.py`；wave149 图例：`python3 scripts/smoke-wave149-canvas-legend-e2e.py`
+
+**wave149**：模块结果画布左下角工业暗色图例（OK/NG · ROI · 叠层种类），随 `showOverlay` / overlay bind 开关。
