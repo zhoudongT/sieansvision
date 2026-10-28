@@ -1103,6 +1103,54 @@ class OperatorHmiView(QWidget):
         root.addWidget(self._alarm_okng_seq_cobind_detail)
         self._okng_seq_bits = []  # soft OK/NG sequence for co-bind (page chrome; not chips)
 
+        # Host SM liaison ↔ Comm sendEvents ack/response page co-bind
+        self._liaison_send_ack_cobind_strip = QLabel('联调时间线 ↔ sendEvents 应答/响应共绑 · 待命')
+        self._liaison_send_ack_cobind_strip.setObjectName('hmiLiaisonSendAckResponseCoBindStrip')
+        self._liaison_send_ack_cobind_strip.setWordWrap(True)
+        self._liaison_send_ack_cobind_strip.setStyleSheet(
+            'background:#1a2430;color:#9ec9f0;border:1px solid #3a6a9a;'
+            'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+        )
+        self._liaison_send_ack_cobind_strip.setToolTip(
+            'Host SM liaison timeline ↔ Comm sendEvents ack/response page co-bind'
+        )
+        root.addWidget(self._liaison_send_ack_cobind_strip)
+
+        # Recipe chrome lock ↔ statusVar writeback closed-loop
+        self._chrome_lock_statusvar_loop_strip = QLabel('页铬锁 ↔ statusVar 写回闭环 · 待命')
+        self._chrome_lock_statusvar_loop_strip.setObjectName('hmiChromeLockStatusVarLoopStrip')
+        self._chrome_lock_statusvar_loop_strip.setWordWrap(True)
+        self._chrome_lock_statusvar_loop_strip.setStyleSheet(
+            'background:#1a2430;color:#e0b84a;border:1px solid #7a6a3a;'
+            'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+        )
+        self._chrome_lock_statusvar_loop_strip.setToolTip(
+            'Recipe chrome lock ↔ production_task statusVar writeback closed-loop page'
+        )
+        root.addWidget(self._chrome_lock_statusvar_loop_strip)
+        self._chrome_lock_statusvar_loop_detail = QPlainTextEdit()
+        self._chrome_lock_statusvar_loop_detail.setObjectName('hmiChromeLockStatusVarLoopDetail')
+        self._chrome_lock_statusvar_loop_detail.setReadOnly(True)
+        self._chrome_lock_statusvar_loop_detail.setMaximumHeight(80)
+        self._chrome_lock_statusvar_loop_detail.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#141a24;color:#e0d0a0;'
+        )
+        self._chrome_lock_statusvar_loop_detail.setPlainText('(尚无页铬锁 ↔ statusVar 写回闭环明细)')
+        root.addWidget(self._chrome_lock_statusvar_loop_detail)
+
+        # OK-NG dashboard ↔ Comm recvEvents auto-ack co-update
+        self._okng_recv_autoack_co_update_strip = QLabel('OK-NG ↔ recv自动应答共更 · 待命')
+        self._okng_recv_autoack_co_update_strip.setObjectName('hmiOkNgRecvAutoAckCoUpdateStrip')
+        self._okng_recv_autoack_co_update_strip.setWordWrap(True)
+        self._okng_recv_autoack_co_update_strip.setStyleSheet(
+            'background:#1a2430;color:#c5e1a5;border:1px solid #3a7a5a;'
+            'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+        )
+        self._okng_recv_autoack_co_update_strip.setToolTip(
+            'OK-NG dashboard ↔ Comm recvEvents auto-ack page co-update'
+        )
+        root.addWidget(self._okng_recv_autoack_co_update_strip)
+
         # Always-available default run strip (also used when layout has no 运行控制)
         self._default_strip = QWidget()
         self._default_strip.setObjectName('hmiDefaultStrip')
@@ -3777,6 +3825,199 @@ class OperatorHmiView(QWidget):
         return {
             'summary': summary, 'shown': shown, 'total': total, 'open': open_n,
             'ok': ok_n, 'ng': ng_n, 'seq': seq,
+        }
+
+
+    def co_bind_liaison_send_ack_response(self, *, judge='OK', ack='ACK_OK', recipe='',
+                                          status_var='', tx_n=0, devices=None,
+                                          host_state='Idle', liaison=None, enabled=True):
+        """Host SM liaison timeline ↔ Comm sendEvents ack/response page co-bind."""
+        from datetime import datetime
+        devices = list(devices or [])
+        liaison = list(liaison or [])
+        j = str(judge or 'OK')
+        ts = datetime.now().strftime('%H:%M:%S')
+        try:
+            from desktop.host_state_machine import STATE_ZH
+            st_zh = STATE_ZH.get(host_state, host_state)
+        except Exception:
+            st_zh = host_state
+        text = (
+            f'联调↔sendEvents应答 · [{ts}] okng={j} · ack={ack!r} · host={st_zh} · '
+            f'TX={tx_n} · devices={",".join(devices) or "—"}'
+            + (f' · 配方 {recipe}' if recipe else '')
+            + (f' · {status_var}' if status_var else '')
+            + (f' · codes={",".join(liaison)}' if liaison else '')
+        )
+        lab = getattr(self, '_liaison_send_ack_cobind_strip', None)
+        if lab is not None:
+            lab.setText(text)
+            if str(j).upper() in ('NG', 'FAIL', '不良') or host_state == 'Alarm':
+                lab.setStyleSheet(
+                    'background:#3a1c1c;color:#ffb4b4;border:1px solid #e35d6a;'
+                    'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+                )
+            else:
+                lab.setStyleSheet(
+                    'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                    'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+                )
+        # Soft bump banner
+        ban = getattr(self, '_page_chrome_banner', None)
+        if ban is not None and not getattr(self, '_page_chrome_locked', False):
+            try:
+                ban.setText(
+                    f'页铬 · 联调↔应答共绑 {j} · ack={ack} · host={st_zh}'
+                    + (f' · 配方 {recipe}' if recipe else '')
+                )
+            except Exception:
+                pass
+        # Mirror to host
+        host = getattr(self, '_host_sm', None)
+        if host is not None and hasattr(host, 'set_liaison_send_ack_cobind_strip'):
+            try:
+                host.set_liaison_send_ack_cobind_strip(text, okng=j, host_state=host_state, tx_n=tx_n)
+            except Exception:
+                pass
+        self._live_okng = j
+        self._host_state = host_state
+        return {'okng': j, 'ack': ack, 'tx': tx_n, 'hostState': host_state, 'text': text}
+
+    def apply_chrome_lock_statusvar_writeback_loop(
+            self, *, locked=True, recipe='', variant='', status_var='taskStatus',
+            scope='global', status='', host_state=None, writeback=None, note='换型锁'):
+        """Recipe chrome lock ↔ production_task statusVar writeback closed-loop page."""
+        from datetime import datetime
+        ts = datetime.now().strftime('%H:%M:%S')
+        recipe = str(recipe or getattr(self, '_live_recipe', '') or '—')
+        variant = str(variant or getattr(self, '_live_variant', '') or '')
+        sv = str(status_var or 'taskStatus')
+        scope = str(scope or 'global')
+        writeback = dict(writeback or {})
+        if locked:
+            status = status or 'switching'
+            host_state = host_state or 'Idle'
+        else:
+            status = status or ('running' if host_state == 'Running' else 'ready')
+            host_state = host_state or ('Running' if status == 'running' else 'Idle')
+        # Ensure chrome lock state matches
+        try:
+            self.lock_page_chrome_for_recipe_switch(bool(locked), recipe=recipe, reason=note)
+        except Exception:
+            pass
+        summary = (
+            f'页铬锁↔statusVar闭环 · [{ts}] {"锁定" if locked else "已释/手递"} · '
+            f'配方 {recipe}' + (f'/{variant}' if variant else '') +
+            f' · {scope}.{sv}={status} · host={host_state} · {note}'
+        )
+        lab = getattr(self, '_chrome_lock_statusvar_loop_strip', None)
+        if lab is not None:
+            lab.setText(summary)
+            if locked:
+                lab.setStyleSheet(
+                    'background:#3a3420;color:#e0b84a;border:2px solid #e0b84a;'
+                    'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+                )
+            else:
+                lab.setStyleSheet(
+                    'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                    'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+                )
+        detail = getattr(self, '_chrome_lock_statusvar_loop_detail', None)
+        if detail is not None:
+            lines = [
+                '── Recipe chrome lock ↔ production_task statusVar writeback closed-loop ──',
+                f'[{ts}] locked={locked} · recipe={recipe}' + (f'/{variant}' if variant else ''),
+                f'  bind={scope}.{sv} → {status} · hostState={host_state} · note={note}',
+                f'  writebackKeys={len(writeback)} · targets=pageChromeBanner · statusRail · '
+                f'fixedBars · statusVarBag · recipeLockRail',
+            ]
+            for k, v in list(writeback.items())[:8]:
+                lines.append(f'  {k} = {v}')
+            detail.setPlainText('\n'.join(lines))
+        # Stamp live chrome
+        live = dict(getattr(self, '_live_page_chrome', None) or {})
+        live.update({
+            'recipe': recipe, 'variant': variant, 'statusVar': sv, 'scope': scope,
+            'status': status, 'hostState': host_state, 'chromeLocked': bool(locked),
+        })
+        self._live_page_chrome = live
+        if not locked:
+            try:
+                self.set_recipe_chrome(recipe, variant)
+                self.co_bind_variant_status_page_chrome(
+                    recipe=recipe, variant=variant, status_var=sv, scope=scope,
+                    host_state=host_state, note=note,
+                )
+            except Exception:
+                pass
+        # Mirror host
+        host = getattr(self, '_host_sm', None)
+        if host is not None and hasattr(host, 'set_chrome_lock_statusvar_loop_strip'):
+            try:
+                host.set_chrome_lock_statusvar_loop_strip(
+                    summary, locked=bool(locked), status=status,
+                )
+            except Exception:
+                pass
+        return {
+            'locked': bool(locked), 'recipe': recipe, 'variant': variant,
+            'statusVar': sv, 'scope': scope, 'status': status,
+            'hostState': host_state, 'writeback': writeback, 'text': summary,
+        }
+
+    def co_update_okng_recv_autoack(self, *, judge='OK', recipe='', ok_n=0, ng_n=0,
+                                    ack='OK', devices=None, enabled=True,
+                                    host_state='Idle', payload=''):
+        """OK-NG dashboard ↔ Comm recvEvents auto-ack page co-update."""
+        from datetime import datetime
+        devices = list(devices or [])
+        j = str(judge or 'OK')
+        ts = datetime.now().strftime('%H:%M:%S')
+        total = int(ok_n or 0) + int(ng_n or 0)
+        ytxt = f'{(100.0 * int(ok_n or 0) / total):.1f}%' if total else '—'
+        text = (
+            f'OK-NG↔recv自动应答 · [{ts}] 判定 {j} · OK {ok_n} NG {ng_n} 良率 {ytxt} · '
+            f'ack={ack!r} · devices={",".join(devices) or "—"} · host={host_state}'
+            + (f' · 配方 {recipe}' if recipe else '')
+            + (' · 应答开' if enabled else ' · 应答关·强制')
+        )
+        lab = getattr(self, '_okng_recv_autoack_co_update_strip', None)
+        if lab is not None:
+            lab.setText(text)
+            if str(j).upper() in ('NG', 'FAIL', '不良') or host_state == 'Alarm':
+                lab.setStyleSheet(
+                    'background:#3a1c1c;color:#ffb4b4;border:1px solid #e35d6a;'
+                    'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+                )
+            else:
+                lab.setStyleSheet(
+                    'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                    'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+                )
+        # Co-update OK-NG dashboard
+        try:
+            self.refresh_okng_dashboard_strip(
+                ok_n=ok_n, ng_n=ng_n, judge=j, host_state=host_state,
+                recipe=recipe or None,
+            )
+        except Exception:
+            pass
+        # Soft bump sequence
+        bits = list(getattr(self, '_okng_seq_bits', []) or [])
+        bits.append(1 if str(j).upper() in ('OK', 'PASS', '良', '通过') else 0)
+        self._okng_seq_bits = bits[-48:]
+        host = getattr(self, '_host_sm', None)
+        if host is not None and hasattr(host, 'set_okng_recv_autoack_co_update_strip'):
+            try:
+                host.set_okng_recv_autoack_co_update_strip(
+                    text, okng=j, ok_n=ok_n, ng_n=ng_n, ack=ack,
+                )
+            except Exception:
+                pass
+        return {
+            'okng': j, 'ok': ok_n, 'ng': ng_n, 'ack': ack, 'devices': devices,
+            'hostState': host_state, 'text': text,
         }
 
     def set_recipe_chrome(self, name: str = '', variant: str = ''):

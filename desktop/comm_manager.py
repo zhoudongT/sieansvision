@@ -872,6 +872,96 @@ class CommManagerDialog(QDialog):
         self.tx_status_rail_loop_meta.setStyleSheet('color:#666;font-size:11px;')
         resp_lay.addWidget(self.tx_status_rail_loop_meta)
 
+        # Page chrome: Host SM liaison timeline ↔ sendEvents ack/response co-bind
+        tip_liaison = QLabel(
+            'Host SM 联调时间线 ↔ Comm sendEvents 应答/响应 页共绑：'
+            '出站应答回写联调条，联调事件驱动应答页铬（无现场 TCP）。'
+        )
+        tip_liaison.setWordWrap(True)
+        tip_liaison.setStyleSheet('color:#888;')
+        resp_lay.addWidget(tip_liaison)
+        liaison_bar = QHBoxLayout()
+        self.liaison_ack_cobind_btn = QPushButton('联调↔sendEvents应答 共绑')
+        self.liaison_ack_cobind_btn.setObjectName('commLiaisonSendAckResponseCoBindBtn')
+        self.liaison_ack_cobind_btn.setToolTip(
+            'Host SM liaison timeline ↔ Comm sendEvents ack/response page co-bind'
+        )
+        self.liaison_ack_cobind_btn.clicked.connect(
+            lambda: self.soft_co_bind_liaison_send_ack_response(judge='OK')
+        )
+        liaison_bar.addWidget(self.liaison_ack_cobind_btn)
+        self.liaison_ack_cobind_ng_btn = QPushButton('演示 NG 共绑')
+        self.liaison_ack_cobind_ng_btn.setObjectName('commLiaisonSendAckResponseCoBindNgBtn')
+        self.liaison_ack_cobind_ng_btn.clicked.connect(
+            lambda: self.soft_co_bind_liaison_send_ack_response(judge='NG')
+        )
+        liaison_bar.addWidget(self.liaison_ack_cobind_ng_btn)
+        liaison_bar.addStretch(1)
+        resp_lay.addLayout(liaison_bar)
+        self.liaison_ack_cobind_strip = QPlainTextEdit()
+        self.liaison_ack_cobind_strip.setObjectName('commLiaisonSendAckResponseCoBindStrip')
+        self.liaison_ack_cobind_strip.setReadOnly(True)
+        self.liaison_ack_cobind_strip.setMaximumHeight(110)
+        self.liaison_ack_cobind_strip.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#1a2430;color:#9ec9f0;'
+        )
+        self.liaison_ack_cobind_strip.setPlainText('(尚无 Host SM 联调 ↔ sendEvents 应答/响应 共绑)')
+        self.liaison_ack_cobind_strip.setToolTip(
+            'Host SM liaison timeline ↔ Comm sendEvents ack/response page co-bind'
+        )
+        resp_lay.addWidget(QLabel('联调时间线 ↔ sendEvents 应答/响应 共绑条（页铬）'))
+        resp_lay.addWidget(self.liaison_ack_cobind_strip)
+        self.liaison_ack_cobind_meta = QLabel('(联调↔应答共绑待命)')
+        self.liaison_ack_cobind_meta.setObjectName('commLiaisonSendAckResponseCoBindMeta')
+        self.liaison_ack_cobind_meta.setWordWrap(True)
+        self.liaison_ack_cobind_meta.setStyleSheet('color:#666;font-size:11px;')
+        resp_lay.addWidget(self.liaison_ack_cobind_meta)
+
+        # Page chrome: OK-NG dashboard ↔ recvEvents auto-ack co-update
+        tip_okng_ack = QLabel(
+            'OK-NG 看板 ↔ Comm recvEvents 自动应答 页共更：'
+            '看板判定驱动软收应答时间线，应答回写看板（LocalBus · 无现场 TCP）。'
+        )
+        tip_okng_ack.setWordWrap(True)
+        tip_okng_ack.setStyleSheet('color:#888;')
+        resp_lay.addWidget(tip_okng_ack)
+        okng_ack_bar = QHBoxLayout()
+        self.okng_recv_ack_btn = QPushButton('OK-NG↔recv自动应答 共更')
+        self.okng_recv_ack_btn.setObjectName('commOkNgRecvAutoAckCoUpdateBtn')
+        self.okng_recv_ack_btn.setToolTip(
+            'OK-NG dashboard ↔ Comm recvEvents auto-ack page co-update'
+        )
+        self.okng_recv_ack_btn.clicked.connect(
+            lambda: self.soft_co_update_okng_recv_autoack(judge='OK')
+        )
+        okng_ack_bar.addWidget(self.okng_recv_ack_btn)
+        self.okng_recv_ack_ng_btn = QPushButton('演示 NG 共更')
+        self.okng_recv_ack_ng_btn.setObjectName('commOkNgRecvAutoAckCoUpdateNgBtn')
+        self.okng_recv_ack_ng_btn.clicked.connect(
+            lambda: self.soft_co_update_okng_recv_autoack(judge='NG')
+        )
+        okng_ack_bar.addWidget(self.okng_recv_ack_ng_btn)
+        okng_ack_bar.addStretch(1)
+        resp_lay.addLayout(okng_ack_bar)
+        self.okng_recv_ack_strip = QPlainTextEdit()
+        self.okng_recv_ack_strip.setObjectName('commOkNgRecvAutoAckCoUpdateStrip')
+        self.okng_recv_ack_strip.setReadOnly(True)
+        self.okng_recv_ack_strip.setMaximumHeight(110)
+        self.okng_recv_ack_strip.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#1a2430;color:#c5e1a5;'
+        )
+        self.okng_recv_ack_strip.setPlainText('(尚无 OK-NG 看板 ↔ recvEvents 自动应答 共更)')
+        self.okng_recv_ack_strip.setToolTip(
+            'OK-NG dashboard ↔ Comm recvEvents auto-ack page co-update'
+        )
+        resp_lay.addWidget(QLabel('OK-NG 看板 ↔ recvEvents 自动应答 共更条（页铬）'))
+        resp_lay.addWidget(self.okng_recv_ack_strip)
+        self.okng_recv_ack_meta = QLabel('(OK-NG↔recv自动应答共更待命)')
+        self.okng_recv_ack_meta.setObjectName('commOkNgRecvAutoAckCoUpdateMeta')
+        self.okng_recv_ack_meta.setWordWrap(True)
+        self.okng_recv_ack_meta.setStyleSheet('color:#666;font-size:11px;')
+        resp_lay.addWidget(self.okng_recv_ack_meta)
+
         resp_lay.addStretch(1)
         self.tabs.addTab(resp, '响应')
 
@@ -1952,7 +2042,7 @@ class CommManagerDialog(QDialog):
             )
         except Exception:
             pass
-        return {
+        bag = {
             'devices': devices,
             'ack': ack,
             'enabled': enabled,
@@ -1960,6 +2050,70 @@ class CommManagerDialog(QDialog):
             'lines': list(self._ack_reply_lines),
             'grouped': grouped,
         }
+        # Soft co-update OK-NG dashboard page strip when auto-ack fires (page chrome)
+        try:
+            # Infer soft judge from payload
+            low = str(payload or '').lower()
+            judge = 'NG' if ('okng=ng' in low or ' ok=0' in low or 'ng=1' in low) else 'OK'
+            if 'okng=ok' in low or ' ok=1' in low:
+                judge = 'OK'
+            # Only paint local strip + HMI when co-update widgets exist; avoid recursion
+            if hasattr(self, 'okng_recv_ack_strip') and self.okng_recv_ack_strip is not None:
+                # Lightweight local mirror without re-entering auto-ack
+                from datetime import datetime as _dt
+                _ts = _dt.now().strftime('%H:%M:%S')
+                ok_n = 1 if judge == 'OK' else 0
+                ng_n = 0 if judge == 'OK' else 1
+                page = (
+                    f'── OK-NG ↔ recvEvents auto-ack co-update (from auto-ack) ──\n'
+                    f'[{_ts}] okng={judge} · OK {ok_n} NG {ng_n} · ack={ack!r} · '
+                    f'devices={",".join(devices) or "—"} · enabled={enabled}'
+                )
+                self.okng_recv_ack_strip.setPlainText(page)
+                if hasattr(self, 'okng_recv_ack_meta') and self.okng_recv_ack_meta is not None:
+                    self.okng_recv_ack_meta.setText(
+                        f'共更(自应答) · okng={judge} · ack={ack!r} · '
+                        f'devices={",".join(devices) or "—"}'
+                    )
+                # Push HMI/host without re-calling auto-ack
+                hmi = None
+                host = None
+                try:
+                    w = self.parent()
+                    for _ in range(8):
+                        if w is None:
+                            break
+                        hmi = getattr(w, 'operator_hmi', None) or hmi
+                        host = getattr(w, 'host_state_machine', None) or getattr(w, 'host_sm', None) or host
+                        if hmi is not None or host is not None:
+                            break
+                        w = w.parent() if hasattr(w, 'parent') else None
+                    if hmi is not None and host is None:
+                        host = getattr(hmi, '_host_sm', None)
+                except Exception:
+                    pass
+                if hmi is not None and hasattr(hmi, 'co_update_okng_recv_autoack'):
+                    try:
+                        hmi.co_update_okng_recv_autoack(
+                            judge=judge, ok_n=ok_n, ng_n=ng_n, ack=ack,
+                            devices=devices, enabled=enabled,
+                            host_state='Idle' if judge == 'OK' else 'Alarm',
+                            payload=payload,
+                        )
+                    except Exception:
+                        pass
+                if host is not None and hasattr(host, 'set_okng_recv_autoack_co_update_strip'):
+                    try:
+                        host.set_okng_recv_autoack_co_update_strip(
+                            f'OK-NG↔recv自动应答 · okng={judge} · ack={ack!r}',
+                            okng=judge, ok_n=ok_n, ng_n=ng_n, ack=ack,
+                        )
+                    except Exception:
+                        pass
+                bag['okngCoUpdate'] = {'okng': judge, 'ok': ok_n, 'ng': ng_n}
+        except Exception:
+            pass
+        return bag
 
     def _format_grouped_ack_timeline(self, lines=None):
         """Page-chrome grouped RX/ACK view by device."""
@@ -2375,6 +2529,311 @@ class CommManagerDialog(QDialog):
         return {
             'okng': j, 'hostState': host_state, 'railStatus': rail_status,
             'tx': tx_n, 'devices': devices, 'liaison': liaison, 'pageStrip': page,
+        }
+
+    def soft_co_bind_liaison_send_ack_response(self, *, judge='OK', recipe='', ack='',
+                                               status_var='', snapshot=None):
+        """Host SM liaison timeline ↔ Comm sendEvents ack/response page co-bind (no field TCP)."""
+        from datetime import datetime
+        j = str(judge or 'OK')
+        upper = j.upper()
+        is_ok = upper in ('OK', 'PASS', '良', '通过', 'TRUE', '1', 'ACK')
+        snap = dict(snapshot or {})
+        recipe = str(recipe or snap.get('recipe') or '')
+        status_var = str(status_var or snap.get('statusVar') or '')
+        ts = datetime.now().strftime('%H:%M:%S')
+        # Resolve ack text from response tab
+        if not ack:
+            try:
+                ack = self.resp_ack.text().strip() if hasattr(self, 'resp_ack') else ''
+            except Exception:
+                ack = ''
+        if not ack:
+            ack = 'ACK_OK' if is_ok else 'ACK_NG'
+        try:
+            enabled = bool(self.resp_enabled.isChecked()) if hasattr(self, 'resp_enabled') else True
+        except Exception:
+            enabled = True
+        # Collect sendEvents
+        try:
+            send_rows = list(self.send_table.rows() or [])
+        except Exception:
+            send_rows = []
+        proj = {}
+        try:
+            proj = dict(self.document.project or {})
+        except Exception:
+            proj = {}
+        cm = proj.get('commManager') or {}
+        if not send_rows:
+            send_rows = list(cm.get('sendEvents') or [])
+        if not send_rows:
+            send_rows = [
+                {'name': 'ackResponse', 'device': 'LocalLoop',
+                 'message': 'ACK okng=${flow.okng} ack=${flow.ack} recipe=${flow.recipe}'},
+            ]
+        soft_vars = {
+            'flow': {
+                'okng': j, 'judge': j, 'ack': ack,
+                'resultOk': 1 if is_ok else 0,
+                'resultNg': 0 if is_ok else 1,
+                'taskStatus': 'ready' if is_ok else 'alarm',
+                'recipe': recipe,
+            },
+            'global': {
+                'taskStatus': 'ready' if is_ok else 'alarm',
+                'recipe': recipe, 'ack': ack,
+            },
+        }
+        def _expand(msg, bag):
+            out = str(msg or '')
+            flat = {}
+            for sk, vals in (bag or {}).items():
+                if isinstance(vals, dict):
+                    for k, v in vals.items():
+                        flat[f'{sk}.{k}'] = v
+                        flat[k] = v
+            i = 0
+            while '${' in out and i < 64:
+                i += 1
+                s = out.find('${')
+                e = out.find('}', s)
+                if s < 0 or e < 0:
+                    break
+                key = out[s + 2:e].strip()
+                out = out[:s] + str(flat.get(key, '')) + out[e + 1:]
+            return out
+        devices = []
+        entries = []
+        for ev in send_rows:
+            if not isinstance(ev, dict):
+                continue
+            device = str(ev.get('device') or ev.get('deviceName') or 'LocalLoop')
+            channel = str(ev.get('name') or ev.get('channel') or 'ack')
+            raw = str(ev.get('message') or '')
+            formatted = _expand(raw or f'ACK okng={j} ack={ack}', soft_vars)
+            line = (
+                f'[{ts}] TX→ack {device}/{channel} okng={j} ack={ack!r} '
+                f'bytes={len(formatted.encode("utf-8"))} │ {formatted[:72]}'
+            )
+            entries.append({
+                'device': device, 'channel': channel, 'payload': formatted,
+                'ack': ack, 'okng': j, 'line': line,
+            })
+            if device not in devices:
+                devices.append(device)
+        tx_n = len(entries)
+        # Resolve Host SM + HMI
+        hmi = None
+        host = None
+        try:
+            w = self.parent()
+            for _ in range(8):
+                if w is None:
+                    break
+                hmi = getattr(w, 'operator_hmi', None) or hmi
+                host = getattr(w, 'host_state_machine', None) or getattr(w, 'host_sm', None) or host
+                if hmi is not None or host is not None:
+                    break
+                w = w.parent() if hasattr(w, 'parent') else None
+            if hmi is not None and host is None:
+                host = getattr(hmi, '_host_sm', None)
+        except Exception:
+            pass
+        liaison_codes = []
+        host_state = 'Idle' if is_ok else 'Alarm'
+        if host is not None:
+            try:
+                if hasattr(host, 'set_state'):
+                    host.set_state(host_state, f'sendEvents 应答 {ack} · {j}')
+                if hasattr(host, 'push_liaison_event'):
+                    code = 'ACK_OK_LIAISON' if is_ok else 'ACK_NG_LIAISON'
+                    kind = '应答通过' if is_ok else '应答报警'
+                    host.push_liaison_event(
+                        f'sendEvents应答↔联调 · {j} · ack={ack} · TX={tx_n} · '
+                        f'{",".join(devices) or "LocalLoop"}',
+                        kind=kind, code=code,
+                    )
+                    liaison_codes.append(code)
+                if hasattr(host, 'co_bind_liaison_send_ack_response'):
+                    host.co_bind_liaison_send_ack_response(
+                        judge=j, ack=ack, recipe=recipe, tx_n=tx_n,
+                        devices=devices, host_state=host_state,
+                        liaison=liaison_codes, enabled=enabled,
+                    )
+            except Exception:
+                pass
+        if hmi is not None and hasattr(hmi, 'co_bind_liaison_send_ack_response'):
+            try:
+                hmi.co_bind_liaison_send_ack_response(
+                    judge=j, ack=ack, recipe=recipe, status_var=status_var,
+                    tx_n=tx_n, devices=devices, host_state=host_state,
+                    liaison=liaison_codes, enabled=enabled,
+                )
+            except Exception:
+                pass
+        # Pull recent liaison timeline for page strip
+        lia_lines = []
+        if host is not None and hasattr(host, 'filtered_liaison_events'):
+            try:
+                for e in list(host.filtered_liaison_events(0) or [])[-6:]:
+                    lia_lines.append(
+                        f"  [{e.get('ts') or '?'}] {e.get('code') or '—'} · "
+                        f"{e.get('kind') or ''} · {str(e.get('text') or '')[:60]}"
+                    )
+            except Exception:
+                pass
+        lines = [
+            '── Host SM liaison timeline ↔ Comm sendEvents ack/response page co-bind ──',
+            f'[{ts}] okng={j} · ack={ack!r} · enabled={enabled} · host→{host_state} · '
+            f'TX={tx_n} · devices={",".join(devices) or "—"} · '
+            f'liaison={",".join(liaison_codes) or "—"}',
+            f'  statusVar={status_var or "—"} · recipe={recipe or "—"} · LocalBus · 页铬非芯片',
+            '  ── sendEvents ack TX ──',
+        ]
+        lines.extend(f'  {e["line"]}' for e in entries)
+        if lia_lines:
+            lines.append('  ── Host SM liaison (recent) ──')
+            lines.extend(lia_lines)
+        page = '\n'.join(lines)
+        if hasattr(self, 'liaison_ack_cobind_strip') and self.liaison_ack_cobind_strip is not None:
+            self.liaison_ack_cobind_strip.setPlainText(page)
+            if is_ok:
+                self.liaison_ack_cobind_strip.setStyleSheet(
+                    'font-family:monospace;font-size:11px;background:#1c2a1c;color:#9ed9a8;'
+                )
+            else:
+                self.liaison_ack_cobind_strip.setStyleSheet(
+                    'font-family:monospace;font-size:11px;background:#2a1c1c;color:#ffb4b4;'
+                )
+        if hasattr(self, 'liaison_ack_cobind_meta') and self.liaison_ack_cobind_meta is not None:
+            self.liaison_ack_cobind_meta.setText(
+                f'共绑 · okng={j} · ack={ack!r} · host={host_state} · TX={tx_n} · '
+                f'liaison={",".join(liaison_codes) or "—"} · 联调↔应答页铬'
+            )
+        return {
+            'okng': j, 'ack': ack, 'tx': tx_n, 'devices': devices,
+            'hostState': host_state, 'liaison': liaison_codes,
+            'enabled': enabled, 'pageStrip': page,
+        }
+
+    def soft_co_update_okng_recv_autoack(self, *, judge='OK', recipe='', ok_n=None, ng_n=None,
+                                         snapshot=None, payload=''):
+        """OK-NG dashboard ↔ Comm recvEvents auto-ack page co-update (LocalBus only)."""
+        from datetime import datetime
+        j = str(judge or 'OK')
+        upper = j.upper()
+        is_ok = upper in ('OK', 'PASS', '良', '通过', 'TRUE', '1')
+        snap = dict(snapshot or {})
+        recipe = str(recipe or snap.get('recipe') or '')
+        ts = datetime.now().strftime('%H:%M:%S')
+        if ok_n is None:
+            ok_n = 1 if is_ok else 0
+        if ng_n is None:
+            ng_n = 0 if is_ok else 1
+        ok_n = int(ok_n or 0)
+        ng_n = int(ng_n or 0)
+        # Drive recv auto-ack timeline with OK/NG-flavored payload
+        if not payload:
+            payload = (
+                f'RESULT okng={j} ok={ok_n} ng={ng_n} recipe={recipe or "-"}'
+            )
+        # Temporarily set demo payload if widget present
+        prev_payload = ''
+        if hasattr(self, 'ack_demo_payload') and self.ack_demo_payload is not None:
+            try:
+                prev_payload = self.ack_demo_payload.text()
+                self.ack_demo_payload.setText(payload)
+            except Exception:
+                pass
+        ack_bag = {}
+        try:
+            ack_bag = self._soft_recv_auto_ack_timeline() or {}
+        except Exception:
+            ack_bag = {}
+        if hasattr(self, 'ack_demo_payload') and self.ack_demo_payload is not None and prev_payload:
+            try:
+                self.ack_demo_payload.setText(prev_payload)
+            except Exception:
+                pass
+        ack = str(ack_bag.get('ack') or 'OK')
+        devices = list(ack_bag.get('devices') or [])
+        enabled = bool(ack_bag.get('enabled'))
+        # Resolve HMI / Host for OK-NG dashboard co-update
+        hmi = None
+        host = None
+        try:
+            w = self.parent()
+            for _ in range(8):
+                if w is None:
+                    break
+                hmi = getattr(w, 'operator_hmi', None) or hmi
+                host = getattr(w, 'host_state_machine', None) or getattr(w, 'host_sm', None) or host
+                if hmi is not None or host is not None:
+                    break
+                w = w.parent() if hasattr(w, 'parent') else None
+            if hmi is not None and host is None:
+                host = getattr(hmi, '_host_sm', None)
+        except Exception:
+            pass
+        host_state = 'Idle' if is_ok else 'Alarm'
+        if hmi is not None:
+            try:
+                if hasattr(hmi, 'co_update_okng_recv_autoack'):
+                    hmi.co_update_okng_recv_autoack(
+                        judge=j, recipe=recipe, ok_n=ok_n, ng_n=ng_n,
+                        ack=ack, devices=devices, enabled=enabled,
+                        host_state=host_state, payload=payload,
+                    )
+                elif hasattr(hmi, 'refresh_okng_dashboard_strip'):
+                    hmi.refresh_okng_dashboard_strip(
+                        ok_n=ok_n, ng_n=ng_n, judge=j, host_state=host_state,
+                        recipe=recipe or None,
+                    )
+            except Exception:
+                pass
+        if host is not None and hasattr(host, 'set_okng_recv_autoack_co_update_strip'):
+            try:
+                host.set_okng_recv_autoack_co_update_strip(
+                    f'OK-NG↔recv自动应答 · okng={j} · OK {ok_n} NG {ng_n} · '
+                    f'ack={ack!r} · devices={",".join(devices) or "—"}',
+                    okng=j, ok_n=ok_n, ng_n=ng_n, ack=ack,
+                )
+            except Exception:
+                pass
+        total = ok_n + ng_n
+        ytxt = f'{(100.0 * ok_n / total):.1f}%' if total else '—'
+        lines = [
+            '── OK-NG dashboard ↔ Comm recvEvents auto-ack page co-update ──',
+            f'[{ts}] okng={j} · OK {ok_n} NG {ng_n} 良率 {ytxt} · ack={ack!r} · '
+            f'enabled={enabled} · host={host_state}',
+            f'  devices={",".join(devices) or "—"} · recipe={recipe or "—"} · '
+            f'payload={payload[:60]} · LocalBus · 页铬非芯片',
+            f'  targets=okNgDashboard · recvAutoAckTimeline · groupedReply · pageChrome',
+        ]
+        # Append last few ack timeline lines
+        for ln in list(ack_bag.get('lines') or [])[-6:]:
+            lines.append(f'  {ln}')
+        page = '\n'.join(lines)
+        if hasattr(self, 'okng_recv_ack_strip') and self.okng_recv_ack_strip is not None:
+            self.okng_recv_ack_strip.setPlainText(page)
+            if is_ok:
+                self.okng_recv_ack_strip.setStyleSheet(
+                    'font-family:monospace;font-size:11px;background:#1c2a1c;color:#9ed9a8;'
+                )
+            else:
+                self.okng_recv_ack_strip.setStyleSheet(
+                    'font-family:monospace;font-size:11px;background:#2a1c1c;color:#ffb4b4;'
+                )
+        if hasattr(self, 'okng_recv_ack_meta') and self.okng_recv_ack_meta is not None:
+            self.okng_recv_ack_meta.setText(
+                f'共更 · okng={j} · OK {ok_n} NG {ng_n} · ack={ack!r} · '
+                f'devices={",".join(devices) or "—"} · recv自动应答页铬'
+            )
+        return {
+            'okng': j, 'ok': ok_n, 'ng': ng_n, 'ack': ack, 'devices': devices,
+            'enabled': enabled, 'hostState': host_state, 'pageStrip': page,
+            'ackBag': ack_bag,
         }
 
     def _clear_autoack_send_format_roundtrip(self):

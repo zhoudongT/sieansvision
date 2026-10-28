@@ -805,6 +805,40 @@ class ProductionTaskPanel(QWidget):
         self._prod_tx_status_rail_loop_meta.setStyleSheet('color:#666;font-size:11px;')
         lay.addWidget(self._prod_tx_status_rail_loop_meta)
 
+        # Page-level: recipe chrome lock ↔ statusVar writeback closed-loop
+        lay.addWidget(QLabel('页铬锁 ↔ statusVar 写回闭环（换型 · 页铬）'))
+        self._prod_chrome_lock_statusvar_loop = QPlainTextEdit()
+        self._prod_chrome_lock_statusvar_loop.setObjectName('productionTaskChromeLockStatusVarLoopStrip')
+        self._prod_chrome_lock_statusvar_loop.setReadOnly(True)
+        self._prod_chrome_lock_statusvar_loop.setMaximumHeight(90)
+        self._prod_chrome_lock_statusvar_loop.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#1a2430;color:#e0d0a0;'
+        )
+        self._prod_chrome_lock_statusvar_loop.setPlainText('(尚无页铬锁 ↔ statusVar 写回闭环)')
+        lay.addWidget(self._prod_chrome_lock_statusvar_loop)
+        self._prod_chrome_lock_statusvar_meta = QLabel('(页铬锁↔statusVar闭环待命)')
+        self._prod_chrome_lock_statusvar_meta.setObjectName('productionTaskChromeLockStatusVarLoopMeta')
+        self._prod_chrome_lock_statusvar_meta.setWordWrap(True)
+        self._prod_chrome_lock_statusvar_meta.setStyleSheet('color:#666;font-size:11px;')
+        lay.addWidget(self._prod_chrome_lock_statusvar_meta)
+
+        # Page-level: OK-NG ↔ Comm recvEvents auto-ack co-update mirror
+        lay.addWidget(QLabel('OK-NG 看板 ↔ Comm recv自动应答 共更（页铬）'))
+        self._prod_okng_recv_ack_co = QPlainTextEdit()
+        self._prod_okng_recv_ack_co.setObjectName('productionTaskOkNgRecvAutoAckCoUpdateStrip')
+        self._prod_okng_recv_ack_co.setReadOnly(True)
+        self._prod_okng_recv_ack_co.setMaximumHeight(90)
+        self._prod_okng_recv_ack_co.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#1a2430;color:#c5e1a5;'
+        )
+        self._prod_okng_recv_ack_co.setPlainText('(尚无 OK-NG ↔ recv自动应答 共更)')
+        lay.addWidget(self._prod_okng_recv_ack_co)
+        self._prod_okng_recv_ack_meta = QLabel('(OK-NG↔recv自动应答共更待命)')
+        self._prod_okng_recv_ack_meta.setObjectName('productionTaskOkNgRecvAutoAckCoUpdateMeta')
+        self._prod_okng_recv_ack_meta.setWordWrap(True)
+        self._prod_okng_recv_ack_meta.setStyleSheet('color:#666;font-size:11px;')
+        lay.addWidget(self._prod_okng_recv_ack_meta)
+
         self._prod_result_meta = QLabel()
         self._prod_result_meta.setObjectName('productionTaskResultMeta')
         self._prod_result_meta.setWordWrap(True)
@@ -1798,9 +1832,159 @@ class ProductionTaskPanel(QWidget):
                 self.params['chain'] = prev_chain
             except Exception:
                 pass
+
         return {
             'recipe': recipe, 'variant': variant, 'steps': steps,
             'ok': ok_n, 'ng': ng_n, 'judge': j, 'dryRun': dry_run,
             'chainSteps': len(steps), 'hostState': host_state,
             'statusVar': sv, 'scope': scope,
         }
+
+    def soft_chrome_lock_statusvar_writeback_loop(
+            self, *, locked=True, recipe=None, variant=None, status_var=None,
+            scope=None, status='', host_state='Idle', writeback=None, note='换型锁'):
+        """Recipe chrome lock ↔ statusVar writeback closed-loop (production_task page)."""
+        from datetime import datetime
+        ts = datetime.now().strftime('%H:%M:%S')
+        mapping, cur_status, sv0, scope0, name, recipe0, steps_n = self._writeback_map()
+        recipe = str(recipe if recipe is not None else recipe0 or name or '—')
+        variant = str(variant if variant is not None else
+                      (self.project or {}).get('activeRecipeVariant') or '')
+        sv = str(status_var or sv0 or 'taskStatus')
+        scope = str(scope or scope0 or 'global')
+        if locked:
+            status = status or 'switching'
+            host_state = host_state or 'Idle'
+        else:
+            status = status or ('running' if host_state == 'Running' else 'ready')
+            host_state = host_state or ('Running' if status == 'running' else 'Idle')
+        writeback = dict(writeback or {})
+        # Soft write into params + project vars
+        try:
+            self.params['statusVar'] = sv
+            if recipe and recipe != '—':
+                self.params['recipe'] = recipe
+            # force status into bags
+            proj = self.project if isinstance(self.project, dict) else {}
+            flat = proj.setdefault('variables', {})
+            if not isinstance(flat, dict):
+                flat = {}
+                proj['variables'] = flat
+            bag = flat.setdefault(scope if scope in ('flow', 'global', 'module') else 'global', {})
+            if not isinstance(bag, dict):
+                bag = {}
+                flat[scope if scope in ('flow', 'global', 'module') else 'global'] = bag
+            bag[sv] = status
+            bag[f'{sv}_lock'] = 'locked' if locked else 'open'
+            bag[f'{sv}_recipe'] = recipe
+            bag['hmiTaskStatus'] = status
+            bag['hmiRecipe'] = recipe
+            writeback.update({
+                f'{scope}.{sv}': status,
+                f'{scope}.{sv}_lock': 'locked' if locked else 'open',
+                f'{scope}.{sv}_recipe': recipe,
+                f'{scope}.hmiTaskStatus': status,
+                f'{scope}.hmiRecipe': recipe,
+            })
+            proj['activeRecipeName'] = recipe
+            if variant:
+                proj['activeRecipeVariant'] = variant
+            proj['hmiPageChrome'] = {
+                'recipe': recipe, 'variant': variant, 'status': status,
+                'statusVar': sv, 'scope': scope, 'hostState': host_state,
+                'chromeLocked': bool(locked), 'chainSteps': steps_n,
+            }
+        except Exception:
+            pass
+        lines = [
+            '── Recipe chrome lock ↔ production_task statusVar writeback closed-loop ──',
+            f'[{ts}] locked={locked} · recipe={recipe}' + (f'/{variant}' if variant else ''),
+            f'  {scope}.{sv} → {status} · host={host_state} · chainSteps={steps_n} · note={note}',
+            f'  writeback={writeback}',
+            '  targets=statusVarBag · hmiPageChrome · recipeLockRail · pageChromeBanner · 非芯片',
+        ]
+        page = '\n'.join(lines)
+        if hasattr(self, '_prod_chrome_lock_statusvar_loop') and self._prod_chrome_lock_statusvar_loop is not None:
+            self._prod_chrome_lock_statusvar_loop.setPlainText(page)
+            if locked:
+                self._prod_chrome_lock_statusvar_loop.setStyleSheet(
+                    'font-family:monospace;font-size:11px;background:#3a3420;color:#e0d0a0;'
+                )
+            else:
+                self._prod_chrome_lock_statusvar_loop.setStyleSheet(
+                    'font-family:monospace;font-size:11px;background:#1c2a1c;color:#9ed9a8;'
+                )
+        if hasattr(self, '_prod_chrome_lock_statusvar_meta') and self._prod_chrome_lock_statusvar_meta is not None:
+            self._prod_chrome_lock_statusvar_meta.setText(
+                f'闭环 · {"锁定" if locked else "已释"} · {scope}.{sv}={status} · '
+                f'配方 {recipe} · host={host_state} · 页铬非芯片'
+            )
+        # Local HMI strip
+        if hasattr(self, '_prod_hmi_strip') and self._prod_hmi_strip is not None:
+            self._prod_hmi_strip.setText(
+                f'配方 · {recipe}  │  状态 {status}  │  {scope}.{sv}  │  '
+                f'{"页铬锁定" if locked else "页铬已释"} · {note}'
+            )
+        # Refresh page chrome preview
+        try:
+            if hasattr(self, '_prod_page_chrome') and self._prod_page_chrome is not None:
+                self._prod_page_chrome.setPlainText(
+                    f"banner   = 页铬 · 配方 {recipe} · 状态 {status} · {scope}.{sv}\n"
+                    f"recipe   = {recipe}" + (f" / {variant}" if variant else "") + "\n"
+                    f"status   = {status}  ·  hostState = {host_state}\n"
+                    f"bind     = {scope}.{sv}  ·  chromeLocked = {locked}\n"
+                    f"note     = {note}  ·  writebackKeys = {len(writeback)}\n"
+                    f"targets  = pageChromeBanner · statusRail · statusVarBag · recipeLockRail"
+                )
+        except Exception:
+            pass
+        return {
+            'locked': bool(locked), 'recipe': recipe, 'variant': variant,
+            'statusVar': sv, 'scope': scope, 'status': status,
+            'hostState': host_state, 'writeback': writeback, 'pageStrip': page,
+        }
+
+    def soft_co_update_okng_recv_autoack(self, *, judge='OK', ok_n=None, ng_n=None,
+                                         recipe=None, ack='OK'):
+        """OK-NG ↔ Comm recvEvents auto-ack co-update mirror on production_task page."""
+        from datetime import datetime
+        j = str(judge or 'OK')
+        is_ok = j.upper() in ('OK', 'PASS', '良', '通过', 'TRUE', '1')
+        if ok_n is None:
+            ok_n = 1 if is_ok else 0
+        if ng_n is None:
+            ng_n = 0 if is_ok else 1
+        snap = self._page_chrome_snapshot(trial=False)
+        recipe = str(recipe or snap.get('recipe') or '—')
+        ts = datetime.now().strftime('%H:%M:%S')
+        lines = [
+            '── OK-NG dashboard ↔ Comm recvEvents auto-ack page co-update ──',
+            f'[{ts}] okng={j} · OK {ok_n} NG {ng_n} · ack={ack!r} · recipe={recipe}',
+            f'  statusVar={snap.get("scope")}.{snap.get("statusVar")} · LocalBus · 页铬非芯片',
+        ]
+        page = '\n'.join(lines)
+        if hasattr(self, '_prod_okng_recv_ack_co') and self._prod_okng_recv_ack_co is not None:
+            self._prod_okng_recv_ack_co.setPlainText(page)
+            if is_ok:
+                self._prod_okng_recv_ack_co.setStyleSheet(
+                    'font-family:monospace;font-size:11px;background:#1c2a1c;color:#9ed9a8;'
+                )
+            else:
+                self._prod_okng_recv_ack_co.setStyleSheet(
+                    'font-family:monospace;font-size:11px;background:#2a1c1c;color:#ffb4b4;'
+                )
+        if hasattr(self, '_prod_okng_recv_ack_meta') and self._prod_okng_recv_ack_meta is not None:
+            self._prod_okng_recv_ack_meta.setText(
+                f'共更 · okng={j} · OK {ok_n} NG {ng_n} · ack={ack!r} · 页铬非芯片'
+            )
+        w = self.window()
+        hmi = getattr(w, 'operator_hmi', None) if w is not None else None
+        if hmi is not None and hasattr(hmi, 'co_update_okng_recv_autoack'):
+            try:
+                hmi.co_update_okng_recv_autoack(
+                    judge=j, recipe=recipe, ok_n=ok_n, ng_n=ng_n, ack=ack,
+                    host_state='Idle' if is_ok else 'Alarm',
+                )
+            except Exception:
+                pass
+        return {'okng': j, 'ok': ok_n, 'ng': ng_n, 'ack': ack, 'pageStrip': page}

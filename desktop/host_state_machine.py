@@ -796,6 +796,45 @@ class HostStateMachineWidget(QWidget):
         )
         lay.addWidget(self._alarm_okng_seq_cobind_strip)
 
+        # Host SM liaison ↔ Comm sendEvents ack/response page co-bind
+        self._liaison_send_ack_cobind_strip = QLabel('联调时间线 ↔ sendEvents 应答/响应共绑 · 待命')
+        self._liaison_send_ack_cobind_strip.setObjectName('hostLiaisonSendAckResponseCoBindStrip')
+        self._liaison_send_ack_cobind_strip.setWordWrap(True)
+        self._liaison_send_ack_cobind_strip.setStyleSheet(
+            'background:#1a2430;color:#9ec9f0;border:1px solid #3a6a9a;'
+            'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+        )
+        self._liaison_send_ack_cobind_strip.setToolTip(
+            'Host SM liaison timeline ↔ Comm sendEvents ack/response page co-bind'
+        )
+        lay.addWidget(self._liaison_send_ack_cobind_strip)
+
+        # OK-NG dashboard ↔ Comm recvEvents auto-ack co-update
+        self._okng_recv_autoack_co_update_strip = QLabel('OK-NG ↔ recv自动应答共更 · 待命')
+        self._okng_recv_autoack_co_update_strip.setObjectName('hostOkNgRecvAutoAckCoUpdateStrip')
+        self._okng_recv_autoack_co_update_strip.setWordWrap(True)
+        self._okng_recv_autoack_co_update_strip.setStyleSheet(
+            'background:#1a2430;color:#c5e1a5;border:1px solid #3a7a5a;'
+            'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+        )
+        self._okng_recv_autoack_co_update_strip.setToolTip(
+            'OK-NG dashboard ↔ Comm recvEvents auto-ack page co-update'
+        )
+        lay.addWidget(self._okng_recv_autoack_co_update_strip)
+
+        # Recipe chrome lock ↔ statusVar writeback closed-loop
+        self._chrome_lock_statusvar_loop_strip = QLabel('页铬锁 ↔ statusVar 写回闭环 · 待命')
+        self._chrome_lock_statusvar_loop_strip.setObjectName('hostChromeLockStatusVarLoopStrip')
+        self._chrome_lock_statusvar_loop_strip.setWordWrap(True)
+        self._chrome_lock_statusvar_loop_strip.setStyleSheet(
+            'background:#1a2430;color:#e0b84a;border:1px solid #7a6a3a;'
+            'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+        )
+        self._chrome_lock_statusvar_loop_strip.setToolTip(
+            'Recipe chrome lock ↔ production_task statusVar writeback closed-loop page'
+        )
+        lay.addWidget(self._chrome_lock_statusvar_loop_strip)
+
         # wave22: Alarm 历史联调条（试跑清除 / 换型失败 / 报警清除）
         self._liaison_strip = QLabel('联调 · 等待事件（试跑清除 / 换型失败 / 报警清除）')
         self._liaison_strip.setObjectName('hostLiaisonStrip')
@@ -38249,6 +38288,90 @@ class HostStateMachineWidget(QWidget):
                 f'border-radius:2px;padding:5px 8px;font-size:11px;font-weight:700;'
             )
 
+
+
+    def co_bind_liaison_send_ack_response(self, *, judge='OK', ack='ACK_OK', recipe='',
+                                          tx_n=0, devices=None, host_state='Idle',
+                                          liaison=None, enabled=True):
+        """Host SM liaison timeline ↔ Comm sendEvents ack/response page co-bind."""
+        from datetime import datetime
+        devices = list(devices or [])
+        liaison = list(liaison or [])
+        j = str(judge or 'OK')
+        ts = datetime.now().strftime('%H:%M:%S')
+        # Soft stamp recent liaison into strip
+        lia_n = 0
+        try:
+            lia_n = len(self.filtered_liaison_events(0) or [])
+        except Exception:
+            lia_n = len(getattr(self, '_liaison_events', []) or [])
+        text = (
+            f'联调↔sendEvents应答 · [{ts}] okng={j} · ack={ack!r} · host={host_state} · '
+            f'TX={tx_n} · devices={",".join(devices) or "—"} · liaisonN={lia_n}'
+            + (f' · codes={",".join(liaison)}' if liaison else '')
+            + (f' · 配方 {recipe}' if recipe else '')
+            + (' · 应答开' if enabled else ' · 应答关')
+        )
+        self.set_liaison_send_ack_cobind_strip(
+            text, okng=j, host_state=host_state, tx_n=tx_n,
+        )
+        return {'okng': j, 'ack': ack, 'tx': tx_n, 'liaisonN': lia_n, 'text': text}
+
+    def set_liaison_send_ack_cobind_strip(self, text: str, *, okng: str = '—',
+                                         host_state: str = 'Idle', tx_n: int = 0):
+        lab = getattr(self, '_liaison_send_ack_cobind_strip', None)
+        if lab is None:
+            return
+        lab.setText(text)
+        if str(okng).upper() in ('NG', 'FAIL', '不良') or host_state == 'Alarm':
+            lab.setStyleSheet(
+                'background:#3a1c1c;color:#ffb4b4;border:1px solid #e35d6a;'
+                'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+            )
+        else:
+            lab.setStyleSheet(
+                'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+            )
+
+    def set_okng_recv_autoack_co_update_strip(self, text: str, *, okng: str = '—',
+                                             ok_n: int = 0, ng_n: int = 0, ack: str = ''):
+        lab = getattr(self, '_okng_recv_autoack_co_update_strip', None)
+        if lab is None:
+            return
+        lab.setText(text)
+        if str(okng).upper() in ('NG', 'FAIL', '不良') or int(ng_n or 0) > int(ok_n or 0):
+            lab.setStyleSheet(
+                'background:#3a1c1c;color:#ffb4b4;border:1px solid #e35d6a;'
+                'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+            )
+        else:
+            lab.setStyleSheet(
+                'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+            )
+
+    def set_chrome_lock_statusvar_loop_strip(self, text: str, *, locked: bool = False,
+                                            status: str = ''):
+        lab = getattr(self, '_chrome_lock_statusvar_loop_strip', None)
+        if lab is None:
+            return
+        lab.setText(text)
+        if locked:
+            lab.setStyleSheet(
+                'background:#3a3420;color:#e0b84a;border:2px solid #e0b84a;'
+                'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+            )
+        elif str(status).lower() in ('running', 'ready'):
+            lab.setStyleSheet(
+                'background:#1c3a2a;color:#9ed9a8;border:1px solid #3ecf8e;'
+                'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+            )
+        else:
+            lab.setStyleSheet(
+                'background:#1a2430;color:#e0b84a;border:1px solid #7a6a3a;'
+                'border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700;'
+            )
 
     def _raise_alarm(self):
         """Simulate alarm + emit 状态·报警 so MainWindow / chrome stay in sync."""

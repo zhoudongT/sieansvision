@@ -91,6 +91,37 @@ class RecipeSwitchDialog(QDialog):
         )
         lay.addWidget(self._chrome_lock_rail)
 
+        # Recipe chrome lock ↔ production_task statusVar writeback closed-loop page
+        self._chrome_lock_statusvar_loop = QPlainTextEdit()
+        self._chrome_lock_statusvar_loop.setObjectName('recipeChromeLockStatusVarLoopStrip')
+        self._chrome_lock_statusvar_loop.setReadOnly(True)
+        self._chrome_lock_statusvar_loop.setMaximumHeight(90)
+        self._chrome_lock_statusvar_loop.setStyleSheet(
+            'font-family:monospace;font-size:11px;background:#1a2430;color:#e0d0a0;'
+        )
+        self._chrome_lock_statusvar_loop.setPlainText('(尚无页铬锁 ↔ statusVar 写回闭环)')
+        self._chrome_lock_statusvar_loop.setToolTip(
+            'Recipe chrome lock ↔ production_task statusVar writeback closed-loop page'
+        )
+        lay.addWidget(self._chrome_lock_statusvar_loop)
+        self._chrome_lock_statusvar_meta = QLabel('(页铬锁↔statusVar闭环待命)')
+        self._chrome_lock_statusvar_meta.setObjectName('recipeChromeLockStatusVarLoopMeta')
+        self._chrome_lock_statusvar_meta.setWordWrap(True)
+        self._chrome_lock_statusvar_meta.setStyleSheet('color:#666;font-size:11px;')
+        lay.addWidget(self._chrome_lock_statusvar_meta)
+        lock_loop_bar = QHBoxLayout()
+        self._chrome_lock_statusvar_btn = QPushButton('页铬锁↔statusVar闭环演示')
+        self._chrome_lock_statusvar_btn.setObjectName('recipeChromeLockStatusVarLoopBtn')
+        self._chrome_lock_statusvar_btn.setToolTip(
+            '演示：锁定页铬 → 写回 statusVar=switching → 解锁手递写回 ready/running'
+        )
+        self._chrome_lock_statusvar_btn.clicked.connect(
+            lambda: self.soft_chrome_lock_statusvar_writeback_loop(demo=True)
+        )
+        lock_loop_bar.addWidget(self._chrome_lock_statusvar_btn)
+        lock_loop_bar.addStretch(1)
+        lay.addLayout(lock_loop_bar)
+
         row = QHBoxLayout()
         # 细妆：明确「去运行」入口（无硬件）
         self._goto_run_btn = QPushButton('套用并去运行')
@@ -1046,6 +1077,13 @@ class RecipeSwitchDialog(QDialog):
                 hmi.lock_page_chrome_for_recipe_switch(locked, recipe=recipe, reason='换型')
             except Exception:
                 pass
+        # Closed-loop: chrome lock ↔ statusVar writeback (page-level)
+        try:
+            self.soft_chrome_lock_statusvar_writeback_loop(
+                locked=locked, recipe=recipe, phase='lock' if locked else 'unlock',
+            )
+        except Exception:
+            pass
         return hmi
 
     def _handoff_after_recipe(self, stats=None):
@@ -1292,6 +1330,189 @@ class RecipeSwitchDialog(QDialog):
                 f' · 链 {steps_n} 步 · OK-NG 共更 · 页铬非芯片'
             )
         return {'recipe': name, 'variant': variant, 'bag': bag, 'dryRun': dry_run, 'steps': steps_n}
+
+    def soft_chrome_lock_statusvar_writeback_loop(
+            self, *, locked=None, recipe='', variant='', status_var='', scope='',
+            phase='lock', demo=False, enter_run=True):
+        """Recipe chrome lock ↔ production_task statusVar writeback closed-loop page."""
+        from datetime import datetime
+        ts = datetime.now().strftime('%H:%M:%S')
+        hmi, host = self._host_hmi()
+        proj = {}
+        try:
+            proj = self.document.project if self.document else {}
+        except Exception:
+            proj = {}
+        # Resolve recipe / variant / statusVar
+        if not recipe:
+            try:
+                it = self._recipe_list.currentItem() if hasattr(self, '_recipe_list') else None
+                if it is not None:
+                    recipe = str(it.text() or '')
+            except Exception:
+                pass
+        recipe = str(recipe or proj.get('activeRecipeName') or '—')
+        if not variant:
+            try:
+                variant = str(proj.get('activeRecipeVariant') or '')
+                if not variant and hasattr(self, '_variant_edit'):
+                    variant = self._variant_edit.text().strip()
+            except Exception:
+                variant = ''
+        if not status_var or not scope:
+            status_var = status_var or 'taskStatus'
+            scope = scope or 'global'
+            try:
+                for st in (proj.get('steps') or []):
+                    if isinstance(st, dict) and st.get('operation') == 'production_task':
+                        pr = st.get('params') or {}
+                        status_var = str(pr.get('statusVar') or status_var)
+                        scope = str(pr.get('scope') or scope)
+                        if not recipe or recipe == '—':
+                            recipe = str(pr.get('recipe') or pr.get('taskName') or recipe)
+                        break
+            except Exception:
+                pass
+        # Demo: lock → writeback switching → unlock → writeback ready/running
+        phases = []
+        if demo:
+            phases = [
+                {'locked': True, 'status': 'switching', 'host': 'Idle', 'note': '换型锁定'},
+                {'locked': False, 'status': 'running' if enter_run else 'ready',
+                 'host': 'Running' if enter_run else 'Idle', 'note': '换型手递写回'},
+            ]
+        else:
+            if locked is None:
+                locked = phase == 'lock'
+            status = 'switching' if locked else ('running' if enter_run else 'ready')
+            host_st = 'Idle' if locked else ('Running' if enter_run else 'Idle')
+            phases = [{'locked': bool(locked), 'status': status, 'host': host_st,
+                       'note': '换型锁定' if locked else '换型手递写回'}]
+        last_bag = {}
+        all_wb = {}
+        for ph in phases:
+            status = ph['status']
+            host_st = ph['host']
+            is_locked = ph['locked']
+            note = ph['note']
+            # Writeback into project variables
+            try:
+                flat = proj.setdefault('variables', {})
+                if not isinstance(flat, dict):
+                    flat = {}
+                    proj['variables'] = flat
+                bag = flat.setdefault(scope if scope in ('flow', 'global', 'module') else 'global', {})
+                if not isinstance(bag, dict):
+                    bag = {}
+                    flat[scope if scope in ('flow', 'global', 'module') else 'global'] = bag
+                bag[status_var] = status
+                bag[f'{status_var}_recipe'] = recipe
+                bag[f'{status_var}_lock'] = 'locked' if is_locked else 'open'
+                bag['hmiTaskStatus'] = status
+                bag['hmiRecipe'] = recipe
+                all_wb = {
+                    f'{scope}.{status_var}': status,
+                    f'{scope}.{status_var}_recipe': recipe,
+                    f'{scope}.{status_var}_lock': 'locked' if is_locked else 'open',
+                    f'{scope}.hmiTaskStatus': status,
+                    f'{scope}.hmiRecipe': recipe,
+                }
+                proj['activeRecipeName'] = recipe
+                if variant:
+                    proj['activeRecipeVariant'] = variant
+                proj['hmiPageChrome'] = {
+                    'recipe': recipe, 'variant': variant, 'status': status,
+                    'statusVar': status_var, 'scope': scope, 'hostState': host_st,
+                    'chromeLocked': is_locked,
+                }
+            except Exception:
+                all_wb = {f'{scope}.{status_var}': status}
+            # Drive HMI closed-loop
+            if hmi is not None and hasattr(hmi, 'apply_chrome_lock_statusvar_writeback_loop'):
+                try:
+                    last_bag = hmi.apply_chrome_lock_statusvar_writeback_loop(
+                        locked=is_locked, recipe=recipe, variant=variant,
+                        status_var=status_var, scope=scope, status=status,
+                        host_state=host_st, writeback=all_wb, note=note,
+                    ) or {}
+                except Exception:
+                    last_bag = {}
+            elif hmi is not None and hasattr(hmi, 'lock_page_chrome_for_recipe_switch'):
+                try:
+                    hmi.lock_page_chrome_for_recipe_switch(is_locked, recipe=recipe, reason=note)
+                except Exception:
+                    pass
+            # Find production_task panel and soft writeback
+            panel = None
+            if host is not None:
+                try:
+                    from desktop.production_task_panel import ProductionTaskPanel
+                    for w in host.findChildren(ProductionTaskPanel):
+                        panel = w
+                        break
+                except Exception:
+                    panel = None
+            if panel is not None and hasattr(panel, 'soft_chrome_lock_statusvar_writeback_loop'):
+                try:
+                    panel.soft_chrome_lock_statusvar_writeback_loop(
+                        locked=is_locked, recipe=recipe, variant=variant,
+                        status_var=status_var, scope=scope, status=status,
+                        host_state=host_st, writeback=all_wb, note=note,
+                    )
+                except Exception:
+                    pass
+            self._set_chrome_lock_rail(
+                f'页铬锁 · {"锁定中" if is_locked else "已释/手递"} · 配方 {recipe} · '
+                f'{scope}.{status_var}={status}',
+                locked=is_locked, handoff=not is_locked,
+            )
+            # Host strip
+            hsm = None
+            if host is not None:
+                hsm = getattr(host, 'host_state_machine', None) or getattr(host, 'host_sm', None)
+            if hmi is not None and hsm is None:
+                hsm = getattr(hmi, '_host_sm', None)
+            if hsm is not None and hasattr(hsm, 'set_chrome_lock_statusvar_loop_strip'):
+                try:
+                    hsm.set_chrome_lock_statusvar_loop_strip(
+                        f'页铬锁↔statusVar · {note} · {scope}.{status_var}={status} · '
+                        f'配方 {recipe} · host={host_st}',
+                        locked=is_locked, status=status,
+                    )
+                except Exception:
+                    pass
+        lines = [
+            '── Recipe chrome lock ↔ production_task statusVar writeback closed-loop ──',
+            f'[{ts}] recipe={recipe}' + (f'/{variant}' if variant else '') +
+            f' · demo={demo} · phases={len(phases)}',
+            f'  bind={scope}.{status_var} · lastStatus={phases[-1]["status"]} · '
+            f'lastHost={phases[-1]["host"]} · lockedFinal={phases[-1]["locked"]}',
+            f'  writeback={all_wb}',
+            '  targets=recipeChromeLockRail · hmiPageChrome · statusVarBag · '
+            'prodPanel · hostStrip · 页铬非芯片',
+        ]
+        page = '\n'.join(lines)
+        if hasattr(self, '_chrome_lock_statusvar_loop') and self._chrome_lock_statusvar_loop is not None:
+            self._chrome_lock_statusvar_loop.setPlainText(page)
+            final_locked = phases[-1]['locked']
+            if final_locked:
+                self._chrome_lock_statusvar_loop.setStyleSheet(
+                    'font-family:monospace;font-size:11px;background:#3a3420;color:#e0d0a0;'
+                )
+            else:
+                self._chrome_lock_statusvar_loop.setStyleSheet(
+                    'font-family:monospace;font-size:11px;background:#1c2a1c;color:#9ed9a8;'
+                )
+        if hasattr(self, '_chrome_lock_statusvar_meta') and self._chrome_lock_statusvar_meta is not None:
+            self._chrome_lock_statusvar_meta.setText(
+                f'闭环 · 配方 {recipe} · {scope}.{status_var}={phases[-1]["status"]} · '
+                f'{"锁定" if phases[-1]["locked"] else "已释/手递"} · 页铬非芯片'
+            )
+        return {
+            'recipe': recipe, 'variant': variant, 'statusVar': status_var, 'scope': scope,
+            'phases': phases, 'writeback': all_wb, 'pageStrip': page,
+            'hmiBag': last_bag, 'demo': demo,
+        }
 
     def _co_bind_production_variant_status(self, *, recipe='', variant='', status_var='taskStatus',
                                           scope='global', host_state='Idle'):
