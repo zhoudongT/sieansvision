@@ -1,4 +1,4 @@
-# Open-and-run 样例覆盖（wave148–wave152：软采集 · 运行态预览 · 连续预览节拍）
+# Open-and-run 样例覆盖（wave148–wave153：软采集 · 运行态预览 · 连续预览 · 真机路径壳）
 
 面向「双击 `.sieans` → 运行」的软平台关闭清单。详细菜单见 `projects/README-open-and-run.md`。
 菜单单一来源：`desktop/open_and_run_catalog.py`（「从模板新建」↔「打开示例」↔ 本表同目录）。
@@ -35,3 +35,9 @@
 **wave151**：openAndRun → 运行模式默认折叠 Host/配方/通讯「待命」联调墙；主视图为图像预览/画布 + OK/NG + 运行控制（`hmiCobindStatusToggle` 可展开）。
 
 **wave152**：软连续预览节拍 — `PreviewFrameGate` 丢旧帧 + UI 节流；`ImageView.show_live_frame` 同尺寸原地 setPixmap（无 scene.clear 闪烁）；相机管理/会话对话框/`framePolicy=latest` 贯通。
+
+**wave153**：真机采集路径开工 — `desktop/camera_backends.py` 可插拔 Soft / USB UVC / GenTL 壳；
+相机管理与图像源可切换后端；UVC 走 OpenCV `VideoCapture` 持久会话（`keepConnectionOpen`，不每帧开关）；
+GenTL 无 Producer/CTI 时如实 `not_loaded`/`unsupported`，**不伪造 GenTL 帧**。
+冒烟：`python3 scripts/smoke-wave153-real-camera-path-e2e.py`（无硬件时 Soft 回退 + 断言 UVC 枚举/持久会话契约）。
+TCP 仍未做（下一波等 Allen）。

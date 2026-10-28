@@ -1,4 +1,8 @@
-"""相机管理 — VM IA shell wired to real GenTL/MV session (enumerate → connect → preview)."""
+"""相机管理 — Soft / UVC / GenTL pluggable backends (wave153 real camera path).
+
+Enumerate → connect → persistent session → continuous live preview (PreviewFrameGate).
+GenTL is an honest shell when no Producer is loaded (no fake frames).
+"""
 from __future__ import annotations
 
 from copy import deepcopy
@@ -53,8 +57,10 @@ class CameraManagerDialog(_RpcDialog):
         head.setObjectName('dialogTitle')
         root.addWidget(head)
         hint = QLabel(
-            '设备列表与「连接相机」对齐 VisionMaster：枚举 GenTL/SDK → 选择设备 → 打开连接；'
-            '成功后预览帧进入「全局图像」。完整参数/3D 请用下方「完整相机工作台」。'
+            'wave153：采集后端 Soft / USB UVC / GenTL(壳)。'
+            'UVC 用 OpenCV VideoCapture 持久会话（跨帧保持连接，不每帧开关）；'
+            'GenTL 无 Producer 时如实显示未加载，不伪造帧。'
+            '连接后预览走 PreviewFrameGate 丢旧帧·UI 节流 → 全局图像。'
         )
         hint.setObjectName('dialogHint')
         hint.setWordWrap(True)
@@ -71,7 +77,7 @@ class CameraManagerDialog(_RpcDialog):
         add.clicked.connect(self._add_camera)
         row.addWidget(add)
         refresh = QPushButton('刷新')
-        refresh.setToolTip('重新枚举 GenTL 设备')
+        refresh.setToolTip('按当前采集后端重新枚举设备（Soft / UVC / GenTL）')
         refresh.clicked.connect(self._refresh_devices)
         row.addWidget(refresh)
         ll.addLayout(row)
@@ -87,8 +93,29 @@ class CameraManagerDialog(_RpcDialog):
         right = QTabWidget()
         common = QWidget()
         form = QFormLayout(common)
-        self.gentl = OrangeSwitch(True)
-        form.addRow('GenTL相机', self.gentl)
+        # wave153: Soft vs UVC vs GenTL(placeholder) picker
+        self.backend_kind = QComboBox()
+        self.backend_kind.setObjectName('cameraBackendKind')
+        try:
+            from desktop.camera_backends import picker_choices
+            for lab, kind in picker_choices():
+                self.backend_kind.addItem(lab, kind)
+            idx_uvc = self.backend_kind.findData('uvc')
+            self.backend_kind.setCurrentIndex(idx_uvc if idx_uvc >= 0 else 0)
+        except Exception:
+            self.backend_kind.addItem('软模拟 Soft', 'soft')
+            self.backend_kind.addItem('USB UVC', 'uvc')
+            self.backend_kind.addItem('GenTL / GigE', 'gentl')
+            self.backend_kind.setCurrentIndex(1)
+        self.backend_kind.currentIndexChanged.connect(self._backend_kind_changed)
+        form.addRow('采集后端', self.backend_kind)
+        self.backend_status = QLabel('—')
+        self.backend_status.setObjectName('dialogHint')
+        self.backend_status.setWordWrap(True)
+        form.addRow('后端状态', self.backend_status)
+        # Keep gentl switch as hidden alias (legacy tests / bindings)
+        self.gentl = OrangeSwitch(False)
+        self.gentl.setVisible(False)
         self.enum_mode = QComboBox()
         self.enum_mode.addItems(['枚举', '跨网段IP'])
         form.addRow('类型选择', self.enum_mode)
@@ -180,28 +207,112 @@ class CameraManagerDialog(_RpcDialog):
         super().hideEvent(event)
 
     def refresh(self):
+        self._refresh_backend_status()
         if not self.backend.is_ready:
             self.message.setText('原生引擎尚未就绪，无法枚举相机。请稍后重试或重启桌面端。')
+            # Soft/UVC can still local-enumerate for UI
+            if self._current_kind() in ('soft', 'uvc'):
+                self._refresh_devices()
             return
-        if not self._has('camera/providers'):
+        kind = self._current_kind()
+        if kind == 'gentl' and not self._has('camera/providers'):
             self._request('camera/providers', {}, self._on_providers, kind='status')
+        elif kind in ('soft', 'uvc'):
+            self._refresh_devices()
         if not self._has('camera/session/status'):
             self._request('camera/session/status', {}, self._on_session, kind='status')
 
+    def _current_kind(self) -> str:
+        if hasattr(self, 'backend_kind'):
+            return str(self.backend_kind.currentData() or 'uvc')
+        return 'gentl' if self.gentl.isChecked() else 'uvc'
+
+    def _backend_kind_changed(self, *_):
+        kind = self._current_kind()
+        self._suppress_connect = True
+        try:
+            self.gentl.setChecked(kind == 'gentl')
+        finally:
+            self._suppress_connect = False
+        self._refresh_backend_status()
+        self.provider.setEnabled(kind == 'gentl')
+        self.provider.setVisible(kind == 'gentl')
+        if kind == 'gentl':
+            if self.backend.is_ready and not self._has('camera/providers'):
+                self._request('camera/providers', {}, self._on_providers, kind='status')
+            elif self.provider.currentData():
+                self._refresh_devices()
+        else:
+            self._refresh_devices()
+        self._buttons()
+
+    def _refresh_backend_status(self):
+        if not hasattr(self, 'backend_status'):
+            return
+        try:
+            from desktop.camera_backends import get_backend
+            avail = get_backend(self._current_kind()).availability()
+            zh = avail.get('statusZh') or avail.get('status') or '—'
+            st = avail.get('status') or ''
+            self.backend_status.setText(f'[{st}] {zh}')
+            if st in ('unsupported', 'not_loaded') and self._current_kind() == 'gentl':
+                self.message.setText(zh)
+        except Exception as exc:
+            self.backend_status.setText(f'状态读取失败：{exc}')
+
     def _refresh_devices(self):
+        kind = self._current_kind()
+        if kind == 'soft':
+            try:
+                from desktop.camera_backends import SoftBackend
+                items = SoftBackend().enumerate_local()
+                self._on_list({'result': {'items': items, 'simulated': True}})
+                self.message.setText('软模拟设备已列出（无需硬件）。')
+            except Exception as exc:
+                self.message.setText(f'软模拟枚举失败：{exc}')
+            return
         if not self.backend.is_ready:
-            self.message.setText('引擎未就绪，无法枚举。')
+            if kind == 'uvc':
+                try:
+                    from desktop.camera_backends import UvcBackend, soft_fallback_devices
+                    items = UvcBackend().enumerate_local()
+                    if not items:
+                        items = soft_fallback_devices()
+                        self._on_list({'result': {'items': items, 'simulated': True}})
+                        self.message.setText('引擎未就绪且无 UVC 设备 — 已软回退到模拟相机（CI-safe）。')
+                    else:
+                        self._on_list({'result': {'items': items}})
+                        self.message.setText(f'引擎未就绪；本机 UVC 枚举到 {len(items)} 台（连接仍需引擎）。')
+                except Exception as exc:
+                    self.message.setText(f'引擎未就绪，无法枚举：{exc}')
+            else:
+                self.message.setText('引擎未就绪，无法枚举。')
             return
-        if not self.gentl.isChecked():
-            # UVC fallback enumerate
-            self._request('camera/list', {'driver': 'uvc'}, self._on_list)
-            return
-        provider = self.provider.currentData() or ''
-        if not provider:
-            self.message.setText('请先选择可用的 GenTL / SDK 驱动文件（CTI）。')
-            return
-        self.message.setText('正在枚举 GenTL 设备…')
-        self._request('camera/list', {'driver': 'gentl', 'providerId': provider}, self._on_list)
+        try:
+            from desktop.camera_backends import get_backend
+            be = get_backend(kind)
+            avail = be.availability()
+            if kind == 'gentl' and not avail.get('available'):
+                self._on_list({'result': {'items': []}})
+                self.message.setText(avail.get('statusZh') or 'GenTL 未加载')
+                self._refresh_backend_status()
+                return
+            provider = self.provider.currentData() or ''
+            if kind == 'gentl' and not provider:
+                self.message.setText('请先选择可用的 GenTL / SDK 驱动文件（CTI）。')
+                return
+            self.message.setText(f'正在枚举 {be.label()} 设备…')
+            self._request('camera/list', be.list_rpc_params(provider_id=provider), self._on_list)
+        except Exception:
+            if kind == 'uvc':
+                self._request('camera/list', {'driver': 'uvc'}, self._on_list)
+            elif kind == 'gentl':
+                provider = self.provider.currentData() or ''
+                if not provider:
+                    self.message.setText('请先选择可用的 GenTL / SDK 驱动文件（CTI）。')
+                    return
+                self.message.setText('正在枚举 GenTL 设备…')
+                self._request('camera/list', {'driver': 'gentl', 'providerId': provider}, self._on_list)
 
     def _on_providers(self, value):
         info = value.get('result', {}) if isinstance(value, dict) else {}
@@ -227,9 +338,10 @@ class CameraManagerDialog(_RpcDialog):
             f"GenTL 驱动 {self.provider.count()} 项 · harvesters={harv} · "
             f"RealSense={info.get('realsense') or '未装'} · Orbbec={info.get('orbbec') or '未装'}"
         )
-        # Auto-enumerate when a producer is available
-        if self.provider.currentData():
+        # Auto-enumerate when GenTL kind + producer available
+        if self._current_kind() == 'gentl' and self.provider.currentData():
             self._refresh_devices()
+        self._refresh_backend_status()
 
     def _on_list(self, value):
         result = value.get('result', {}) if isinstance(value, dict) else {}
@@ -257,10 +369,28 @@ class CameraManagerDialog(_RpcDialog):
                 self.devices.addItem(QListWidgetItem('1 全局相机1'))
         else:
             sim = result.get('simulated')
-            self.message.setText(
-                '未发现设备。请确认 MV-CB013 USB 已插入、MVS/CTI 可用，且未被其它程序占用。'
-                + ('（当前为模拟驱动）' if sim else '')
-            )
+            kind = self._current_kind()
+            if kind == 'gentl':
+                try:
+                    from desktop.camera_backends import get_backend
+                    zh = get_backend('gentl').availability().get('statusZh') or ''
+                except Exception:
+                    zh = ''
+                self.message.setText(
+                    (zh + ' — ') if zh else ''
+                    + '未发现 GenTL 设备。请确认 CTI/Producer 与相机在线，且未被占用。'
+                    + ('（当前为模拟驱动）' if sim else '')
+                )
+            elif kind == 'uvc':
+                self.message.setText(
+                    '未发现 UVC 设备。可插入 USB 摄像头后点刷新；无硬件时可选「软模拟 Soft」。'
+                    + ('（当前为模拟驱动）' if sim else '')
+                )
+            else:
+                self.message.setText(
+                    '未发现设备。'
+                    + ('（当前为模拟驱动）' if sim else '')
+                )
         self._buttons()
 
     def _pick_changed(self):
@@ -268,20 +398,45 @@ class CameraManagerDialog(_RpcDialog):
 
     def _params(self):
         device_id = self.camera_pick.currentData() or ''
-        if self.gentl.isChecked():
+        kind = self._current_kind()
+        try:
+            from desktop.camera_backends import get_backend
+            return get_backend(kind).connect_params(
+                device_id or ('synthetic-parts' if kind == 'soft' else '0'),
+                provider_id=self.provider.currentData() or '',
+            )
+        except Exception:
+            if kind == 'gentl' or self.gentl.isChecked():
+                return {
+                    'driver': 'gentl',
+                    'providerId': self.provider.currentData() or '',
+                    'deviceId': device_id,
+                    'timeoutMs': 5000,
+                    'trigger': 'freerun',
+                    'keepConnectionOpen': True,
+                    'openClosePerGrab': False,
+                    'backendKind': 'gentl',
+                }
+            if kind == 'soft':
+                return {
+                    'driver': 'simulator',
+                    'deviceId': device_id or 'synthetic-parts',
+                    'timeoutMs': 5000,
+                    'trigger': 'freerun',
+                    'keepConnectionOpen': True,
+                    'openClosePerGrab': False,
+                    'backendKind': 'soft',
+                }
             return {
-                'driver': 'gentl',
-                'providerId': self.provider.currentData() or '',
-                'deviceId': device_id,
+                'driver': 'uvc',
+                'deviceId': device_id or '0',
                 'timeoutMs': 5000,
                 'trigger': 'freerun',
+                'keepConnectionOpen': True,
+                'openClosePerGrab': False,
+                'backendKind': 'uvc',
+                'warmupFrames': 3,
             }
-        return {
-            'driver': 'uvc',
-            'deviceId': device_id or '0',
-            'timeoutMs': 5000,
-            'trigger': 'freerun',
-        }
 
     def _on_connect_toggled(self, on):
         if self._suppress_connect:
@@ -301,10 +456,21 @@ class CameraManagerDialog(_RpcDialog):
             self._set_connect(False)
             self.message.setText('请先在「选择相机」中选中一台设备（不要选 Close）。')
             return
-        if self.gentl.isChecked() and not (self.provider.currentData() or ''):
+        if self._current_kind() == 'gentl' and not (self.provider.currentData() or ''):
             self._set_connect(False)
-            self.message.setText('缺少 GenTL / SDK 驱动（CTI）。请安装 MVS 或设置 SIEANS_GENTL_CTI。')
+            try:
+                from desktop.camera_backends import get_backend
+                zh = get_backend('gentl').availability().get('statusZh') or ''
+            except Exception:
+                zh = ''
+            self.message.setText(
+                zh or '缺少 GenTL / SDK 驱动（CTI）。请安装 MVS 或设置 SIEANS_GENTL_CTI。'
+            )
             return
+        # Soft always has a device after enumerate; UVC needs a real pick
+        if self._current_kind() == 'soft' and not device_id:
+            # auto-pick synthetic
+            pass
         params = self._params()
         attempts = 2 if self.reconnect.isChecked() else 0
         body = dict(
@@ -353,7 +519,8 @@ class CameraManagerDialog(_RpcDialog):
             chrome = summ.get('summary') or text
             self.preview_meta.setText(chrome)
             self.preview_meta.setToolTip(text)
-            self.message.setText(chrome if not err else text)
+            # Keep actionable status (含「已连接」) on message; chrome densify on preview_meta
+            self.message.setText(text if (st == 'running' or err) else (chrome or text))
             want = live_preview_interval_ms(manager=True)
             if self._live_timer.interval() != want:
                 self._live_timer.setInterval(want)
@@ -560,11 +727,22 @@ class CameraManagerDialog(_RpcDialog):
         self.accept()
 
     def _buttons(self):
-        busy = self._busy() or not self.backend.is_ready
+        kind = self._current_kind()
+        # Soft enumerate works without engine; connect still needs engine except soft-sim path messaging
+        engine_needed = kind != 'soft'
+        busy = self._busy() or (engine_needed and not self.backend.is_ready)
         has_device = bool(self.camera_pick.currentData())
         running = self._session.get('state') == 'running'
         self.camera_pick.setEnabled(not busy and not running)
-        self.provider.setEnabled(not busy and not running and self.gentl.isChecked())
-        self.gentl.setEnabled(not busy and not running)
+        if hasattr(self, 'backend_kind'):
+            self.backend_kind.setEnabled(not busy and not running)
+        self.provider.setEnabled(not busy and not running and kind == 'gentl')
+        self.provider.setVisible(kind == 'gentl')
+        self.gentl.setEnabled(False)  # hidden alias; kind combo is source of truth
         # connect switch stays enabled so user can disconnect while running
-        self.connect_sw.setEnabled(not busy and (has_device or running or self.connect_sw.isChecked()))
+        soft_ok = kind == 'soft' and has_device
+        self.connect_sw.setEnabled(
+            (not busy and (has_device or running or self.connect_sw.isChecked()))
+            or (soft_ok and not running)
+            or running
+        )

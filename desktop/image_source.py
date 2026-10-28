@@ -30,6 +30,7 @@ DEFAULT_SOURCE = dict(
     triggerChar='',
     cameraId='',
     cameraParams={},
+    acquisitionBackend='soft',  # soft | uvc | gentl (wave153)
     exposure=0.0,
     gain=0.0,
     images=[],
@@ -249,6 +250,27 @@ class ImageSourceForm(QWidget):
         cam_form.addRow('关联相机', cam_wrap)
         self.camera_combo.currentIndexChanged.connect(
             lambda: self._audit('cameraId', self.camera_combo.currentData() or ''))
+        # wave153: Soft / UVC / GenTL picker (mirrors camera_manager)
+        self.acq_backend = QComboBox()
+        self.acq_backend.setObjectName('imageSourceAcqBackend')
+        try:
+            from desktop.camera_backends import picker_choices
+            for lab, kind in picker_choices():
+                self.acq_backend.addItem(lab, kind)
+        except Exception:
+            self.acq_backend.addItem('软模拟 Soft', 'soft')
+            self.acq_backend.addItem('USB UVC', 'uvc')
+            self.acq_backend.addItem('GenTL / GigE', 'gentl')
+        cur_be = str(cfg.get('acquisitionBackend') or (cfg.get('cameraParams') or {}).get('backendKind') or 'soft')
+        idx = self.acq_backend.findData(cur_be)
+        self.acq_backend.setCurrentIndex(idx if idx >= 0 else 0)
+        self.acq_backend.currentIndexChanged.connect(self._on_acq_backend)
+        cam_form.addRow('采集后端', self.acq_backend)
+        self.acq_backend_hint = QLabel('')
+        self.acq_backend_hint.setObjectName('dialogHint')
+        self.acq_backend_hint.setWordWrap(True)
+        cam_form.addRow(self.acq_backend_hint)
+        self._refresh_acq_backend_hint()
         _dspin(cam_form, '控制曝光', cfg.get('exposure', 0.0), 0, 1e9,
                lambda v: self._audit('exposure', float(v)))
         _dspin(cam_form, '控制增益', cfg.get('gain', 0.0), 0, 1e6,
@@ -259,9 +281,9 @@ class ImageSourceForm(QWidget):
         self.sdk_box.setObjectName('propertySection')
         sdk_layout = QVBoxLayout(self.sdk_box)
         note = QLabel(
-            '通过本机 GenTL / 海康 MVS SDK 连接工业相机并取图。'
-            '请点下方按钮打开「相机管理」：枚举 → 选择相机 → 打开「连接相机」；'
-            '预览帧进入「全局图像」后即可运行流程。'
+            'wave153：相机管理支持 Soft / USB UVC / GenTL(壳)。'
+            'UVC 持久 VideoCapture 会话；GenTL 无 Producer 时如实未加载。'
+            '请点下方打开「相机管理」：选后端 → 枚举 → 连接；预览进「全局图像」。'
         )
         note.setWordWrap(True)
         sdk_layout.addWidget(note)
@@ -281,7 +303,7 @@ class ImageSourceForm(QWidget):
         sdk_layout.addWidget(sdk_wrap)
         self.sdk_camera.currentIndexChanged.connect(
             lambda: self._audit('cameraId', self.sdk_camera.currentData() or ''))
-        tip = QLabel('外部进程 SyncRun 注入仍为后续扩展；当前主路径为 GenTL 会话取图。')
+        tip = QLabel('外部进程 SyncRun 注入仍为后续扩展；主路径：Soft 模拟 / UVC 实机 / GenTL 可插拔壳。')
         tip.setWordWrap(True)
         tip.setObjectName('dialogHint')
         sdk_layout.addWidget(tip)
@@ -316,8 +338,38 @@ class ImageSourceForm(QWidget):
         self._apply_mode_visibility()
         self._building = False
 
+
+    def _on_acq_backend(self):
+        kind = self.acq_backend.currentData() or 'soft'
+        self._audit('acquisitionBackend', kind)
+        params = dict(self._cfg.get('cameraParams') or {})
+        params['backendKind'] = kind
+        try:
+            from desktop.camera_backends import driver_for_kind
+            params['driver'] = driver_for_kind(kind)
+        except Exception:
+            params['driver'] = {'soft': 'simulator', 'uvc': 'uvc', 'gentl': 'gentl'}.get(kind, 'simulator')
+        self._audit('cameraParams', params)
+        self._refresh_acq_backend_hint()
+        self._refresh_acq_chrome()
+
+    def _refresh_acq_backend_hint(self):
+        if not hasattr(self, 'acq_backend_hint'):
+            return
+        kind = self.acq_backend.currentData() if hasattr(self, 'acq_backend') else 'soft'
+        try:
+            from desktop.camera_backends import get_backend
+            avail = get_backend(kind).availability()
+            self.acq_backend_hint.setText(f"[{avail.get('status')}] {avail.get('statusZh') or ''}")
+        except Exception as exc:
+            self.acq_backend_hint.setText(str(exc))
+
     def _refresh_acq_chrome(self, session=None):
-        """wave150: densify soft camera / ImageSource acquisition chrome strip."""
+        """wave150/153: densify Soft/UVC/GenTL acquisition chrome strip."""
+        try:
+            self._refresh_acq_backend_hint()
+        except Exception:
+            pass
         if not hasattr(self, '_acq_chrome') or self._acq_chrome is None:
             return
         try:

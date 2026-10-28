@@ -1,3 +1,16 @@
+## wave153 真机路径（Soft / UVC / GenTL 壳）
+
+桌面端新增可插拔后端 `desktop/camera_backends.py`：
+
+| 后端 | 驱动 | 无硬件行为 | 持久会话 |
+|------|------|------------|----------|
+| Soft | simulator | 始终可用 | 是（模拟） |
+| USB UVC | uvc / OpenCV VideoCapture | 枚举空则 Soft 回退（CI-safe） | **是**（打开后跨帧保持，不每 grab 开关） |
+| GenTL / GigE | gentl | 无 CTI/harvesters → `not_loaded`/`unsupported`，不假帧 | 是（Producer 就绪后） |
+
+操作：相机管理 →「采集后端」选 Soft/UVC/GenTL → 刷新枚举 → 连接相机 → 预览（`PreviewFrameGate`）。
+图像源「相机」页同步有采集后端下拉。完整工作台驱动下拉仍含 RealSense/Orbbec（本波不扩）。
+
 # 相机采集：USB UVC / GenTL
 
 ## 海康 USB 实机兼容修复（2026-10-23）

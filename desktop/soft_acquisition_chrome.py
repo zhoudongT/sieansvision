@@ -1,18 +1,20 @@
-"""Soft (file/sim) camera + acquisition operator chrome — open-and-run polish.
+"""Camera acquisition operator chrome — soft + real UVC/GenTL path (wave150–153).
 
-Industrial-dark density for ImageSource / camera session / soft simulator path.
-No real vendor camera SDK, no TCP/Halcon/robot, no Comm/Host cobind cascades,
-no spark/blink/chip micro-prop.
+Industrial-dark density for ImageSource / camera session / Soft·UVC·GenTL picker.
+wave153: real camera path start — UVC VideoCapture persistent session + GenTL shell.
+No Halcon/CLR, robot vendor SDK, cloud, or TCP productization.
+No Comm/Host cobind cascades, no spark/blink/chip micro-prop.
 """
 from __future__ import annotations
 
 from typing import Any
 
 SOFT_DRIVERS = frozenset({'simulator', 'rgbd_simulator', 'file', 'local'})
+REAL_DRIVERS = frozenset({'uvc', 'gentl'})
 CAMERA_CAPTURE_OPS = ('camera_capture',)
 
 OPERATOR_TAG = '采'
-OPERATOR_LABEL = '软采集'
+OPERATOR_LABEL = '采集'
 
 # Industrial dark palette (align canvas_legend / annotate).
 PALETTE = {
@@ -21,6 +23,8 @@ PALETTE = {
     'warn': '#ffb400',
     'info': '#42a5f5',
     'soft': '#66cfff',
+    'uvc': '#4fc3f7',
+    'gentl': '#ab47bc',
     'idle': '#9aa3b2',
     'running': '#00d250',
     'session': '#7c4dff',
@@ -52,6 +56,20 @@ def is_soft_driver(driver: str | None) -> bool:
     return d in SOFT_DRIVERS or d in ('', 'synthetic')
 
 
+def backend_kind_bit(kind: str | None = None, *, soft: bool | None = None, driver: str | None = None) -> str:
+    """Short badge infix: 软 / UVC / GTL / ''."""
+    k = str(kind or '').strip().lower()
+    if not k and driver:
+        try:
+            from desktop.camera_backends import kind_of_driver
+            k = kind_of_driver(driver)
+        except Exception:
+            k = 'soft' if soft else ''
+    if soft is True and not k:
+        k = 'soft'
+    return {'soft': '软', 'uvc': 'UVC', 'gentl': 'GTL'}.get(k, '软' if soft else '')
+
+
 def chrome_badge(
     judge_ok=None,
     status=None,
@@ -59,8 +77,10 @@ def chrome_badge(
     soft: bool | None = None,
     frame_seq: int | None = None,
     ready: bool | None = None,
+    backend_kind: str | None = None,
+    driver: str | None = None,
 ) -> str:
-    """Compact badge: 采软✓ / 采12✓ / 采· / 采✗."""
+    """Compact badge: 采软✓ / 采UVC12✓ / 采GTL· / 采✗."""
     mark = '·'
     if ready is True or judge_ok is True or str(status or '').upper() in (
         'OK', 'PASS', 'RUNNING', 'READY',
@@ -70,10 +90,10 @@ def chrome_badge(
         'NG', 'FAIL', 'ERROR', 'STOPPED',
     ):
         mark = '✗'
-    soft_bit = '软' if soft else ''
+    bit = backend_kind_bit(backend_kind, soft=soft, driver=driver)
     if frame_seq is not None and int(frame_seq) >= 0:
-        return f'{OPERATOR_TAG}{soft_bit}{int(frame_seq)}{mark}'
-    return f'{OPERATOR_TAG}{soft_bit}{mark}'
+        return f'{OPERATOR_TAG}{bit}{int(frame_seq)}{mark}'
+    return f'{OPERATOR_TAG}{bit}{mark}'
 
 
 def soft_capture_ready_reason(params: dict | None = None) -> str:
@@ -156,6 +176,13 @@ def summarize_session(state: dict | None = None, *, params: dict | None = None) 
     device = str(cfg.get('deviceId') or st.get('deviceId') or '').strip()
     running = str(st.get('state') or '').lower() in ('running', 'connected', 'open')
     soft = is_soft_driver(driver) if driver else True
+    try:
+        from desktop.camera_backends import kind_of_driver
+        backend_kind = kind_of_driver(driver, nested=nested if isinstance(nested, dict) else cfg)
+    except Exception:
+        backend_kind = 'soft' if soft else ('uvc' if driver == 'uvc' else ('gentl' if driver == 'gentl' else ''))
+    if soft:
+        backend_kind = 'soft'
     seq = st.get('received')
     if seq is None:
         seq = st.get('frameSequence')
@@ -173,6 +200,8 @@ def summarize_session(state: dict | None = None, *, params: dict | None = None) 
         frame_seq=seq_i,
         ready=running or soft_capture_ready(cfg),
         status='RUNNING' if running else (st.get('state') or 'idle'),
+        backend_kind=backend_kind,
+        driver=driver,
     )
     state_zh = {
         'running': '持续采集中',
@@ -181,10 +210,11 @@ def summarize_session(state: dict | None = None, *, params: dict | None = None) 
         'error': '故障',
         'connecting': '连接中',
     }.get(str(st.get('state') or 'idle').lower(), str(st.get('state') or '未连接'))
+    kind_zh = {'soft': '软模拟', 'uvc': 'USB UVC', 'gentl': 'GenTL'}.get(backend_kind, driver)
     line = ' · '.join(
         x for x in (
             badge,
-            ('软模拟' if soft else driver) if (soft or driver) else None,
+            kind_zh if (soft or driver or backend_kind) else None,
             device or None,
             state_zh,
             f'帧#{seq_i}' if seq_i is not None else None,
@@ -194,6 +224,7 @@ def summarize_session(state: dict | None = None, *, params: dict | None = None) 
     return dict(
         badge=badge,
         soft=soft,
+        backendKind=backend_kind,
         driver=driver or ('simulator' if soft else ''),
         deviceId=device,
         state=str(st.get('state') or 'idle'),
@@ -215,7 +246,8 @@ def session_stat_rows(summary: dict | None = None) -> list[list[str]]:
     s = summary or {}
     rows = [
         ['徽标', str(s.get('badge') or '采·')],
-        ['路径', '软模拟' if s.get('soft') else str(s.get('driver') or '—')],
+        ['路径', {'soft': '软模拟', 'uvc': 'USB UVC', 'gentl': 'GenTL'}.get(str(s.get('backendKind') or ''), '软模拟' if s.get('soft') else str(s.get('driver') or '—'))],
+        ['后端种类', str(s.get('backendKind') or ('soft' if s.get('soft') else '—'))],
         ['驱动', str(s.get('driver') or '—')],
         ['设备', str(s.get('deviceId') or '—')],
         ['状态', str(s.get('stateZh') or s.get('state') or '—')],
@@ -238,10 +270,12 @@ def html_session_strip(summary: dict | None = None) -> str:
     s = summary or summarize_session({})
     badge = s.get('badge') or '采·'
     color = PALETTE['ok'] if s.get('ready') else PALETTE['idle']
-    soft = '软' if s.get('soft') else ''
+    kind = str(s.get('backendKind') or ('soft' if s.get('soft') else ''))
+    bit = backend_kind_bit(kind, soft=s.get('soft'), driver=s.get('driver'))
+    kind_color = PALETTE.get(kind) or PALETTE['soft']
     body = (
         f"<span style='color:{color};font-weight:600'>{badge}</span> "
-        f"<span style='color:{PALETTE['soft']}'>{soft}采集</span> · "
+        f"<span style='color:{kind_color}'>{bit or ''}采集</span> · "
         f"<span style='color:{PALETTE['fg']}'>{s.get('stateZh') or '未连接'}</span>"
     )
     if s.get('deviceId'):
@@ -488,8 +522,10 @@ def live_preview_interval_ms(*, manager: bool = False) -> int:
 def fixed_bar_camera_text(summary: dict | None = None, *, bind: str | None = None) -> str:
     """Short fixed-bar cameraBind live text."""
     s = summary or {}
-    base = (bind or '').strip() or '软采集'
+    kind = str(s.get('backendKind') or ('soft' if s.get('soft') else ''))
+    base = (bind or '').strip() or ({'soft': '软采集', 'uvc': 'UVC采集', 'gentl': 'GenTL采集'}.get(kind, '采集'))
     hint = s.get('badge') or s.get('stateZh') or s.get('state') or '未连接'
-    if s.get('soft'):
-        return f'{base}({hint}·软)'[:28]
+    bit = backend_kind_bit(kind, soft=s.get('soft'), driver=s.get('driver'))
+    if bit:
+        return f'{base}({hint}·{bit})'[:28]
     return f'{base}({hint})'[:28]
