@@ -129,6 +129,77 @@ def pin_groups_from_project(project=None) -> tuple:
 
 
 
+
+def pin_group_picker_entries(groups=None, *, active: str = '') -> list:
+    """Compact pin-group rows for chip RMB picker: [{name,nKeys,active,keysSample}].
+
+    Soft / no hardware — used by canvas hostWatch chip right-click menu.
+    """
+    groups = groups if isinstance(groups, dict) else {}
+    act = str(active or '').strip()
+    rows = []
+    for name, keys in groups.items():
+        n = str(name or '').strip()
+        if not n:
+            continue
+        lst = [str(k).strip() for k in (keys or []) if str(k or '').strip()]
+        rows.append({
+            'name': n,
+            'nKeys': len(lst),
+            'active': bool(act and n == act),
+            'keysSample': lst[:6],
+        })
+    rows.sort(key=lambda r: (0 if r.get('active') else 1, r.get('name') or ''))
+    return rows
+
+
+def resolve_pin_group_from_chip(chip=None, *, name: str = '', project=None) -> dict:
+    """Resolve a pin-group pick from chip/project into an open payload.
+
+    Returns {ok, active, chip, nKeys, nGroups, groups}. Soft / no hardware.
+    """
+    chip = dict(chip) if isinstance(chip, dict) else {}
+    pick = str(name or '').strip()
+    groups = {}
+    if isinstance(project, dict):
+        try:
+            groups, act_proj = pin_groups_from_project(project)
+            if not chip.get('active') and act_proj:
+                chip.setdefault('active', act_proj)
+        except Exception:
+            groups = {}
+    if not groups and chip.get('groupNames'):
+        groups = {str(n): [] for n in (chip.get('groupNames') or []) if str(n or '').strip()}
+        for e in (chip.get('pinGroupEntries') or []):
+            if isinstance(e, dict) and e.get('name') in groups and e.get('keysSample'):
+                groups[str(e['name'])] = list(e.get('keysSample') or [])
+        sample = list(chip.get('sampleKeys') or [])
+        act0 = str(chip.get('active') or '').strip()
+        if act0 and act0 in groups and sample and not groups[act0]:
+            groups[act0] = list(sample)
+    if pick and pick not in groups:
+        groups[pick] = list(chip.get('sampleKeys') or []) if pick == str(chip.get('active') or '') else []
+    if pick:
+        chip['active'] = pick
+    elif not chip.get('active') and groups:
+        chip['active'] = next(iter(groups))
+    chip['groupNames'] = list(groups.keys()) if groups else list(chip.get('groupNames') or [])
+    chip['pinGroupEntries'] = pin_group_picker_entries(groups, active=str(chip.get('active') or ''))
+    chip['restored'] = True
+    chip['kind'] = 'hostWatch'
+    chip['clickAction'] = 'openVarWatch'
+    act = str(chip.get('active') or '')
+    n_keys = len(groups.get(act) or chip.get('sampleKeys') or [])
+    return {
+        'ok': bool(act or groups or chip.get('sampleKeys')),
+        'active': act,
+        'chip': chip,
+        'nKeys': n_keys,
+        'nGroups': len(groups) or len(chip.get('groupNames') or []),
+        'groups': {k: list(v) for k, v in groups.items()},
+    }
+
+
 def format_host_watch_open_chip(keys=None, groups=None, *, active: str = '',
                                 label: str = '') -> dict:
     """Industrial open-chip bag when a project restores hostWatch pins/keys.
@@ -184,7 +255,10 @@ def format_host_watch_open_chip(keys=None, groups=None, *, active: str = '',
         'groupNames': gnames,
         'kind': 'hostWatch',
         'clickAction': 'openVarWatch',
-        'clickHint': '点击打开变量监视板（恢复钉组）',
+        'clickHint': '点击打开变量监视板（恢复钉组）· 右键选钉组',
+        'rmbAction': 'pickPinGroup',
+        'rmbHint': '右键选择钉组后打开监视板',
+        'pinGroupEntries': pin_group_picker_entries(groups, active=act),
     }
 
 

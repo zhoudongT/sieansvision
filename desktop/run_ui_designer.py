@@ -454,9 +454,23 @@ class RunUiDesignerDialog(QDialog):
         bf.addRow(QLabel('开关键'), self.blink_toggle_edit)
         bf.addRow(QLabel('交换'), self.blink_swap_edit)
         bf.addRow(QLabel('间隔'), self.blink_ms_spin)
+        self.blink_conflict_lab = QLabel('')
+        self.blink_conflict_lab.setObjectName('runUiBlinkConflictWarn')
+        self.blink_conflict_lab.setWordWrap(True)
+        self.blink_conflict_lab.setStyleSheet('color:#c88;font-size:11px;padding:2px 0;')
+        self.blink_conflict_lab.setVisible(False)
+        bf.addRow(QLabel('冲突'), self.blink_conflict_lab)
         for w in (self.blink_toggle_edit, self.blink_swap_edit):
             w.editingFinished.connect(self._on_blink_prefs_changed)
+            try:
+                w.textChanged.connect(self._on_blink_conflict_live_check)
+            except Exception:
+                pass
         self.blink_ms_spin.valueChanged.connect(lambda *_: self._on_blink_prefs_changed())
+        try:
+            self._on_blink_conflict_live_check()
+        except Exception:
+            pass
         rl.addWidget(blink_grp)
 
         props = QGroupBox('选中控件属性')
@@ -739,6 +753,10 @@ class RunUiDesignerDialog(QDialog):
                 self.blink_ms_spin.blockSignals(True)
                 self.blink_ms_spin.setValue(ms)
                 self.blink_ms_spin.blockSignals(False)
+            try:
+                self._on_blink_conflict_live_check()
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -753,12 +771,117 @@ class RunUiDesignerDialog(QDialog):
             run_ui['filmstrip'] = bag
         return run_ui
 
-    def _on_blink_prefs_changed(self, *_):
-        """Designer field edit → persist runUi.filmstrip blink chords."""
+    def _blink_reserved_set(self) -> set:
         try:
+            from desktop.widgets.filmstrip import FilmstripBar
+            return set(getattr(FilmstripBar, '_BLINK_RESERVED', None) or set())
+        except Exception:
+            return {
+                'Ctrl+S', 'Ctrl+N', 'Ctrl+O', 'Ctrl+Z', 'Ctrl+Y', 'Ctrl+Return',
+                'Ctrl+Shift+C', 'Ctrl+Shift+V', 'Alt+P', 'Shift+Alt+P', 'Alt+H', 'Alt+L',
+            }
+
+    def _normalize_blink_chord(self, key: str) -> str:
+        k = str(key or '').strip()
+        if not k:
+            return ''
+        try:
+            from PySide6.QtGui import QKeySequence
+            return QKeySequence(k).toString(QKeySequence.SequenceFormat.PortableText) or k
+        except Exception:
+            return k
+
+    def check_blink_reserved_conflicts(self, prefs=None) -> dict:
+        """Live check designer blink chords vs reserved host set.
+
+        Returns {ok, conflicts:[...], toggle, swap, warn}. Soft / no hardware.
+        """
+        prefs = prefs if isinstance(prefs, dict) else self._blink_prefs_from_fields()
+        toggle = self._normalize_blink_chord(prefs.get('blinkToggle') or prefs.get('toggle') or '')
+        swap = self._normalize_blink_chord(prefs.get('blinkSwap') or prefs.get('swap') or '')
+        reserved = self._blink_reserved_set()
+        conflicts = []
+        if toggle and toggle in reserved:
+            conflicts.append({'field': 'toggle', 'key': toggle})
+        if swap and swap in reserved:
+            conflicts.append({'field': 'swap', 'key': swap})
+        if toggle and swap and toggle == swap:
+            conflicts.append({'field': 'both', 'key': toggle, 'reason': 'toggle==swap'})
+        warn = ''
+        if conflicts:
+            bits = []
+            for c in conflicts:
+                if c.get('reason') == 'toggle==swap':
+                    bits.append(f"toggle/swap same [{c.get('key')}]")
+                else:
+                    bits.append(f"{c.get('field')}[{c.get('key')}] reserved")
+            warn = 'reserved conflict: ' + '; '.join(bits) + ' — not written'
+            # Chinese industrial tip
+            warn_cn = []
+            for c in conflicts:
+                if c.get('reason') == 'toggle==swap':
+                    warn_cn.append(f"开关/交换相同「{c.get('key')}」")
+                else:
+                    lab = '开关' if c.get('field') == 'toggle' else '交换'
+                    warn_cn.append(f"{lab}「{c.get('key')}」占保留字")
+            warn = '保留字冲突：' + '；'.join(warn_cn) + ' — 不会写入（避 Ctrl+S / Alt+P 等）'
+        return {
+            'ok': not conflicts,
+            'conflicts': conflicts,
+            'toggle': toggle,
+            'swap': swap,
+            'warn': warn,
+        }
+
+    def _on_blink_conflict_live_check(self, *_):
+        """Live warn label while typing blink chords in designer."""
+        info = self.check_blink_reserved_conflicts()
+        lab = getattr(self, 'blink_conflict_lab', None)
+        if lab is None:
+            return info
+        if info.get('ok'):
+            lab.setText('无冲突')
+            lab.setStyleSheet('color:#6a9;font-size:11px;padding:2px 0;')
+            lab.setVisible(True)
+            for w in (getattr(self, 'blink_toggle_edit', None), getattr(self, 'blink_swap_edit', None)):
+                if w is not None:
+                    try:
+                        w.setStyleSheet('')
+                    except Exception:
+                        pass
+        else:
+            lab.setText(info.get('warn') or '保留字冲突')
+            lab.setStyleSheet(
+                'color:#e88;font-size:11px;font-weight:600;'
+                'background:#2a1818;border:1px solid #a55;border-radius:3px;padding:4px 6px;'
+            )
+            lab.setVisible(True)
+            hit = {c.get('field') for c in (info.get('conflicts') or [])}
+            for field, w in (
+                ('toggle', getattr(self, 'blink_toggle_edit', None)),
+                ('swap', getattr(self, 'blink_swap_edit', None)),
+            ):
+                if w is None:
+                    continue
+                try:
+                    if field in hit or 'both' in hit:
+                        w.setStyleSheet('border:1px solid #c55;background:#2a1818;')
+                    else:
+                        w.setStyleSheet('')
+                except Exception:
+                    pass
+        return info
+
+    def _on_blink_prefs_changed(self, *_):
+        """Designer field edit → persist runUi.filmstrip blink chords (skip if reserved conflict)."""
+        try:
+            info = self._on_blink_conflict_live_check()
+            if info and not info.get('ok'):
+                return
             self._persist()
         except Exception:
             pass
+
 
 
     def _persist(self):

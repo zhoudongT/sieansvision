@@ -582,9 +582,22 @@ class LocateMatchPanel(QWidget):
             self._tpl_trend_spark = MatchScoreSparkWidget(None, width=128, height=28)
             if hasattr(self._tpl_trend_spark, 'setObjectName'):
                 pass  # already named inside
+            self._spark_jump_lab = QLabel('')
+            self._spark_jump_lab.setObjectName('locateMatchSparkJumpLab')
+            self._spark_jump_lab.setStyleSheet('color:#9ad;font-size:11px;')
+            self._spark_jump_lab.setVisible(False)
+            if hasattr(self._tpl_trend_spark, 'set_jump_handler'):
+                self._tpl_trend_spark.set_jump_handler(self._on_spark_frame_jump)
+            try:
+                if hasattr(self._tpl_trend_spark, 'frameJumpRequested'):
+                    self._tpl_trend_spark.frameJumpRequested.connect(self._on_spark_frame_jump)
+            except Exception:
+                pass
             trend_row.addWidget(self._tpl_trend_spark, 0)
+            trend_row.addWidget(self._spark_jump_lab, 0)
         except Exception:
             self._tpl_trend_spark = None
+            self._spark_jump_lab = None
         trend_row.addWidget(self._tpl_trend_lab, 1)
         lib_lay.addLayout(trend_row)
         self._restore_score_trend_label()
@@ -984,6 +997,52 @@ class LocateMatchPanel(QWidget):
                 f"已选用最优「{best.get('name')}」={float(best.get('score') or 0):.3f} → {path}"
             )
             prev.setStyleSheet('color:#2e7d32;font-size:11px;font-weight:600;')
+
+
+    def _on_spark_frame_jump(self, bag=None):
+        """Spark click → jump hint for frame (soft / no hardware)."""
+        bag = bag if isinstance(bag, dict) else {}
+        frame = str(bag.get('frame') or '')
+        label = str(bag.get('label') or '')
+        idx = bag.get('index')
+        score = bag.get('score')
+        ok = bag.get('ok')
+        tip_bits = []
+        if frame:
+            tip_bits.append(f'帧 {frame}')
+        if label:
+            tip_bits.append(label)
+        if idx is not None:
+            tip_bits.append(f'#{int(idx) + 1}')
+        if score is not None:
+            try:
+                tip_bits.append(f'{float(score):.3f}')
+            except Exception:
+                pass
+        if ok is False:
+            tip_bits.append('✗')
+        elif ok is True:
+            tip_bits.append('✓')
+        text = '跳帧 · ' + ' · '.join(tip_bits) if tip_bits else '跳帧'
+        lab = getattr(self, '_spark_jump_lab', None)
+        if lab is not None:
+            lab.setText(text)
+            lab.setVisible(True)
+            lab.setToolTip(
+                f"火花线点击跳帧 · frame={frame or '—'} · label={label or '—'} · 无硬件"
+            )
+        trend_lab = getattr(self, '_tpl_trend_lab', None)
+        if trend_lab is not None and tip_bits:
+            try:
+                prev = trend_lab.text() or ''
+                # keep summary; annotate tip in status via tooltip
+                trend_lab.setToolTip(
+                    (trend_lab.toolTip() or '') + f'\n跳帧 → {text}'
+                )
+            except Exception:
+                pass
+        self._last_spark_jump = dict(bag)
+        return bag
 
     def _score_trend(self):
         from desktop.locate_scoreboard import MatchScoreTrend

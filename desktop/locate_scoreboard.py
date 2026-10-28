@@ -352,6 +352,52 @@ class MatchScoreTrend:
             )
         return '\n'.join(lines)
 
+
+    def point_at(self, index: int) -> dict:
+        """Point by absolute index into the ring buffer (soft)."""
+        pts = self._points
+        try:
+            i = int(index)
+        except (TypeError, ValueError):
+            return {}
+        if i < 0:
+            i = len(pts) + i
+        if 0 <= i < len(pts):
+            return dict(pts[i])
+        return {}
+
+    def hover_tip_at(self, index: int) -> str:
+        """Industrial hover tip for one spark bar / frame point."""
+        pt = self.point_at(index)
+        if not pt:
+            return ''
+        ok = pt.get('ok')
+        mark = '✓' if ok is True else ('✗' if ok is False else '·')
+        frame = str(pt.get('frame') or '')
+        label = str(pt.get('label') or '')
+        tpl = str(pt.get('templateId') or '')
+        abs_i = index if index >= 0 else len(self._points) + index
+        parts = [f'#{abs_i + 1} {mark} {float(pt.get("score") or 0):.3f}']
+        if label:
+            parts.append(label)
+        if frame:
+            parts.append(f'frame={frame}')
+        if tpl:
+            parts.append(f'tpl={tpl}')
+        parts.append('点击跳到该帧')
+        return ' · '.join(parts)
+
+    def index_at_fraction(self, frac: float, *, bar_count: int | None = None) -> int:
+        """Map [0,1] x-fraction across visible spark window → absolute point index."""
+        pts = self._points
+        if not pts:
+            return -1
+        n_vis = min(len(pts), max(4, int(bar_count or 16)))
+        window_start = len(pts) - n_vis
+        f = max(0.0, min(0.999999, float(frac or 0.0)))
+        local = int(f * n_vis)
+        return window_start + local
+
     def to_dict(self) -> dict:
         return {'capacity': self.capacity, 'points': deepcopy(self._points)}
 
@@ -406,49 +452,68 @@ class MatchScoreSparkWidget:
         try:
             from PySide6.QtWidgets import QWidget
             from PySide6.QtGui import QPainter, QColor, QPen, QBrush
-            from PySide6.QtCore import Qt, QRect
+            from PySide6.QtCore import Qt, QRect, Signal
         except Exception:
             return _HeadlessSpark(width=width, height=height)
 
         class _Painted(QWidget):
+            frameJumpRequested = Signal(dict)  # {index,frame,label,score,ok,templateId}
+
             def __init__(self, parent=None):
                 super().__init__(parent)
                 self.setObjectName('matchScoreSparkWidget')
                 self.setFixedHeight(int(height))
                 self.setMinimumWidth(int(width))
-                self.setToolTip('匹配分趋势 · 绘制柱（相对缩放）· 无硬件')
+                self.setToolTip('匹配分趋势 · 悬停看点 · 点击跳帧 · 无硬件')
+                self.setMouseTracking(True)
+                self.setCursor(Qt.CursorShape.PointingHandCursor)
                 self._heights: list[float] = []
                 self._oks: list = []
+                self._points: list = []
+                self._window_start = 0
+                self._bar_count = 16
                 self._unicode = ''
                 self._summary = ''
+                self._hover_local = -1
+                self._last_jump = {}
+                self._on_jump = None
+
+            def set_jump_handler(self, fn):
+                self._on_jump = fn
 
             def set_from_trend(self, trend, *, bar_count: int = 16) -> dict:
                 vals = []
                 oks = []
+                pts = []
+                self._bar_count = max(4, int(bar_count or 16))
                 if trend is not None and hasattr(trend, 'points'):
-                    pts = trend.points()
+                    pts = list(trend.points())
                     vals = [p.get('score') for p in pts]
                     oks = [p.get('ok') for p in pts]
                 elif trend is not None and hasattr(trend, 'values'):
                     vals = list(trend.values())
-                self._heights = spark_bar_heights(vals, width=bar_count, relative=True)
-                self._oks = list(oks[-len(self._heights):]) if oks else []
+                self._heights = spark_bar_heights(vals, width=self._bar_count, relative=True)
+                n = len(self._heights)
+                self._oks = list(oks[-n:]) if oks else []
+                self._points = list(pts[-n:]) if pts else []
+                self._window_start = max(0, len(pts) - n) if pts else 0
                 try:
-                    self._unicode = trend.sparkline(width=bar_count, relative=True) if trend else ''
+                    self._unicode = trend.sparkline(width=self._bar_count, relative=True) if trend else ''
                 except Exception:
                     self._unicode = ''
                 try:
                     self._summary = trend.summary(industrial=True) if trend else ''
                 except Exception:
                     self._summary = ''
-                if self._summary:
-                    self.setToolTip(self._summary + '\n（绘制柱 · unicode=' + (self._unicode or '—') + '）')
+                tip = (self._summary or '匹配分趋势') + '\n悬停柱看帧分 · 点击跳到该帧 · unicode=' + (self._unicode or '—')
+                self.setToolTip(tip)
                 self.update()
                 return {
                     'n': len(self._heights),
                     'unicode': self._unicode,
                     'heights': list(self._heights),
                     'painted': True,
+                    'windowStart': self._window_start,
                 }
 
             def heights(self) -> list:
@@ -456,6 +521,119 @@ class MatchScoreSparkWidget:
 
             def unicode_spark(self) -> str:
                 return self._unicode
+
+            def last_jump(self) -> dict:
+                return dict(self._last_jump or {})
+
+            def hover_index(self) -> int:
+                return int(self._hover_local)
+
+            def _local_index_at(self, x: float) -> int:
+                hs = self._heights
+                if not hs:
+                    return -1
+                n = len(hs)
+                pad = 3
+                gap = 1
+                avail_w = max(1, self.width() - pad * 2)
+                bar_w = max(1, (avail_w - gap * (n - 1)) // n)
+                if x < pad:
+                    return 0
+                rel = x - pad
+                stride = bar_w + gap
+                i = int(rel // stride) if stride else 0
+                return max(0, min(n - 1, i))
+
+            def point_at_local(self, local: int) -> dict:
+                if 0 <= local < len(self._points):
+                    pt = dict(self._points[local])
+                    pt['index'] = self._window_start + local
+                    return pt
+                if 0 <= local < len(self._heights):
+                    return {
+                        'score': self._heights[local],
+                        'ok': self._oks[local] if local < len(self._oks) else None,
+                        'label': f'#{self._window_start + local + 1}',
+                        'frame': '',
+                        'templateId': '',
+                        'index': self._window_start + local,
+                    }
+                return {}
+
+            def hover_tip_for_local(self, local: int) -> str:
+                pt = self.point_at_local(local)
+                if not pt:
+                    return self._summary or ''
+                ok = pt.get('ok')
+                mark = '✓' if ok is True else ('✗' if ok is False else '·')
+                abs_i = int(pt.get('index') if pt.get('index') is not None else local)
+                parts = [f'#{abs_i + 1} {mark} {float(pt.get("score") or 0):.3f}']
+                if pt.get('label'):
+                    parts.append(str(pt['label']))
+                if pt.get('frame'):
+                    parts.append(f"frame={pt['frame']}")
+                if pt.get('templateId'):
+                    parts.append(f"tpl={pt['templateId']}")
+                parts.append('点击跳到该帧')
+                return ' · '.join(parts)
+
+            def jump_to_local(self, local: int) -> dict:
+                pt = self.point_at_local(local)
+                if not pt:
+                    return {}
+                bag = {
+                    'index': int(pt.get('index') if pt.get('index') is not None else local),
+                    'local': local,
+                    'frame': str(pt.get('frame') or ''),
+                    'label': str(pt.get('label') or ''),
+                    'score': float(pt.get('score') or 0),
+                    'ok': pt.get('ok'),
+                    'templateId': str(pt.get('templateId') or ''),
+                }
+                self._last_jump = bag
+                try:
+                    self.frameJumpRequested.emit(bag)
+                except Exception:
+                    pass
+                if callable(self._on_jump):
+                    try:
+                        self._on_jump(bag)
+                    except Exception:
+                        pass
+                return bag
+
+            def mouseMoveEvent(self, event):  # noqa: N802
+                try:
+                    x = float(event.position().x()) if hasattr(event, 'position') else float(event.x())
+                except Exception:
+                    x = 0.0
+                local = self._local_index_at(x)
+                self._hover_local = local
+                tip = self.hover_tip_for_local(local) if local >= 0 else (self._summary or '')
+                if tip:
+                    self.setToolTip(tip)
+                self.update()
+                super().mouseMoveEvent(event)
+
+            def leaveEvent(self, event):  # noqa: N802
+                self._hover_local = -1
+                tip = self._summary or '匹配分趋势'
+                if self._unicode:
+                    tip += '\nunicode=' + self._unicode
+                self.setToolTip(tip)
+                self.update()
+                super().leaveEvent(event)
+
+            def mousePressEvent(self, event):  # noqa: N802
+                try:
+                    if event.button() == Qt.MouseButton.LeftButton:
+                        x = float(event.position().x()) if hasattr(event, 'position') else float(event.x())
+                        local = self._local_index_at(x)
+                        if local >= 0:
+                            self.jump_to_local(local)
+                except Exception:
+                    pass
+                super().mousePressEvent(event)
 
             def paintEvent(self, event):  # noqa: N802
                 painter = QPainter(self)
@@ -486,6 +664,9 @@ class MatchScoreSparkWidget:
                             color = QColor('#b85a4a')
                         else:
                             color = QColor('#4a8ab8')
+                        if i == self._hover_local:
+                            color = color.lighter(130)
+                            painter.fillRect(QRect(x - 1, pad, bar_w + 2, avail_h), QBrush(QColor('#1a2430')))
                         painter.fillRect(QRect(x, y, bar_w, bh), QBrush(color))
                 finally:
                     painter.end()
@@ -501,23 +682,75 @@ class _HeadlessSpark:
     def __init__(self, *, width=120, height=28):
         self._heights = []
         self._unicode = ''
+        self._points = []
+        self._window_start = 0
+        self._last_jump = {}
+        self._hover_local = -1
+        self._on_jump = None
         self._w = width
         self._h = height
 
+    def set_jump_handler(self, fn):
+        self._on_jump = fn
+
     def set_from_trend(self, trend, *, bar_count: int = 16) -> dict:
-        vals = list(trend.values()) if trend is not None and hasattr(trend, 'values') else []
+        pts = list(trend.points()) if trend is not None and hasattr(trend, 'points') else []
+        vals = [p.get('score') for p in pts] if pts else (
+            list(trend.values()) if trend is not None and hasattr(trend, 'values') else []
+        )
         self._heights = spark_bar_heights(vals, width=bar_count, relative=True)
+        n = len(self._heights)
+        self._points = list(pts[-n:]) if pts else []
+        self._window_start = max(0, len(pts) - n) if pts else 0
         try:
             self._unicode = trend.sparkline(width=bar_count, relative=True) if trend else ''
         except Exception:
             self._unicode = ''
-        return {'n': len(self._heights), 'unicode': self._unicode, 'heights': list(self._heights), 'painted': False}
+        return {
+            'n': len(self._heights), 'unicode': self._unicode,
+            'heights': list(self._heights), 'painted': False,
+            'windowStart': self._window_start,
+        }
 
     def heights(self):
         return list(self._heights)
 
     def unicode_spark(self):
         return self._unicode
+
+    def hover_tip_for_local(self, local: int) -> str:
+        if 0 <= local < len(self._points):
+            pt = self._points[local]
+            ok = pt.get('ok')
+            mark = '✓' if ok is True else ('✗' if ok is False else '·')
+            return f"#{self._window_start + local + 1} {mark} {float(pt.get('score') or 0):.3f} · 点击跳到该帧"
+        return ''
+
+    def jump_to_local(self, local: int) -> dict:
+        if local < 0 or local >= max(len(self._points), len(self._heights)):
+            return {}
+        pt = dict(self._points[local]) if local < len(self._points) else {
+            'score': self._heights[local] if local < len(self._heights) else 0,
+        }
+        bag = {
+            'index': self._window_start + local,
+            'local': local,
+            'frame': str(pt.get('frame') or ''),
+            'label': str(pt.get('label') or ''),
+            'score': float(pt.get('score') or 0),
+            'ok': pt.get('ok'),
+            'templateId': str(pt.get('templateId') or ''),
+        }
+        self._last_jump = bag
+        if callable(self._on_jump):
+            try:
+                self._on_jump(bag)
+            except Exception:
+                pass
+        return bag
+
+    def last_jump(self):
+        return dict(self._last_jump or {})
 
 
 def format_side_by_side_diff(diff: dict | None, *, max_rows: int = 60) -> list:

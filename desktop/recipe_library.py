@@ -508,6 +508,74 @@ def rollback_recipe_n_steps(project: dict, n: int = 1, *,
     }
 
 
+
+def export_recipe_rollback_stack(project: dict, *,
+                                 stack_key: str = '_recipeRollbackStack',
+                                 store_key: str = '_recipeRollbackSnap',
+                                 include_snapshots: bool = False) -> dict:
+    """Export rollback history as a soft JSON-serializable bag (no hardware).
+
+    Default strips heavy snapshots; set include_snapshots=True to keep them.
+    Returns {ok, depth, entries, exportedAt, includeSnapshots}.
+    """
+    from datetime import datetime as _dt
+    hist = list_recipe_rollback_stack(project, stack_key=stack_key, store_key=store_key)
+    entries = []
+    stack = (project or {}).get(stack_key) if isinstance(project, dict) else None
+    raw = stack if isinstance(stack, list) else []
+    for i, h in enumerate(hist):
+        row = {
+            'ordinal': i + 1,
+            'name': h.get('name') or '',
+            'recipeId': h.get('recipeId') or '',
+            'appliedAt': h.get('appliedAt') or '',
+            'stats': dict(h.get('stats') or {}),
+        }
+        if include_snapshots and i < len(raw) and isinstance(raw[i], dict):
+            snap = raw[i].get('snapshot')
+            if isinstance(snap, dict):
+                row['snapshot'] = deepcopy(snap)
+        entries.append(row)
+    return {
+        'ok': True,
+        'depth': len(entries),
+        'entries': entries,
+        'exportedAt': _dt.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'includeSnapshots': bool(include_snapshots),
+        'stackKey': stack_key,
+    }
+
+
+def clear_recipe_rollback_stack(project: dict, *,
+                                stack_key: str = '_recipeRollbackStack',
+                                store_key: str = '_recipeRollbackSnap') -> dict:
+    """Clear rollback history stack + one-shot snap (soft). Returns {ok, cleared}."""
+    if not isinstance(project, dict):
+        return {'ok': False, 'cleared': 0, 'reason': 'no project'}
+    depth = recipe_rollback_depth(project, store_key=store_key, stack_key=stack_key)
+    project.pop(stack_key, None)
+    project.pop(store_key, None)
+    return {'ok': True, 'cleared': depth, 'remaining': 0}
+
+
+def rollback_stack_export_csv_rows(export_bag: dict | None) -> list:
+    """Flatten export_recipe_rollback_stack bag into CSV header+rows (no snapshots)."""
+    bag = export_bag if isinstance(export_bag, dict) else {}
+    rows = [['ordinal', 'name', 'recipeId', 'appliedAt', 'applied', 'skipped', 'varsApplied']]
+    for e in (bag.get('entries') or []):
+        st = e.get('stats') or {}
+        rows.append([
+            e.get('ordinal', ''),
+            e.get('name', ''),
+            e.get('recipeId', ''),
+            e.get('appliedAt', ''),
+            st.get('applied', ''),
+            st.get('skipped', ''),
+            st.get('varsApplied', ''),
+        ])
+    return rows
+
+
 def diff_recipe(project: dict, recipe_id: str, *,
                 var_keys=None, step_ops=None, steps_only: bool = False,
                 vars_only: bool = False) -> dict:

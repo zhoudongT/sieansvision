@@ -877,9 +877,23 @@ class MainWindow(QMainWindow):
         try:
             chip_w = getattr(self, '_canvas_status_chip', None)
             if chip_w is not None:
-                hint = chip.get('clickHint') or '点击打开变量监视板（恢复钉组）'
-                chip_w.setToolTip(f'{hint}\n{text}')
+                hint = chip.get('clickHint') or '点击打开变量监视板（恢复钉组）· 右键选钉组'
+                rmb = chip.get('rmbHint') or '右键选择钉组后打开监视板'
+                chip_w.setToolTip(f'{hint}\n{rmb}\n{text}')
                 chip_w.setProperty('hostWatchChip', True)
+                try:
+                    from PySide6.QtCore import Qt as _Qt
+                    chip_w.setContextMenuPolicy(_Qt.ContextMenuPolicy.CustomContextMenu)
+                    # reconnect safely
+                    try:
+                        chip_w.customContextMenuRequested.disconnect()
+                    except Exception:
+                        pass
+                    chip_w.customContextMenuRequested.connect(
+                        self._on_host_watch_chip_context_menu
+                    )
+                except Exception:
+                    pass
         except Exception:
             pass
         try:
@@ -940,6 +954,111 @@ class MainWindow(QMainWindow):
             return True
         except Exception:
             return False
+
+
+    def _on_host_watch_chip_context_menu(self, pos):
+        """Chip right-click → pin-group picker menu (soft / no hardware)."""
+        chip_w = getattr(self, '_canvas_status_chip', None)
+        if chip_w is None:
+            return
+        bag = getattr(self, '_host_watch_open_chip', None)
+        if not isinstance(bag, dict):
+            bag = {
+                'restored': True,
+                'active': getattr(self, '_host_watch_active_pin_group', '') or '',
+                'sampleKeys': list(getattr(self, '_host_watch_seed_keys', None) or []),
+                'groupNames': list((getattr(self, '_host_watch_pin_groups', None) or {}).keys()),
+            }
+        try:
+            from desktop.host_var_watch import pin_group_picker_entries
+            groups = getattr(self, '_host_watch_pin_groups', None) or {}
+            if not groups and isinstance(bag.get('pinGroupEntries'), list):
+                groups = {
+                    str(e.get('name')): list(e.get('keysSample') or [])
+                    for e in bag['pinGroupEntries']
+                    if isinstance(e, dict) and e.get('name')
+                }
+            act = bag.get('active') or getattr(self, '_host_watch_active_pin_group', '') or ''
+            entries = bag.get('pinGroupEntries') or pin_group_picker_entries(groups, active=act)
+            if not entries and groups:
+                entries = pin_group_picker_entries(groups, active=act)
+        except Exception:
+            entries = []
+        try:
+            from PySide6.QtWidgets import QMenu
+            menu = QMenu(chip_w)
+            menu.setObjectName('hostWatchPinGroupPicker')
+            if not entries:
+                act0 = menu.addAction('（无钉组 · 仍打开监视板）')
+                act0.setData('')
+            else:
+                for e in entries:
+                    name = str(e.get('name') or '')
+                    nkeys = int(e.get('nKeys') or 0)
+                    mark = ' ★' if e.get('active') else ''
+                    a = menu.addAction(f'{name}{mark}  · {nkeys}键')
+                    a.setData(name)
+                    if e.get('active'):
+                        try:
+                            f = a.font(); f.setBold(True); a.setFont(f)
+                        except Exception:
+                            pass
+            chosen = menu.exec(chip_w.mapToGlobal(pos) if hasattr(chip_w, 'mapToGlobal') else pos)
+            if chosen is None:
+                return
+            pick = str(chosen.data() or '')
+            self._open_host_watch_pin_group(pick or None)
+        except Exception as err:
+            try:
+                self.log(f'钉组右键菜单失败：{err}')
+            except Exception:
+                pass
+
+    def _open_host_watch_pin_group(self, name=None):
+        """Resolve RMB pick → open var-watch on that pin group (soft)."""
+        bag = getattr(self, '_host_watch_open_chip', None)
+        if not isinstance(bag, dict):
+            bag = {
+                'restored': True,
+                'active': getattr(self, '_host_watch_active_pin_group', '') or '',
+                'sampleKeys': list(getattr(self, '_host_watch_seed_keys', None) or []),
+                'groupNames': list((getattr(self, '_host_watch_pin_groups', None) or {}).keys()),
+            }
+        try:
+            from desktop.host_var_watch import resolve_pin_group_from_chip
+            proj = getattr(self.document, 'project', None)
+            # seed groups from cache if project empty
+            if isinstance(proj, dict):
+                cached = getattr(self, '_host_watch_pin_groups', None) or {}
+                if cached:
+                    hw = proj.setdefault('hostWatch', {}) if isinstance(proj.get('hostWatch'), dict) or proj.get('hostWatch') is None else proj.get('hostWatch')
+                    if isinstance(hw, dict) and not hw.get('pinGroups'):
+                        hw['pinGroups'] = {k: list(v) for k, v in cached.items()}
+                        if getattr(self, '_host_watch_active_pin_group', ''):
+                            hw['activePinGroup'] = self._host_watch_active_pin_group
+            resolved = resolve_pin_group_from_chip(bag, name=str(name or ''), project=proj)
+            chip = resolved.get('chip') or bag
+            if resolved.get('active'):
+                self._host_watch_active_pin_group = resolved['active']
+            if resolved.get('groups'):
+                self._host_watch_pin_groups = dict(resolved['groups'])
+            self._host_watch_open_chip = chip
+            ok = self._open_host_watch_from_chip(chip)
+            try:
+                if ok:
+                    self.statusBar().showMessage(
+                        f"变量监视 · 钉组「{resolved.get('active') or '—'}」· 右键已选 · 无硬件",
+                        4200,
+                    )
+            except Exception:
+                pass
+            return ok
+        except Exception as err:
+            try:
+                self.log(f'打开钉组失败：{err}')
+            except Exception:
+                pass
+            return self._open_host_watch_from_chip(bag)
 
     def _flush_host_watch_pin_groups(self):
         """Persist open watch-board pin groups into project JSON before save."""
@@ -2420,6 +2539,13 @@ class MainWindow(QMainWindow):
         # Chip click: hostWatch → open var-watch on restored group; else dismiss / Esc
         if obj is getattr(self, '_canvas_status_chip', None):
             if event.type() in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease):
+                # Right button → pin-group picker (CustomContextMenu); do not dismiss here
+                try:
+                    btn = event.button()
+                except Exception:
+                    btn = None
+                if btn == Qt.MouseButton.RightButton:
+                    return False  # let customContextMenuRequested fire
                 if event.type() == QEvent.Type.MouseButtonRelease:
                     try:
                         hw = bool(getattr(self, '_canvas_chip_host_watch', False))

@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget,
     QListWidgetItem, QLineEdit, QTextEdit, QMessageBox, QTabWidget, QWidget,
     QFormLayout, QGroupBox, QAbstractItemView, QSplitter, QComboBox, QCheckBox,
-    QTableWidget, QTableWidgetItem, QHeaderView, QSpinBox,
+    QTableWidget, QTableWidgetItem, QHeaderView, QSpinBox, QFileDialog,
 )
 
 from desktop.theme import TEXT, TEXT_MUTED, CARD, LINE
@@ -221,6 +221,18 @@ class RecipeSwitchDialog(QDialog):
         self._rollback_pick_btn.clicked.connect(self._rollback_to_selected)
         self._rollback_pick_btn.setEnabled(False)
         row.addWidget(self._rollback_pick_btn)
+        self._rollback_export_btn = QPushButton('导出栈')
+        self._rollback_export_btn.setObjectName('recipeRollbackExportBtn')
+        self._rollback_export_btn.setToolTip('导出回滚历史栈为 JSON/CSV（不含快照体积）· 无硬件')
+        self._rollback_export_btn.clicked.connect(self._export_rollback_stack)
+        self._rollback_export_btn.setEnabled(False)
+        row.addWidget(self._rollback_export_btn)
+        self._rollback_clear_btn = QPushButton('清空栈')
+        self._rollback_clear_btn.setObjectName('recipeRollbackClearBtn')
+        self._rollback_clear_btn.setToolTip('清空回滚历史栈（不可恢复 · 软清除 · 无硬件）')
+        self._rollback_clear_btn.clicked.connect(self._clear_rollback_stack)
+        self._rollback_clear_btn.setEnabled(False)
+        row.addWidget(self._rollback_clear_btn)
         row.addStretch(1)
         stack_lay.addLayout(row)
         left.addWidget(stack_box)
@@ -690,6 +702,89 @@ class RecipeSwitchDialog(QDialog):
             n_btn.setEnabled(bool(depth))
         if pick_btn is not None:
             pick_btn.setEnabled(bool(depth) and lst.count() > 0)
+        exp_btn = getattr(self, '_rollback_export_btn', None)
+        clr_btn = getattr(self, '_rollback_clear_btn', None)
+        if exp_btn is not None:
+            exp_btn.setEnabled(bool(depth))
+        if clr_btn is not None:
+            clr_btn.setEnabled(bool(depth))
+
+
+    def _export_rollback_stack(self):
+        """Export rollback history stack to JSON or CSV (soft / no snapshots by default)."""
+        p = self.document.project
+        bag = rl.export_recipe_rollback_stack(p)
+        if not bag.get('ok') or not bag.get('depth'):
+            QMessageBox.information(self, '导出栈', '回滚历史栈为空，无可导出。')
+            return
+        path, _filt = QFileDialog.getSaveFileName(
+            self, '导出回滚历史栈',
+            str(self.root / 'recipe-rollback-stack.json'),
+            'JSON (*.json);;CSV (*.csv)',
+        )
+        if not path:
+            return
+        path = str(path)
+        try:
+            if path.lower().endswith('.csv'):
+                import csv
+                rows = rl.rollback_stack_export_csv_rows(bag)
+                with open(path, 'w', encoding='utf-8-sig', newline='') as f:
+                    csv.writer(f).writerows(rows)
+            else:
+                import json
+                with open(path, 'w', encoding='utf-8') as f:
+                    json.dump(bag, f, ensure_ascii=False, indent=2)
+        except Exception as err:
+            QMessageBox.warning(self, '导出失败', str(err))
+            return
+        banner = getattr(self, '_post_banner', None)
+        if banner is not None:
+            banner.setText(
+                f'已导出回滚栈 {bag.get("depth")} 条 → {path} · 无快照体积 · 无硬件'
+            )
+            banner.setStyleSheet(
+                'background:#1a2430;color:#9cd;border:1px solid #3a6a8a;border-radius:4px;'
+                'padding:6px 8px;font-size:12px;font-weight:600;'
+            )
+        QMessageBox.information(
+            self, '导出完成',
+            f'已导出 {bag.get("depth")} 条回滚历史（不含快照体积）。\n{path}',
+        )
+
+    def _clear_rollback_stack(self):
+        """Clear rollback history stack after confirm (soft / irreversible)."""
+        depth = rl.recipe_rollback_depth(self.document.project)
+        if depth <= 0:
+            QMessageBox.information(self, '清空栈', '回滚历史栈已空。')
+            return
+        ans = QMessageBox.question(
+            self, '清空回滚栈',
+            f'将清空全部 {depth} 条回滚历史（不可恢复 · 软清除 · 无硬件）。继续？',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if ans != QMessageBox.StandardButton.Yes:
+            return
+        p = deepcopy(self.document.project)
+        stats = rl.clear_recipe_rollback_stack(p)
+        self.document.commit(p)
+        self.refresh()
+        self._sync_rollback_btn()
+        self.recipesChanged.emit()
+        banner = getattr(self, '_post_banner', None)
+        if banner is not None:
+            banner.setText(
+                f'已清空回滚栈 {stats.get("cleared", 0)} 条 · 无硬件'
+            )
+            banner.setStyleSheet(
+                'background:#2a2430;color:#d9b;border:1px solid #7a5a9a;border-radius:4px;'
+                'padding:6px 8px;font-size:12px;font-weight:600;'
+            )
+        QMessageBox.information(
+            self, '已清空',
+            f'已清空 {stats.get("cleared", 0)} 条回滚历史（软清除，无硬件）。',
+        )
 
     def _rollback_n_steps(self):
         """N-step rollback from stack top (soft)."""
