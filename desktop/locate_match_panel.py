@@ -92,6 +92,20 @@ def normalize_locate_params(params=None):
     p.setdefault('contrastThreshold', 30)
     p.setdefault('brushSize', 8)
     p.setdefault('thresholdMode', 'auto')  # auto | manual
+    # 结果显示 / 判断（引擎 template_matching 读取）
+    p.setdefault('showMatchBox', True)
+    p.setdefault('showScore', True)
+    p.setdefault('showContour', True)
+    p.setdefault('showOrigin', False)
+    p.setdefault('showCross', True)
+    p.setdefault('showSearchRegion', True)
+    p.setdefault('showFeaturePoints', False)
+    p.setdefault('showMatchIndex', True)
+    p.setdefault('showAngleDeg', False)
+    p.setdefault('traceFullCanvas', False)
+    p.setdefault('resultJudgeEnable', False)
+    p.setdefault('resultJudgeMin', 0.0)
+    p.setdefault('resultJudgeMax', 1.0)
     _rebuild_scales(p)
     return p
 
@@ -252,7 +266,15 @@ class LocateMatchPanel(QWidget):
             if key in ('angleStart', 'angleEnd', 'angleStep') and not self.params.get('angleEnable', True):
                 self.params['angleStart'] = 0.0
                 self.params['angleEnd'] = 0.0
+            if key == 'angleEnable' and not value:
+                self.params['angleStart'] = 0.0
+                self.params['angleEnd'] = 0.0
             self._emit()
+            # live 结果显示摘要
+            try:
+                self._refresh_result_summary()
+            except Exception:
+                pass
 
     def _set_top(self, key, value):
         if self.step.get(key) != value:
@@ -575,6 +597,7 @@ class LocateMatchPanel(QWidget):
         _sw('showSearchRegion', '显示搜索区', True)
         _sw('showFeaturePoints', '显示特征点', False)
         _sw('showMatchIndex', '显示匹配序号', True)
+        _sw('showAngleDeg', '显示角度标注', False)
         _sw('traceFullCanvas', '全画布描摹', False)
         _sw('resultJudgeEnable', '结果判断使能', False)
         jmin = QDoubleSpinBox(); jmin.setRange(0, 1); jmin.setDecimals(3)
@@ -585,15 +608,47 @@ class LocateMatchPanel(QWidget):
         jmax.setValue(float(self.params.get('resultJudgeMax') or 1))
         jmax.valueChanged.connect(lambda v: self._set_param('resultJudgeMax', float(v)))
         form.addRow('判断分数上限', jmax)
+        self._result_summary = QLabel('')
+        self._result_summary.setObjectName('locateResultSummary')
+        self._result_summary.setWordWrap(True)
+        self._result_summary.setStyleSheet(
+            'color:#9ad;font-size:11px;padding:6px 8px;background:#1e2228;border-radius:4px;'
+        )
+        form.addRow('结果回显', self._result_summary)
         tip = QLabel(
-            f'匹配框/分数/搜索区/序号已接入引擎实绘。'
-            f'当前 maxMatches={int(self.params.get("maxMatches") or 1)} · '
-            f'minScore={float(self.params.get("minScore") or 0):.2f} · '
-            f'pyramid={int(self.params.get("pyramidLevels") or 4)}（无 Halcon 核）。'
+            '匹配框/分数/序号/角度/全画布描摹/结果判断已接入 OpenCV 引擎实绘（无 Halcon 核）。'
+            '关角度搜索使能 → 仅单角；判断使能 → items[].judgeOk / judgeStatus。'
         )
         tip.setWordWrap(True)
         tip.setStyleSheet('color:#888;')
         form.addRow(tip)
         lay.addLayout(form)
         lay.addStretch(1)
+        self._refresh_result_summary()
         return w
+
+    def _refresh_result_summary(self):
+        lab = getattr(self, '_result_summary', None)
+        if lab is None:
+            return
+        p = self.params
+        flags = []
+        for k, labn in (
+            ('showMatchBox', '框'), ('showScore', '分'), ('showContour', '轮廓'),
+            ('showCross', '十字'), ('showMatchIndex', '序号'), ('showAngleDeg', '角'),
+            ('showSearchRegion', '搜索区'), ('traceFullCanvas', '全画布'),
+            ('showOrigin', '原点'), ('showFeaturePoints', '特征点'),
+        ):
+            if p.get(k, k in ('showMatchBox', 'showScore', 'showContour', 'showCross',
+                               'showMatchIndex', 'showSearchRegion')):
+                flags.append(labn)
+        ang = '角度开' if p.get('angleEnable', True) else '角度关→单角'
+        judge = (
+            f'判断[{float(p.get("resultJudgeMin") or 0):.3f},{float(p.get("resultJudgeMax") or 1):.3f}]'
+            if p.get('resultJudgeEnable') else '判断关'
+        )
+        lab.setText(
+            f'叠层：{" · ".join(flags) or "（无）"} · {ang} · {judge} · '
+            f'maxMatches={int(p.get("maxMatches") or 1)} · minScore={float(p.get("minScore") or 0):.2f} · '
+            f'pyramid={int(p.get("pyramidLevels") or 4)}'
+        )

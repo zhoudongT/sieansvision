@@ -299,6 +299,10 @@ class NinePointPanel(QWidget):
             except ValueError:
                 row[key] = 0.0
         self._emit()
+        try:
+            self._refresh_verify_checklist()
+        except Exception:
+            pass
 
     def _add_row(self):
         pts = self.params.setdefault('points', [])
@@ -323,17 +327,26 @@ class NinePointPanel(QWidget):
         self._emit()
 
     def _verify_tab(self):
-        """P3 九点验证 UI 三步示意（无臂测）：采点 → 求解 → 验残差."""
+        """P3 九点验证 UI：采点 → 示意求解 → 验残差（无机械手 SDK）。"""
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(10, 10, 10, 10)
-        title = QLabel('九点标定验证 · 三步示意（无机械手 SDK）')
+        title = QLabel('九点标定验证 · 三步（无机械手 SDK）')
         title.setStyleSheet('font-weight:600;font-size:13px;')
         lay.addWidget(title)
+
+        self._verify_checklist = QLabel('')
+        self._verify_checklist.setObjectName('ninePointVerifyChecklist')
+        self._verify_checklist.setWordWrap(True)
+        self._verify_checklist.setStyleSheet(
+            'background:#1e2228;color:#9ad;border-radius:6px;padding:10px 12px;font-size:12px;'
+        )
+        lay.addWidget(self._verify_checklist)
+
         steps = [
-            ('① 采点', '在「基本参数」填满至少 9 组 pixel↔world；可用「填充 3×3 示意」生成格子，再改世界坐标。'),
-            ('② 求解', '▶ 单次运行九点模块：引擎拟合仿射/相似变换，写出 transform / rms / usedPoints。'),
-            ('③ 验残差', '看「结果显示」与流程变量 nine_point_rms / _count / _ok；门限示例：点数≥9 且 rms<0.5 → passGate。'),
+            ('① 采点', '在「基本参数」填满至少 3（建议 9）组非零 pixel↔world；可用「填充 3×3 示意」。'),
+            ('② 求解', '点下方「示意求解」本地估仿射（或 ▶ 单次运行写入 transform / rms）。'),
+            ('③ 验残差', '看 rms / residuals；门限示例：点数≥9 且 rms<0.5 → passGate。'),
         ]
         for head, body in steps:
             box = QLabel(f'<b>{head}</b><br/>{body}')
@@ -343,15 +356,122 @@ class NinePointPanel(QWidget):
                 'padding:10px 12px;margin:4px 0;color:#333;'
             )
             lay.addWidget(box)
+
+        brow = QHBoxLayout()
+        b_solve = QPushButton('示意求解（本地仿射）')
+        b_solve.setObjectName('ninePointDemoSolveBtn')
+        b_solve.setToolTip('不经流程运行：对当前表估 2D 仿射并显示 rms / 残差（无臂 SDK）')
+        b_solve.clicked.connect(self._demo_solve)
+        b_ref = QPushButton('刷新清单')
+        b_ref.setObjectName('ninePointVerifyRefreshBtn')
+        b_ref.clicked.connect(self._refresh_verify_checklist)
+        brow.addWidget(b_solve)
+        brow.addWidget(b_ref)
+        brow.addStretch(1)
+        lay.addLayout(brow)
+
+        self._verify_result = QLabel('尚未示意求解')
+        self._verify_result.setObjectName('ninePointVerifyResult')
+        self._verify_result.setWordWrap(True)
+        self._verify_result.setStyleSheet(
+            'background:#f0f4f8;border:1px solid #c8d0da;border-radius:6px;'
+            'padding:10px 12px;color:#234;font-family:monospace;font-size:11px;'
+        )
+        lay.addWidget(self._verify_result)
+
         foot = QLabel(
-            '对照 VM p36 叙事；现场手臂测点不在本产品范围。打开即跑样例 '
+            '对照 VM p36 叙事；现场手臂测点不在本产品范围。样例 '
             '<code>open-and-run-ninepoint.sieans</code> 已带 OK/NG。'
         )
         foot.setWordWrap(True)
         foot.setStyleSheet('color:#666;padding-top:8px;')
         lay.addWidget(foot)
         lay.addStretch(1)
+        try:
+            self._refresh_verify_checklist()
+        except Exception:
+            pass
         return w
+
+    def _used_points(self):
+        pts = self.params.get('points') or []
+        used = []
+        for r in pts:
+            if not isinstance(r, dict) or r.get('enabled') is False:
+                continue
+            vals = [abs(float(r.get(k) or 0)) for k in ('pixelX', 'pixelY', 'worldX', 'worldY')]
+            if sum(vals) > 0:
+                used.append(r)
+        return used
+
+    def _refresh_verify_checklist(self):
+        lab = getattr(self, '_verify_checklist', None)
+        if lab is None:
+            return
+        used = self._used_points()
+        n = len(used)
+        step1 = '✅' if n >= 3 else ('⚠️' if n >= 1 else '⬜')
+        step2 = '✅' if self.params.get('rms') is not None else '⬜'
+        rms = self.params.get('rms')
+        step3 = '✅' if (rms is not None and float(rms) < 0.5 and n >= 9) else (
+            '⚠️' if rms is not None else '⬜'
+        )
+        lab.setText(
+            ('\n').join([
+                f'{step1} 采点：启用非零对照 {n}/9（≥3 可解，≥9 推荐）',
+                f'{step2} 求解：{"rms="+str(rms) if rms is not None else "尚未求解（点「示意求解」或 ▶ 运行）"}',
+                f'{step3} 验残差：{"passGate 示意达标" if step3 == "✅" else ("有 rms，按现场门限判" if rms is not None else "待求解")}',
+            ])
+        )
+
+    def _demo_solve(self):
+        """本地 2D 仿射示意求解（与 flow-control ninePoint 同构；无臂 SDK）。"""
+        used = self._used_points()
+        res_lab = getattr(self, '_verify_result', None)
+        if len(used) < 3:
+            if res_lab is not None:
+                res_lab.setText(f'需要 ≥3 个非零对照点（当前 {len(used)}）')
+            self._refresh_verify_checklist()
+            return
+        try:
+            import numpy as np
+            src = np.array([[float(r['pixelX']), float(r['pixelY'])] for r in used], dtype=float)
+            dst = np.array([[float(r['worldX']), float(r['worldY'])] for r in used], dtype=float)
+            # Least-squares affine: [X Y] = [x y 1] @ [[a,c],[b,d],[tx,ty]]
+            A = np.column_stack([src, np.ones(len(src))])
+            # Solve separately for X and Y
+            sol_x, _, _, _ = np.linalg.lstsq(A, dst[:, 0], rcond=None)
+            sol_y, _, _, _ = np.linalg.lstsq(A, dst[:, 1], rcond=None)
+            a, b, tx = sol_x
+            c, d, ty = sol_y
+            mapped = np.column_stack([
+                a * src[:, 0] + b * src[:, 1] + tx,
+                c * src[:, 0] + d * src[:, 1] + ty,
+            ])
+            errs = np.linalg.norm(mapped - dst, axis=1)
+            rms = float(np.sqrt(np.mean(errs ** 2)))
+            transform = [float(a), float(b), float(tx), float(c), float(d), float(ty), 0.0, 0.0, 1.0]
+            self.params['rms'] = rms
+            self.params['lastDemoTransform'] = transform
+            self.params['lastDemoUsed'] = len(used)
+            self._emit()
+            lines = [
+                f'status=ok · used={len(used)} · rms={rms:.6f}',
+                f'transform=[{", ".join(f"{v:.4g}" for v in transform[:6])} …]',
+            ]
+            for i, (r, e) in enumerate(zip(used[:9], errs[:9])):
+                lines.append(
+                    f'  #{r.get("index", i+1)} err={e:.4f}  '
+                    f'px=({r["pixelX"]:.1f},{r["pixelY"]:.1f})→'
+                    f'({mapped[i,0]:.2f},{mapped[i,1]:.2f}) '
+                    f'world=({r["worldX"]:.2f},{r["worldY"]:.2f})'
+                )
+            if res_lab is not None:
+                res_lab.setText('\n'.join(lines))
+        except Exception as exc:
+            if res_lab is not None:
+                res_lab.setText(f'示意求解失败：{exc}')
+        self._refresh_verify_checklist()
 
 
     def _fill_grid(self):
@@ -361,12 +481,17 @@ class NinePointPanel(QWidget):
         for gy in range(3):
             for gx in range(3):
                 row = _empty_row(i)
-                row['pixelX'] = float(gx * 100)
-                row['pixelY'] = float(gy * 100)
-                row['worldX'] = float(gx * 10)  # mm demo
-                row['worldY'] = float(gy * 10)
+                # offset so (0,0) cell is non-zero (used_points filters all-zero)
+                row['pixelX'] = float(100 + gx * 100)
+                row['pixelY'] = float(100 + gy * 100)
+                row['worldX'] = float(10 + gx * 10)  # mm demo
+                row['worldY'] = float(10 + gy * 10)
                 pts.append(row)
                 i += 1
         self.params['points'] = pts
         self._reload_table()
         self._emit()
+        try:
+            self._refresh_verify_checklist()
+        except Exception:
+            pass

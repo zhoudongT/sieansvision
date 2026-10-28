@@ -118,6 +118,10 @@ class GeometryFindPanel(QWidget):
         if self.params.get(key) != value:
             self.params[key] = deepcopy(value)
             self._emit()
+            try:
+                self._refresh_caliper_hint()
+            except Exception:
+                pass
 
     def _set_top(self, key, value):
         if self.step.get(key) != value:
@@ -427,15 +431,87 @@ class GeometryFindPanel(QWidget):
         diag.setObjectName('geometryDiagHint')
         diag.setStyleSheet('color:#9ab;font-size:11px;padding:4px 0;')
         form.addRow('结果诊断', diag)
-        cal = QLabel(
-            f'卡尺级参数：count={int(self.params.get("caliperCount") or 10)} · '
-            f'width={int(self.params.get("caliperWidth") or 20)} · '
-            f'length={int(self.params.get("caliperLength") or 40)} · '
-            f'sigma={float(self.params.get("caliperSigma") or 1):.1f} · '
-            f'method={self.params.get("findMethod") or "caliper"}（无 Halcon 核）。'
+        self._caliper_hint = QLabel('')
+        self._caliper_hint.setWordWrap(True)
+        self._caliper_hint.setObjectName('geometryCaliperHint')
+        self._caliper_hint.setStyleSheet('color:#9ab;font-size:11px;padding:2px 0;')
+        form.addRow('卡尺回显', self._caliper_hint)
+        self._judge_hint = QLabel('')
+        self._judge_hint.setWordWrap(True)
+        self._judge_hint.setObjectName('geometryJudgeHint')
+        self._judge_hint.setStyleSheet(
+            'color:#9ad;font-size:11px;padding:6px 8px;background:#1e2228;border-radius:4px;'
         )
-        cal.setWordWrap(True)
-        cal.setObjectName('geometryCaliperHint')
-        cal.setStyleSheet('color:#9ab;font-size:11px;padding:2px 0;')
-        form.addRow('卡尺回显', cal)
+        form.addRow('判断回显', self._judge_hint)
+        tip_j = QLabel(
+            '结果判断：直线用 lengthPixels；圆用 radiusPixels；矩形用 areaPixels；'
+            '卡尺线亦可用 score。超出门限 → items[].judgeOk=False / judgeStatus=NG（OpenCV 壳，无 Halcon）。'
+        )
+        tip_j.setWordWrap(True)
+        tip_j.setStyleSheet('color:#888;')
+        form.addRow(tip_j)
+        self._refresh_caliper_hint()
         return w
+
+    def _refresh_caliper_hint(self):
+        lab = getattr(self, '_caliper_hint', None)
+        if lab is not None:
+            p = self.params
+            lab.setText(
+                f'卡尺级参数：count={int(p.get("caliperCount") or 10)} · '
+                f'width={int(p.get("caliperWidth") or 20)} · '
+                f'length={int(p.get("caliperLength") or 40)} · '
+                f'sigma={float(p.get("caliperSigma") or 1):.1f} · '
+                f'projAngle={float(p.get("caliperProjAngle") or 0):.1f}° · '
+                f'method={p.get("findMethod") or "caliper"} · '
+                f'edgeType={p.get("edgeType") or "strongest"}（无 Halcon 核）。'
+            )
+        jlab = getattr(self, '_judge_hint', None)
+        if jlab is not None:
+            p = self.params
+            if p.get('judgeEnable'):
+                jlab.setText(
+                    f'判断开 · 范围 [{float(p.get("judgeMin") or 0):.3g}, {float(p.get("judgeMax") or 99999):.3g}] · '
+                    f'feature={p.get("feature") or "lines"} · maxCount={int(p.get("maxCount") or 1)}'
+                )
+            else:
+                jlab.setText(f'判断关 · feature={p.get("feature") or "lines"} · 叠层按 show* 实绘')
+
+    def _open_caliper_roi_editor(self):
+        """打开多卡尺 ROI 编辑器，写回 roi / caliper*（OpenCV 壳，无 Halcon）。"""
+        try:
+            from desktop.caliper_roi_editor import CaliperRoiEditorDialog
+        except Exception as exc:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, '卡尺 ROI', f'无法加载编辑器：{exc}')
+            return
+        sample = None
+        try:
+            from pathlib import Path as _P
+            cand = _P(__file__).resolve().parents[1] / 'public/vision/samples/caliper-line.png'
+            if cand.is_file():
+                sample = str(cand)
+        except Exception:
+            sample = None
+        dlg = CaliperRoiEditorDialog(self.params, parent=self, sample_fallback=sample)
+        def _apply(patch):
+            if not isinstance(patch, dict):
+                return
+            for k, v in patch.items():
+                self.params[k] = deepcopy(v)
+            self._emit()
+            try:
+                self._refresh_caliper_hint()
+            except Exception:
+                pass
+        try:
+            dlg.paramsApplied.connect(_apply)
+        except Exception:
+            pass
+        if dlg.exec():
+            try:
+                patch = dlg.result_params()
+            except Exception:
+                patch = None
+            if isinstance(patch, dict):
+                _apply(patch)

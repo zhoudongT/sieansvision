@@ -464,12 +464,39 @@ def find_lines_caliper(gray: np.ndarray, canvas, p: dict, offset=(0, 0),
 
     out_items = out_items[:max_count]
 
+    # Panel judgeEnable：按 lengthPixels（或 score）门限
+    judge_en = bool(p.get('judgeEnable'))
+    try:
+        jmin = float(p.get('judgeMin') if p.get('judgeMin') is not None else 0.0)
+        jmax = float(p.get('judgeMax') if p.get('judgeMax') is not None else 99999.0)
+    except (TypeError, ValueError):
+        jmin, jmax = 0.0, 99999.0
+    if jmax < jmin:
+        jmin, jmax = jmax, jmin
+    for it in out_items:
+        m = float(it.get('lengthPixels') if it.get('lengthPixels') is not None else (it.get('score') or 0))
+        ok = (not judge_en) or (jmin <= m <= jmax)
+        it['judgeOk'] = bool(ok)
+        it['judgeStatus'] = 'OK' if ok else 'NG'
+        it['judgeMetric'] = m
+    judge_all_ok = (not judge_en) or (bool(out_items) and all(it.get('judgeOk') for it in out_items))
+    if judge_en and out_items:
+        ng = sum(1 for it in out_items if not it.get('judgeOk'))
+        if ng:
+            diagnostic = (diagnostic or '') + f'；判断 NG {ng}/{len(out_items)} [{jmin:.3g},{jmax:.3g}]'
+        else:
+            diagnostic = (diagnostic or '') + f'；判断 OK [{jmin:.3g},{jmax:.3g}]'
+
     return {
         'feature': 'lines',
         'count': len(out_items),
         'items': out_items,
         'lines': out_items,
         'method': 'caliper',
+        'judgeEnable': bool(judge_en),
+        'judgeOk': bool(judge_all_ok) if out_items else (False if judge_en else True),
+        'judgeMin': jmin if judge_en else None,
+        'judgeMax': jmax if judge_en else None,
         'edgePoints': edge_points,
         'probes': rows,
         'probeCount': count,

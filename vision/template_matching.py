@@ -46,6 +46,10 @@ def locate(image,canvas,p,offset,reference):
     if min(template.shape)<4 or template.size>1_000_000 or gray.size>4_000_000:raise ValueError('模板需至少 4×4 且不超过 100 万像素；搜索 ROI 不超过 400 万像素')
     if template.std()<1:raise ValueError('模板缺少纹理，无法可靠定位')
     start=number(p,'angleStart',0,-180,180);end=number(p,'angleEnd',0,-180,180);step=number(p,'angleStep',10,1,180)
+    # Panel angleEnable=False → single-angle search (OpenCV shell; not Halcon)
+    if not _show_flag(p, 'angleEnable', True):
+        end = start
+        step = max(step, 1.0)
     minimum=number(p,'minScore',.85,0,1);maximum=number(p,'maxMatches',1,1,50,True);iou=number(p,'overlapThreshold',.3,.01,.9)
     if end<start:raise ValueError('angleEnd 必须大于等于 angleStart')
     scales=p.get('scales',[1])
@@ -105,12 +109,20 @@ def locate(image,canvas,p,offset,reference):
         show_cross = _show_flag(p, 'showCross', True)
         show_origin = _show_flag(p, 'showOrigin', False)
         show_feat = _show_flag(p, 'showFeaturePoints', False)
+        show_idx = _show_flag(p, 'showMatchIndex', True)
+        show_ang = _show_flag(p, 'showAngleDeg', False)
+        trace_full = _show_flag(p, 'traceFullCanvas', False)
         pts_i = np.round(points).astype(np.int32)
-        if show_box or show_contour:
-            cv2.polylines(canvas, [pts_i], True, (0, 210, 80), 2, cv2.LINE_AA)
+        if show_box or show_contour or trace_full:
+            thick = 3 if trace_full else 2
+            if trace_full:
+                overlay = canvas.copy()
+                cv2.fillPoly(overlay, [pts_i], (0, 210, 80))
+                cv2.addWeighted(overlay, 0.18, canvas, 0.82, 0, canvas)
+            cv2.polylines(canvas, [pts_i], True, (0, 210, 80), thick, cv2.LINE_AA)
         cx, cy = float(center[0]), float(center[1])
         if show_cross:
-            s = 12
+            s = 14 if trace_full else 12
             cv2.line(canvas, (round(cx) - s, round(cy)), (round(cx) + s, round(cy)), (0, 200, 255), 1, cv2.LINE_AA)
             cv2.line(canvas, (round(cx), round(cy) - s), (round(cx), round(cy) + s), (0, 200, 255), 1, cv2.LINE_AA)
         if show_feat:
@@ -118,21 +130,56 @@ def locate(image,canvas,p,offset,reference):
                 cv2.circle(canvas, (int(pt[0]), int(pt[1])), 3, (0, 165, 255), -1, cv2.LINE_AA)
         if show_origin:
             ox0, oy0 = float(origin[0]), float(origin[1])
-            # origin in template frame mapped via pose center offset
             cv2.drawMarker(canvas, (round(cx - ox0), round(cy - oy0)), (255, 128, 0), cv2.MARKER_TILTED_CROSS, 14, 2, cv2.LINE_AA)
+        bits = []
+        if show_idx:
+            bits.append(str(index + 1))
         if show_score:
-            label = f"{index+1}:{candidate['score']:.2f}"
-            cv2.putText(canvas, label, (round(cx), round(cy)), cv2.FONT_HERSHEY_SIMPLEX, .55, (0, 210, 80), 2, cv2.LINE_AA)
-        elif show_box or show_contour or show_cross:
-            cv2.putText(canvas, str(index + 1), (round(cx), round(cy)), cv2.FONT_HERSHEY_SIMPLEX, .6, (0, 210, 80), 2, cv2.LINE_AA)
+            bits.append(f"{candidate['score']:.2f}")
+        if show_ang:
+            bits.append(f"{candidate['angleDeg']:.1f}°")
+        if bits:
+            cv2.putText(canvas, ':'.join(bits), (round(cx), round(cy)), cv2.FONT_HERSHEY_SIMPLEX, .55, (0, 210, 80), 2, cv2.LINE_AA)
     if _show_flag(p, 'showSearchRegion', True):
         h_roi, w_roi = gray.shape[:2]
         x0, y0 = int(offset[0]), int(offset[1])
         cv2.rectangle(canvas, (x0, y0), (x0 + max(1, w_roi) - 1, y0 + max(1, h_roi) - 1), (255, 180, 0), 1, cv2.LINE_AA)
         cv2.putText(canvas, '搜索区', (x0 + 4, max(14, y0 + 16)), cv2.FONT_HERSHEY_SIMPLEX, .45, (255, 180, 0), 1, cv2.LINE_AA)
+    # Result judge (panel 结果显示)：按分数门限标 OK/NG，不伪称 Halcon
+    judge_en = _show_flag(p, 'resultJudgeEnable', False)
+    jmin = number(p, 'resultJudgeMin', 0.0, 0, 1) if judge_en else 0.0
+    jmax = number(p, 'resultJudgeMax', 1.0, 0, 1) if judge_en else 1.0
+    if judge_en and jmax < jmin:
+        jmin, jmax = jmax, jmin
+    for it in items:
+        sc = float(it.get('score') or 0)
+        ok = (not judge_en) or (jmin <= sc <= jmax)
+        it['judgeOk'] = bool(ok)
+        it['judgeStatus'] = 'OK' if ok else 'NG'
     limited=more or candidate_limited
-    result=dict(found=bool(items),count=len(items),items=items,bestScore=best_score,limitReached=limited,candidateLimitReached=candidate_limited,unique=bool(len(items)==1 and not limited),searchedVariants=len(variants),score=items[0]['score'] if items else best_score,note='OpenCV 正角为逆时针；结果按分数降序。对称模板不能可靠区分方向；位置和角度为离散搜索值。')
+    judge_all_ok = (not judge_en) or (bool(items) and all(it.get('judgeOk') for it in items))
+    result=dict(
+        found=bool(items), count=len(items), items=items, bestScore=best_score,
+        limitReached=limited, candidateLimitReached=candidate_limited,
+        unique=bool(len(items)==1 and not limited), searchedVariants=len(variants),
+        score=items[0]['score'] if items else best_score,
+        judgeEnable=bool(judge_en), judgeOk=bool(judge_all_ok) if items else (False if judge_en else True),
+        judgeMin=jmin if judge_en else None, judgeMax=jmax if judge_en else None,
+        note='OpenCV 正角为逆时针；结果按分数降序。对称模板不能可靠区分方向；位置和角度为离散搜索值。无 Halcon 核。',
+    )
     if items:
         result.update({key:items[0][key] for key in ['angleDeg','scale','center','centerX','centerY','polygon','offsetPixels','pose']})
-    result['diagnostic']='匹配完成；结果可能因上限而截断' if limited else '已找到唯一目标' if result['unique'] else '已找到多个目标，请按明细选择' if items else '没有达到分数阈值的目标'
+        result['judgeStatus'] = items[0].get('judgeStatus')
+    result['diagnostic']=(
+        '匹配完成；结果可能因上限而截断' if limited else
+        '已找到唯一目标' if result['unique'] else
+        '已找到多个目标，请按明细选择' if items else
+        '没有达到分数阈值的目标'
+    )
+    if judge_en and items:
+        ng = sum(1 for it in items if not it.get('judgeOk'))
+        if ng:
+            result['diagnostic'] = f'结果判断 NG：{ng}/{len(items)} 超出分数门限 [{jmin:.3f},{jmax:.3f}]'
+        else:
+            result['diagnostic'] = (result.get('diagnostic') or '') + f'；判断 OK（[{jmin:.3f},{jmax:.3f}]）'
     return result

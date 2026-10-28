@@ -260,12 +260,61 @@ def geometry(image, canvas, p, offset):
                 break
     else:
         raise ValueError('feature 必须是 lines、circles、rects、edges 或 contours')
-    out = {'feature': mode, 'count': len(result), 'items': result,
-           'overlay': {'showOverlay': show_ov, 'showPoints': show_pts, 'showFitCurve': show_lines,
-                       'showLabels': show_labels, 'showRuler': show_ruler}}
+    # Result judge (panel 结果判断)：按几何量门限标 OK/NG（OpenCV 壳，无 Halcon）
+    judge_en = bool(p.get('judgeEnable'))
+    try:
+        jmin = float(p.get('judgeMin') if p.get('judgeMin') is not None else 0.0)
+        jmax = float(p.get('judgeMax') if p.get('judgeMax') is not None else 99999.0)
+    except (TypeError, ValueError):
+        jmin, jmax = 0.0, 99999.0
+    if jmax < jmin:
+        jmin, jmax = jmax, jmin
+
+    def _metric(it):
+        if mode in ('lines', 'edges'):
+            if 'lengthPixels' in it:
+                return float(it.get('lengthPixels') or 0)
+            if 'score' in it:
+                return float(it.get('score') or 0)
+        if mode == 'circles':
+            return float(it.get('radiusPixels') or 0)
+        if mode == 'rects':
+            return float(it.get('areaPixels') or 0)
+        if mode == 'contours':
+            return float(it.get('areaPixels') or 0)
+        return float(it.get('score') or it.get('rmsPixels') or 0)
+
+    for it in result:
+        if not isinstance(it, dict):
+            continue
+        m = _metric(it)
+        ok = (not judge_en) or (jmin <= m <= jmax)
+        it['judgeOk'] = bool(ok)
+        it['judgeStatus'] = 'OK' if ok else 'NG'
+        it['judgeMetric'] = m
+
+    judge_all_ok = (not judge_en) or (bool(result) and all(
+        (it.get('judgeOk') if isinstance(it, dict) else True) for it in result
+    ))
+    out = {
+        'feature': mode, 'count': len(result), 'items': result,
+        'judgeEnable': bool(judge_en),
+        'judgeOk': bool(judge_all_ok) if result else (False if judge_en else True),
+        'judgeMin': jmin if judge_en else None,
+        'judgeMax': jmax if judge_en else None,
+        'overlay': {'showOverlay': show_ov, 'showPoints': show_pts, 'showFitCurve': show_lines,
+                    'showLabels': show_labels, 'showRuler': show_ruler},
+        'note': 'OpenCV 几何查找（非 Halcon 核）',
+    }
     # aliases for measure bind fields: lines[0] / circles[0] / rects[0]
     if mode in ('lines', 'circles', 'rects', 'contours'):
         out[mode] = result
+    if judge_en and result:
+        ng = sum(1 for it in result if isinstance(it, dict) and not it.get('judgeOk'))
+        if ng:
+            out['diagnostic'] = f'结果判断 NG：{ng}/{len(result)} 超出门限 [{jmin:.3g},{jmax:.3g}]'
+        else:
+            out['diagnostic'] = f'结果判断 OK（[{jmin:.3g},{jmax:.3g}]）'
     return out
 
 
