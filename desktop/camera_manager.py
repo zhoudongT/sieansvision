@@ -680,7 +680,13 @@ class CameraManagerDialog(_RpcDialog):
         if self._right_tabs.tabText(self._right_tabs.currentIndex()) != '预览':
             return
         if hasattr(self.preview, 'fit_image'):
+            try:
+                self.preview._needs_fit = True
+            except Exception:
+                pass
             QTimer.singleShot(0, self.preview.fit_image)
+            QTimer.singleShot(50, self.preview.fit_image)
+            QTimer.singleShot(200, self.preview.fit_image)
 
     def _live_tick(self):
         if self._live_pending or not self.backend.is_ready:
@@ -776,8 +782,15 @@ class CameraManagerDialog(_RpcDialog):
             self.preview.show_live_frame(paintable)
         else:
             self.preview.set_image(paintable)
+        # Always heal: frames often start while「预览」tab is hidden → 1:1 corner strip.
         if hasattr(self.preview, 'fit_image') and self.preview.isVisible():
-            if getattr(self.preview, '_needs_fit', False):
+            needs = getattr(self.preview, '_needs_fit', False)
+            bad = False
+            try:
+                bad = bool(self.preview._is_corner_crop_transform())
+            except Exception:
+                bad = False
+            if needs or bad:
                 self.preview.fit_image()
 
     def _flush_preview_gate(self):

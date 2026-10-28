@@ -173,15 +173,53 @@ class _Preview(QGraphicsView):
             tip.setDefaultTextColor(QColor('#c8c8c8'))
             self._needs_fit = False
 
+    def _viewport_ready(self) -> bool:
+        return self.isVisible() and self.viewport().width() >= 64 and self.viewport().height() >= 64
+
+    def _is_corner_crop_transform(self) -> bool:
+        """1:1 (or near) while pixmap is larger than the viewport → dark pane + top strip."""
+        if self.pixmap.isNull():
+            return False
+        vw = max(1, self.viewport().width())
+        vh = max(1, self.viewport().height())
+        pw, ph = self.pixmap.width(), self.pixmap.height()
+        if pw <= vw + 4 and ph <= vh + 4:
+            return False
+        m11 = abs(float(self.transform().m11()))
+        m22 = abs(float(self.transform().m22()))
+        # Identity / unscaled while image overflows the view.
+        if m11 > 0.92 or m22 > 0.92:
+            return True
+        # Hairline / thin band
+        if ph >= 64 and (ph * m22) < 28 and vh >= 64:
+            return True
+        if pw >= 64 and (pw * m11) < 28 and vw >= 64:
+            return True
+        return False
+
     def fit_image(self):
         """KeepAspectRatio so the full frame is visible (not a 1:1 corner crop)."""
-        if self.pixmap.isNull() or self.viewport().width() < 2 or self.viewport().height() < 2:
-            self._needs_fit = not self.pixmap.isNull()
+        if self.pixmap.isNull():
+            self._needs_fit = False
+            return
+        if not self._viewport_ready():
+            self._needs_fit = True
+            QTimer.singleShot(50, self._fit_if_needed)
+            QTimer.singleShot(200, self._fit_if_needed)
             return
         self.setSceneRect(QRectF(self.pixmap.rect()))
         self.fitInView(self.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        if self._is_corner_crop_transform():
+            self.resetTransform()
+            self.fitInView(self.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
         self._needs_fit = False
         self.viewport().update()
+
+    def _fit_if_needed(self):
+        if self.pixmap.isNull():
+            return
+        if self._needs_fit or self._is_corner_crop_transform():
+            self.fit_image()
 
     def _set_pixmap(self, pixmap: QPixmap, *, refit: bool | None = None):
         size_changed = self.pixmap.isNull() or pixmap.size() != self.pixmap.size()
@@ -196,15 +234,19 @@ class _Preview(QGraphicsView):
             self.setSceneRect(QRectF(pixmap.rect()))
             self._needs_fit = True
             self.fit_image()
+            QTimer.singleShot(0, self._fit_if_needed)
+            QTimer.singleShot(50, self._fit_if_needed)
+            QTimer.singleShot(200, self._fit_if_needed)
         else:
             self._pixmap_item.setPixmap(pixmap)
             if refit is True or (refit is None and size_changed):
                 self._needs_fit = True
                 self.fit_image()
+                QTimer.singleShot(50, self._fit_if_needed)
             else:
-                # Same-size live tick: force paint (hidden→shown may have missed updates).
+                # Same-size live tick: heal 1:1 corner-crop left by hidden-tab first frames.
                 self.viewport().update()
-                if self._needs_fit or not self.isVisible():
+                if self._needs_fit or not self.isVisible() or self._is_corner_crop_transform():
                     self._needs_fit = True
                     if self.isVisible():
                         self.fit_image()
@@ -216,7 +258,10 @@ class _Preview(QGraphicsView):
         super().showEvent(event)
         if not self.pixmap.isNull():
             # Deferred fit: first frames often arrived while this tab/page was hidden.
-            QTimer.singleShot(0, self.fit_image)
+            self._needs_fit = True
+            QTimer.singleShot(0, self._fit_if_needed)
+            QTimer.singleShot(50, self._fit_if_needed)
+            QTimer.singleShot(200, self._fit_if_needed)
 
     def _clear_overlays(self):
         for item in self._overlay_items:
