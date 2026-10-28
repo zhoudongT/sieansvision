@@ -55,11 +55,15 @@ class PropertyFloat(QDialog):
         self.subtitle.setVisible(False)
         title_col.addWidget(self.subtitle)
         title_layout.addLayout(title_col, 1)
-        close = QPushButton('✕')
-        close.setObjectName('propertyFloatClose')
-        close.setFixedSize(26, 26)
-        close.clicked.connect(self._on_cancel_close)
-        title_layout.addWidget(close)
+        self._close_btn = QPushButton('✕')
+        self._close_btn.setObjectName('propertyFloatClose')
+        self._close_btn.setFixedSize(28, 28)
+        self._close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._close_btn.setToolTip('关闭（放弃未确定的修改）')
+        self._close_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._close_btn.clicked.connect(self._on_cancel_close)
+        title_layout.addWidget(self._close_btn, 0, Qt.AlignmentFlag.AlignTop)
+        self._close_btn.raise_()
         root.addWidget(self.title_bar)
         self.body = QVBoxLayout()
         self.body.setContentsMargins(0, 0, 0, 0)
@@ -101,6 +105,13 @@ class PropertyFloat(QDialog):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and self.title_bar.geometry().contains(event.position().toPoint()):
+            # Frameless + Wayland: title drag must NOT swallow ✕ hits
+            local = self.title_bar.mapFrom(self, event.position().toPoint())
+            btn = getattr(self, '_close_btn', None)
+            if btn is not None and btn.isVisible() and btn.geometry().contains(local):
+                self._on_cancel_close()
+                event.accept()
+                return
             self._drag = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             event.accept()
         else:
@@ -192,7 +203,7 @@ class PropertyFloat(QDialog):
             self._step_baseline = None
             self._close_via_action = 'ok'
             self._sync_host_filmstrip()
-            self.close()
+            self.hide()
             return
         if form is not None:
             try:
@@ -214,7 +225,7 @@ class PropertyFloat(QDialog):
         self._step_baseline = None
         self._close_via_action = 'ok'
         self._sync_host_filmstrip()
-        self.close()
+        self.hide()
 
     def _discard_draft_if_dirty(self):
         """Shared Esc / ✕ / 取消 / reject / closeEvent discard.
@@ -240,10 +251,21 @@ class PropertyFloat(QDialog):
 
     def _on_cancel_close(self):
         """取消 / Esc / ✕：discard unsaved draft → restore baseline (source or step)."""
-        self._discard_draft_if_dirty()
-        self._close_via_action = 'cancel'
-        self._sync_host_filmstrip()
-        self.close()
+        if getattr(self, '_closing', False):
+            return
+        self._closing = True
+        try:
+            self._discard_draft_if_dirty()
+            self._close_via_action = 'cancel'
+            self._sync_host_filmstrip()
+            # hide() is reliable for frameless Tool on Wayland; close() alone can no-op visually
+            self.hide()
+            try:
+                self.setResult(int(QDialog.DialogCode.Rejected))
+            except Exception:
+                pass
+        finally:
+            self._closing = False
 
     def _on_footer_close(self):
         self._on_cancel_close()
@@ -265,7 +287,16 @@ class PropertyFloat(QDialog):
             self._sync_host_filmstrip()
         except Exception:
             pass
+        event.accept()
+        self.hide()
         super().closeEvent(event)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self._on_cancel_close()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def hideEvent(self, event):
         # Soft-disable stays applied (OK committed or cancel restored) without re-show_source

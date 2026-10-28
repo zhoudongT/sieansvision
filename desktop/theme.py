@@ -687,16 +687,20 @@ QWidget#propertyFloatBody QHeaderView::section {{
   border-bottom: 1px solid {FLOAT_LINE};
   font-weight: 600;
 }}
-QPushButton#propertyFloatClose {{
+QPushButton#propertyFloatClose {
   background: transparent;
-  color: #c8c8c8;
+  color: #e8e8e8;
   border: 0;
-  font-size: 13px;
-  border-radius: 2px;
-}}
-QPushButton#propertyFloatClose:hover {{
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: 4px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+}
+QPushButton#propertyFloatClose:hover {
+  background: #c62828;
   color: #ffffff;
-  background: #4a4a4a;
 }}
 QWidget#propertyFloatBody {{
   background: {FLOAT_BG};
