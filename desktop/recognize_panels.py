@@ -108,6 +108,40 @@ class _RecognizeShell(QWidget):
                 return (hit.get('output') or {}).get('result') or hit.get('result') or hit
         return {}
 
+
+    def set_last_result(self, result):
+        """Cache engine last_result for OCR/defect denser tables (wave143)."""
+        self._last_result = result
+        try:
+            # Apply denser chrome from ingested bag when this step's result is present.
+            bag = None
+            sid = self.step.get('id')
+            op = str(self.step.get('operation') or '')
+            if isinstance(result, dict):
+                for rec in (result.get('results') or []):
+                    if isinstance(rec, dict) and rec.get('id') == sid:
+                        bag = (rec.get('output') or {}).get('result') or rec.get('result')
+                        break
+                if bag is None and isinstance(result.get('results'), dict):
+                    hit = result['results'].get(sid)
+                    if isinstance(hit, dict):
+                        bag = (hit.get('output') or {}).get('result') or hit.get('result') or hit
+                if bag is None and (
+                    result.get('text') is not None or result.get('defectRatio') is not None
+                    or result.get('items') is not None
+                ):
+                    bag = result
+            if isinstance(bag, dict):
+                if op == 'ocr' and hasattr(self, '_apply_ocr_density'):
+                    from desktop.ocr_defect_chrome import summarize_ocr_result
+                    self._apply_ocr_density(summarize_ocr_result(bag, self.params), source='ingest')
+                elif op in ('defects', 'defect') and hasattr(self, '_apply_defects_density'):
+                    from desktop.ocr_defect_chrome import summarize_defect_result
+                    self._apply_defects_density(summarize_defect_result(bag, self.params), source='ingest')
+            self._refresh_live()
+        except Exception:
+            pass
+
     def _host_sample_image(self):
         """Best-effort current image for ROI editor background."""
         try:
@@ -385,13 +419,40 @@ class DefectsPanel(_RecognizeShell):
         brow.addStretch(1)
         form.addRow(brow)
 
-        self._defects_items_table = QTableWidget(0, 4)
+        self._chrome_lab = QLabel('缺·')
+        self._chrome_lab.setObjectName('defectsChromeBadge')
+        self._chrome_lab.setStyleSheet(
+            'color:#0d0;font-size:14px;font-weight:600;padding:4px 8px;'
+            'background:#1a2220;border-radius:4px;'
+        )
+        form.addRow('结果徽标', self._chrome_lab)
+
+        self._defects_items_table = QTableWidget(0, 6)
         self._defects_items_table.setObjectName('defectsItemsTable')
-        self._defects_items_table.setHorizontalHeaderLabels(['#', '面积', 'bbox', '判定'])
+        self._defects_items_table.setHorizontalHeaderLabels(['#', '面积', '中心', 'bbox', '分数', '判定'])
         self._defects_items_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self._defects_items_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._defects_items_table.setMaximumHeight(120)
+        self._defects_items_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._defects_items_table.setMaximumHeight(160)
         form.addRow('缺陷明细', self._defects_items_table)
+
+        self._density_table = QTableWidget(0, 2)
+        self._density_table.setObjectName('defectsDensityTable')
+        self._density_table.setHorizontalHeaderLabels(['字段', '值'])
+        self._density_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self._density_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self._density_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._density_table.setMaximumHeight(130)
+        form.addRow('密度摘要', self._density_table)
+
+        brow_d = QHBoxLayout()
+        b_demo_d = QPushButton('软演示明细')
+        b_demo_d.setObjectName('defectsSoftDemoBtn')
+        b_demo_d.setToolTip('填入确定性软演示缺陷 items（无 Halcon）')
+        b_demo_d.clicked.connect(self._soft_demo_defects_density)
+        brow_d.addWidget(b_demo_d)
+        brow_d.addStretch(1)
+        form.addRow(brow_d)
 
         try:
             self._refresh_live()
@@ -425,6 +486,83 @@ class DefectsPanel(_RecognizeShell):
             if k in flow:
                 bits.append(f'flow.{k}={flow[k]}')
         lab.setText('实况：' + (' · '.join(bits[:12]) if bits else str(list(res.keys())[:8])))
+        try:
+            from desktop.ocr_defect_chrome import summarize_defect_result
+            self._apply_defects_density(summarize_defect_result(res, self.params), source='engine')
+        except Exception:
+            pass
+
+
+    def _soft_demo_defects_density(self):
+        from desktop.ocr_defect_chrome import soft_demo_defect_result, summarize_defect_result
+        demo = soft_demo_defect_result(ok=False, n=3)
+        self._apply_defects_density(summarize_defect_result(demo, self.params), source='soft-demo')
+
+    def _apply_defects_density(self, summ, *, source: str = ''):
+        summ = summ if isinstance(summ, dict) else {}
+        chrome = summ.get('chrome') or '缺·'
+        lab = getattr(self, '_chrome_lab', None)
+        if lab is not None:
+            lab.setText(str(chrome))
+            jok = summ.get('judgeOk')
+            if jok is True:
+                lab.setStyleSheet(
+                    'color:#0d0;font-size:14px;font-weight:600;padding:4px 8px;'
+                    'background:#1a2220;border-radius:4px;'
+                )
+            elif jok is False:
+                lab.setStyleSheet(
+                    'color:#f55;font-size:14px;font-weight:600;padding:4px 8px;'
+                    'background:#2a1a1a;border-radius:4px;'
+                )
+        self._fill_defects_items(summ.get('rows') or [])
+        dt = getattr(self, '_density_table', None)
+        if dt is not None:
+            from desktop.ocr_defect_chrome import density_summary_rows
+            dt.setRowCount(0)
+            for r in density_summary_rows(summ):
+                i = dt.rowCount(); dt.insertRow(i)
+                dt.setItem(i, 0, QTableWidgetItem(str(r.get('key') or '')))
+                dt.setItem(i, 1, QTableWidgetItem(str(r.get('value'))))
+        live = getattr(self, '_live_lab', None)
+        if live is not None and summ.get('summary'):
+            src = f' · 源:{source}' if source else ''
+            live.setText(f"实况：[{chrome}] {summ.get('summary')}{src}")
+
+    def _fill_defects_items(self, items):
+        table = getattr(self, '_defects_items_table', None)
+        if table is None:
+            return
+        from desktop.ocr_defect_chrome import build_defect_rows
+        rows = items
+        if rows and isinstance(rows[0], dict) and 'judgeStatus' in rows[0] and 'bbox' in rows[0]:
+            pass
+        else:
+            rows = build_defect_rows(items)
+        table.setRowCount(0)
+        for r in rows:
+            if not isinstance(r, dict):
+                continue
+            i = table.rowCount(); table.insertRow(i)
+            area = r.get('area')
+            area_txt = f'{float(area):.0f}' if isinstance(area, (int, float)) else (str(area) if area is not None else '—')
+            score = r.get('score')
+            score_txt = f'{float(score):.3f}' if isinstance(score, (int, float)) else '—'
+            st = str(r.get('judgeStatus') or '—')
+            for c, t in enumerate((
+                str(r.get('index') or i + 1),
+                area_txt,
+                str(r.get('center') or '—'),
+                str(r.get('bbox') or '—'),
+                score_txt,
+                st,
+            )):
+                it = QTableWidgetItem(t)
+                if st == 'OK':
+                    it.setForeground(Qt.GlobalColor.green)
+                elif st in ('NG', '缺'):
+                    it.setForeground(Qt.GlobalColor.red)
+                table.setItem(i, c, it)
 
 
 class OcrPanel(_RecognizeShell):
@@ -603,13 +741,40 @@ class OcrPanel(_RecognizeShell):
         brow.addStretch(1)
         form.addRow(brow)
 
-        self._ocr_items_table = QTableWidget(0, 3)
+        self._chrome_lab = QLabel('识·')
+        self._chrome_lab.setObjectName('ocrChromeBadge')
+        self._chrome_lab.setStyleSheet(
+            'color:#0d0;font-size:14px;font-weight:600;padding:4px 8px;'
+            'background:#1a2220;border-radius:4px;'
+        )
+        form.addRow('结果徽标', self._chrome_lab)
+
+        self._ocr_items_table = QTableWidget(0, 6)
         self._ocr_items_table.setObjectName('ocrItemsTable')
-        self._ocr_items_table.setHorizontalHeaderLabels(['#', '文本', '置信度'])
+        self._ocr_items_table.setHorizontalHeaderLabels(['#', '文本', '置信度', '中心', 'bbox', '判定'])
         self._ocr_items_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self._ocr_items_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._ocr_items_table.setMaximumHeight(120)
+        self._ocr_items_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._ocr_items_table.setMaximumHeight(160)
         form.addRow('识别明细', self._ocr_items_table)
+
+        self._density_table = QTableWidget(0, 2)
+        self._density_table.setObjectName('ocrDensityTable')
+        self._density_table.setHorizontalHeaderLabels(['字段', '值'])
+        self._density_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self._density_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self._density_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._density_table.setMaximumHeight(130)
+        form.addRow('密度摘要', self._density_table)
+
+        brow_o = QHBoxLayout()
+        b_demo_o = QPushButton('软演示明细')
+        b_demo_o.setObjectName('ocrSoftDemoBtn')
+        b_demo_o.setToolTip('填入确定性软演示 OCR items（无 Halcon）')
+        b_demo_o.clicked.connect(self._soft_demo_ocr_density)
+        brow_o.addWidget(b_demo_o)
+        brow_o.addStretch(1)
+        form.addRow(brow_o)
 
         try:
             self._refresh_live()
@@ -617,21 +782,76 @@ class OcrPanel(_RecognizeShell):
             pass
         return w
 
+    def _soft_demo_ocr_density(self):
+        from desktop.ocr_defect_chrome import soft_demo_ocr_result, summarize_ocr_result
+        demo = soft_demo_ocr_result(ok=True, n=3)
+        self._apply_ocr_density(summarize_ocr_result(demo, self.params), source='soft-demo')
+
+    def _apply_ocr_density(self, summ, *, source: str = ''):
+        summ = summ if isinstance(summ, dict) else {}
+        chrome = summ.get('chrome') or '识·'
+        lab = getattr(self, '_chrome_lab', None)
+        if lab is not None:
+            lab.setText(str(chrome))
+            jok = summ.get('judgeOk')
+            if jok is True:
+                lab.setStyleSheet(
+                    'color:#0d0;font-size:14px;font-weight:600;padding:4px 8px;'
+                    'background:#1a2220;border-radius:4px;'
+                )
+            elif jok is False:
+                lab.setStyleSheet(
+                    'color:#f55;font-size:14px;font-weight:600;padding:4px 8px;'
+                    'background:#2a1a1a;border-radius:4px;'
+                )
+        self._fill_ocr_items(summ.get('rows') or [])
+        dt = getattr(self, '_density_table', None)
+        if dt is not None:
+            from desktop.ocr_defect_chrome import density_summary_rows
+            dt.setRowCount(0)
+            for r in density_summary_rows(summ):
+                i = dt.rowCount(); dt.insertRow(i)
+                dt.setItem(i, 0, QTableWidgetItem(str(r.get('key') or '')))
+                dt.setItem(i, 1, QTableWidgetItem(str(r.get('value'))))
+        if getattr(self, '_text_preview', None) is not None and summ.get('text') is not None:
+            self._text_preview.setPlainText(str(summ.get('text') or ''))
+        live = getattr(self, '_live_lab', None)
+        if live is not None and summ.get('summary'):
+            src = f' · 源:{source}' if source else ''
+            live.setText(f"实况：[{chrome}] {summ.get('summary')}{src}")
+
     def _fill_ocr_items(self, items):
         table = getattr(self, '_ocr_items_table', None)
         if table is None:
             return
+        from desktop.ocr_defect_chrome import build_ocr_rows
+        rows = items
+        if rows and isinstance(rows[0], dict) and 'judgeStatus' in rows[0] and 'bbox' in rows[0]:
+            pass
+        else:
+            rows = build_ocr_rows(items)
         table.setRowCount(0)
-        for i, it in enumerate((items or [])[:40]):
-            if not isinstance(it, dict):
+        for r in rows:
+            if not isinstance(r, dict):
                 continue
-            txt = str(it.get('text') or '')[:48]
-            conf = it.get('confidence')
-            conf_txt = f'{float(conf):.3f}' if conf is not None else '—'
-            row = table.rowCount()
-            table.insertRow(row)
-            for c, t in enumerate((str(i + 1), txt, conf_txt)):
-                table.setItem(row, c, QTableWidgetItem(t))
+            i = table.rowCount(); table.insertRow(i)
+            conf = r.get('confidence')
+            conf_txt = f'{float(conf):.3f}' if isinstance(conf, (int, float)) else '—'
+            st = str(r.get('judgeStatus') or '—')
+            for c, t in enumerate((
+                str(r.get('index') or i + 1),
+                str(r.get('text') or '')[:48],
+                conf_txt,
+                str(r.get('center') or '—'),
+                str(r.get('bbox') or '—'),
+                st,
+            )):
+                it = QTableWidgetItem(t)
+                if st == 'OK':
+                    it.setForeground(Qt.GlobalColor.green)
+                elif st == 'NG':
+                    it.setForeground(Qt.GlobalColor.red)
+                table.setItem(i, c, it)
 
     def _refresh_live(self):
         lab = self._live_lab
@@ -665,3 +885,8 @@ class OcrPanel(_RecognizeShell):
             if k in flow:
                 bits.append(f'flow.{k}={flow[k]}')
         lab.setText('实况：' + (' · '.join(bits[:12]) if bits else str(list(res.keys())[:8])))
+        try:
+            from desktop.ocr_defect_chrome import summarize_ocr_result
+            self._apply_ocr_density(summarize_ocr_result(res, self.params), source='engine')
+        except Exception:
+            pass

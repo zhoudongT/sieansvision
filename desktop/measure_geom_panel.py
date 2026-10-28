@@ -6,8 +6,9 @@ ops: line_intersect | point_distance | point_line_distance |
 """
 from copy import deepcopy
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QWidget, QVBoxLayout, QLabel, QTabWidget, QFormLayout, QLineEdit,
     QComboBox, QDoubleSpinBox, QScrollArea, QFrame, QPushButton, QHBoxLayout,
 )
@@ -92,6 +93,7 @@ def normalize_measure_geom_params(op, params=None):
     }.get(op, 'measureGeom'))
     p.setdefault('writeFlowVars', True)
     p.setdefault('judgeEnable', False)
+    p.setdefault('showTolerance', True)
     p.setdefault('judgeMin', 0.0)
     p.setdefault('judgeMax', 99999.0 if op != 'line_angle' else 90.0)
     p.setdefault('hostDisplayFields', True)
@@ -428,11 +430,145 @@ class MeasureGeomPanel(QWidget):
         brow.addWidget(b_ref)
         brow.addStretch(1)
         form.addRow(brow)
+        # wave143: denser measure live chrome (judge/tolerance table)
+        self._chrome_lab = QLabel('测·')
+        self._chrome_lab.setObjectName('measureGeomChromeBadge')
+        self._chrome_lab.setStyleSheet(
+            'color:#0d0;font-size:14px;font-weight:600;padding:4px 8px;'
+            'background:#1a2220;border-radius:4px;'
+        )
+        form.addRow('结果徽标', self._chrome_lab)
+
+        show_tol = OrangeSwitch(bool(self.params.get('showTolerance', True)))
+        show_tol.setObjectName('measureGeomShowTolerance')
+        show_tol.toggled.connect(lambda c: self._set_param('showTolerance', bool(c)))
+        form.addRow('显示公差带标注', show_tol)
+
+        self._measure_table = QTableWidget(0, 6)
+        self._measure_table.setObjectName('measureGeomResultTable')
+        self._measure_table.setHorizontalHeaderLabels(['#', '算子', '度量', '下限', '上限', '判定'])
+        self._measure_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._measure_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._measure_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._measure_table.setMaximumHeight(140)
+        form.addRow('测量明细', self._measure_table)
+
+        self._density_table = QTableWidget(0, 2)
+        self._density_table.setObjectName('measureGeomDensityTable')
+        self._density_table.setHorizontalHeaderLabels(['字段', '值'])
+        self._density_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self._density_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self._density_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._density_table.setMaximumHeight(150)
+        form.addRow('密度表', self._density_table)
+
+        brow2 = QHBoxLayout()
+        b_demo = QPushButton('软演示明细')
+        b_demo.setObjectName('measureGeomSoftDemoBtn')
+        b_demo.setToolTip('填入确定性软演示测量结果（OpenCV 壳 · 无 Halcon）')
+        b_demo.clicked.connect(self._soft_demo_measure_density)
+        brow2.addWidget(b_demo)
+        brow2.addStretch(1)
+        form.addRow(brow2)
+
+        tip143 = QLabel(
+            '测量/卡尺铬：徽标 距✓/交✗ + 公差带 [min,max] + OK/NG 叠色（wave143）。'
+            '与几何查找 L/C/R/B 铬分离 · 无 Comm/HMI 联级 · 无火花线。'
+        )
+        tip143.setWordWrap(True)
+        tip143.setStyleSheet('color:#888;font-size:11px;')
+        form.addRow(tip143)
+
         try:
             self._refresh_live_bind()
         except Exception:
             pass
         return w
+
+    def set_last_result(self, result):
+        """Cache engine last_result for measure density chrome (soft OK)."""
+        self._last_result = result
+        try:
+            bag = None
+            sid = self.step.get('id')
+            if isinstance(result, dict):
+                for rec in (result.get('results') or []):
+                    if isinstance(rec, dict) and rec.get('id') == sid:
+                        bag = (rec.get('output') or {}).get('result') or rec.get('result')
+                        break
+                if bag is None and isinstance(result.get('results'), dict):
+                    hit = result['results'].get(sid)
+                    if isinstance(hit, dict):
+                        bag = (hit.get('output') or {}).get('result') or hit.get('result') or hit
+                if bag is None and (result.get('distance') is not None or result.get('judgeOk') is not None
+                                    or result.get('x') is not None or result.get('angle') is not None):
+                    bag = result
+            if isinstance(bag, dict):
+                from desktop.measure_caliper_chrome import summarize_measure_result
+                self._apply_measure_density(
+                    summarize_measure_result(bag, self.params, op=self.op), source='ingest',
+                )
+            self._refresh_live_bind()
+        except Exception:
+            pass
+
+    def _soft_demo_measure_density(self):
+        from desktop.measure_caliper_chrome import soft_demo_measure_result, summarize_measure_result
+        demo = soft_demo_measure_result(self.op, ok=True)
+        self._apply_measure_density(summarize_measure_result(demo, self.params, op=self.op), source='soft-demo')
+
+    def _apply_measure_density(self, summ, *, source: str = ''):
+        summ = summ if isinstance(summ, dict) else {}
+        chrome = summ.get('chrome') or '测·'
+        lab = getattr(self, '_chrome_lab', None)
+        if lab is not None:
+            lab.setText(str(chrome))
+            jok = summ.get('judgeOk')
+            if jok is True:
+                lab.setStyleSheet(
+                    'color:#0d0;font-size:14px;font-weight:600;padding:4px 8px;'
+                    'background:#1a2220;border-radius:4px;'
+                )
+            elif jok is False:
+                lab.setStyleSheet(
+                    'color:#f55;font-size:14px;font-weight:600;padding:4px 8px;'
+                    'background:#2a1a1a;border-radius:4px;'
+                )
+        table = getattr(self, '_measure_table', None)
+        if table is not None:
+            table.setRowCount(0)
+            for r in (summ.get('rows') or []):
+                i = table.rowCount()
+                table.insertRow(i)
+                st = str(r.get('judgeStatus') or '—')
+                cells = (
+                    str(r.get('index') or i + 1),
+                    str(r.get('opLabel') or r.get('op') or self.op),
+                    str(r.get('metricText') or '—'),
+                    str(r.get('judgeMin') if r.get('judgeMin') is not None else '—'),
+                    str(r.get('judgeMax') if r.get('judgeMax') is not None else '—'),
+                    st,
+                )
+                for c, t in enumerate(cells):
+                    it = QTableWidgetItem(t)
+                    if st == 'OK':
+                        it.setForeground(Qt.GlobalColor.green)
+                    elif st == 'NG':
+                        it.setForeground(Qt.GlobalColor.red)
+                    table.setItem(i, c, it)
+        dt = getattr(self, '_density_table', None)
+        if dt is not None:
+            dt.setRowCount(0)
+            for r in (summ.get('densityRows') or []):
+                i = dt.rowCount()
+                dt.insertRow(i)
+                dt.setItem(i, 0, QTableWidgetItem(str(r.get('key') or '')))
+                dt.setItem(i, 1, QTableWidgetItem(str(r.get('value'))))
+        live = getattr(self, '_live_lab', None)
+        if live is not None and summ.get('summary'):
+            src = f' · 源:{source}' if source else ''
+            live.setText(f"实况：[{chrome}] {summ.get('summary')}{src}")
+        self._last_measure_density = dict(summ)
 
     def _refresh_live_bind(self):
         """测量链 last_result → Host 显示字段。"""
@@ -487,6 +623,12 @@ class MeasureGeomPanel(QWidget):
                 if k not in [b.split('=')[0].replace('flow.', '') for b in bits]:
                     bits.append(f'flow.{k}={v}')
         lab.setText('实况：' + (' · '.join(bits[:14]) if bits else str(list(res.keys())[:8])))
+        try:
+            from desktop.measure_caliper_chrome import summarize_measure_result
+            summ = summarize_measure_result(res, self.params, op=self.op)
+            self._apply_measure_density(summ, source='engine')
+        except Exception:
+            pass
 
 
     def _bind_slots(self):
@@ -519,6 +661,7 @@ class MeasureGeomPanel(QWidget):
     def _run_bind_wizard(self):
         """Short guided bind flow for operators (VM-like 绑定向导)."""
         from PySide6.QtWidgets import (
+    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
             QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
             QComboBox, QLineEdit, QMessageBox, QProgressBar,
         )

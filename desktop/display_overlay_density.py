@@ -221,9 +221,20 @@ def build_unified_overlays(records=None, project=None, *,
             feat = str(params.get('feature') or bag.get('feature') or 'lines')
             if op == 'rect_find':
                 feat = 'rects'
+            find_method = str(params.get('findMethod') or bag.get('method') or '').lower()
             items = bag.get('items')
             if not isinstance(items, list):
                 items = bag.get(feat) if isinstance(bag.get(feat), list) else []
+            # wave143: caliper-line judge-colored overlays when findMethod=caliper
+            if feat == 'lines' and find_method in ('caliper', 'measure', 'auto', '') and (
+                bag.get('method') == 'caliper' or find_method == 'caliper' or params.get('caliperCount')
+            ):
+                try:
+                    from desktop.measure_caliper_chrome import build_caliper_overlays
+                    specs.extend(build_caliper_overlays(bag, params, max_specs=max_per_module))
+                    continue
+                except Exception:
+                    pass
             for i, it in enumerate(_as_list(items)[:max_per_module]):
                 if not isinstance(it, dict):
                     continue
@@ -288,6 +299,51 @@ def build_unified_overlays(records=None, project=None, *,
                 origin_on = params.get('showOrigin', True) not in (False, 0, 'false')
                 if axes_on or origin_on:
                     specs.extend(build_fixture_overlays(bag, params, max_specs=max_per_module))
+            except Exception:
+                pass
+            continue
+
+        # wave143: measure_geom + caliper + OCR/defect denser overlays
+        if op in (
+            'line_intersect', 'point_distance', 'point_line_distance',
+            'line_angle', 'point_circle_distance', 'circle_circle_distance',
+        ):
+            try:
+                from desktop.measure_caliper_chrome import build_measure_overlays
+                specs.extend(build_measure_overlays(bag, params, op=op, max_specs=max_per_module))
+            except Exception:
+                pass
+            continue
+
+        if op in ('geometry', 'caliper') or (
+            bag.get('method') == 'caliper' and isinstance(bag.get('items'), list)
+        ):
+            # Prefer caliper chrome when findMethod=caliper; geom-find already handled above
+            # for feature lines — only take leftover if method is caliper and not yet drawn
+            find_method = str(params.get('findMethod') or '').lower()
+            if find_method in ('caliper', 'measure', 'auto', '') or bag.get('method') == 'caliper':
+                # if geometry feature items already drawn above, skip; geometry branch continues
+                # earlier — this branch only for explicit caliper op or leftover
+                if op == 'caliper' or bag.get('method') == 'caliper':
+                    try:
+                        from desktop.measure_caliper_chrome import build_caliper_overlays
+                        specs.extend(build_caliper_overlays(bag, params, max_specs=max_per_module))
+                    except Exception:
+                        pass
+                    continue
+
+        if op == 'ocr':
+            try:
+                from desktop.ocr_defect_chrome import build_ocr_overlays
+                specs.extend(build_ocr_overlays(bag, params, max_specs=max_per_module))
+            except Exception:
+                pass
+            continue
+
+        if op == 'defects':
+            try:
+                from desktop.ocr_defect_chrome import build_defect_overlays
+                specs.extend(build_defect_overlays(bag, params, max_specs=max_per_module))
             except Exception:
                 pass
             continue

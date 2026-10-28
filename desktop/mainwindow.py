@@ -87,6 +87,7 @@ class MainWindow(QMainWindow):
             ('打开即跑 · 几何测量', 'projects/open-and-run-measure.sieans'),
             ('打开即跑 · 轮廓→色彩区域', 'projects/open-and-run-contour-color.sieans'),
             ('打开即跑 · 夹具位姿→预处理链', 'projects/open-and-run-fixture-pose-chain.sieans'),
+            ('打开即跑 · 测量卡尺铬→OCR缺陷表', 'projects/open-and-run-measure-caliper-chrome.sieans'),
             ('打开即跑 · 几何查找→多匹配', 'projects/open-and-run-geom-find-match.sieans'),
             ('打开即跑 · 九点标定', 'projects/open-and-run-ninepoint.sieans'),
             ('打开即跑 · 定位→测量→缺陷', 'projects/open-and-run-locate-measure-defect.sieans'),
@@ -1262,6 +1263,34 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+    def _ingest_measure_geom_panel_from_result(self, result):
+        """Feed open MeasureGeomPanel with last_result for denser judge chrome (wave143)."""
+        try:
+            pf = getattr(self, 'property_float', None) or getattr(self, 'props', None)
+            if pf is None:
+                return
+            from desktop.measure_geom_panel import MeasureGeomPanel
+            for w in pf.findChildren(MeasureGeomPanel):
+                if hasattr(w, 'set_last_result'):
+                    w.set_last_result(result)
+        except Exception:
+            pass
+
+    def _ingest_recognize_panels_from_result(self, result):
+        """Feed open DefectsPanel / OcrPanel denser industrial tables (wave143)."""
+        try:
+            pf = getattr(self, 'property_float', None) or getattr(self, 'props', None)
+            if pf is None:
+                return
+            from desktop.recognize_panels import DefectsPanel, OcrPanel
+            for cls in (DefectsPanel, OcrPanel):
+                for w in pf.findChildren(cls):
+                    if hasattr(w, 'set_last_result'):
+                        w.set_last_result(result)
+        except Exception:
+            pass
+
+
     def _measure_badge_for_result(self, bag) -> str:
         """Derive OK/NG from a cached filmstrip last_result (measure-focused)."""
         if not isinstance(bag, dict):
@@ -2215,12 +2244,32 @@ class MainWindow(QMainWindow):
 
     def _apply_measure_geom_overlays(self, records):
         """Canvas draw path: vector overlays for measure_geom when annotatedImage already baked
-        or as fallback from result scalars + step show* params."""
+        or as fallback from result scalars + step show* params.
+
+        wave143: prefer measure_caliper_chrome (judge/tolerance colored) then legacy path.
+        """
         view = getattr(self, 'output_view', None)
         if view is None or not hasattr(view, 'set_geom_overlays'):
             return
         specs = []
         steps = {s.get('id'): s for s in (self.document.project.get('steps') or [])}
+        try:
+            from desktop.measure_caliper_chrome import build_measure_overlays, MEASURE_OPS
+            for record in records or []:
+                sid = record.get('id')
+                step = steps.get(sid) or {}
+                op = step.get('operation') or ''
+                if op not in MEASURE_OPS:
+                    continue
+                params = step.get('params') or {}
+                result = (record.get('output') or {}).get('result') or {}
+                specs.extend(build_measure_overlays(result, params, op=op))
+            if specs:
+                view.set_geom_overlays(specs)
+                view._last_overlay_specs = list(specs or [])
+                return
+        except Exception:
+            specs = []
         for record in records or []:
             sid = record.get('id')
             step = steps.get(sid) or {}
@@ -2534,6 +2583,8 @@ class MainWindow(QMainWindow):
             self._ingest_region_color_panel_from_result(result)
             self._ingest_pose_correct_panel_from_result(result)
             self._ingest_preprocess_panel_from_result(result)
+            self._ingest_measure_geom_panel_from_result(result)
+            self._ingest_recognize_panels_from_result(result)
         except Exception:
             pass
         annotated_live, ann_sid = self._pick_annotated_with_step(records)
@@ -5642,6 +5693,7 @@ class MainWindow(QMainWindow):
             'projects/open-and-run-measure.sieans',
             'projects/open-and-run-contour-color.sieans',
             'projects/open-and-run-fixture-pose-chain.sieans',
+            'projects/open-and-run-measure-caliper-chrome.sieans',
             'projects/open-and-run-geom-find-match.sieans',
             'projects/open-and-run-ninepoint.sieans',
             'projects/open-and-run-script.sieans',

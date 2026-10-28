@@ -310,6 +310,15 @@ class SimpleRoiEditorDialog(QDialog):
         if path:
             self._load_image(path)
 
+
+    def _annotate_density_pen(self, kind='roi'):
+        """wave143 shared annotate draw density pens."""
+        try:
+            from desktop.annotate_draw_density import pen_style, shared_editor_defaults
+            return pen_style(kind), shared_editor_defaults()
+        except Exception:
+            return {'color': '#e8a838', 'width': 2.0, 'style': 'solid'}, {}
+
     def _on_roi_changed(self):
         if self.roi_item is None:
             return

@@ -284,6 +284,19 @@ class CaliperRoiEditorDialog(QDialog):
             self.scene.removeItem(it)
         self._caliper_items.clear()
 
+
+    def _annotate_density_pens(self):
+        """wave143 shared annotate draw density for caliper probes."""
+        try:
+            from desktop.annotate_draw_density import pen_style, PALETTE
+            return pen_style('caliper'), pen_style('caliper_tip'), PALETTE
+        except Exception:
+            return (
+                {'color': '#c48a2a', 'width': 1.2},
+                {'color': '#e8a838', 'width': 1.4},
+                {'caliper': '#c48a2a', 'caliper_tip': '#e8a838'},
+            )
+
     def _redraw_calipers(self, *_):
         self._clear_calipers()
         self._update_roi_label()
@@ -300,8 +313,14 @@ class CaliperRoiEditorDialog(QDialog):
         cy = y + wh / 2.0
         span = min(ww, wh) * 0.45
         spacing = (2 * span) / (count - 1) if count > 1 else 0.0
-        pen = QPen(QColor('#c48a2a'), 1)
-        tip_pen = QPen(QColor('#e8a838'), 1)
+        try:
+            cal_pen, tip_ps, pal = self._annotate_density_pens()
+            pen = QPen(QColor(cal_pen.get('color') or '#c48a2a'), float(cal_pen.get('width') or 1.2))
+            tip_pen = QPen(QColor(tip_ps.get('color') or pal.get('caliper_tip') or '#e8a838'),
+                           float(tip_ps.get('width') or 1.4))
+        except Exception:
+            pen = QPen(QColor('#c48a2a'), 1)
+            tip_pen = QPen(QColor('#e8a838'), 1)
         for index in range(count):
             ox = cx + cross[0] * ((index - (count - 1) / 2.0) * spacing)
             oy = cy + cross[1] * ((index - (count - 1) / 2.0) * spacing)
