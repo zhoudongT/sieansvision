@@ -426,6 +426,14 @@ VisionMaster（海康机器人视觉平台）在教程里呈现为：
 
 
 
+## 【细妆103 · refresh dual-origin echo · checked preset sync · from_get prefer · 2026-10-28】
+
+- **refresh**：终局 out 回声 ensure 的 `from_set_strategy` / `from_toggle` → `dual_origin_echo` / `ensure_strategy`。
+- **menu tip_max_len restamp**：trigger 后同步 `tip_max_len_qaction_count` / `tip_max_len_checked_preset` / `tip_max_len_checked_preset_ok` / `tip_max_len_checked_synced` 进 menu stash。
+- **tip from_get prefer**：tip status 弱（`hover_status_prop_ok=False`）且 get-stash 有可用 `策略·*` 时，回填 hover_status 并置 `hover_status_from_get_prefer`（允许 get `status_prop_ok` 或 `get_into_tip`）。
+- **FlashMs**：仍不起步。
+- **验证**：`scripts/smoke-wave135-dualecho-checkedpreset-fromgetprefer-e2e.py` → 9 PASS。非硬件约 **~99.99%**。
+
 ## 【细妆102 · dual-origin keep · tip_max_len submenu restamp · getter→tip/refresh · 2026-10-28】
 
 - **ensure←toggle/set**：ensure 写 stash 时保留 `from_set_strategy` / `from_toggle`；set 镜像保留 `from_toggle`；toggle 镜像强制双源（`from_toggle`+`from_set_strategy`，因内含 set）。

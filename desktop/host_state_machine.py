@@ -33755,6 +33755,25 @@ class HostStateMachineWidget(QWidget):
                 self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_fail_reason = str(e)
             except Exception:
                 pass
+        # prefer from_get status into hover_status when tip status weaker
+        try:
+            _tip_ok = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop_ok', False))
+            _gst = getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_max_len_get_status', None)
+            _gok = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_max_len_get_status_prop_ok', False))
+            _ginto = bool(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_max_len_get_into_tip', False))
+            _gst_usable = bool(_gst) and str(_gst).startswith('策略·') and (_gok or _ginto)
+            if (not _tip_ok) and _gst_usable:
+                self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status = _gst
+                self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop = _gst
+                self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_prop_ok = True
+                self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_from_get_prefer = True
+            else:
+                self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_from_get_prefer = False
+        except Exception:
+            try:
+                self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_status_from_get_prefer = False
+            except Exception:
+                pass
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_max_len_shown = int(tip_ml)
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip = tip
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_hover_tip_truncated = bool(truncated)
@@ -34243,6 +34262,17 @@ class HostStateMachineWidget(QWidget):
                 out['status'] = menu_bind.get('status')
                 out['status_prop'] = menu_bind.get('status_prop')
                 out['status_prop_ok'] = True
+        # echo dual-origin flags from ensure stash
+        try:
+            ens = dict(getattr(self, '_last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_ensure', None) or {})
+            out['from_set_strategy'] = bool(ens.get('from_set_strategy'))
+            out['from_toggle'] = bool(ens.get('from_toggle'))
+            out['dual_origin_echo'] = bool(out['from_set_strategy'] or out['from_toggle'])
+            out['ensure_strategy'] = ens.get('strategy')
+        except Exception:
+            out['from_set_strategy'] = False
+            out['from_toggle'] = False
+            out['dual_origin_echo'] = False
         self._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge = dict(out)
         return out
 
@@ -34478,6 +34508,27 @@ class HostStateMachineWidget(QWidget):
                             menu_st['tip_max_len_submenu_status_prop_ok'] = (str(sub.property('dstImportStrategyBadgeMenuTipMaxLenStatus')) == str(_st))
                         except Exception:
                             menu_st['tip_max_len_submenu_status_prop_ok'] = False
+                    # sync qaction_count + checked preset into menu out
+                    try:
+                        _qlist = list(qacts) if qacts else (list(sub.actions()) if sub is not None else [])
+                        menu_st['tip_max_len_qaction_count'] = len(_qlist)
+                        _checked = None
+                        for _act in _qlist:
+                            try:
+                                if _act.isChecked():
+                                    _checked = int(_act.property('dstImportStrategyBadgeHoverTipMaxLen') or 0)
+                                    break
+                            except Exception:
+                                pass
+                        menu_st['tip_max_len_checked_preset'] = _checked
+                        if _ml is not None and _checked is not None:
+                            menu_st['tip_max_len_checked_preset_ok'] = (int(_checked) == int(_ml))
+                        else:
+                            menu_st['tip_max_len_checked_preset_ok'] = False
+                        menu_st['tip_max_len_checked_synced'] = True
+                    except Exception:
+                        menu_st['tip_max_len_checked_synced'] = False
+                        menu_st['tip_max_len_checked_preset_ok'] = False
                     host._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu = dict(menu_st)
                     host._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_tip_max_len_status = menu_st.get('tip_max_len_status')
                     host._last_dst_reorder_shortcut_conflict_history_batch_diff_import_strategy_badge_menu_tip_max_len_status_ok = bool(menu_st.get('tip_max_len_status_ok'))
