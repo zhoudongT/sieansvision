@@ -223,14 +223,11 @@ def main() -> int:
         bc = state['last_barcode'] or {}
         pass_multi = (
             state['multi_accepted'] >= MULTI_CLICKS
-            and state['multi_cycles'] >= max(3, MULTI_CLICKS // 3)
+            and state['multi_cycles'] >= max(8, MULTI_CLICKS - 2)
             and multi['max_gap_s'] < MAX_GAP_S
-            and multi['span_s'] >= 2.0
+            and multi['span_s'] >= 3.0
+            and state['multi_ignored_busy'] >= 1  # re-entry guard exercised
         )
-        # Allow some ignored clicks (busy guard working) as long as storm completed
-        if state['multi_accepted'] + state['multi_ignored_busy'] >= MULTI_CLICKS:
-            if state['multi_cycles'] >= max(3, MULTI_CLICKS // 4) and multi['max_gap_s'] < MAX_GAP_S:
-                pass_multi = True
         pass_cont = (
             cont['span_s'] >= 55.0
             and cont['max_gap_s'] < MAX_GAP_S
@@ -281,17 +278,18 @@ def main() -> int:
         print(json.dumps(summary, ensure_ascii=False, indent=2))
         QTimer.singleShot(200, app.quit)
 
-    def fire_click():
-        """One rapid 「运行」attempt — mirrors toolbar click under busy/finishing guard."""
+    def fire_click(*, spam_while_busy=False):
+        """「运行」attempt. spam_while_busy=True counts ignored clicks (guard proof)."""
         if state['done'] or state['phase'] != 'multi':
-            return
-        if state['multi_accepted'] + state['multi_ignored_busy'] >= MULTI_CLICKS:
-            return
+            return False
         busy = bool(getattr(win, 'busy', False) or getattr(win, '_finishing', False))
         if busy:
-            state['multi_ignored_busy'] += 1
-            state['click_times'].append(('ignored', time.monotonic()))
-            return
+            if spam_while_busy:
+                state['multi_ignored_busy'] += 1
+                state['click_times'].append(('ignored', time.monotonic()))
+            return False
+        if state['multi_accepted'] >= MULTI_CLICKS:
+            return False
         try:
             state['multi_accepted'] += 1
             state['click_times'].append(('accepted', time.monotonic()))
@@ -300,8 +298,10 @@ def main() -> int:
             else:
                 win.continuous = False
                 win.run()
+            return True
         except Exception as exc:
             state['errors'].append(f'click: {exc}')
+            return False
 
     def on_tick():
         if state['done']:
@@ -328,20 +328,30 @@ def main() -> int:
             return
 
         if state['phase'] == 'multi':
-            # Keep clicking rapidly until we have MULTI_CLICKS attempts
-            attempts = state['multi_accepted'] + state['multi_ignored_busy']
-            if attempts < MULTI_CLICKS:
-                fire_click()
+            # Allen pattern: as soon as busy clears, click again (sequential rapid).
+            # While busy, spam a few ignored clicks to prove the re-entry guard.
+            if state['multi_accepted'] < MULTI_CLICKS:
+                if getattr(win, 'busy', False) or getattr(win, '_finishing', False):
+                    # occasional spam while busy (≤3 per in-flight)
+                    if state['multi_ignored_busy'] < state['multi_accepted'] * 3 + 3:
+                        fire_click(spam_while_busy=True)
+                    if now - state['multi_at'] > 120.0:
+                        state['errors'].append('multi-click progress timeout 120s')
+                        finalize()
+                    return
+                fire_click(spam_while_busy=False)
                 return
-            # Wait until in-flight finishes drain (busy/_finishing clear) or timeout
+            # All accepted; wait drain
             if getattr(win, 'busy', False) or getattr(win, '_finishing', False):
-                if now - state['multi_at'] > 90.0:
-                    state['errors'].append('multi-click drain timeout 90s')
+                fire_click(spam_while_busy=True)
+                if now - state['multi_at'] > 120.0:
+                    state['errors'].append('multi-click drain timeout 120s')
                     finalize()
                 return
-            if state['multi_cycles'] < 1:
-                if now - state['multi_at'] > 60.0:
-                    state['errors'].append('multi-click zero cycles')
+            if state['multi_cycles'] < max(5, MULTI_CLICKS // 2):
+                if now - state['multi_at'] > 120.0:
+                    state['errors'].append(
+                        f"multi-click low cycles={state['multi_cycles']}")
                     finalize()
                 return
             state['phase'] = 'multi_settle'
