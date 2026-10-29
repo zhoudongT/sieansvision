@@ -433,7 +433,97 @@ def _zxing_formats(p):
     return fmt
 
 
+
+def _barcode_formats_str(p):
+    raw = p.get('types') if p.get('types') not in (None, '') else p.get('formats')
+    if raw in (None, '', 'all', 'All', '*'):
+        return ''
+    if isinstance(raw, (list, tuple)):
+        return ','.join(str(x).strip() for x in raw if str(x).strip())
+    return str(raw)
+
+
+def _barcode_via_native(image, canvas, p, offset):
+    """C++ sieans_native decode; raises if module missing / forced failure."""
+    from vision import native_bridge
+    show_overlay = p.get('showOverlay', True) is not False
+    show_boxes = p.get('showBoxes', True) is not False
+    show_text = p.get('showText', True) is not False
+    show_format = p.get('showFormat', True) is not False
+    max_codes = int(number(p, 'maxCodes', 16, 1, 64))
+    hits = native_bridge.decode_barcodes_native(
+        image, formats=_barcode_formats_str(p), max_codes=max_codes)
+    results = []
+    for hit in hits:
+        pts = hit.get('polygon') or []
+        points = [[float(pt[0]) + offset[0], float(pt[1]) + offset[1]] for pt in pts]
+        if show_overlay and show_boxes and len(points) >= 4:
+            polygon(canvas, points)
+        label = str(hit.get('text') or '')
+        if show_overlay and show_text and label:
+            try:
+                x0 = int(min(pt[0] for pt in points)); y0 = int(min(pt[1] for pt in points))
+                tip = label[:48]
+                if show_format:
+                    tip = f"{hit.get('format')}:{tip}"
+                cv2.putText(canvas, tip, (x0, max(14, y0 - 6)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 220, 80), 1, cv2.LINE_AA)
+            except Exception:
+                pass
+        if points:
+            cx = float(sum(pt[0] for pt in points) / len(points))
+            cy = float(sum(pt[1] for pt in points) / len(points))
+        else:
+            c = hit.get('center') or (0, 0)
+            cx, cy = float(c[0]) + offset[0], float(c[1]) + offset[1]
+        results.append({
+            'text': hit.get('text'), 'format': str(hit.get('format')),
+            'polygon': points, 'center': [cx, cy],
+        })
+        if len(results) >= max_codes:
+            break
+    judge_en = bool(p.get('judgeEnable', False))
+    expected = str(p.get('expectedText') or '').strip()
+    min_count = int(number(p, 'judgeMinCount', 1, 0, 64))
+    max_count = int(number(p, 'judgeMaxCount', 0, 0, 64))
+    ok = True
+    if judge_en:
+        ok = len(results) >= min_count
+        if ok and max_count > 0:
+            ok = len(results) <= max_count
+        if ok and expected:
+            joined = '\n'.join(r['text'] for r in results)
+            ok = expected in joined
+    text_joined = '\n'.join(r['text'] for r in results)
+    return {
+        'count': len(results), 'items': results, 'text': text_joined,
+        'status': 'ok' if results else 'empty',
+        'passed': bool(ok) if judge_en else True,
+        'judgeEnable': judge_en, 'judgeOk': bool(ok) if judge_en else True,
+        'judgeStatus': ('OK' if ok else 'NG') if judge_en else 'SKIP',
+        'showOverlay': show_overlay, 'showBoxes': show_boxes, 'showText': show_text,
+        'backend': 'sieans_native',
+    }
+
+
 def barcode(image, canvas, p, offset):
+    # Prefer C++ sieans_native when available (SIEANS_NATIVE=auto|1).
+    try:
+        from vision import native_bridge
+        mode = native_bridge.native_mode()
+    except Exception:
+        mode = 'python'
+        native_bridge = None  # type: ignore
+    if mode != 'python':
+        try:
+            return _barcode_via_native(image, canvas, p, offset)
+        except Exception as _native_exc:
+            if mode == 'force':
+                raise RuntimeError(
+                    f"SIEANS_NATIVE=force but C++ decode failed: {_native_exc}"
+                ) from _native_exc
+            # auto → fall through to Python zxingcpp
+            pass
     try:
         import zxingcpp
     except ImportError as exc:

@@ -9,6 +9,14 @@ export MVCAM_COMMON_RUNENV="${MVCAM_COMMON_RUNENV:-/opt/MVS/lib}"
 export LD_LIBRARY_PATH="/opt/MVS/lib/64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export SIEANS_GENTL_CTI="${SIEANS_GENTL_CTI:-/opt/MVS/lib/64/MvProducerU3V.cti:/opt/MVS/lib/64/MvProducerGEV.cti}"
 export PYTHONPATH="$ROOT/.pydeps${PYTHONPATH:+:$PYTHONPATH}"
+
+# Prefer C++ sieans_native barcode when .pydeps has the module (auto-fallback).
+export SIEANS_NATIVE="${SIEANS_NATIVE:-auto}"
+# Hikrobot MvCameraControl for optional C++ GenTL
+if [[ -d /opt/MVS/lib/64 ]]; then
+  export LD_LIBRARY_PATH="/opt/MVS/lib/64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+  export MVCAM_COMMON_RUNENV="${MVCAM_COMMON_RUNENV:-/opt/MVS/lib}"
+fi
 export VISION_PYTHON="${VISION_PYTHON:-$(command -v python3)}"
 export DISPLAY="${DISPLAY:-:0}"
 
