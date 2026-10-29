@@ -156,6 +156,24 @@ DEFAULT_MESSAGE_TEMPLATES = [
         'protocol': 'line',
         'body': 'HB ts=${flow.hbSeq}',
     },
+    {
+        'id': 'barcode-line',
+        'name': '条码/二维码上报',
+        'protocol': 'line',
+        'body': 'BARCODE ok=${flow.passGate} count=${flow.barcodeCount} text=${flow.barcodeText}',
+    },
+    {
+        'id': 'barcode-json',
+        'name': '条码/二维码 JSON',
+        'protocol': 'json',
+        'body': '{"cmd":"BARCODE","ok":${flow.passGate},"count":${flow.barcodeCount},"text":"${flow.barcodeText}"}',
+    },
+    {
+        'id': 'qr-passgate',
+        'name': '二维码门限行',
+        'protocol': 'line',
+        'body': 'QR ok=${flow.passGate} text=${flow.barcodeText} all=${flow.barcodeAll}',
+    },
 ]
 
 
@@ -620,6 +638,7 @@ class CommManagerDialog(QDialog):
         self.document = document
         self.setWindowTitle('通信管理')
         self.resize(920, 560)
+        self.setMinimumSize(720, 480)
         root = QVBoxLayout(self)
         title = QLabel('通信管理')
         title.setObjectName('dialogTitle')
@@ -1452,6 +1471,20 @@ class CommManagerDialog(QDialog):
 
         self._devices = []
         self._load_from_project()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # whole-screen adapt: transcript / device table stay usable at 1280×720
+        try:
+            w = int(self.width() or 920)
+            if hasattr(self, 'tcp_real_transcript') and self.tcp_real_transcript is not None:
+                self.tcp_real_transcript.setMinimumHeight(72 if w < 1000 else 120)
+            for tbl_name in ('recv_table', 'send_table', 'device_list'):
+                wdg = getattr(self, tbl_name, None)
+                if wdg is not None and hasattr(wdg, 'setMinimumWidth'):
+                    wdg.setMinimumWidth(240 if w < 1000 else 320)
+        except Exception:
+            pass
 
     def _load_from_project(self):
         cm = ensure_comm_manager(deepcopy(self.document.project))

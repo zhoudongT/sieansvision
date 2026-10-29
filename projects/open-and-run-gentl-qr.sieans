@@ -4,11 +4,12 @@
   "name": "打开即跑 · GenTL相机→二维码",
   "meta": {
     "openAndRun": true,
-    "wave": 240,
-    "gentlQr": true,
-    "realCamera": true
+    "wave": 242,
+    "camera": "gentl",
+    "comms": "localbus+tcpReal-seed",
+    "hangSafeContinuous": true
   },
-  "notes": "t240：Hikrobot MV-CB013 GenTL 持久采集 → 条码/二维码(zxing QR) → 变量门限。打开工程后点 ▶ 运行：首次开相机并保持连接；连续运行走 show_live_frame+≤15FPS（防卡死）。曝光 exposureTime=2000µs（过曝扫不出码）；types=QRCode。勿与 MVS / 网页采集同时占 USB。",
+  "notes": "t242：Hikrobot MV-CB013 GenTL 持久采集 → 条码/二维码(zxing QR) → 门限 → LocalBus 模板发送。打开工程后点 ▶：首次开相机并 keepConnectionOpen；连续运行走 show_live_frame+≤15FPS（防卡死）。曝光 exposureTime=2000µs；types=QRCode。断线可用相机管理「一键重连」/ autoStart 软恢复。勿与 MVS / 网页采集同时占 USB。通信默认 LocalBus；可选 TcpRealLoopback :19956。",
   "sourcePosition": {
     "x": 300,
     "y": 40
@@ -147,6 +148,49 @@
       },
       "imageFrom": "b2c3d4e5f6071829",
       "variables": {}
+    },
+    {
+      "id": "d4e5f60718293a4b",
+      "operation": "format_data",
+      "name": "格式化二维码报文",
+      "params": {
+        "template": "BARCODE ok={0} count={1} text={2}",
+        "args": "passGate,barcodeCount,barcodeText",
+        "targetVar": "formatted",
+        "scope": "flow",
+        "emptyDefault": ""
+      },
+      "reference": "",
+      "position": {
+        "x": 300,
+        "y": 560
+      },
+      "imageFrom": "c3d4e5f60718293a",
+      "variables": {}
+    },
+    {
+      "id": "e5f60718293a4b5c",
+      "operation": "send_data",
+      "name": "LocalBus发送·二维码",
+      "params": {
+        "device": "LocalLoop",
+        "channel": "default",
+        "sourceMode": "text",
+        "sourceScope": "flow",
+        "sourceVar": "",
+        "message": "BARCODE ok=${flow.passGate} count=${flow.barcodeCount} text=${flow.barcodeText}",
+        "encoding": "utf-8",
+        "appendCrLf": false,
+        "prefix": "",
+        "suffix": ""
+      },
+      "reference": "",
+      "position": {
+        "x": 300,
+        "y": 680
+      },
+      "imageFrom": "d4e5f60718293a4b",
+      "variables": {}
     }
   ],
   "edges": [
@@ -170,6 +214,20 @@
       "to": "c3d4e5f60718293a",
       "fromPort": "bottom",
       "toPort": "top"
+    },
+    {
+      "id": "e4",
+      "from": "c3d4e5f60718293a",
+      "to": "d4e5f60718293a4b",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "e5",
+      "from": "d4e5f60718293a4b",
+      "to": "e5f60718293a4b5c",
+      "fromPort": "bottom",
+      "toPort": "top"
     }
   ],
   "variables": {
@@ -177,7 +235,9 @@
     "barcodeText": "",
     "barcodeAll": "",
     "barcodeOk": 0,
-    "passGate": 0
+    "passGate": 0,
+    "formatted": "",
+    "commPayload": ""
   },
   "hostWatch": {
     "watchKeys": [
@@ -185,7 +245,8 @@
       "barcodeText",
       "barcodeAll",
       "barcodeOk",
-      "passGate"
+      "passGate",
+      "formatted"
     ],
     "active": "二维码链",
     "pinGroups": {
@@ -194,11 +255,17 @@
         "barcodeText",
         "barcodeAll",
         "barcodeOk",
-        "passGate"
+        "passGate",
+        "formatted"
       ],
       "门限": [
         "barcodeOk",
         "passGate"
+      ],
+      "通信": [
+        "formatted",
+        "passGate",
+        "barcodeText"
       ]
     }
   },
@@ -237,7 +304,8 @@
       },
       "OK/NG": {
         "commands": [],
-        "binding": ""
+        "binding": "passGate",
+        "chrome": "barcode"
       },
       "运行控制": {
         "commands": [
@@ -266,7 +334,7 @@
       "bottom": true,
       "left": false,
       "right": false,
-      "cameraBind": "未绑定",
+      "cameraBind": "GenTL.MV-CB013",
       "commBind": "TCP.连接状态",
       "showRunStatus": true,
       "showOkNg": true,
@@ -275,10 +343,79 @@
     },
     "meta": {
       "template": "open_and_run_gentl_qr",
-      "version": 1,
+      "version": 2,
       "openAndRun": true,
-      "wave": 240,
-      "hangFix": "t240u-continuous-reentry-live-paint"
+      "wave": 242,
+      "hangFix": "t240u-continuous-reentry-live-paint",
+      "comms": "localbus-barcode-send",
+      "sessionPersist": true
+    }
+  },
+  "commManager": {
+    "devices": [
+      {
+        "id": "local-loop",
+        "name": "LocalLoop",
+        "protocol": "Local Bus",
+        "enabled": true,
+        "host": "",
+        "port": 0,
+        "remark": "进程内总线：GenTL→QR→模板发送（无现场 TCP）"
+      },
+      {
+        "id": "tcp-real-loopback",
+        "name": "TcpRealLoopback",
+        "protocol": "TCP Server",
+        "enabled": true,
+        "host": "127.0.0.1",
+        "port": 19956,
+        "remark": "可选真 TCP Server 环回（CommManager Real TCP；无 PLC/机器人）"
+      }
+    ],
+    "recvEvents": [],
+    "sendEvents": [
+      {
+        "name": "二维码结果行",
+        "device": "LocalLoop",
+        "message": "BARCODE ok=${flow.passGate} count=${flow.barcodeCount} text=${flow.barcodeText}",
+        "topic": "",
+        "variable": ""
+      },
+      {
+        "name": "二维码 JSON",
+        "device": "LocalLoop",
+        "message": "{\"cmd\":\"BARCODE\",\"ok\":${flow.passGate},\"count\":${flow.barcodeCount},\"text\":\"${flow.barcodeText}\"}",
+        "topic": "",
+        "variable": ""
+      }
+    ],
+    "heartbeat": {
+      "enabled": false
+    },
+    "response": {},
+    "messageTemplates": [
+      {
+        "id": "barcode-line",
+        "name": "条码/二维码上报",
+        "protocol": "line",
+        "body": "BARCODE ok=${flow.passGate} count=${flow.barcodeCount} text=${flow.barcodeText}"
+      },
+      {
+        "id": "qr-passgate",
+        "name": "二维码门限行",
+        "protocol": "line",
+        "body": "QR ok=${flow.passGate} text=${flow.barcodeText}"
+      }
+    ],
+    "tcpReal": {
+      "host": "127.0.0.1",
+      "port": 19956,
+      "framing": "lf",
+      "keepAlive": true,
+      "reconnect": true,
+      "role": "server",
+      "ack": "OK",
+      "payload": "BARCODE ok=${flow.passGate} text=${flow.barcodeText}"
     }
   }
 }

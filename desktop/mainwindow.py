@@ -3311,20 +3311,47 @@ class MainWindow(QMainWindow):
         params=dict(step.get('params') or {})
         if not params.get('deviceId') and params.get('driver')=='gentl':
             self.log('相机预热跳过：尚未选择 GenTL 设备编号');return
+        # Prefer sessionPersist / reconnectResilient from the capture step
+        params.setdefault('sessionPersist', True)
+        params.setdefault('keepConnectionOpen', True)
+        params.setdefault('reconnectResilient', True)
+        params.setdefault('openClosePerGrab', False)
         def done(status):
             state=status.get('state') if isinstance(status,dict) else None
             if state=='running':
                 self.log('相机会话已预热，首次「运行流程」将直接取帧'); self._note_camera_session(state='会话运行中')
                 self.wb_status.push_log('相机会话运行中 · 可直接运行流程')
+            elif state=='interrupted':
+                self.log('相机会话曾中断 — 正在一键重连…'); self._note_camera_session(state=state, status=status)
+                try:
+                    rid2=self.backend.request('camera/session/reconnect', dict(
+                        config=dict(params=params, intervalMs=100, reconnectAttempts=2,
+                                    reconnectMs=1000, autoStart=True)))
+                    self.pending[rid2]=done
+                except Exception as err:
+                    self.log('一键重连未成功：'+str(err))
             else:
                 self.log('相机会话状态：'+str(state or status)); self._note_camera_session(state=state, status=status)
         def failed_msg(msg):
             # soft — do not block platform
-            self.log('相机预热未成功（可稍后在「设备与模型→相机」连接）：'+str(msg))
+            self.log('相机预热未成功（可稍后在「设备与模型→相机」连接 / 一键重连）：'+str(msg))
+        def after_status(status):
+            state=status.get('state') if isinstance(status,dict) else None
+            if state=='running':
+                done(status); return
+            if state=='interrupted':
+                done(status); return
+            # idle/stopped/failed → start with autoStart so relaunch can soft-restore
+            try:
+                rid=self.backend.request('camera/session/start', dict(
+                    params=params, intervalMs=100, reconnectAttempts=2, reconnectMs=1000, autoStart=True))
+                self.pending[rid]=done
+            except Exception as error:
+                failed_msg(error)
         try:
-            rid=self.backend.request('camera/session/start', dict(
-                params=params, intervalMs=100, reconnectAttempts=2, reconnectMs=1000, autoStart=False))
-            self.pending[rid]=done
+            # Probe first: interrupted → reconnect; else start(autoStart=True)
+            rid0=self.backend.request('camera/session/status', {})
+            self.pending[rid0]=after_status
         except Exception as error:
             failed_msg(error)
 

@@ -63,9 +63,9 @@ class CameraManagerDialog(_RpcDialog):
         head.setObjectName('dialogTitle')
         root.addWidget(head)
         hint = QLabel(
-            'wave156：Soft / UVC / GenTL 连续 live · 曝光/增益/触发软控 · 多设备选择器 · 记忆上次设备 · 断线重连。'
-            'UVC：VideoCapture 打开一次跨帧 grab；GenTL：CTI→枚举→开流（无相机空列表）。'
-            '预览 PreviewFrameGate → LivePreviewLabel.paintEvent / 全局图像 ImageView 预缩放。'
+            'wave157：Soft / UVC / GenTL 会话保持 · 自动重连/autoStart · 断线一键重连 · 曝光软控。'
+            '强制退出后再开 App：若勾选自动重连/会话保持，引擎可软恢复上次 GenTL/UVC。'
+            '预览 PreviewFrameGate → LivePreviewLabel；连续 ▶ 勿回灌 annotatedImage（防卡死）。'
         )
         hint.setObjectName('dialogHint')
         hint.setWordWrap(True)
@@ -135,7 +135,12 @@ class CameraManagerDialog(_RpcDialog):
         self.connect_sw.toggled.connect(self._on_connect_toggled)
         form.addRow('连接相机', self.connect_sw)
         self.reconnect = OrangeSwitch(True)
+        self.reconnect.setToolTip('采集中断时按预算重试；勾选后会把 autoStart 写入会话，强制退出再开 App 可软恢复')
         form.addRow('自动重连', self.reconnect)
+        self.session_persist = OrangeSwitch(True)
+        self.session_persist.setObjectName('cameraSessionPersist')
+        self.session_persist.setToolTip('keepConnectionOpen / sessionPersist：跨帧保持 SDK 连接；随自动重连写入 autoStart')
+        form.addRow('会话保持 (persist)', self.session_persist)
         self.cache = QSpinBox()
         self.cache.setRange(1, 200)
         self.cache.setValue(50)
@@ -148,6 +153,11 @@ class CameraManagerDialog(_RpcDialog):
         self.soft_timeout.setRange(0, 60)
         self.soft_timeout.setValue(2)
         form.addRow('软触发超时', self.soft_timeout)
+        self.reconnect_btn = QPushButton('一键重连（断线/中断后）')
+        self.reconnect_btn.setObjectName('cameraReconnectBtn')
+        self.reconnect_btn.setToolTip('interrupted / failed / stopped 时用上次会话配置重开，少走一遍相机管理')
+        self.reconnect_btn.clicked.connect(self._one_click_reconnect)
+        form.addRow(self.reconnect_btn)
         open_full = QPushButton('打开完整相机工作台（连接 / 会话 / 预览）…')
         open_full.setObjectName('primaryButton')
         open_full.clicked.connect(self.openFullWorkbench.emit)
@@ -247,6 +257,17 @@ class CameraManagerDialog(_RpcDialog):
         self._status_timer.stop()
         self._live_timer.stop()
         super().hideEvent(event)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # Wayland-safe: keep preview pane from collapsing on small screens
+        try:
+            w = max(640, int(self.width() or 860))
+            h = max(420, int(self.height() or 560))
+            if hasattr(self, 'preview') and self.preview is not None:
+                self.preview.setMinimumSize(280 if w < 900 else 360, 200 if h < 520 else 240)
+        except Exception:
+            pass
 
     def refresh(self):
         self._refresh_backend_status()
@@ -598,13 +619,25 @@ class CameraManagerDialog(_RpcDialog):
             # auto-pick synthetic
             pass
         params = self._params()
+        # sessionPersist flags stay on connect_params; also stamp here for honesty
+        if hasattr(self, 'session_persist') and self.session_persist.isChecked():
+            params = dict(params)
+            params['sessionPersist'] = True
+            params['keepConnectionOpen'] = True
+            params['reconnectResilient'] = True
+            params['openClosePerGrab'] = False
         attempts = 2 if self.reconnect.isChecked() else 0
+        # autoStart=True when 自动重连 or 会话保持 — force-quit/relaunch soft-restore
+        want_persist = bool(
+            (hasattr(self, 'session_persist') and self.session_persist.isChecked())
+            or self.reconnect.isChecked()
+        )
         body = dict(
             params=params,
             intervalMs=100,
             reconnectAttempts=attempts,
             reconnectMs=int(self.reconnect_ms.value()),
-            autoStart=False,
+            autoStart=want_persist,
         )
         self.message.setText(f"正在连接 {params.get('deviceId')} …")
         self._request('camera/session/start', body, self._on_session)
@@ -626,18 +659,30 @@ class CameraManagerDialog(_RpcDialog):
         st = state.get('state') or 'idle'
         err = state.get('error') or ''
         labels = {
-            'idle': '未连接',
-            'opening': '正在打开设备',
+            'idle': '未连接 · 请选相机后打开连接',
+            'opening': '正在打开设备…',
             'running': '已连接 · 持续采集中',
-            'reconnecting': '正在重连',
-            'stopping': '正在释放设备',
-            'stopped': '已停止',
-            'failed': '连接失败',
-            'interrupted': '应用中断，需手动重连',
+            'reconnecting': '正在重连…',
+            'stopping': '正在释放设备…',
+            'stopped': '已断开 · 会话已停止',
+            'failed': '已断开 · 连接失败',
+            'interrupted': '已断开 · 应用曾中断（可点「一键重连」）',
         }
         text = labels.get(st, st)
         if err:
             text += ' · ' + str(err)[:300]
+        # Clear / emphasize disconnect states on the strip
+        try:
+            if st in ('interrupted', 'failed', 'stopped', 'idle'):
+                self.message.setStyleSheet('color:#c0392b;')
+            elif st == 'reconnecting':
+                self.message.setStyleSheet('color:#d68910;')
+            elif st == 'running':
+                self.message.setStyleSheet('color:#1e8449;')
+            else:
+                self.message.setStyleSheet('')
+        except Exception:
+            pass
         # wave150: soft acquisition chrome densify on session strip
         try:
             from desktop.soft_acquisition_chrome import summarize_session, live_preview_interval_ms
@@ -655,6 +700,19 @@ class CameraManagerDialog(_RpcDialog):
             self.message.setText(text)
         active = st in ('opening', 'running', 'reconnecting')
         self._set_connect(active or st == 'running')
+        if hasattr(self, 'reconnect_btn'):
+            can_re = st in ('interrupted', 'failed', 'stopped') and bool(
+                (state.get('config') or {}).get('params') or self.camera_pick.currentData()
+            )
+            self.reconnect_btn.setEnabled(can_re and not self._busy())
+            if st == 'interrupted':
+                self.reconnect_btn.setText('一键重连（应用中断后）')
+            elif st == 'failed':
+                self.reconnect_btn.setText('一键重连（连接失败后）')
+            elif st == 'stopped':
+                self.reconnect_btn.setText('一键重连（已断开）')
+            else:
+                self.reconnect_btn.setText('一键重连（断线/中断后）')
         if st == 'running':
             if not self._live_timer.isActive():
                 self._live_pending = False  # match CameraDialog: abort must not lock reopen
@@ -902,6 +960,39 @@ class CameraManagerDialog(_RpcDialog):
             self.frame_ready.emit(deepcopy(self._last_frame))
         self.accept()
 
+    def _one_click_reconnect(self):
+        """Reopen last session after interrupted/failed/stopped — fewer 相机管理 steps."""
+        if not self.backend.is_ready:
+            self.message.setText('引擎未就绪，无法重连。')
+            return
+        st = self._session.get('state') or ''
+        cfg = self._session.get('config') or {}
+        params = dict(cfg.get('params') or {})
+        if not params.get('deviceId'):
+            # Fall back to current picker
+            try:
+                params = self._params()
+            except Exception:
+                params = {}
+        if not params.get('deviceId'):
+            self.message.setText('无可重连配置：请先选择相机并成功连接一次。')
+            return
+        if hasattr(self, 'session_persist') and self.session_persist.isChecked():
+            params['sessionPersist'] = True
+            params['keepConnectionOpen'] = True
+            params['reconnectResilient'] = True
+        attempts = 2 if self.reconnect.isChecked() else 0
+        body = dict(
+            params=params,
+            intervalMs=int(cfg.get('intervalMs') or 100),
+            reconnectAttempts=int(cfg.get('reconnectAttempts') or attempts or 2),
+            reconnectMs=int(cfg.get('reconnectMs') or self.reconnect_ms.value()),
+            autoStart=True,
+        )
+        self.message.setText(f"一键重连 {params.get('deviceId')} …")
+        # engine-host camera/session/reconnect stops busy child then start(autoStart=True)
+        self._request('camera/session/reconnect', {'config': body}, self._on_session)
+
     def _buttons(self):
         kind = self._current_kind()
         # Soft enumerate works without engine; connect still needs engine except soft-sim path messaging
@@ -922,3 +1013,9 @@ class CameraManagerDialog(_RpcDialog):
             or (soft_ok and not running)
             or running
         )
+        if hasattr(self, 'reconnect_btn'):
+            st = self._session.get('state') or ''
+            can_re = (not busy) and st in ('interrupted', 'failed', 'stopped') and (
+                bool((self._session.get('config') or {}).get('params')) or has_device
+            )
+            self.reconnect_btn.setEnabled(can_re)

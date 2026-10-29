@@ -3,6 +3,7 @@
 wave153: Soft / UVC / GenTL pluggable shell + persistent session contract.
 wave154: UVC real grab + continuous live; GenTL producer load/enumerate/open/grab
 wave156: soft exposure/gain/trigger · multi-device picker polish · last-device persist · reconnect
+wave157: GenTL LiveSession auto_reconnect + sessionPersist status parity with UVC
          into the same PreviewFrameGate / show_live_frame path.
 
 Real path toward industrial desktop use:
@@ -979,6 +980,9 @@ class GentlLiveSession:
 
     When producer present but no device: open() succeeds as empty; grab() raises
     honest error (no fake GenTL frames). Smoke can use mocks separately.
+
+    wave157: auto_reconnect / reconnectResilient parity with UvcLiveSession so
+    transient USB/GenTL drops recover without tearing down the desktop session.
     """
 
     def __init__(
@@ -987,10 +991,15 @@ class GentlLiveSession:
         *,
         provider_id: str | None = None,
         timeout_ms: int = 8000,
+        auto_reconnect: bool = True,
+        reconnect_max: int = 2,
     ):
         self.device_id = device_id or ''
         self.provider_id = provider_id or ''
         self.timeout_ms = int(timeout_ms)
+        self.auto_reconnect = bool(auto_reconnect)
+        self.reconnect_max = max(0, int(reconnect_max))
+        self._reconnect_count = 0
         self._gen = None
         self._opened = False
         self._seq = 0
@@ -1054,6 +1063,11 @@ class GentlLiveSession:
             device=self._device,
             keepConnectionOpen=True,
             openClosePerGrab=False,
+            sessionPersist=True,
+            reconnectResilient=True,
+            autoReconnect=self.auto_reconnect,
+            reconnectCount=self._reconnect_count,
+            reconnectMax=self.reconnect_max,
             frameSequence=self._seq,
             fakeFrames=False,
         )
@@ -1065,8 +1079,28 @@ class GentlLiveSession:
             st = self.open()
             if st.get('emptyDevice'):
                 raise RuntimeError('GenTL producer loaded but no camera — no fake frames')
+        try:
+            return self._grab_once()
+        except Exception as exc:
+            if self.auto_reconnect and self._reconnect_once():
+                try:
+                    frame = self._grab_once()
+                    frame.setdefault('result', {})
+                    if isinstance(frame['result'], dict):
+                        frame['result']['reconnected'] = True
+                        frame['result']['reconnectCount'] = self._reconnect_count
+                    return frame
+                except Exception as exc2:
+                    raise RuntimeError(
+                        f'GenTL grab failed after reconnect: {exc2}'
+                    ) from exc2
+            raise
+
+    def _grab_once(self) -> dict[str, Any]:
         started = time.monotonic()
         from cameras.adapter import pack_frame, config  # type: ignore
+        if self._gen is None:
+            raise RuntimeError('GenTL session generator not open')
         raw = next(self._gen)
         p = config({
             'driver': 'gentl',
@@ -1082,6 +1116,7 @@ class GentlLiveSession:
         result['keepConnectionOpen'] = True
         result['openClosePerGrab'] = False
         result['backendKind'] = BACKEND_GENTL
+        result['reconnectCount'] = self._reconnect_count
         return dict(
             annotatedImage=packed.get('annotatedImage') or '',
             soft=False,
@@ -1090,6 +1125,17 @@ class GentlLiveSession:
             cloud=packed.get('cloud'),
             depth=packed.get('depth'),
         )
+
+    def _reconnect_once(self) -> bool:
+        if self._reconnect_count >= self.reconnect_max:
+            return False
+        self._reconnect_count += 1
+        try:
+            self.close()
+            st = self.open()
+            return bool(self._opened and not st.get('emptyDevice'))
+        except Exception:
+            return False
 
     def grab_many(self, n: int = 2) -> list[dict[str, Any]]:
         return [self.grab() for _ in range(max(1, int(n)))]

@@ -56,9 +56,12 @@ function killOwned(forceHelpers = false) {
 }
 function session() {
   if (!cameraSession) {
-    // Loading this app's own session metadata is allowed; restore() is never used.
+    // Load prior session metadata. Soft-restore only when the last start
+    // asked for autoStart (CameraManager 「自动重连」/ sessionPersist) so
+    // force-quit → relaunch can reopen GenTL/UVC without manual 相机管理.
     cameraSession = new CameraSession(dataDirectory, cameras);
     cameras.setSessions(cameraSession);
+    try { cameraSession.restore(); } catch (_) { /* leave interrupted/failed for UI */ }
   }
   return cameraSession;
 }
@@ -200,7 +203,32 @@ async function dispatch(method, params, requestId) {
       return {cancelled: true};
     }
     case 'camera/session/status': return session().status();
-    case 'camera/session/start': return session().start({...params, autoStart: false});
+    case 'camera/session/start': {
+      // Honor client autoStart so sessionPersist / 「自动重连」survive relaunch.
+      const body = {...params};
+      if (body.autoStart === undefined) body.autoStart = false;
+      return session().start(body);
+    }
+    case 'camera/session/reconnect': {
+      // One-click reopen after interrupted/failed/stopped (clear disconnect UX).
+      const s = session();
+      const st = s.status();
+      const cfg = (params && params.config) || st.config;
+      if (!cfg || typeof cfg !== 'object') throw Error('无可重连的会话配置；请先在相机管理连接一次');
+      if (s.busy) {
+        try { s.stop(st.id || cfg.id); } catch (_) {}
+        try { await s.closed; } catch (_) {}
+      }
+      const body = {
+        params: cfg.params || params.params,
+        intervalMs: cfg.intervalMs ?? 100,
+        reconnectAttempts: cfg.reconnectAttempts ?? 2,
+        reconnectMs: cfg.reconnectMs ?? 1000,
+        autoStart: true,
+      };
+      if (!body.params) throw Error('会话配置缺少相机参数');
+      return s.start(body);
+    }
     case 'camera/session/stop': return session().stop(params.id || session().state.id);
     case 'models/list': return {models: trainer().status().models};
     case 'training/status': return trainer().status();

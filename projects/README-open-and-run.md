@@ -41,10 +41,17 @@
 | `open-and-run-group-comm.sieans` | Group+Comm；Listen 徽章、`RUN`/`STOP`、HB→变量 |
 | `open-and-run-tcp-sim.sieans` | TCP 环回联调（先启 :19880 模拟器） |
 | `open-and-run-soft-camera.sieans` | 软模拟采集 → 轮廓 → 尺寸（无真实相机 SDK） |
-| `open-and-run-gentl-qr.sieans` | **GenTL 真机→二维码**：MV-CB013 采集 → zxing 条码/QR → barcodeText/`passGate`；打开即 ▶ |
+| `open-and-run-gentl-qr.sieans` | **GenTL 真机→二维码→LocalBus**：MV-CB013 持久采集 → zxing QR → 门限 → `BARCODE` 模板发送；会话保持/一键重连；连续 ▶ 防卡死 |
 | `mv-camera-ocr.sieans` | 相机/OCR；需 GenTL 相机或离线帧 |
 
 模板（非双击主推，可「从模板新建」）：`templates/measure-chain.sieans`、`defect-inspection.sieans`、`blank-inspection.sieans`、`mv-gentl-ocr.sieans`。
+
+### wave157 收口（相机会话 + GenTL→QR 通信）
+
+- **会话保持 / 一键重连**：相机管理「自动重连」「会话保持」写入 `autoStart`；`engine-host` 启动时 soft-`restore()`；断线/中断条变红 +「一键重连」。
+- **GenTL LiveSession**：与 UVC 对齐的 `auto_reconnect`（grab 失败有限次重开 Producer/IA）。
+- **open-and-run-gentl-qr**：采集→QR→门限→`format_data`→LocalBus `BARCODE` 发送；内置条码报文模板 + tcpReal 种子；保持 hang-safe 连续 ▶。
+- **不做**：Halcon/CLR、机器人 SDK、cloud SaaS、HMI cobind 微级联。
 
 ### wave145 打开即跑审计摘要
 

@@ -2,6 +2,7 @@
 
 wave148/wave150: keep App menus and docs in parity with projects/*.sieans soft samples
 (wave150 adds soft simulator camera open-and-run).
+wave157: GenTL→QR LocalBus barcode send + session persist/reconnect UX.
 wave155: TCP loopback (tcp-sim + CommManager real TCP) is productized; still no Halcon/robot/cloud claims. Soft open-and-run remains default.
 """
 from __future__ import annotations
