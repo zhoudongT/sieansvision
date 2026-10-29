@@ -4,13 +4,13 @@
   "name": "打开即跑 · GenTL相机→二维码",
   "meta": {
     "openAndRun": true,
-    "wave": 244,
+    "wave": 245,
     "camera": "gentl",
     "comms": "localbus+tcpReal-seed",
     "hangSafeContinuous": true,
-    "hangFix": "t244u"
+    "hangFix": "t245u"
   },
-  "notes": "t244u：freerun drop-old（无 waiter 时跳过 JSON.parse）+ persistent intervalMs=100 + 连续失败续跑 + 忙碌看门狗 6s；修 51ab303 后 residual（session received≫consumed、引擎事件环被帧解析占满→IPC 饿死→GNOME 无响应）。t243u：warm session capture 默认 latest + waiter deliver 异常安全 + 连续忙碌看门狗；保持 show_live_frame+≤15FPS。Hikrobot MV-CB013 GenTL → 条码/二维码 → LocalBus。勿与 MVS / 网页采集同时占 USB。",
+  "notes": "t245u：session_worker idle pace（无 consumer 时心跳、停 JPEG）+ camera-session setWorkerPace；修 ea66692 drop-old residual（仍排水管道→无反压→received≫consumed 长跑卡）。t244u：freerun drop-old + intervalMs=100 + 失败续跑 + 忙碌看门狗 6s。Hikrobot MV-CB013 GenTL → 条码/二维码 → LocalBus。勿与 MVS / 网页采集同时占 USB。",
   "sourcePosition": {
     "x": 300,
     "y": 40

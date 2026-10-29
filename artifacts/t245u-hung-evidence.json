@@ -1,0 +1,25 @@
+{
+  "capturedAt": "2026-10-29 14:10 Asia/Shanghai",
+  "wave": "t245u",
+  "headAtCapture": "ea66692",
+  "rootCause": "drop-old still drained full JPEG lines → no pipe backpressure → session_worker kept encoding ~3h; received=81812 consumed=8 overwritten=114385; worker ~30% CPU; Node event-loop tax / UI 卡",
+  "session": {
+    "id": "6a5450e1-420c-4bb7-af23-8319d5d3d18c",
+    "state": "running",
+    "received": 81855,
+    "consumed": 8,
+    "overwritten": 114435,
+    "reused": 0,
+    "sequence": 81855,
+    "lastFrameAt": 1793254031269,
+    "error": "",
+    "startedAt": 1793242567117
+  },
+  "pids": [
+    "353196    1708 Rl    4.5 12.4    03:11:08 2004876 /usr/bin/python3 -m desktop.main --root /home/allen/文档/sieansvision --data /home/allen/文档/sieansvision/data/native-desktop --project projects/open-and-run-gentl-qr.sieans",
+    "353209  353196 Sl    0.8  0.8    03:11:08 131072 /usr/bin/node /home/allen/文档/sieansvision/desktop/engine-host.cjs --data /home/allen/文档/sieansvision/data/native-desktop",
+    "353219  353209 Sl   30.4  0.9    03:11:07 157924 /usr/bin/python3 -X utf8 -u /home/allen/文档/sieansvision/cameras/session_worker.py",
+    "359734  353209 Sl    0.4  0.5       07:57 86400 /usr/bin/python3 -u /home/allen/文档/sieansvision/vision/engine.py"
+  ],
+  "fix": "idle pace: when !waiter, session_worker drains GenTL but sends heartbeat-only (no JPEG); cancelIdle on capture"
+}
