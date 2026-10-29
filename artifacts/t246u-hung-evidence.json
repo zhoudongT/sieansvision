@@ -1,0 +1,19 @@
+{
+  "wave": "t246u",
+  "capturedAt": "2026-10-29 14:11 Asia/Shanghai",
+  "screenshot": "Allen GNOME python3无响应 — QR green boxes painted, GenTL 14.2ms / total 248ms, filmstrip warn, 设计态 continuous",
+  "liveSessionBeforeForceQuit": {
+    "received": 199,
+    "consumed": 0,
+    "overwritten": 289,
+    "state": "stopped"
+  },
+  "rootCause": "Qt GUI thread sync base64→QPixmap decode of barcode-annotated JPEG each continuous cycle (+ show_results/config every tick) starved Wayland event loop; GNOME marked 无响应 while results already on screen. Idle-pace/session flood was residual warm path (cons=0) not the painted-result freeze.",
+  "fix": [
+    "image_view show_live_frame QThreadPool QImage decode",
+    "throttle scene.show_results with tree",
+    "skip refresh_config_status on continuous",
+    "uiMinIntervalMs 100",
+    "runInterval base 200"
+  ]
+}

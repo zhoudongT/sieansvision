@@ -2944,14 +2944,15 @@ class MainWindow(QMainWindow):
         records=result.get('results',[])
         names={s['id']:s.get('name',s['operation']) for s in self.document.project['steps']}
         if continuous_live:
-            # Node state is cheap; result-tree rebuild still copies large nested dicts —
-            # throttle to ≤2 Hz so continuous GenTL stays responsive.
-            self.scene.show_results(records)
+            # t246u: throttle canvas node-state + result-tree together (≤2 Hz).
+            # Prior: show_results every cycle still walked the graph while JPEG
+            # decode ran on the GUI thread → GNOME「python3 无响应」with QR painted.
             import time as _time
             now = _time.monotonic()
             last = float(getattr(self, '_cont_results_tree_at', 0) or 0)
             if now - last >= 0.5:
                 self._cont_results_tree_at = now
+                self.scene.show_results(records)
                 light = self._strip_annotated_for_tree(records)
                 self.results.set_results([{**r,'name':names.get(r['id'],r['id'])} for r in light])
         else:
@@ -3022,7 +3023,9 @@ class MainWindow(QMainWindow):
         tool_ms=round(elapsed*0.15,2) if elapsed else 0
         algo_ms=round(elapsed*0.75,2) if elapsed else 0
         self.wb_status.set_timing(process_ms, tool_ms, algo_ms)
-        self.refresh_config_status()
+        # t246u: config/filmstrip warn rebuild every cycle starved Qt under GenTL→QR.
+        if not continuous_live:
+            self.refresh_config_status()
         if result.get('state')=='failed':
             self.wb_status.set_config('运行失败 · 见日志', ok=False)
             try:
@@ -6375,11 +6378,11 @@ class MainWindow(QMainWindow):
             flow = next((f for f in (p.get('flows') or []) if f.get('id') == fid), None)
             raw = (flow or {}).get('runIntervalMs')
             if raw is None or int(raw) <= 0:
-                base = 120
+                base = 200  # t246u: was 120; GenTL→QR annotate decode needs slack
             else:
                 base = flow_scheme.clamp_run_interval_ms(raw)
         except Exception:
-            base = 120
+            base = 200
         try:
             live = False
             for s in (self.document.project.get('steps') or []):

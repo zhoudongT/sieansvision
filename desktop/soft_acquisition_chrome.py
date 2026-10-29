@@ -40,9 +40,9 @@ SESSION_COLUMNS = ['项', '值']
 # Frame pacing: timer interval for pull ticks; uiMinIntervalMs throttles paints;
 # dropOldFrame coalesces to latest so UI never paints a stale backlog.
 LIVE_PREVIEW_POLICY = dict(
-    intervalMs=66,           # ~15 Hz pull; GenTL PNG/JPEG decode must not starve Qt
+    intervalMs=100,          # t246u: align pull with UI gate (was 66)
     managerIntervalMs=100,
-    uiMinIntervalMs=66,      # ≤15 FPS display ceiling (hang fix: was 33/~30Hz)
+    uiMinIntervalMs=100,     # t246u: ≤10 FPS display; was 66 and still GNOME-无响应 under QR annotate
     dropOldFrame=True,
     framePolicy='latest',
     antiFlicker='in_place_pixmap',

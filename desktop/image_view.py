@@ -1,9 +1,34 @@
 import base64
-from PySide6.QtCore import Qt, Signal, QRectF, QTimer, QPoint
-from PySide6.QtGui import QPixmap, QColor, QPen, QPainter, QBrush
+from PySide6.QtCore import Qt, Signal, QRectF, QTimer, QPoint, QObject, QRunnable, QThreadPool
+from PySide6.QtGui import QPixmap, QImage, QColor, QPen, QPainter, QBrush
 from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QFrame, QLabel, QVBoxLayout
 
 from desktop.theme import CANVAS, TEXT_MUTED, PANEL, LINE, TEXT
+
+
+class _LiveDecodeBridge(QObject):
+    """Worker-thread JPEG/PNG → QImage; UI thread turns it into QPixmap (t246u)."""
+    decoded = Signal(object, object)  # QImage|None, seq
+
+
+class _LiveDecodeJob(QRunnable):
+    def __init__(self, raw_b64: str, seq, bridge: _LiveDecodeBridge, gen: int):
+        super().__init__()
+        self._raw = raw_b64
+        self._seq = seq
+        self._bridge = bridge
+        self._gen = gen
+        self.setAutoDelete(True)
+
+    def run(self):
+        img = QImage()
+        try:
+            img = QImage.fromData(base64.b64decode(self._raw, validate=False))
+        except Exception:
+            img = QImage()
+        # Drop if a newer decode was scheduled (bridge checks gen).
+        self._bridge.decoded.emit(img if not img.isNull() else None, (self._seq, self._gen))
+
 
 
 class ImageView(QGraphicsView):
@@ -126,27 +151,59 @@ class ImageView(QGraphicsView):
         hairline strip when the first fit races a tiny/hidden viewport).
         Empty / undecodable data is ignored (keeps last good frame).
         Hang fix: skip re-decode when frameSequence unchanged.
+        t246u: base64→QImage decode runs in QThreadPool so the Qt GUI thread
+        stays responsive (GNOME「python3 无响应」with QR already painted).
         """
         if not data or not isinstance(data, str):
             return False
         if seq is not None and seq == getattr(self, '_last_live_seq', None) and not self._live_source.isNull():
             return True
-        pixmap = QPixmap()
-        try:
-            raw = data.split(',', 1)[-1]
-            if not pixmap.loadFromData(base64.b64decode(raw, validate=False)):
-                return False
-        except Exception:
+        raw = data.split(',', 1)[-1]
+        if not raw:
             return False
-        self._last_live_seq = seq
-        image = pixmap.toImage()
+        # Fast path: tiny payloads still OK sync; large GenTL/QR annotated off-thread.
+        if len(raw) < 24_000:
+            pixmap = QPixmap()
+            try:
+                if not pixmap.loadFromData(base64.b64decode(raw, validate=False)):
+                    return False
+            except Exception:
+                return False
+            self._last_live_seq = seq
+            image = pixmap.toImage()
+            if image.format() not in (
+                image.Format.Format_RGB32,
+                image.Format.Format_ARGB32,
+                image.Format.Format_ARGB32_Premultiplied,
+            ):
+                pixmap = QPixmap.fromImage(image.convertToFormat(image.Format.Format_RGB32))
+            return self._set_live_pixmap(pixmap)
+        bridge = getattr(self, '_live_decode_bridge', None)
+        if bridge is None:
+            bridge = _LiveDecodeBridge(self)
+            bridge.decoded.connect(self._on_live_decoded)
+            self._live_decode_bridge = bridge
+        self._live_decode_gen = int(getattr(self, '_live_decode_gen', 0) or 0) + 1
+        gen = self._live_decode_gen
+        self._pending_live_seq = seq
+        job = _LiveDecodeJob(raw, seq, bridge, gen)
+        QThreadPool.globalInstance().start(job)
+        return True
+
+    def _on_live_decoded(self, image, token):
+        seq, gen = token if isinstance(token, tuple) else (token, None)
+        if gen is not None and gen != getattr(self, '_live_decode_gen', None):
+            return  # superseded
+        if image is None or not isinstance(image, QImage) or image.isNull():
+            return
         if image.format() not in (
-            image.Format.Format_RGB32,
-            image.Format.Format_ARGB32,
-            image.Format.Format_ARGB32_Premultiplied,
+            QImage.Format.Format_RGB32,
+            QImage.Format.Format_ARGB32,
+            QImage.Format.Format_ARGB32_Premultiplied,
         ):
-            pixmap = QPixmap.fromImage(image.convertToFormat(image.Format.Format_RGB32))
-        return self._set_live_pixmap(pixmap)
+            image = image.convertToFormat(QImage.Format.Format_RGB32)
+        self._last_live_seq = seq if seq is not None else getattr(self, '_pending_live_seq', None)
+        self._set_live_pixmap(QPixmap.fromImage(image))
 
     def _set_live_pixmap(self, pixmap: QPixmap, *, refit: bool | None = None) -> bool:
         if pixmap.isNull():
