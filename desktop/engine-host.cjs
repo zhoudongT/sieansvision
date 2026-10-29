@@ -342,6 +342,9 @@ try {
   process.once('SIGINT', () => { void terminate(); });
   process.once('SIGTERM', () => { void terminate(); });
   process.once('exit', () => { killOwned(true); releaseLock?.(); });
+  // t243u: wire CameraSession before any flow run so GenTL capturePersistent
+  // is used (avoids one-shot worker rejecting framePolicy/maxAgeMs).
+  try { session(); } catch (_) {}
   write({event: 'ready', data: {protocolVersion: 1, pid: process.pid, dataDirectory}});
 } catch (error) {
   releaseLock?.();

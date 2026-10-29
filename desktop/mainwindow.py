@@ -2072,6 +2072,10 @@ class MainWindow(QMainWindow):
         if self.depth:params['depth']=self.depth
         if effective:params['target']=effective
         self.set_busy(True)
+        if self.continuous:
+            self._arm_continuous_busy_watchdog()
+        else:
+            self._disarm_continuous_busy_watchdog()
         if not self.continuous:
             self.results.set_results([])
         self.log('开始执行' + ('模块 ' + str(effective) if effective else '流程') + '…')
@@ -2864,6 +2868,7 @@ class MainWindow(QMainWindow):
 
 
     def finished(self,result,release=True):
+        self._disarm_continuous_busy_watchdog()
         continuous_live = bool(self.continuous)
         # Continuous ▶: keep full last_result for e2e/proof, but never feed megabyte
         # annotated blobs into var-watch/HMI boards (UI-thread hang / 98% CPU).
@@ -3286,6 +3291,74 @@ class MainWindow(QMainWindow):
             self._refresh_fixed_bar_device_status()
         except Exception:
             pass
+
+    def _arm_continuous_busy_watchdog(self):
+        """t243u: if a continuous run never finishes, release busy so Qt stays responsive.
+
+        Evidence: GenTL→QR hung with busy=True + stale progress「MV GenTL 采集」while
+        session freerun kept producing (consumed stuck). GNOME marked python3 无响应.
+        """
+        try:
+            from PySide6.QtCore import QTimer
+        except Exception:
+            return
+        timer = getattr(self, '_cont_busy_watchdog', None)
+        if timer is None:
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(self._on_continuous_busy_watchdog)
+            self._cont_busy_watchdog = timer
+        # Capture step timeoutMs (default 5s) + progress slack + IPC margin
+        timeout_ms = 5000
+        try:
+            for s in (self.document.project.get('steps') or []):
+                if s.get('operation') == 'camera_capture':
+                    timeout_ms = max(timeout_ms, int((s.get('params') or {}).get('timeoutMs') or 5000))
+        except Exception:
+            pass
+        timer.start(max(12000, timeout_ms + 7000))
+
+    def _disarm_continuous_busy_watchdog(self):
+        timer = getattr(self, '_cont_busy_watchdog', None)
+        if timer is not None:
+            try:
+                timer.stop()
+            except Exception:
+                pass
+
+    def _on_continuous_busy_watchdog(self):
+        if not self.busy:
+            return
+        if not self.continuous:
+            return
+        self.log('连续运行看门狗：采集/流程超过时限未返回 — 强制释放忙碌并尝试下一拍（防 GNOME 无响应）')
+        try:
+            self.wb_status.push_log('看门狗：强制释放忙碌 · 尝试续跑')
+        except Exception:
+            pass
+        try:
+            # Best-effort cancel in-flight engine run
+            if getattr(self, 'run_request', None):
+                try:
+                    self.backend.request('stop', {})
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            self.set_busy(False)
+        except Exception:
+            pass
+        # Reschedule next continuous tick if still armed
+        if self.continuous and not getattr(self, '_continuous_paused', False):
+            try:
+                from PySide6.QtCore import QTimer
+                delay = max(200, int(self._active_run_interval_ms() or 120))
+                target = self._run_target
+                QTimer.singleShot(delay, lambda t=target: self.guard(
+                    lambda: self.run(t) if self.continuous and not self.busy and not getattr(self, '_continuous_paused', False) else None))
+            except Exception as err:
+                self.log('看门狗续跑调度失败：' + str(err))
 
     def maybe_warm_camera(self):
         if self.busy or not self.engine_ready:return
