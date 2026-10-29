@@ -2046,7 +2046,8 @@ class MainWindow(QMainWindow):
         self.guard(lambda:self.run(node_id))
 
     def run(self,target=None):
-        if self.busy or not self.engine_ready:return
+        # t250u: block re-entry while finished() still paints (busy may already be True)
+        if self.busy or getattr(self, '_finishing', False) or not self.engine_ready:return
         # 允许仅跑图像源/空链时给出提示；有 target 时至少需要该模块
         if not self.document.project['steps'] and target is None and not self._group_stack:
             raise ValueError('请先添加流程模块')
@@ -2072,10 +2073,8 @@ class MainWindow(QMainWindow):
         if self.depth:params['depth']=self.depth
         if effective:params['target']=effective
         self.set_busy(True)
-        if self.continuous:
-            self._arm_continuous_busy_watchdog()
-        else:
-            self._disarm_continuous_busy_watchdog()
+        # t250u: arm busy watchdog for single GenTL 「运行」too (not only continuous)
+        self._arm_continuous_busy_watchdog()
         if not self.continuous:
             self.results.set_results([])
         self.log('开始执行' + ('模块 ' + str(effective) if effective else '流程') + '…')
@@ -2867,6 +2866,14 @@ class MainWindow(QMainWindow):
         return light
 
 
+    def _finish_release_busy(self, release, continuous_live):
+        """t250u: drop finishing guard + release busy after single-shot UI work."""
+        self._finishing = False
+        if release and not continuous_live:
+            try:
+                self.set_busy(False)
+            except Exception:
+                pass
     def finished(self,result,release=True):
         self._disarm_continuous_busy_watchdog()
         continuous_live = bool(self.continuous)
@@ -2906,7 +2913,9 @@ class MainWindow(QMainWindow):
                 if fs is not None and hasattr(fs, 'current_path'):
                     path = fs.current_path() or ''
                 if path and isinstance(result, dict) and result.get('state') == 'completed':
+                    # t250u: never cache megabyte annotatedImage (multi-click leak)
                     bag = dict(result)
+                    bag['results'] = self._strip_annotated_for_tree(result.get('results') or [])
                     bag['_filmPath'] = path
                     cache = getattr(self, '_filmstrip_results', None)
                     if cache is None:
@@ -2941,9 +2950,12 @@ class MainWindow(QMainWindow):
                         pass
             except Exception:
                 pass
-        # Release busy every cycle. (Keeping busy=True across continuous blocked the
-        # next run() and spun the UI at ~100% CPU — hang was show_data, not set_busy.)
-        if release:
+        # t250u: continuous still releases early (next tick needs run()).
+        # Single 「运行」keeps busy=True through chrome/paint so rapid multi-click
+        # cannot stack finished() work (sync filmstrip decode / pixmap) → UI spin.
+        if not continuous_live:
+            self._finishing = True
+        if release and continuous_live:
             self.set_busy(False)
         records=result.get('results',[])
         names={s['id']:s.get('name',s['operation']) for s in self.document.project['steps']}
@@ -2966,16 +2978,18 @@ class MainWindow(QMainWindow):
             self.scene.show_results(records)
         if not continuous_live:
             try:
+                # t250u: chrome summaries never need megabyte annotated blobs
+                _film_recs = self._strip_annotated_for_tree(records)
                 if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_module_results'):
-                    self.filmstrip.push_module_results(records, names)
+                    self.filmstrip.push_module_results(_film_recs, names)
                 if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_geom_find_summary'):
-                    self.filmstrip.push_geom_find_summary(records=records, names=names)
+                    self.filmstrip.push_geom_find_summary(records=_film_recs, names=names)
                 if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_match_summary'):
-                    self.filmstrip.push_match_summary(records=records, names=names)
+                    self.filmstrip.push_match_summary(records=_film_recs, names=names)
                 if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_barcode_summary'):
-                    self.filmstrip.push_barcode_summary(records=records, names=names)
+                    self.filmstrip.push_barcode_summary(records=_film_recs, names=names)
                 if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_nine_summary'):
-                    self.filmstrip.push_nine_summary(records=records, names=names)
+                    self.filmstrip.push_nine_summary(records=_film_recs, names=names)
             except Exception:
                 pass
             try:
@@ -3015,10 +3029,14 @@ class MainWindow(QMainWindow):
                             self._apply_find_overlay_density(records)
                         except Exception:
                             pass
+                        # t250u: skip sync filmstrip JPEG decode for large frames
+                        # (output_view already live-painted; multi-click GUI starve)
                         try:
-                            if hasattr(self,'filmstrip') and self.filmstrip is not None:
-                                if hasattr(self.filmstrip,'set_live_result'):
-                                    self.filmstrip.set_live_result(annotated_live)
+                            if (hasattr(self,'filmstrip') and self.filmstrip is not None
+                                    and hasattr(self.filmstrip,'set_live_result')
+                                    and isinstance(annotated_live, str)
+                                    and len(annotated_live) < 24_000):
+                                self.filmstrip.set_live_result(annotated_live)
                         except Exception:
                             pass
                 else:
@@ -3157,10 +3175,12 @@ class MainWindow(QMainWindow):
                 pass
             if was_c:
                 self._flush_after_continuous()
+            self._finish_release_busy(release, continuous_live)
             return
         if self.run_all_filmstrip and state=='completed':
             if getattr(self, '_continuous_paused', False):
                 self.log('运行全部暂停中 — 跳过下次切图')
+                self._finish_release_busy(release, continuous_live)
                 return
             if self.filmstrip.advance():
                 QTimer.singleShot(self._filmstrip_advance_delay_ms(), lambda:self.guard(self.run) if self.run_all_filmstrip and not getattr(self,'_continuous_paused',False) else None)
@@ -3183,6 +3203,7 @@ class MainWindow(QMainWindow):
                     self._sync_host_sm_state('Idle', '运行全部完成')
                 except Exception:
                     pass
+            self._finish_release_busy(release, continuous_live)
             return
         if state in ('failed', 'cancelled'):
             self._pending_trigger_cmds = []
@@ -3211,22 +3232,27 @@ class MainWindow(QMainWindow):
             # timeout left continuous=True but idle (feels like 卡; no busy→no watchdog).
             if getattr(self, '_continuous_paused', False):
                 self.log('连续运行暂停中 — 失败后不续跑')
+                self._finish_release_busy(release, continuous_live)
                 return
             delay = max(300, int(self._active_run_interval_ms() or 120))
             target = self._run_target
             self.log(f'连续运行本拍失败 — {delay}ms 后重试')
             QTimer.singleShot(delay, lambda t=target: self.guard(
                 lambda: self.run(t) if self.continuous and not self.busy and not getattr(self, '_continuous_paused', False) else None))
+            self._finish_release_busy(release, continuous_live)
             return
         if self.continuous and state=='completed':
             if getattr(self, '_continuous_paused', False):
                 self.log('连续运行暂停中 — 跳过下次调度')
+                self._finish_release_busy(release, continuous_live)
                 return
             cfg=normalize_source(self.document.project.get('sourceConfig'))
             target=self._run_target
             if cfg.get('mode')=='local' and self.filmstrip.auto_switch.isChecked() and not target:
                 if self.filmstrip.advance():
-                    QTimer.singleShot(self._filmstrip_advance_delay_ms(), lambda:self.guard(lambda:self.run(None) if self.continuous and not getattr(self,'_continuous_paused',False) else None));return
+                    QTimer.singleShot(self._filmstrip_advance_delay_ms(), lambda:self.guard(lambda:self.run(None) if self.continuous and not getattr(self,'_continuous_paused',False) else None))
+                    self._finish_release_busy(release, continuous_live)
+                    return
                 if cfg.get('stopAtLast'):
                     self.continuous=False;self._continuous_paused=False;self._run_target=None;self.log('已到最后一张，连续运行停止')
                     try:
@@ -3239,9 +3265,13 @@ class MainWindow(QMainWindow):
                             self.filmstrip.set_continuous_paused(False)
                     except Exception:
                         pass
-                    self._flush_after_continuous();return
+                    self._flush_after_continuous()
+                    self._finish_release_busy(release, continuous_live)
+                    return
             delay=self._active_run_interval_ms()
             QTimer.singleShot(delay, lambda t=target: self.guard(lambda:self.run(t) if self.continuous and not getattr(self,'_continuous_paused',False) else None))
+
+        self._finish_release_busy(release, continuous_live)
 
     def log(self,message):
         self.logs.appendPlainText(str(message))
@@ -3373,13 +3403,16 @@ class MainWindow(QMainWindow):
                 pass
 
     def _on_continuous_busy_watchdog(self):
-        if not self.busy:
+        if not self.busy and not getattr(self, '_finishing', False):
             return
-        if not self.continuous:
-            return
-        self.log('连续运行看门狗：采集/流程超过时限未返回 — 强制释放忙碌并尝试下一拍（防 GNOME 无响应）')
+        was_continuous = bool(self.continuous)
+        self.log(
+            ('连续运行' if was_continuous else '单次运行')
+            + '看门狗：采集/流程超过时限未返回 — 强制释放忙碌'
+            + ('并尝试下一拍（防 GNOME 无响应）' if was_continuous else '（防多点卡住）')
+        )
         try:
-            self.wb_status.push_log('看门狗：强制释放忙碌 · 尝试续跑')
+            self.wb_status.push_log('看门狗：强制释放忙碌' + (' · 尝试续跑' if was_continuous else ''))
         except Exception:
             pass
         try:
@@ -3391,12 +3424,13 @@ class MainWindow(QMainWindow):
                     pass
         except Exception:
             pass
+        self._finishing = False
         try:
             self.set_busy(False)
         except Exception:
             pass
         # Reschedule next continuous tick if still armed
-        if self.continuous and not getattr(self, '_continuous_paused', False):
+        if was_continuous and self.continuous and not getattr(self, '_continuous_paused', False):
             try:
                 from PySide6.QtCore import QTimer
                 delay = max(200, int(self._active_run_interval_ms() or 120))

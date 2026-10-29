@@ -12,20 +12,32 @@ class _LiveDecodeBridge(QObject):
 
 
 class _LiveDecodeJob(QRunnable):
-    def __init__(self, raw_b64: str, seq, bridge: _LiveDecodeBridge, gen: int):
+    def __init__(self, raw_b64: str, seq, bridge: _LiveDecodeBridge, gen: int, holder=None):
         super().__init__()
         self._raw = raw_b64
         self._seq = seq
         self._bridge = bridge
         self._gen = gen
+        self._holder = holder  # ImageView — check _live_decode_gen before decode
         self.setAutoDelete(True)
 
     def run(self):
+        # t250u: multi-click / continuous flood — skip decode if already superseded
+        holder = self._holder
+        if holder is not None and self._gen != getattr(holder, '_live_decode_gen', None):
+            self._raw = ''
+            try:
+                self._bridge.decoded.emit(None, (self._seq, self._gen))
+            except Exception:
+                pass
+            return
         img = QImage()
         try:
             img = QImage.fromData(base64.b64decode(self._raw, validate=False))
         except Exception:
             img = QImage()
+        finally:
+            self._raw = ''  # release MB string promptly
         # Drop if a newer decode was scheduled (bridge checks gen).
         self._bridge.decoded.emit(img if not img.isNull() else None, (self._seq, self._gen))
 
@@ -200,7 +212,7 @@ class ImageView(QGraphicsView):
         self._live_decode_gen = int(getattr(self, '_live_decode_gen', 0) or 0) + 1
         gen = self._live_decode_gen
         self._pending_live_seq = seq
-        job = _LiveDecodeJob(raw, seq, bridge, gen)
+        job = _LiveDecodeJob(raw, seq, bridge, gen, holder=self)
         QThreadPool.globalInstance().start(job)
         return True
 
