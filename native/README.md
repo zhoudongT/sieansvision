@@ -56,9 +56,27 @@ PY
 ## What stays Python (this wave)
 
 - PySide6 shell, Host, camera manager dialogs, TCP/comms
-- GenTL **session_worker** / harvesters path used by the App live preview
-  (C++ GenTL is available via `sieans_native.GenTLCapture` for next wave swap)
+- GenTL **inspect / 3D / software·external trigger** still use harvesters
 - OCR / YOLO / template matching / Halcon / robot SDK (untouched)
+
+## Live GenTL acquire (wave2)
+
+Continuous 2D freerun (`session_worker` → `cameras.adapter.acquire_gentl_frames`)
+prefers **C++ `sieans_native.GenTLCapture`** when the module is built with MVS.
+Hang mitigations kept: `LatestImagesOnly` drop-old, `acquisitionFrameRate` cap,
+`previewBufferCount`, paced interval + idle heartbeat (no JPEG flood), off-GUI
+JPEG decode (fd72066 lineage).
+
+| Env | Acquire path |
+|-----|----------------|
+| `SIEANS_NATIVE=auto` (default) | C++ if `gentl_available()`, else harvesters |
+| `SIEANS_NATIVE=1` / `force` | Require C++ GenTL |
+| `SIEANS_NATIVE=python` | Force harvesters |
+| `SIEANS_NATIVE_GENTL_ACQUIRE=0` | Force harvesters (decode may still be C++) |
+| `SIEANS_NATIVE_GENTL_ACQUIRE=1` | Require C++ GenTL acquire |
+
+Evidence: frame `result.acquireBackend=sieans_native`, stderr
+`[sieans] GenTL acquire backend=sieans_native`, `/tmp/sieans-gentl-acquire-backend.txt`.
 
 ## Architecture
 
@@ -66,6 +84,8 @@ PY
 PySide6 UI  →  engine-host  →  vision/engine.py::barcode()
                                     ├─ sieans_native.decode_barcodes  (C++ zxing)
                                     └─ fallback: zxingcpp (Python)
-GenTL live  →  cameras/session_worker (Python harvesters)  [unchanged]
-            ↛  sieans_native.GenTLCapture                  [ready, opt-in]
+GenTL live  →  cameras/session_worker
+                  └─ adapter.acquire_gentl_frames
+                        ├─ sieans_native.GenTLCapture   (2D freerun, preferred)
+                        └─ harvesters                   (fallback / 3D / inspect)
 ```

@@ -92,10 +92,30 @@ def main():
     attempts = request['reconnectAttempts']
     reconnect = request['reconnectMs']/1000
     if p['driver'] == 'gentl':
-        # Harvesters' version discovery can spawn Git on import. On Windows,
-        # starting it after a thread blocks on the inherited stdin pipe can
-        # stall import. Finish this dependency initialization before watch.
-        from harvesters.core import Harvester  # noqa: F401
+        # Prefer C++ GenTLCapture when available; still warm harvesters import
+        # so fallback works without delaying the first reconnect.
+        prefer_native = False
+        try:
+            root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if root not in sys.path:
+                sys.path.insert(0, root)
+            pydeps = os.path.join(root, '.pydeps')
+            if pydeps not in sys.path:
+                sys.path.insert(0, pydeps)
+            from vision import native_bridge
+            prefer_native = bool(native_bridge.gentl_acquire_preferred())
+        except Exception as exc:
+            sys.stderr.write(f'[sieans] GenTL native prefer probe: {exc}\n')
+        sys.stderr.write(
+            f'[sieans] GenTL session acquire='
+            f'{"sieans_native" if prefer_native else "harvesters"}\n'
+        )
+        sys.stderr.flush()
+        if not prefer_native:
+            # Harvesters' version discovery can spawn Git on import. On Windows,
+            # starting it after a thread blocks on the inherited stdin pipe can
+            # stall import. Finish this dependency initialization before watch.
+            from harvesters.core import Harvester  # noqa: F401
     threading.Thread(target=watch_commands, daemon=True).start()
     retries = 0
     while not stopped.is_set():

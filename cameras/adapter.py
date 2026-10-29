@@ -326,7 +326,166 @@ def prepare_trigger(node_map, trigger, applied):
         set_feature(node_map, 'TriggerMode', 'Off', applied)
 
 
-def acquire_gentl_frames(p, inspect=False):
+
+def _gentl_cti_path(provider_id):
+    match = next((item for item in providers() if item['id'] == provider_id), None)
+    if match and match.get('available'):
+        return match['path']
+    # Fall back to env / default CTI list used by C++ split_cti.
+    return os.environ.get('SIEANS_GENTL_CTI', '')
+
+
+def _gentl_prefer_native(p, inspect=False):
+    """Prefer C++ GenTLCapture for 2D freerun; keep harvesters for 3D/inspect/trigger."""
+    if inspect or p.get('dataMode') == 'pointcloud':
+        return False
+    if p.get('trigger', 'freerun') != 'freerun':
+        return False
+    try:
+        from vision import native_bridge
+        return bool(native_bridge.gentl_acquire_preferred())
+    except Exception as exc:
+        # Soft: missing vision package when adapter runs as cameras/ cwd script.
+        try:
+            import sys
+            root = str(Path(__file__).resolve().parents[1])
+            if root not in sys.path:
+                sys.path.insert(0, root)
+            from vision import native_bridge
+            return bool(native_bridge.gentl_acquire_preferred())
+        except Exception as exc2:
+            sys.stderr.write(f'[sieans] native GenTL prefer check failed: {exc2}\n')
+            return False
+
+
+def acquire_gentl_frames_native(p, inspect=False):
+    """Continuous 2D freerun via sieans_native.GenTLCapture (Hikrobot MvCameraControl).
+
+    Preserves hang mitigations: LatestImagesOnly (drop-old), acquisitionFrameRate
+    cap, previewBufferCount, strip-frame skip, and session_worker paced encode.
+    """
+    if inspect:
+        raise ValueError('native GenTL inspect 请走 harvesters 路径')
+    if p.get('dataMode') == 'pointcloud':
+        raise ValueError('native GenTL 暂不支持点云；请用 harvesters/gentl3d')
+    import sys
+    root = str(Path(__file__).resolve().parents[1])
+    pydeps = str(Path(root) / '.pydeps')
+    for path in (pydeps, root):
+        if path not in sys.path:
+            sys.path.insert(0, path)
+    import sieans_native as native  # type: ignore
+    if not native.gentl_available():
+        raise RuntimeError('sieans_native GenTL unavailable')
+
+    cti = _gentl_cti_path(p.get('providerId'))
+    devices = list(native.GenTLCapture.enumerate(cti or ''))
+    device_id = (p.get('deviceId') or '').strip()
+    matches = []
+    if not device_id:
+        matches = list(devices)
+    else:
+        for d in devices:
+            did = d.get('id') or ''
+            serial = d.get('serial') or ''
+            model = d.get('model') or ''
+            vendor = d.get('vendor') or ''
+            display = f'{vendor} {model} ({serial})'.strip()
+            if device_id in (did, serial, display) or did == device_id:
+                matches.append(d)
+        if not matches:
+            matches = [d for d in devices
+                       if (d.get('serial') and d.get('serial') in device_id)
+                       or (d.get('id') and device_id in d.get('id'))]
+    if len(matches) != 1:
+        raise ValueError('设备不存在或标识不唯一，请重新枚举并选择')
+    dev = matches[0]
+    device_row = dict(
+        deviceId=dev.get('id') or device_id,
+        name=dev.get('id') or dev.get('model') or '',
+        vendor=dev.get('vendor') or '',
+        model=dev.get('model') or '',
+        serial=dev.get('serial') or '',
+        transport='U3V' if 'U3V' in (dev.get('cti_path') or '') else 'GEV',
+        driver='gentl',
+    )
+    applied = [dict(name='acquireBackend', actual='sieans_native')]
+    cap = native.GenTLCapture()
+    try:
+        cap.open(dev.get('id') or device_id, dev.get('cti_path') or cti or '')
+        if 'exposureTime' in p:
+            try:
+                cap.set_exposure_us(float(p['exposureTime']))
+                applied.append(dict(name='ExposureTime', requested=p['exposureTime'], actual=p['exposureTime']))
+            except Exception as err:
+                applied.append(dict(name='ExposureTime', error=str(err)[:200]))
+        if 'gain' in p:
+            try:
+                cap.set_gain_db(float(p['gain']))
+                applied.append(dict(name='Gain', requested=p['gain'], actual=p['gain']))
+            except Exception as err:
+                applied.append(dict(name='Gain', error=str(err)[:200]))
+        fps = float(p.get('acquisitionFrameRate', 10.0))
+        bufs = int(p.get('previewBufferCount', 16))
+        try:
+            cap.configure_freerun(fps=fps, buffer_count=bufs)
+            applied.append(dict(name='AcquisitionFrameRate', requested=fps, actual=fps))
+            applied.append(dict(name='previewBufferCount', requested=bufs, actual=bufs))
+            applied.append(dict(name='GrabStrategy', actual='LatestImagesOnly'))
+        except Exception as err:
+            applied.append(dict(name='configure_freerun', error=str(err)[:200]))
+        cap.start()
+        sys.stderr.write(
+            f'[sieans] GenTL acquire backend=sieans_native device={device_row["deviceId"]} '
+            f'fps={fps} buffers={bufs}\n'
+        )
+        sys.stderr.flush()
+        try:
+            marker = Path('/tmp/sieans-gentl-acquire-backend.txt')
+            marker.write_text(
+                f'backend=sieans_native\ndevice={device_row["deviceId"]}\nfps={fps}\n',
+                encoding='utf-8',
+            )
+        except Exception:
+            pass
+        strip_skips = 0
+        timeout_ms = int(p.get('timeoutMs', 5000))
+        while True:
+            frame = cap.grab(timeout_ms)
+            received_at = datetime.now(timezone.utc).isoformat()
+            image = frame['image']
+            # numpy view from pybind — copy so FreeImageBuffer-equivalent is safe
+            image = np.asarray(image).copy()
+            if gentl_frame_looks_incomplete(image):
+                strip_skips += 1
+                if strip_skips > 30:
+                    raise ValueError('相机连续返回不完整条带帧，请降低帧率或检查 USB 带宽')
+                continue
+            strip_skips = 0
+            info = dict(
+                device=device_row,
+                applied=applied,
+                timestamp=received_at,
+                pixelFormat=frame.get('pixel_format') or 'Mono8',
+                sourceBits=8,
+                outputBits=8,
+                conversion='sieans_native GenTLCapture',
+                acquireBackend='sieans_native',
+                frameId=int(frame.get('frame_id') or 0),
+            )
+            try:
+                info['deviceTimestampNs'] = str(int(frame.get('timestamp_ns') or 0))
+            except Exception:
+                pass
+            yield image, info
+    finally:
+        try:
+            cap.close()
+        except Exception:
+            pass
+
+
+def acquire_gentl_frames_harvesters(p, inspect=False):
     with gentl_session(p.get('providerId')) as h:
         matches = [d for d in gentl_devices(h) if d['deviceId'] == p.get('deviceId')]
         if len(matches) != 1:
@@ -406,6 +565,39 @@ def acquire_gentl_frames(p, inspect=False):
                     yield (*result,depth,cloud) if is_3d else result
             finally:
                 ia.stop()
+
+
+def acquire_gentl_frames(p, inspect=False):
+    """GenTL frame generator: prefer C++ GenTLCapture for 2D freerun.
+
+    Falls back to harvesters for inspect / 3D / non-freerun / native missing.
+    Env: SIEANS_NATIVE / SIEANS_NATIVE_GENTL_ACQUIRE (see vision.native_bridge).
+    """
+    prefer = _gentl_prefer_native(p, inspect=inspect)
+    if prefer:
+        try:
+            yield from acquire_gentl_frames_native(p, inspect=inspect)
+            return
+        except Exception as exc:
+            import sys
+            force = False
+            try:
+                from vision import native_bridge
+                force = native_bridge.native_mode() == 'force'
+            except Exception:
+                pass
+            ov = (os.environ.get('SIEANS_NATIVE_GENTL_ACQUIRE') or '').strip().lower()
+            if ov in ('1', 'true', 'on', 'yes', 'native', 'force', 'cpp'):
+                force = True
+            sys.stderr.write(
+                f'[sieans] native GenTL acquire failed'
+                f'{" (force)" if force else " → harvesters fallback"}: {exc}\n'
+            )
+            sys.stderr.flush()
+            if force:
+                raise
+    yield from acquire_gentl_frames_harvesters(p, inspect=inspect)
+
 
 
 def acquire_uvc_frames(p, inspect=False):
@@ -519,10 +711,16 @@ def pack_frame(result, p, started):
     ok, encoded = cv2.imencode('.jpg', image, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
     if not ok or encoded.size > 12_000_000:
         raise ValueError('相机帧编码失败或超过 12 MB')
+    result_meta = dict(**info, driver=p['driver'], width=image.shape[1], height=image.shape[0],
+                       timestampSource='host-receive', previewCodec='jpeg80',
+                       simulated=p['driver'] in ('simulator','rgbd_simulator'), trigger=p['trigger'])
+    if 'acquireBackend' not in result_meta:
+        result_meta['acquireBackend'] = (
+            (info.get('acquireBackend') if isinstance(info, dict) else None)
+            or ('harvesters' if p['driver'] == 'gentl' else p['driver'])
+        )
     return dict(annotatedImage='data:image/jpeg;base64,' + base64.b64encode(encoded).decode('ascii'), cloud=cloud, depth=depth,
-                result=dict(**info, driver=p['driver'], width=image.shape[1], height=image.shape[0],
-                            timestampSource='host-receive', previewCodec='jpeg80',
-                            simulated=p['driver'] in ('simulator','rgbd_simulator'), trigger=p['trigger']), elapsedMs=round((time.monotonic()-started)*1000, 2))
+                result=result_meta, elapsedMs=round((time.monotonic()-started)*1000, 2))
 
 
 def capture_frames(params, encode_flag=None):

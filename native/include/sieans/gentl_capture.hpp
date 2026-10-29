@@ -28,7 +28,8 @@ struct GenTLFrame {
  * Thin C++ GenTL / Hikrobot MvCameraControl capture handle.
  * Built only when SIEANS_NATIVE_GENTL=ON and /opt/MVS is present.
  * When unavailable, methods throw std::runtime_error with a clear message;
- * Python GenTL (harvesters) remains the App default path.
+ * Live App freerun prefers this path when sieans_native is loaded;
+ * Python GenTL (harvesters) remains the fallback / 3D / inspect path.
  */
 class GenTLCapture {
  public:
@@ -55,6 +56,11 @@ class GenTLCapture {
 
   void set_exposure_us(double us);
   void set_gain_db(double db);
+
+  /** Freerun preview defaults: LatestImagesOnly + rate cap + image nodes. */
+  void configure_freerun(double fps = 10.0, int buffer_count = 16);
+  void set_acquisition_frame_rate(double fps);
+  void set_image_node_num(unsigned n);
 
  private:
   struct Impl;

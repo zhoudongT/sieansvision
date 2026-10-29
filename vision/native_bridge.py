@@ -65,3 +65,44 @@ def decode_barcodes_native(image, *, formats: str = "", max_codes: int = 16):
             try_downscale=True,
         )
     )
+
+
+def gentl_available() -> bool:
+    """True when sieans_native was built with MvCameraControl GenTL."""
+    n = load_native()
+    if n is None:
+        return False
+    try:
+        return bool(n.gentl_available())
+    except Exception:
+        return False
+
+
+def gentl_acquire_preferred() -> bool:
+    """Whether live GenTL freerun should use C++ GenTLCapture.
+
+    Honors SIEANS_NATIVE (python → never; force → require; auto → if available).
+    Optional override SIEANS_NATIVE_GENTL_ACQUIRE=0|1|auto.
+    """
+    override = (os.environ.get("SIEANS_NATIVE_GENTL_ACQUIRE") or "").strip().lower()
+    if override in ("0", "false", "off", "no", "python", "harvesters"):
+        return False
+    if override in ("1", "true", "on", "yes", "native", "force", "cpp"):
+        if not gentl_available():
+            if native_mode() == "force" or override in ("force", "1", "true", "on", "yes", "native", "cpp"):
+                raise RuntimeError(
+                    "SIEANS_NATIVE_GENTL_ACQUIRE requires sieans_native GenTL "
+                    f"(load error: {_NATIVE_ERR})"
+                )
+            return False
+        return True
+    mode = native_mode()
+    if mode == "python":
+        return False
+    ok = gentl_available()
+    if mode == "force" and not ok:
+        raise RuntimeError(
+            f"SIEANS_NATIVE=force but sieans_native GenTL unavailable: {_NATIVE_ERR}"
+        )
+    return ok
+

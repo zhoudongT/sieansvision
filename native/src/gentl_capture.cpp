@@ -50,6 +50,15 @@ void GenTLCapture::set_exposure_us(double) {
 void GenTLCapture::set_gain_db(double) {
   throw std::runtime_error("sieans_native GenTL: not available");
 }
+void GenTLCapture::configure_freerun(double, int) {
+  throw std::runtime_error("sieans_native GenTL: not available");
+}
+void GenTLCapture::set_acquisition_frame_rate(double) {
+  throw std::runtime_error("sieans_native GenTL: not available");
+}
+void GenTLCapture::set_image_node_num(unsigned) {
+  throw std::runtime_error("sieans_native GenTL: not available");
+}
 
 #else  // SIEANS_HAS_MVCAM
 
@@ -269,6 +278,45 @@ void GenTLCapture::set_gain_db(double db) {
   MV_CC_SetEnumValue(impl_->handle, "GainAuto", 0);
   int nRet = MV_CC_SetFloatValue(impl_->handle, "Gain", static_cast<float>(db));
   if (nRet != MV_OK) throw std::runtime_error(err_str(nRet));
+}
+
+void GenTLCapture::set_image_node_num(unsigned n) {
+  if (!impl_->handle) throw std::runtime_error("GenTL not open");
+  if (impl_->grabbing) throw std::runtime_error("GenTL set_image_node_num requires stop");
+  unsigned want = n < 1 ? 1u : (n > 64u ? 64u : n);
+  int nRet = MV_CC_SetImageNodeNum(impl_->handle, want);
+  if (nRet != MV_OK) throw std::runtime_error(err_str(nRet));
+}
+
+void GenTLCapture::set_acquisition_frame_rate(double fps) {
+  if (!impl_->handle) throw std::runtime_error("GenTL not open");
+  double rate = fps < 1.0 ? 1.0 : (fps > 240.0 ? 240.0 : fps);
+  // Best-effort: some models lack the enable flag or rate node.
+  MV_CC_SetBoolValue(impl_->handle, "AcquisitionFrameRateEnable", true);
+  int nRet = MV_CC_SetFloatValue(impl_->handle, "AcquisitionFrameRate",
+                                 static_cast<float>(rate));
+  if (nRet != MV_OK) throw std::runtime_error(err_str(nRet));
+}
+
+void GenTLCapture::configure_freerun(double fps, int buffer_count) {
+  if (!impl_->handle) throw std::runtime_error("GenTL not open");
+  if (impl_->grabbing) stop();
+  // Drop-old at SDK: always deliver newest frame when host paces slower.
+  int nRet = MV_CC_SetGrabStrategy(impl_->handle, MV_GrabStrategy_LatestImagesOnly);
+  if (nRet != MV_OK) {
+    // Non-fatal on older SDKs — grab still works OneByOne.
+  }
+  try {
+    set_image_node_num(static_cast<unsigned>(buffer_count > 0 ? buffer_count : 16));
+  } catch (...) {
+  }
+  // Continuous + trigger off (freerun). Ignore failures on burst-only models.
+  MV_CC_SetEnumValueByString(impl_->handle, "AcquisitionMode", "Continuous");
+  MV_CC_SetEnumValueByString(impl_->handle, "TriggerMode", "Off");
+  try {
+    set_acquisition_frame_rate(fps > 0 ? fps : 10.0);
+  } catch (...) {
+  }
 }
 
 #endif  // SIEANS_HAS_MVCAM

@@ -159,7 +159,11 @@ PYBIND11_MODULE(sieans_native, m) {
       .def(
           "grab",
           [](sieans::GenTLCapture& self, int timeout_ms) {
-            auto frame = self.grab(timeout_ms);
+            sieans::GenTLFrame frame;
+            {
+              py::gil_scoped_release release;
+              frame = self.grab(timeout_ms);
+            }
             py::array_t<uint8_t> arr;
             if (frame.pixel_format == "Mono8") {
               arr = py::array_t<uint8_t>({frame.height, frame.width});
@@ -178,9 +182,16 @@ PYBIND11_MODULE(sieans_native, m) {
             d["pixel_format"] = frame.pixel_format;
             d["frame_id"] = frame.frame_id;
             d["timestamp_ns"] = frame.timestamp_ns;
+            d["acquire_backend"] = "sieans_native";
             return d;
           },
           py::arg("timeout_ms") = 5000)
       .def("set_exposure_us", &sieans::GenTLCapture::set_exposure_us)
-      .def("set_gain_db", &sieans::GenTLCapture::set_gain_db);
+      .def("set_gain_db", &sieans::GenTLCapture::set_gain_db)
+      .def("configure_freerun", &sieans::GenTLCapture::configure_freerun,
+           py::arg("fps") = 10.0, py::arg("buffer_count") = 16)
+      .def("set_acquisition_frame_rate",
+           &sieans::GenTLCapture::set_acquisition_frame_rate, py::arg("fps"))
+      .def("set_image_node_num", &sieans::GenTLCapture::set_image_node_num,
+           py::arg("n"));
 }
