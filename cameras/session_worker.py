@@ -18,6 +18,7 @@ _pace_lock = threading.Lock()
 _pace_interval_s = 0.1
 _idle = False
 _last_heartbeat_mono = 0.0
+_encode_flag = {'on': True}
 
 
 def send(message):
@@ -35,6 +36,7 @@ def _set_pace(interval_ms, idle=False):
     with _pace_lock:
         _pace_interval_s = ms / 1000.0
         _idle = bool(idle)
+        _encode_flag['on'] = not _idle
 
 
 def _get_pace():
@@ -97,17 +99,16 @@ def main():
     threading.Thread(target=watch_commands, daemon=True).start()
     retries = 0
     while not stopped.is_set():
-        frames = capture_frames(p)
+        frames = capture_frames(p, encode_flag=_encode_flag)
         try:
             while not stopped.is_set():
                 started = time.monotonic()
                 interval, idle = _get_pace()
                 if idle:
-                    # Drain GenTL/UVC so device buffers do not fill, but do not
-                    # push JPEG lines into Node (that was the long-run hang).
-                    # Keep drain near live rate; throttle heartbeat to ~1s.
+                    # Drain GenTL/UVC (encode_flag off → no JPEG) so buffers do
+                    # not fill; heartbeat-only to Node (t245u long-run hang fix).
                     try:
-                        next(frames)
+                        next(frames)  # None when encode off
                     except Exception:
                         if stopped.is_set():
                             break
@@ -117,7 +118,6 @@ def main():
                     if now - _last_heartbeat_mono >= max(0.8, interval):
                         send(dict(event='heartbeat', at=int(time.time() * 1000)))
                         _last_heartbeat_mono = now
-                    # Drain cadence: use live-ish floor so ring does not fill.
                     drain = min(interval, 0.1)
                     stopped.wait(max(0, drain - (time.monotonic() - started)))
                     continue
@@ -125,6 +125,8 @@ def main():
                     data = next(frames)
                     if stopped.is_set():
                         break
+                    if data is None:
+                        continue
                     send(dict(event='frame', data=data))
                 # Reconnect budget is per session, not reset by intermittent
                 # successes; faulty devices cannot retry forever.

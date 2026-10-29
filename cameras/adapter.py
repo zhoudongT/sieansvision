@@ -525,14 +525,22 @@ def pack_frame(result, p, started):
                             simulated=p['driver'] in ('simulator','rgbd_simulator'), trigger=p['trigger']), elapsedMs=round((time.monotonic()-started)*1000, 2))
 
 
-def capture_frames(params):
+def capture_frames(params, encode_flag=None):
+    """Yield packed frames. If encode_flag is a dict with on=False, drain only
+    (no JPEG/base64) so idle freerun does not burn encode CPU (t245u)."""
     p = config(params)
     driver = p['driver']
+    def _encode_on():
+        return encode_flag is None or bool(encode_flag.get('on', True))
     if driver in ('simulator', 'rgbd_simulator'):
         method = simulate if driver == 'simulator' else rgbd.simulate
         while True:
             started = time.monotonic()
-            yield pack_frame(method(p), p, started)
+            if _encode_on():
+                yield pack_frame(method(p), p, started)
+            else:
+                method(p)
+                yield None
     else:
         method = {'uvc': acquire_uvc_frames, 'gentl': acquire_gentl_frames,
                   'realsense': rgbd.acquire_frames, 'orbbec': orbbec.acquire_frames}[driver]
@@ -540,6 +548,10 @@ def capture_frames(params):
         try:
             while True:
                 started = time.monotonic()
-                yield pack_frame(next(frames), p, started)
+                raw = next(frames)
+                if _encode_on():
+                    yield pack_frame(raw, p, started)
+                else:
+                    yield None
         finally:
             frames.close()
