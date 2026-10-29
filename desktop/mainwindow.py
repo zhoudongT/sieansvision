@@ -2874,7 +2874,10 @@ class MainWindow(QMainWindow):
         # annotated blobs into var-watch/HMI boards (UI-thread hang / 98% CPU).
         self.last_result = result
         result_for_chrome = result
-        if continuous_live and isinstance(result, dict):
+        # t249u: strip megabyte annotated for chrome/tree on single 「运行」too
+        # (continuous-only strip left single-shot feeding full JPEG into
+        # var-watch / results → Qt GUI starve after native GenTL swap).
+        if isinstance(result, dict):
             try:
                 result_for_chrome = dict(result)
                 result_for_chrome['results'] = self._strip_annotated_for_tree(result.get('results') or [])
@@ -2884,7 +2887,8 @@ class MainWindow(QMainWindow):
             try:
                 vw=(self.dialogs or {}).get('var_watch')
                 if vw is not None and hasattr(vw,'board'):
-                    vw.board.set_last_result(result)
+                    vw.board.set_last_result(
+                        result_for_chrome if isinstance(result_for_chrome, dict) else result)
             except Exception:
                 pass
         if not continuous_live:
@@ -2956,7 +2960,10 @@ class MainWindow(QMainWindow):
                 light = self._strip_annotated_for_tree(records)
                 self.results.set_results([{**r,'name':names.get(r['id'],r['id'])} for r in light])
         else:
-            self.results.set_results([{**r,'name':names.get(r['id'],r['id'])} for r in records]);self.scene.show_results(records)
+            # t249u: strip annotated for results tree (parity with continuous)
+            light = self._strip_annotated_for_tree(records)
+            self.results.set_results([{**r,'name':names.get(r['id'],r['id'])} for r in light])
+            self.scene.show_results(records)
         if not continuous_live:
             try:
                 if hasattr(self,'filmstrip') and self.filmstrip is not None and hasattr(self.filmstrip,'push_module_results'):
@@ -2991,23 +2998,39 @@ class MainWindow(QMainWindow):
             if disp_step and disp_step.get('operation')=='display':
                 self._apply_display_to_result_pane(disp_step, image=annotated_live)
                 _disp_applied = True
-            elif continuous_live:
-                # Hang fix: in-place live paint (no scene.clear / dual fit every cycle)
-                self._paint_run_live_frame(annotated_live)
-                try:
-                    self.images.setCurrentIndex(1)
-                except Exception:
-                    pass
             else:
-                self.output_view.show_data(annotated_live);self._apply_measure_geom_overlays(records);self._apply_find_overlay_density(records);self.images.setCurrentIndex(1)
-                try:
-                    if hasattr(self,'filmstrip') and self.filmstrip is not None:
-                        if hasattr(self.filmstrip,'set_live_result'):
-                            self.filmstrip.set_live_result(annotated_live)
-                        if hasattr(self.filmstrip,'push_module_results'):
-                            self.filmstrip.push_module_results(records, names)
-                except Exception:
-                    pass
+                # t249u: large single 「运行」GenTL/QR annotated → live paint
+                # (sync show_data decode starved GUI thread → 界面卡住).
+                use_live_paint = continuous_live or (
+                    isinstance(annotated_live, str) and len(annotated_live) >= 24_000)
+                if use_live_paint:
+                    self._paint_run_live_frame(annotated_live)
+                    try:
+                        self.images.setCurrentIndex(1)
+                    except Exception:
+                        pass
+                    if not continuous_live:
+                        try:
+                            self._apply_measure_geom_overlays(records)
+                            self._apply_find_overlay_density(records)
+                        except Exception:
+                            pass
+                        try:
+                            if hasattr(self,'filmstrip') and self.filmstrip is not None:
+                                if hasattr(self.filmstrip,'set_live_result'):
+                                    self.filmstrip.set_live_result(annotated_live)
+                        except Exception:
+                            pass
+                else:
+                    self.output_view.show_data(annotated_live);self._apply_measure_geom_overlays(records);self._apply_find_overlay_density(records);self.images.setCurrentIndex(1)
+                    try:
+                        if hasattr(self,'filmstrip') and self.filmstrip is not None:
+                            if hasattr(self.filmstrip,'set_live_result'):
+                                self.filmstrip.set_live_result(annotated_live)
+                            if hasattr(self.filmstrip,'push_module_results'):
+                                self.filmstrip.push_module_results(records, names)
+                    except Exception:
+                        pass
         for record in reversed(records):
             cloud=record.get('output',{}).get('cloud')
             if cloud:self.cloud_view.set_cloud(cloud);self.images.setCurrentIndex(2);break
@@ -3016,7 +3039,9 @@ class MainWindow(QMainWindow):
             if depth:self.show_depth(depth);break
         if not continuous_live:
             dialog=self.dialogs.get('hmi')
-            if dialog:dialog.set_runtime(result,self.image)
+            if dialog:dialog.set_runtime(
+                result_for_chrome if isinstance(result_for_chrome, dict) else result,
+                self.image)
         elapsed=result.get('elapsedMs',0) or 0
         # Approximate VM timing triad from total elapsed
         process_ms=elapsed
@@ -3068,8 +3093,9 @@ class MainWindow(QMainWindow):
                     annotated=''
                 else:
                     annotated=self._pick_annotated_image(records) or ''
-                    named_recs=[{**r,'name':names.get(r['id'],r.get('name') or r['id'])} for r in records]
-                    hmi_result={**result,'results':named_recs}
+                    named_recs=[{**r,'name':names.get(r['id'],r.get('name') or r['id'])}
+                                for r in self._strip_annotated_for_tree(records)]
+                    hmi_result={**result_for_chrome,'results':named_recs}
                 # 细妆⑳：把当前胶片路径 stamp 进结果表行，供行点击定位
                 try:
                     fs = getattr(self, 'filmstrip', None)
@@ -3079,11 +3105,13 @@ class MainWindow(QMainWindow):
                         self.operator_hmi.set_film_stamp(fpath or '', findex)
                 except Exception:
                     pass
+                _hmi_live = continuous_live or (
+                    isinstance(annotated, str) and len(annotated) >= 24_000)
                 self.operator_hmi.set_runtime(
                     hmi_result,
-                    image=None if continuous_live else self.image,
-                    annotated=annotated,
-                    live=continuous_live,
+                    image=None if _hmi_live else self.image,
+                    annotated='' if _hmi_live else annotated,
+                    live=_hmi_live,
                 )
                 # 细妆⑳：测量链/换型试跑后 HMI 判定/配方徽章实跑回填
                 try:

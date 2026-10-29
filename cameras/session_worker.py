@@ -138,7 +138,10 @@ def main():
                     if now - _last_heartbeat_mono >= max(0.8, interval):
                         send(dict(event='heartbeat', at=int(time.time() * 1000)))
                         _last_heartbeat_mono = now
-                    drain = min(interval, 0.1)
+                    # t249u: was min(interval, 0.1) → native GenTL grab+np.copy at 10 Hz
+                    # even when idle/heartbeat-only (session_worker ~28% CPU). With
+                    # LatestImagesOnly, drain once per idle interval is enough.
+                    drain = max(0.2, float(interval) if interval else 1.0)
                     stopped.wait(max(0, drain - (time.monotonic() - started)))
                     continue
                 else:

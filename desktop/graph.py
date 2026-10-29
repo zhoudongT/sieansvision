@@ -362,9 +362,12 @@ class FlowScene(QGraphicsScene):
         painter.setPen(QPen(QColor(CANVAS_DOT),1.2))
         step=16
         left=int(rect.left()/step)*step;top=int(rect.top()/step)*step
-        # VisionMaster-style dotted grid
-        for x in range(left,int(rect.right())+step,step):
-            for y in range(top,int(rect.bottom())+step,step):
+        # t249u: cap dotted-grid loops (huge exposed sceneRect → GUI spin / 无响应)
+        max_span = step * 256
+        right = min(int(rect.right()) + step, left + max_span)
+        bottom = min(int(rect.bottom()) + step, top + max_span)
+        for x in range(left, right, step):
+            for y in range(top, bottom, step):
                 painter.drawPoint(x,y)
 
 

@@ -81,18 +81,25 @@ class ImageView(QGraphicsView):
         QTimer.singleShot(0, self._ensure_legend_chrome)
 
     def drawBackground(self, painter, rect):
-        # VisionMaster-style dark gray checkerboard when empty / around image
+        # VisionMaster-style dark gray checkerboard when empty / around image.
+        # t249u: cap cell loops — pathological zoom/sceneRect made nested while
+        # paint millions of cells → Qt GUI thread 100% R, voluntary_ctxt frozen
+        # (GNOME「无响应」after GenTL→QR 「运行」).
         painter.fillRect(rect, QColor(CANVAS))
         cell = 12
         c0 = QColor('#2a2c30')
         c1 = QColor('#34363b')
+        # Bound work to ~viewport-sized area even if transform exposes a huge scene.
+        max_span = cell * 256  # ≤256×256 cells
         left = int(rect.left() // cell) * cell
         top = int(rect.top() // cell) * cell
+        right = min(float(rect.right()) + cell, left + max_span)
+        bottom = min(float(rect.bottom()) + cell, top + max_span)
         y = top
-        while y < rect.bottom() + cell:
+        while y < bottom:
             x = left
             row = int(y // cell)
-            while x < rect.right() + cell:
+            while x < right:
                 col = int(x // cell)
                 painter.fillRect(QRectF(x, y, cell, cell), c0 if (row + col) % 2 == 0 else c1)
                 x += cell
@@ -105,6 +112,13 @@ class ImageView(QGraphicsView):
             self.clear_canvas_legend()
         except Exception:
             pass
+        # t249u: large GenTL/QR annotated JPEG used to sync-decode on the GUI
+        # thread (same starvation as continuous before t246u). Route big payloads
+        # through show_live_frame (QThreadPool decode + identity pre-scale).
+        if data and isinstance(data, str) and len(data) >= 24_000:
+            ok = self.show_live_frame(data)
+            if ok:
+                return
         pixmap = QPixmap()
         if data and isinstance(data, str):
             try:
