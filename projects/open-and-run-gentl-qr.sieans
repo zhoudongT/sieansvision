@@ -4,13 +4,13 @@
   "name": "打开即跑 · GenTL相机→二维码",
   "meta": {
     "openAndRun": true,
-    "wave": 243,
+    "wave": 244,
     "camera": "gentl",
     "comms": "localbus+tcpReal-seed",
     "hangSafeContinuous": true,
-    "hangFix": "t243u"
+    "hangFix": "t244u"
   },
-  "notes": "t243u：warm session capture 默认 latest + waiter deliver 异常安全 + 连续忙碌看门狗；保持 show_live_frame+≤15FPS。 t242：Hikrobot MV-CB013 GenTL 持久采集 → 条码/二维码(zxing QR) → 门限 → LocalBus 模板发送。打开工程后点 ▶：首次开相机并 keepConnectionOpen；连续运行走 show_live_frame+≤15FPS（防卡死）。曝光 exposureTime=2000µs；types=QRCode。断线可用相机管理「一键重连」/ autoStart 软恢复。勿与 MVS / 网页采集同时占 USB。通信默认 LocalBus；可选 TcpRealLoopback :19956。",
+  "notes": "t244u：freerun drop-old（无 waiter 时跳过 JSON.parse）+ persistent intervalMs=100 + 连续失败续跑 + 忙碌看门狗 6s；修 51ab303 后 residual（session received≫consumed、引擎事件环被帧解析占满→IPC 饿死→GNOME 无响应）。t243u：warm session capture 默认 latest + waiter deliver 异常安全 + 连续忙碌看门狗；保持 show_live_frame+≤15FPS。Hikrobot MV-CB013 GenTL → 条码/二维码 → LocalBus。勿与 MVS / 网页采集同时占 USB。",
   "sourcePosition": {
     "x": 300,
     "y": 40

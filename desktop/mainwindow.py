@@ -3175,6 +3175,18 @@ class MainWindow(QMainWindow):
                 self.log(f'链式触发 · 续派 {len(pending)} 条')
                 QTimer.singleShot(0, lambda p=pending: self.guard(
                     lambda: self._dispatch_global_triggers(p, reason='链式触发')))
+        if self.continuous and state=='failed':
+            # t244u: prior code only rescheduled on completed — a single capture
+            # timeout left continuous=True but idle (feels like 卡; no busy→no watchdog).
+            if getattr(self, '_continuous_paused', False):
+                self.log('连续运行暂停中 — 失败后不续跑')
+                return
+            delay = max(300, int(self._active_run_interval_ms() or 120))
+            target = self._run_target
+            self.log(f'连续运行本拍失败 — {delay}ms 后重试')
+            QTimer.singleShot(delay, lambda t=target: self.guard(
+                lambda: self.run(t) if self.continuous and not self.busy and not getattr(self, '_continuous_paused', False) else None))
+            return
         if self.continuous and state=='completed':
             if getattr(self, '_continuous_paused', False):
                 self.log('连续运行暂停中 — 跳过下次调度')
@@ -3293,10 +3305,11 @@ class MainWindow(QMainWindow):
             pass
 
     def _arm_continuous_busy_watchdog(self):
-        """t243u: if a continuous run never finishes, release busy so Qt stays responsive.
+        """t243u/t244u: if a continuous run never finishes, release busy so Qt stays responsive.
 
         Evidence: GenTL→QR hung with busy=True + stale progress「MV GenTL 采集」while
         session freerun kept producing (consumed stuck). GNOME marked python3 无响应.
+        t244u: also fire sooner (6s) so GNOME does not mark 无响应 first.
         """
         try:
             from PySide6.QtCore import QTimer
@@ -3316,7 +3329,9 @@ class MainWindow(QMainWindow):
                     timeout_ms = max(timeout_ms, int((s.get('params') or {}).get('timeoutMs') or 5000))
         except Exception:
             pass
-        timer.start(max(12000, timeout_ms + 7000))
+        # t244u: fire before GNOME typically marks「无响应」(~5s). Prior 12s
+        # left the UI frozen long enough for Allen to report 还会卡.
+        timer.start(max(6000, timeout_ms + 1500))
 
     def _disarm_continuous_busy_watchdog(self):
         timer = getattr(self, '_cont_busy_watchdog', None)
