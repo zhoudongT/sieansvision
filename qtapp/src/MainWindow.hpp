@@ -10,6 +10,10 @@
 #include "CommPanel.hpp"
 #include "VarWatchPanel.hpp"
 #include "HostStrip.hpp"
+#include "FilmstripBar.hpp"
+#include "FlowTabBar.hpp"
+#include "PropertyFloat.hpp"
+#include "OperatorRail.hpp"
 
 #include <QMainWindow>
 #include <QPlainTextEdit>
@@ -81,8 +85,17 @@ class MainWindow : public QMainWindow {
   FlowScene* flow_scene_ = nullptr;
   FlowView* flow_view_ = nullptr;
   ImageView* image_view_ = nullptr;
+  OperatorRail* op_rail_ = nullptr;
   OperatorLibrary* op_lib_ = nullptr;
-  PropertyPanel* prop_panel_ = nullptr;
+  PropertyPanel* prop_panel_ = nullptr;  // embedded fallback / float body
+  PropertyFloat* prop_float_ = nullptr;
+  FlowTabBar* flow_tabs_ = nullptr;
+  FilmstripBar* filmstrip_ = nullptr;
+  ImageView* output_view_ = nullptr;
+  QTabWidget* image_tabs_ = nullptr;
+  QLabel* mode_badge_ = nullptr;
+  QLabel* brand_label_ = nullptr;
+
   CommHub* comm_hub_ = nullptr;
   CommPanel* comm_panel_ = nullptr;
   VarWatchPanel* var_watch_ = nullptr;

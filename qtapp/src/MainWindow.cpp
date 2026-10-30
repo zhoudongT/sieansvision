@@ -34,6 +34,7 @@
 #include <QEventLoop>
 #include <QTimer>
 #include <QLabel>
+#include <QSize>
 #include <QPixmap>
 #include <QAbstractItemView>
 #include <QSet>
@@ -82,7 +83,7 @@ QImage applyPreprocess(const QImage& src, const QVariantMap& params) {
 }  // namespace
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
-  setWindowTitle(QStringLiteral("SIEANS Vision — Qt · wave-3"));
+  setWindowTitle(QStringLiteral("SIEANS Vision · 设计态"));
   resize(1600, 940);
 
   cam_thread_ = new QThread(this);
@@ -203,99 +204,143 @@ QString MainWindow::samplePathCandidates() const {
 }
 
 void MainWindow::buildUi() {
+  // VisionMaster / industrial workbench layout:
+  // vertical: [horizontal workbench] / [bottom results tabs]
+  // horizontal: [rail|toolbox] | [flow tabs+canvas] | [image tabs+filmstrip]
+  // property = light float (VM 属性浮窗), not embedded under canvas
   auto* central = new QWidget(this);
-  auto* root = new QHBoxLayout(central);
-  root->setContentsMargins(0, 0, 0, 0);
-  root->setSpacing(0);
+  auto* rootSplit = new QSplitter(Qt::Vertical);
+  auto* rootLay = new QVBoxLayout(central);
+  rootLay->setContentsMargins(0, 0, 0, 0);
+  rootLay->setSpacing(0);
+  rootLay->addWidget(rootSplit);
 
-  auto* leftRail = new QFrame;
-  leftRail->setObjectName(QStringLiteral("rail"));
-  leftRail->setFixedWidth(168);
-  auto* leftLay = new QVBoxLayout(leftRail);
+  auto* horizontal = new QSplitter(Qt::Horizontal);
+
+  // —— Left: category rail + operator library ——
+  auto* left = new QWidget;
+  left->setObjectName(QStringLiteral("libraryPane"));
+  auto* leftLay = new QHBoxLayout(left);
   leftLay->setContentsMargins(0, 0, 0, 0);
+  leftLay->setSpacing(0);
+  op_rail_ = new OperatorRail;
+  leftLay->addWidget(op_rail_);
   op_lib_ = new OperatorLibrary;
-  leftLay->addWidget(op_lib_);
+  leftLay->addWidget(op_lib_, 1);
+  left->setMinimumWidth(220);
+  left->setMaximumWidth(320);
   connect(op_lib_, &OperatorLibrary::operatorActivated, this,
           &MainWindow::onAddOperator);
-  root->addWidget(leftRail);
+  connect(op_rail_, &OperatorRail::categorySelected, op_lib_,
+          &OperatorLibrary::setCategoryFilter);
+  horizontal->addWidget(left);
 
-  auto* splitter = new QSplitter(Qt::Horizontal);
-
-  auto* leftSplit = new QSplitter(Qt::Vertical);
+  // —— Center-left: flow tab bar + canvas ——
+  auto* flowPane = new QWidget;
+  flowPane->setObjectName(QStringLiteral("flowPane"));
+  auto* flowLay = new QVBoxLayout(flowPane);
+  flowLay->setContentsMargins(0, 0, 0, 0);
+  flowLay->setSpacing(0);
+  flow_tabs_ = new FlowTabBar;
+  flowLay->addWidget(flow_tabs_);
   flow_scene_ = new FlowScene(this);
   flow_view_ = new FlowView(flow_scene_);
-  leftSplit->addWidget(flow_view_);
+  flowLay->addWidget(flow_view_, 1);
   connect(flow_view_, &FlowView::operatorDropped, this, &MainWindow::onDropOperator);
-  prop_panel_ = new PropertyPanel;
-  leftSplit->addWidget(prop_panel_);
-  leftSplit->setStretchFactor(0, 3);
-  leftSplit->setStretchFactor(1, 2);
-  leftSplit->setSizes({480, 240});
-  splitter->addWidget(leftSplit);
+  connect(flow_tabs_, &FlowTabBar::runOnceRequested, this, &MainWindow::onRunOnce);
+  connect(flow_tabs_, &FlowTabBar::runContinuousRequested, this,
+          &MainWindow::onRunContinuous);
+  horizontal->addWidget(flowPane);
 
   connect(flow_scene_, &FlowScene::nodeSelected, this, &MainWindow::onNodeSelected);
   connect(flow_scene_, &FlowScene::edgeConnected, this, &MainWindow::onEdgeConnected);
   connect(flow_scene_, &FlowScene::linkNotice, this, &MainWindow::onLinkNotice);
-  connect(prop_panel_, &PropertyPanel::paramEdited, this, &MainWindow::onParamEdited);
 
-  auto* center = new QWidget;
-  auto* centerLay = new QVBoxLayout(center);
-  centerLay->setContentsMargins(0, 0, 0, 0);
-  centerLay->setSpacing(0);
+  // Property float (VM light panel) — created lazily-ish but keep ready
+  prop_float_ = new PropertyFloat(this);
+  prop_panel_ = prop_float_->panel();
+  connect(prop_float_, &PropertyFloat::paramEdited, this, &MainWindow::onParamEdited);
+  connect(prop_float_, &PropertyFloat::runModule, this, &MainWindow::onRunOnce);
+  connect(prop_float_, &PropertyFloat::runModuleContinuous, this,
+          &MainWindow::onRunContinuous);
+
+  // —— Right: image tabs + host strip + filmstrip ——
+  auto* imagePane = new QWidget;
+  imagePane->setObjectName(QStringLiteral("imagePane"));
+  auto* imgLay = new QVBoxLayout(imagePane);
+  imgLay->setContentsMargins(0, 0, 0, 0);
+  imgLay->setSpacing(0);
+  image_tabs_ = new QTabWidget;
   image_view_ = new ImageView;
-  centerLay->addWidget(image_view_, 1);
+  output_view_ = new ImageView;
+  image_tabs_->addTab(image_view_, QStringLiteral("全局图像"));
+  image_tabs_->addTab(output_view_, QStringLiteral("模块结果"));
+  imgLay->addWidget(image_tabs_, 1);
   host_strip_ = new HostStrip;
-  centerLay->addWidget(host_strip_);
-  splitter->addWidget(center);
+  imgLay->addWidget(host_strip_);
+  filmstrip_ = new FilmstripBar;
+  imgLay->addWidget(filmstrip_);
+  connect(filmstrip_, &FilmstripBar::openImageRequested, this, &MainWindow::onOpenImage);
+  connect(filmstrip_, &FilmstripBar::runAllRequested, this, &MainWindow::onRunOnce);
+  horizontal->addWidget(imagePane);
 
-  auto* right = new QWidget;
-  auto* rightLay = new QVBoxLayout(right);
-  rightLay->setContentsMargins(4, 4, 4, 4);
-  rightLay->setSpacing(4);
+  horizontal->setChildrenCollapsible(false);
+  horizontal->setStretchFactor(0, 0);
+  horizontal->setStretchFactor(1, 2);
+  horizontal->setStretchFactor(2, 2);
+  horizontal->setSizes({260, 560, 520});
+  flowPane->setMinimumWidth(240);
+  imagePane->setMinimumWidth(280);
+  rootSplit->addWidget(horizontal);
 
-  auto* rightTabs = new QTabWidget;
-  auto* resPage = new QWidget;
-  auto* resLay = new QVBoxLayout(resPage);
-  resLay->setContentsMargins(2, 2, 2, 2);
+  // —— Bottom: 当前结果 / 历史结果 / 帮助 / 变量 / 通信 ——
+  auto* bottom = new QTabWidget;
   result_table_ = new QTableWidget(0, 3);
   result_table_->setHorizontalHeaderLabels(
-      {QStringLiteral("#"), QStringLiteral("格式"), QStringLiteral("内容")});
+      {QStringLiteral("模块/字段"), QStringLiteral("值"), QStringLiteral("类型")});
   result_table_->horizontalHeader()->setStretchLastSection(true);
   result_table_->verticalHeader()->setVisible(false);
   result_table_->setAlternatingRowColors(true);
   result_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
   result_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
-  result_table_->setMaximumHeight(180);
-  resLay->addWidget(result_table_);
+  result_table_->setObjectName(QStringLiteral("resultTree"));
+  bottom->addTab(result_table_, QStringLiteral("当前结果"));
+
   result_log_ = new QPlainTextEdit;
   result_log_->setReadOnly(true);
   result_log_->setPlaceholderText(
-      QStringLiteral("运行日志 / GenTL / 解码 / Comm"));
-  resLay->addWidget(result_log_, 1);
-  rightTabs->addTab(resPage, QStringLiteral("结果"));
+      QStringLiteral("历史结果 / 运行日志 / GenTL / 解码 / Comm"));
+  bottom->addTab(result_log_, QStringLiteral("历史结果"));
+
+  auto* helpPad = new QPlainTextEdit;
+  helpPad->setReadOnly(true);
+  helpPad->setPlainText(
+      QStringLiteral("帮助：左侧分类算子库拖入画布连线；双击节点打开属性浮窗；"
+                     "工具栏 ▶单次 / ↻连续 / ■停止；胶片条可打开本地图。\n"
+                     "交互对齐 VisionMaster：纵栏分类 · 属性浮窗 · 底栏结果。"));
+  bottom->addTab(helpPad, QStringLiteral("帮助"));
 
   var_watch_ = new VarWatchPanel;
-  rightTabs->addTab(var_watch_, QStringLiteral("变量"));
-
+  bottom->addTab(var_watch_, QStringLiteral("变量监视"));
   comm_panel_ = new CommPanel(comm_hub_);
-  rightTabs->addTab(comm_panel_, QStringLiteral("通信"));
+  bottom->addTab(comm_panel_, QStringLiteral("通信"));
 
-  rightLay->addWidget(rightTabs, 1);
-  splitter->addWidget(right);
+  rootSplit->addWidget(bottom);
+  rootSplit->setChildrenCollapsible(false);
+  rootSplit->setStretchFactor(0, 4);
+  rootSplit->setStretchFactor(1, 1);
+  rootSplit->setSizes({700, 200});
+  bottom->setMinimumHeight(100);
 
-  splitter->setStretchFactor(0, 0);
-  splitter->setStretchFactor(1, 1);
-  splitter->setStretchFactor(2, 0);
-  splitter->setSizes({340, 820, 360});
-  root->addWidget(splitter, 1);
   setCentralWidget(central);
 
   project_label_ = new QLabel(QStringLiteral("方案: —"));
+  statusBar()->setObjectName(QStringLiteral("workbenchStatus"));
   statusBar()->addWidget(project_label_, 1);
-  status_busy_ = new QLabel(QStringLiteral("空闲"));
+  status_busy_ = new QLabel(QStringLiteral("● 空闲"));
   statusBar()->addPermanentWidget(status_busy_);
   status_backend_ = new QLabel(
-      QStringLiteral("sieans_algo %1")
+      QStringLiteral("SIEANS Vision · %1")
           .arg(QString::fromStdString(sieans::native_version())));
   statusBar()->addPermanentWidget(status_backend_);
 }
@@ -358,6 +403,14 @@ void MainWindow::buildMenus() {
   devices->addAction(QStringLiteral("停止预览"), this, &MainWindow::onStopContinuousPreview);
   devices->addAction(QStringLiteral("通信管理…"), this, &MainWindow::onOpenCommManager);
 
+  auto* records = menuBar()->addMenu(QStringLiteral("记录与账号"));
+  records->addAction(QStringLiteral("运行日志…"), this, [this]() {
+    showStatus(QStringLiteral("见底栏「历史结果」"));
+  });
+  records->addAction(QStringLiteral("变量监视…"), this, [this]() {
+    showStatus(QStringLiteral("见底栏「变量监视」"));
+  });
+
   auto* help = menuBar()->addMenu(QStringLiteral("帮助(&H)"));
   help->addAction(QStringLiteral("关于"), this, &MainWindow::onAbout);
 }
@@ -366,7 +419,12 @@ void MainWindow::buildToolbar() {
   auto* tb = addToolBar(QStringLiteral("工程与运行"));
   tb->setObjectName(QStringLiteral("mainToolBar"));
   tb->setMovable(false);
-  tb->addAction(QStringLiteral("打开方案"), this, &MainWindow::onOpenProject);
+  tb->setIconSize(QSize(20, 20));
+  brand_label_ = new QLabel(QStringLiteral("SIEANS"));
+  brand_label_->setObjectName(QStringLiteral("brand"));
+  tb->addWidget(brand_label_);
+  tb->addSeparator();
+  tb->addAction(QStringLiteral("打开"), this, &MainWindow::onOpenProject);
   tb->addAction(QStringLiteral("保存"), this, &MainWindow::onSaveProject);
   tb->addSeparator();
   tb->addAction(QStringLiteral("相机"), this, &MainWindow::onOpenCameraManager);
@@ -383,14 +441,26 @@ void MainWindow::buildToolbar() {
   tb->addSeparator();
   tb->addAction(QStringLiteral("示例 QR"), this, &MainWindow::onLoadSample);
   tb->addAction(QStringLiteral("解码"), this, &MainWindow::onDecodeQr);
+  tb->addSeparator();
+  mode_badge_ = new QLabel(QStringLiteral("设计态"));
+  mode_badge_->setObjectName(QStringLiteral("modeBadge"));
+  mode_badge_->setProperty("runMode", false);
+  tb->addWidget(mode_badge_);
+  auto* listen = new QLabel(QStringLiteral("监听·—"));
+  listen->setObjectName(QStringLiteral("commListenBadge"));
+  listen->setToolTip(QStringLiteral("通信监听状态 — 点击打开通信管理"));
+  listen->setCursor(Qt::PointingHandCursor);
+  tb->addWidget(listen);
 }
 
 void MainWindow::applyDocumentToUi() {
   flow_scene_->loadDocument(&document_);
   project_label_->setText(QStringLiteral("方案: %1").arg(document_.name()));
-  setWindowTitle(QStringLiteral("SIEANS Vision — Qt · wave-3 · %1").arg(document_.name()));
+  setWindowTitle(QStringLiteral("%1 — SIEANS Vision · 设计态").arg(document_.name()));
+  if (flow_tabs_) flow_tabs_->setFlowName(QStringLiteral("流程1"));
   QTimer::singleShot(0, flow_view_, &FlowView::fitAll);
-  prop_panel_->clear();
+  if (prop_float_) prop_float_->hide();
+  else if (prop_panel_) prop_panel_->clear();
   flow_vars_ = document_.variables();
   if (var_watch_) {
     var_watch_->setWatchKeys(document_.hostWatchKeys());
@@ -443,10 +513,13 @@ bool MainWindow::loadImagePath(const QString& path) {
   }
   current_path_ = path;
   image_view_->setImage(img, true);
+  if (output_view_) output_view_->setImage(img, true);
   logResult(QStringLiteral("已加载 %1 (%2×%3)")
                 .arg(QFileInfo(path).fileName())
                 .arg(img.width())
                 .arg(img.height()));
+  if (filmstrip_)
+    filmstrip_->setStatus(QStringLiteral("本地 · %1").arg(QFileInfo(path).fileName()));
   showStatus(QStringLiteral("已加载 %1").arg(path));
   return true;
 }
@@ -639,9 +712,12 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
         overlays.push_back(o);
         const int row = result_table_->rowCount();
         result_table_->insertRow(row);
-        result_table_->setItem(row, 0, new QTableWidgetItem(QString::number(++i)));
-        result_table_->setItem(row, 1, new QTableWidgetItem(o.format));
-        result_table_->setItem(row, 2, new QTableWidgetItem(o.text));
+        result_table_->setItem(
+            row, 0,
+            new QTableWidgetItem(QStringLiteral("barcode[%1].text").arg(i)));
+        result_table_->setItem(row, 1, new QTableWidgetItem(o.text));
+        result_table_->setItem(row, 2, new QTableWidgetItem(o.format));
+        ++i;
       }
       image_view_->setOverlays(overlays);
     } else if (op == QLatin1String("var_calc")) {
@@ -1070,16 +1146,26 @@ void MainWindow::onContinuousTick() {
 }
 
 void MainWindow::onNodeSelected(const QString& nodeId) {
+  if (!prop_float_) return;
   if (nodeId.isEmpty()) {
-    prop_panel_->clear();
+    prop_float_->hide();
     return;
   }
   if (nodeId == QLatin1String("source")) {
-    prop_panel_->showSource(document_.sourceConfig());
+    prop_float_->showForSource(document_.sourceConfig());
+    // place float near right of flow canvas
+    if (flow_view_) {
+      const QPoint g = flow_view_->mapToGlobal(QPoint(flow_view_->width() - 20, 40));
+      prop_float_->move(g);
+    }
     return;
   }
   if (const FlowStep* s = document_.findStep(nodeId)) {
-    prop_panel_->showStep(*s);
+    prop_float_->showForStep(*s);
+    if (flow_view_) {
+      const QPoint g = flow_view_->mapToGlobal(QPoint(flow_view_->width() - 20, 40));
+      prop_float_->move(g);
+    }
   }
 }
 
@@ -1206,7 +1292,7 @@ void MainWindow::onAbout() {
   QMessageBox::about(
       this, QStringLiteral("关于 SIEANS Vision Qt"),
       QStringLiteral(
-          "<b>SIEANS Vision Qt</b> — 对等波3：拖库·var_calc·UVC·Comm/HMI<br/>"
+          "<b>SIEANS Vision Qt</b> — VisionMaster 交互/画面一比一：纵栏·属性浮窗·底栏结果<br/>"
           "下层 C++ <code>sieans_algo</code>，上层 Qt6 Widgets。<br/>"
           "native: %1<br/>GenTL: %2")
           .arg(QString::fromStdString(sieans::native_version()))

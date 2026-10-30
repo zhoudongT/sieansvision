@@ -55,6 +55,14 @@ add_executable(sieans_qt
   src/ExprEval.cpp
   src/UvcCapture.hpp
   src/UvcCapture.cpp
+  src/OperatorRail.hpp
+  src/OperatorRail.cpp
+  src/PropertyFloat.hpp
+  src/PropertyFloat.cpp
+  src/FlowTabBar.hpp
+  src/FlowTabBar.cpp
+  src/FilmstripBar.hpp
+  src/FilmstripBar.cpp
 )
 
 target_include_directories(sieans_qt PRIVATE
