@@ -30,3 +30,6 @@ upstream/
 .venv/
 .venv-gpu/
 .venv-ytdlp/
+
+# Qt app build
+qtapp/build/
