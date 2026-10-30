@@ -22,6 +22,8 @@ class CommHub : public QObject {
 
   QStringList devices() const;
   QString deviceProtocol(const QString& name) const;
+  QVariantMap deviceInfo(const QString& name) const;
+  QVariantList deviceList() const;
 
   /** Soft LocalBus TX — always records transcript; also mirrors to TCP if up. */
   bool sendPayload(const QString& deviceName, const QString& payload,

@@ -17,6 +17,7 @@ class OperatorLibrary : public QWidget {
  public:
   explicit OperatorLibrary(QWidget* parent = nullptr);
   static QVector<OperatorDef> catalog();
+  static OperatorDef findDef(const QString& key);
 
  signals:
   void operatorActivated(const QString& key, const QString& name);

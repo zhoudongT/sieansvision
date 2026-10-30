@@ -7,6 +7,7 @@
 #include <QComboBox>
 #include <QLineEdit>
 #include <QLabel>
+#include <QTableWidget>
 #include <QVariantMap>
 
 namespace sieans_qt {
@@ -21,6 +22,7 @@ class CommPanel : public QWidget {
 
  public slots:
   void refreshTranscript();
+  void refreshDevices();
   void onTrialSend();
   void onStartTcp();
   void onStopTcp();
@@ -29,11 +31,17 @@ class CommPanel : public QWidget {
   void requestSaveComm(const QVariantMap& cm);
 
  private:
+  void onDeviceRowChanged();
+
   CommHub* hub_ = nullptr;
+  QTableWidget* deviceTable_ = nullptr;
   QComboBox* deviceCombo_ = nullptr;
   QLineEdit* payloadEdit_ = nullptr;
+  QLineEdit* hostEdit_ = nullptr;
+  QLineEdit* portEdit_ = nullptr;
   QPlainTextEdit* transcript_ = nullptr;
   QLabel* status_ = nullptr;
+  QLabel* detail_ = nullptr;
   QVariantMap vars_;
 };
 

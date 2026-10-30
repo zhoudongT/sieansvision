@@ -29,6 +29,20 @@ QStringList CommHub::devices() const {
   return out;
 }
 
+
+QVariantMap CommHub::deviceInfo(const QString& name) const {
+  const QVariantList devs = cm_.value(QStringLiteral("devices")).toList();
+  for (const QVariant& v : devs) {
+    const QVariantMap d = v.toMap();
+    if (d.value(QStringLiteral("name")).toString() == name) return d;
+  }
+  return {};
+}
+
+QVariantList CommHub::deviceList() const {
+  return cm_.value(QStringLiteral("devices")).toList();
+}
+
 QString CommHub::deviceProtocol(const QString& name) const {
   const QVariantList devs = cm_.value(QStringLiteral("devices")).toList();
   for (const QVariant& v : devs) {

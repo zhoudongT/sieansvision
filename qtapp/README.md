@@ -36,6 +36,6 @@
 
 ## 已落地 vs NEXT
 
-**已落地（wave-2）：** `.sieans` 加载/保存（含 variables/commManager）· 流程画布 **拖线连/断**（端口拖拽、Delete 删边、Esc 取消）· 算子库扩展（preprocess / receive_data / result_gate / save_image 可执行桩）· 连续 GenTL 预览线程 · ▶/连续运行 + C++ QR 叠层 · **变量监视** 接运行结果 · **通信面板** LocalBus 抄本 + 真实 TCP（默认 127.0.0.1:19956，模板 `${flow.x}`）· Host OK/NG 底条 · VisionMaster 炭黑橙强调色。
+**已落地（wave-3）：** 算子库 **拖放到画布**（mime `application/x-sieans-operator`）· **var_calc 表达式求值**（算术/比较/`or`/`and`/三元/`steps["id"].count|items[N].text`）· **UVC V4L2** 采集路径（与 GenTL 并列，空枚举友好）· Comm **多设备表** + TCP 端点编辑 · Host OK/NG/**ALARM** 条 + watch chips。
 
-**NEXT：** 完整 Python 表达式 var_calc · 算子库拖入画布 · UVC · 多设备 Comm UI 对等 · 更丰富 Host HMI · 报警壳。
+**NEXT：** 完整 Python AST var_calc · 算子属性浮窗对等 · Soft 仿真帧 · 更完整 Host 状态机 / 报警列表壳 · UVC 曝光软控热更新。

@@ -1,16 +1,17 @@
 #include "HostStrip.hpp"
-
 #include "Theme.hpp"
 
+#include <QVBoxLayout>
 #include <QHBoxLayout>
 
 namespace sieans_qt {
 
 HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
-  setFixedHeight(36);
-  auto* lay = new QHBoxLayout(this);
-  lay->setContentsMargins(8, 4, 8, 4);
-  lay->setSpacing(10);
+  auto* root = new QVBoxLayout(this);
+  root->setContentsMargins(8, 4, 8, 4);
+  root->setSpacing(2);
+  auto* row = new QHBoxLayout;
+  row->setSpacing(10);
   badge_ = new QLabel(QStringLiteral("—"));
   badge_->setFixedWidth(72);
   badge_->setAlignment(Qt::AlignCenter);
@@ -19,9 +20,43 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
                      "font-weight:700;font-size:14px;padding:4px;"));
   detail_ = new QLabel(QStringLiteral("Host · 等待运行"));
   detail_->setObjectName(QStringLiteral("muted"));
-  lay->addWidget(badge_);
-  lay->addWidget(detail_, 1);
+  alarmLabel_ = new QLabel;
+  alarmLabel_->setVisible(false);
+  alarmLabel_->setStyleSheet(
+      QStringLiteral("background:#c62828;color:#fff;border-radius:3px;"
+                     "font-weight:700;padding:2px 8px;"));
+  row->addWidget(badge_);
+  row->addWidget(detail_, 1);
+  row->addWidget(alarmLabel_);
+  root->addLayout(row);
+  chips_ = new QLabel;
+  chips_->setObjectName(QStringLiteral("muted"));
+  chips_->setWordWrap(true);
+  root->addWidget(chips_);
   setStyleSheet(QStringLiteral("background:#232528;border-top:1px solid #4a4e54;"));
+  setMinimumHeight(48);
+}
+
+void HostStrip::setWatchKeys(const QStringList& keys) { watchKeys_ = keys; }
+
+void HostStrip::setAlarm(bool on, const QString& reason) {
+  alarmOn_ = on;
+  alarmReason_ = reason;
+  alarmLabel_->setVisible(on);
+  alarmLabel_->setText(on ? QStringLiteral("ALARM %1").arg(reason.left(40))
+                          : QString());
+}
+
+void HostStrip::refreshChips(const QVariantMap& vars) {
+  if (watchKeys_.isEmpty()) {
+    chips_->setText({});
+    return;
+  }
+  QStringList parts;
+  for (const QString& k : watchKeys_) {
+    parts << QStringLiteral("%1=%2").arg(k, vars.value(k).toString().left(24));
+  }
+  chips_->setText(parts.join(QStringLiteral("  ·  ")));
 }
 
 void HostStrip::updateFromVars(const QVariantMap& vars, int codeCount) {
@@ -33,13 +68,20 @@ void HostStrip::updateFromVars(const QVariantMap& vars, int codeCount) {
                         ? codeCount
                         : vars.value(QStringLiteral("barcodeCount")).toInt();
   const QString text = vars.value(QStringLiteral("barcodeText")).toString();
-  if (ok) {
+  const bool ran = vars.contains(QStringLiteral("barcodeCount")) ||
+                   vars.contains(QStringLiteral("passGate"));
+
+  if (alarmOn_) {
+    badge_->setText(QStringLiteral("ALARM"));
+    badge_->setStyleSheet(
+        QStringLiteral("background:#c62828;color:#fff;border-radius:3px;"
+                       "font-weight:700;font-size:14px;padding:4px;"));
+  } else if (ok) {
     badge_->setText(QStringLiteral("OK"));
     badge_->setStyleSheet(
         QStringLiteral("background:#2d9b6c;color:#fff;border-radius:3px;"
                        "font-weight:700;font-size:14px;padding:4px;"));
-  } else if (count == 0 && text.isEmpty() &&
-             !vars.contains(QStringLiteral("barcodeCount"))) {
+  } else if (!ran) {
     badge_->setText(QStringLiteral("—"));
     badge_->setStyleSheet(
         QStringLiteral("background:#3a3d42;color:#a8a8a8;border-radius:3px;"
@@ -54,6 +96,7 @@ void HostStrip::updateFromVars(const QVariantMap& vars, int codeCount) {
                        .arg(count)
                        .arg(text.left(48))
                        .arg(vars.value(QStringLiteral("formatted")).toString().left(48)));
+  refreshChips(vars);
 }
 
 }  // namespace sieans_qt

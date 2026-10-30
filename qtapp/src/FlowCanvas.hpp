@@ -8,6 +8,8 @@
 #include <QGraphicsScene>
 #include <QGraphicsView>
 #include <QHash>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 
 namespace sieans_qt {
 
@@ -158,9 +160,15 @@ class FlowView : public QGraphicsView {
   explicit FlowView(FlowScene* scene, QWidget* parent = nullptr);
   void fitAll();
 
+ signals:
+  void operatorDropped(const QString& key, const QPointF& scenePos);
+
  protected:
   void wheelEvent(QWheelEvent* event) override;
   void keyPressEvent(QKeyEvent* event) override;
+  void dragEnterEvent(QDragEnterEvent* event) override;
+  void dragMoveEvent(QDragMoveEvent* event) override;
+  void dropEvent(QDropEvent* event) override;
 };
 
 }  // namespace sieans_qt

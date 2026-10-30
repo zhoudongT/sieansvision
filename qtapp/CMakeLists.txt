@@ -51,6 +51,10 @@ add_executable(sieans_qt
   src/VarWatchPanel.hpp
   src/HostStrip.cpp
   src/HostStrip.hpp
+  src/ExprEval.hpp
+  src/ExprEval.cpp
+  src/UvcCapture.hpp
+  src/UvcCapture.cpp
 )
 
 target_include_directories(sieans_qt PRIVATE

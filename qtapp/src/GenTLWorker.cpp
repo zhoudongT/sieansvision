@@ -1,4 +1,5 @@
 #include "GenTLWorker.hpp"
+#include "UvcCapture.hpp"
 
 #include <sieans/gentl_capture.hpp>
 
@@ -21,6 +22,7 @@ GenTLWorker::~GenTLWorker() {
     }
   } catch (...) {
   }
+  if (uvc_) uvc_->close();
 }
 
 QImage GenTLWorker::latestFrame() const {
@@ -36,7 +38,6 @@ QImage frameToImage(const sieans::GenTLFrame& frame) {
                   QImage::Format_Grayscale8)
         .copy();
   }
-  // BGR8 → RGB888
   QImage img(frame.width, frame.height, QImage::Format_RGB888);
   for (int y = 0; y < frame.height; ++y) {
     const uint8_t* s = frame.data.data() + y * frame.stride;
@@ -53,12 +54,63 @@ QImage frameToImage(const sieans::GenTLFrame& frame) {
 
 void GenTLWorker::openDevice(const QString& deviceId, double fps,
                              double exposureUs) {
+  openDeviceWithBackend(backend_.isEmpty() ? QStringLiteral("gentl") : backend_,
+                        deviceId, fps, exposureUs);
+}
+
+void GenTLWorker::openDeviceWithBackend(const QString& backend,
+                                        const QString& deviceId, double fps,
+                                        double exposureUs) {
+  stopPreview();
+  // tear down other backend
+  try {
+    if (capture_ && capture_->is_open()) {
+      if (capture_->is_grabbing()) capture_->stop();
+      capture_->close();
+    }
+  } catch (...) {
+  }
+  if (uvc_) uvc_->close();
+  open_.store(false);
+
+  backend_ = backend.toLower();
+  if (backend_.isEmpty()) backend_ = QStringLiteral("gentl");
+  if (backend_ == QLatin1String("uvc") || backend_ == QLatin1String("usb")) {
+    openUvc(deviceId);
+  } else {
+    openGentl(deviceId, fps, exposureUs);
+  }
+}
+
+void GenTLWorker::openUvc(const QString& deviceId) {
+  try {
+    if (!uvc_) uvc_ = std::make_unique<UvcCapture>();
+    if (!uvc_->open(deviceId)) {
+      auto list = UvcCapture::enumerate();
+      emit errorOccurred(
+          list.isEmpty()
+              ? QStringLiteral("未发现 UVC 设备（/dev/video*）")
+              : QStringLiteral("打开 UVC 失败: %1").arg(deviceId));
+      return;
+    }
+    deviceId_ = uvc_->deviceId();
+    open_.store(true);
+    emit opened(deviceId_);
+    emit statusChanged(QStringLiteral("UVC 已打开 %1").arg(deviceId_));
+  } catch (const std::exception& ex) {
+    open_.store(false);
+    emit errorOccurred(
+        QStringLiteral("UVC 打开失败: %1").arg(QString::fromUtf8(ex.what())));
+  }
+}
+
+void GenTLWorker::openGentl(const QString& deviceId, double fps,
+                            double exposureUs) {
   try {
     if (!sieans::GenTLCapture::available()) {
       emit errorOccurred(QStringLiteral("GenTL 不可用（未链接 MvCameraControl）"));
       return;
     }
-    stopPreview();
     if (!capture_) capture_ = std::make_unique<sieans::GenTLCapture>();
     if (capture_->is_open()) {
       if (capture_->is_grabbing()) capture_->stop();
@@ -73,7 +125,6 @@ void GenTLWorker::openDevice(const QString& deviceId, double fps,
       }
       id = QString::fromStdString(devices.front().id);
     }
-    // device id from .sieans may be human label; try exact then enumerate match
     try {
       capture_->open(id.toStdString());
     } catch (const std::exception&) {
@@ -108,7 +159,7 @@ void GenTLWorker::openDevice(const QString& deviceId, double fps,
     deviceId_ = id;
     open_.store(true);
     emit opened(id);
-    emit statusChanged(QStringLiteral("已打开 %1").arg(id));
+    emit statusChanged(QStringLiteral("GenTL 已打开 %1").arg(id));
   } catch (const std::exception& ex) {
     open_.store(false);
     emit errorOccurred(QStringLiteral("打开失败: %1").arg(QString::fromUtf8(ex.what())));
@@ -122,13 +173,14 @@ void GenTLWorker::closeDevice() {
   } catch (const std::exception& ex) {
     emit errorOccurred(QStringLiteral("关闭失败: %1").arg(QString::fromUtf8(ex.what())));
   }
+  if (uvc_) uvc_->close();
   open_.store(false);
   emit closed();
   emit statusChanged(QStringLiteral("相机已关闭"));
 }
 
 void GenTLWorker::startPreview() {
-  if (!open_.load() || !capture_) {
+  if (!open_.load()) {
     emit errorOccurred(QStringLiteral("请先打开相机"));
     return;
   }
@@ -136,7 +188,6 @@ void GenTLWorker::startPreview() {
   stopPreview_.store(false);
   previewing_.store(true);
   emit statusChanged(QStringLiteral("连续预览中…"));
-  // Run loop on this worker's thread (caller must have moved us).
   previewLoop();
 }
 
@@ -150,6 +201,24 @@ void GenTLWorker::stopPreview() {
 }
 
 void GenTLWorker::previewLoop() {
+  if (backend_ == QLatin1String("uvc") || backend_ == QLatin1String("usb")) {
+    while (!stopPreview_.load()) {
+      if (!uvc_ || !uvc_->isOpen()) break;
+      QImage img = uvc_->grab(500);
+      if (!img.isNull()) {
+        {
+          QMutexLocker lock(&frameMutex_);
+          latest_ = img;
+        }
+        emit frameReady(img, ++frameCounter_);
+      }
+      if (stopPreview_.load()) break;
+    }
+    previewing_.store(false);
+    emit statusChanged(QStringLiteral("预览已停止"));
+    return;
+  }
+
   try {
     if (!capture_->is_grabbing()) capture_->start();
     while (!stopPreview_.load()) {
@@ -164,7 +233,6 @@ void GenTLWorker::previewLoop() {
           emit frameReady(img, static_cast<qint64>(frame.frame_id));
         }
       } catch (const std::exception& ex) {
-        // timeout / transient — continue unless stopping
         if (stopPreview_.load()) break;
         const QString msg = QString::fromUtf8(ex.what());
         if (!msg.contains(QStringLiteral("timeout"), Qt::CaseInsensitive) &&
@@ -173,7 +241,6 @@ void GenTLWorker::previewLoop() {
           QThread::msleep(50);
         }
       }
-      // Cooperative cancel
       if (stopPreview_.load()) break;
     }
   } catch (const std::exception& ex) {
@@ -190,10 +257,25 @@ void GenTLWorker::previewLoop() {
 
 void GenTLWorker::grabOne() {
   try {
-    if (!open_.load() || !capture_) {
+    if (!open_.load()) {
       emit errorOccurred(QStringLiteral("请先打开相机"));
       return;
     }
+    if (backend_ == QLatin1String("uvc") || backend_ == QLatin1String("usb")) {
+      if (!uvc_) return;
+      QImage img = uvc_->grab(3000);
+      if (img.isNull()) {
+        emit errorOccurred(QStringLiteral("UVC 采到空帧"));
+        return;
+      }
+      {
+        QMutexLocker lock(&frameMutex_);
+        latest_ = img;
+      }
+      emit frameReady(img, ++frameCounter_);
+      return;
+    }
+    if (!capture_) return;
     const bool wasPreview = previewing_.load();
     if (!wasPreview) {
       if (!capture_->is_grabbing()) capture_->start();

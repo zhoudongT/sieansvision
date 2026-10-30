@@ -47,6 +47,7 @@ class MainWindow : public QMainWindow {
   void onAbout();
   void onNodeSelected(const QString& nodeId);
   void onAddOperator(const QString& key, const QString& name);
+  void onDropOperator(const QString& key, const QPointF& scenePos);
   void onParamEdited(const QString& nodeId, const QString& key,
                      const QString& value);
   void onPreviewFrame(const QImage& image, qint64 frameId);
@@ -74,6 +75,8 @@ class MainWindow : public QMainWindow {
   void updateRunChrome();
   void syncVarsToUi();
   QStringList topologicalStepIds() const;
+  void addOperatorAt(const QString& key, const QString& name,
+                     const QPointF& pos, bool autoWire);
 
   FlowScene* flow_scene_ = nullptr;
   FlowView* flow_view_ = nullptr;

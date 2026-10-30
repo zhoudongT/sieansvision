@@ -63,6 +63,7 @@ class SieansDocument {
   QStringList hostWatchKeys() const;
 
   QString cameraDeviceId() const;
+  QString cameraBackend() const;  // gentl | uvc
   bool continuousLive() const;
   double acquisitionFps() const;
   double exposureUs() const;

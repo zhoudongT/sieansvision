@@ -1,6 +1,9 @@
 #include "FlowCanvas.hpp"
 
 #include "Theme.hpp"
+#include <QMimeData>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 
 #include <QGraphicsSceneMouseEvent>
 #include <QPainter>
@@ -565,6 +568,7 @@ FlowView::FlowView(FlowScene* scene, QWidget* parent)
   setFrameShape(QFrame::NoFrame);
   setBackgroundBrush(QColor(theme::CANVAS));
   setFocusPolicy(Qt::StrongFocus);
+  setAcceptDrops(true);
 }
 
 void FlowView::fitAll() {
@@ -587,6 +591,44 @@ void FlowView::keyPressEvent(QKeyEvent* event) {
     }
   }
   QGraphicsView::keyPressEvent(event);
+}
+
+void FlowView::dragEnterEvent(QDragEnterEvent* event) {
+  if (event->mimeData() &&
+      event->mimeData()->hasFormat(QStringLiteral("application/x-sieans-operator"))) {
+    event->setDropAction(Qt::CopyAction);
+    event->accept();
+    return;
+  }
+  event->ignore();
+}
+
+void FlowView::dragMoveEvent(QDragMoveEvent* event) {
+  if (event->mimeData() &&
+      event->mimeData()->hasFormat(QStringLiteral("application/x-sieans-operator"))) {
+    event->setDropAction(Qt::CopyAction);
+    event->accept();
+    return;
+  }
+  event->ignore();
+}
+
+void FlowView::dropEvent(QDropEvent* event) {
+  if (!event->mimeData() ||
+      !event->mimeData()->hasFormat(QStringLiteral("application/x-sieans-operator"))) {
+    event->ignore();
+    return;
+  }
+  const QString key = QString::fromUtf8(
+      event->mimeData()->data(QStringLiteral("application/x-sieans-operator"))).trimmed();
+  if (key.isEmpty()) {
+    event->ignore();
+    return;
+  }
+  const QPointF sp = mapToScene(event->position().toPoint());
+  emit operatorDropped(key, sp);
+  event->setDropAction(Qt::CopyAction);
+  event->accept();
 }
 
 }  // namespace sieans_qt

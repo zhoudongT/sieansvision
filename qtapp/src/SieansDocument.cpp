@@ -144,6 +144,27 @@ const FlowStep* SieansDocument::findStep(const QString& id) const {
   return nullptr;
 }
 
+
+QString SieansDocument::cameraBackend() const {
+  const QVariantMap cam = sourceConfig_.value(QStringLiteral("cameraParams")).toMap();
+  QString b = cam.value(QStringLiteral("backendKind")).toString();
+  if (b.isEmpty()) b = cam.value(QStringLiteral("driver")).toString();
+  if (b.isEmpty()) b = sourceConfig_.value(QStringLiteral("backendKind")).toString();
+  if (b.isEmpty()) {
+    for (const FlowStep& s : steps_) {
+      if (s.operation == QLatin1String("camera_capture")) {
+        b = s.params.value(QStringLiteral("backendKind")).toString();
+        if (b.isEmpty()) b = s.params.value(QStringLiteral("driver")).toString();
+        if (!b.isEmpty()) break;
+      }
+    }
+  }
+  b = b.toLower();
+  if (b == QLatin1String("usb")) b = QStringLiteral("uvc");
+  if (b.isEmpty()) b = QStringLiteral("gentl");
+  return b;
+}
+
 QString SieansDocument::cameraDeviceId() const {
   const QVariantMap cam = sourceConfig_.value(QStringLiteral("cameraParams")).toMap();
   QString id = cam.value(QStringLiteral("deviceId")).toString();
