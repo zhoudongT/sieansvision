@@ -1,75 +1,37 @@
-# sieans_qt — Qt6 上层框架（C++ core）
+# sieans_qt — Qt6 工作台（C++ core）对等波
 
-工业视觉工作台 **骨架**：下层 `native/sieans_algo`（zxing QR + Hikrobot GenTL），
-上层 **Qt6 Widgets**。本波不做全量算子迁移；PySide 路径保留
-（`scripts/launch-sieans-vision.sh` 不动）。
+下层 `native/sieans_algo`（zxing QR + Hikrobot GenTL），上层 **Qt6 Widgets**。
+本波对齐 PySide **GenTL→QR 打开即跑** 主路径；`scripts/launch-sieans-vision.sh` 保留不动。
 
-## 布局
+## 布局（对齐工业壳）
 
 | 区域 | 内容 |
 |------|------|
-| 菜单 / 工具栏 | 打开图像、示例 QR、C++ 解码、枚举 GenTL、采一帧 |
-| 左侧 | 流程 / 画布占位树 |
-| 中央 | 图像视图（缩放拖拽 + 码框叠加） |
-| 右侧 | 结果面板（解码文本 / GenTL 日志） |
-| 状态栏 | native 版本 + 消息 |
+| 菜单 | 文件 / 设置 / 工具 / 系统 / 工程管理 / 设备与模型 / 帮助 |
+| 左轨 | 算子库（双击添加） |
+| 左中 | 真实流程画布（节点+连线）+ 属性面板 |
+| 中央 | 图像视图（缩放/拖拽 + 码框叠层，连续预览不强制重 fit） |
+| 右侧 | 结果表 + 运行日志 |
+| 工具栏 | 打开/保存方案 · 相机 · 连续预览 · ▶运行 / ↻连续 / ■停止 |
 
-## 依赖（allen-MCLG-XX）
-
-- `cmake` ≥ 3.16、`g++`（C++17）
-- **Qt6 Widgets**：推荐用户目录 aqt 安装（本机已用）
-  ```bash
-  pip install --user aqtinstall   # 或 venv
-  aqt install-qt linux desktop 6.7.3 linux_gcc_64 -O ~/Qt
-  ```
-  或系统包：`sudo apt install qt6-base-dev`
-- GenTL（可选）：`/opt/MVS`（MvCameraControl）
-
-## 构建
+## 构建 / 运行
 
 ```bash
 ./qtapp/scripts/build.sh
-# 或
-cmake -S qtapp -B qtapp/build -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_PREFIX_PATH=$HOME/Qt/6.7.3/gcc_64 \
-  -DSIEANS_NATIVE_PYTHON=OFF
-cmake --build qtapp/build -j$(nproc)
-```
-
-## 运行
-
-```bash
 ./scripts/run-sieans-qt.sh          # 前台
-./scripts/launch-sieans-qt.sh       # 日志写 artifacts/sieans-qt.log
+./scripts/launch-sieans-qt.sh       # 日志 → artifacts/sieans-qt.log
 ```
 
-启动后点 **「示例 QR」** → 自动 C++ 解码并画框；或 **「枚举 GenTL」/「采一帧」**
-（相机空闲时会真采；占用则结果面板报错）。
+环境变量：
 
-## 与 PySide 的关系
+- `SIEANS_QT_AUTO_SAMPLE=1` — 启动后加载示例 QR 并解码
+- `SIEANS_QT_AUTO_ENUM=1` — 枚举 GenTL
+- `SIEANS_QT_AUTO_PREVIEW=1` — 启动连续预览（相机空闲时）
 
-| 入口 | 技术 |
-|------|------|
-| `scripts/launch-sieans-vision.sh` | PySide6 + `sieans_native` pybind（完整工作台） |
-| `scripts/launch-sieans-qt.sh` | Qt6 C++ + `sieans_algo` 直链（框架波） |
+启动默认尝试加载 `projects/open-and-run-gentl-qr.sieans`。
 
-两者共用 `native/` 源码；Qt 可执行文件 **不依赖** pybind。
+## 已落地 vs NEXT
 
-## 后续
+**已落地：** `.sieans` 加载/保存 · 流程画布 · 算子库/属性 · 连续 GenTL 预览线程 · ▶/连续运行 + C++ QR 叠层/结果表 · VisionMaster 炭黑橙强调色。
 
-- 流程画布（算子图）
-- GenTL 连续采集 + 预览线程
-- 工程 / `.sieans` 加载
-- 更多算子 C++ 化
-
-## Runtime note (xcb)
-
-Qt ≥ 6.5 xcb plugin needs `libxcb-cursor0`. If system package is missing:
-
-```bash
-cd /tmp && apt-get download libxcb-cursor0
-mkdir -p ~/Qt/extra-libs
-dpkg-deb -x libxcb-cursor0_*.deb /tmp/xcb-c
-cp -a /tmp/xcb-c/usr/lib/x86_64-linux-gnu/* ~/Qt/extra-libs/
-# launch scripts prepend ~/Qt/extra-libs to LD_LIBRARY_PATH
-```
+**NEXT：** TCP/Comm 真连 · Host 运行态 HMI · 变量监视板完整 · 拖线新建连线 · UVC · 更多算子 C++ 化 · 报警/OK-NG 壳。

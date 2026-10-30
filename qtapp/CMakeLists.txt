@@ -7,7 +7,6 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-# Prefer user-local aqt Qt if CMAKE_PREFIX_PATH not set.
 if(NOT DEFINED CMAKE_PREFIX_PATH OR CMAKE_PREFIX_PATH STREQUAL "")
   if(DEFINED ENV{CMAKE_PREFIX_PATH} AND NOT "$ENV{CMAKE_PREFIX_PATH}" STREQUAL "")
     # honor env
@@ -20,7 +19,6 @@ endif()
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Gui Core)
 
-# Build / reuse sieans_algo (barcode + GenTL) without the pybind module.
 set(SIEANS_NATIVE_PYTHON OFF CACHE BOOL "Skip pybind for Qt app" FORCE)
 if(NOT TARGET sieans_algo)
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../native
@@ -34,6 +32,17 @@ add_executable(sieans_qt
   src/MainWindow.hpp
   src/ImageView.cpp
   src/ImageView.hpp
+  src/Theme.hpp
+  src/SieansDocument.cpp
+  src/SieansDocument.hpp
+  src/FlowCanvas.cpp
+  src/FlowCanvas.hpp
+  src/GenTLWorker.cpp
+  src/GenTLWorker.hpp
+  src/OperatorLibrary.cpp
+  src/OperatorLibrary.hpp
+  src/PropertyPanel.cpp
+  src/PropertyPanel.hpp
 )
 
 target_include_directories(sieans_qt PRIVATE
@@ -47,7 +56,6 @@ target_link_libraries(sieans_qt PRIVATE
   sieans_algo
 )
 
-# Ship sample next to binary for easy demo.
 add_custom_command(TARGET sieans_qt POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:sieans_qt>/resources
   COMMAND ${CMAKE_COMMAND} -E copy_if_different

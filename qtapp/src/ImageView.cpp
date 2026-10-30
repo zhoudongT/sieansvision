@@ -4,7 +4,6 @@
 #include <QPainter>
 #include <QGraphicsSimpleTextItem>
 #include <QPainterPath>
-#include <QScrollBar>
 #include <QWheelEvent>
 
 namespace sieans_qt {
@@ -19,12 +18,28 @@ ImageView::ImageView(QWidget* parent) : QGraphicsView(parent) {
   pixmap_item_ = scene_.addPixmap(QPixmap());
 }
 
-void ImageView::setImage(const QImage& image) {
+void ImageView::setImage(const QImage& image, bool refitView) {
   image_ = image;
   pixmap_item_->setPixmap(QPixmap::fromImage(image_));
   scene_.setSceneRect(pixmap_item_->boundingRect());
   clearOverlays();
-  refit();
+  if (refitView) {
+    userZoomed_ = false;
+    fitToView();
+  }
+}
+
+void ImageView::setLiveImage(const QImage& image) {
+  if (image.isNull()) return;
+  const bool sizeChanged =
+      image_.isNull() || image.width() != image_.width() ||
+      image.height() != image_.height();
+  image_ = image;
+  pixmap_item_->setPixmap(QPixmap::fromImage(image_));
+  if (sizeChanged) {
+    scene_.setSceneRect(pixmap_item_->boundingRect());
+    if (!userZoomed_) fitToView();
+  }
 }
 
 void ImageView::setOverlays(const QVector<OverlayHit>& hits) {
@@ -41,19 +56,21 @@ void ImageView::clearOverlays() {
   hits_.clear();
 }
 
+void ImageView::fitToView() {
+  if (image_.isNull()) return;
+  fitInView(pixmap_item_, Qt::KeepAspectRatio);
+  userZoomed_ = false;
+}
+
 void ImageView::resizeEvent(QResizeEvent* event) {
   QGraphicsView::resizeEvent(event);
-  refit();
+  if (!userZoomed_ && !image_.isNull()) fitToView();
 }
 
 void ImageView::wheelEvent(QWheelEvent* event) {
+  userZoomed_ = true;
   const qreal factor = (event->angleDelta().y() > 0) ? 1.15 : (1.0 / 1.15);
   scale(factor, factor);
-}
-
-void ImageView::refit() {
-  if (image_.isNull()) return;
-  fitInView(pixmap_item_, Qt::KeepAspectRatio);
 }
 
 void ImageView::redrawOverlays() {
