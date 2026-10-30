@@ -61,6 +61,9 @@ bool SieansDocument::loadFromFile(const QString& path, QString* error) {
     steps_.push_back(s);
   }
 
+  variables_ = objectToMap(raw_.value(QStringLiteral("variables")).toObject());
+  commManager_ = objectToMap(raw_.value(QStringLiteral("commManager")).toObject());
+
   edges_.clear();
   const QJsonArray edgesArr = raw_.value(QStringLiteral("edges")).toArray();
   for (const QJsonValue& v : edgesArr) {
@@ -114,6 +117,9 @@ bool SieansDocument::saveToFile(const QString& path, QString* error) const {
     });
   }
   root.insert(QStringLiteral("edges"), edgesArr);
+  root.insert(QStringLiteral("variables"), mapToObject(variables_));
+  if (!commManager_.isEmpty())
+    root.insert(QStringLiteral("commManager"), mapToObject(commManager_));
 
   QFile f(path);
   if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
@@ -142,6 +148,14 @@ QString SieansDocument::cameraDeviceId() const {
   const QVariantMap cam = sourceConfig_.value(QStringLiteral("cameraParams")).toMap();
   QString id = cam.value(QStringLiteral("deviceId")).toString();
   if (id.isEmpty()) id = sourceConfig_.value(QStringLiteral("cameraId")).toString();
+  if (id.isEmpty()) {
+    for (const FlowStep& s : steps_) {
+      if (s.operation == QLatin1String("camera_capture")) {
+        id = s.params.value(QStringLiteral("deviceId")).toString();
+        if (!id.isEmpty()) break;
+      }
+    }
+  }
   return id;
 }
 
@@ -210,6 +224,51 @@ void SieansDocument::seedGentlQrDemo() {
   link(QStringLiteral("source"), QStringLiteral("cam1"));
   link(QStringLiteral("cam1"), QStringLiteral("qr1"));
   link(QStringLiteral("qr1"), QStringLiteral("var1"));
+
+  variables_ = {
+      {QStringLiteral("barcodeCount"), 0},
+      {QStringLiteral("barcodeText"), QString()},
+      {QStringLiteral("barcodeAll"), QString()},
+      {QStringLiteral("barcodeOk"), 0},
+      {QStringLiteral("passGate"), 0},
+      {QStringLiteral("formatted"), QString()},
+      {QStringLiteral("commPayload"), QString()},
+  };
+  commManager_ = {
+      {QStringLiteral("devices"),
+       QVariantList{
+           QVariantMap{{QStringLiteral("id"), QStringLiteral("local-loop")},
+                       {QStringLiteral("name"), QStringLiteral("LocalLoop")},
+                       {QStringLiteral("protocol"), QStringLiteral("Local Bus")},
+                       {QStringLiteral("enabled"), true}},
+           QVariantMap{{QStringLiteral("id"), QStringLiteral("tcp-real-loopback")},
+                       {QStringLiteral("name"), QStringLiteral("TcpRealLoopback")},
+                       {QStringLiteral("protocol"), QStringLiteral("TCP Server")},
+                       {QStringLiteral("enabled"), true},
+                       {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+                       {QStringLiteral("port"), 19956}},
+       }},
+      {QStringLiteral("tcpReal"),
+       QVariantMap{{QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+                   {QStringLiteral("port"), 19956},
+                   {QStringLiteral("framing"), QStringLiteral("lf")},
+                   {QStringLiteral("role"), QStringLiteral("server")},
+                   {QStringLiteral("ack"), QStringLiteral("OK")}}},
+  };
+}
+
+QStringList SieansDocument::hostWatchKeys() const {
+  const QVariantMap hw = objectToMap(raw_.value(QStringLiteral("hostWatch")).toObject());
+  QStringList keys;
+  for (const QVariant& v : hw.value(QStringLiteral("watchKeys")).toList())
+    keys << v.toString();
+  if (keys.isEmpty()) {
+    keys = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
+            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
+            QStringLiteral("passGate"), QStringLiteral("formatted"),
+            QStringLiteral("commPayload")};
+  }
+  return keys;
 }
 
 }  // namespace sieans_qt

@@ -12,20 +12,22 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
   return {
       {QStringLiteral("camera_capture"), QStringLiteral("相机采集"),
        QStringLiteral("相机采集"), QStringLiteral("GenTL / UVC 采集")},
+      {QStringLiteral("preprocess"), QStringLiteral("图像预处理"),
+       QStringLiteral("图像处理"), QStringLiteral("灰度 / 反色 / 阈值（QImage）")},
       {QStringLiteral("barcode"), QStringLiteral("条码 / 二维码"),
        QStringLiteral("识别"), QStringLiteral("C++ zxing 解码")},
       {QStringLiteral("var_calc"), QStringLiteral("变量计算"),
-       QStringLiteral("变量与数据"), QStringLiteral("表达式 / OK-NG")},
+       QStringLiteral("变量与数据"), QStringLiteral("OK-NG / 流程变量")},
       {QStringLiteral("format_data"), QStringLiteral("格式化数据"),
-       QStringLiteral("变量与数据"), QStringLiteral("报文模板")},
+       QStringLiteral("变量与数据"), QStringLiteral("报文模板 {0}{1}…")},
       {QStringLiteral("send_data"), QStringLiteral("发送数据"),
-       QStringLiteral("工业通信"), QStringLiteral("TCP / LocalBus")},
-      {QStringLiteral("ocr"), QStringLiteral("OCR 字符识别"),
-       QStringLiteral("识别"), QStringLiteral("后续波次")},
-      {QStringLiteral("caliper"), QStringLiteral("卡尺测量"),
-       QStringLiteral("定位与测量"), QStringLiteral("后续波次")},
-      {QStringLiteral("preprocess"), QStringLiteral("图像预处理"),
-       QStringLiteral("图像处理"), QStringLiteral("后续波次")},
+       QStringLiteral("工业通信"), QStringLiteral("TCP / LocalBus TX")},
+      {QStringLiteral("receive_data"), QStringLiteral("接收数据"),
+       QStringLiteral("工业通信"), QStringLiteral("TCP / LocalBus RX → 变量")},
+      {QStringLiteral("result_gate"), QStringLiteral("结果门限 OK/NG"),
+       QStringLiteral("变量与数据"), QStringLiteral("passGate 门限")},
+      {QStringLiteral("save_image"), QStringLiteral("保存图像"),
+       QStringLiteral("图像处理"), QStringLiteral("运行时落盘（可选）")},
   };
 }
 
@@ -48,8 +50,7 @@ OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
       {QStringLiteral("变量与数据"), QColor(QStringLiteral("#6a8090"))},
   };
   for (const auto& def : catalog()) {
-    auto* item = new QListWidgetItem(
-        QStringLiteral("● %1").arg(def.name));
+    auto* item = new QListWidgetItem(QStringLiteral("● %1").arg(def.name));
     item->setData(Qt::UserRole, def.key);
     item->setData(Qt::UserRole + 1, def.name);
     item->setToolTip(QStringLiteral("[%1] %2").arg(def.category, def.tip));

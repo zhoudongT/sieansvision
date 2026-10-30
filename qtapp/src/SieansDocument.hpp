@@ -49,7 +49,18 @@ class SieansDocument {
   const FlowStep* findStep(const QString& id) const;
 
   QPointF sourcePosition() const { return sourcePosition_; }
+  void setSourcePosition(const QPointF& p) { sourcePosition_ = p; }
   int runIntervalMs() const { return runIntervalMs_; }
+
+  QVariantMap variables() const { return variables_; }
+  QVariantMap& variablesMut() { return variables_; }
+  void setVariables(const QVariantMap& v) { variables_ = v; }
+
+  QVariantMap commManager() const { return commManager_; }
+  QVariantMap& commManagerMut() { return commManager_; }
+  void setCommManager(const QVariantMap& c) { commManager_ = c; }
+
+  QStringList hostWatchKeys() const;
 
   QString cameraDeviceId() const;
   bool continuousLive() const;
@@ -67,6 +78,8 @@ class SieansDocument {
   QVector<FlowEdge> edges_;
   QPointF sourcePosition_{80, 160};
   int runIntervalMs_ = 0;
+  QVariantMap variables_;
+  QVariantMap commManager_;
   QJsonObject raw_;
 };
 

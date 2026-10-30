@@ -14,7 +14,6 @@
 #include <QFileDialog>
 #include <QFile>
 #include <QFileInfo>
-#include <QFormLayout>
 #include <QHeaderView>
 #include <QHBoxLayout>
 #include <QListWidget>
@@ -34,6 +33,8 @@
 #include <QLabel>
 #include <QPixmap>
 #include <QAbstractItemView>
+#include <QSet>
+#include <QQueue>
 
 #include <algorithm>
 #include <chrono>
@@ -49,11 +50,36 @@ QImage toRgb888(const QImage& src) {
   return src.convertToFormat(QImage::Format_RGB888);
 }
 
+QImage applyPreprocess(const QImage& src, const QVariantMap& params) {
+  if (src.isNull()) return src;
+  QString mode = params.value(QStringLiteral("mode"), QStringLiteral("gray")).toString();
+  QImage out = src;
+  if (mode == QLatin1String("gray") || mode == QLatin1String("mono")) {
+    out = src.convertToFormat(QImage::Format_Grayscale8)
+              .convertToFormat(QImage::Format_RGB888);
+  } else if (mode == QLatin1String("invert")) {
+    out = src.convertToFormat(QImage::Format_RGB888).copy();
+    for (int y = 0; y < out.height(); ++y) {
+      uchar* line = out.scanLine(y);
+      for (int x = 0; x < out.width() * 3; ++x) line[x] = 255 - line[x];
+    }
+  } else if (mode == QLatin1String("threshold")) {
+    const int thr = params.value(QStringLiteral("threshold"), 128).toInt();
+    QImage g = src.convertToFormat(QImage::Format_Grayscale8);
+    for (int y = 0; y < g.height(); ++y) {
+      uchar* line = g.scanLine(y);
+      for (int x = 0; x < g.width(); ++x) line[x] = line[x] >= thr ? 255 : 0;
+    }
+    out = g.convertToFormat(QImage::Format_RGB888);
+  }
+  return out;
+}
+
 }  // namespace
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   setWindowTitle(QStringLiteral("SIEANS Vision — Qt"));
-  resize(1540, 920);
+  resize(1600, 940);
 
   cam_thread_ = new QThread(this);
   cam_worker_ = new GenTLWorker();
@@ -70,6 +96,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   continuous_timer_.setSingleShot(false);
   connect(&continuous_timer_, &QTimer::timeout, this, &MainWindow::onContinuousTick);
 
+  comm_hub_ = new CommHub(this);
+
   buildUi();
   buildMenus();
   buildToolbar();
@@ -79,7 +107,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
                  .arg(sieans::GenTLCapture::available() ? QStringLiteral("可用")
                                                         : QStringLiteral("桩/不可用")));
 
-  // Prefer open-and-run-gentl-qr.sieans
   const QString proj =
       defaultProjectsDir() + QStringLiteral("/open-and-run-gentl-qr.sieans");
   QString err;
@@ -102,10 +129,16 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
       qgetenv("SIEANS_QT_AUTO_PREVIEW") == "1") {
     QTimer::singleShot(600, this, &MainWindow::onStartContinuousPreview);
   }
+  if (qgetenv("SIEANS_QT_AUTO_TCP") == "1") {
+    QTimer::singleShot(900, this, [this]() {
+      QString e;
+      comm_hub_->startTcp(&e);
+    });
+  }
   const QByteArray shot = qgetenv("SIEANS_QT_SCREENSHOT");
   if (!shot.isEmpty()) {
     const int shotDelay =
-        (qgetenv("SIEANS_QT_AUTO_PREVIEW") == "1") ? 2800 : 900;
+        (qgetenv("SIEANS_QT_AUTO_PREVIEW") == "1") ? 2800 : 1100;
     QTimer::singleShot(shotDelay, this, [this, shot]() {
       const QPixmap px = grab();
       const QString out = QString::fromUtf8(shot);
@@ -128,8 +161,8 @@ MainWindow::~MainWindow() {
   continuous_timer_.stop();
   continuous_run_ = false;
   preview_active_ = false;
+  if (comm_hub_) comm_hub_->stopTcp();
   if (cam_worker_) {
-    // Atomically request loop exit (safe cross-thread); also stop MV grab.
     QMetaObject::invokeMethod(cam_worker_, "stopPreview", Qt::DirectConnection);
     for (int i = 0; i < 60 && cam_worker_->isPreviewing(); ++i)
       QThread::msleep(50);
@@ -141,7 +174,6 @@ MainWindow::~MainWindow() {
     }
     cam_thread_->quit();
     if (!cam_thread_->wait(3000)) {
-      // last resort — avoid QThread destroy warning
       cam_thread_->terminate();
       cam_thread_->wait(1000);
     }
@@ -172,7 +204,6 @@ void MainWindow::buildUi() {
   root->setContentsMargins(0, 0, 0, 0);
   root->setSpacing(0);
 
-  // Left rail: operator library
   auto* leftRail = new QFrame;
   leftRail->setObjectName(QStringLiteral("rail"));
   leftRail->setFixedWidth(168);
@@ -186,7 +217,6 @@ void MainWindow::buildUi() {
 
   auto* splitter = new QSplitter(Qt::Horizontal);
 
-  // Flow canvas + property under tab / vertical split
   auto* leftSplit = new QSplitter(Qt::Vertical);
   flow_scene_ = new FlowScene(this);
   flow_view_ = new FlowView(flow_scene_);
@@ -199,20 +229,29 @@ void MainWindow::buildUi() {
   splitter->addWidget(leftSplit);
 
   connect(flow_scene_, &FlowScene::nodeSelected, this, &MainWindow::onNodeSelected);
+  connect(flow_scene_, &FlowScene::edgeConnected, this, &MainWindow::onEdgeConnected);
+  connect(flow_scene_, &FlowScene::linkNotice, this, &MainWindow::onLinkNotice);
   connect(prop_panel_, &PropertyPanel::paramEdited, this, &MainWindow::onParamEdited);
 
-  // Center image
+  auto* center = new QWidget;
+  auto* centerLay = new QVBoxLayout(center);
+  centerLay->setContentsMargins(0, 0, 0, 0);
+  centerLay->setSpacing(0);
   image_view_ = new ImageView;
-  splitter->addWidget(image_view_);
+  centerLay->addWidget(image_view_, 1);
+  host_strip_ = new HostStrip;
+  centerLay->addWidget(host_strip_);
+  splitter->addWidget(center);
 
-  // Right: results table + log
   auto* right = new QWidget;
   auto* rightLay = new QVBoxLayout(right);
   rightLay->setContentsMargins(4, 4, 4, 4);
   rightLay->setSpacing(4);
-  auto* resTitle = new QLabel(QStringLiteral("结果"));
-  resTitle->setObjectName(QStringLiteral("sectionTitle"));
-  rightLay->addWidget(resTitle);
+
+  auto* rightTabs = new QTabWidget;
+  auto* resPage = new QWidget;
+  auto* resLay = new QVBoxLayout(resPage);
+  resLay->setContentsMargins(2, 2, 2, 2);
   result_table_ = new QTableWidget(0, 3);
   result_table_->setHorizontalHeaderLabels(
       {QStringLiteral("#"), QStringLiteral("格式"), QStringLiteral("内容")});
@@ -221,19 +260,28 @@ void MainWindow::buildUi() {
   result_table_->setAlternatingRowColors(true);
   result_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
   result_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
-  result_table_->setMaximumHeight(220);
-  rightLay->addWidget(result_table_);
+  result_table_->setMaximumHeight(180);
+  resLay->addWidget(result_table_);
   result_log_ = new QPlainTextEdit;
   result_log_->setReadOnly(true);
   result_log_->setPlaceholderText(
-      QStringLiteral("运行日志 / GenTL / 解码结果"));
-  rightLay->addWidget(result_log_, 1);
+      QStringLiteral("运行日志 / GenTL / 解码 / Comm"));
+  resLay->addWidget(result_log_, 1);
+  rightTabs->addTab(resPage, QStringLiteral("结果"));
+
+  var_watch_ = new VarWatchPanel;
+  rightTabs->addTab(var_watch_, QStringLiteral("变量"));
+
+  comm_panel_ = new CommPanel(comm_hub_);
+  rightTabs->addTab(comm_panel_, QStringLiteral("通信"));
+
+  rightLay->addWidget(rightTabs, 1);
   splitter->addWidget(right);
 
   splitter->setStretchFactor(0, 0);
   splitter->setStretchFactor(1, 1);
   splitter->setStretchFactor(2, 0);
-  splitter->setSizes({340, 820, 320});
+  splitter->setSizes({340, 820, 360});
   root->addWidget(splitter, 1);
   setCentralWidget(central);
 
@@ -248,7 +296,6 @@ void MainWindow::buildUi() {
 }
 
 void MainWindow::buildMenus() {
-  // Mirror PySide: 文件 / 设置 / 工具 / 系统 / 帮助 + 工程管理 / 设备与模型
   auto* files = menuBar()->addMenu(QStringLiteral("文件(&F)"));
   files->addAction(QStringLiteral("新建方案"), this, &MainWindow::onNewProject,
                    QKeySequence::New);
@@ -264,21 +311,13 @@ void MainWindow::buildMenus() {
   files->addAction(QStringLiteral("退出"), qApp, &QApplication::quit, QKeySequence::Quit);
 
   auto* settings = menuBar()->addMenu(QStringLiteral("设置"));
-  settings->addAction(QStringLiteral("设计态 / 运行模式…"), this, [this]() {
-    QMessageBox::information(
-        this, QStringLiteral("运行模式"),
-        QStringLiteral("本波 Qt 以设计态工作台为主；运行模式 HMI 壳列入 NEXT。"));
-  });
-  settings->addAction(QStringLiteral("通信管理…"), this, [this]() {
-    QMessageBox::information(
-        this, QStringLiteral("通信管理"),
-        QStringLiteral("TCP/Comm 管理器列入下一波；.sieans 内 commManager 已保留。"));
-  });
+  settings->addAction(QStringLiteral("通信管理…"), this, &MainWindow::onOpenCommManager);
 
   auto* tools = menuBar()->addMenu(QStringLiteral("工具"));
   tools->addAction(QStringLiteral("C++ QR 解码"), this, &MainWindow::onDecodeQr,
                    QKeySequence(Qt::Key_F5));
   tools->addAction(QStringLiteral("适应图像窗口"), image_view_, &ImageView::fitToView);
+  tools->addAction(QStringLiteral("适应流程画布"), flow_view_, &FlowView::fitAll);
 
   auto* system = menuBar()->addMenu(QStringLiteral("系统"));
   auto* edit = system->addMenu(QStringLiteral("编辑"));
@@ -297,18 +336,13 @@ void MainWindow::buildMenus() {
                 edges.end());
     applyDocumentToUi();
   });
+  edit->addAction(QStringLiteral("删除选中连线"), this, [this]() {
+    flow_scene_->removeSelectedEdge();
+  });
 
   auto* work = menuBar()->addMenu(QStringLiteral("工程管理"));
-  work->addAction(QStringLiteral("三级变量"), this, [this]() {
-    QStringList lines;
-    lines << QStringLiteral("barcodeCount / barcodeText / passGate（流程变量）");
-    for (const FlowStep& s : document_.steps()) {
-      if (s.operation == QLatin1String("barcode") ||
-          s.operation == QLatin1String("var_calc")) {
-        lines << QStringLiteral("· %1 [%2]").arg(s.name, s.operation);
-      }
-    }
-    QMessageBox::information(this, QStringLiteral("变量"), lines.join(QLatin1Char('\n')));
+  work->addAction(QStringLiteral("变量监视"), this, [this]() {
+    showStatus(QStringLiteral("见右侧「变量」页"));
   });
 
   auto* devices = menuBar()->addMenu(QStringLiteral("设备与模型"));
@@ -317,10 +351,7 @@ void MainWindow::buildMenus() {
   devices->addAction(QStringLiteral("连续采集预览"), this,
                      &MainWindow::onStartContinuousPreview);
   devices->addAction(QStringLiteral("停止预览"), this, &MainWindow::onStopContinuousPreview);
-  devices->addAction(QStringLiteral("通信管理…"), this, [this]() {
-    QMessageBox::information(this, QStringLiteral("通信管理"),
-                             QStringLiteral("下一波接入 TCP/LocalBus（见 .sieans commManager）。"));
-  });
+  devices->addAction(QStringLiteral("通信管理…"), this, &MainWindow::onOpenCommManager);
 
   auto* help = menuBar()->addMenu(QStringLiteral("帮助(&H)"));
   help->addAction(QStringLiteral("关于"), this, &MainWindow::onAbout);
@@ -334,6 +365,7 @@ void MainWindow::buildToolbar() {
   tb->addAction(QStringLiteral("保存"), this, &MainWindow::onSaveProject);
   tb->addSeparator();
   tb->addAction(QStringLiteral("相机"), this, &MainWindow::onOpenCameraManager);
+  tb->addAction(QStringLiteral("通信"), this, &MainWindow::onOpenCommManager);
   act_preview_ = tb->addAction(QStringLiteral("连续预览"), this,
                                &MainWindow::onStartContinuousPreview);
   act_preview_stop_ =
@@ -354,6 +386,23 @@ void MainWindow::applyDocumentToUi() {
   setWindowTitle(QStringLiteral("SIEANS Vision — Qt · %1").arg(document_.name()));
   QTimer::singleShot(0, flow_view_, &FlowView::fitAll);
   prop_panel_->clear();
+  flow_vars_ = document_.variables();
+  if (var_watch_) {
+    var_watch_->setWatchKeys(document_.hostWatchKeys());
+    var_watch_->setVariables(flow_vars_);
+  }
+  if (comm_panel_) comm_panel_->bindDocument(document_.commManager());
+  if (comm_hub_) comm_hub_->loadFromCommManager(document_.commManager());
+  if (host_strip_) host_strip_->updateFromVars(flow_vars_);
+}
+
+void MainWindow::syncVarsToUi() {
+  document_.setVariables(flow_vars_);
+  if (var_watch_) var_watch_->setVariables(flow_vars_);
+  if (comm_panel_) comm_panel_->setFlowVars(flow_vars_);
+  if (host_strip_)
+    host_strip_->updateFromVars(
+        flow_vars_, flow_vars_.value(QStringLiteral("barcodeCount")).toInt());
 }
 
 void MainWindow::logResult(const QString& line) {
@@ -377,7 +426,6 @@ void MainWindow::setBusy(bool busy) {
 void MainWindow::updateRunChrome() {
   const bool busy = busy_.load();
   if (act_run_) act_run_->setEnabled(!busy || continuous_run_);
-  // Allow stop always when continuous
   if (act_stop_) act_stop_->setEnabled(busy || continuous_run_ || preview_active_);
 }
 
@@ -396,6 +444,26 @@ bool MainWindow::loadImagePath(const QString& path) {
                 .arg(img.height()));
   showStatus(QStringLiteral("已加载 %1").arg(path));
   return true;
+}
+
+QStringList MainWindow::topologicalStepIds() const {
+  QStringList ordered;
+  QSet<QString> visited;
+  QHash<QString, QStringList> outs;
+  for (const FlowEdge& e : document_.edges()) outs[e.from] << e.to;
+  QQueue<QString> q;
+  q.enqueue(QStringLiteral("source"));
+  while (!q.isEmpty()) {
+    const QString id = q.dequeue();
+    if (visited.contains(id)) continue;
+    visited.insert(id);
+    if (id != QLatin1String("source")) ordered << id;
+    for (const QString& n : outs.value(id)) q.enqueue(n);
+  }
+  for (const FlowStep& s : document_.steps()) {
+    if (!visited.contains(s.id)) ordered << s.id;
+  }
+  return ordered;
 }
 
 void MainWindow::onNewProject() {
@@ -426,6 +494,7 @@ void MainWindow::onSaveProject() {
     onSaveProjectAs();
     return;
   }
+  document_.setVariables(flow_vars_);
   QString err;
   if (!document_.saveToFile(path, &err)) {
     QMessageBox::warning(this, QStringLiteral("保存失败"), err);
@@ -441,12 +510,13 @@ void MainWindow::onSaveProjectAs() {
           QStringLiteral(".sieans"),
       QStringLiteral("SIEANS 工程 (*.sieans)"));
   if (path.isEmpty()) return;
+  document_.setVariables(flow_vars_);
   QString err;
   if (!document_.saveToFile(path, &err)) {
     QMessageBox::warning(this, QStringLiteral("保存失败"), err);
     return;
   }
-  document_.loadFromFile(path);  // refresh path_
+  document_.loadFromFile(path);
   logResult(QStringLiteral("方案已保存：%1").arg(path));
 }
 
@@ -456,7 +526,7 @@ void MainWindow::onOpenImage() {
       QStringLiteral("/home/allen/文档/sieansvision/artifacts"),
       QStringLiteral("Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff)"));
   if (path.isEmpty()) return;
-  if (loadImagePath(path)) runDecodeOnImage(image_view_->currentImage(), true);
+  if (loadImagePath(path)) runPipeline(image_view_->currentImage(), true);
 }
 
 void MainWindow::onLoadSample() {
@@ -466,100 +536,206 @@ void MainWindow::onLoadSample() {
                              QStringLiteral("未找到 sample-qr.png"));
     return;
   }
-  if (loadImagePath(path)) runDecodeOnImage(image_view_->currentImage(), true);
+  if (loadImagePath(path)) runPipeline(image_view_->currentImage(), true);
 }
 
 void MainWindow::onDecodeQr() {
-  runDecodeOnImage(image_view_->currentImage(), true);
+  runPipeline(image_view_->currentImage(), true);
 }
 
 void MainWindow::runDecodeOnImage(const QImage& src, bool updateFlowStates) {
+  runPipeline(src, updateFlowStates);
+}
+
+void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
   if (src.isNull()) {
     showStatus(QStringLiteral("请先加载图像或开启预览"));
     return;
   }
-  QImage rgb = toRgb888(src);
-  if (rgb.isNull()) return;
 
-  sieans::BarcodeOptions opts;
-  opts.formats = "QRCode";
-  opts.max_codes = 16;
-  opts.try_rotate = true;
-  opts.try_downscale = true;
-
-  const auto t0 = std::chrono::steady_clock::now();
+  QImage working = src;
+  image_view_->setLiveImage(working);
   std::vector<sieans::BarcodeHit> hits;
-  try {
-    hits = sieans::decode_barcodes(rgb.constBits(), rgb.width(), rgb.height(),
-                                   rgb.bytesPerLine(), sieans::PixelFormat::RGB24,
-                                   opts);
-  } catch (const std::exception& ex) {
-    logResult(QStringLiteral("解码异常: %1").arg(QString::fromUtf8(ex.what())));
-    if (updateFlowStates) {
-      for (const FlowStep& s : document_.steps()) {
-        if (s.operation == QLatin1String("barcode"))
-          flow_scene_->setNodeRunState(s.id, QStringLiteral("失败"));
+  double decodeMs = 0;
+
+  if (updateFlowStates) flow_scene_->resetRunStates();
+
+  const QStringList order = topologicalStepIds();
+  for (const QString& id : order) {
+    FlowStep* step = document_.findStep(id);
+    if (!step) continue;
+    const QString op = step->operation;
+    if (updateFlowStates)
+      flow_scene_->setNodeRunState(id, QStringLiteral("运行中"));
+
+    bool ok = true;
+    QString note;
+
+    if (op == QLatin1String("camera_capture")) {
+      note = QStringLiteral("采图 %1×%2").arg(working.width()).arg(working.height());
+    } else if (op == QLatin1String("preprocess")) {
+      working = applyPreprocess(working, step->params);
+      image_view_->setLiveImage(working);
+      note = QStringLiteral("预处理 %1")
+                 .arg(step->params.value(QStringLiteral("mode"), QStringLiteral("gray"))
+                          .toString());
+    } else if (op == QLatin1String("barcode") || op == QLatin1String("qr_decode")) {
+      QImage rgb = toRgb888(working);
+      sieans::BarcodeOptions opts;
+      opts.formats =
+          step->params.value(QStringLiteral("types"), QStringLiteral("QRCode"))
+              .toString()
+              .toStdString();
+      opts.max_codes = step->params.value(QStringLiteral("maxCodes"), 16).toInt();
+      opts.try_rotate = true;
+      opts.try_downscale = true;
+      const auto t0 = std::chrono::steady_clock::now();
+      try {
+        hits = sieans::decode_barcodes(rgb.constBits(), rgb.width(), rgb.height(),
+                                       rgb.bytesPerLine(), sieans::PixelFormat::RGB24,
+                                       opts);
+      } catch (const std::exception& ex) {
+        ok = false;
+        note = QString::fromUtf8(ex.what());
+        hits.clear();
       }
-    }
-    return;
-  }
-  const auto ms = std::chrono::duration<double, std::milli>(
-                      std::chrono::steady_clock::now() - t0)
-                      .count();
+      decodeMs = std::chrono::duration<double, std::milli>(
+                     std::chrono::steady_clock::now() - t0)
+                     .count();
+      QStringList texts;
+      for (const auto& h : hits) texts << QString::fromStdString(h.text);
+      flow_vars_.insert(QStringLiteral("barcodeCount"), int(hits.size()));
+      flow_vars_.insert(QStringLiteral("barcodeText"),
+                        texts.isEmpty() ? QString() : texts.first());
+      flow_vars_.insert(QStringLiteral("barcodeAll"), texts.join(QLatin1Char('\n')));
+      const int minC = step->params.value(QStringLiteral("judgeMinCount"), 1).toInt();
+      const bool gate = int(hits.size()) >= minC;
+      flow_vars_.insert(QStringLiteral("barcodeOk"), gate ? 1 : 0);
+      flow_vars_.insert(QStringLiteral("passGate"), gate ? 1 : 0);
+      ok = gate || !step->params.value(QStringLiteral("judgeEnable"), true).toBool();
+      note = QStringLiteral("%1 码 · %2 ms").arg(hits.size()).arg(decodeMs, 0, 'f', 1);
 
-  QVector<OverlayHit> overlays;
-  result_table_->setRowCount(0);
-  logResult(QStringLiteral("—— C++ 解码 %1 个 · %2 ms ——")
-                .arg(hits.size())
-                .arg(ms, 0, 'f', 1));
-  int i = 0;
-  for (const auto& h : hits) {
-    OverlayHit o;
-    o.text = QString::fromStdString(h.text);
-    o.format = QString::fromStdString(h.format);
-    for (const auto& p : h.polygon) o.polygon << QPointF(p.x, p.y);
-    overlays.push_back(o);
-    const int row = result_table_->rowCount();
-    result_table_->insertRow(row);
-    result_table_->setItem(row, 0, new QTableWidgetItem(QString::number(++i)));
-    result_table_->setItem(row, 1, new QTableWidgetItem(o.format));
-    result_table_->setItem(row, 2, new QTableWidgetItem(o.text));
-    logResult(QStringLiteral("  [%1] %2 | %3").arg(i).arg(o.format, o.text.left(80)));
-  }
-  if (hits.empty()) logResult(QStringLiteral("  (无码)"));
-  image_view_->setOverlays(overlays);
-
-  if (updateFlowStates) {
-    for (const FlowStep& s : document_.steps()) {
-      if (s.operation == QLatin1String("camera_capture"))
-        flow_scene_->setNodeRunState(s.id, QStringLiteral("OK"));
-      else if (s.operation == QLatin1String("barcode"))
-        flow_scene_->setNodeRunState(
-            s.id, hits.empty() ? QStringLiteral("NG") : QStringLiteral("OK"));
-      else if (s.operation == QLatin1String("var_calc"))
-        flow_scene_->setNodeRunState(
-            s.id, hits.empty() ? QStringLiteral("NG") : QStringLiteral("OK"));
-      else
-        flow_scene_->setNodeRunState(s.id, QStringLiteral("OK"));
+      QVector<OverlayHit> overlays;
+      result_table_->setRowCount(0);
+      int i = 0;
+      for (const auto& h : hits) {
+        OverlayHit o;
+        o.text = QString::fromStdString(h.text);
+        o.format = QString::fromStdString(h.format);
+        for (const auto& p : h.polygon) o.polygon << QPointF(p.x, p.y);
+        overlays.push_back(o);
+        const int row = result_table_->rowCount();
+        result_table_->insertRow(row);
+        result_table_->setItem(row, 0, new QTableWidgetItem(QString::number(++i)));
+        result_table_->setItem(row, 1, new QTableWidgetItem(o.format));
+        result_table_->setItem(row, 2, new QTableWidgetItem(o.text));
+      }
+      image_view_->setOverlays(overlays);
+    } else if (op == QLatin1String("var_calc") || op == QLatin1String("result_gate")) {
+      // Prefer already-filled barcode vars; ensure passGate
+      const int count = flow_vars_.value(QStringLiteral("barcodeCount")).toInt();
+      if (!flow_vars_.contains(QStringLiteral("barcodeOk")))
+        flow_vars_.insert(QStringLiteral("barcodeOk"), count >= 1 ? 1 : 0);
+      if (!flow_vars_.contains(QStringLiteral("passGate")))
+        flow_vars_.insert(QStringLiteral("passGate"),
+                          flow_vars_.value(QStringLiteral("barcodeOk")));
+      ok = flow_vars_.value(QStringLiteral("passGate")).toInt() != 0;
+      note = QStringLiteral("passGate=%1 count=%2")
+                 .arg(flow_vars_.value(QStringLiteral("passGate")).toString())
+                 .arg(count);
+    } else if (op == QLatin1String("format_data")) {
+      const QString tmpl =
+          step->params
+              .value(QStringLiteral("template"),
+                     QStringLiteral("BARCODE ok={0} count={1} text={2}"))
+              .toString();
+      const QString argsCsv =
+          step->params
+              .value(QStringLiteral("args"),
+                     QStringLiteral("passGate,barcodeCount,barcodeText"))
+              .toString();
+      QString out = tmpl;
+      const QStringList args = argsCsv.split(QLatin1Char(','), Qt::SkipEmptyParts);
+      for (int i = 0; i < args.size(); ++i) {
+        const QString key = args[i].trimmed();
+        out.replace(QStringLiteral("{%1}").arg(i), flow_vars_.value(key).toString());
+      }
+      // also ${flow.x}
+      out = CommHub::expandTemplate(out, flow_vars_);
+      const QString target =
+          step->params.value(QStringLiteral("targetVar"), QStringLiteral("formatted"))
+              .toString();
+      flow_vars_.insert(target, out);
+      flow_vars_.insert(QStringLiteral("formatted"), out);
+      flow_vars_.insert(QStringLiteral("commPayload"), out);
+      note = out.left(80);
+    } else if (op == QLatin1String("send_data")) {
+      QString msg = step->params.value(QStringLiteral("message")).toString();
+      if (msg.isEmpty())
+        msg = flow_vars_.value(QStringLiteral("formatted")).toString();
+      if (msg.isEmpty())
+        msg = flow_vars_.value(QStringLiteral("commPayload")).toString();
+      msg = CommHub::expandTemplate(msg, flow_vars_);
+      const QString device =
+          step->params.value(QStringLiteral("device"), QStringLiteral("LocalLoop"))
+              .toString();
+      QString err;
+      ok = comm_hub_->sendPayload(device, msg, &err);
+      flow_vars_.insert(QStringLiteral("commPayload"), msg);
+      note = QStringLiteral("TX→%1: %2").arg(device, msg.left(60));
+    } else if (op == QLatin1String("receive_data")) {
+      const QString rx = comm_hub_->lastRx();
+      const QString target =
+          step->params.value(QStringLiteral("targetVar"), QStringLiteral("lastRecv"))
+              .toString();
+      flow_vars_.insert(target, rx);
+      ok = !rx.isEmpty();
+      note = rx.isEmpty() ? QStringLiteral("(无 RX)") : rx.left(60);
+    } else if (op == QLatin1String("save_image")) {
+      const QString dir =
+          step->params
+              .value(QStringLiteral("dir"),
+                     QStringLiteral("/home/allen/文档/sieansvision/artifacts"))
+              .toString();
+      QDir().mkpath(dir);
+      const QString path =
+          dir + QStringLiteral("/sieans-qt-run-%1.png")
+                    .arg(QDateTime::currentDateTime().toString(
+                        QStringLiteral("HHmmss")));
+      ok = working.save(path);
+      note = path;
+    } else {
+      note = QStringLiteral("透传 / 未实现执行体");
+      ok = true;
     }
+
+    if (updateFlowStates) {
+      flow_scene_->setNodeRunState(
+          id, ok ? QStringLiteral("OK") : QStringLiteral("NG"));
+    }
+    logResult(QStringLiteral("%1 [%2] %3").arg(step->name, op, note));
   }
-  showStatus(QStringLiteral("解码完成: %1 个 / %2 ms")
+
+  syncVarsToUi();
+  showStatus(QStringLiteral("流水线完成 · 码 %1 · %2 ms")
                  .arg(hits.size())
-                 .arg(ms, 0, 'f', 1));
+                 .arg(decodeMs, 0, 'f', 1));
+
   const QByteArray smoke = qgetenv("SIEANS_QT_SMOKE_REPORT");
   if (!smoke.isEmpty()) {
     QFile f(QString::fromUtf8(smoke));
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-      const QString line = QStringLiteral("codes=%1 ms=%2 w=%3 h=%4\n")
-                               .arg(hits.size())
-                               .arg(ms, 0, 'f', 2)
-                               .arg(src.width())
-                               .arg(src.height());
+      const QString line =
+          QStringLiteral("codes=%1 ms=%2 w=%3 h=%4 passGate=%5\n")
+              .arg(hits.size())
+              .arg(decodeMs, 0, 'f', 2)
+              .arg(src.width())
+              .arg(src.height())
+              .arg(flow_vars_.value(QStringLiteral("passGate")).toString());
       f.write(line.toUtf8());
     }
   }
 }
-
 
 void MainWindow::onEnumerateGenTL() {
   if (!sieans::GenTLCapture::available()) {
@@ -581,6 +757,22 @@ void MainWindow::onEnumerateGenTL() {
   } catch (const std::exception& ex) {
     logResult(QStringLiteral("枚举失败: %1").arg(QString::fromUtf8(ex.what())));
   }
+}
+
+void MainWindow::onOpenCommManager() {
+  QDialog dlg(this);
+  dlg.setWindowTitle(QStringLiteral("通信管理 · TCP / LocalBus"));
+  dlg.resize(640, 480);
+  auto* lay = new QVBoxLayout(&dlg);
+  auto* panel = new CommPanel(comm_hub_, &dlg);
+  panel->bindDocument(document_.commManager());
+  panel->setFlowVars(flow_vars_);
+  lay->addWidget(panel);
+  auto* box = new QDialogButtonBox(QDialogButtonBox::Close);
+  lay->addWidget(box);
+  connect(box, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+  connect(box, &QDialogButtonBox::clicked, &dlg, &QDialog::accept);
+  dlg.exec();
 }
 
 void MainWindow::onOpenCameraManager() {
@@ -609,7 +801,6 @@ void MainWindow::onOpenCameraManager() {
   } else {
     list->addItem(QStringLiteral("(GenTL 不可用)"));
   }
-  // Preselect from project
   const QString want = document_.cameraDeviceId();
   for (int i = 0; i < list->count() && i < ids.size(); ++i) {
     if (!want.isEmpty() &&
@@ -673,7 +864,6 @@ void MainWindow::onStartContinuousPreview() {
     return;
   }
   ensureCameraOpen();
-  // Delay startPreview slightly so openDevice runs first on worker thread
   QTimer::singleShot(200, this, [this]() {
     preview_active_ = true;
     updateRunChrome();
@@ -717,19 +907,13 @@ void MainWindow::onRunOnce() {
     return;
   }
   setBusy(true);
-  flow_scene_->resetRunStates();
 
-  // Prefer latest live frame; else grab one; else current image
   QImage frame = cam_worker_ ? cam_worker_->latestFrame() : QImage();
   if (frame.isNull()) frame = image_view_->currentImage();
 
   if (frame.isNull() && sieans::GenTLCapture::available()) {
-    // Synchronous open+grab on worker is hard while loop blocked; try invoke grabOne
-    // and fall through after short wait using local GenTL on UI — avoid UI grab.
-    // Fallback: load sample if nothing.
     ensureCameraOpen();
     QMetaObject::invokeMethod(cam_worker_, "grabOne", Qt::QueuedConnection);
-    // Wait briefly for frame
     for (int i = 0; i < 40 && frame.isNull(); ++i) {
       QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
       QThread::msleep(50);
@@ -744,12 +928,7 @@ void MainWindow::onRunOnce() {
   }
 
   image_view_->setLiveImage(frame);
-  // Mark camera step
-  for (const FlowStep& s : document_.steps()) {
-    if (s.operation == QLatin1String("camera_capture"))
-      flow_scene_->setNodeRunState(s.id, QStringLiteral("OK"));
-  }
-  runDecodeOnImage(frame, true);
+  runPipeline(frame, true);
   setBusy(false);
 }
 
@@ -777,7 +956,7 @@ void MainWindow::onStopRun() {
 
 void MainWindow::onContinuousTick() {
   if (!continuous_run_) return;
-  if (busy_.load()) return;  // drop tick if previous still running
+  if (busy_.load()) return;
   onRunOnce();
 }
 
@@ -795,6 +974,16 @@ void MainWindow::onNodeSelected(const QString& nodeId) {
   }
 }
 
+void MainWindow::onEdgeConnected(const QString&, const QString&, const QString&,
+                                 const QString&) {
+  // document already updated by FlowScene
+}
+
+void MainWindow::onLinkNotice(const QString& msg) {
+  showStatus(msg, 2500);
+  logResult(msg);
+}
+
 void MainWindow::onAddOperator(const QString& key, const QString& name) {
   FlowStep s;
   s.id = QUuid::createUuid().toString(QUuid::WithoutBraces).left(16);
@@ -805,9 +994,29 @@ void MainWindow::onAddOperator(const QString& key, const QString& name) {
   if (key == QLatin1String("barcode")) {
     s.params = {{QStringLiteral("types"), QStringLiteral("QRCode")},
                 {QStringLiteral("maxCodes"), 16},
-                {QStringLiteral("showOverlay"), true}};
+                {QStringLiteral("showOverlay"), true},
+                {QStringLiteral("judgeMinCount"), 1}};
+  } else if (key == QLatin1String("preprocess")) {
+    s.params = {{QStringLiteral("mode"), QStringLiteral("gray")},
+                {QStringLiteral("threshold"), 128}};
+  } else if (key == QLatin1String("format_data")) {
+    s.params = {
+        {QStringLiteral("template"),
+         QStringLiteral("BARCODE ok={0} count={1} text={2}")},
+        {QStringLiteral("args"), QStringLiteral("passGate,barcodeCount,barcodeText")},
+        {QStringLiteral("targetVar"), QStringLiteral("formatted")}};
+  } else if (key == QLatin1String("send_data")) {
+    s.params = {
+        {QStringLiteral("device"), QStringLiteral("LocalLoop")},
+        {QStringLiteral("message"),
+         QStringLiteral(
+             "BARCODE ok=${flow.passGate} count=${flow.barcodeCount} "
+             "text=${flow.barcodeText}")}};
+  } else if (key == QLatin1String("receive_data")) {
+    s.params = {{QStringLiteral("targetVar"), QStringLiteral("lastRecv")}};
+  } else if (key == QLatin1String("result_gate")) {
+    s.params = {{QStringLiteral("minCount"), 1}};
   }
-  // Link from last step or source
   QString from = QStringLiteral("source");
   if (!document_.steps().isEmpty()) from = document_.steps().last().id;
   s.imageFrom = from;
@@ -835,7 +1044,6 @@ void MainWindow::onParamEdited(const QString& nodeId, const QString& key,
     return;
   }
   if (FlowStep* s = document_.findStep(nodeId)) {
-    // keep type when possible
     QVariant old = s->params.value(key);
     if (old.typeId() == QMetaType::Bool)
       s->params.insert(key, value == QLatin1String("true") || value == QLatin1String("1"));
@@ -852,10 +1060,8 @@ void MainWindow::onAbout() {
   QMessageBox::about(
       this, QStringLiteral("关于 SIEANS Vision Qt"),
       QStringLiteral(
-          "<b>SIEANS Vision Qt</b> — GenTL→QR 工作台对等波<br/>"
+          "<b>SIEANS Vision Qt</b> — 对等波：Comm/变量/拖拽连线/流水线<br/>"
           "下层 C++ <code>sieans_algo</code>，上层 Qt6 Widgets。<br/>"
-          "已对齐：方案 .sieans、流程画布、算子库、属性、连续 GenTL 预览、"
-          "运行/连续运行 + C++ QR 叠层。<br/>"
           "native: %1<br/>GenTL: %2")
           .arg(QString::fromStdString(sieans::native_version()))
           .arg(sieans::GenTLCapture::available() ? QStringLiteral("built")

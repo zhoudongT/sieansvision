@@ -6,6 +6,10 @@
 #include "OperatorLibrary.hpp"
 #include "PropertyPanel.hpp"
 #include "SieansDocument.hpp"
+#include "CommHub.hpp"
+#include "CommPanel.hpp"
+#include "VarWatchPanel.hpp"
+#include "HostStrip.hpp"
 
 #include <QMainWindow>
 #include <QPlainTextEdit>
@@ -13,6 +17,7 @@
 #include <QTableWidget>
 #include <QThread>
 #include <QTimer>
+#include <QVariantMap>
 #include <atomic>
 
 namespace sieans_qt {
@@ -33,6 +38,7 @@ class MainWindow : public QMainWindow {
   void onDecodeQr();
   void onEnumerateGenTL();
   void onOpenCameraManager();
+  void onOpenCommManager();
   void onStartContinuousPreview();
   void onStopContinuousPreview();
   void onRunOnce();
@@ -47,6 +53,9 @@ class MainWindow : public QMainWindow {
   void onWorkerError(const QString& msg);
   void onWorkerStatus(const QString& msg);
   void onContinuousTick();
+  void onEdgeConnected(const QString& fromId, const QString& toId,
+                       const QString& fromPort, const QString& toPort);
+  void onLinkNotice(const QString& msg);
 
  private:
   void buildUi();
@@ -56,19 +65,25 @@ class MainWindow : public QMainWindow {
   void logResult(const QString& line);
   void showStatus(const QString& msg, int timeout_ms = 5000);
   bool loadImagePath(const QString& path);
+  void runPipeline(const QImage& src, bool updateFlowStates);
   void runDecodeOnImage(const QImage& src, bool updateFlowStates);
   bool ensureCameraOpen();
   QString defaultProjectsDir() const;
   QString samplePathCandidates() const;
   void setBusy(bool busy);
   void updateRunChrome();
+  void syncVarsToUi();
+  QStringList topologicalStepIds() const;
 
-  // Layout
   FlowScene* flow_scene_ = nullptr;
   FlowView* flow_view_ = nullptr;
   ImageView* image_view_ = nullptr;
   OperatorLibrary* op_lib_ = nullptr;
   PropertyPanel* prop_panel_ = nullptr;
+  CommHub* comm_hub_ = nullptr;
+  CommPanel* comm_panel_ = nullptr;
+  VarWatchPanel* var_watch_ = nullptr;
+  HostStrip* host_strip_ = nullptr;
   QPlainTextEdit* result_log_ = nullptr;
   QTableWidget* result_table_ = nullptr;
   QLabel* status_backend_ = nullptr;
@@ -83,6 +98,7 @@ class MainWindow : public QMainWindow {
 
   SieansDocument document_;
   QString current_path_;
+  QVariantMap flow_vars_;
 
   QThread* cam_thread_ = nullptr;
   GenTLWorker* cam_worker_ = nullptr;

@@ -17,7 +17,7 @@ if(NOT DEFINED CMAKE_PREFIX_PATH OR CMAKE_PREFIX_PATH STREQUAL "")
   endif()
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Gui Core)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Gui Core Network)
 
 set(SIEANS_NATIVE_PYTHON OFF CACHE BOOL "Skip pybind for Qt app" FORCE)
 if(NOT TARGET sieans_algo)
@@ -43,6 +43,14 @@ add_executable(sieans_qt
   src/OperatorLibrary.hpp
   src/PropertyPanel.cpp
   src/PropertyPanel.hpp
+  src/CommHub.cpp
+  src/CommHub.hpp
+  src/CommPanel.cpp
+  src/CommPanel.hpp
+  src/VarWatchPanel.cpp
+  src/VarWatchPanel.hpp
+  src/HostStrip.cpp
+  src/HostStrip.hpp
 )
 
 target_include_directories(sieans_qt PRIVATE
@@ -53,6 +61,7 @@ target_link_libraries(sieans_qt PRIVATE
   Qt6::Widgets
   Qt6::Gui
   Qt6::Core
+  Qt6::Network
   sieans_algo
 )
 
