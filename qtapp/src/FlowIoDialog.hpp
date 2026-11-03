@@ -38,6 +38,7 @@ class FlowIoDialog : public QDialog {
   void wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns);
   void moveSelectedToOtherTable(QTableWidget* from);
   void reverseRows(QTableWidget* table);
+  void sortRowsByName(QTableWidget* table);
 
   QTableWidget* inTable_ = nullptr;
   QTableWidget* outTable_ = nullptr;

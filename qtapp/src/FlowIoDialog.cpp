@@ -31,7 +31,7 @@ namespace sieans_qt {
 FlowIoDialog::FlowIoDialog(const QVariantMap& io, QWidget* parent)
     : QDialog(parent), io_(io) {
   setWindowTitle(QStringLiteral("流程参数 · I/O 绑定"));
-  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+Shift+Y 反序 · Ctrl+D 复制行 · Ctrl+A 全选 · Ctrl+E 补默认 · Ctrl+Shift+E 清默认 · Ctrl+Tab 切换表 · Ctrl+Shift+C 复制CSV · Ctrl+X 剪切 · Ctrl+Shift+V 粘贴 · 清空行 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果 · Ctrl+Shift+J/O 导出/导入JSON"));
+  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 按名排序 · Ctrl+D 复制行 · Ctrl+A 全选 · Ctrl+E 补默认 · Ctrl+Shift+E 清默认 · Ctrl+Tab 切换表 · Ctrl+Shift+C 复制CSV · Ctrl+X 剪切 · Ctrl+Shift+V 粘贴 · 清空行 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果 · Ctrl+Shift+J/O 导出/导入JSON"));
   resize(560, 440);
   setStyleSheet(theme::workbenchStyleSheet());
   auto* root = new QVBoxLayout(this);
@@ -147,7 +147,7 @@ QTableWidget* FlowIoDialog::makeTable(const QVariantList& rows, const QString& k
   table->setSelectionBehavior(QAbstractItemView::SelectRows);
   table->setSelectionMode(QAbstractItemView::ExtendedSelection);
   table->setToolTip(
-      QStringLiteral("I/O 绑定 · Insert/Ctrl+N 增行 · Del 删行 · Alt+↑↓ 移行 · Ctrl+Shift+Y 反序 · Ctrl+D 复制 · Ctrl+X 剪切 · Ctrl+Shift+V 粘贴 · Home/End · binding 芯片 · emptyDefault 空结果占位 · {name}/${flow.x}/{{name}}"));
+      QStringLiteral("I/O 绑定 · Insert/Ctrl+N 增行 · Del 删行 · Alt+↑↓ 移行 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 按名排序 · Ctrl+D 复制 · Ctrl+X 剪切 · Ctrl+Shift+V 粘贴 · Home/End · binding 芯片 · emptyDefault 空结果占位 · {name}/${flow.x}/{{name}}"));
   table->setStatusTip(QStringLiteral("流程 I/O 表 · emptyDefault"));
   if (rows.isEmpty()) {
     const QList<QStringList> demo =
@@ -330,6 +330,8 @@ void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
   });
   auto* scRev = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+Y")), table);
   connect(scRev, &QShortcut::activated, this, [this, table]() { reverseRows(table); });
+  auto* scSort = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+S")), table);
+  connect(scSort, &QShortcut::activated, this, [this, table]() { sortRowsByName(table); });
   {
     const char* toks[] = {"${flow.passGate}", "${flow.barcodeText}", "${flow.formatted}",
                           "${flow.io.Result}"};
@@ -608,6 +610,35 @@ void FlowIoDialog::importBindingsJson() {
 
 
 
+
+
+void FlowIoDialog::sortRowsByName(QTableWidget* table) {
+  if (!table || table->rowCount() < 2) {
+    if (table) table->setToolTip(QStringLiteral("行不足 · Ctrl+Shift+S"));
+    return;
+  }
+  const int n = table->rowCount();
+  const int cols = table->columnCount();
+  struct Row { QString name; QList<QTableWidgetItem*> cells; };
+  QList<Row> rows;
+  rows.reserve(n);
+  table->blockSignals(true);
+  for (int r = 0; r < n; ++r) {
+    Row row;
+    row.name = table->item(r, 0) ? table->item(r, 0)->text() : QString();
+    for (int c = 0; c < cols; ++c) row.cells << table->takeItem(r, c);
+    rows << row;
+  }
+  std::stable_sort(rows.begin(), rows.end(),
+                   [](const Row& a, const Row& b) {
+                     return QString::localeAwareCompare(a.name, b.name) < 0;
+                   });
+  for (int r = 0; r < n; ++r) {
+    for (int c = 0; c < cols; ++c) table->setItem(r, c, rows[r].cells[c]);
+  }
+  table->blockSignals(false);
+  table->setToolTip(QStringLiteral("已按名排序 %1 · Ctrl+Shift+S").arg(n));
+}
 
 void FlowIoDialog::reverseRows(QTableWidget* table) {
   if (!table || table->rowCount() < 2) {
