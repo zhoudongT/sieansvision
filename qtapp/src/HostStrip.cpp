@@ -11,13 +11,21 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   root->setContentsMargins(8, 4, 8, 4);
   root->setSpacing(2);
   auto* row = new QHBoxLayout;
-  row->setSpacing(10);
+  row->setSpacing(8);
   badge_ = new QLabel(QStringLiteral("—"));
   badge_->setFixedWidth(72);
   badge_->setAlignment(Qt::AlignCenter);
   badge_->setStyleSheet(
       QStringLiteral("background:#3a3d42;color:#a8a8a8;border-radius:3px;"
                      "font-weight:700;font-size:14px;padding:4px;"));
+  modeChip_ = new QLabel(QStringLiteral("设计态"));
+  modeChip_->setStyleSheet(
+      QStringLiteral("background:#3a3d42;color:#a8a8a8;border-radius:3px;"
+                     "padding:3px 8px;font-size:11px;font-weight:600;"));
+  cycleChip_ = new QLabel(QStringLiteral("周期 0"));
+  cycleChip_->setStyleSheet(
+      QStringLiteral("background:#32353a;color:#a8a8a8;border-radius:3px;"
+                     "padding:3px 8px;font-size:11px;"));
   detail_ = new QLabel(QStringLiteral("Host · 等待运行"));
   detail_->setObjectName(QStringLiteral("muted"));
   alarmLabel_ = new QLabel;
@@ -26,6 +34,8 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
       QStringLiteral("background:#c62828;color:#fff;border-radius:3px;"
                      "font-weight:700;padding:2px 8px;"));
   row->addWidget(badge_);
+  row->addWidget(modeChip_);
+  row->addWidget(cycleChip_);
   row->addWidget(detail_, 1);
   row->addWidget(alarmLabel_);
   root->addLayout(row);
@@ -34,7 +44,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   chips_->setWordWrap(true);
   root->addWidget(chips_);
   setStyleSheet(QStringLiteral("background:#232528;border-top:1px solid #4a4e54;"));
-  setMinimumHeight(48);
+  setMinimumHeight(52);
 }
 
 void HostStrip::setWatchKeys(const QStringList& keys) { watchKeys_ = keys; }
@@ -47,6 +57,19 @@ void HostStrip::setAlarm(bool on, const QString& reason) {
                           : QString());
 }
 
+void HostStrip::setRunChrome(const QString& mode, const QString& hostState, int cycle) {
+  const bool run = mode.contains(QStringLiteral("运行")) || mode.contains(QStringLiteral("连续")) ||
+                   mode.contains(QStringLiteral("暂停"));
+  modeChip_->setText(QStringLiteral("%1 · %2").arg(mode, hostState.isEmpty() ? QStringLiteral("Idle")
+                                                                          : hostState));
+  modeChip_->setStyleSheet(
+      run ? QStringLiteral("background:#1e3d2f;color:#3ecf8e;border-radius:3px;"
+                           "padding:3px 8px;font-size:11px;font-weight:600;")
+          : QStringLiteral("background:#3a3d42;color:#a8a8a8;border-radius:3px;"
+                           "padding:3px 8px;font-size:11px;font-weight:600;"));
+  cycleChip_->setText(QStringLiteral("周期 %1").arg(cycle));
+}
+
 void HostStrip::refreshChips(const QVariantMap& vars) {
   if (watchKeys_.isEmpty()) {
     chips_->setText({});
@@ -55,6 +78,11 @@ void HostStrip::refreshChips(const QVariantMap& vars) {
   QStringList parts;
   for (const QString& k : watchKeys_) {
     parts << QStringLiteral("%1=%2").arg(k, vars.value(k).toString().left(24));
+  }
+  // also surface bound I/O output names if present
+  for (auto it = vars.begin(); it != vars.end(); ++it) {
+    if (it.key().startsWith(QStringLiteral("io.")))
+      parts << QStringLiteral("%1=%2").arg(it.key(), it.value().toString().left(20));
   }
   chips_->setText(parts.join(QStringLiteral("  ·  ")));
 }
@@ -105,6 +133,8 @@ void HostStrip::updateFromVars(const QVariantMap& vars, int codeCount, bool eval
   }
   const QString formatted = vars.value(QStringLiteral("formatted")).toString();
   if (!formatted.isEmpty()) detail += QStringLiteral(" · %1").arg(formatted.left(32));
+  const QString ioOut = vars.value(QStringLiteral("io.Result")).toString();
+  if (!ioOut.isEmpty()) detail += QStringLiteral(" · I/O.Result=%1").arg(ioOut.left(24));
   detail_->setText(detail);
   refreshChips(vars);
 }

@@ -25,8 +25,13 @@ checks = [
     (QT / "OperatorLibrary.cpp", ["opGlyph", "setIconSize", "glyphKindFor"]),
     (QT / "FlowMinimap.cpp", ["flowMinimap", "centerOn", "itemsBoundingRect"]),
     (QT / "FlowIoDialog.cpp", ["flowIoTable", "resultIo", "输入设置", "输出设置"]),
-    (QT / "HostStatePanel.cpp", ["startRequested", "raiseAlarm", "Idle"]),
-    (QT / "MainWindow.cpp", ["onOpenFlowIo", "onParamsReverted", "onToggleRunMode", "HostStatePanel"]),
+    (QT / "HostStatePanel.cpp", ["startRequested", "raiseAlarm", "Idle", "HMI · Idle/Running"]),
+    (QT / "HostStrip.cpp", ["setRunChrome", "modeChip_", "周期", "io.Result"]),
+    (QT / "MainWindow.cpp", [
+        "onOpenFlowIo", "onParamsReverted", "onToggleRunMode", "HostStatePanel",
+        "applyFlowIoBindings", "resolveIoBinding", "run_cycle_", "setRunChrome",
+        "io.%1", "op_lib_->setEnabled(!run_mode_)",
+    ]),
 ]
 for path, needles in checks:
     if not path.exists():

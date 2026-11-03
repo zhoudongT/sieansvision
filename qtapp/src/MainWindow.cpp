@@ -26,6 +26,7 @@
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QSpinBox>
+#include <QStyle>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -589,6 +590,9 @@ void MainWindow::applyDocumentToUi() {
   if (comm_hub_) comm_hub_->loadFromCommManager(document_.commManager());
   if (host_strip_) host_strip_->updateFromVars(flow_vars_);
   if (host_sm_) host_sm_->bindFlow(document_.name(), document_.steps().size());
+  applyFlowIoBindings();
+  syncVarsToUi();
+  updateRunChrome();
   refreshConfigStatus();
 }
 
@@ -619,19 +623,88 @@ void MainWindow::setBusy(bool busy) {
   updateRunChrome();
 }
 
+
+QVariant MainWindow::resolveIoBinding(const QString& binding) const {
+  const QString b = binding.trimmed();
+  if (b.isEmpty() || b == QLatin1String("—") || b == QLatin1String("-")) return {};
+  if (b.startsWith(QStringLiteral("flow."))) {
+    const QString key = b.mid(5);
+    if (key == QLatin1String("vars")) return flow_vars_;
+    return flow_vars_.value(key);
+  }
+  if (b.startsWith(QStringLiteral("source."))) {
+    const QString key = b.mid(7);
+    if (key == QLatin1String("image") || key.startsWith(QStringLiteral("image")))
+      return QStringLiteral("%1x%2")
+          .arg(image_view_ ? image_view_->currentImage().width() : 0)
+          .arg(image_view_ ? image_view_->currentImage().height() : 0);
+    return document_.sourceConfig().value(key);
+  }
+  // "0 模块.字段" or "模块.字段"
+  QString path = b;
+  const int sp = path.indexOf(QLatin1Char(' '));
+  if (sp > 0) {
+    bool idxOk = false;
+    path.left(sp).toInt(&idxOk);
+    if (idxOk) path = path.mid(sp + 1).trimmed();
+  }
+  path.replace(QStringLiteral("[]"), QString());
+  if (path.contains(QLatin1Char('.'))) {
+    const QString field = path.section(QLatin1Char('.'), -1);
+    if (flow_vars_.contains(field)) return flow_vars_.value(field);
+    if (field == QLatin1String("图像") || field.compare(QStringLiteral("image"), Qt::CaseInsensitive) == 0)
+      return resolveIoBinding(QStringLiteral("source.image"));
+  }
+  if (flow_vars_.contains(b)) return flow_vars_.value(b);
+  return b;
+}
+
+void MainWindow::applyFlowIoBindings() {
+  const QVariantMap io = document_.flowIo();
+  const QVariantList outs = io.value(QStringLiteral("outputs")).toList();
+  for (const QVariant& rowV : outs) {
+    const QVariantMap row = rowV.toMap();
+    const QString name = row.value(QStringLiteral("name")).toString().trimmed();
+    if (name.isEmpty()) continue;
+    const QString binding = row.value(QStringLiteral("binding")).toString();
+    const QVariant val = resolveIoBinding(binding);
+    flow_vars_.insert(QStringLiteral("io.%1").arg(name), val);
+    // also mirror Result / common names into plain vars for Comm/HMI
+    if (name == QLatin1String("Result") && !flow_vars_.contains(QStringLiteral("formatted"))) {
+      if (val.typeId() == QMetaType::QString) flow_vars_.insert(QStringLiteral("formatted"), val);
+    }
+  }
+  const QVariantList ins = io.value(QStringLiteral("inputs")).toList();
+  for (const QVariant& rowV : ins) {
+    const QVariantMap row = rowV.toMap();
+    const QString name = row.value(QStringLiteral("name")).toString().trimmed();
+    if (name.isEmpty()) continue;
+    const QString binding = row.value(QStringLiteral("binding")).toString();
+    flow_vars_.insert(QStringLiteral("io.in.%1").arg(name), resolveIoBinding(binding));
+  }
+}
+
 void MainWindow::updateRunChrome() {
   const bool busy = busy_.load();
   if (act_run_) act_run_->setEnabled(!busy || continuous_run_);
   if (act_stop_) act_stop_->setEnabled(busy || continuous_run_ || preview_active_);
+  QString modeText = QStringLiteral("设计态");
+  if (run_mode_)
+    modeText = QStringLiteral("运行态");
+  else if (continuous_run_)
+    modeText = run_paused_ ? QStringLiteral("已暂停") : QStringLiteral("连续");
   if (mode_badge_) {
-    if (run_mode_)
-      mode_badge_->setText(QStringLiteral("运行态"));
-    else if (continuous_run_)
-      mode_badge_->setText(run_paused_ ? QStringLiteral("已暂停")
-                                       : QStringLiteral("运行态"));
-    else
-      mode_badge_->setText(QStringLiteral("设计态"));
+    mode_badge_->setText(modeText);
+    mode_badge_->setProperty("runMode", run_mode_ || continuous_run_);
+    mode_badge_->style()->unpolish(mode_badge_);
+    mode_badge_->style()->polish(mode_badge_);
   }
+  if (op_lib_) op_lib_->setEnabled(!run_mode_);
+  if (op_rail_) op_rail_->setEnabled(!run_mode_);
+  if (flow_tabs_) flow_tabs_->setEnabled(!run_mode_);
+  if (act_mode_) act_mode_->setChecked(run_mode_);
+  const QString hostState = host_sm_ ? host_sm_->state() : QStringLiteral("Idle");
+  if (host_strip_) host_strip_->setRunChrome(modeText, hostState, run_cycle_);
 }
 
 void MainWindow::pushSoftControls() {
@@ -1114,7 +1187,10 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
     else if (host_strip_)
       host_strip_->setAlarm(false);
   }
+  ++run_cycle_;
+  applyFlowIoBindings();
   syncVarsToUi();
+  updateRunChrome();
   const double flowMs = std::chrono::duration<double, std::milli>(
                             std::chrono::steady_clock::now() - flowT0)
                             .count();
@@ -1495,6 +1571,7 @@ void MainWindow::onStopRun() {
     host_sm_->applyState(QStringLiteral("Stopped"));
   logResult(QStringLiteral("已停止运行"));
   showStatus(QStringLiteral("已停止"));
+  updateRunChrome();
 }
 
 void MainWindow::onContinuousTick() {
@@ -1508,8 +1585,12 @@ void MainWindow::onContinuousTick() {
 void MainWindow::onToggleRunMode(bool on) {
   run_mode_ = on;
   if (flow_scene_) flow_scene_->setEditingLocked(on);
+  if (host_sm_ && !continuous_run_) {
+    host_sm_->applyState(on ? QStringLiteral("Running") : QStringLiteral("Idle"));
+  }
+  if (prop_float_ && on) prop_float_->hide();
   updateRunChrome();
-  logResult(on ? QStringLiteral("运行模式：画布已锁定")
+  logResult(on ? QStringLiteral("运行模式：画布/算子库已锁定")
                : QStringLiteral("设计态：画布可编辑"));
   showStatus(on ? QStringLiteral("运行模式") : QStringLiteral("设计态"));
 }
@@ -1717,6 +1798,8 @@ void MainWindow::onOpenFlowIo() {
   FlowIoDialog dlg(document_.flowIo(), this);
   if (dlg.exec() != QDialog::Accepted) return;
   document_.setFlowIo(dlg.resultIo());
+  applyFlowIoBindings();
+  syncVarsToUi();
   const int nin = document_.flowIo().value(QStringLiteral("inputs")).toList().size();
   const int nout = document_.flowIo().value(QStringLiteral("outputs")).toList().size();
   logResult(QStringLiteral("流程 I/O 已更新 · 输入 %1 · 输出 %2").arg(nin).arg(nout));

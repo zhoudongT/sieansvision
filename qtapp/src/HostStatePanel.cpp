@@ -120,9 +120,9 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
 }
 
 void HostStatePanel::bindFlow(const QString& name, int steps) {
-  flowLabel_->setText(QStringLiteral("绑定流程：%1 · %2 步")
-                          .arg(name.isEmpty() ? QStringLiteral("—") : name)
-                          .arg(steps));
+  flowLabel_->setText(QStringLiteral("流程 · %1 · %2 步").arg(name).arg(steps));
+  if (modeHint_ && modeHint_->text().isEmpty())
+    modeHint_->setText(QStringLiteral("HMI · Idle/Running/Paused/Alarm · 开始驱动当前流程"));
 }
 
 void HostStatePanel::paintBadge() {

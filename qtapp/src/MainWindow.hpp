@@ -90,6 +90,8 @@ class MainWindow : public QMainWindow {
   void syncVarsToUi();
   void pushSoftControls();
   void noteHostResult(bool ok, const QString& detail);
+  void applyFlowIoBindings();
+  QVariant resolveIoBinding(const QString& binding) const;
   QStringList topologicalStepIds() const;
   void addOperatorAt(const QString& key, const QString& name,
                      const QPointF& pos, bool autoWire);
@@ -141,6 +143,7 @@ class MainWindow : public QMainWindow {
   bool continuous_run_ = false;
   bool run_paused_ = false;
   bool run_mode_ = false;
+  int run_cycle_ = 0;
   bool preview_active_ = false;
   qint64 preview_frames_ = 0;
 };
