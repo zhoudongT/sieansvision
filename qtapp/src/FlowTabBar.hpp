@@ -14,6 +14,7 @@ class FlowTabBar : public QWidget {
   explicit FlowTabBar(QWidget* parent = nullptr);
   void setFlowName(const QString& name);
   void setRunChrome(const QString& mode, int cycle, double lastMs, bool continuous, bool paused);
+  void setIntervalMs(int ms);
   void setDesignLocked(bool locked);
  signals:
   void allFlowsRequested();
@@ -25,6 +26,7 @@ class FlowTabBar : public QWidget {
   void ioRequested();
   void continuousToggleRequested();
   void cycleResetRequested();
+  void intervalChanged(int ms);
  protected:
   bool eventFilter(QObject* obj, QEvent* event) override;
  private:
@@ -33,6 +35,10 @@ class FlowTabBar : public QWidget {
   QPushButton* pauseBtn_ = nullptr;
   QLabel* cycleLabel_ = nullptr;
   QLabel* modeChip_ = nullptr;
+  int intervalMs_ = 200;
+  int cycle_ = 0;
+  double lastMs_ = -1;
+  void refreshCycleLabel();
 };
 
 }  // namespace sieans_qt

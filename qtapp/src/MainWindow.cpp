@@ -381,6 +381,14 @@ void MainWindow::buildUi() {
       showStatus(QStringLiteral("连续已启 · 流程条模式"));
     }
   });
+  connect(flow_tabs_, &FlowTabBar::intervalChanged, this, [this](int ms) {
+    document_.setRunIntervalMs(ms);
+    if (host_sm_) host_sm_->setRunIntervalMs(ms);
+    if (host_strip_) host_strip_->setIntervalMs(ms);
+    if (continuous_run_ && !run_paused_)
+      continuous_timer_.setInterval(ms > 0 ? ms : 200);
+    showStatus(QStringLiteral("连续节拍 %1 ms · 流程条滚轮").arg(ms));
+  });
   connect(flow_tabs_, &FlowTabBar::cycleResetRequested, this, [this]() {
     run_cycle_ = 0;
     last_cycle_ms_ = -1;
@@ -458,6 +466,7 @@ void MainWindow::buildUi() {
   connect(host_strip_, &HostStrip::intervalChanged, this, [this](int ms) {
     document_.setRunIntervalMs(ms);
     if (host_sm_) host_sm_->setRunIntervalMs(ms);
+    if (flow_tabs_) flow_tabs_->setIntervalMs(ms);
     if (continuous_run_ && !run_paused_)
       continuous_timer_.setInterval(ms > 0 ? ms : 200);
     showStatus(QStringLiteral("连续节拍 %1 ms · Host条滚轮").arg(ms));
@@ -790,6 +799,7 @@ void MainWindow::buildUi() {
   connect(host_sm_, &HostStatePanel::intervalChanged, this, [this](int ms) {
     document_.setRunIntervalMs(ms);
     if (host_strip_) host_strip_->setIntervalMs(ms);
+    if (flow_tabs_) flow_tabs_->setIntervalMs(ms);
     if (continuous_run_ && !run_paused_) {
       continuous_timer_.setInterval(ms > 0 ? ms : 200);
     }
@@ -1053,6 +1063,7 @@ void MainWindow::applyDocumentToUi() {
     const int iv = document_.runIntervalMs() > 0 ? document_.runIntervalMs() : 200;
     if (host_sm_) host_sm_->setRunIntervalMs(iv);
     if (host_strip_) host_strip_->setIntervalMs(iv);
+    if (flow_tabs_) flow_tabs_->setIntervalMs(iv);
   }
   if (comm_panel_) comm_panel_->bindDocument(document_.commManager());
   if (comm_hub_) {
@@ -1215,9 +1226,11 @@ void MainWindow::updateRunChrome() {
     host_strip_->setIntervalMs(document_.runIntervalMs() > 0 ? document_.runIntervalMs() : 200);
     host_strip_->setRunChrome(modeText, hostState, run_cycle_);
   }
-  if (flow_tabs_)
+  if (flow_tabs_) {
+    flow_tabs_->setIntervalMs(document_.runIntervalMs() > 0 ? document_.runIntervalMs() : 200);
     flow_tabs_->setRunChrome(modeText, run_cycle_, last_cycle_ms_, continuous_run_,
                              run_paused_);
+  }
 }
 
 void MainWindow::pushSoftControls() {

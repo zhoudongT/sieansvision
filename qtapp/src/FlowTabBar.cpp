@@ -6,6 +6,7 @@
 #include <QLabel>
 #include <QEvent>
 #include <QMouseEvent>
+#include <QWheelEvent>
 #include <QClipboard>
 #include <QGuiApplication>
 
@@ -67,7 +68,7 @@ FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   cycleLabel_->setStyleSheet(
       QStringLiteral("QLabel{color:#9ad0ff;background:#1e2830;border:1px solid #3a5060;"
                      "border-radius:3px;padding:1px 6px;font-size:11px;}"));
-  cycleLabel_->setToolTip(QStringLiteral("流程条周期 · 与 HostStrip 同步 · 单击复制 · Ctrl+单击/双击清零 · 右键清零"));
+  cycleLabel_->setToolTip(QStringLiteral("流程条周期 · 节拍 · 滚轮±50 · Ctrl+滚轮±200 · 单击复制 · Ctrl+单击/双击清零 · 右键清零"));
   cycleLabel_->setCursor(Qt::PointingHandCursor);
   cycleLabel_->installEventFilter(this);
   auto* hint = new QLabel(QStringLiteral("F5 一次 · F6 连续 · F/R 适应 · I/O 绑定 · Esc 取消连线 · Del 删连线"));
@@ -117,12 +118,9 @@ void FlowTabBar::setRunChrome(const QString& mode, int cycle, double lastMs,
                        "border-radius:3px;padding:1px 6px;font-size:11px;}")
             .arg(bg));
   }
-  if (cycleLabel_) {
-    if (lastMs >= 0)
-      cycleLabel_->setText(QStringLiteral("周期 %1 · %2 ms").arg(cycle).arg(lastMs, 0, 'f', 1));
-    else
-      cycleLabel_->setText(QStringLiteral("周期 %1").arg(cycle));
-  }
+  cycle_ = cycle;
+  lastMs_ = lastMs;
+  refreshCycleLabel();
   if (pauseBtn_) {
     pauseBtn_->setEnabled(continuous);
     pauseBtn_->setText(paused ? QStringLiteral("▶") : QStringLiteral("Ⅱ"));
@@ -138,7 +136,38 @@ void FlowTabBar::setDesignLocked(bool locked) {
 }
 
 
+void FlowTabBar::setIntervalMs(int ms) {
+  intervalMs_ = qBound(20, ms > 0 ? ms : 200, 60000);
+  refreshCycleLabel();
+}
+
+void FlowTabBar::refreshCycleLabel() {
+  if (!cycleLabel_) return;
+  QString text;
+  if (lastMs_ >= 0)
+    text = QStringLiteral("周期 %1 · %2 ms").arg(cycle_).arg(lastMs_, 0, 'f', 1);
+  else
+    text = QStringLiteral("周期 %1").arg(cycle_);
+  text += QStringLiteral(" · 节拍 %1").arg(intervalMs_);
+  cycleLabel_->setText(text);
+  cycleLabel_->setToolTip(
+      QStringLiteral("周期 · 上次 ms · 节拍 %1 ms · 滚轮±50 · Ctrl+滚轮±200 · 单击复制 · Ctrl+单击/双击清零")
+          .arg(intervalMs_));
+}
+
 bool FlowTabBar::eventFilter(QObject* obj, QEvent* event) {
+  if (event->type() == QEvent::Wheel && obj == cycleLabel_) {
+    auto* we = static_cast<QWheelEvent*>(event);
+    const int step = (we->modifiers() & Qt::ControlModifier) ? 200 : 50;
+    const int delta = we->angleDelta().y() > 0 ? step : -step;
+    const int next = qBound(20, intervalMs_ + delta, 60000);
+    if (next != intervalMs_) {
+      intervalMs_ = next;
+      refreshCycleLabel();
+      emit intervalChanged(intervalMs_);
+    }
+    return true;
+  }
   if (event->type() == QEvent::MouseButtonDblClick) {
     auto* me = static_cast<QMouseEvent*>(event);
     if (me->button() == Qt::LeftButton && obj == cycleLabel_) {
