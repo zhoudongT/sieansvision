@@ -65,6 +65,7 @@ class SieansDocument {
   void setFlowIo(const QVariantMap& io) { flowIo_ = io; }
 
   QStringList hostWatchKeys() const;
+  void setHostWatchKeys(const QStringList& keys);
 
   QString cameraDeviceId() const;
   QString cameraBackend() const;  // gentl | uvc | soft

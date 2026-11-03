@@ -452,6 +452,8 @@ void MainWindow::buildUi() {
   });
   connect(host_strip_, &HostStrip::watchKeysChanged, this, [this](const QStringList& keys) {
     if (host_strip_) host_strip_->setWatchKeys(keys);
+    document_.setHostWatchKeys(keys);
+    if (var_watch_) var_watch_->setWatchKeys(keys);
     showStatus(QStringLiteral("监视键 %1").arg(keys.join(QLatin1Char(','))));
     logResult(QStringLiteral("Host 监视键 → %1").arg(keys.join(QLatin1Char(','))));
   });
@@ -688,6 +690,20 @@ void MainWindow::buildUi() {
 
   var_watch_ = new VarWatchPanel;
   bottom->addTab(var_watch_, QStringLiteral("变量监视"));
+  connect(var_watch_, &VarWatchPanel::hostWatchToggleRequested, this, [this](const QString& key) {
+    if (key.isEmpty()) return;
+    QStringList keys = document_.hostWatchKeys();
+    if (keys.contains(key)) keys.removeAll(key);
+    else keys << key;
+    document_.setHostWatchKeys(keys);
+    if (host_strip_) {
+      host_strip_->setWatchKeys(keys);
+      host_strip_->updateFromVars(flow_vars_);
+    }
+    if (var_watch_) var_watch_->setWatchKeys(keys);
+    showStatus(QStringLiteral("Host 监视 %1 %2")
+                   .arg(keys.contains(key) ? QStringLiteral("＋") : QStringLiteral("－"), key));
+  });
   comm_panel_ = new CommPanel(comm_hub_);
   connect(comm_panel_, &CommPanel::requestSaveComm, this,
           [this](const QVariantMap& cm) { document_.setCommManager(cm); });
@@ -869,7 +885,7 @@ void MainWindow::buildToolbar() {
   tb->addWidget(mode_badge_);
   listen_badge_ = new QLabel(QStringLiteral("监听·—"));
   listen_badge_->setObjectName(QStringLiteral("commListenBadge"));
-  listen_badge_->setToolTip(QStringLiteral("通信监听/连接状态 — 单击/中键/右键打开通信管理 · framing lf/crlf/raw/len4"));
+  listen_badge_->setToolTip(QStringLiteral("通信状态 · 单击底栏通信 · 中键/右键通信管理对话框"));
   listen_badge_->setStatusTip(QStringLiteral("通信徽章 · 单击/中键/右键打开通信管理 · tcp=/listen/reconnect · framing 见 tip"));
   listen_badge_->setCursor(Qt::PointingHandCursor);
   listen_badge_->setStyleSheet(
@@ -913,6 +929,7 @@ void MainWindow::applyDocumentToUi() {
     var_watch_->setWatchKeys(document_.hostWatchKeys());
     var_watch_->setVariables(flow_vars_);
   }
+  if (host_strip_) host_strip_->setWatchKeys(document_.hostWatchKeys());
   if (comm_panel_) comm_panel_->bindDocument(document_.commManager());
   if (comm_hub_) {
     comm_hub_->loadFromCommManager(document_.commManager());
@@ -1677,8 +1694,19 @@ void MainWindow::onEnumerateGenTL() {
 bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
   if (obj == listen_badge_ && event->type() == QEvent::MouseButtonRelease) {
     auto* me = static_cast<QMouseEvent*>(event);
-    if (me->button() == Qt::LeftButton || me->button() == Qt::MiddleButton ||
-        me->button() == Qt::RightButton) {
+    if (me->button() == Qt::LeftButton) {
+      if (bottom_tabs_ && comm_panel_) {
+        bottom_tabs_->setCurrentWidget(comm_panel_);
+        if (comm_panel_) {
+          comm_panel_->bindDocument(document_.commManager());
+          comm_panel_->setFlowVars(flow_vars_);
+          comm_panel_->setFocus(Qt::OtherFocusReason);
+        }
+        showStatus(QStringLiteral("通信面板"));
+      }
+      return true;
+    }
+    if (me->button() == Qt::MiddleButton || me->button() == Qt::RightButton) {
       onOpenCommManager();
       return true;
     }

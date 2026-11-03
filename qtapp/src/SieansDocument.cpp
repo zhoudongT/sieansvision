@@ -374,6 +374,18 @@ void SieansDocument::seedGentlQrDemo() {
   };
 }
 
+
+void SieansDocument::setHostWatchKeys(const QStringList& keys) {
+  QJsonObject hw = raw_.value(QStringLiteral("hostWatch")).toObject();
+  QJsonArray arr;
+  for (const QString& k : keys) {
+    const QString t = k.trimmed();
+    if (!t.isEmpty()) arr.append(t);
+  }
+  hw.insert(QStringLiteral("watchKeys"), arr);
+  raw_.insert(QStringLiteral("hostWatch"), hw);
+}
+
 QStringList SieansDocument::hostWatchKeys() const {
   const QVariantMap hw = objectToMap(raw_.value(QStringLiteral("hostWatch")).toObject());
   QStringList keys;

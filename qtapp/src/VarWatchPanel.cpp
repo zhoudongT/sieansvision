@@ -130,6 +130,18 @@ bool VarWatchPanel::eventFilter(QObject* obj, QEvent* event) {
       return true;
     }
   }
+  if (obj == table_ && event->type() == QEvent::MouseButtonDblClick && table_) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::LeftButton) {
+      const QPoint pos = me->position().toPoint();
+      if (auto* hit = table_->itemAt(pos)) {
+        if (auto* keyItem = table_->item(hit->row(), 0)) {
+          emit hostWatchToggleRequested(keyItem->text());
+          return true;
+        }
+      }
+    }
+  }
   if (obj == table_ && event->type() == QEvent::MouseButtonRelease && table_) {
     auto* me = static_cast<QMouseEvent*>(event);
     if (me->button() == Qt::MiddleButton) {
@@ -166,6 +178,14 @@ bool VarWatchPanel::eventFilter(QObject* obj, QEvent* event) {
     if ((ke->modifiers() & Qt::ControlModifier) && ke->key() == Qt::Key_A) {
       table_->selectAll();
       return true;
+    }
+    if (ke->key() == Qt::Key_Space) {
+      const int row = table_->currentRow();
+      auto* it = row >= 0 ? table_->item(row, 0) : nullptr;
+      if (it && !it->text().isEmpty()) {
+        emit hostWatchToggleRequested(it->text());
+        return true;
+      }
     }
     if (ke->key() == Qt::Key_Home || ke->key() == Qt::Key_End ||
         ke->key() == Qt::Key_PageUp || ke->key() == Qt::Key_PageDown) {

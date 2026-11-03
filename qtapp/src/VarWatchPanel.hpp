@@ -23,6 +23,9 @@ class VarWatchPanel : public QWidget {
   void exportJsonFiltered();
   QVariantMap variables() const { return vars_; }
 
+ signals:
+  void hostWatchToggleRequested(const QString& key);
+
  protected:
   bool eventFilter(QObject* obj, QEvent* event) override;
 
