@@ -35,6 +35,7 @@ class FlowIoDialog : public QDialog {
   void selectAllRows(QTableWidget* table);
   void insertBindingToken(QTableWidget* table, const QString& token);
   void wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns);
+  void moveSelectedToOtherTable(QTableWidget* from);
 
   QTableWidget* inTable_ = nullptr;
   QTableWidget* outTable_ = nullptr;

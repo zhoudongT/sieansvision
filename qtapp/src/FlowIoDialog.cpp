@@ -239,6 +239,7 @@ void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
   auto* paste = new QPushButton(QStringLiteral("粘贴行"));
   auto* copyClip = new QPushButton(QStringLiteral("复制行"));
   auto* clearEmpty = new QPushButton(QStringLiteral("清空行"));
+  auto* toOther = new QPushButton(QStringLiteral("⇄ 对表"));
   auto* fillDef = new QPushButton(QStringLiteral("补默认"));
   auto* tokPass = new QPushButton(QStringLiteral("${flow.passGate}"));
   auto* tokText = new QPushButton(QStringLiteral("${flow.barcodeText}"));
@@ -252,12 +253,13 @@ void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
   paste->setToolTip(QStringLiteral("从剪贴板粘贴多行绑定 · Ctrl+Shift+V · 每行 name,type,binding,emptyDefault"));
   copyClip->setToolTip(QStringLiteral("复制选中行到剪贴板 · Ctrl+Shift+C · CSV"));
   clearEmpty->setToolTip(QStringLiteral("删除 name/binding 皆空的行"));
+  toOther->setToolTip(QStringLiteral("移到另一张表 · Ctrl+Shift+Tab"));
   fillDef->setToolTip(QStringLiteral("空 emptyDefault 补 BARCODE · Ctrl+E"));
   tokPass->setToolTip(QStringLiteral("写入当前行 binding · ${flow.passGate}"));
   tokText->setToolTip(QStringLiteral("写入当前行 binding · ${flow.barcodeText}"));
   tokFmt->setToolTip(QStringLiteral("写入当前行 binding · ${flow.formatted}"));
   tokIo->setToolTip(QStringLiteral("写入当前行 binding · ${flow.io.Result}"));
-  for (auto* b : {tokPass, tokText, tokFmt, tokIo, copyClip, clearEmpty, fillDef})
+  for (auto* b : {tokPass, tokText, tokFmt, tokIo, copyClip, clearEmpty, toOther, fillDef})
     b->setStyleSheet(QStringLiteral("font-size:11px;"));
   rowBtns->addWidget(up);
   rowBtns->addWidget(down);
@@ -265,6 +267,7 @@ void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
   rowBtns->addWidget(copyClip);
   rowBtns->addWidget(paste);
   rowBtns->addWidget(clearEmpty);
+  rowBtns->addWidget(toOther);
   rowBtns->addWidget(fillDef);
   rowBtns->addWidget(tokPass);
   rowBtns->addWidget(tokText);
@@ -276,6 +279,7 @@ void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
   connect(paste, &QPushButton::clicked, this, [this, table]() { pasteRows(table); });
   connect(copyClip, &QPushButton::clicked, this, [this, table]() { copySelectedRows(table); });
   connect(clearEmpty, &QPushButton::clicked, this, [this, table]() { clearEmptyRows(table); });
+  connect(toOther, &QPushButton::clicked, this, [this, table]() { moveSelectedToOtherTable(table); });
   connect(fillDef, &QPushButton::clicked, this, [this, table]() { fillEmptyDefaults(table); });
   connect(tokPass, &QPushButton::clicked, this, [this, table]() {
     insertBindingToken(table, QStringLiteral("${flow.passGate}"));
@@ -305,6 +309,8 @@ void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
   connect(scA, &QShortcut::activated, this, [this, table]() { selectAllRows(table); });
   auto* scCopy = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+C")), table);
   connect(scCopy, &QShortcut::activated, this, [this, table]() { copySelectedRows(table); });
+  auto* scOther = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+Tab")), table);
+  connect(scOther, &QShortcut::activated, this, [this, table]() { moveSelectedToOtherTable(table); });
 }
 
 void FlowIoDialog::moveSelectedRows(QTableWidget* table, int delta) {
@@ -540,5 +546,38 @@ void FlowIoDialog::importBindingsJson() {
     inTable_->setToolTip(QStringLiteral("已导入 I/O JSON · in=%1 out=%2 · Ctrl+Shift+O").arg(nIn).arg(nOut));
 }
 
+
+
+void FlowIoDialog::moveSelectedToOtherTable(QTableWidget* from) {
+  if (!from || !inTable_ || !outTable_) return;
+  QTableWidget* to = (from == inTable_) ? outTable_ : inTable_;
+  const auto ranges = from->selectionModel() ? from->selectionModel()->selectedRows()
+                                             : QModelIndexList{};
+  if (ranges.isEmpty()) return;
+  QList<int> rows;
+  for (const QModelIndex& ix : ranges) rows.push_back(ix.row());
+  std::sort(rows.begin(), rows.end());
+  QList<QStringList> moved;
+  for (int r : rows) {
+    QStringList cells;
+    for (int c = 0; c < from->columnCount(); ++c) {
+      auto* it = from->item(r, c);
+      cells << (it ? it->text() : QString());
+    }
+    moved << cells;
+  }
+  for (int i = rows.size() - 1; i >= 0; --i) from->removeRow(rows[i]);
+  for (const QStringList& cells : moved) {
+    const int r = to->rowCount();
+    to->insertRow(r);
+    for (int c = 0; c < cells.size() && c < to->columnCount(); ++c)
+      to->setItem(r, c, new QTableWidgetItem(cells[c]));
+  }
+  if (to->rowCount() > 0) {
+    to->selectRow(to->rowCount() - 1);
+    to->setFocus(Qt::OtherFocusReason);
+  }
+  from->setToolTip(QStringLiteral("已移到对表 %1 行 · Ctrl+Shift+Tab").arg(moved.size()));
+}
 
 }  // namespace sieans_qt

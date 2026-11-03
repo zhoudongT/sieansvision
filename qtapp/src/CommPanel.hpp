@@ -55,6 +55,8 @@ class CommPanel : public QWidget {
   void loadLastRxToPayload();
   void copyLastTxRx();
   void copyEndpoint();
+  void writeBackSelectedDeviceEndpoint();
+  void toggleSelectedDeviceEnabled();
 
   CommHub* hub_ = nullptr;
   QTableWidget* deviceTable_ = nullptr;

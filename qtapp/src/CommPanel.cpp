@@ -51,7 +51,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   deviceTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
   deviceTable_->setSelectionMode(QAbstractItemView::SingleSelection);
   deviceTable_->setMaximumHeight(120);
-  deviceTable_->setToolTip(QStringLiteral("通信设备表 · 选中后试发 / 查看备注 · 中键装入端点 · 右键复制 host:port · 双击编辑备注 · framing 见下拉"));
+  deviceTable_->setToolTip(QStringLiteral("设备表 · 中键装入端点 · Enter 写回 host:port · Space/Alt 启停 · 右键复制 · 双击备注"));
   deviceTable_->setStatusTip(QStringLiteral("通信 · 设备表 · LocalBus/TCP · 中键端点"));
   deviceTable_->installEventFilter(this);
   lay->addWidget(deviceTable_);
@@ -470,6 +470,18 @@ void CommPanel::copyTranscriptFiltered() {
 }
 
 bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
+  if (obj == deviceTable_ && event->type() == QEvent::KeyPress) {
+    auto* ke = static_cast<QKeyEvent*>(event);
+    if (ke->key() == Qt::Key_Space) {
+      toggleSelectedDeviceEnabled();
+      return true;
+    }
+    if (ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) {
+      writeBackSelectedDeviceEndpoint();
+      if (status_) status_->setToolTip(QStringLiteral("已写回设备端点 · Enter"));
+      return true;
+    }
+  }
   if (obj == deviceTable_ && event->type() == QEvent::MouseButtonRelease) {
     auto* me = static_cast<QMouseEvent*>(event);
     if (!deviceTable_) return true;
@@ -496,6 +508,11 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
                                   port.isEmpty() ? QStringLiteral("19956") : port);
       if (auto* clip = QGuiApplication::clipboard()) clip->setText(ep);
       if (status_) status_->setToolTip(QStringLiteral("已复制设备端点 %1 · 右键行").arg(ep));
+      return true;
+    }
+    if (me->button() == Qt::LeftButton && (me->modifiers() & Qt::AltModifier)) {
+      deviceTable_->selectRow(row);
+      toggleSelectedDeviceEnabled();
       return true;
     }
   }
@@ -792,6 +809,30 @@ void CommPanel::pushTcpEndpoint(bool emitSave) {
                  rc ? QStringLiteral("开") : QStringLiteral("关")));
   }
   cm.insert(QStringLiteral("tcpReal"), tcp);
+  // Mirror endpoint into selected device row (same save).
+  if (deviceTable_ && hostEdit_ && portEdit_) {
+    const auto items = deviceTable_->selectedItems();
+    if (!items.isEmpty()) {
+      const int row = items.first()->row();
+      if (auto* nameItem = deviceTable_->item(row, 0)) {
+        const QString name = nameItem->text();
+        const QString host = hostEdit_->text().trimmed();
+        const QString port = portEdit_->text().trimmed();
+        if (deviceTable_->item(row, 2)) deviceTable_->item(row, 2)->setText(host);
+        if (deviceTable_->item(row, 3)) deviceTable_->item(row, 3)->setText(port);
+        QVariantList devices = cm.value(QStringLiteral("devices")).toList();
+        for (int i = 0; i < devices.size(); ++i) {
+          QVariantMap d = devices[i].toMap();
+          if (d.value(QStringLiteral("name")).toString() != name) continue;
+          if (!host.isEmpty()) d.insert(QStringLiteral("host"), host);
+          if (!port.isEmpty()) d.insert(QStringLiteral("port"), port.toInt());
+          devices[i] = d;
+          break;
+        }
+        cm.insert(QStringLiteral("devices"), devices);
+      }
+    }
+  }
   hub_->loadFromCommManager(cm);
   if (status_ && framingCombo_) {
     status_->setToolTip(
@@ -909,6 +950,73 @@ void CommPanel::copyEndpoint() {
   if (auto* clip = QGuiApplication::clipboard()) clip->setText(ep);
   if (status_) status_->setToolTip(QStringLiteral("已复制端点 %1 · Ctrl+Shift+H").arg(ep));
   if (bindSummary_) bindSummary_->setToolTip(QStringLiteral("已复制端点 %1 · Ctrl+Shift+H").arg(ep));
+}
+
+
+void CommPanel::writeBackSelectedDeviceEndpoint() {
+  if (!hub_ || !deviceTable_) return;
+  const auto items = deviceTable_->selectedItems();
+  if (items.isEmpty()) return;
+  const int row = items.first()->row();
+  auto* nameItem = deviceTable_->item(row, 0);
+  if (!nameItem) return;
+  const QString name = nameItem->text();
+  const QString host = hostEdit_ ? hostEdit_->text().trimmed() : QString();
+  const QString port = portEdit_ ? portEdit_->text().trimmed() : QString();
+  if (deviceTable_->item(row, 2)) deviceTable_->item(row, 2)->setText(host);
+  if (deviceTable_->item(row, 3)) deviceTable_->item(row, 3)->setText(port);
+  QVariantMap cm = hub_->commManager();
+  QVariantList devices = cm.value(QStringLiteral("devices")).toList();
+  bool found = false;
+  for (int i = 0; i < devices.size(); ++i) {
+    QVariantMap d = devices[i].toMap();
+    if (d.value(QStringLiteral("name")).toString() != name) continue;
+    if (!host.isEmpty()) d.insert(QStringLiteral("host"), host);
+    if (!port.isEmpty()) d.insert(QStringLiteral("port"), port.toInt());
+    devices[i] = d;
+    found = true;
+    break;
+  }
+  if (!found) return;
+  cm.insert(QStringLiteral("devices"), devices);
+  hub_->loadFromCommManager(cm);
+  emit requestSaveComm(cm);
+  if (detail_) {
+    const QString remark = nameItem->data(Qt::UserRole).toString();
+    const QString proto =
+        deviceTable_->item(row, 1) ? deviceTable_->item(row, 1)->text() : QString();
+    detail_->setText(QStringLiteral("[%1] %2 · %3:%4 · %5")
+                         .arg(proto, name, host, port,
+                              remark.isEmpty() ? QStringLiteral("(无备注)") : remark));
+  }
+}
+
+void CommPanel::toggleSelectedDeviceEnabled() {
+  if (!hub_ || !deviceTable_) return;
+  const auto items = deviceTable_->selectedItems();
+  if (items.isEmpty()) return;
+  const int row = items.first()->row();
+  auto* nameItem = deviceTable_->item(row, 0);
+  auto* enItem = deviceTable_->item(row, 4);
+  if (!nameItem || !enItem) return;
+  const QString name = nameItem->text();
+  const bool on = enItem->text() != QLatin1String("是");
+  enItem->setText(on ? QStringLiteral("是") : QStringLiteral("否"));
+  QVariantMap cm = hub_->commManager();
+  QVariantList devices = cm.value(QStringLiteral("devices")).toList();
+  for (int i = 0; i < devices.size(); ++i) {
+    QVariantMap d = devices[i].toMap();
+    if (d.value(QStringLiteral("name")).toString() != name) continue;
+    d.insert(QStringLiteral("enabled"), on);
+    devices[i] = d;
+    break;
+  }
+  cm.insert(QStringLiteral("devices"), devices);
+  hub_->loadFromCommManager(cm);
+  emit requestSaveComm(cm);
+  if (status_)
+    status_->setToolTip(QStringLiteral("设备 %1 · %2 · Space/Alt+单击")
+                            .arg(name, on ? QStringLiteral("启用") : QStringLiteral("禁用")));
 }
 
 }  // namespace sieans_qt

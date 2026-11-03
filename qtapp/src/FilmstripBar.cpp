@@ -337,13 +337,23 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
     return;
   }
   if (event->key() == Qt::Key_Home) {
-    // Home / Ctrl+Home → first thumb
+    if ((event->modifiers() & Qt::ControlModifier) &&
+        (event->modifiers() & Qt::ShiftModifier)) {
+      moveSelectedToFront();
+      event->accept();
+      return;
+    }
     if (!paths_.isEmpty()) selectIndex(0, true);
     event->accept();
     return;
   }
   if (event->key() == Qt::Key_End) {
-    // End / Ctrl+End → last thumb
+    if ((event->modifiers() & Qt::ControlModifier) &&
+        (event->modifiers() & Qt::ShiftModifier)) {
+      moveSelectedToEnd();
+      event->accept();
+      return;
+    }
     if (!paths_.isEmpty()) selectIndex(paths_.size() - 1, true);
     event->accept();
     return;
@@ -798,5 +808,58 @@ void FilmstripBar::removeDuplicatePaths() {
   setStatus(QStringLiteral("已剔重 %1 · 剩 %2 · Ctrl+Shift+U").arg(removed).arg(paths_.size()));
 }
 
+
+
+void FilmstripBar::moveSelectedToFront() {
+  if (!list_ || paths_.isEmpty()) return;
+  QList<int> rows;
+  for (QListWidgetItem* it : list_->selectedItems()) {
+    const int r = list_->row(it);
+    if (r >= 0) rows << r;
+  }
+  if (rows.isEmpty() && index_ >= 0) rows << index_;
+  if (rows.isEmpty()) return;
+  std::sort(rows.begin(), rows.end());
+  QStringList moved;
+  for (int i = rows.size() - 1; i >= 0; --i) {
+    const int r = rows[i];
+    if (r < 0 || r >= paths_.size()) continue;
+    moved.prepend(paths_.takeAt(r));
+  }
+  for (int i = moved.size() - 1; i >= 0; --i) paths_.prepend(moved[i]);
+  const QString cur = currentPath();
+  rebuildThumbs();
+  if (!cur.isEmpty()) {
+    const int ni = paths_.indexOf(cur);
+    if (ni >= 0) selectIndex(ni, true);
+  }
+  setStatus(QStringLiteral("已置顶 %1 · Ctrl+Shift+Home").arg(moved.size()));
+}
+
+void FilmstripBar::moveSelectedToEnd() {
+  if (!list_ || paths_.isEmpty()) return;
+  QList<int> rows;
+  for (QListWidgetItem* it : list_->selectedItems()) {
+    const int r = list_->row(it);
+    if (r >= 0) rows << r;
+  }
+  if (rows.isEmpty() && index_ >= 0) rows << index_;
+  if (rows.isEmpty()) return;
+  std::sort(rows.begin(), rows.end());
+  QStringList moved;
+  for (int i = rows.size() - 1; i >= 0; --i) {
+    const int r = rows[i];
+    if (r < 0 || r >= paths_.size()) continue;
+    moved.prepend(paths_.takeAt(r));
+  }
+  paths_.append(moved);
+  const QString cur = currentPath();
+  rebuildThumbs();
+  if (!cur.isEmpty()) {
+    const int ni = paths_.indexOf(cur);
+    if (ni >= 0) selectIndex(ni, true);
+  }
+  setStatus(QStringLiteral("已置底 %1 · Ctrl+Shift+End").arg(moved.size()));
+}
 
 }  // namespace sieans_qt

@@ -457,9 +457,21 @@ void MainWindow::buildUi() {
   });
   connect(host_strip_, &HostStrip::openHostRequested, this, [this]() {
     if (host_sm_) {
+      if (bottom_tabs_) bottom_tabs_->setCurrentWidget(host_sm_);
       host_sm_->setFocus(Qt::OtherFocusReason);
       host_sm_->raise();
       showStatus(QStringLiteral("Host 面板"));
+    }
+  });
+  connect(host_strip_, &HostStrip::pauseRequested, this, [this]() {
+    if (continuous_run_ && !run_paused_) {
+      onPauseRun();
+      showStatus(QStringLiteral("已暂停 · Host Alt+模式"));
+    } else if (run_paused_) {
+      onResumeRun();
+      showStatus(QStringLiteral("已继续 · Host Alt+模式"));
+    } else {
+      showStatus(QStringLiteral("无连续可暂停 · Host Alt+模式"));
     }
   });
   if (comm_hub_) {
