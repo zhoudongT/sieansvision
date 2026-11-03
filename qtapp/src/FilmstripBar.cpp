@@ -14,6 +14,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <QClipboard>
 #include <QApplication>
 #include <QFileInfo>
@@ -87,7 +88,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   list_->setFixedHeight(kThumbH + 22);
   list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
   list_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  list_->setStatusTip(QStringLiteral("胶片 · ←→ Home/End/PgUp/PgDn · 0/A/1-9 · Ctrl+A 全选 · Ctrl+C 路径 · Ctrl+D 复制 · Space/F6 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Del 多选删除"));
+  list_->setStatusTip(QStringLiteral("胶片 · ←→ Home/End/PgUp/PgDn · 0/A/1-9 · Ctrl+A 全选 · Ctrl+C 路径 · Ctrl+D 复制 · 中键删除 · Space/F6 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Del 多选删除"));
   list_->setSpacing(2);
   list_->setSelectionMode(QAbstractItemView::ExtendedSelection);
   root->addWidget(list_);
@@ -432,6 +433,21 @@ bool FilmstripBar::eventFilter(QObject* obj, QEvent* event) {
   if (obj == list_ && event->type() == QEvent::KeyPress) {
     keyPressEvent(static_cast<QKeyEvent*>(event));
     return event->isAccepted();
+  }
+  if (obj == list_ && event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::MiddleButton) {
+      // Middle-click: delete thumb under cursor (or current)
+      QListWidgetItem* hit = list_->itemAt(me->position().toPoint());
+      if (hit) {
+        list_->setCurrentItem(hit);
+        index_ = list_->row(hit);
+      }
+      // synthesize Delete key path
+      QKeyEvent del(QEvent::KeyPress, Qt::Key_Delete, Qt::NoModifier);
+      keyPressEvent(&del);
+      return true;
+    }
   }
   if (obj == list_ && event->type() == QEvent::Wheel) {
     auto* we = static_cast<QWheelEvent*>(event);

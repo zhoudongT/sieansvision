@@ -122,6 +122,8 @@ class MainWindow : public QMainWindow {
   QPlainTextEdit* result_log_ = nullptr;
   QTableWidget* result_table_ = nullptr;
   QLineEdit* resultFilter_ = nullptr;
+  QLineEdit* resultLogFilter_ = nullptr;
+  QStringList resultLogAll_;
   QLabel* status_backend_ = nullptr;
   QLabel* status_busy_ = nullptr;
   QLabel* status_config_ = nullptr;

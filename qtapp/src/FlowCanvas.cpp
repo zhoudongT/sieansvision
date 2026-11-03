@@ -604,6 +604,13 @@ void FlowScene::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
+  if (event->key() == Qt::Key_A && (event->modifiers() & Qt::ControlModifier)) {
+    for (auto* n : nodes_) {
+      if (n) n->setSelected(true);
+    }
+    event->accept();
+    return;
+  }
   if (event->key() == Qt::Key_F2) {
     if (editingLocked_) {
       emit linkNotice(QStringLiteral("运行模式已锁定画布"));
@@ -636,7 +643,7 @@ void FlowScene::keyPressEvent(QKeyEvent* event) {
 
 FlowView::FlowView(FlowScene* scene, QWidget* parent)
     : QGraphicsView(scene, parent) {
-  setToolTip(QStringLiteral("滚轮/+/- 缩放 · F/G/A/Space/Home/0/R 适应画布 · F2 重命名 · Del/Backspace 删连线 · Esc 取消连线 · I 打开 I/O"));
+  setToolTip(QStringLiteral("滚轮/+/- 缩放 · F/G/A/Space/Home/0/R 适应画布 · F2 重命名 · Ctrl+A 全选节点 · Del/Backspace 删连线 · Esc 取消连线 · I 打开 I/O"));
   setStatusTip(QStringLiteral("流程画布 · F/G/A/Space/Home/0/R 适应 · I→I/O · +/- 缩放 · Esc 取消连线 · Del/Backspace 删连线 · 滚轮缩放"));
   setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing);
   setDragMode(QGraphicsView::RubberBandDrag);

@@ -5,6 +5,7 @@
 #include "FlowIoDialog.hpp"
 #include <QInputDialog>
 #include <QShortcut>
+#include <QScrollBar>
 #include <QLineEdit>
 #include "UvcCapture.hpp"
 
@@ -534,7 +535,48 @@ void MainWindow::buildUi() {
   result_log_->setReadOnly(true);
   result_log_->setPlaceholderText(
       QStringLiteral("历史结果 / 运行日志 / GenTL / 解码 / Comm"));
-  bottom->addTab(result_log_, QStringLiteral("历史结果"));
+  auto* logHost = new QWidget;
+  auto* logLay = new QVBoxLayout(logHost);
+  logLay->setContentsMargins(0, 0, 0, 0);
+  logLay->setSpacing(2);
+  resultLogFilter_ = new QLineEdit;
+  resultLogFilter_->setObjectName(QStringLiteral("resultLogFilter"));
+  resultLogFilter_->setPlaceholderText(QStringLiteral("过滤历史 · Ctrl+Alt+F · Esc 清空"));
+  resultLogFilter_->setClearButtonEnabled(true);
+  resultLogFilter_->setToolTip(QStringLiteral("历史结果过滤 · 匹配时间戳/正文"));
+  logLay->addWidget(resultLogFilter_);
+  logLay->addWidget(result_log_, 1);
+  connect(resultLogFilter_, &QLineEdit::textChanged, this, [this](const QString&) {
+    if (!result_log_) return;
+    const QString f = resultLogFilter_ ? resultLogFilter_->text().trimmed() : QString();
+    QStringList lines;
+    if (f.isEmpty()) lines = resultLogAll_;
+    else {
+      for (const QString& line : resultLogAll_) {
+        if (line.contains(f, Qt::CaseInsensitive)) lines << line;
+      }
+    }
+    result_log_->setPlainText(lines.join(QLatin1Char('\n')));
+    auto* bar = result_log_->verticalScrollBar();
+    if (bar) bar->setValue(bar->maximum());
+  });
+  {
+    auto* sc = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Alt+F")), this);
+    connect(sc, &QShortcut::activated, this, [this]() {
+      if (!resultLogFilter_) return;
+      if (auto* parent = resultLogFilter_->parentWidget()) {
+        if (auto* tw = qobject_cast<QTabWidget*>(parent->parentWidget()))
+          tw->setCurrentWidget(parent);
+      }
+      resultLogFilter_->setFocus(Qt::ShortcutFocusReason);
+      resultLogFilter_->selectAll();
+    });
+    auto* scEsc = new QShortcut(QKeySequence(Qt::Key_Escape), resultLogFilter_);
+    connect(scEsc, &QShortcut::activated, this, [this]() {
+      if (resultLogFilter_ && !resultLogFilter_->text().isEmpty()) resultLogFilter_->clear();
+    });
+  }
+  bottom->addTab(logHost, QStringLiteral("历史结果"));
 
   auto* helpPad = new QPlainTextEdit;
   helpPad->setReadOnly(true);
@@ -821,7 +863,13 @@ void MainWindow::syncVarsToUi() {
 void MainWindow::logResult(const QString& line) {
   const QString stamp =
       QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss.zzz"));
-  result_log_->appendPlainText(QStringLiteral("[%1] %2").arg(stamp, line));
+  const QString entry = QStringLiteral("[%1] %2").arg(stamp, line);
+  resultLogAll_.push_back(entry);
+  while (resultLogAll_.size() > 2000) resultLogAll_.removeFirst();
+  if (!result_log_) return;
+  const QString f = resultLogFilter_ ? resultLogFilter_->text().trimmed() : QString();
+  if (f.isEmpty() || entry.contains(f, Qt::CaseInsensitive))
+    result_log_->appendPlainText(entry);
 }
 
 void MainWindow::showStatus(const QString& msg, int timeout_ms) {
