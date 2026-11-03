@@ -172,8 +172,10 @@ void PropertyFloat::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void PropertyFloat::mouseReleaseEvent(QMouseEvent* event) {
+  const bool was = dragging_;
   dragging_ = false;
   QDialog::mouseReleaseEvent(event);
+  if (was) notifyChromeGeometry();
 }
 
 void PropertyFloat::setNodeTitle(const QString& title, const QString& subtitle) {
@@ -251,11 +253,13 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
   if (event->key() == Qt::Key_BracketLeft && (event->modifiers() & Qt::ControlModifier)) {
     if (event->modifiers() & Qt::ShiftModifier) {
       resize(width(), qMax(280, height() - 40));
+      notifyChromeGeometry();
       if (subtitle_) subtitle_->setText(QStringLiteral("高度 %1 · Ctrl+Shift+[").arg(height()));
       event->accept();
       return;
     }
     resize(qMax(280, width() - 40), height());
+    notifyChromeGeometry();
     if (subtitle_) subtitle_->setText(QStringLiteral("宽度 %1 · Ctrl+[").arg(width()));
     event->accept();
     return;
@@ -263,11 +267,13 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
   if (event->key() == Qt::Key_BracketRight && (event->modifiers() & Qt::ControlModifier)) {
     if (event->modifiers() & Qt::ShiftModifier) {
       resize(width(), qMin(900, height() + 40));
+      notifyChromeGeometry();
       if (subtitle_) subtitle_->setText(QStringLiteral("高度 %1 · Ctrl+Shift+]").arg(height()));
       event->accept();
       return;
     }
     resize(qMin(720, width() + 40), height());
+    notifyChromeGeometry();
     if (subtitle_) subtitle_->setText(QStringLiteral("宽度 %1 · Ctrl+]").arg(width()));
     event->accept();
     return;
@@ -275,6 +281,7 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
   if (event->key() == Qt::Key_0 && (event->modifiers() & Qt::ControlModifier) &&
       (event->modifiers() & Qt::ShiftModifier)) {
     resize(460, 560);
+    notifyChromeGeometry();
     opacity_ = 1.0;
     setWindowOpacity(opacity_);
     if (subtitle_) subtitle_->setText(QStringLiteral("尺寸已复位 · Ctrl+Shift+0"));
@@ -373,6 +380,7 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
     else if (event->key() == Qt::Key_Up) g.moveTop(area.top() + 8);
     else g.moveBottom(area.bottom() - 8);
     setGeometry(g);
+    notifyChromeGeometry();
     if (subtitle_) subtitle_->setText(QStringLiteral("已吸附 · Ctrl+Shift+方向"));
     event->accept();
     return;
@@ -472,6 +480,16 @@ void PropertyFloat::wheelEvent(QWheelEvent* event) {
   const bool next = event->angleDelta().y() < 0 || event->angleDelta().x() < 0;
   focusNextPrevChild(next);
   event->accept();
+}
+
+
+void PropertyFloat::notifyChromeGeometry() {
+  emit chromeGeometryChanged(frameGeometry());
+}
+
+void PropertyFloat::applyChromeGeometry(const QRect& geom) {
+  if (!geom.isValid() || geom.width() < 200 || geom.height() < 200) return;
+  setGeometry(geom);
 }
 
 }  // namespace sieans_qt

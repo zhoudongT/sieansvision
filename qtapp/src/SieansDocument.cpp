@@ -6,6 +6,7 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QUuid>
+#include <QRect>
 
 namespace sieans_qt {
 namespace {
@@ -504,6 +505,27 @@ void SieansDocument::setAlarmHistory(const QStringList& lines) {
     if (++n >= 40) break;
   }
   raw_.insert(QStringLiteral("alarmHistory"), arr);
+}
+
+
+QRect SieansDocument::propertyFloatGeometry() const {
+  const QJsonObject o = raw_.value(QStringLiteral("propertyFloatGeometry")).toObject();
+  if (o.isEmpty()) return {};
+  const int w = o.value(QStringLiteral("w")).toInt(0);
+  const int h = o.value(QStringLiteral("h")).toInt(0);
+  if (w < 200 || h < 200) return {};
+  return QRect(o.value(QStringLiteral("x")).toInt(0),
+               o.value(QStringLiteral("y")).toInt(0), w, h);
+}
+
+void SieansDocument::setPropertyFloatGeometry(const QRect& r) {
+  if (!r.isValid() || r.width() < 200 || r.height() < 200) return;
+  QJsonObject o;
+  o.insert(QStringLiteral("x"), r.x());
+  o.insert(QStringLiteral("y"), r.y());
+  o.insert(QStringLiteral("w"), r.width());
+  o.insert(QStringLiteral("h"), r.height());
+  raw_.insert(QStringLiteral("propertyFloatGeometry"), o);
 }
 
 }  // namespace sieans_qt

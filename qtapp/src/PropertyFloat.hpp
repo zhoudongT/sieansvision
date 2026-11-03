@@ -21,6 +21,8 @@ class PropertyFloat : public QDialog {
   void setNodeTitle(const QString& title, const QString& subtitle = {});
   void showForSource(const QVariantMap& sourceConfig);
   void showForStep(const FlowStep& step);
+  void applyChromeGeometry(const QRect& geom);
+  void notifyChromeGeometry();
 
  signals:
   void paramEdited(const QString& nodeId, const QString& key, const QString& value);
@@ -29,6 +31,7 @@ class PropertyFloat : public QDialog {
   void acceptedCommit();
   /** ✕ / 取消：把打开浮窗时的参数快照交还，由主窗口写回。 */
   void paramsReverted(const QString& nodeId, const QVariantMap& snapshot);
+  void chromeGeometryChanged(const QRect& geom);
 
  protected:
   void mousePressEvent(QMouseEvent* event) override;

@@ -5,6 +5,7 @@
 #include <QString>
 #include <QVector>
 #include <QPointF>
+#include <QRect>
 #include <QVariantMap>
 
 namespace sieans_qt {
@@ -81,6 +82,8 @@ class SieansDocument {
   void setVarWatchKeys(const QStringList& keys);
   QStringList alarmHistory() const;
   void setAlarmHistory(const QStringList& lines);
+  QRect propertyFloatGeometry() const;
+  void setPropertyFloatGeometry(const QRect& r);
 
   QString cameraDeviceId() const;
   QString cameraBackend() const;  // gentl | uvc | soft

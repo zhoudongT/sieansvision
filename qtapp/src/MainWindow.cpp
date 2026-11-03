@@ -427,6 +427,8 @@ void MainWindow::buildUi() {
   connect(prop_float_, &PropertyFloat::runModule, this, &MainWindow::onRunOnce);
   connect(prop_float_, &PropertyFloat::runModuleContinuous, this,
           &MainWindow::onRunContinuous);
+  connect(prop_float_, &PropertyFloat::chromeGeometryChanged, this,
+          [this](const QRect& g) { document_.setPropertyFloatGeometry(g); });
   connect(prop_float_, &PropertyFloat::paramsReverted, this,
           &MainWindow::onParamsReverted);
 
@@ -2361,8 +2363,10 @@ void MainWindow::onNodeSelected(const QString& nodeId) {
   }
   if (nodeId == QLatin1String("source")) {
     prop_float_->showForSource(document_.sourceConfig());
-    // place float near right of flow canvas
-    if (flow_view_) {
+    const QRect saved = document_.propertyFloatGeometry();
+    if (saved.isValid()) {
+      prop_float_->applyChromeGeometry(saved);
+    } else if (flow_view_) {
       const QPoint g = flow_view_->mapToGlobal(QPoint(flow_view_->width() - 20, 40));
       prop_float_->move(g);
     }
@@ -2370,7 +2374,10 @@ void MainWindow::onNodeSelected(const QString& nodeId) {
   }
   if (const FlowStep* s = document_.findStep(nodeId)) {
     prop_float_->showForStep(*s);
-    if (flow_view_) {
+    const QRect saved = document_.propertyFloatGeometry();
+    if (saved.isValid()) {
+      prop_float_->applyChromeGeometry(saved);
+    } else if (flow_view_) {
       const QPoint g = flow_view_->mapToGlobal(QPoint(flow_view_->width() - 20, 40));
       prop_float_->move(g);
     }
