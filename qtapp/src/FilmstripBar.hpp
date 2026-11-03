@@ -50,6 +50,7 @@ class FilmstripBar : public QWidget {
   void moveSelectedToFront();
   void moveSelectedToEnd();
   void moveSelectedBy(int delta);
+  void reversePaths();
 
  protected:
   void keyPressEvent(QKeyEvent* event) override;

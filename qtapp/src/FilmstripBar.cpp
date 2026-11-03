@@ -41,7 +41,7 @@ constexpr int kThumbH = 52;
 
 FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   setObjectName(QStringLiteral("filmstripBar"));
-  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→/Alt+←→/↑↓调序 Home/End/PgUp/PgDn · 0/A/1-9 跳转 · Space 自动切换 · Ctrl+C 路径 · Ctrl+Shift+C 文件名 · Ctrl+D 复制 · Ctrl+Shift+I 反选 · Ctrl+Shift+S 排序 · Ctrl+Shift+M 剔缺失 · Ctrl+Shift+R 乱序 · Ctrl+E 导出 · Ctrl+Shift+E 导出选中 · 右键复制路径 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Ctrl+G 跳转 · Ctrl+Shift+B 全名 · Ctrl+Shift+O 打开目录 · Ctrl+Shift+U 剔重 · 计数双击跳转/中键乱序/右键全名 · Del"));
+  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→/Alt+←→/↑↓调序 Home/End/PgUp/PgDn · 0/A/1-9 跳转 · Space 自动切换 · Ctrl+C 路径 · Ctrl+Shift+C 文件名 · Ctrl+D 复制 · Ctrl+Shift+I 反选 · Ctrl+Shift+S 排序 · Ctrl+Shift+M 剔缺失 · Ctrl+Shift+R 乱序 · Ctrl+E 导出 · Ctrl+Shift+E 导出选中 · 右键复制路径 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Ctrl+G 跳转 · Ctrl+Shift+B 全名 · Ctrl+Shift+O 打开目录 · Ctrl+Shift+U 剔重 · Ctrl+Shift+Y 反序 · 计数双击跳转/中键乱序/右键全名 · Del"));
   setFocusPolicy(Qt::StrongFocus);
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(6, 2, 6, 4);
@@ -515,6 +515,12 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
+  if (event->key() == Qt::Key_Y && (event->modifiers() & Qt::ControlModifier) &&
+      (event->modifiers() & Qt::ShiftModifier)) {
+    reversePaths();
+    event->accept();
+    return;
+  }
   if (event->key() == Qt::Key_A && (event->modifiers() & Qt::ControlModifier)) {
     if (list_ && list_->count() > 0) {
       list_->selectAll();
@@ -657,7 +663,8 @@ bool FilmstripBar::eventFilter(QObject* obj, QEvent* event) {
       return true;
     }
     if (me->button() == Qt::RightButton) {
-      removeDuplicatePaths();
+      if (me->modifiers() & Qt::ShiftModifier) reversePaths();
+      else removeDuplicatePaths();
       return true;
     }
   }
@@ -937,6 +944,23 @@ void FilmstripBar::moveSelectedBy(int delta) {
   notifyPathsChanged();
   setStatus(QStringLiteral("胶片调序 → #%1 · Alt+↑↓").arg(dest + 1));
 }
+
+void FilmstripBar::reversePaths() {
+  if (paths_.size() < 2) {
+    setStatus(QStringLiteral("不足反序 · Ctrl+Shift+Y"));
+    return;
+  }
+  const QString cur = currentPath();
+  std::reverse(paths_.begin(), paths_.end());
+  rebuildThumbs();
+  if (!cur.isEmpty()) {
+    const int ni = paths_.indexOf(cur);
+    if (ni >= 0) selectIndex(ni, true);
+  }
+  notifyPathsChanged();
+  setStatus(QStringLiteral("已反序 %1 · Ctrl+Shift+Y").arg(paths_.size()));
+}
+
 
 void FilmstripBar::moveSelectedToEnd() {
   if (!list_ || paths_.isEmpty()) return;
