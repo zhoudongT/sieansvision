@@ -26,6 +26,7 @@ class FlowTabBar : public QWidget {
   void fitRequested();
   void ioRequested();
   void continuousToggleRequested();
+  void modeToggleRequested();
   void cycleResetRequested();
   void intervalChanged(int ms);
  protected:

@@ -16,7 +16,7 @@ namespace sieans_qt {
 FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   setFocusPolicy(Qt::StrongFocus);
   setObjectName(QStringLiteral("flowTabBar"));
-  setStatusTip(QStringLiteral("流程条 · ▶一次 F5/F9 / ↻连续 F6 / ■停止 Esc · F/G/A/Space/R 适应 · 暂停/周期芯片 · 单击模式连续 · 右键模式暂停 · 中键模式适应 · 周期单击复制/Ctrl清零"));
+  setStatusTip(QStringLiteral("流程条 · ▶一次 F5/F9 / ↻连续 F6 / ■停止 Esc · F7 暂停 · F8 设计/运行 · F/G/A/Space/R 适应 · 暂停/周期芯片 · 单击模式连续 · 右键模式暂停 · 中键模式适应 · 周期单击复制/Ctrl清零 · Ctrl+Shift+0 清周期"));
   setFixedHeight(28);
   auto* lay = new QHBoxLayout(this);
   lay->setContentsMargins(4, 2, 4, 2);
@@ -215,6 +215,16 @@ bool FlowTabBar::eventFilter(QObject* obj, QEvent* event) {
     auto* ke = static_cast<QKeyEvent*>(event);
     if (ke->key() == Qt::Key_F7) {
       emit pauseRequested();
+      return true;
+    }
+    if (ke->key() == Qt::Key_F8) {
+      emit modeToggleRequested();
+      return true;
+    }
+    if (ke->key() == Qt::Key_0 && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier)) {
+      emit cycleResetRequested();
+      if (cycleLabel_) cycleLabel_->setToolTip(QStringLiteral("周期已清零 · Ctrl+Shift+0"));
       return true;
     }
     if ((ke->modifiers() & Qt::AltModifier) && ke->key() >= Qt::Key_1 && ke->key() <= Qt::Key_4 &&

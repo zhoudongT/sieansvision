@@ -372,6 +372,9 @@ void MainWindow::buildUi() {
   });
   connect(flow_tabs_, &FlowTabBar::ioRequested, this, &MainWindow::onOpenFlowIo);
   connect(flow_tabs_, &FlowTabBar::fitRequested, flow_view_, &FlowView::fitAll);
+    connect(flow_tabs_, &FlowTabBar::modeToggleRequested, this, [this]() {
+    if (act_mode_) act_mode_->toggle();
+  });
   connect(flow_tabs_, &FlowTabBar::continuousToggleRequested, this, [this]() {
     if (continuous_run_ && !run_paused_) {
       onStopRun();
