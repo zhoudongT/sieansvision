@@ -204,7 +204,7 @@ OperatorDef OperatorLibrary::findDef(const QString& key) {
 }
 
 OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
-  setStatusTip(QStringLiteral("Toolbox · / 或 Ctrl+F/L 搜索 · Enter 添加(列表/搜索) · Home/End/PgUp/PgDn · Esc 清空"));
+  setStatusTip(QStringLiteral("Toolbox · 最近 · / 或 Ctrl+F/L 搜索 · Enter 添加(列表/搜索) · Home/End/PgUp/PgDn · Esc 清空"));
   setObjectName(QStringLiteral("libraryPane"));
   auto* lay = new QVBoxLayout(this);
   lay->setContentsMargins(0, 0, 0, 0);
@@ -233,14 +233,18 @@ OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
   connect(list_, &QListWidget::itemDoubleClicked, this,
           [this](QListWidgetItem* item) {
             if (!item || item->data(Qt::UserRole).toString().isEmpty()) return;
-            emit operatorActivated(item->data(Qt::UserRole).toString(),
-                                   item->data(Qt::UserRole + 1).toString());
+            const QString k = item->data(Qt::UserRole).toString();
+            const QString n = item->data(Qt::UserRole + 1).toString();
+            rememberRecent(k);
+            emit operatorActivated(k, n);
           });
   connect(list_, &QListWidget::itemActivated, this,
           [this](QListWidgetItem* item) {
             if (!item || item->data(Qt::UserRole).toString().isEmpty()) return;
-            emit operatorActivated(item->data(Qt::UserRole).toString(),
-                                   item->data(Qt::UserRole + 1).toString());
+            const QString k = item->data(Qt::UserRole).toString();
+            const QString n = item->data(Qt::UserRole + 1).toString();
+            rememberRecent(k);
+            emit operatorActivated(k, n);
           });
   connect(search_, &QLineEdit::textChanged, this, [this](const QString&) { rebuild(); });
   search_->setPlaceholderText(QStringLiteral("搜索… / 或 Ctrl+F · Esc 清空"));
@@ -253,6 +257,15 @@ OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
 
 void OperatorLibrary::setCategoryFilter(const QString& category) {
   categoryFilter_ = category;
+  rebuild();
+}
+
+void OperatorLibrary::rememberRecent(const QString& key) {
+  if (key.isEmpty()) return;
+  recentKeys_.removeAll(key);
+  recentKeys_.prepend(key);
+  while (recentKeys_.size() > 8) recentKeys_.removeLast();
+  // soft refresh headers without losing selection heavily
   rebuild();
 }
 
@@ -270,6 +283,37 @@ void OperatorLibrary::rebuild() {
       {QStringLiteral("3D 点云"), QColor(QStringLiteral("#4a7fc5"))},
   };
   QString lastCat;
+  if (categoryFilter_.isEmpty() && !recentKeys_.isEmpty()) {
+    bool anyRecent = false;
+    for (const QString& rk : recentKeys_) {
+      const OperatorDef def = findDef(rk);
+      if (!q.isEmpty() && !def.name.contains(q, Qt::CaseInsensitive) &&
+          !def.key.contains(q, Qt::CaseInsensitive) &&
+          !def.tip.contains(q, Qt::CaseInsensitive))
+        continue;
+      if (!anyRecent) {
+        anyRecent = true;
+        auto* hdr = new QListWidgetItem(QStringLiteral("▾ 最近"));
+        hdr->setFlags(Qt::ItemIsEnabled);
+        hdr->setForeground(QColor(theme::ACCENT));
+        hdr->setBackground(QColor(theme::CARD));
+        QFont f = hdr->font();
+        f.setBold(true);
+        f.setPointSize(10);
+        hdr->setFont(f);
+        list_->addItem(hdr);
+      }
+      const QColor accent = catColor.value(def.category, QColor(theme::ACCENT));
+      const char* kind = glyphKindFor(def.key, def.category);
+      auto* item = new QListWidgetItem(opGlyph(kind, accent), def.name);
+      item->setData(Qt::UserRole, def.key);
+      item->setData(Qt::UserRole + 1, def.name);
+      item->setToolTip(QStringLiteral("最近 · [%1] %2").arg(def.category, def.tip));
+      item->setForeground(accent);
+      item->setSizeHint(QSize(0, 28));
+      list_->addItem(item);
+    }
+  }
   for (const auto& def : catalog()) {
     if (!categoryFilter_.isEmpty() && def.category != categoryFilter_) continue;
     if (!q.isEmpty() && !def.name.contains(q, Qt::CaseInsensitive) &&
@@ -385,8 +429,10 @@ bool OperatorLibrary::eventFilter(QObject* obj, QEvent* event) {
       }
       if (pick && !pick->data(Qt::UserRole).toString().isEmpty()) {
         list_->setCurrentItem(pick);
-        emit operatorActivated(pick->data(Qt::UserRole).toString(),
-                               pick->data(Qt::UserRole + 1).toString());
+        const QString k = pick->data(Qt::UserRole).toString();
+        const QString n = pick->data(Qt::UserRole + 1).toString();
+        rememberRecent(k);
+        emit operatorActivated(k, n);
         return true;
       }
     }

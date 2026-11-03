@@ -34,9 +34,11 @@ class OperatorLibrary : public QWidget {
 
  private:
   void rebuild();
+  void rememberRecent(const QString& key);
   QListWidget* list_ = nullptr;
   QLineEdit* search_ = nullptr;
   QString categoryFilter_;
+  QStringList recentKeys_;
 };
 
 }  // namespace sieans_qt

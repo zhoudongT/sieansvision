@@ -358,6 +358,11 @@ QString FlowScene::selectedNodeId() const {
   return {};
 }
 
+void FlowScene::setNodeLabel(const QString& id, const QString& label) {
+  if (auto* n = nodes_.value(id, nullptr)) n->setLabel(label);
+}
+
+
 FlowEdgeItem* FlowScene::selectedEdge() const {
   for (QGraphicsItem* it : selectedItems()) {
     if (auto* e = dynamic_cast<FlowEdgeItem*>(it)) return e;
@@ -599,6 +604,19 @@ void FlowScene::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
+  if (event->key() == Qt::Key_F2) {
+    if (editingLocked_) {
+      emit linkNotice(QStringLiteral("运行模式已锁定画布"));
+      event->accept();
+      return;
+    }
+    const QString id = selectedNodeId();
+    if (!id.isEmpty() && id != QLatin1String("source")) {
+      emit renameRequested(id);
+      event->accept();
+      return;
+    }
+  }
   if (event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) {
     if (editingLocked_) {
       emit linkNotice(QStringLiteral("运行模式已锁定画布"));
@@ -618,7 +636,7 @@ void FlowScene::keyPressEvent(QKeyEvent* event) {
 
 FlowView::FlowView(FlowScene* scene, QWidget* parent)
     : QGraphicsView(scene, parent) {
-  setToolTip(QStringLiteral("滚轮/+/- 缩放 · F/G/A/Space/Home/0/R 适应画布 · Del/Backspace 删连线 · Esc 取消连线 · I 打开 I/O"));
+  setToolTip(QStringLiteral("滚轮/+/- 缩放 · F/G/A/Space/Home/0/R 适应画布 · F2 重命名 · Del/Backspace 删连线 · Esc 取消连线 · I 打开 I/O"));
   setStatusTip(QStringLiteral("流程画布 · F/G/A/Space/Home/0/R 适应 · I→I/O · +/- 缩放 · Esc 取消连线 · Del/Backspace 删连线 · 滚轮缩放"));
   setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing);
   setDragMode(QGraphicsView::RubberBandDrag);

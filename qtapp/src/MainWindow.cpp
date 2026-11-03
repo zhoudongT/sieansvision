@@ -3,6 +3,9 @@
 #include "ExprEval.hpp"
 #include "TemplateMatch.hpp"
 #include "FlowIoDialog.hpp"
+#include <QInputDialog>
+#include <QShortcut>
+#include <QLineEdit>
 #include "UvcCapture.hpp"
 
 #include <QJsonDocument>
@@ -365,6 +368,23 @@ void MainWindow::buildUi() {
   connect(flow_scene_, &FlowScene::nodeSelected, this, &MainWindow::onNodeSelected);
   connect(flow_scene_, &FlowScene::edgeConnected, this, &MainWindow::onEdgeConnected);
   connect(flow_scene_, &FlowScene::linkNotice, this, &MainWindow::onLinkNotice);
+  connect(flow_scene_, &FlowScene::renameRequested, this, [this](const QString& nodeId) {
+    FlowStep* step = document_.findStep(nodeId);
+    if (!step) return;
+    bool ok = false;
+    const QString neu = QInputDialog::getText(
+        this, QStringLiteral("重命名模块"), QStringLiteral("显示名称"),
+        QLineEdit::Normal, step->name, &ok);
+    if (!ok) return;
+    const QString name = neu.trimmed();
+    if (name.isEmpty() || name == step->name) return;
+    step->name = name;
+    if (flow_scene_) flow_scene_->setNodeLabel(nodeId, name);
+    if (prop_float_ && prop_float_->isVisible())
+      prop_float_->setNodeTitle(name, step->operation);
+    showStatus(QStringLiteral("已重命名 · %1").arg(name));
+    logResult(QStringLiteral("重命名模块 %1 → %2").arg(nodeId, name));
+  });
 
   // Property float (VM light panel) — created lazily-ish but keep ready
   prop_float_ = new PropertyFloat(this);
@@ -464,7 +484,46 @@ void MainWindow::buildUi() {
   result_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
   result_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
   result_table_->setObjectName(QStringLiteral("resultTree"));
-  bottom->addTab(result_table_, QStringLiteral("当前结果"));
+  auto* resultHost = new QWidget;
+  auto* resultLay = new QVBoxLayout(resultHost);
+  resultLay->setContentsMargins(0, 0, 0, 0);
+  resultLay->setSpacing(2);
+  resultFilter_ = new QLineEdit;
+  resultFilter_->setObjectName(QStringLiteral("resultFilter"));
+  resultFilter_->setPlaceholderText(QStringLiteral("过滤结果 · Ctrl+Shift+F · Esc 清空"));
+  resultFilter_->setClearButtonEnabled(true);
+  resultFilter_->setToolTip(QStringLiteral("当前结果过滤 · 匹配模块/值/类型"));
+  resultLay->addWidget(resultFilter_);
+  resultLay->addWidget(result_table_, 1);
+  connect(resultFilter_, &QLineEdit::textChanged, this, [this](const QString& s) {
+    if (!result_table_) return;
+    const QString f = s.trimmed();
+    for (int r = 0; r < result_table_->rowCount(); ++r) {
+      QString hay;
+      for (int c = 0; c < result_table_->columnCount(); ++c) {
+        if (auto* it = result_table_->item(r, c)) hay += it->text() + QLatin1Char(' ');
+      }
+      result_table_->setRowHidden(r, !f.isEmpty() && !hay.contains(f, Qt::CaseInsensitive));
+    }
+  });
+  {
+    auto* sc = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+F")), this);
+    connect(sc, &QShortcut::activated, this, [this]() {
+      if (!resultFilter_) return;
+      if (auto* tabs = resultFilter_->parentWidget()
+                           ? resultFilter_->parentWidget()->parentWidget()
+                           : nullptr) {
+        if (auto* tw = qobject_cast<QTabWidget*>(tabs)) tw->setCurrentWidget(resultFilter_->parentWidget());
+      }
+      resultFilter_->setFocus(Qt::ShortcutFocusReason);
+      resultFilter_->selectAll();
+    });
+    auto* scEsc = new QShortcut(QKeySequence(Qt::Key_Escape), resultFilter_);
+    connect(scEsc, &QShortcut::activated, this, [this]() {
+      if (resultFilter_ && !resultFilter_->text().isEmpty()) resultFilter_->clear();
+    });
+  }
+  bottom->addTab(resultHost, QStringLiteral("当前结果"));
 
   result_log_ = new QPlainTextEdit;
   result_log_->setReadOnly(true);

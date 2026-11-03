@@ -111,6 +111,7 @@ class FlowScene : public QGraphicsScene {
   bool editingLocked() const { return editingLocked_; }
   FlowNodeItem* selectedNode() const;
   QString selectedNodeId() const;
+  void setNodeLabel(const QString& id, const QString& label);
   FlowEdgeItem* selectedEdge() const;
 
   void startLink(FlowPortItem* port);
@@ -132,6 +133,7 @@ class FlowScene : public QGraphicsScene {
                      const QString& fromPort, const QString& toPort);
   void edgeRemoved(const QString& edgeId);
   void linkNotice(const QString& msg);
+  void renameRequested(const QString& nodeId);
 
  protected:
   void drawBackground(QPainter* painter, const QRectF& rect) override;
