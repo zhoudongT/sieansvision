@@ -640,7 +640,7 @@ void MainWindow::buildToolbar() {
   listen_badge_ = new QLabel(QStringLiteral("监听·—"));
   listen_badge_->setObjectName(QStringLiteral("commListenBadge"));
   listen_badge_->setToolTip(QStringLiteral("通信监听/连接状态 — 点击打开通信管理 · framing lf/crlf/raw/len4"));
-  listen_badge_->setStatusTip(QStringLiteral("通信徽章 · 点击打开通信管理 · tcp=/listen/reconnect"));
+  listen_badge_->setStatusTip(QStringLiteral("通信徽章 · 点击打开通信管理 · tcp=/listen/reconnect · framing 见 tip"));
   listen_badge_->setCursor(Qt::PointingHandCursor);
   listen_badge_->setStyleSheet(
       QStringLiteral("padding:2px 8px;border-radius:3px;background:#3a3d42;color:#a8a8a8;"));
