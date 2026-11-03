@@ -37,7 +37,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
       QStringLiteral("background:#3a3d42;color:#a8a8a8;border-radius:3px;"
                      "font-weight:700;font-size:14px;padding:4px;"));
   modeChip_ = new QLabel(QStringLiteral("设计态"));
-  modeChip_->setToolTip(QStringLiteral("运行模式 · 单击/F8 设计/运行 · 设计态/运行/连续/暂停 · 运行态锁画布 · F5/F9 仍可单次"));
+  modeChip_->setToolTip(QStringLiteral("运行模式 · 单击/F8 设计/运行 · Shift+F8 连续 · 设计态/运行/连续/暂停 · 运行态锁画布 · F5/F9 仍可单次"));
   modeChip_->setStyleSheet(
       QStringLiteral("background:#3a3d42;color:#a8a8a8;border-radius:3px;"
                      "padding:3px 8px;font-size:11px;font-weight:600;"));
@@ -67,7 +67,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   cycleChip_->setFocusPolicy(Qt::ClickFocus);
   detail_->setCursor(Qt::PointingHandCursor);
   badge_->setToolTip(QStringLiteral("OK/NG/ALARM · passGate 判定 · 单击打开 Host 面板 · F8 设计/运行 · Alt+单击清连OK/NG · 中键复制运行统计 · tcp= 见明细"));
-  modeChip_->setToolTip(QStringLiteral("运行模式 · 单击/F8 设计/运行 · Alt 暂停/继续 · 右键/中键连续"));
+  modeChip_->setToolTip(QStringLiteral("运行模式 · 单击/F8 设计/运行 · Shift+F8/右键/中键连续 · Alt 暂停/继续"));
   cycleChip_->setToolTip(QStringLiteral("周期 · 上次 ms · 节拍 · 滚轮±50 · Ctrl+滚轮±200 · Alt+1/2/3/4→50/100/200/500 · Ctrl+单击/双击清零 · 右键/Alt+单击/Ctrl+Shift+0 清连OK · 中键良率"));
   detail_->setToolTip(QStringLiteral("count/text/RX/urlOk/tcp/良率 摘要 · framing lf/crlf/raw/len4 见 tcp= · 双击复制全文 · 中键复制连OK/NG · 右键/Ctrl+Shift+C 运行统计 · 悬停看全文"));
   badge_->installEventFilter(this);
@@ -493,7 +493,10 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       return true;
     }
     if (ke->key() == Qt::Key_F8) {
-      emit modeToggleRequested();
+      if (ke->modifiers() & Qt::ShiftModifier)
+        emit continuousToggleRequested();
+      else
+        emit modeToggleRequested();
       return true;
     }
     if (ke->key() == Qt::Key_F3) {

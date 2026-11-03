@@ -20,6 +20,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QRegularExpression>
 #include <QGuiApplication>
 #include <QMouseEvent>
 #include <QEvent>
@@ -33,7 +34,7 @@ namespace sieans_qt {
 FlowIoDialog::FlowIoDialog(const QVariantMap& io, QWidget* parent)
     : QDialog(parent), io_(io) {
   setWindowTitle(QStringLiteral("流程参数 · I/O 绑定"));
-  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 按名排序 · Ctrl+Shift+D 复制到另一表 · Ctrl+Home/End 置顶/底 · Ctrl+Shift+U 去重 · Ctrl+D 复制行 · Ctrl+A 全选 · Ctrl+E 补默认 · Ctrl+Shift+E 清默认 · Alt+Del 清选中默认 · Ctrl+Tab 切换表 · Ctrl+Shift+C 复制CSV · Ctrl+Shift+I/${flow} · 中键 ${flow} · Ctrl+X 剪切 · Ctrl+Shift+V 粘贴 · Ctrl+Shift+L 清空空行 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果 · Ctrl+Shift+J/O 导出/导入JSON"));
+  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 按名排序 · Ctrl+Shift+D 复制到另一表 · Ctrl+Home/End 置顶/底 · Ctrl+Shift+U 去重 · Ctrl+D 复制行 · Ctrl+A 全选 · Ctrl+E 补默认 · Ctrl+Shift+E 清默认 · Alt+Del 清选中默认 · Ctrl+Tab 切换表 · Ctrl+Shift+C 复制CSV · Ctrl+Shift+I/${flow} · Ctrl+Shift+B 粘贴 binding · 中键 ${flow} · Ctrl+X 剪切 · Ctrl+Shift+V 粘贴 · Ctrl+Shift+L 清空空行 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果 · Ctrl+Shift+J/O 导出/导入JSON"));
   resize(560, 440);
   setStyleSheet(theme::workbenchStyleSheet());
   auto* root = new QVBoxLayout(this);
@@ -316,6 +317,8 @@ void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
   connect(scCopy, &QShortcut::activated, this, [this, table]() { copySelectedRows(table); });
   auto* scTok = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+I")), table);
   connect(scTok, &QShortcut::activated, this, [this, table]() { copySelectedAsFlowTokens(table); });
+  auto* scPasteBind = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+B")), table);
+  connect(scPasteBind, &QShortcut::activated, this, [this, table]() { pasteBindingsFromClipboard(table); });
   auto* scCut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+X")), table);
   connect(scCut, &QShortcut::activated, this, [this, table]() { cutSelectedRows(table); });
   auto* scOther = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+Tab")), table);
@@ -495,6 +498,71 @@ void FlowIoDialog::copySelectedAsFlowTokens(QTableWidget* table) {
   }
   if (auto* clip = QGuiApplication::clipboard()) clip->setText(toks.join(QLatin1Char('\n')));
   table->setToolTip(QStringLiteral("已复制 ${flow} %1 · Ctrl+Shift+I").arg(toks.size()));
+}
+
+
+void FlowIoDialog::pasteBindingsFromClipboard(QTableWidget* table) {
+  if (!table) return;
+  const QString raw = QGuiApplication::clipboard()
+                          ? QGuiApplication::clipboard()->text()
+                          : QString();
+  if (raw.trimmed().isEmpty()) {
+    table->setToolTip(QStringLiteral("剪贴板空 · Ctrl+Shift+B"));
+    return;
+  }
+  QStringList toks;
+  for (QString line : raw.split(QRegularExpression(QStringLiteral("[\n\r]+")))) {
+    line = line.trimmed();
+    if (line.isEmpty()) continue;
+    // CSV row → take binding col if present (name,type,binding,...)
+    if (line.contains(QLatin1Char(',')) && !line.startsWith(QLatin1Char('$'))) {
+      const QStringList cols = line.split(QLatin1Char(','));
+      if (cols.size() >= 3) line = cols.at(2).trimmed();
+    }
+    // bare name → ${flow.name}
+    if (!line.startsWith(QLatin1Char('$')) && !line.startsWith(QLatin1Char('{')) &&
+        !line.contains(QLatin1Char('/'))) {
+      line = QStringLiteral("${flow.%1}").arg(line);
+    }
+    toks.push_back(line);
+  }
+  if (toks.isEmpty()) {
+    table->setToolTip(QStringLiteral("无有效 binding · Ctrl+Shift+B"));
+    return;
+  }
+  QList<int> rows;
+  const auto ranges = table->selectionModel() ? table->selectionModel()->selectedRows()
+                                              : QModelIndexList{};
+  for (const QModelIndex& ix : ranges) rows.push_back(ix.row());
+  if (rows.isEmpty() && table->currentRow() >= 0) rows.push_back(table->currentRow());
+  if (rows.isEmpty()) {
+    // create rows for each token
+    for (const QString& tok : toks) {
+      addRow(table);
+      const int r = table->rowCount() - 1;
+      if (!table->item(r, 2)) table->setItem(r, 2, new QTableWidgetItem);
+      table->item(r, 2)->setText(tok);
+    }
+    table->setToolTip(QStringLiteral("已粘贴 binding %1 行 · Ctrl+Shift+B").arg(toks.size()));
+    return;
+  }
+  std::sort(rows.begin(), rows.end());
+  int n = 0;
+  for (int i = 0; i < rows.size() && i < toks.size(); ++i) {
+    const int r = rows.at(i);
+    if (!table->item(r, 2)) table->setItem(r, 2, new QTableWidgetItem);
+    table->item(r, 2)->setText(toks.at(i));
+    ++n;
+  }
+  // leftover tokens → append rows
+  for (int i = rows.size(); i < toks.size(); ++i) {
+    addRow(table);
+    const int r = table->rowCount() - 1;
+    if (!table->item(r, 2)) table->setItem(r, 2, new QTableWidgetItem);
+    table->item(r, 2)->setText(toks.at(i));
+    ++n;
+  }
+  table->setToolTip(QStringLiteral("已粘贴 binding %1 · Ctrl+Shift+B").arg(n));
 }
 
 

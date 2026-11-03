@@ -31,6 +31,7 @@ class FlowIoDialog : public QDialog {
   void pasteRows(QTableWidget* table);
   void copySelectedRows(QTableWidget* table);
   void copySelectedAsFlowTokens(QTableWidget* table);
+  void pasteBindingsFromClipboard(QTableWidget* table);
   void cutSelectedRows(QTableWidget* table);
   void clearEmptyRows(QTableWidget* table);
   void fillEmptyDefaults(QTableWidget* table);
