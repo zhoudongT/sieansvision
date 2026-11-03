@@ -26,7 +26,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
       QStringLiteral("background:#3a3d42;color:#a8a8a8;border-radius:3px;"
                      "padding:3px 8px;font-size:11px;font-weight:600;"));
   cycleChip_ = new QLabel(QStringLiteral("周期 0"));
-  cycleChip_->setToolTip(QStringLiteral("运行周期计数"));
+  cycleChip_->setToolTip(QStringLiteral("运行周期计数 · 每次流程完成 +1"));
   cycleChip_->setStyleSheet(
       QStringLiteral("background:#32353a;color:#a8a8a8;border-radius:3px;"
                      "padding:3px 8px;font-size:11px;"));
