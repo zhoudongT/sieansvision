@@ -614,8 +614,9 @@ void MainWindow::buildToolbar() {
   act_cont_->setToolTip(QStringLiteral("连续运行当前流程 · F6"));
   act_cont_->setStatusTip(QStringLiteral("连续 · F6"));
   act_stop_ = tb->addAction(QStringLiteral("■ 停止"), this, &MainWindow::onStopRun);
-  act_stop_->setToolTip(QStringLiteral("停止运行 / 连续"));
-  act_stop_->setStatusTip(QStringLiteral("停止"));
+  act_stop_->setShortcut(QKeySequence(Qt::Key_Escape));
+  act_stop_->setToolTip(QStringLiteral("停止运行 / 连续 · Esc"));
+  act_stop_->setStatusTip(QStringLiteral("停止 · Esc"));
   tb->addSeparator();
   act_mode_ = tb->addAction(QStringLiteral("运行模式"));
   act_mode_->setCheckable(true);
@@ -1686,6 +1687,14 @@ void MainWindow::onRunOnce() {
       QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
       QThread::msleep(50);
       frame = cam_worker_->latestFrame();
+    }
+    // Soft open-and-run: one more blocking grab if first pass still empty.
+    if (frame.isNull() && backend == QLatin1String("soft") && cam_worker_) {
+      QMetaObject::invokeMethod(cam_worker_, "grabOne",
+                                Qt::BlockingQueuedConnection);
+      frame = cam_worker_->latestFrame();
+      if (!frame.isNull())
+        logResult(QStringLiteral("Soft 二次 grab 成功 · GenTL→QR"));
     }
   }
 

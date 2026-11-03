@@ -288,8 +288,9 @@ void CommHub::onNewConnection() {
       refreshListenStatus();
     });
     appendTranscript(QStringLiteral("SYS"),
-                     QStringLiteral("peer connected %1")
-                         .arg(s->peerAddress().toString()));
+                     QStringLiteral("peer connected %1 · %2")
+                         .arg(s->peerAddress().toString(),
+                              framing_.isEmpty() ? QStringLiteral("lf") : framing_));
     refreshListenStatus();
   }
 }

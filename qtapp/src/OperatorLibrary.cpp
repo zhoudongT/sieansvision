@@ -184,7 +184,7 @@ OperatorDef OperatorLibrary::findDef(const QString& key) {
 }
 
 OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
-  setStatusTip(QStringLiteral("Toolbox · / 或 Ctrl+F 搜索 · Enter 添加 · Home/End/PgUp/PgDn"));
+  setStatusTip(QStringLiteral("Toolbox · / 或 Ctrl+F 搜索 · Enter 添加(列表/搜索) · Home/End/PgUp/PgDn"));
   setObjectName(QStringLiteral("libraryPane"));
   auto* lay = new QVBoxLayout(this);
   lay->setContentsMargins(0, 0, 0, 0);
@@ -342,16 +342,24 @@ bool OperatorLibrary::eventFilter(QObject* obj, QEvent* event) {
       if (auto* it = list_->item(row)) list_->scrollToItem(it);
       return true;
     }
-    if ((ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) &&
-        obj == search_ && list_) {
-      for (int i = 0; i < list_->count(); ++i) {
-        auto* it = list_->item(i);
-        if (it && !it->data(Qt::UserRole).toString().isEmpty()) {
-          list_->setCurrentItem(it);
-          emit operatorActivated(it->data(Qt::UserRole).toString(),
-                                 it->data(Qt::UserRole + 1).toString());
-          return true;
+    if ((ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) && list_ &&
+        (obj == search_ || obj == list_)) {
+      // Prefer current list row; else first activatable match (search Enter).
+      QListWidgetItem* pick = list_->currentItem();
+      if (!pick || pick->data(Qt::UserRole).toString().isEmpty()) {
+        for (int i = 0; i < list_->count(); ++i) {
+          auto* it = list_->item(i);
+          if (it && !it->data(Qt::UserRole).toString().isEmpty()) {
+            pick = it;
+            break;
+          }
         }
+      }
+      if (pick && !pick->data(Qt::UserRole).toString().isEmpty()) {
+        list_->setCurrentItem(pick);
+        emit operatorActivated(pick->data(Qt::UserRole).toString(),
+                               pick->data(Qt::UserRole + 1).toString());
+        return true;
       }
     }
   }
