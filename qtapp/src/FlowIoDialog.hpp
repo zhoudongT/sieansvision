@@ -41,6 +41,7 @@ class FlowIoDialog : public QDialog {
   void sortRowsByName(QTableWidget* table);
   void duplicateSelectedToOtherTable(QTableWidget* from);
   void moveSelectedToEdge(QTableWidget* table, int edge);
+  void dedupeRowsByName(QTableWidget* table);
 
   QTableWidget* inTable_ = nullptr;
   QTableWidget* outTable_ = nullptr;

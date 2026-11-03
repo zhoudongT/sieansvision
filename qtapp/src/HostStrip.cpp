@@ -74,7 +74,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   chips_->setObjectName(QStringLiteral("muted"));
   chips_->setWordWrap(true);
   chips_->setCursor(Qt::PointingHandCursor);
-  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+K/V 复制/粘贴键 · Alt+←→ 调序 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Del/Bksp 删首 · Ctrl+Shift+Bksp 清空 · 单击复制全文"));
+  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+K/V 复制/粘贴键 · Alt+←→ 调序 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Del/Bksp 删首 · Ctrl+Shift+Bksp 清空 · 单击复制全文"));
   chips_->installEventFilter(this);
   root->addWidget(chips_);
   setStyleSheet(QStringLiteral("background:#232528;border-top:1px solid #4a4e54;"));
@@ -467,6 +467,11 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       sortWatchKeys();
       return true;
     }
+    if (ke->key() == Qt::Key_U && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier)) {
+      dedupeWatchKeys();
+      return true;
+    }
     if ((ke->key() == Qt::Key_Delete || ke->key() == Qt::Key_Backspace) &&
         (ke->modifiers() & Qt::ControlModifier) && (ke->modifiers() & Qt::ShiftModifier)) {
       clearWatchKeys();
@@ -600,6 +605,31 @@ void HostStrip::reverseWatchKeys() {
 }
 
 
+
+
+void HostStrip::dedupeWatchKeys() {
+  if (watchKeys_.isEmpty()) {
+    if (chips_) chips_->setToolTip(QStringLiteral("监视键空 · Ctrl+Shift+U"));
+    return;
+  }
+  QStringList uniq;
+  int dropped = 0;
+  for (const QString& k : watchKeys_) {
+    if (uniq.contains(k)) { ++dropped; continue; }
+    uniq << k;
+  }
+  if (dropped <= 0) {
+    if (chips_) chips_->setToolTip(QStringLiteral("无重复 · Ctrl+Shift+U"));
+    return;
+  }
+  watchKeys_ = uniq;
+  emit watchKeysChanged(watchKeys_);
+  refreshChips({});
+  if (chips_)
+    chips_->setToolTip(QStringLiteral("监视键去重 −%1 · 剩 %2 · Ctrl+Shift+U")
+                           .arg(dropped)
+                           .arg(watchKeys_.size()));
+}
 
 void HostStrip::sortWatchKeys() {
   if (watchKeys_.size() < 2) {

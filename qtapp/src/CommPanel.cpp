@@ -55,7 +55,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   deviceTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
   deviceTable_->setSelectionMode(QAbstractItemView::SingleSelection);
   deviceTable_->setMaximumHeight(120);
-  deviceTable_->setToolTip(QStringLiteral("设备表 · F2 改名 · Insert/Ctrl+N 增 · Ctrl+D 复制 · Shift+Del 删 · Ctrl+X 剪切 · Ctrl+Shift+V 合并粘贴 · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/底 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 按名排序 · Alt+Shift+E/D 全启/全停 · Enter 写回 · Space/Alt 启停 · Ctrl+Shift+J/O JSON · 中键端点 · 右键复制 · 双击备注"));
+  deviceTable_->setToolTip(QStringLiteral("设备表 · F2 改名 · Insert/Ctrl+N 增 · Ctrl+D 复制 · Shift+Del 删 · Ctrl+X 剪切 · Ctrl+Shift+V 合并粘贴 · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/底 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 按名排序 · Ctrl+A 全选 · Alt+Shift+E/D 全启/全停 · Enter 写回 · Space/Alt 启停 · Ctrl+Shift+J/O JSON · 中键端点 · 右键复制 · 双击备注"));
   deviceTable_->setStatusTip(QStringLiteral("通信 · 设备表 · LocalBus/TCP · 中键端点"));
   deviceTable_->installEventFilter(this);
   lay->addWidget(deviceTable_);
@@ -599,6 +599,12 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
     if (ke->key() == Qt::Key_S && (ke->modifiers() & Qt::ControlModifier) &&
         (ke->modifiers() & Qt::ShiftModifier)) {
       sortDevicesByName();
+      return true;
+    }
+    if (ke->key() == Qt::Key_A && (ke->modifiers() & Qt::ControlModifier) &&
+        !(ke->modifiers() & Qt::ShiftModifier)) {
+      deviceTable_->selectAll();
+      if (status_) status_->setToolTip(QStringLiteral("已全选设备 %1 · Ctrl+A").arg(deviceTable_->rowCount()));
       return true;
     }
     if ((ke->modifiers() & Qt::AltModifier) && (ke->modifiers() & Qt::ShiftModifier) &&
