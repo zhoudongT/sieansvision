@@ -9,7 +9,7 @@ namespace sieans_qt {
 
 FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   setObjectName(QStringLiteral("flowTabBar"));
-  setStatusTip(QStringLiteral("流程条 · ▶一次 F5 / ↻连续 F6 / ■停止 Esc · F 适应"));
+  setStatusTip(QStringLiteral("流程条 · ▶一次 F5 / ↻连续 F6 / ■停止 Esc · F/R 适应"));
   setFixedHeight(28);
   auto* lay = new QHBoxLayout(this);
   lay->setContentsMargins(4, 2, 4, 2);
