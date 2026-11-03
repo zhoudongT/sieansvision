@@ -1594,12 +1594,19 @@ bool MainWindow::ensureCameraOpen() {
     return false;
   }
   pushSoftControls();
+  // Soft/UVC: block until open returns so open-and-run GenTL→QR can grab immediately.
+  const Qt::ConnectionType openHow =
+      (backend == QLatin1String("soft") || backend == QLatin1String("uvc"))
+          ? Qt::BlockingQueuedConnection
+          : Qt::QueuedConnection;
   QMetaObject::invokeMethod(
-      cam_worker_, "openDeviceWithBackend", Qt::QueuedConnection,
+      cam_worker_, "openDeviceWithBackend", openHow,
       Q_ARG(QString, backend),
       Q_ARG(QString, document_.cameraDeviceId()),
       Q_ARG(double, document_.acquisitionFps()),
       Q_ARG(double, document_.exposureUs()));
+  if (backend == QLatin1String("soft") && cam_worker_ && cam_worker_->isOpen())
+    logResult(QStringLiteral("Soft 相机已打开 · GenTL→QR 就绪"));
   return true;
 }
 

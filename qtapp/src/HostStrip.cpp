@@ -7,7 +7,7 @@
 namespace sieans_qt {
 
 HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
-  setStatusTip(QStringLiteral("Host 条 · OK/NG/ALARM · tcp= 摘要"));
+  setStatusTip(QStringLiteral("Host 条 · OK/NG/ALARM · tcp= 摘要 · Esc 停止运行"));
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(8, 4, 8, 4);
   root->setSpacing(2);

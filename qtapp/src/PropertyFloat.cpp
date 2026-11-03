@@ -14,8 +14,8 @@
 namespace sieans_qt {
 
 PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
-  setStatusTip(QStringLiteral("属性浮窗 · Esc 放弃 · Enter 保留 · Ctrl/Alt/Shift+Enter 确定 · F5 执行 · F6 连续"));
-  setWhatsThis(QStringLiteral("属性浮窗 · Esc 放弃 · Enter 保留 · Ctrl/Alt/Shift+Enter 确定 · F5 单次 · F6 连续"));
+  setStatusTip(QStringLiteral("属性浮窗 · Esc 放弃 · Enter 保留 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续"));
+  setWhatsThis(QStringLiteral("属性浮窗 · Esc 放弃 · Enter 保留 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 单次 · F6 连续"));
   setObjectName(QStringLiteral("propertyFloat"));
   setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
   setModal(false);
@@ -69,14 +69,14 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   cont->setToolTip(QStringLiteral("连续运行本模块 · 保持浮窗 · F6"));
   auto* exec = new QPushButton(QStringLiteral("执行"));
   exec->setObjectName(QStringLiteral("propertyFloatRun"));
-  exec->setToolTip(QStringLiteral("单次运行本模块 · F5"));
+  exec->setToolTip(QStringLiteral("单次运行本模块 · F5/F9"));
   auto* cancel = new QPushButton(QStringLiteral("取消"));
   cancel->setObjectName(QStringLiteral("propertyFloatRun"));
   cancel->setToolTip(QStringLiteral("放弃修改并关闭 · Esc"));
   auto* ok = new QPushButton(QStringLiteral("确定"));
   ok->setObjectName(QStringLiteral("propertyFloatOk"));
   ok->setToolTip(QStringLiteral("保留修改并关闭 · Ctrl/Alt/Shift+Enter"));
-  auto* hint = new QLabel(QStringLiteral("Esc 放弃 · Enter 保留 · Tab 切换 · Ctrl/Alt/Shift+Enter 确定 · F5 执行 · F6 连续"));
+  auto* hint = new QLabel(QStringLiteral("Esc 放弃 · Enter 保留 · Tab 切换 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续"));
   hint->setObjectName(QStringLiteral("propertyFloatHint"));
   hint->setStyleSheet(QStringLiteral("color:#8a9098;font-size:11px;"));
   foot->addWidget(cont);
@@ -188,7 +188,7 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
-  if (event->key() == Qt::Key_F5) {
+  if (event->key() == Qt::Key_F5 || event->key() == Qt::Key_F9) {
     emit runModule();
     event->accept();
     return;

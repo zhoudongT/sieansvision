@@ -346,6 +346,18 @@ void CommHub::tryReconnect() {
                   client_->state() == QAbstractSocket::HostLookupState))
     return;
   ++reconnectAttempts_;
+  // Cap attempts so runaway client reconnect does not spin forever.
+  if (reconnectAttempts_ > 40) {
+    if (reconnectTimer_) reconnectTimer_->stop();
+    tcpStatus_ = QStringLiteral("reconnect paused #%1 %2:%3")
+                     .arg(reconnectAttempts_ - 1)
+                     .arg(reconnectHost_)
+                     .arg(reconnectPort_);
+    emit statusChanged(tcpStatus_);
+    appendTranscript(QStringLiteral("SYS"),
+                     QStringLiteral("%1 · give up until restartTcp").arg(tcpStatus_));
+    return;
+  }
   // Backoff 1.5s → ~10s cap
   if (reconnectTimer_) {
     const int ms = qMin(10000, 1500 * (1 << qMin(reconnectAttempts_ - 1, 3)));

@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper|nvl|lstrip|rstrip|iff)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper|nvl|lstrip|rstrip|iff|bool)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -399,6 +399,8 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
         }
         if (name == QLatin1String("int"))
           return args.isEmpty() ? 0 : int(evalRec(args[0]).toDouble());
+        if (name == QLatin1String("bool"))
+          return args.isEmpty() ? 0 : (isTruthy(evalRec(args[0])) ? 1 : 0);
         if (name == QLatin1String("str"))
           return args.isEmpty() ? QString() : evalRec(args[0]).toString();
         if (name == QLatin1String("abs"))
@@ -826,6 +828,12 @@ QStringList exprSelfTest() {
   check(QStringLiteral("iff-f"),
         ev.eval(QStringLiteral("iff(0, 'y', 'n')")),
         QStringLiteral("n"));
+  check(QStringLiteral("bool-t"),
+        ev.eval(QStringLiteral("bool('x')")),
+        QStringLiteral("1"));
+  check(QStringLiteral("bool-f"),
+        ev.eval(QStringLiteral("bool('')")),
+        QStringLiteral("0"));
   check(QStringLiteral("ifempty"),
         ev.eval(QStringLiteral("ifempty('', 'fb')")),
         QStringLiteral("fb"));
