@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -554,6 +554,15 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
           if (args.isEmpty()) return 0;
           const double v = evalRec(args[0]).toDouble();
           return name == QLatin1String("floor") ? std::floor(v) : std::ceil(v);
+        }
+        if (name == QLatin1String("sign")) {
+          if (args.isEmpty()) return 0;
+          const double v = evalRec(args[0]).toDouble();
+          return v > 0 ? 1 : (v < 0 ? -1 : 0);
+        }
+        if (name == QLatin1String("pow")) {
+          if (args.size() < 2) return args.isEmpty() ? 0 : evalRec(args[0]).toDouble();
+          return std::pow(evalRec(args[0]).toDouble(), evalRec(args[1]).toDouble());
         }
       }
     }
@@ -748,6 +757,12 @@ QStringList exprSelfTest() {
   check(QStringLiteral("ceil"),
         ev.eval(QStringLiteral("ceil(3.1)")),
         QStringLiteral("4"));
+  check(QStringLiteral("sign"),
+        ev.eval(QStringLiteral("sign(-2)")),
+        QStringLiteral("-1"));
+  check(QStringLiteral("pow"),
+        ev.eval(QStringLiteral("pow(2, 3)")),
+        QStringLiteral("8"));
   return fails;
 }
 

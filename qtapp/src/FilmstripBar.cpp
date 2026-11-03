@@ -80,7 +80,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   list_->setFixedHeight(kThumbH + 22);
   list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
   list_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  list_->setStatusTip(QStringLiteral("胶片 · ←→ Home/End/PgUp/PgDn · Space 自动切换 · Del"));
+  list_->setStatusTip(QStringLiteral("胶片 · ←→ Home/End/PgUp/PgDn · Space · F5 运行全部 · Del"));
   list_->setSpacing(2);
   list_->setSelectionMode(QAbstractItemView::SingleSelection);
   root->addWidget(list_);
@@ -268,6 +268,12 @@ void FilmstripBar::selectNext() {
 }
 
 void FilmstripBar::keyPressEvent(QKeyEvent* event) {
+  if (event->key() == Qt::Key_F5) {
+    emit runAllRequested();
+    setStatus(QStringLiteral("运行全部"));
+    event->accept();
+    return;
+  }
   if (event->key() == Qt::Key_Space && autoSwitch_) {
     autoSwitch_->setChecked(!autoSwitch_->isChecked());
     setStatus(autoSwitch_->isChecked() ? QStringLiteral("自动切换 开")

@@ -88,6 +88,7 @@ QIcon railIcon(const char* kind, bool active) {
 }  // namespace
 
 OperatorRail::OperatorRail(QWidget* parent) : QWidget(parent) {
+  setStatusTip(QStringLiteral("Toolbox 分类轨 · ↑↓/Home/End · Esc 全部"));
   setObjectName(QStringLiteral("operatorRail"));
   setFixedWidth(44);
   setFocusPolicy(Qt::StrongFocus);
