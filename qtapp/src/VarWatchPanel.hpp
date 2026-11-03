@@ -20,6 +20,7 @@ class VarWatchPanel : public QWidget {
   void exportFiltered();
   void copyKeyEqualsValue();
   void copyFlowToken();
+  void exportJsonFiltered();
   QVariantMap variables() const { return vars_; }
 
  protected:

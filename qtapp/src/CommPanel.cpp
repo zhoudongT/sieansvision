@@ -17,6 +17,7 @@
 #include <QGuiApplication>
 #include <QEvent>
 #include <QMouseEvent>
+#include <QWheelEvent>
 #include <QKeyEvent>
 #include <QTextCursor>
 #include <QRegularExpression>
@@ -84,7 +85,8 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   framingCombo_->addItem(QStringLiteral("Len4 BE 前缀"), QStringLiteral("len4"));
   framingCombo_->setToolTip(
       QStringLiteral("TCP 帧分隔 · lf/crlf/raw/len4 · 写入 tcpReal.framing · 启动前可改 · 运行中改写下次生效"));
-  framingCombo_->setStatusTip(QStringLiteral("通信 · framing lf/crlf/raw/len4"));
+  framingCombo_->setStatusTip(QStringLiteral("通信 · framing lf/crlf/raw/len4 · 滚轮切换"));
+  framingCombo_->installEventFilter(this);
   form->addRow(QStringLiteral("帧分隔"), framingCombo_);
   connect(framingCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
           [this](int) { pushTcpEndpoint(true); });
@@ -485,6 +487,11 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
         return true;
       }
     }
+  }
+  if (obj == framingCombo_ && event->type() == QEvent::Wheel) {
+    auto* we = static_cast<QWheelEvent*>(event);
+    cycleFraming(we->angleDelta().y() > 0 ? -1 : +1);
+    return true;
   }
   if (obj == status_ && event->type() == QEvent::MouseButtonRelease) {
     auto* me = static_cast<QMouseEvent*>(event);

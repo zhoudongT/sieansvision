@@ -648,7 +648,7 @@ void FlowScene::keyPressEvent(QKeyEvent* event) {
 
 FlowView::FlowView(FlowScene* scene, QWidget* parent)
     : QGraphicsView(scene, parent) {
-  setToolTip(QStringLiteral("滚轮/+/- 缩放 · F/G/A/Space/Home/0/R 适应画布 · F2 重命名 · Ctrl+A 全选节点 · Ctrl+C/Ctrl+Shift+C 复制选中节点 · 中键适应 · Del/Backspace 删连线 · Esc 取消连线 · I 打开 I/O"));
+  setToolTip(QStringLiteral("滚轮/+/- 缩放 · Alt+/- 微调 · F/G/A/Space/Home/0/R 适应画布 · Ctrl+Shift+F 适应选中 · F2 重命名 · Ctrl+A 全选节点 · Ctrl+C/Ctrl+Shift+C 复制选中节点 · 中键/空白右键适应 · Del/Backspace 删连线 · Esc 取消连线 · I 打开 I/O"));
   setStatusTip(QStringLiteral("流程画布 · F/G/A/Space/Home/0/R 适应 · I→I/O · +/- 缩放 · Ctrl+C 节点 · 中键适应 · Esc 取消连线 · Del/Backspace 删连线 · 滚轮缩放"));
   setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing);
   setDragMode(QGraphicsView::RubberBandDrag);
@@ -691,14 +691,35 @@ void FlowView::keyPressEvent(QKeyEvent* event) {
     return;
   }
   if (event->key() == Qt::Key_Plus || event->key() == Qt::Key_Equal) {
-    scale(1.12, 1.12);
+    const qreal f = (event->modifiers() & Qt::AltModifier) ? 1.04 : 1.12;
+    scale(f, f);
     if (minimap_) minimap_->update();
     event->accept();
     return;
   }
   if (event->key() == Qt::Key_Minus) {
-    scale(1.0 / 1.12, 1.0 / 1.12);
+    const qreal f = (event->modifiers() & Qt::AltModifier) ? 1.04 : 1.12;
+    scale(1.0 / f, 1.0 / f);
     if (minimap_) minimap_->update();
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_F && (event->modifiers() & Qt::ControlModifier) &&
+      (event->modifiers() & Qt::ShiftModifier)) {
+    if (auto* sc = qobject_cast<FlowScene*>(scene())) {
+      QRectF r;
+      for (QGraphicsItem* it : sc->selectedItems()) {
+        if (dynamic_cast<FlowNodeItem*>(it))
+          r = r.isNull() ? it->sceneBoundingRect() : r.united(it->sceneBoundingRect());
+      }
+      if (!r.isNull()) {
+        fitInView(r.adjusted(-40, -40, 40, 40), Qt::KeepAspectRatio);
+        if (minimap_) minimap_->update();
+        QToolTip::showText(QCursor::pos(), QStringLiteral("适应选中 · Ctrl+Shift+F"), this);
+      } else {
+        fitAll();
+      }
+    }
     event->accept();
     return;
   }
@@ -739,6 +760,14 @@ void FlowView::mousePressEvent(QMouseEvent* event) {
     fitAll();
     event->accept();
     return;
+  }
+  if (event->button() == Qt::RightButton && !(event->modifiers() & Qt::ControlModifier)) {
+    // empty canvas right-click → fit (ports/nodes still get scene handlers via itemAt)
+    if (!itemAt(event->position().toPoint())) {
+      fitAll();
+      event->accept();
+      return;
+    }
   }
   QGraphicsView::mousePressEvent(event);
 }

@@ -19,7 +19,7 @@ namespace sieans_qt {
 
 ImageView::ImageView(QWidget* parent) : QGraphicsView(parent) {
   setFocusPolicy(Qt::StrongFocus);
-  setToolTip(QStringLiteral("F/G/A/Space/Home/0/R 适应 · +/- 缩放 · 1 像素1:1 · 2=200% · O 叠显 · P 探针 · Ctrl+Shift+C 复制探针 · Ctrl+H 复制叠显 · 中键适应 · Esc/C/Del/Backspace 清叠加 · 拖拽平移 · 滚轮缩放"));
+  setToolTip(QStringLiteral("F/G/A/Space/Home/0/R 适应 · +/- 缩放 · Alt+/- 微调 · 1 像素1:1 · 2=200% · 3=50% · O 叠显 · P 探针 · Ctrl+Shift+C 复制探针 · 右键复制探针 · Ctrl+H 复制叠显 · 中键适应 · Esc/C/Del/Backspace 清叠加 · 拖拽平移 · 滚轮缩放"));
   setStatusTip(QStringLiteral("图像视图 · F/G/A/Space/Home/0/R 适应 · +/- 缩放 · 1=1:1 · 2=200% · O 叠显 · P 探针 · Ctrl+Shift+C 探针 · 中键适应 · Esc/C/Del/Backspace 清叠加 · 码框 hits · 拖拽平移 · 滚轮缩放"));
   setScene(&scene_);
   setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
@@ -170,13 +170,22 @@ void ImageView::keyPressEvent(QKeyEvent* event) {
   }
   if (event->key() == Qt::Key_Plus || event->key() == Qt::Key_Equal) {
     userZoomed_ = true;
-    scale(1.15, 1.15);
+    const qreal f = (event->modifiers() & Qt::AltModifier) ? 1.05 : 1.15;
+    scale(f, f);
     event->accept();
     return;
   }
   if (event->key() == Qt::Key_Minus) {
     userZoomed_ = true;
-    scale(1.0 / 1.15, 1.0 / 1.15);
+    const qreal f = (event->modifiers() & Qt::AltModifier) ? 1.05 : 1.15;
+    scale(1.0 / f, 1.0 / f);
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_3 && !(event->modifiers() & Qt::ControlModifier)) {
+    resetTransform();
+    scale(0.5, 0.5);
+    userZoomed_ = true;
     event->accept();
     return;
   }
@@ -218,6 +227,14 @@ void ImageView::mousePressEvent(QMouseEvent* event) {
   if (event->button() == Qt::MiddleButton) {
     userZoomed_ = false;
     fitToView();
+    event->accept();
+    return;
+  }
+  if (event->button() == Qt::RightButton) {
+    if (!lastProbe_.isEmpty()) {
+      if (auto* clip = QGuiApplication::clipboard()) clip->setText(lastProbe_);
+      QToolTip::showText(QCursor::pos(), QStringLiteral("已复制探针 · 右键"), this);
+    }
     event->accept();
     return;
   }

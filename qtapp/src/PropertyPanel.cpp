@@ -148,8 +148,10 @@ PropertyPanel::PropertyPanel(QWidget* parent) : QWidget(parent) {
   {
     auto* scCopy = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+C")), this);
     connect(scCopy, &QShortcut::activated, this, &PropertyPanel::copyVisibleParams);
+    auto* scPaste = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+V")), this);
+    connect(scPaste, &QShortcut::activated, this, &PropertyPanel::pasteKeyValueParams);
   }
-  setStatusTip(QStringLiteral("属性面板 · Ctrl+F 过滤 · Esc 清过滤 · Ctrl+Shift+C 复制可见 · emptyDefault/{name}"));
+  setStatusTip(QStringLiteral("属性面板 · Ctrl+F 过滤 · Esc 清过滤 · Ctrl+Shift+C 复制可见 · Ctrl+Shift+V 粘贴键值 · emptyDefault/{name}"));
 
   auto* scroll = new QScrollArea;
   scroll->setWidgetResizable(true);
@@ -512,6 +514,48 @@ void PropertyPanel::copyVisibleParams() {
   if (auto* clip = QGuiApplication::clipboard()) clip->setText(lines.join(QLatin1Char('\n')));
   if (filterEdit_)
     filterEdit_->setToolTip(QStringLiteral("已复制可见参数 %1 · Ctrl+Shift+C").arg(lines.size()));
+}
+
+
+void PropertyPanel::pasteKeyValueParams() {
+  const QString clip = QGuiApplication::clipboard() ? QGuiApplication::clipboard()->text() : QString();
+  if (clip.trimmed().isEmpty() || !form_) return;
+  int n = 0;
+  for (const QString& line : clip.split(QLatin1Char('\n'))) {
+    const int eq = line.indexOf(QLatin1Char('='));
+    if (eq <= 0) continue;
+    const QString key = line.left(eq).trimmed();
+    const QString val = line.mid(eq + 1).trimmed();
+    if (key.isEmpty()) continue;
+    for (int r = 0; r < form_->rowCount(); ++r) {
+      QWidget* fieldW = nullptr;
+      if (auto* fi = form_->itemAt(r, QFormLayout::FieldRole)) fieldW = fi->widget();
+      if (!fieldW) continue;
+      if (fieldW->property("propKey").toString() != key) continue;
+      if (auto* le = qobject_cast<QLineEdit*>(fieldW)) {
+        le->setText(val);
+        ++n;
+      } else if (auto* sp = qobject_cast<QSpinBox*>(fieldW)) {
+        bool ok = false;
+        const int iv = val.toInt(&ok);
+        if (ok) { sp->setValue(iv); ++n; }
+      } else if (auto* dsp = qobject_cast<QDoubleSpinBox*>(fieldW)) {
+        bool ok = false;
+        const double dv = val.toDouble(&ok);
+        if (ok) { dsp->setValue(dv); ++n; }
+      } else if (auto* box = qobject_cast<QCheckBox*>(fieldW)) {
+        box->setChecked(val == QLatin1String("true") || val == QLatin1String("1"));
+        ++n;
+      } else if (auto* combo = qobject_cast<QComboBox*>(fieldW)) {
+        int cidx = combo->findData(val);
+        if (cidx < 0) cidx = combo->findText(val);
+        if (cidx >= 0) { combo->setCurrentIndex(cidx); ++n; }
+      }
+      break;
+    }
+  }
+  if (filterEdit_)
+    filterEdit_->setToolTip(QStringLiteral("已粘贴参数 %1 · Ctrl+Shift+V").arg(n));
 }
 
 }  // namespace sieans_qt

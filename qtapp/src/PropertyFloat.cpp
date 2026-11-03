@@ -306,6 +306,13 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
+  if (event->key() == Qt::Key_V && (event->modifiers() & Qt::ControlModifier) &&
+      (event->modifiers() & Qt::ShiftModifier)) {
+    if (panel_) panel_->pasteKeyValueParams();
+    if (subtitle_) subtitle_->setText(QStringLiteral("已粘贴参数 · Ctrl+Shift+V"));
+    event->accept();
+    return;
+  }
   if (event->key() == Qt::Key_F2) {
     // Focus first editable field in the float (VM-ish).
     const auto kids = findChildren<QWidget*>();

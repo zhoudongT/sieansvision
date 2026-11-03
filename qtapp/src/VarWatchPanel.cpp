@@ -15,6 +15,7 @@
 #include <QShortcut>
 #include <QKeySequence>
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <QEvent>
 
 namespace sieans_qt {
@@ -54,6 +55,8 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
     connect(scKv, &QShortcut::activated, this, &VarWatchPanel::copyKeyEqualsValue);
     auto* scTok = new QShortcut(QKeySequence(QStringLiteral("Ctrl+I")), this);
     connect(scTok, &QShortcut::activated, this, &VarWatchPanel::copyFlowToken);
+    auto* scJson = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+J")), this);
+    connect(scJson, &QShortcut::activated, this, &VarWatchPanel::exportJsonFiltered);
   }
   table_ = new QTableWidget(0, 2);
   table_->setHorizontalHeaderLabels(
@@ -78,10 +81,10 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
                                  table_);
             }
           });
-  table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Esc 取消选中 · F2 聚焦表"));
+  table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · 中键 ${flow} · 右键键=值 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Esc 取消选中 · F2 聚焦表 · Ctrl+Shift+J JSON"));
   table_->installEventFilter(this);
   if (filterEdit_) filterEdit_->installEventFilter(this);
-  setStatusTip(QStringLiteral("变量监视 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Home/End/PgUp/PgDn · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
+  setStatusTip(QStringLiteral("变量监视 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · 中键token/右键键=值 · Home/End/PgUp/PgDn · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
   keys_ = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
            QStringLiteral("passGate"), QStringLiteral("urlOk"),
@@ -124,6 +127,17 @@ bool VarWatchPanel::eventFilter(QObject* obj, QEvent* event) {
     if (ke->key() == Qt::Key_Down && table_ && table_->rowCount() > 0) {
       table_->setFocus(Qt::OtherFocusReason);
       table_->setCurrentCell(0, 0);
+      return true;
+    }
+  }
+  if (obj == table_ && event->type() == QEvent::MouseButtonRelease && table_) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::MiddleButton) {
+      copyFlowToken();
+      return true;
+    }
+    if (me->button() == Qt::RightButton) {
+      copyKeyEqualsValue();
       return true;
     }
   }
@@ -276,6 +290,28 @@ void VarWatchPanel::copyFlowToken() {
   const QString tok = QStringLiteral("${flow.%1}").arg(k->text());
   if (auto* clip = QApplication::clipboard()) clip->setText(tok);
   QToolTip::showText(QCursor::pos(), QStringLiteral("已复制 %1 · Ctrl+I").arg(tok), table_);
+}
+
+
+void VarWatchPanel::exportJsonFiltered() {
+  if (!table_) return;
+  QStringList parts;
+  for (int r = 0; r < table_->rowCount(); ++r) {
+    if (table_->isRowHidden(r)) continue;
+    auto* k = table_->item(r, 0);
+    auto* v = table_->item(r, 1);
+    if (!k) continue;
+    const QString key = k->text();
+    const QString val = v ? v->text() : QString();
+    QString esc = val;
+    esc.replace(QLatin1Char('\\'), QStringLiteral("\\\\"));
+    esc.replace(QLatin1Char('"'), QStringLiteral("\\\""));
+    parts << QStringLiteral("\"%1\": \"%2\"").arg(key, esc);
+  }
+  const QString body = QStringLiteral("{ %1 }").arg(parts.join(QStringLiteral(", ")));
+  if (auto* clip = QApplication::clipboard()) clip->setText(body);
+  QToolTip::showText(QCursor::pos(),
+                     QStringLiteral("已导出 JSON %1 · Ctrl+Shift+J").arg(parts.size()), table_);
 }
 
 }  // namespace sieans_qt
