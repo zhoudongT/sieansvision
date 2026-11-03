@@ -14,8 +14,8 @@
 namespace sieans_qt {
 
 PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
-  setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续"));
-  setWhatsThis(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End · Ctrl/Alt/Shift+Enter/Ctrl+S 确定 · F5/F9 单次 · F6 连续"));
+  setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End/PgUp/PgDn · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续"));
+  setWhatsThis(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End/PgUp/PgDn · Ctrl/Alt/Shift+Enter/Ctrl+S 确定 · F5/F9 单次 · F6 连续"));
   setObjectName(QStringLiteral("propertyFloat"));
   setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
   setModal(false);
@@ -76,7 +76,7 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   auto* ok = new QPushButton(QStringLiteral("确定"));
   ok->setObjectName(QStringLiteral("propertyFloatOk"));
   ok->setToolTip(QStringLiteral("保留修改并关闭 · Ctrl/Alt/Shift+Enter · Ctrl+S"));
-  auto* hint = new QLabel(QStringLiteral("Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End 切换 · Ctrl+S/Ctrl+Enter 确定 · F5/F9 执行 · F6 连续"));
+  auto* hint = new QLabel(QStringLiteral("Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End/PgUp/PgDn 切换 · Ctrl+S/Ctrl+Enter 确定 · F5/F9 执行 · F6 连续"));
   hint->setObjectName(QStringLiteral("propertyFloatHint"));
   hint->setStyleSheet(QStringLiteral("color:#8a9098;font-size:11px;"));
   foot->addWidget(cont);
@@ -196,8 +196,9 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
-  if (event->key() == Qt::Key_Home || event->key() == Qt::Key_End) {
-    // Jump to first/last focusable child in the float.
+  if (event->key() == Qt::Key_Home || event->key() == Qt::Key_End ||
+      event->key() == Qt::Key_PageUp || event->key() == Qt::Key_PageDown) {
+    // Jump to first/last focusable child in the float (PgUp≈Home / PgDn≈End).
     QWidget* first = nullptr;
     QWidget* last = nullptr;
     const auto kids = findChildren<QWidget*>();
@@ -207,7 +208,8 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
       if (!first) first = w;
       last = w;
     }
-    QWidget* target = event->key() == Qt::Key_Home ? first : last;
+    const bool toFirst = event->key() == Qt::Key_Home || event->key() == Qt::Key_PageUp;
+    QWidget* target = toFirst ? first : last;
     if (target) {
       target->setFocus(Qt::ShortcutFocusReason);
       event->accept();
