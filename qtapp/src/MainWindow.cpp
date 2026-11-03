@@ -639,7 +639,7 @@ void MainWindow::buildToolbar() {
   tb->addWidget(mode_badge_);
   listen_badge_ = new QLabel(QStringLiteral("监听·—"));
   listen_badge_->setObjectName(QStringLiteral("commListenBadge"));
-  listen_badge_->setToolTip(QStringLiteral("通信监听/连接状态 — 点击打开通信管理"));
+  listen_badge_->setToolTip(QStringLiteral("通信监听/连接状态 — 点击打开通信管理 · framing lf/crlf/raw/len4"));
   listen_badge_->setStatusTip(QStringLiteral("通信徽章 · 点击打开通信管理 · tcp=/listen/reconnect"));
   listen_badge_->setCursor(Qt::PointingHandCursor);
   listen_badge_->setStyleSheet(
