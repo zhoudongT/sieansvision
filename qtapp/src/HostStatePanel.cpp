@@ -62,7 +62,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   btnStop_ = new QPushButton(QStringLiteral("■ 停止"));
   btnClear_ = new QPushButton(QStringLiteral("清除报警"));
   btnStart_->setObjectName(QStringLiteral("primaryButton"));
-  btnStart_->setToolTip(QStringLiteral("开始运行当前绑定流程 · F5 · 连续 F6"));
+  btnStart_->setToolTip(QStringLiteral("开始运行当前绑定流程 · F5/F9 · 连续 F6"));
   btnStart_->setStatusTip(QStringLiteral("Host · 开始运行"));
   btnPause_->setToolTip(QStringLiteral("暂停连续运行 · 连续中可暂停"));
   btnPause_->setStatusTip(QStringLiteral("Host · 暂停"));
@@ -72,7 +72,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   btnStop_->setStatusTip(QStringLiteral("Host · 停止 · Esc"));
   btnClear_->setToolTip(QStringLiteral("清除报警锁存"));
   btnClear_->setStatusTip(QStringLiteral("Host · 清除报警"));
-  setStatusTip(QStringLiteral("上位机控制 · F5 开始 · F6 连续 · 暂停/继续 · Esc 停止 · 清报警"));
+  setStatusTip(QStringLiteral("上位机控制 · F5/F9 开始 · F6 连续 · 暂停/继续 · Esc 停止 · 清报警"));
   for (QPushButton* b : {btnStart_, btnPause_, btnResume_, btnStop_, btnClear_}) {
     b->setMinimumHeight(28);
     quick->addWidget(b);

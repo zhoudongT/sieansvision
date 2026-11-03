@@ -137,6 +137,8 @@ void GenTLWorker::openSoft(const QString& deviceId) {
     qrNote = QStringLiteral(" · QR:%1").arg(QFileInfo(qrPath).fileName());
   else if (!sampleEnv.isEmpty())
     qrNote = QStringLiteral(" · SAMPLE_QR");
+  else
+    qrNote = QStringLiteral(" · QR:letterbox");
   emit statusChanged(QStringLiteral("Soft 仿真相机已打开 %1 · %2×%3 · exp=%4µs gain=%5dB%6")
                          .arg(deviceId_)
                          .arg(img.width())
