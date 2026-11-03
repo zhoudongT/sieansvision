@@ -18,7 +18,7 @@
 namespace sieans_qt {
 
 PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
-  setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · F2 首字段 · Tab/Home/End/PgUp/PgDn/滚轮 · Alt+滚轮透明度 · Ctrl+0 透明度重置 · Ctrl+[ / ] 宽度 · Ctrl+Shift+[ / ] 高度 · Ctrl+Shift+0 复位尺寸 · Ctrl+R 还原 · Ctrl+Shift+C 复制可见 · 双击/中键标题钉住 · 右键标题复制节点 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续 · Ctrl+S 同确定 · F4 末字段 · Alt+1/2/3 透明度 · Ctrl+Shift+方向吸附"));
+  setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · F2 首字段 · Tab/Home/End/PgUp/PgDn/滚轮 · Alt+滚轮透明度 · Ctrl+0 透明度重置 · Ctrl+[ / ] 宽度 · Ctrl+Shift+[ / ] 高度 · Ctrl+Shift+0 复位尺寸 · Ctrl+R 还原 · Ctrl+Shift+C 复制可见 · 双击/中键标题钉住 · 右键标题复制节点 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续 · Ctrl+S 确定 · Ctrl+Shift+S 应用保持 · F4 末字段 · Alt+1/2/3 透明度 · Ctrl+Shift+方向吸附"));
   setWhatsThis(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End/PgUp/PgDn · Ctrl/Alt/Shift+Enter/Ctrl+S 确定 · F5/F9 单次 · F6 连续"));
   setObjectName(QStringLiteral("propertyFloat"));
   setWindowFlags(Qt::Tool | Qt::FramelessWindowHint);
@@ -101,8 +101,8 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   cancel->setToolTip(QStringLiteral("放弃修改并关闭 · Esc/Ctrl+W · 不写回属性"));
   auto* ok = new QPushButton(QStringLiteral("确定"));
   ok->setObjectName(QStringLiteral("propertyFloatOk"));
-  ok->setToolTip(QStringLiteral("保留修改并关闭 · Ctrl/Alt/Shift+Enter · Ctrl+S · Esc 相反"));
-  auto* hint = new QLabel(QStringLiteral("Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End/PgUp/PgDn 切换 · Ctrl+R 还原 · Alt+滚轮透明度 · Ctrl+S/Ctrl+Enter 确定 · F5/F9 执行 · F6 连续"));
+  ok->setToolTip(QStringLiteral("保留修改并关闭 · Ctrl/Alt/Shift+Enter · Ctrl+S · Ctrl+Shift+S 应用保持 · Esc 相反"));
+  auto* hint = new QLabel(QStringLiteral("Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End/PgUp/PgDn 切换 · Ctrl+R 还原 · Alt+滚轮透明度 · Ctrl+S 确定 · Ctrl+Shift+S 应用保持 · Ctrl+Enter 确定 · F5/F9 · F6"));
   hint->setObjectName(QStringLiteral("propertyFloatHint"));
   hint->setStyleSheet(QStringLiteral("color:#8a9098;font-size:11px;"));
   foot->addWidget(cont);
@@ -292,6 +292,11 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
   if (event->key() == Qt::Key_S && (event->modifiers() & Qt::ControlModifier)) {
     if (panel_) baseline_ = panel_->currentParams();
     emit acceptedCommit();
+    if (event->modifiers() & Qt::ShiftModifier) {
+      if (subtitle_) subtitle_->setText(QStringLiteral("已应用 · 保持浮窗 · Ctrl+Shift+S"));
+      event->accept();
+      return;
+    }
     hide();
     event->accept();
     return;

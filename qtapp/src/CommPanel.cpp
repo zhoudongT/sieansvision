@@ -51,14 +51,41 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   deviceTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
   deviceTable_->setSelectionMode(QAbstractItemView::SingleSelection);
   deviceTable_->setMaximumHeight(120);
-  deviceTable_->setToolTip(QStringLiteral("设备表 · 中键装入端点 · Enter 写回 host:port · Space/Alt 启停 · 右键复制 · 双击备注"));
+  deviceTable_->setToolTip(QStringLiteral("设备表 · F2 改名 · 中键装入端点 · Enter 写回 host:port · Space/Alt 启停 · 右键复制 · 双击备注"));
   deviceTable_->setStatusTip(QStringLiteral("通信 · 设备表 · LocalBus/TCP · 中键端点"));
   deviceTable_->installEventFilter(this);
   lay->addWidget(deviceTable_);
   connect(deviceTable_, &QTableWidget::itemSelectionChanged, this,
           &CommPanel::onDeviceRowChanged);
   connect(deviceTable_, &QTableWidget::itemDoubleClicked, this,
-          [this](QTableWidgetItem*) { onRemarkEdit(); });
+          [this](QTableWidgetItem*) { onRemarkEdit();
+  connect(deviceTable_, &QTableWidget::itemChanged, this, [this](QTableWidgetItem* it) {
+    if (!it || !hub_ || it->column() != 0) return;
+    const int row = it->row();
+    const QString newName = it->text().trimmed();
+    if (newName.isEmpty()) return;
+    // Prefer previous name stored in UserRole+1; fall back to current if first edit
+    QString oldName = it->data(Qt::UserRole + 1).toString();
+    if (oldName.isEmpty()) oldName = newName;
+    it->setData(Qt::UserRole + 1, newName);
+    QVariantMap cm = hub_->commManager();
+    QVariantList devices = cm.value(QStringLiteral("devices")).toList();
+    bool found = false;
+    for (int i = 0; i < devices.size(); ++i) {
+      QVariantMap d = devices[i].toMap();
+      if (d.value(QStringLiteral("name")).toString() != oldName) continue;
+      d.insert(QStringLiteral("name"), newName);
+      devices[i] = d;
+      found = true;
+      break;
+    }
+    if (!found) return;
+    cm.insert(QStringLiteral("devices"), devices);
+    hub_->loadFromCommManager(cm);
+    emit requestSaveComm(cm);
+    if (status_)
+      status_->setToolTip(QStringLiteral("设备更名 %1 → %2 · F2").arg(oldName, newName));
+  }); });
 
   detail_ = new QLabel(QStringLiteral("选择设备查看备注"));
   detail_->setObjectName(QStringLiteral("muted"));
@@ -344,8 +371,12 @@ void CommPanel::bindDocument(const QVariantMap& commManager) {
 
 void CommPanel::refreshDevices() {
   deviceCombo_->clear();
+  const bool blocked = deviceTable_ && deviceTable_->blockSignals(true);
   deviceTable_->setRowCount(0);
-  if (!hub_) return;
+  if (!hub_) {
+    if (deviceTable_) deviceTable_->blockSignals(blocked);
+    return;
+  }
   const QVariantList list = hub_->deviceList();
   for (const QVariant& v : list) {
     const QVariantMap d = v.toMap();
@@ -354,7 +385,11 @@ void CommPanel::refreshDevices() {
     deviceCombo_->addItem(name);
     const int row = deviceTable_->rowCount();
     deviceTable_->insertRow(row);
-    deviceTable_->setItem(row, 0, new QTableWidgetItem(name));
+    {
+      auto* ni = new QTableWidgetItem(name);
+      ni->setData(Qt::UserRole + 1, name);
+      deviceTable_->setItem(row, 0, ni);
+    }
     deviceTable_->setItem(
         row, 1, new QTableWidgetItem(d.value(QStringLiteral("protocol")).toString()));
     deviceTable_->setItem(
@@ -375,6 +410,7 @@ void CommPanel::refreshDevices() {
     deviceTable_->setItem(0, 0, new QTableWidgetItem(QStringLiteral("LocalLoop")));
     deviceTable_->setItem(0, 1, new QTableWidgetItem(QStringLiteral("Local Bus")));
   }
+    if (deviceTable_) deviceTable_->blockSignals(blocked);
   if (deviceTable_->rowCount() > 0) deviceTable_->selectRow(0);
 }
 
@@ -483,6 +519,17 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
     if (ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) {
       writeBackSelectedDeviceEndpoint();
       if (status_) status_->setToolTip(QStringLiteral("已写回设备端点 · Enter"));
+      return true;
+    }
+    if (ke->key() == Qt::Key_F2) {
+      const auto items = deviceTable_->selectedItems();
+      if (!items.isEmpty()) {
+        auto* nameItem = deviceTable_->item(items.first()->row(), 0);
+        if (nameItem) {
+          deviceTable_->editItem(nameItem);
+          if (status_) status_->setToolTip(QStringLiteral("编辑设备名 · F2 · Enter 结束写回"));
+        }
+      }
       return true;
     }
   }
