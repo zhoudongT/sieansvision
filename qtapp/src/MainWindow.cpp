@@ -602,7 +602,7 @@ void MainWindow::buildToolbar() {
   tb->addAction(QStringLiteral("I/O"), this, &MainWindow::onOpenFlowIo);
   act_preview_ = tb->addAction(QStringLiteral("连续预览"), this,
                                &MainWindow::onStartContinuousPreview);
-  act_preview_->setToolTip(QStringLiteral("连续采集预览 · Soft/UVC/GenTL"));
+  act_preview_->setToolTip(QStringLiteral("连续采集预览 · Soft/UVC/GenTL · 不跑流程"));
   act_preview_->setStatusTip(QStringLiteral("预览 · 连续采集"));
   act_preview_stop_ =
       tb->addAction(QStringLiteral("停预览"), this, &MainWindow::onStopContinuousPreview);
