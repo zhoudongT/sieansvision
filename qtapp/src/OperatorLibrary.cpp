@@ -207,7 +207,7 @@ OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
   list_->setUniformItemSizes(true);
   list_->setObjectName(QStringLiteral("operatorTiles"));
   list_->setToolTip(QStringLiteral("双击/Enter 添加算子 · ↑↓/Home/End/Pg · Esc 清空搜索"));
-  list_->setStatusTip(QStringLiteral("Toolbox 列表 · 双击或 Enter 添加"));
+  list_->setStatusTip(QStringLiteral("Toolbox 列表 · 双击或 Enter 添加 · / 聚焦搜索"));
   lay->addWidget(list_, 1);
   connect(list_, &QListWidget::itemDoubleClicked, this,
           [this](QListWidgetItem* item) {
