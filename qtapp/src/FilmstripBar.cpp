@@ -50,7 +50,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   auto* folder = new QPushButton(QStringLiteral("文件夹"));
   folder->setToolTip(QStringLiteral("添加图像文件夹 · F7"));
   auto* prev = new QPushButton(QStringLiteral("◀"));
-  prev->setToolTip(QStringLiteral("上一张 · ←"));
+  prev->setToolTip(QStringLiteral("上一张 · ← · Home 到首张"));
   prev->setFixedWidth(28);
   auto* next = new QPushButton(QStringLiteral("▶"));
   next->setToolTip(QStringLiteral("下一张 · →"));
