@@ -48,7 +48,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   add->setToolTip(QStringLiteral("添加图像 · Insert · 多选可一次加入"));
   add->setFixedWidth(28);
   auto* folder = new QPushButton(QStringLiteral("文件夹"));
-  folder->setToolTip(QStringLiteral("添加图像文件夹 · F7"));
+  folder->setToolTip(QStringLiteral("添加图像文件夹 · F7 · 递归常见图格式"));
   auto* prev = new QPushButton(QStringLiteral("◀"));
   prev->setToolTip(QStringLiteral("上一张 · ← · Home 到首张"));
   prev->setFixedWidth(28);
