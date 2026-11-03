@@ -534,6 +534,13 @@ void MainWindow::buildUi() {
   connect(filmstrip_, &FilmstripBar::imageSelected, this,
           [this](const QString& path) { loadImagePath(path, false); });
   connect(filmstrip_, &FilmstripBar::runAllRequested, this, &MainWindow::onRunAllImages);
+  connect(filmstrip_, &FilmstripBar::pathsChanged, this, [this]() {
+    if (!filmstrip_) return;
+    document_.setFilmstripPaths(filmstrip_->paths());
+  });
+  connect(filmstrip_, &FilmstripBar::autoSwitchChanged, this, [this](bool on) {
+    document_.setFilmstripAutoSwitch(on);
+  });
   horizontal->addWidget(imagePane);
 
   horizontal->setChildrenCollapsible(false);
@@ -1064,6 +1071,11 @@ void MainWindow::applyDocumentToUi() {
     if (host_sm_) host_sm_->setRunIntervalMs(iv);
     if (host_strip_) host_strip_->setIntervalMs(iv);
     if (flow_tabs_) flow_tabs_->setIntervalMs(iv);
+  }
+  if (filmstrip_) {
+    const QStringList fps = document_.filmstripPaths();
+    if (!fps.isEmpty()) filmstrip_->setPaths(fps);
+    filmstrip_->setAutoSwitch(document_.filmstripAutoSwitch());
   }
   if (comm_panel_) comm_panel_->bindDocument(document_.commManager());
   if (comm_hub_) {

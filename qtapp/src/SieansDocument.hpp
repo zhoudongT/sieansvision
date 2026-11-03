@@ -67,6 +67,10 @@ class SieansDocument {
 
   QStringList hostWatchKeys() const;
   void setHostWatchKeys(const QStringList& keys);
+  QStringList filmstripPaths() const;
+  void setFilmstripPaths(const QStringList& paths);
+  bool filmstripAutoSwitch() const;
+  void setFilmstripAutoSwitch(bool on);
 
   QString cameraDeviceId() const;
   QString cameraBackend() const;  // gentl | uvc | soft

@@ -82,6 +82,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   head->addWidget(countLabel_);
   head->addWidget(status_, 1);
   head->addWidget(autoSwitch_);
+  connect(autoSwitch_, &QCheckBox::toggled, this, &FilmstripBar::autoSwitchChanged);
   head->addWidget(runAll);
   head->addWidget(prev);
   head->addWidget(next);
@@ -123,6 +124,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
     paths_.removeAt(index_);
     const int next = qMin(index_, paths_.size() - 1);
     rebuildThumbs();
+    notifyPathsChanged();
     if (next >= 0) selectIndex(next, true);
     else {
       index_ = -1;
@@ -148,6 +150,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
               index_ = list_->currentRow();
               refreshCount();
               setStatus(QStringLiteral("已重排 %1 张").arg(paths_.size()));
+              notifyPathsChanged();
             }
           });
 
@@ -223,10 +226,32 @@ void FilmstripBar::rebuildThumbs() {
   refreshCount();
 }
 
+void FilmstripBar::setPaths(const QStringList& paths) {
+  paths_.clear();
+  for (const QString& path : paths) {
+    const QString t = path.trimmed();
+    if (!t.isEmpty() && !paths_.contains(t)) paths_.push_back(t);
+  }
+  index_ = paths_.isEmpty() ? -1 : 0;
+  rebuildThumbs();
+  if (index_ >= 0) selectIndex(index_, true);
+  else refreshCount();
+}
+
+void FilmstripBar::setAutoSwitch(bool on) {
+  if (!autoSwitch_) return;
+  const bool blocked = autoSwitch_->blockSignals(true);
+  autoSwitch_->setChecked(on);
+  autoSwitch_->blockSignals(blocked);
+}
+
+void FilmstripBar::notifyPathsChanged() { emit pathsChanged(); }
+
 void FilmstripBar::clearPaths() {
   paths_.clear();
   index_ = -1;
   rebuildThumbs();
+  notifyPathsChanged();
 }
 
 void FilmstripBar::addPaths(const QStringList& paths) {
@@ -242,6 +267,7 @@ void FilmstripBar::addPaths(const QStringList& paths) {
   const int keep = index_ < 0 ? paths_.size() - 1 : index_;
   rebuildThumbs();
   selectIndex(qBound(0, keep, paths_.size() - 1), true);
+  notifyPathsChanged();
 }
 
 QString FilmstripBar::currentPath() const {
@@ -510,6 +536,7 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
           if (r >= 0 && r < paths_.size()) paths_.removeAt(r);
         }
         rebuildThumbs();
+        notifyPathsChanged();
         if (!paths_.isEmpty())
           selectIndex(qMin(sorted.last(), paths_.size() - 1), true);
         else {
@@ -694,6 +721,7 @@ void FilmstripBar::sortByName() {
   int idx = paths_.indexOf(cur);
   if (idx < 0) idx = 0;
   selectIndex(idx, true);
+  notifyPathsChanged();
   setStatus(QStringLiteral("已按文件名排序 · %1").arg(paths_.size()));
 }
 
@@ -710,6 +738,7 @@ void FilmstripBar::removeMissing() {
   if (idx < 0) idx = paths_.isEmpty() ? -1 : 0;
   if (idx >= 0) selectIndex(idx, true);
   else { index_ = -1; refreshCount(); }
+  notifyPathsChanged();
   setStatus(QStringLiteral("已剔除缺失 %1 · 剩 %2 · Ctrl+Shift+M")
                 .arg(before - paths_.size()).arg(paths_.size()));
 }
@@ -725,6 +754,7 @@ void FilmstripBar::shufflePaths() {
   int idx = paths_.indexOf(cur);
   if (idx < 0) idx = 0;
   selectIndex(idx, true);
+  notifyPathsChanged();
   setStatus(QStringLiteral("已乱序 · %1 · Ctrl+Shift+R").arg(paths_.size()));
 }
 
@@ -742,6 +772,7 @@ void FilmstripBar::keepOnlySelected() {
   rebuildThumbs();
   refreshCount();
   if (!paths_.isEmpty()) emit imageSelected(paths_.first());
+  notifyPathsChanged();
   if (status_) status_->setText(QStringLiteral("仅保留选中 %1 · Ctrl+Shift+K").arg(paths_.size()));
 }
 
@@ -829,6 +860,7 @@ void FilmstripBar::removeDuplicatePaths() {
   int want = uniq.indexOf(cur);
   if (want < 0) want = 0;
   selectIndex(want, true);
+  notifyPathsChanged();
   setStatus(QStringLiteral("已剔重 %1 · 剩 %2 · Ctrl+Shift+U").arg(removed).arg(paths_.size()));
 }
 
@@ -857,6 +889,7 @@ void FilmstripBar::moveSelectedToFront() {
     const int ni = paths_.indexOf(cur);
     if (ni >= 0) selectIndex(ni, true);
   }
+  notifyPathsChanged();
   setStatus(QStringLiteral("已置顶 %1 · Ctrl+Shift+Home").arg(moved.size()));
 }
 
@@ -883,6 +916,7 @@ void FilmstripBar::moveSelectedToEnd() {
     const int ni = paths_.indexOf(cur);
     if (ni >= 0) selectIndex(ni, true);
   }
+  notifyPathsChanged();
   setStatus(QStringLiteral("已置底 %1 · Ctrl+Shift+End").arg(moved.size()));
 }
 

@@ -2,6 +2,8 @@
 
 #include <QFile>
 #include <QJsonDocument>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QJsonValue>
 #include <QUuid>
 
@@ -406,6 +408,32 @@ QStringList SieansDocument::hostWatchKeys() const {
             QStringLiteral("commPayload")};
   }
   return keys;
+}
+
+QStringList SieansDocument::filmstripPaths() const {
+  QStringList out;
+  for (const QVariant& v : raw_.value(QStringLiteral("filmstripPaths")).toArray().toVariantList()) {
+    const QString p = v.toString().trimmed();
+    if (!p.isEmpty()) out << p;
+  }
+  return out;
+}
+
+void SieansDocument::setFilmstripPaths(const QStringList& paths) {
+  QJsonArray arr;
+  for (const QString& p : paths) {
+    const QString t = p.trimmed();
+    if (!t.isEmpty()) arr.append(t);
+  }
+  raw_.insert(QStringLiteral("filmstripPaths"), arr);
+}
+
+bool SieansDocument::filmstripAutoSwitch() const {
+  return raw_.value(QStringLiteral("filmstripAutoSwitch")).toBool(false);
+}
+
+void SieansDocument::setFilmstripAutoSwitch(bool on) {
+  raw_.insert(QStringLiteral("filmstripAutoSwitch"), on);
 }
 
 }  // namespace sieans_qt
