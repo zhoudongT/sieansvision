@@ -1,9 +1,11 @@
 #include "FlowMinimap.hpp"
 #include "FlowCanvas.hpp"
+#include <QGraphicsView>
 #include "Theme.hpp"
 
 #include <QEvent>
 #include <QMouseEvent>
+#include <QWheelEvent>
 #include <QPaintEvent>
 #include <QPainter>
 #include <QPen>
@@ -15,8 +17,8 @@ FlowMinimap::FlowMinimap(QGraphicsScene* scene, QGraphicsView* view, QWidget* pa
   setObjectName(QStringLiteral("flowMinimap"));
   setFixedSize(180, 120);
   setCursor(Qt::OpenHandCursor);
-  setToolTip(QStringLiteral("流程概览 · 拖拽平移视口 · 橙框=当前视野 · 点击跳转"));
-  setStatusTip(QStringLiteral("Minimap · 拖拽平移 · 点击定位 · 橙框=当前视野"));
+  setToolTip(QStringLiteral("流程概览 · 拖拽平移视口 · 橙框=当前视野 · 点击跳转 · 双击适应 · 滚轮缩放"));
+  setStatusTip(QStringLiteral("Minimap · 拖拽平移 · 点击定位 · 双击适应 · 滚轮缩放 · 橙框=当前视野"));
   setAttribute(Qt::WA_TransparentForMouseEvents, false);
   setMouseTracking(true);
   if (scene_) connect(scene_, &QGraphicsScene::changed, this, [this](const QList<QRectF>&) { update(); });
@@ -149,6 +151,31 @@ void FlowMinimap::mouseReleaseEvent(QMouseEvent* event) {
   dragging_ = false;
   setCursor(Qt::OpenHandCursor);
   QWidget::mouseReleaseEvent(event);
+}
+
+
+void FlowMinimap::mouseDoubleClickEvent(QMouseEvent* event) {
+  if (event->button() != Qt::LeftButton || !view_) {
+    QWidget::mouseDoubleClickEvent(event);
+    return;
+  }
+  view_->fitInView(view_->sceneRect().adjusted(-40, -40, 40, 40), Qt::KeepAspectRatio);
+  if (view_->transform().m11() > 1.6)
+    view_->resetTransform();
+  update();
+  event->accept();
+}
+
+void FlowMinimap::wheelEvent(QWheelEvent* event) {
+  if (!view_) {
+    QWidget::wheelEvent(event);
+    return;
+  }
+  const double factor = event->angleDelta().y() > 0 ? 1.12 : (1.0 / 1.12);
+  view_->setTransformationAnchor(QGraphicsView::AnchorViewCenter);
+  view_->scale(factor, factor);
+  update();
+  event->accept();
 }
 
 }  // namespace sieans_qt

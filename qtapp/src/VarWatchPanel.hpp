@@ -6,6 +6,8 @@
 #include <QVariantMap>
 #include <QStringList>
 
+class QLineEdit;
+
 namespace sieans_qt {
 
 class VarWatchPanel : public QWidget {
@@ -24,8 +26,10 @@ private:
   void rebuild();
 
   QTableWidget* table_ = nullptr;
+  QLineEdit* filterEdit_ = nullptr;
   QStringList keys_;
   QVariantMap vars_;
+  QString filter_;
 };
 
 }  // namespace sieans_qt

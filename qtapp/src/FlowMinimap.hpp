@@ -6,6 +6,9 @@
 class QGraphicsScene;
 class QGraphicsView;
 class QEvent;
+class QMouseEvent;
+class QWheelEvent;
+class QPaintEvent;
 
 namespace sieans_qt {
 
@@ -26,6 +29,8 @@ class FlowMinimap : public QWidget {
   void mousePressEvent(QMouseEvent* event) override;
   void mouseMoveEvent(QMouseEvent* event) override;
   void mouseReleaseEvent(QMouseEvent* event) override;
+  void mouseDoubleClickEvent(QMouseEvent* event) override;
+  void wheelEvent(QWheelEvent* event) override;
   bool eventFilter(QObject* obj, QEvent* event) override;
 
  private:

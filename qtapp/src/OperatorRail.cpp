@@ -147,6 +147,8 @@ OperatorRail::OperatorRail(QWidget* parent) : QWidget(parent) {
     emit categorySelected(cat);
   });
   installEventFilter(this);
+  setFocusPolicy(Qt::StrongFocus);
+  setStatusTip(QStringLiteral("Toolbox 轨 · ↑↓/Home/End · 1-9 跳分类 · Esc/0/A 全部"));
 }
 
 bool OperatorRail::eventFilter(QObject* obj, QEvent* event) {
@@ -189,6 +191,21 @@ bool OperatorRail::eventFilter(QObject* obj, QEvent* event) {
       if (auto* b = group_->button(next)) {
         b->setChecked(true);
         // mirror idClicked path
+        for (auto* bb : group_->buttons()) {
+          auto* tb = qobject_cast<QToolButton*>(bb);
+          if (!tb) continue;
+          const QString kind = tb->property("railKind").toString();
+          const QString k = kind.isEmpty() ? QStringLiteral("ext") : kind;
+          tb->setIcon(railIcon(k.toUtf8().constData(), tb->isChecked()));
+        }
+        emit categorySelected(b->property("railCategory").toString());
+      }
+      return true;
+    }
+    if (ke->key() >= Qt::Key_1 && ke->key() <= Qt::Key_9 && group_) {
+      const int want = ke->key() - Qt::Key_1;  // 0-based; 1→相机
+      if (auto* b = group_->button(want)) {
+        b->setChecked(true);
         for (auto* bb : group_->buttons()) {
           auto* tb = qobject_cast<QToolButton*>(bb);
           if (!tb) continue;

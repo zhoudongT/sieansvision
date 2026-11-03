@@ -4,6 +4,7 @@
 
 #include <QVBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QHeaderView>
 #include <QAbstractItemView>
 #include <QColor>
@@ -24,8 +25,30 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
   lay->setSpacing(4);
   auto* title = new QLabel(QStringLiteral("变量监视"));
   title->setObjectName(QStringLiteral("sectionTitle"));
-  title->setToolTip(QStringLiteral("变量监视 · passGate/urlOk/lastRecv 高亮 · F2 聚焦表格 · 双击复制"));
+  title->setToolTip(QStringLiteral("变量监视 · passGate/urlOk/lastRecv 高亮 · F2 聚焦表格 · 双击复制 · Ctrl+F 过滤"));
   lay->addWidget(title);
+  filterEdit_ = new QLineEdit;
+  filterEdit_->setObjectName(QStringLiteral("varWatchFilter"));
+  filterEdit_->setPlaceholderText(QStringLiteral("过滤变量名/值 · Ctrl+F · Esc 清空"));
+  filterEdit_->setClearButtonEnabled(true);
+  filterEdit_->setToolTip(QStringLiteral("变量监视过滤 · 匹配键或值 · Ctrl+F 聚焦 · Esc/Ctrl+L 清空"));
+  lay->addWidget(filterEdit_);
+  connect(filterEdit_, &QLineEdit::textChanged, this, [this](const QString& s) {
+    filter_ = s.trimmed();
+    rebuild();
+  });
+  {
+    auto* scF = new QShortcut(QKeySequence(QStringLiteral("Ctrl+F")), this);
+    connect(scF, &QShortcut::activated, this, [this]() {
+      if (!filterEdit_) return;
+      filterEdit_->setFocus(Qt::ShortcutFocusReason);
+      filterEdit_->selectAll();
+    });
+    auto* scL = new QShortcut(QKeySequence(QStringLiteral("Ctrl+L")), this);
+    connect(scL, &QShortcut::activated, this, [this]() {
+      if (filterEdit_) filterEdit_->clear();
+    });
+  }
   table_ = new QTableWidget(0, 2);
   table_->setHorizontalHeaderLabels(
       {QStringLiteral("变量"), QStringLiteral("值")});
@@ -51,7 +74,8 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
           });
   table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Esc 取消选中 · F2 聚焦表"));
   table_->installEventFilter(this);
-  setStatusTip(QStringLiteral("变量监视 · 双击/Ctrl+C/C 复制 · Home/End/PgUp/PgDn · Esc 取消选中 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
+  if (filterEdit_) filterEdit_->installEventFilter(this);
+  setStatusTip(QStringLiteral("变量监视 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Home/End/PgUp/PgDn · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
   keys_ = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
            QStringLiteral("passGate"), QStringLiteral("urlOk"),
@@ -84,13 +108,37 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
 
 
 bool VarWatchPanel::eventFilter(QObject* obj, QEvent* event) {
+  if (obj == filterEdit_ && event->type() == QEvent::KeyPress) {
+    auto* ke = static_cast<QKeyEvent*>(event);
+    if (ke->key() == Qt::Key_Escape) {
+      filterEdit_->clear();
+      if (table_) table_->setFocus(Qt::OtherFocusReason);
+      return true;
+    }
+    if (ke->key() == Qt::Key_Down && table_ && table_->rowCount() > 0) {
+      table_->setFocus(Qt::OtherFocusReason);
+      table_->setCurrentCell(0, 0);
+      return true;
+    }
+  }
   if (obj == table_ && event->type() == QEvent::KeyPress && table_) {
     auto* ke = static_cast<QKeyEvent*>(event);
-        if (ke->key() == Qt::Key_F2) {
+    if (ke->key() == Qt::Key_F2) {
       table_->setFocus(Qt::ShortcutFocusReason);
       return true;
     }
-if (ke->key() == Qt::Key_Escape) {
+    if ((ke->modifiers() & Qt::ControlModifier) && ke->key() == Qt::Key_F) {
+      if (filterEdit_) {
+        filterEdit_->setFocus(Qt::ShortcutFocusReason);
+        filterEdit_->selectAll();
+      }
+      return true;
+    }
+    if (ke->key() == Qt::Key_Escape) {
+      if (filterEdit_ && !filterEdit_->text().isEmpty()) {
+        filterEdit_->clear();
+        return true;
+      }
       table_->clearSelection();
       table_->setCurrentCell(-1, -1);
       return true;
@@ -133,7 +181,15 @@ void VarWatchPanel::rebuild() {
     if (!show.contains(it.key())) show << it.key();
   }
   table_->setRowCount(0);
+  int matched = 0;
   for (const QString& k : show) {
+    const QString rawProbe = vars_.value(k).toString();
+    if (!filter_.isEmpty()) {
+      if (!k.contains(filter_, Qt::CaseInsensitive) &&
+          !rawProbe.contains(filter_, Qt::CaseInsensitive))
+        continue;
+    }
+    ++matched;
     const int row = table_->rowCount();
     table_->insertRow(row);
     table_->setItem(row, 0, new QTableWidgetItem(k));
@@ -169,6 +225,11 @@ void VarWatchPanel::rebuild() {
       vf.setBold(true);
       val->setFont(vf);
     }
+  }
+  if (filterEdit_) {
+    filterEdit_->setToolTip(
+        QStringLiteral("变量监视过滤 · 匹配 %1 · Ctrl+F 聚焦 · Esc/Ctrl+L 清空")
+            .arg(matched));
   }
 }
 
