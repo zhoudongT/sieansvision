@@ -37,7 +37,7 @@ FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   stop->setStatusTip(QStringLiteral("流程 · 停止"));
   auto* fit = new QPushButton(QStringLiteral("适应"));
   fit->setFixedWidth(40);
-  fit->setToolTip(QStringLiteral("适应流程画布 · F/G/A/Space/Home/0/R"));
+  fit->setToolTip(QStringLiteral("适应流程画布 · F/G/A/Space/Home/0/R · 含选中节点"));
   fit->setStatusTip(QStringLiteral("流程 · 适应画布"));
   auto* hint = new QLabel(QStringLiteral("F5 一次 · F6 连续 · F/R 适应 · Esc 取消连线 · Del 删连线"));
   hint->setObjectName(QStringLiteral("muted"));
