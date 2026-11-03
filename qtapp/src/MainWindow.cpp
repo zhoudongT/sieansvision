@@ -1062,7 +1062,8 @@ void MainWindow::buildToolbar() {
   tb->addSeparator();
   act_mode_ = tb->addAction(QStringLiteral("运行模式"));
   act_mode_->setCheckable(true);
-  act_mode_->setToolTip(QStringLiteral("设计态可编辑画布；运行态锁定拖拽、连线和删除 · F5/F9 仍可运行"));
+  act_mode_->setShortcut(QKeySequence(Qt::Key_F8));
+  act_mode_->setToolTip(QStringLiteral("设计态可编辑画布；运行态锁定拖拽、连线和删除 · F8 切换 · F5/F9 仍可运行"));
   connect(act_mode_, &QAction::toggled, this, &MainWindow::onToggleRunMode);
   tb->addSeparator();
   tb->addAction(QStringLiteral("示例 QR"), this, &MainWindow::onLoadSample);
@@ -1070,7 +1071,7 @@ void MainWindow::buildToolbar() {
   tb->addSeparator();
   mode_badge_ = new QLabel(QStringLiteral("设计态"));
   mode_badge_->setObjectName(QStringLiteral("modeBadge"));
-  mode_badge_->setToolTip(QStringLiteral("设计态可编辑 · 运行态锁定画布 · 单击切换 · Alt暂停/继续 · 中键运行一次 · 右键连续/暂停 · 双击停连续"));
+  mode_badge_->setToolTip(QStringLiteral("设计态可编辑 · 运行态锁定画布 · 单击/F8 切换 · Alt暂停/继续 · 中键运行一次 · 右键连续/暂停 · 双击停连续"));
   mode_badge_->setStatusTip(QStringLiteral("模式徽章 · 设计/运行 · Alt暂停 · 中键一次 · 右键连续 · 双击停"));
   mode_badge_->setProperty("runMode", false);
   mode_badge_->setCursor(Qt::PointingHandCursor);

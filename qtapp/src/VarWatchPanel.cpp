@@ -69,6 +69,8 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
     connect(scRm, &QShortcut::activated, this, &VarWatchPanel::removeSelectedKeys);
     auto* scX = new QShortcut(QKeySequence(QStringLiteral("Ctrl+X")), this);
     connect(scX, &QShortcut::activated, this, &VarWatchPanel::cutSelectedKeys);
+    auto* scHost = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+H")), this);
+    connect(scHost, &QShortcut::activated, this, &VarWatchPanel::copyHostWatchKeys);
   }
   table_ = new QTableWidget(0, 2);
   table_->setHorizontalHeaderLabels(
@@ -101,7 +103,7 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
   table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · 中键 ${flow} · 右键键=值 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Esc 取消选中 · F2 聚焦表 · Ctrl+Shift+J JSON"));
   table_->installEventFilter(this);
   if (filterEdit_) filterEdit_->installEventFilter(this);
-  setStatusTip(QStringLiteral("变量监视 · ★=Host条 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · 中键token/右键键=值 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+X 剪切 · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
+  setStatusTip(QStringLiteral("变量监视 · ★=Host条 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · 中键token/右键键=值 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+X 剪切 · Ctrl+Shift+H ★键 · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
   keys_ = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
            QStringLiteral("passGate"), QStringLiteral("urlOk"),
@@ -504,6 +506,18 @@ void VarWatchPanel::cutSelectedKeys() {
                        QStringLiteral("已剪切监视 %1 · Ctrl+X · Ctrl+Shift+V 粘贴").arg(n),
                        table_);
   }
+}
+
+
+void VarWatchPanel::copyHostWatchKeys() {
+  QStringList keys = hostWatch_;
+  if (keys.isEmpty()) {
+    QToolTip::showText(QCursor::pos(), QStringLiteral("无 Host★ 监视 · Ctrl+Shift+H · Space 钉选"), table_);
+    return;
+  }
+  if (auto* clip = QApplication::clipboard()) clip->setText(keys.join(QLatin1Char(',')));
+  QToolTip::showText(QCursor::pos(),
+                     QStringLiteral("已复制 Host★ 键 %1 · Ctrl+Shift+H").arg(keys.size()), table_);
 }
 
 void VarWatchPanel::moveSelectedKey(int delta) {
