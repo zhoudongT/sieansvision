@@ -150,8 +150,12 @@ PropertyPanel::PropertyPanel(QWidget* parent) : QWidget(parent) {
     connect(scCopy, &QShortcut::activated, this, &PropertyPanel::copyVisibleParams);
     auto* scPaste = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+V")), this);
     connect(scPaste, &QShortcut::activated, this, &PropertyPanel::pasteKeyValueParams);
+    auto* scJ = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+J")), this);
+    connect(scJ, &QShortcut::activated, this, &PropertyPanel::exportParamsJson);
+    auto* scO = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+O")), this);
+    connect(scO, &QShortcut::activated, this, &PropertyPanel::importParamsJson);
   }
-  setStatusTip(QStringLiteral("属性面板 · Ctrl+F 过滤 · Esc 清过滤 · Ctrl+Shift+C 复制可见 · Ctrl+Shift+V 粘贴键值 · emptyDefault/{name}"));
+  setStatusTip(QStringLiteral("属性面板 · Ctrl+F · Esc 清过滤 · Ctrl+Shift+C/V 键值 · Ctrl+Shift+J/O JSON · emptyDefault/{name}"));
 
   auto* scroll = new QScrollArea;
   scroll->setWidgetResizable(true);
@@ -556,6 +560,61 @@ void PropertyPanel::pasteKeyValueParams() {
   }
   if (filterEdit_)
     filterEdit_->setToolTip(QStringLiteral("已粘贴参数 %1 · Ctrl+Shift+V").arg(n));
+}
+
+
+void PropertyPanel::exportParamsJson() {
+  QJsonObject o = QJsonObject::fromVariantMap(params_);
+  if (!currentId_.isEmpty()) o.insert(QStringLiteral("_nodeId"), currentId_);
+  const QByteArray bytes = QJsonDocument(o).toJson(QJsonDocument::Compact);
+  if (auto* clip = QGuiApplication::clipboard()) clip->setText(QString::fromUtf8(bytes));
+  if (filterEdit_)
+    filterEdit_->setToolTip(QStringLiteral("已导出参数JSON %1 · Ctrl+Shift+J").arg(params_.size()));
+}
+
+void PropertyPanel::importParamsJson() {
+  const QString clip = QGuiApplication::clipboard() ? QGuiApplication::clipboard()->text() : QString();
+  if (clip.trimmed().isEmpty() || !form_) return;
+  QJsonParseError pe;
+  const QJsonDocument doc = QJsonDocument::fromJson(clip.toUtf8(), &pe);
+  if (pe.error != QJsonParseError::NoError || !doc.isObject()) {
+    if (filterEdit_)
+      filterEdit_->setToolTip(QStringLiteral("JSON 无效 · Ctrl+Shift+O"));
+    return;
+  }
+  const QVariantMap m = doc.object().toVariantMap();
+  int n = 0;
+  for (auto it = m.begin(); it != m.end(); ++it) {
+    if (it.key().startsWith(QLatin1Char('_'))) continue;
+    const QString key = it.key();
+    const QString val = it.value().toString();
+    for (int r = 0; r < form_->rowCount(); ++r) {
+      QWidget* fieldW = nullptr;
+      if (auto* fi = form_->itemAt(r, QFormLayout::FieldRole)) fieldW = fi->widget();
+      if (!fieldW) continue;
+      if (fieldW->property("propKey").toString() != key) continue;
+      if (auto* le = qobject_cast<QLineEdit*>(fieldW)) {
+        le->setText(val); ++n;
+      } else if (auto* sp = qobject_cast<QSpinBox*>(fieldW)) {
+        bool ok = false; const int iv = val.toInt(&ok);
+        if (ok) { sp->setValue(iv); ++n; }
+      } else if (auto* dsp = qobject_cast<QDoubleSpinBox*>(fieldW)) {
+        bool ok = false; const double dv = val.toDouble(&ok);
+        if (ok) { dsp->setValue(dv); ++n; }
+      } else if (auto* box = qobject_cast<QCheckBox*>(fieldW)) {
+        box->setChecked(val == QLatin1String("true") || val == QLatin1String("1") ||
+                        it.value().toBool());
+        ++n;
+      } else if (auto* combo = qobject_cast<QComboBox*>(fieldW)) {
+        int cidx = combo->findData(val);
+        if (cidx < 0) cidx = combo->findText(val);
+        if (cidx >= 0) { combo->setCurrentIndex(cidx); ++n; }
+      }
+      break;
+    }
+  }
+  if (filterEdit_)
+    filterEdit_->setToolTip(QStringLiteral("已导入参数JSON %1 · Ctrl+Shift+O").arg(n));
 }
 
 }  // namespace sieans_qt

@@ -26,6 +26,8 @@ class PropertyPanel : public QWidget {
   void focusFilter();
   void copyVisibleParams();
   void pasteKeyValueParams();
+  void exportParamsJson();
+  void importParamsJson();
   /** Re-apply a param snapshot into live editors (PF Ctrl+R). */
   void applySnapshot(const QVariantMap& snap);
 
