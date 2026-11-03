@@ -122,7 +122,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   bindSummary_->setObjectName(QStringLiteral("commBindSummary"));
   bindSummary_->setWordWrap(true);
   bindSummary_->setCursor(Qt::PointingHandCursor);
-  bindSummary_->setToolTip(QStringLiteral("tcpReal 绑定摘要 · host:port · framing · ack · reconnect · 单击复制 · 右键从剪贴板粘贴 host:port"));
+  bindSummary_->setToolTip(QStringLiteral("tcpReal 绑定摘要 · host:port · framing · ack · reconnect · 单击复制 · 右键从剪贴板粘贴 host:port · 中键切换重连"));
   bindSummary_->installEventFilter(this);
   form->addRow(QStringLiteral("摘要"), bindSummary_);
   payloadEdit_ = new QLineEdit(
@@ -426,6 +426,14 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
     }
     if (me->button() == Qt::RightButton) {
       pasteEndpointFromClipboard();
+      return true;
+    }
+    if (me->button() == Qt::MiddleButton && reconnectCheck_) {
+      reconnectCheck_->toggle();
+      if (bindSummary_)
+        bindSummary_->setToolTip(QStringLiteral("已切换重连 %1 · 中键")
+                                     .arg(reconnectCheck_->isChecked() ? QStringLiteral("开")
+                                                                       : QStringLiteral("关")));
       return true;
     }
   }

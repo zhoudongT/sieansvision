@@ -13,6 +13,11 @@
 #include <QFont>
 #include <QWheelEvent>
 #include <QKeyEvent>
+#include <QMouseEvent>
+#include <QClipboard>
+#include <QGuiApplication>
+#include <QToolTip>
+#include <QCursor>
 #include <QUuid>
 #include <algorithm>
 #include <QtMath>
@@ -643,8 +648,8 @@ void FlowScene::keyPressEvent(QKeyEvent* event) {
 
 FlowView::FlowView(FlowScene* scene, QWidget* parent)
     : QGraphicsView(scene, parent) {
-  setToolTip(QStringLiteral("滚轮/+/- 缩放 · F/G/A/Space/Home/0/R 适应画布 · F2 重命名 · Ctrl+A 全选节点 · Del/Backspace 删连线 · Esc 取消连线 · I 打开 I/O"));
-  setStatusTip(QStringLiteral("流程画布 · F/G/A/Space/Home/0/R 适应 · I→I/O · +/- 缩放 · Esc 取消连线 · Del/Backspace 删连线 · 滚轮缩放"));
+  setToolTip(QStringLiteral("滚轮/+/- 缩放 · F/G/A/Space/Home/0/R 适应画布 · F2 重命名 · Ctrl+A 全选节点 · Ctrl+C/Ctrl+Shift+C 复制选中节点 · 中键适应 · Del/Backspace 删连线 · Esc 取消连线 · I 打开 I/O"));
+  setStatusTip(QStringLiteral("流程画布 · F/G/A/Space/Home/0/R 适应 · I→I/O · +/- 缩放 · Ctrl+C 节点 · 中键适应 · Esc 取消连线 · Del/Backspace 删连线 · 滚轮缩放"));
   setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing);
   setDragMode(QGraphicsView::RubberBandDrag);
   setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
@@ -697,6 +702,27 @@ void FlowView::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
+  if (event->key() == Qt::Key_C && (event->modifiers() & Qt::ControlModifier)) {
+    if (auto* sc = qobject_cast<FlowScene*>(scene())) {
+      QStringList ids;
+      for (QGraphicsItem* it : sc->selectedItems()) {
+        if (auto* n = dynamic_cast<FlowNodeItem*>(it)) {
+          if (event->modifiers() & Qt::ShiftModifier)
+            ids << n->nodeId();
+          else
+            ids << QStringLiteral("%1\t%2").arg(n->nodeId(), n->label());
+        }
+      }
+      if (!ids.isEmpty()) {
+        if (auto* clip = QGuiApplication::clipboard())
+          clip->setText(ids.join(QLatin1Char('\n')));
+        QToolTip::showText(QCursor::pos(),
+                           QStringLiteral("已复制节点 %1 · Ctrl+C").arg(ids.size()), this);
+      }
+      event->accept();
+      return;
+    }
+  }
   if (auto* sc = qobject_cast<FlowScene*>(scene())) {
     if (event->key() == Qt::Key_Escape || event->key() == Qt::Key_Delete ||
         event->key() == Qt::Key_Backspace) {
@@ -705,6 +731,16 @@ void FlowView::keyPressEvent(QKeyEvent* event) {
     }
   }
   QGraphicsView::keyPressEvent(event);
+}
+
+
+void FlowView::mousePressEvent(QMouseEvent* event) {
+  if (event->button() == Qt::MiddleButton) {
+    fitAll();
+    event->accept();
+    return;
+  }
+  QGraphicsView::mousePressEvent(event);
 }
 
 void FlowView::dragEnterEvent(QDragEnterEvent* event) {

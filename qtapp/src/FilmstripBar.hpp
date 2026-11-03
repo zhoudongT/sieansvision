@@ -35,6 +35,8 @@ class FilmstripBar : public QWidget {
   void sortByName();
   void removeMissing();
   void shufflePaths();
+  void keepOnlySelected();
+  void exportPathList();
 
  protected:
   void keyPressEvent(QKeyEvent* event) override;

@@ -10,6 +10,8 @@
 #include <QMimeData>
 #include <QLineEdit>
 #include <QKeyEvent>
+#include <QClipboard>
+#include <QGuiApplication>
 #include <QEvent>
 #include <QListWidget>
 #include <QPainter>
@@ -206,7 +208,7 @@ OperatorDef OperatorLibrary::findDef(const QString& key) {
 }
 
 OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
-  setStatusTip(QStringLiteral("Toolbox · / 或 Ctrl+F/L 搜索 · 最近 · Ctrl+1-9 最近项 · Ctrl+0 清过滤 · Ctrl+Shift+Del 清最近 · 分类芯片 · Enter 添加(列表/搜索) · Home/End/PgUp/PgDn · Esc 清空"));
+  setStatusTip(QStringLiteral("Toolbox · / 或 Ctrl+F/L 搜索 · 最近 · Ctrl+1-9 最近项 · Ctrl+0 清过滤 · Ctrl+C 复制算子 · Ctrl+Shift+Del 清最近 · 分类芯片 · Enter 添加(列表/搜索) · Home/End/PgUp/PgDn · Esc 清空"));
   setObjectName(QStringLiteral("libraryPane"));
   auto* lay = new QVBoxLayout(this);
   lay->setContentsMargins(0, 0, 0, 0);
@@ -450,6 +452,17 @@ bool OperatorLibrary::eventFilter(QObject* obj, QEvent* event) {
     if ((ke->modifiers() & Qt::ControlModifier) &&
         ke->key() >= Qt::Key_1 && ke->key() <= Qt::Key_9) {
       activateRecentAt(ke->key() - Qt::Key_1);
+      return true;
+    }
+    if ((ke->modifiers() & Qt::ControlModifier) && ke->key() == Qt::Key_C && list_) {
+      QListWidgetItem* it = list_->currentItem();
+      if (it) {
+        const QString tip = it->toolTip().isEmpty() ? it->text() : it->toolTip();
+        const QString key = it->data(Qt::UserRole).toString();
+        if (auto* clip = QGuiApplication::clipboard())
+          clip->setText(key.isEmpty() ? tip : key + QLatin1Char('\t') + tip);
+        if (search_) search_->setToolTip(QStringLiteral("已复制算子 · Ctrl+C"));
+      }
       return true;
     }
     if ((ke->modifiers() & Qt::ControlModifier) && ke->key() == Qt::Key_0) {

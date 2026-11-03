@@ -636,6 +636,15 @@ void MainWindow::buildUi() {
     connect(scEsc, &QShortcut::activated, this, [this]() {
       if (resultLogFilter_ && !resultLogFilter_->text().isEmpty()) resultLogFilter_->clear();
     });
+    auto* scCopyLog = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+C")), result_log_);
+    connect(scCopyLog, &QShortcut::activated, this, [this]() {
+      if (!result_log_) return;
+      const QString text = result_log_->toPlainText();
+      if (auto* clip = QGuiApplication::clipboard()) clip->setText(text);
+      if (resultLogFilter_)
+        resultLogFilter_->setToolTip(QStringLiteral("已复制历史 %1 字 · Ctrl+Shift+C").arg(text.size()));
+    });
+    result_log_->setToolTip(QStringLiteral("历史结果 · Ctrl+Shift+C 复制可见过滤 · Ctrl+Alt+F 过滤"));
   }
   bottom->addTab(logHost, QStringLiteral("历史结果"));
 

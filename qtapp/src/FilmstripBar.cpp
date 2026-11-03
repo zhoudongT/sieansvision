@@ -16,6 +16,7 @@
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QClipboard>
+#include <QGuiApplication>
 #include <QApplication>
 #include <QFileInfo>
 #include <QEvent>
@@ -89,7 +90,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   list_->setFixedHeight(kThumbH + 22);
   list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
   list_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  list_->setStatusTip(QStringLiteral("胶片 · ←→ Home/End/PgUp/PgDn · 0/A/1-9 · Ctrl+A 全选 · Ctrl+C 路径 · Ctrl+Shift+C 文件名 · Ctrl+D 复制 · Ctrl+Shift+I 反选 · Ctrl+Shift+S 排序 · 中键删除 · Space/F6 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Del 多选删除"));
+  list_->setStatusTip(QStringLiteral("胶片 · ←→ Home/End/PgUp/PgDn · 0/A/1-9 · Ctrl+A 全选 · Ctrl+C 路径 · Ctrl+Shift+C 文件名 · Ctrl+E 导出列表 · Ctrl+Shift+K 仅保留 · Ctrl+D 复制 · Ctrl+Shift+I 反选 · Ctrl+Shift+S 排序 · 中键删除 · Space/F6 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Del 多选删除"));
   list_->setSpacing(2);
   list_->setSelectionMode(QAbstractItemView::ExtendedSelection);
   root->addWidget(list_);
@@ -378,6 +379,18 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
+  if (event->key() == Qt::Key_K && (event->modifiers() & Qt::ControlModifier) &&
+      (event->modifiers() & Qt::ShiftModifier)) {
+    keepOnlySelected();
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_E && (event->modifiers() & Qt::ControlModifier) &&
+      !(event->modifiers() & Qt::ShiftModifier)) {
+    exportPathList();
+    event->accept();
+    return;
+  }
   if (event->key() == Qt::Key_D && (event->modifiers() & Qt::ControlModifier)) {
     duplicateSelected();
     event->accept();
@@ -597,6 +610,29 @@ void FilmstripBar::shufflePaths() {
   if (idx < 0) idx = 0;
   selectIndex(idx, true);
   setStatus(QStringLiteral("已乱序 · %1 · Ctrl+Shift+R").arg(paths_.size()));
+}
+
+
+void FilmstripBar::keepOnlySelected() {
+  if (!list_) return;
+  QStringList keep;
+  for (auto* it : list_->selectedItems()) {
+    const int row = list_->row(it);
+    if (row >= 0 && row < paths_.size()) keep << paths_.at(row);
+  }
+  if (keep.isEmpty()) return;
+  paths_ = keep;
+  index_ = 0;
+  rebuildThumbs();
+  refreshCount();
+  if (!paths_.isEmpty()) emit imageSelected(paths_.first());
+  if (status_) status_->setText(QStringLiteral("仅保留选中 %1 · Ctrl+Shift+K").arg(paths_.size()));
+}
+
+void FilmstripBar::exportPathList() {
+  if (paths_.isEmpty()) return;
+  if (auto* clip = QGuiApplication::clipboard()) clip->setText(paths_.join(QLatin1Char('\n')));
+  if (status_) status_->setText(QStringLiteral("已导出路径 %1 · Ctrl+E").arg(paths_.size()));
 }
 
 }  // namespace sieans_qt
