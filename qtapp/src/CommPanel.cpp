@@ -189,7 +189,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   payloadEdit_ = new QLineEdit(
       QStringLiteral("BARCODE ok=${flow.passGate} text=${flow.barcodeText}"));
   payloadEdit_->setToolTip(
-      QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · 下方芯片插入 · Enter/Ctrl+Enter 试发 · Alt+↑↓ 历史 · Alt+Del 删当前 · Alt+Shift+Del 清空 · Alt+Shift+Y 反序 · Alt+Shift+S 排序 · Alt+Shift+U 去重 · Alt+Shift+J JSON导出 · LocalBus echo"));
+      QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · 下方芯片插入 · Enter/Ctrl+Enter 试发 · Alt+↑↓ 历史 · Alt+Del 删当前 · Alt+Shift+Del 清空 · Alt+Shift+Y 反序 · Alt+Shift+S 排序 · Alt+Shift+U 去重 · Alt+Shift+J/O JSON导出/导入 · LocalBus echo"));
   form->addRow(QStringLiteral("报文"), payloadEdit_);
   payloadEdit_->installEventFilter(this);
   lay->addLayout(form);
@@ -705,6 +705,10 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
       }
       if (ke->key() == Qt::Key_J && (ke->modifiers() & Qt::ShiftModifier)) {
         exportPayloadHistoryJson();
+        return true;
+      }
+      if (ke->key() == Qt::Key_O && (ke->modifiers() & Qt::ShiftModifier)) {
+        importPayloadHistoryJson();
         return true;
       }
     }
@@ -1259,6 +1263,62 @@ void CommPanel::exportPayloadHistoryJson() {
     clip->setText(QString::fromUtf8(bytes));
   if (status_)
     status_->setToolTip(QStringLiteral("已导出报文历史JSON %1 · Alt+Shift+J").arg(arr.size()));
+}
+
+void CommPanel::importPayloadHistoryJson() {
+  const QString clip = QGuiApplication::clipboard() ? QGuiApplication::clipboard()->text().trimmed()
+                                                    : QString();
+  if (clip.isEmpty()) {
+    if (status_) status_->setToolTip(QStringLiteral("剪贴板空 · Alt+Shift+O"));
+    return;
+  }
+  QJsonParseError err;
+  const QJsonDocument doc = QJsonDocument::fromJson(clip.toUtf8(), &err);
+  QStringList incoming;
+  if (err.error == QJsonParseError::NoError) {
+    if (doc.isObject()) {
+      const QJsonArray arr = doc.object().value(QStringLiteral("payloadHistory")).toArray();
+      for (const QJsonValue& v : arr) {
+        const QString s = v.toString().trimmed();
+        if (!s.isEmpty()) incoming << s;
+      }
+    } else if (doc.isArray()) {
+      for (const QJsonValue& v : doc.array()) {
+        const QString s = v.toString().trimmed();
+        if (!s.isEmpty()) incoming << s;
+      }
+    }
+  }
+  if (incoming.isEmpty()) {
+    // Fallback: one payload per non-empty line
+    for (QString line : clip.split(QLatin1Char('\n'))) {
+      line = line.trimmed();
+      if (!line.isEmpty()) incoming << line;
+    }
+  }
+  if (incoming.isEmpty()) {
+    if (status_) status_->setToolTip(QStringLiteral("无报文可导入 · Alt+Shift+O"));
+    return;
+  }
+  // Merge unique, newest first
+  QStringList merged = incoming;
+  for (const QString& s : payloadHistory_) {
+    if (!merged.contains(s)) merged << s;
+  }
+  while (merged.size() > 24) merged.removeLast();
+  payloadHistory_ = merged;
+  payloadHistoryIdx_ = 0;
+  if (payloadEdit_) payloadEdit_->setText(payloadHistory_.first());
+  if (hub_) {
+    QVariantMap cm = hub_->commManager();
+    QVariantList hist;
+    for (const QString& s : payloadHistory_) hist << s;
+    cm.insert(QStringLiteral("payloadHistory"), hist);
+    hub_->loadFromCommManager(cm);
+    emit requestSaveComm(cm);
+  }
+  if (status_)
+    status_->setToolTip(QStringLiteral("已导入报文历史 %1 · Alt+Shift+O").arg(incoming.size()));
 }
 
 void CommPanel::cycleFraming(int delta) {

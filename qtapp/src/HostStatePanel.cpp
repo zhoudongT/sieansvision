@@ -480,6 +480,17 @@ bool HostStatePanel::eventFilter(QObject* obj, QEvent* event) {
       return true;
     }
   }
+  if (obj == history_ && event->type() == QEvent::KeyPress) {
+    auto* ke = static_cast<QKeyEvent*>(event);
+    if (ke->key() == Qt::Key_Space &&
+        !(ke->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::ShiftModifier))) {
+      if (state_ == QLatin1String("Running")) emit pauseRequested();
+      else if (state_ == QLatin1String("Paused")) emit resumeRequested();
+      else emit startRequested();
+      if (modeHint_) modeHint_->setText(QStringLiteral("Space · 开始/暂停"));
+      return true;
+    }
+  }
   if (obj == history_ && event->type() == QEvent::MouseButtonRelease) {
     auto* me = static_cast<QMouseEvent*>(event);
     if (me->button() == Qt::MiddleButton && history_) {

@@ -1,4 +1,7 @@
 #include "VarWatchPanel.hpp"
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QJsonDocument>
 
 #include "Theme.hpp"
 
@@ -420,6 +423,45 @@ void VarWatchPanel::exportJsonFiltered() {
 void VarWatchPanel::addKeysFromClipboard() {
   const QString clip = QApplication::clipboard() ? QApplication::clipboard()->text() : QString();
   if (clip.trimmed().isEmpty()) return;
+  {
+    QJsonParseError err;
+    const QJsonDocument doc = QJsonDocument::fromJson(clip.trimmed().toUtf8(), &err);
+    if (err.error == QJsonParseError::NoError) {
+      QStringList fromJson;
+      if (doc.isObject()) {
+        const QJsonObject o = doc.object();
+        QJsonArray arr = o.value(QStringLiteral("keys")).toArray();
+        if (arr.isEmpty()) arr = o.value(QStringLiteral("varWatchKeys")).toArray();
+        if (arr.isEmpty()) arr = o.value(QStringLiteral("watchKeys")).toArray();
+        for (const QJsonValue& v : arr) {
+          const QString k = v.toString().trimmed();
+          if (!k.isEmpty()) fromJson << k;
+        }
+      } else if (doc.isArray()) {
+        for (const QJsonValue& v : doc.array()) {
+          const QString k = v.toString().trimmed();
+          if (!k.isEmpty()) fromJson << k;
+        }
+      }
+      if (!fromJson.isEmpty()) {
+        int added = 0;
+        for (const QString& k : fromJson) {
+          if (keys_.contains(k)) continue;
+          keys_.push_back(k);
+          ++added;
+        }
+        if (added > 0) {
+          rebuild();
+          emit watchListChanged(keys_);
+          QToolTip::showText(QCursor::pos(),
+                             QStringLiteral("已加入监视JSON %1 · Ctrl+Shift+V").arg(added), table_);
+        } else {
+          QToolTip::showText(QCursor::pos(), QStringLiteral("JSON键已在监视 · Ctrl+Shift+V"), table_);
+        }
+        return;
+      }
+    }
+  }
   int added = 0;
   for (QString line : clip.split(QRegularExpression(QStringLiteral("[\n,;]+")))) {
     line = line.trimmed();
