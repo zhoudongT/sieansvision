@@ -116,11 +116,11 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   modeRow->addWidget(new QLabel(QStringLiteral("模式")));
   modeRow->addWidget(mode_, 1);
   mode_->installEventFilter(this);
-  mode_->setToolTip(QStringLiteral("标定模式 · 滚轮切换 · Alt+1/2/3 → 生产/九点/旋转 · 开始仍跑当前视觉流程 · 非标定=生产 · F8/Shift+F8 循环"));
+  mode_->setToolTip(QStringLiteral("标定模式 · 滚轮/中键/F8 切换 · Alt+1/2/3 → 生产/九点/旋转 · 双击复制 · 开始仍跑当前视觉流程 · 非标定=生产"));
   modeRow->addWidget(new QLabel(QStringLiteral("报警清除")));
   modeRow->addWidget(policy_, 1);
   policy_->installEventFilter(this);
-  policy_->setToolTip(QStringLiteral("报警清除策略 · 滚轮切换 · Alt+1/2 → on_ok/手动 · F4/Shift+F4 循环"));
+  policy_->setToolTip(QStringLiteral("报警清除策略 · 滚轮/中键/F4 切换 · Alt+1/2 → on_ok/手动 · 双击复制"));
   root->addLayout(modeRow);
 
   auto* ivRow = new QHBoxLayout;
@@ -573,6 +573,34 @@ bool HostStatePanel::eventFilter(QObject* obj, QEvent* event) {
     if (modeHint_)
       modeHint_->setText(QStringLiteral("报警策略 %1 · 滚轮").arg(policy_->currentText()));
     return true;
+  }
+  if (obj == mode_ && event->type() == QEvent::MouseButtonDblClick) {
+    if (mode_) {
+      if (auto* clip = QGuiApplication::clipboard()) clip->setText(mode_->currentText());
+      if (modeHint_) modeHint_->setText(QStringLiteral("已复制模式 · 双击"));
+    }
+    return true;
+  }
+  if (obj == mode_ && event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::MiddleButton) {
+      cycleHostMode(+1);
+      return true;
+    }
+  }
+  if (obj == policy_ && event->type() == QEvent::MouseButtonDblClick) {
+    if (policy_) {
+      if (auto* clip = QGuiApplication::clipboard()) clip->setText(policy_->currentText());
+      if (modeHint_) modeHint_->setText(QStringLiteral("已复制报警策略 · 双击"));
+    }
+    return true;
+  }
+  if (obj == policy_ && event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::MiddleButton) {
+      cycleAlarmPolicy(+1);
+      return true;
+    }
   }
   if (obj == mode_ && event->type() == QEvent::Wheel) {
     auto* we = static_cast<QWheelEvent*>(event);

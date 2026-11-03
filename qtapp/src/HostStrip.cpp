@@ -490,6 +490,10 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       emit modeToggleRequested();
       return true;
     }
+    if (ke->key() == Qt::Key_F3) {
+      emit openHostRequested();
+      return true;
+    }
     if (ke->key() == Qt::Key_Y && (ke->modifiers() & Qt::ControlModifier) &&
         (ke->modifiers() & Qt::ShiftModifier)) {
       reverseWatchKeys();

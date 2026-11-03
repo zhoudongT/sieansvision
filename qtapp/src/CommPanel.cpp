@@ -1353,6 +1353,22 @@ void CommPanel::copyPayloadHistoryText() {
     status_->setToolTip(QStringLiteral("已复制报文历史 %1 行 · Alt+Shift+C").arg(payloadHistory_.size()));
 }
 
+void CommPanel::copyFramingPayload() {
+  const QString framing = framingCombo_ ? framingCombo_->currentText() : QString();
+  const QString payload = payloadEdit_ ? payloadEdit_->text() : QString();
+  const QString line = framing.isEmpty() ? payload
+                                        : (framing + QLatin1Char('\t') + payload);
+  if (line.trimmed().isEmpty()) {
+    if (status_) status_->setToolTip(QStringLiteral("帧/报文空 · Alt+Shift+T"));
+    return;
+  }
+  if (auto* clip = QGuiApplication::clipboard()) clip->setText(line);
+  if (status_)
+    status_->setToolTip(QStringLiteral("已复制帧+报文 · Alt+Shift+T · %1")
+                            .arg(framing.isEmpty() ? QStringLiteral("(无帧)") : framing));
+}
+
+
 void CommPanel::cycleFraming(int delta) {
   if (!framingCombo_ || framingCombo_->count() <= 0) return;
   const int n = framingCombo_->count();
