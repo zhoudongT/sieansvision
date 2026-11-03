@@ -213,6 +213,10 @@ bool FlowTabBar::eventFilter(QObject* obj, QEvent* event) {
   }
   if (event->type() == QEvent::KeyPress) {
     auto* ke = static_cast<QKeyEvent*>(event);
+    if (ke->key() == Qt::Key_F7) {
+      emit pauseRequested();
+      return true;
+    }
     if ((ke->modifiers() & Qt::AltModifier) && ke->key() >= Qt::Key_1 && ke->key() <= Qt::Key_4 &&
         !(ke->modifiers() & Qt::ControlModifier)) {
       static const int kPresets[] = {50, 100, 200, 500};

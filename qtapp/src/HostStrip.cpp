@@ -436,6 +436,10 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       copyWatchKeys();
       return true;
     }
+    if (ke->key() == Qt::Key_F7) {
+      emit pauseRequested();
+      return true;
+    }
     if ((ke->modifiers() & Qt::ControlModifier) &&
         (ke->key() == Qt::Key_BracketLeft || ke->key() == Qt::Key_BracketRight ||
          ke->key() == Qt::Key_Up || ke->key() == Qt::Key_Down)) {

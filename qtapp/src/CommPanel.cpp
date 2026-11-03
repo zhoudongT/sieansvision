@@ -115,7 +115,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   framingCombo_->addItem(QStringLiteral("Raw 原样"), QStringLiteral("raw"));
   framingCombo_->addItem(QStringLiteral("Len4 BE 前缀"), QStringLiteral("len4"));
   framingCombo_->setToolTip(
-      QStringLiteral("TCP 帧分隔 · lf/crlf/raw/len4 · 写入 tcpReal.framing · 启动前可改 · 运行中改写下次生效"));
+      QStringLiteral("帧分隔 · 滚轮/Ctrl+[ ] · Alt+1..4 → LF/CRLF/Raw/Len4"));
   framingCombo_->setStatusTip(QStringLiteral("通信 · framing lf/crlf/raw/len4 · 滚轮切换"));
   framingCombo_->installEventFilter(this);
   form->addRow(QStringLiteral("帧分隔"), framingCombo_);
@@ -663,6 +663,22 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
     auto* we = static_cast<QWheelEvent*>(event);
     cycleFraming(we->angleDelta().y() > 0 ? -1 : +1);
     return true;
+  }
+  if (obj == framingCombo_ && event->type() == QEvent::KeyPress) {
+    auto* ke = static_cast<QKeyEvent*>(event);
+    if ((ke->modifiers() & Qt::AltModifier) && ke->key() >= Qt::Key_1 && ke->key() <= Qt::Key_4 &&
+        !(ke->modifiers() & Qt::ControlModifier) && framingCombo_) {
+      const int idx = ke->key() - Qt::Key_1;
+      if (idx < framingCombo_->count()) {
+        framingCombo_->setCurrentIndex(idx);
+        pushTcpEndpoint(true);
+        if (status_)
+          status_->setToolTip(QStringLiteral("帧分隔=%1 · Alt+%2")
+                                  .arg(framingCombo_->currentText())
+                                  .arg(idx + 1));
+      }
+      return true;
+    }
   }
   if (obj == status_ && event->type() == QEvent::MouseButtonDblClick) {
     toggleTcp();
