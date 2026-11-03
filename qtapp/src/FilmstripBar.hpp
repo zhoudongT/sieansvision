@@ -41,6 +41,7 @@ class FilmstripBar : public QWidget {
   void keepOnlySelected();
   void exportPathList();
   void pastePathsFromClipboard();
+  void cutSelectedPaths();
   void exportSelectedPathList();
   void gotoIndexDialog();
   void copyAllBasenames();

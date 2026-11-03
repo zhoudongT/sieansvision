@@ -429,6 +429,13 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
+  if (event->key() == Qt::Key_X && (event->modifiers() & Qt::ControlModifier) &&
+      !(event->modifiers() & Qt::ShiftModifier) &&
+      !(event->modifiers() & Qt::AltModifier)) {
+    cutSelectedPaths();
+    event->accept();
+    return;
+  }
   if (event->key() == Qt::Key_I && (event->modifiers() & Qt::ControlModifier) &&
       (event->modifiers() & Qt::ShiftModifier)) {
     invertSelection();
@@ -966,6 +973,43 @@ void FilmstripBar::pastePathsFromClipboard() {
   const int before = paths_.size();
   addPaths(add);
   setStatus(QStringLiteral("已粘贴路径 +%1 · Ctrl+Shift+V").arg(paths_.size() - before));
+}
+
+
+void FilmstripBar::cutSelectedPaths() {
+  if (!list_) return;
+  QList<int> rows;
+  for (auto* it : list_->selectedItems()) rows.push_back(list_->row(it));
+  if (rows.isEmpty() && index_ >= 0 && index_ < paths_.size()) rows.push_back(index_);
+  if (rows.isEmpty()) {
+    setStatus(QStringLiteral("无选中可剪切 · Ctrl+X"));
+    return;
+  }
+  std::sort(rows.begin(), rows.end());
+  rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
+  QStringList lines;
+  for (int r : rows) {
+    if (r >= 0 && r < paths_.size()) lines << paths_.at(r);
+  }
+  if (lines.isEmpty()) return;
+  if (auto* clip = QApplication::clipboard())
+    clip->setText(lines.join(QLatin1Char('\n')));
+  // remove high→low
+  QList<int> desc = rows;
+  std::sort(desc.begin(), desc.end(), std::greater<int>());
+  for (int r : desc) {
+    if (r >= 0 && r < paths_.size()) paths_.removeAt(r);
+  }
+  rebuildThumbs();
+  notifyPathsChanged();
+  if (!paths_.isEmpty()) {
+    const int next = qBound(0, desc.last(), paths_.size() - 1);
+    selectIndex(next, true);
+  } else {
+    index_ = -1;
+    refreshCount();
+  }
+  setStatus(QStringLiteral("已剪切 %1 · Ctrl+X · Ctrl+Shift+V 粘贴").arg(lines.size()));
 }
 
 }  // namespace sieans_qt
