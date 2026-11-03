@@ -352,6 +352,14 @@ void MainWindow::buildUi() {
   imgLay->addWidget(image_tabs_, 1);
   host_strip_ = new HostStrip;
   imgLay->addWidget(host_strip_);
+  if (comm_hub_) {
+    connect(comm_hub_, &CommHub::statusChanged, host_strip_,
+            [this](const QString& s) {
+              if (host_strip_) host_strip_->setTcpStatus(s);
+            });
+    if (!comm_hub_->tcpStatus().isEmpty())
+      host_strip_->setTcpStatus(comm_hub_->tcpStatus());
+  }
   filmstrip_ = new FilmstripBar;
   imgLay->addWidget(filmstrip_);
   connect(filmstrip_, &FilmstripBar::addImagesRequested, this, [this]() {

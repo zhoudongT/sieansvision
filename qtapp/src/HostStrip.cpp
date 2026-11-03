@@ -87,6 +87,19 @@ void HostStrip::refreshChips(const QVariantMap& vars) {
   chips_->setText(parts.join(QStringLiteral("  ·  ")));
 }
 
+void HostStrip::setTcpStatus(const QString& status) {
+  tcpStatus_ = status;
+  // Soft refresh of last detail line without needing vars — keep tcp visible.
+  QString d = detail_ ? detail_->text() : QString();
+  const QString marker = QStringLiteral(" · tcp=");
+  const int at = d.indexOf(marker);
+  if (at >= 0) d = d.left(at);
+  if (!tcpStatus_.isEmpty())
+    d += marker + tcpStatus_.left(36);
+  if (detail_) detail_->setText(d.isEmpty() ? QStringLiteral("Host · tcp=%1").arg(tcpStatus_.left(36))
+                                            : d);
+}
+
 void HostStrip::updateFromVars(const QVariantMap& vars, int codeCount, bool evaluated) {
   bool ok = false;
   if (vars.contains(QStringLiteral("passGate"))) {
@@ -141,6 +154,8 @@ void HostStrip::updateFromVars(const QVariantMap& vars, int codeCount, bool eval
     detail += QStringLiteral(" · urlOk=%1").arg(urlOk);
   const QString ioOut = vars.value(QStringLiteral("io.Result")).toString();
   if (!ioOut.isEmpty()) detail += QStringLiteral(" · I/O.Result=%1").arg(ioOut.left(24));
+  if (!tcpStatus_.isEmpty())
+    detail += QStringLiteral(" · tcp=%1").arg(tcpStatus_.left(36));
   detail_->setText(detail);
   refreshChips(vars);
 }

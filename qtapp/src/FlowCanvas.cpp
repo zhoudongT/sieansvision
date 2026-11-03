@@ -618,6 +618,7 @@ void FlowScene::keyPressEvent(QKeyEvent* event) {
 
 FlowView::FlowView(FlowScene* scene, QWidget* parent)
     : QGraphicsView(scene, parent) {
+  setToolTip(QStringLiteral("滚轮缩放 · F/Home 适应画布 · Del 删连线"));
   setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing);
   setDragMode(QGraphicsView::RubberBandDrag);
   setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
@@ -645,6 +646,11 @@ void FlowView::wheelEvent(QWheelEvent* event) {
 }
 
 void FlowView::keyPressEvent(QKeyEvent* event) {
+  if (event->key() == Qt::Key_F || event->key() == Qt::Key_Home) {
+    fitAll();
+    event->accept();
+    return;
+  }
   if (auto* sc = qobject_cast<FlowScene*>(scene())) {
     if (event->key() == Qt::Key_Escape || event->key() == Qt::Key_Delete ||
         event->key() == Qt::Key_Backspace) {

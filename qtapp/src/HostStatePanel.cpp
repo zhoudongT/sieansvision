@@ -61,6 +61,11 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   btnStop_ = new QPushButton(QStringLiteral("■ 停止"));
   btnClear_ = new QPushButton(QStringLiteral("清除报警"));
   btnStart_->setObjectName(QStringLiteral("primaryButton"));
+  btnStart_->setToolTip(QStringLiteral("开始运行当前绑定流程"));
+  btnPause_->setToolTip(QStringLiteral("暂停连续运行"));
+  btnResume_->setToolTip(QStringLiteral("从暂停/报警继续"));
+  btnStop_->setToolTip(QStringLiteral("停止运行并回 Idle"));
+  btnClear_->setToolTip(QStringLiteral("清除报警锁存"));
   for (QPushButton* b : {btnStart_, btnPause_, btnResume_, btnStop_, btnClear_}) {
     b->setMinimumHeight(28);
     quick->addWidget(b);

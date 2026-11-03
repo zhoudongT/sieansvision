@@ -213,7 +213,8 @@ OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
                                    item->data(Qt::UserRole + 1).toString());
           });
   connect(search_, &QLineEdit::textChanged, this, [this](const QString&) { rebuild(); });
-  search_->setPlaceholderText(QStringLiteral("搜索… Ctrl+F"));
+  search_->setPlaceholderText(QStringLiteral("搜索… / 或 Ctrl+F · Esc 清空"));
+  search_->setToolTip(QStringLiteral("Toolbox 搜索 · Esc 清空 · / 或 Ctrl+F 聚焦"));
   search_->installEventFilter(this);
   list_->installEventFilter(this);
   installEventFilter(this);
@@ -273,6 +274,22 @@ void OperatorLibrary::rebuild() {
     empty->setFlags(Qt::NoItemFlags);
     empty->setForeground(QColor(theme::TEXT_DIM));
     list_->addItem(empty);
+  }
+  int ops = 0;
+  for (int i = 0; i < list_->count(); ++i) {
+    auto* it = list_->item(i);
+    if (it && !it->data(Qt::UserRole).toString().isEmpty()) ++ops;
+  }
+  if (search_) {
+    const QString filt = categoryFilter_.isEmpty()
+                             ? QStringLiteral("全部")
+                             : categoryFilter_;
+    search_->setToolTip(
+        QStringLiteral("Toolbox 搜索 · %1 · 匹配 %2 个 · Esc 清空 · / 或 Ctrl+F 聚焦")
+            .arg(filt)
+            .arg(ops));
+    if (auto* title = findChild<QLabel*>(QStringLiteral("libraryTitle")))
+      title->setText(QStringLiteral("算子 · %1").arg(ops));
   }
 }
 

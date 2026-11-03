@@ -17,6 +17,7 @@ class HostStrip : public QWidget {
   void setAlarm(bool on, const QString& reason = {});
   /** 设计态 / 运行态 / 连续 / 暂停 — thin HMI chrome. */
   void setRunChrome(const QString& mode, const QString& hostState, int cycle = 0);
+  void setTcpStatus(const QString& status);
 
  private:
   void refreshChips(const QVariantMap& vars);
@@ -30,6 +31,7 @@ class HostStrip : public QWidget {
   QStringList watchKeys_;
   bool alarmOn_ = false;
   QString alarmReason_;
+  QString tcpStatus_;
 };
 
 }  // namespace sieans_qt
