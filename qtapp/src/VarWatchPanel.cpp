@@ -24,7 +24,7 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
   lay->setSpacing(4);
   auto* title = new QLabel(QStringLiteral("变量监视"));
   title->setObjectName(QStringLiteral("sectionTitle"));
-  title->setToolTip(QStringLiteral("变量监视 · passGate/urlOk/lastRecv 高亮 · F2 聚焦表格"));
+  title->setToolTip(QStringLiteral("变量监视 · passGate/urlOk/lastRecv 高亮 · F2 聚焦表格 · 双击复制"));
   lay->addWidget(title);
   table_ = new QTableWidget(0, 2);
   table_->setHorizontalHeaderLabels(
