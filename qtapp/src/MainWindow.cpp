@@ -621,6 +621,7 @@ void MainWindow::buildToolbar() {
     connect(comm_hub_, &CommHub::statusChanged, this, [this](const QString& s) {
       if (!listen_badge_) return;
       listen_badge_->setText(QStringLiteral("通信·%1").arg(s.left(40)));
+      statusBar()->showMessage(QStringLiteral("通信 %1").arg(s), 2500);
       if (s.contains(QStringLiteral("listen")) || s.contains(QStringLiteral("connected")) ||
           s.contains(QStringLiteral("peers")))
         listen_badge_->setStyleSheet(

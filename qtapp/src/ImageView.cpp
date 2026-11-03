@@ -190,6 +190,24 @@ void ImageView::redrawOverlays() {
       overlay_items_.push_back(label);
     }
   }
+  // Size chip (VM-ish HUD) — always when image present.
+  if (!image_.isNull()) {
+    auto* sizeChip = scene_.addSimpleText(
+        QStringLiteral("%1×%2").arg(image_.width()).arg(image_.height()));
+    QFont sf = sizeChip->font();
+    sf.setPointSize(11);
+    sf.setBold(true);
+    sizeChip->setFont(sf);
+    sizeChip->setBrush(QColor(180, 220, 255));
+    auto* sizeBg = scene_.addRect(
+        QRectF(0, 0, sizeChip->boundingRect().width() + 10,
+               sizeChip->boundingRect().height() + 6),
+        Qt::NoPen, QColor(0, 0, 0, 160));
+    sizeBg->setPos(8, 8);
+    sizeChip->setPos(13, 11);
+    overlay_items_.push_back(sizeBg);
+    overlay_items_.push_back(sizeChip);
+  }
   if (!hits_.isEmpty()) {
     auto* chip = scene_.addSimpleText(
         QStringLiteral("码 %1").arg(hits_.size()));
@@ -202,8 +220,9 @@ void ImageView::redrawOverlays() {
         QRectF(0, 0, chip->boundingRect().width() + 10,
                chip->boundingRect().height() + 6),
         Qt::NoPen, QColor(0, 0, 0, 170));
-    chipBg->setPos(8, 8);
-    chip->setPos(13, 11);
+    const qreal y = image_.isNull() ? 8 : 34;
+    chipBg->setPos(8, y);
+    chip->setPos(13, y + 3);
     overlay_items_.push_back(chipBg);
     overlay_items_.push_back(chip);
   }

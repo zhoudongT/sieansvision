@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -485,6 +485,13 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
           int n = args.size() > 1 ? int(evalRec(args[1]).toDouble()) : 1;
           n = qBound(0, n, 256);
           return hay.repeated(n);
+        }
+        if (name == QLatin1String("default") || name == QLatin1String("coalesce")) {
+          for (const QString& a : args) {
+            const QVariant v = evalRec(a);
+            if (!v.toString().isEmpty()) return v;
+          }
+          return QString();
         }
       }
     }
@@ -628,6 +635,12 @@ QStringList exprSelfTest() {
   check(QStringLiteral("substr"),
         ev.eval(QStringLiteral("substr(%1.text, 0, 4)").arg(sid)),
         QStringLiteral("HELL"));
+  check(QStringLiteral("default"),
+        ev.eval(QStringLiteral("default('', 'fallback')")),
+        QStringLiteral("fallback"));
+  check(QStringLiteral("coalesce"),
+        ev.eval(QStringLiteral("coalesce('', '', 'z')")),
+        QStringLiteral("z"));
   return fails;
 }
 

@@ -7,6 +7,10 @@
 #include <QHeaderView>
 #include <QAbstractItemView>
 #include <QColor>
+#include <QClipboard>
+#include <QApplication>
+#include <QToolTip>
+#include <QCursor>
 
 namespace sieans_qt {
 
@@ -27,6 +31,21 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
   table_->setSelectionBehavior(QAbstractItemView::SelectRows);
   table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
   lay->addWidget(table_, 1);
+  connect(table_, &QTableWidget::cellDoubleClicked, this,
+          [this](int row, int) {
+            if (!table_) return;
+            auto* val = table_->item(row, 1);
+            auto* key = table_->item(row, 0);
+            if (!val) return;
+            const QString raw = key ? vars_.value(key->text()).toString() : val->text();
+            if (auto* clip = QApplication::clipboard()) {
+              clip->setText(raw.isEmpty() ? val->text() : raw);
+              QToolTip::showText(QCursor::pos(),
+                                 QStringLiteral("已复制 %1").arg(key ? key->text() : QStringLiteral("值")),
+                                 table_);
+            }
+          });
+  table_->setToolTip(QStringLiteral("双击单元格复制变量值"));
   keys_ = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
            QStringLiteral("passGate"), QStringLiteral("formatted"),
