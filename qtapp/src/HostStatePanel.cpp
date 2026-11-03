@@ -130,7 +130,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   intervalSpin_->setSingleStep(50);
   intervalSpin_->setSuffix(QStringLiteral(" ms"));
   intervalSpin_->setValue(200);
-  intervalSpin_->setToolTip(QStringLiteral("连续运行节拍 · 写入方案 runIntervalMs · 滚轮±50 · Ctrl+↑↓/[] ±50 · Ctrl+Shift+↑↓/[] ±200 · Alt+1/2/3/4 → 50/100/200/500 · 运行中即时生效"));
+  intervalSpin_->setToolTip(QStringLiteral("连续运行节拍 · 写入方案 runIntervalMs · 滚轮±50 · Ctrl+↑↓/[] ±50 · Ctrl+Shift+↑↓/[] ±200 · Alt+1/2/3/4 → 50/100/200/500 · 双击复制 · 中键复位200 · 运行中即时生效"));
   intervalSpin_->setStatusTip(QStringLiteral("Host · 连续间隔 ms"));
   intervalSpin_->installEventFilter(this);
   ivRow->addWidget(intervalSpin_, 1);
@@ -437,6 +437,23 @@ bool HostStatePanel::eventFilter(QObject* obj, QEvent* event) {
         emit resumeRequested();
         if (modeHint_) modeHint_->setText(QStringLiteral("继续 · 中键徽章"));
       }
+      return true;
+    }
+  }
+  if (obj == intervalSpin_ && event->type() == QEvent::MouseButtonDblClick) {
+    if (intervalSpin_) {
+      if (auto* clip = QGuiApplication::clipboard())
+        clip->setText(QString::number(intervalSpin_->value()));
+      if (modeHint_)
+        modeHint_->setText(QStringLiteral("已复制节拍 %1 ms · 双击").arg(intervalSpin_->value()));
+    }
+    return true;
+  }
+  if (obj == intervalSpin_ && event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::MiddleButton && intervalSpin_) {
+      if (intervalSpin_->value() != 200) intervalSpin_->setValue(200);
+      if (modeHint_) modeHint_->setText(QStringLiteral("节拍复位 200 ms · 中键"));
       return true;
     }
   }

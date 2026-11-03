@@ -41,7 +41,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
       QStringLiteral("background:#3a3d42;color:#a8a8a8;border-radius:3px;"
                      "padding:3px 8px;font-size:11px;font-weight:600;"));
   cycleChip_ = new QLabel(QStringLiteral("周期 0"));
-  cycleChip_->setToolTip(QStringLiteral("运行周期计数 · 每次流程完成 +1"));
+  cycleChip_->setToolTip(QStringLiteral("运行周期计数 · 每次流程完成 +1 · 滚轮调节拍 · Ctrl+Shift+T 复制 · 中键良率 · 右键清连OK"));
   cycleChip_->setStyleSheet(
       QStringLiteral("background:#32353a;color:#a8a8a8;border-radius:3px;"
                      "padding:3px 8px;font-size:11px;"));
@@ -412,6 +412,11 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       copyRunStats();
       return true;
     }
+    if (ke->key() == Qt::Key_T && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier)) {
+      copyCycleChip();
+      return true;
+    }
     if (ke->key() == Qt::Key_R && (ke->modifiers() & Qt::ControlModifier)) {
       resetStreak();
       return true;
@@ -580,6 +585,18 @@ void HostStrip::copyRunStats() {
       .arg(detail_ ? detail_->text() : QString());
   if (auto* clip = QGuiApplication::clipboard()) clip->setText(line);
   if (detail_) detail_->setToolTip(QStringLiteral("已复制运行统计 · Ctrl+Shift+C"));
+}
+
+
+void HostStrip::copyCycleChip() {
+  const QString text = cycleChip_ ? cycleChip_->text() : QString();
+  if (text.isEmpty()) {
+    if (cycleChip_) cycleChip_->setToolTip(QStringLiteral("周期条空 · Ctrl+Shift+T"));
+    return;
+  }
+  if (auto* clip = QGuiApplication::clipboard()) clip->setText(text);
+  if (cycleChip_)
+    cycleChip_->setToolTip(QStringLiteral("已复制周期条 · Ctrl+Shift+T · 节拍 %1").arg(intervalMs_));
 }
 
 

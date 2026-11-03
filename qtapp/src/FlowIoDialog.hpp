@@ -31,6 +31,7 @@ class FlowIoDialog : public QDialog {
   void clearEmptyRows(QTableWidget* table);
   void fillEmptyDefaults(QTableWidget* table);
   void clearEmptyDefaults(QTableWidget* table);
+  void clearSelectedDefaults(QTableWidget* table);
   void exportBindingsJson();
   void importBindingsJson();
   void applyJsonArray(QTableWidget* table, const QJsonArray& arr);
