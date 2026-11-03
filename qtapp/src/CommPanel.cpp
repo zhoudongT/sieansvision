@@ -188,7 +188,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   payloadEdit_ = new QLineEdit(
       QStringLiteral("BARCODE ok=${flow.passGate} text=${flow.barcodeText}"));
   payloadEdit_->setToolTip(
-      QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · 下方芯片插入 · Enter/Ctrl+Enter 试发 · Alt+↑↓ 历史 · Alt+Del 删当前历史 · LocalBus echo"));
+      QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · 下方芯片插入 · Enter/Ctrl+Enter 试发 · Alt+↑↓ 历史 · Alt+Del 删当前 · Alt+Shift+Del 清空历史 · LocalBus echo"));
   form->addRow(QStringLiteral("报文"), payloadEdit_);
   payloadEdit_->installEventFilter(this);
   lay->addLayout(form);
@@ -654,7 +654,8 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
         return true;
       }
       if (ke->key() == Qt::Key_Delete || ke->key() == Qt::Key_Backspace) {
-        removeCurrentPayloadHistory();
+        if (ke->modifiers() & Qt::ShiftModifier) clearPayloadHistory();
+        else removeCurrentPayloadHistory();
         return true;
       }
     }
@@ -1084,6 +1085,23 @@ void CommPanel::removeCurrentPayloadHistory() {
     status_->setToolTip(QStringLiteral("已删报文历史 · 剩 %1 · Alt+Del · Alt+↑↓")
                             .arg(payloadHistory_.size()));
 }
+
+void CommPanel::clearPayloadHistory() {
+  if (payloadHistory_.isEmpty()) {
+    if (status_) status_->setToolTip(QStringLiteral("报文历史已空 · Alt+Shift+Del"));
+    return;
+  }
+  payloadHistory_.clear();
+  payloadHistoryIdx_ = -1;
+  if (hub_) {
+    QVariantMap cm = hub_->commManager();
+    cm.insert(QStringLiteral("payloadHistory"), QVariantList{});
+    hub_->loadFromCommManager(cm);
+    emit requestSaveComm(cm);
+  }
+  if (status_) status_->setToolTip(QStringLiteral("报文历史已清空 · Alt+Shift+Del"));
+}
+
 
 void CommPanel::cycleFraming(int delta) {
   if (!framingCombo_ || framingCombo_->count() <= 0) return;

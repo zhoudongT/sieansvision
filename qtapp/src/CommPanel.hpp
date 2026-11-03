@@ -52,6 +52,7 @@ class CommPanel : public QWidget {
   void pushPayloadHistory();
   void recallPayloadHistory(int delta);
   void removeCurrentPayloadHistory();
+  void clearPayloadHistory();
   void cycleFraming(int delta);
   void loadLastRxToPayload();
   void copyLastTxRx();

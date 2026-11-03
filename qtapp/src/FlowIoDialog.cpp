@@ -147,7 +147,7 @@ QTableWidget* FlowIoDialog::makeTable(const QVariantList& rows, const QString& k
   table->setSelectionBehavior(QAbstractItemView::SelectRows);
   table->setSelectionMode(QAbstractItemView::ExtendedSelection);
   table->setToolTip(
-      QStringLiteral("I/O 绑定 · Insert/Ctrl+N 增行 · Del 删行 · Alt+↑↓ 移行 · Ctrl+D 复制 · Ctrl+X 剪切 · Ctrl+Shift+V 粘贴 · binding 芯片 · emptyDefault 空结果占位 · {name}/${flow.x}/{{name}}"));
+      QStringLiteral("I/O 绑定 · Insert/Ctrl+N 增行 · Del 删行 · Alt+↑↓ 移行 · Ctrl+D 复制 · Ctrl+X 剪切 · Ctrl+Shift+V 粘贴 · Home/End · binding 芯片 · emptyDefault 空结果占位 · {name}/${flow.x}/{{name}}"));
   table->setStatusTip(QStringLiteral("流程 I/O 表 · emptyDefault"));
   if (rows.isEmpty()) {
     const QList<QStringList> demo =
@@ -313,6 +313,21 @@ void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
   connect(scCut, &QShortcut::activated, this, [this, table]() { cutSelectedRows(table); });
   auto* scOther = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+Tab")), table);
   connect(scOther, &QShortcut::activated, this, [this, table]() { moveSelectedToOtherTable(table); });
+  auto* scHome = new QShortcut(QKeySequence(Qt::Key_Home), table);
+  connect(scHome, &QShortcut::activated, this, [table]() {
+    if (table->rowCount() > 0) {
+      table->setCurrentCell(0, table->currentColumn() < 0 ? 0 : table->currentColumn());
+      table->selectRow(0);
+    }
+  });
+  auto* scEnd = new QShortcut(QKeySequence(Qt::Key_End), table);
+  connect(scEnd, &QShortcut::activated, this, [table]() {
+    if (table->rowCount() > 0) {
+      const int r = table->rowCount() - 1;
+      table->setCurrentCell(r, table->currentColumn() < 0 ? 0 : table->currentColumn());
+      table->selectRow(r);
+    }
+  });
   {
     const char* toks[] = {"${flow.passGate}", "${flow.barcodeText}", "${flow.formatted}",
                           "${flow.io.Result}"};
