@@ -33,7 +33,7 @@ FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   runCont->setStatusTip(QStringLiteral("流程 · 连续运行"));
   auto* stop = new QPushButton(QStringLiteral("■"));
   stop->setFixedWidth(28);
-  stop->setToolTip(QStringLiteral("停止运行 / 连续 · Esc"));
+  stop->setToolTip(QStringLiteral("停止运行 / 连续 · Esc · 单次运行中也可打断"));
   stop->setStatusTip(QStringLiteral("流程 · 停止"));
   auto* fit = new QPushButton(QStringLiteral("适应"));
   fit->setFixedWidth(40);
