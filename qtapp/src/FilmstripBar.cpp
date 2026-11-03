@@ -243,6 +243,7 @@ void FilmstripBar::selectIndex(int index, bool emitSignal) {
                              .arg(probe.height())
                              .arg(fname));
   if (emitSignal) emit imageSelected(paths_.at(index));
+  if (list_ && !list_->hasFocus()) list_->setFocus(Qt::OtherFocusReason);
 }
 
 void FilmstripBar::advance() {

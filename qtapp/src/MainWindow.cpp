@@ -620,8 +620,9 @@ void MainWindow::buildToolbar() {
   if (comm_hub_) {
     connect(comm_hub_, &CommHub::statusChanged, this, [this](const QString& s) {
       if (!listen_badge_) return;
-      listen_badge_->setText(QStringLiteral("通信·%1").arg(s.left(28)));
-      if (s.contains(QStringLiteral("listen")) || s.contains(QStringLiteral("connected")))
+      listen_badge_->setText(QStringLiteral("通信·%1").arg(s.left(40)));
+      if (s.contains(QStringLiteral("listen")) || s.contains(QStringLiteral("connected")) ||
+          s.contains(QStringLiteral("peers")))
         listen_badge_->setStyleSheet(
             QStringLiteral("padding:2px 8px;border-radius:3px;background:#1e3d2f;color:#3ecf8e;font-weight:600;"));
       else if (s.contains(QStringLiteral("fail")) || s.contains(QStringLiteral("error")) ||

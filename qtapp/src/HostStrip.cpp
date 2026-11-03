@@ -15,6 +15,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   badge_ = new QLabel(QStringLiteral("—"));
   badge_->setFixedWidth(72);
   badge_->setAlignment(Qt::AlignCenter);
+  badge_->setToolTip(QStringLiteral("OK/NG/ALARM · passGate 判定"));
   badge_->setStyleSheet(
       QStringLiteral("background:#3a3d42;color:#a8a8a8;border-radius:3px;"
                      "font-weight:700;font-size:14px;padding:4px;"));
@@ -28,6 +29,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
                      "padding:3px 8px;font-size:11px;"));
   detail_ = new QLabel(QStringLiteral("Host · 等待运行"));
   detail_->setObjectName(QStringLiteral("muted"));
+  detail_->setToolTip(QStringLiteral("count/text/RX/urlOk/tcp 摘要"));
   alarmLabel_ = new QLabel;
   alarmLabel_->setVisible(false);
   alarmLabel_->setStyleSheet(

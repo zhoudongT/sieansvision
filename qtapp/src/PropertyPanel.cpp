@@ -200,6 +200,22 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
   const QString key = spec.key;
   const QString label = spec.label;
   const QVariant value = params.value(key);
+  const auto tipFor = [](const QString& k) -> QString {
+    if (k == QLatin1String("emptyDefault"))
+      return QStringLiteral("模板展开为空时写入的默认值（如 BARCODE empty）");
+    if (k == QLatin1String("template"))
+      return QStringLiteral("支持 {name} / ${flow.x} / {{name}}");
+    if (k == QLatin1String("message"))
+      return QStringLiteral("发送报文 · 支持 ${flow.x}/{name}/{{name}}");
+    if (k == QLatin1String("sourceVar"))
+      return QStringLiteral("result_gate 读取的源变量");
+    if (k == QLatin1String("passVar"))
+      return QStringLiteral("判定通过时写入的变量名（默认 passGate）");
+    if (k == QLatin1String("deviceId") || k == QLatin1String("cam.deviceId"))
+      return QStringLiteral("soft:0 / GenTL ID / /dev/videoN");
+    return {};
+  };
+  const QString tip = tipFor(key);
   switch (spec.kind) {
     case 3: {
       auto* box = new QCheckBox(QStringLiteral("启用"));
@@ -259,6 +275,7 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
     case 0:
     default: {
       auto* edit = new QLineEdit(stringify(value));
+      if (!tip.isEmpty()) edit->setToolTip(tip);
       connect(edit, &QLineEdit::editingFinished, this, [this, key, edit]() {
         emitEdit(key, edit->text());
       });
@@ -328,7 +345,7 @@ void PropertyPanel::showStep(const FlowStep& step) {
     hint += QStringLiteral(" · sourceVar → passVar");
   else if (step.operation == QLatin1String("var_calc"))
     hint += QStringLiteral(
-        " · expr: in / startswith|endswith|contains / lower|upper / trim|strip|replace / slice|isdigit|isalpha|lpad|rpad|repeat");
+        " · expr: in / startswith|endswith|contains / lower|upper / trim|strip|replace / slice|substr|isdigit|isalpha|lpad|rpad|repeat");
   else if (step.operation == QLatin1String("barcode") ||
            step.operation == QLatin1String("qr_decode"))
     hint += QStringLiteral(" · ZXing 多码 · 判定 judgeMinCount");
