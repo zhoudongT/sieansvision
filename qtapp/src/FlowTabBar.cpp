@@ -10,13 +10,14 @@
 #include <QKeyEvent>
 #include <QClipboard>
 #include <QGuiApplication>
+#include <QRegularExpression>
 
 namespace sieans_qt {
 
 FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   setFocusPolicy(Qt::StrongFocus);
   setObjectName(QStringLiteral("flowTabBar"));
-  setStatusTip(QStringLiteral("流程条 · ▶一次 F5/F9 / ↻连续 F6 / ■停止 Esc · F7 暂停 · F8 设计/运行 · F/G/A/Space/R 适应 · 暂停/周期芯片 · 单击模式连续 · 右键模式暂停 · 中键模式适应 · 周期单击复制/Ctrl清零 · Ctrl+Shift+0 清周期"));
+  setStatusTip(QStringLiteral("流程条 · ▶一次 F5/F9 / ↻连续 F6 / ■停止 Esc · F7 暂停 · F8 设计/运行 · Shift+F8 连续 · Ctrl+Shift+T/I 周期复制/粘贴节拍 · F/G/A/Space/R 适应 · 暂停/周期芯片 · 单击模式连续 · 右键模式暂停 · 中键模式适应 · 周期单击复制/Ctrl清零 · Ctrl+Shift+0 清周期"));
   setFixedHeight(28);
   auto* lay = new QHBoxLayout(this);
   lay->setContentsMargins(4, 2, 4, 2);
@@ -62,7 +63,7 @@ FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   modeChip_->setStyleSheet(
       QStringLiteral("QLabel{color:#c8ccd0;background:#2a2e32;border:1px solid #4a4e54;"
                      "border-radius:3px;padding:1px 6px;font-size:11px;}"));
-  modeChip_->setToolTip(QStringLiteral("运行模式芯片 · 设计/单次/连续/暂停 · 单击连续 · Alt/右键暂停 · 中键适应"));
+  modeChip_->setToolTip(QStringLiteral("运行模式芯片 · 设计/单次/连续/暂停 · F8/Shift+F8 · 单击连续 · Alt/右键暂停 · 中键适应"));
   modeChip_->setCursor(Qt::PointingHandCursor);
   modeChip_->installEventFilter(this);
   cycleLabel_ = new QLabel(QStringLiteral("周期 0"));
@@ -70,7 +71,7 @@ FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   cycleLabel_->setStyleSheet(
       QStringLiteral("QLabel{color:#9ad0ff;background:#1e2830;border:1px solid #3a5060;"
                      "border-radius:3px;padding:1px 6px;font-size:11px;}"));
-  cycleLabel_->setToolTip(QStringLiteral("流程条周期 · 节拍 · 滚轮±50 · Ctrl+滚轮±200 · Alt+1/2/3/4→50/100/200/500 · 单击复制 · Ctrl+单击/双击清零 · 右键清零"));
+  cycleLabel_->setToolTip(QStringLiteral("流程条周期 · 节拍 · 滚轮±50 · Ctrl+滚轮±200 · Alt+1/2/3/4→50/100/200/500 · Ctrl+Shift+T/I 复制/粘贴节拍 · 单击复制 · Ctrl+单击/双击清零 · 右键清零"));
   cycleLabel_->setCursor(Qt::PointingHandCursor);
   cycleLabel_->setFocusPolicy(Qt::ClickFocus);
   cycleLabel_->installEventFilter(this);
@@ -243,7 +244,10 @@ bool FlowTabBar::eventFilter(QObject* obj, QEvent* event) {
       return true;
     }
     if (ke->key() == Qt::Key_F8) {
-      emit modeToggleRequested();
+      if (ke->modifiers() & Qt::ShiftModifier)
+        emit continuousToggleRequested();
+      else
+        emit modeToggleRequested();
       return true;
     }
     if (ke->key() == Qt::Key_I && (ke->modifiers() & Qt::ControlModifier) &&
@@ -260,6 +264,16 @@ bool FlowTabBar::eventFilter(QObject* obj, QEvent* event) {
         (ke->modifiers() & Qt::ShiftModifier)) {
       emit cycleResetRequested();
       if (cycleLabel_) cycleLabel_->setToolTip(QStringLiteral("周期已清零 · Ctrl+Shift+0"));
+      return true;
+    }
+    if (ke->key() == Qt::Key_I && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier)) {
+      pasteIntervalMs();
+      return true;
+    }
+    if (ke->key() == Qt::Key_T && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier)) {
+      copyCycleChip();
       return true;
     }
     if ((ke->modifiers() & Qt::AltModifier) && ke->key() >= Qt::Key_1 && ke->key() <= Qt::Key_4 &&
@@ -297,6 +311,59 @@ bool FlowTabBar::eventFilter(QObject* obj, QEvent* event) {
 void FlowTabBar::keyPressEvent(QKeyEvent* event) {
   if (event && eventFilter(this, event)) return;
   QWidget::keyPressEvent(event);
+}
+
+
+void FlowTabBar::copyCycleChip() {
+  if (!cycleLabel_) return;
+  const QString text = cycleLabel_->text();
+  if (text.isEmpty()) {
+    cycleLabel_->setToolTip(QStringLiteral("周期条空 · Ctrl+Shift+T"));
+    return;
+  }
+  if (auto* clip = QGuiApplication::clipboard()) clip->setText(text);
+  cycleLabel_->setToolTip(
+      QStringLiteral("已复制周期条 · Ctrl+Shift+T · 节拍 %1").arg(intervalMs_));
+}
+
+void FlowTabBar::pasteIntervalMs() {
+  const QString raw = QGuiApplication::clipboard()
+                          ? QGuiApplication::clipboard()->text().trimmed()
+                          : QString();
+  if (raw.isEmpty()) {
+    if (cycleLabel_) cycleLabel_->setToolTip(QStringLiteral("剪贴板空 · Ctrl+Shift+I"));
+    return;
+  }
+  int ms = -1;
+  QRegularExpression re(QStringLiteral("intervalMs\\s*=\\s*(\\d+)"));
+  const auto m = re.match(raw);
+  if (m.hasMatch()) {
+    ms = m.captured(1).toInt();
+  } else {
+    QRegularExpression re2(QStringLiteral("(\\d+)\\s*ms"));
+    const auto m2 = re2.match(raw);
+    if (m2.hasMatch()) ms = m2.captured(1).toInt();
+    else {
+      bool ok = false;
+      // first integer token
+      for (const QString& part : raw.split(QRegularExpression(QStringLiteral("[^0-9]+")))) {
+        if (part.isEmpty()) continue;
+        ms = part.toInt(&ok);
+        if (ok) break;
+      }
+    }
+  }
+  if (ms < 20 || ms > 60000) {
+    if (cycleLabel_) cycleLabel_->setToolTip(QStringLiteral("无效节拍 · Ctrl+Shift+I"));
+    return;
+  }
+  if (ms != intervalMs_) {
+    intervalMs_ = ms;
+    refreshCycleLabel();
+    emit intervalChanged(intervalMs_);
+  }
+  if (cycleLabel_)
+    cycleLabel_->setToolTip(QStringLiteral("已粘贴节拍 %1 ms · Ctrl+Shift+I").arg(intervalMs_));
 }
 
 }  // namespace sieans_qt

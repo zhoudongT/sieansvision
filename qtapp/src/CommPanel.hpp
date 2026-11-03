@@ -63,6 +63,7 @@ class CommPanel : public QWidget {
   void pasteFramingPayload();
   void cycleFraming(int delta);
   void loadLastRxToPayload();
+  void loadLastTxToPayload();
   void copyLastTxRx();
   void copyEndpoint();
   void writeBackSelectedDeviceEndpoint();

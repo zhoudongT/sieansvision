@@ -42,7 +42,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   lay->addWidget(title);
 
   status_ = new QLabel(QStringLiteral("TCP: idle"));
-  setStatusTip(QStringLiteral("通信面板 · LocalBus/TCP · peers/framing · Ctrl+T 启停 · Ctrl+[ / ] 切帧 · Ctrl+Shift+H 端点 · Ctrl+Shift+P 粘贴端点 · Ctrl+Shift+R 末 RX · 状态双击启停/右键装RX · 端口滚轮 · ACK中键快选 · 报文 Alt+Del 删历史 · 抄本双击/右键装入 · 设备中键端点/右键复制 · Alt+↑↓ 历史 · ${flow.x}"));
+  setStatusTip(QStringLiteral("通信面板 · LocalBus/TCP · peers/framing · Ctrl+T 启停 · Ctrl+[ / ] 切帧 · Ctrl+Shift+H 端点 · Ctrl+Shift+P 粘贴端点 · Ctrl+Shift+R/Ctrl+Alt+R RX/TX 末 RX · 状态双击启停/右键装RX · 端口滚轮 · ACK中键快选 · 报文 Alt+Del 删历史 · 抄本双击/右键装入 · 设备中键端点/右键复制 · Alt+↑↓ 历史 · ${flow.x}"));
   status_->setObjectName(QStringLiteral("muted"));
   lay->addWidget(status_);
 
@@ -316,6 +316,8 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
     connect(scPasteEp, &QShortcut::activated, this, [this]() { pasteEndpointFromClipboard(); });
     auto* scRx = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+R")), this);
     connect(scRx, &QShortcut::activated, this, &CommPanel::loadLastRxToPayload);
+    auto* scTx = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Alt+R")), this);
+    connect(scTx, &QShortcut::activated, this, &CommPanel::loadLastTxToPayload);
   }
   if (hub_) {
     connect(hub_, &CommHub::transcriptChanged, this, &CommPanel::refreshTranscript);
@@ -1431,6 +1433,19 @@ void CommPanel::loadLastRxToPayload() {
   payloadEdit_->setFocus(Qt::OtherFocusReason);
   if (status_) status_->setToolTip(QStringLiteral("已装入末 RX · Ctrl+Shift+R"));
 }
+
+void CommPanel::loadLastTxToPayload() {
+  if (!hub_ || !payloadEdit_) return;
+  const QString tx = hub_->lastTx();
+  if (tx.isEmpty()) {
+    if (status_) status_->setToolTip(QStringLiteral("无末 TX · Ctrl+Alt+R"));
+    return;
+  }
+  payloadEdit_->setText(tx);
+  payloadEdit_->setFocus(Qt::OtherFocusReason);
+  if (status_) status_->setToolTip(QStringLiteral("已装入末 TX · Ctrl+Alt+R"));
+}
+
 
 void CommPanel::copyLastTxRx() {
   if (!hub_) return;

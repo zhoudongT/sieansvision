@@ -16,6 +16,8 @@ class FlowTabBar : public QWidget {
   void setFlowName(const QString& name);
   void setRunChrome(const QString& mode, int cycle, double lastMs, bool continuous, bool paused);
   void setIntervalMs(int ms);
+  void pasteIntervalMs();
+  void copyCycleChip();
   void setDesignLocked(bool locked);
  signals:
   void allFlowsRequested();
