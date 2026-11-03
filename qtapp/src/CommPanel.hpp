@@ -63,6 +63,8 @@ class CommPanel : public QWidget {
   void moveSelectedDevice(int delta);
   void exportDevicesJson();
   void importDevicesJson();
+  void cutSelectedDevice();
+  void mergePasteDevicesFromClipboard();
 
   CommHub* hub_ = nullptr;
   QTableWidget* deviceTable_ = nullptr;
