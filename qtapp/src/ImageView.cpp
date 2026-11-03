@@ -19,7 +19,7 @@ namespace sieans_qt {
 
 ImageView::ImageView(QWidget* parent) : QGraphicsView(parent) {
   setFocusPolicy(Qt::StrongFocus);
-  setToolTip(QStringLiteral("F/G/A/Space/Home/0/R 适应 · +/- 缩放 · 1 像素1:1 · 2=200% · O 叠显 · P 探针 · Ctrl+Shift+C 复制探针 · 中键适应 · Esc/C/Del/Backspace 清叠加 · 拖拽平移 · 滚轮缩放"));
+  setToolTip(QStringLiteral("F/G/A/Space/Home/0/R 适应 · +/- 缩放 · 1 像素1:1 · 2=200% · O 叠显 · P 探针 · Ctrl+Shift+C 复制探针 · Ctrl+H 复制叠显 · 中键适应 · Esc/C/Del/Backspace 清叠加 · 拖拽平移 · 滚轮缩放"));
   setStatusTip(QStringLiteral("图像视图 · F/G/A/Space/Home/0/R 适应 · +/- 缩放 · 1=1:1 · 2=200% · O 叠显 · P 探针 · Ctrl+Shift+C 探针 · 中键适应 · Esc/C/Del/Backspace 清叠加 · 码框 hits · 拖拽平移 · 滚轮缩放"));
   setScene(&scene_);
   setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
@@ -193,6 +193,20 @@ void ImageView::keyPressEvent(QKeyEvent* event) {
       if (auto* clip = QGuiApplication::clipboard()) clip->setText(lastProbe_);
       QToolTip::showText(QCursor::pos(), QStringLiteral("已复制探针 · Ctrl+Shift+C"), this);
     }
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_H && (event->modifiers() & Qt::ControlModifier)) {
+    QStringList lines;
+    int i = 0;
+    for (const auto& h : hits_) {
+      ++i;
+      lines << QStringLiteral("#%1\t%2\t%3").arg(i).arg(h.format, h.text);
+    }
+    if (auto* clip = QGuiApplication::clipboard())
+      clip->setText(lines.join(QLatin1Char('\n')));
+    QToolTip::showText(QCursor::pos(),
+                       QStringLiteral("已复制叠显 %1 · Ctrl+H").arg(lines.size()), this);
     event->accept();
     return;
   }

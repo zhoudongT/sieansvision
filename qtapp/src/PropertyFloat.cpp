@@ -16,7 +16,7 @@
 namespace sieans_qt {
 
 PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
-  setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · F2 首字段 · Tab/Home/End/PgUp/PgDn/滚轮 · Alt+滚轮透明度 · Ctrl+0 透明度重置 · Ctrl+R 还原 · Ctrl+Shift+C 复制可见 · 双击标题钉住 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续 · Ctrl+S 同确定"));
+  setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · F2 首字段 · Tab/Home/End/PgUp/PgDn/滚轮 · Alt+滚轮透明度 · Ctrl+0 透明度重置 · Ctrl+[ / ] 宽度 · Ctrl+R 还原 · Ctrl+Shift+C 复制可见 · 双击标题钉住 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续 · Ctrl+S 同确定"));
   setWhatsThis(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End/PgUp/PgDn · Ctrl/Alt/Shift+Enter/Ctrl+S 确定 · F5/F9 单次 · F6 连续"));
   setObjectName(QStringLiteral("propertyFloat"));
   setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
@@ -217,6 +217,18 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
       if (!s.contains(QStringLiteral("已还原")))
         subtitle_->setText(s + QStringLiteral(" · 已还原"));
     }
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_BracketLeft && (event->modifiers() & Qt::ControlModifier)) {
+    resize(qMax(280, width() - 40), height());
+    if (subtitle_) subtitle_->setText(QStringLiteral("宽度 %1 · Ctrl+[").arg(width()));
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_BracketRight && (event->modifiers() & Qt::ControlModifier)) {
+    resize(qMin(720, width() + 40), height());
+    if (subtitle_) subtitle_->setText(QStringLiteral("宽度 %1 · Ctrl+]").arg(width()));
     event->accept();
     return;
   }

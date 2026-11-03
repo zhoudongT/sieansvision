@@ -151,13 +151,14 @@ OperatorRail::OperatorRail(QWidget* parent) : QWidget(parent) {
   });
   installEventFilter(this);
   setFocusPolicy(Qt::StrongFocus);
-  setStatusTip(QStringLiteral("Toolbox 轨 · ↑↓/Home/End · 1-9 跳分类 · Esc/0/A/中键 全部 · Ctrl+C 分类名"));
+  setStatusTip(QStringLiteral("Toolbox 轨 · ↑↓/Home/End · 1-9 跳分类 · Esc/0/A/中键/右键 全部 · Ctrl+C 分类名"));
 }
 
 bool OperatorRail::eventFilter(QObject* obj, QEvent* event) {
   if (event->type() == QEvent::MouseButtonRelease) {
     auto* me = static_cast<QMouseEvent*>(event);
-    if (me->button() == Qt::MiddleButton && group_) {
+    if ((me->button() == Qt::MiddleButton || me->button() == Qt::RightButton) &&
+        group_) {
       if (auto* b = group_->button(0)) {
         b->setChecked(true);
         for (auto* bb : group_->buttons()) {

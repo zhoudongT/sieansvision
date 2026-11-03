@@ -28,7 +28,7 @@ namespace sieans_qt {
 FlowIoDialog::FlowIoDialog(const QVariantMap& io, QWidget* parent)
     : QDialog(parent), io_(io) {
   setWindowTitle(QStringLiteral("流程参数 · I/O 绑定"));
-  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+D 复制行 · Ctrl+A 全选 · Ctrl+E 补默认 · Ctrl+Shift+C 复制CSV · Ctrl+Shift+V 粘贴 · 清空行 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果"));
+  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+D 复制行 · Ctrl+A 全选 · Ctrl+E 补默认 · Ctrl+Tab 切换表 · Ctrl+Shift+C 复制CSV · Ctrl+Shift+V 粘贴 · 清空行 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果"));
   resize(560, 440);
   setStyleSheet(theme::workbenchStyleSheet());
   auto* root = new QVBoxLayout(this);
@@ -117,6 +117,15 @@ FlowIoDialog::FlowIoDialog(const QVariantMap& io, QWidget* parent)
     connect(sc, &QShortcut::activated, this, &QDialog::accept);
     auto* sc2 = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Enter")), this);
     connect(sc2, &QShortcut::activated, this, &QDialog::accept);
+    auto* scTab = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Tab")), this);
+    connect(scTab, &QShortcut::activated, this, [this]() {
+      if (!inTable_ || !outTable_) return;
+      if (outTable_->hasFocus()) {
+        inTable_->setFocus(Qt::ShortcutFocusReason);
+      } else {
+        outTable_->setFocus(Qt::ShortcutFocusReason);
+      }
+    });
   }
 }
 

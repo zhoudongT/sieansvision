@@ -67,7 +67,9 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   root->addWidget(flowLabel_);
   statsLabel_ = new QLabel(QStringLiteral("连OK 0 · NG 0 · — ms"));
   statsLabel_->setObjectName(QStringLiteral("hostRunStats"));
-  statsLabel_->setToolTip(QStringLiteral("运行统计 · 连OK/NG/上次周期 ms · 来自 Host 条"));
+  statsLabel_->setToolTip(QStringLiteral("运行统计 · 连OK/NG/上次周期 ms · 来自 Host 条 · 单击/Ctrl+Shift+S 复制"));
+  statsLabel_->setCursor(Qt::PointingHandCursor);
+  statsLabel_->installEventFilter(this);
   root->addWidget(statsLabel_);
 
   auto* quick = new QHBoxLayout;
@@ -335,6 +337,14 @@ bool HostStatePanel::eventFilter(QObject* obj, QEvent* event) {
       }
     }
     return true;
+  }
+  if (obj == statsLabel_ && event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::LeftButton && statsLabel_) {
+      if (auto* clip = QGuiApplication::clipboard()) clip->setText(statsLabel_->text());
+      if (modeHint_) modeHint_->setText(QStringLiteral("已复制运行统计 · 单击"));
+      return true;
+    }
   }
   return QWidget::eventFilter(obj, event);
 }

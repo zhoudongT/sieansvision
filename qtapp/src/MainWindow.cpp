@@ -832,8 +832,8 @@ void MainWindow::buildToolbar() {
   tb->addSeparator();
   mode_badge_ = new QLabel(QStringLiteral("设计态"));
   mode_badge_->setObjectName(QStringLiteral("modeBadge"));
-  mode_badge_->setToolTip(QStringLiteral("设计态可编辑 · 运行态锁定画布 · 点击可切换模式"));
-  mode_badge_->setStatusTip(QStringLiteral("模式徽章 · 设计态/运行态"));
+  mode_badge_->setToolTip(QStringLiteral("设计态可编辑 · 运行态锁定画布 · 点击可切换模式 · 右键连续/暂停"));
+  mode_badge_->setStatusTip(QStringLiteral("模式徽章 · 设计态/运行态 · 右键连续"));
   mode_badge_->setProperty("runMode", false);
   mode_badge_->setCursor(Qt::PointingHandCursor);
   mode_badge_->installEventFilter(this);
@@ -1657,6 +1657,17 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
     auto* me = static_cast<QMouseEvent*>(event);
     if (me->button() == Qt::LeftButton) {
       if (act_mode_) act_mode_->toggle();
+      return true;
+    }
+    if (me->button() == Qt::RightButton) {
+      // VisionMaster-ish: right-click mode badge toggles continuous
+      if (continuous_run_ && !run_paused_) {
+        onPauseRun();
+      } else if (run_paused_) {
+        onResumeRun();
+      } else {
+        onRunContinuous();
+      }
       return true;
     }
   }

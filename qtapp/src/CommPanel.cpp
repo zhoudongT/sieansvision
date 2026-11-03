@@ -112,6 +112,28 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   ackEdit_->setPlaceholderText(QStringLiteral("ACK 应答 · 空=不回"));
   ackEdit_->setToolTip(QStringLiteral("收到报文后自动回 ACK · 写入 tcpReal.ack · 空则不回 · 随 framing 附加换行"));
   form->addRow(QStringLiteral("ACK"), ackEdit_);
+  {
+    auto* ackRow = new QWidget;
+    auto* ackLay = new QHBoxLayout(ackRow);
+    ackLay->setContentsMargins(0, 0, 0, 0);
+    ackLay->setSpacing(4);
+    const QStringList presets{QStringLiteral("OK"), QStringLiteral("NG"), QStringLiteral("ACK"), QString()};
+    for (const QString& val : presets) {
+      auto* b = new QPushButton(val.isEmpty() ? QStringLiteral("清") : val);
+      b->setObjectName(QStringLiteral("commAckChip"));
+      b->setFixedHeight(22);
+      b->setStyleSheet(QStringLiteral("font-size:11px;"));
+      b->setToolTip(val.isEmpty() ? QStringLiteral("清空 ACK") : QStringLiteral("ACK=%1").arg(val));
+      connect(b, &QPushButton::clicked, this, [this, val]() {
+        if (!ackEdit_) return;
+        ackEdit_->setText(val);
+        pushTcpEndpoint(true);
+      });
+      ackLay->addWidget(b);
+    }
+    ackLay->addStretch(1);
+    form->addRow(QStringLiteral("ACK快选"), ackRow);
+  }
   connect(ackEdit_, &QLineEdit::editingFinished, this, [this]() { pushTcpEndpoint(true); });
   reconnectCheck_ = new QCheckBox(QStringLiteral("客户端断线重连"));
   reconnectCheck_->setChecked(true);
