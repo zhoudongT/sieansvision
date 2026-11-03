@@ -620,7 +620,7 @@ void MainWindow::buildToolbar() {
   act_cont_->setStatusTip(QStringLiteral("连续 · F6"));
   act_stop_ = tb->addAction(QStringLiteral("■ 停止"), this, &MainWindow::onStopRun);
   act_stop_->setShortcut(QKeySequence(Qt::Key_Escape));
-  act_stop_->setToolTip(QStringLiteral("停止运行 / 连续 · Esc"));
+  act_stop_->setToolTip(QStringLiteral("停止运行 / 连续 · Esc · 预览中亦停采集"));
   act_stop_->setStatusTip(QStringLiteral("停止 · Esc"));
   tb->addSeparator();
   act_mode_ = tb->addAction(QStringLiteral("运行模式"));
