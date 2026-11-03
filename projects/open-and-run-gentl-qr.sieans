@@ -285,7 +285,9 @@
       "barcodeAll",
       "barcodeOk",
       "passGate",
-      "formatted"
+      "formatted",
+      "urlOk",
+      "lastRecv"
     ],
     "active": "二维码链",
     "pinGroups": {
@@ -295,16 +297,20 @@
         "barcodeAll",
         "barcodeOk",
         "passGate",
+        "urlOk",
         "formatted"
       ],
       "门限": [
         "barcodeOk",
-        "passGate"
+        "passGate",
+        "urlOk"
       ],
       "通信": [
         "formatted",
         "passGate",
-        "barcodeText"
+        "barcodeText",
+        "lastRecv",
+        "urlOk"
       ]
     }
   },

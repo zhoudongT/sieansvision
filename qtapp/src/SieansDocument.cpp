@@ -382,7 +382,8 @@ QStringList SieansDocument::hostWatchKeys() const {
   if (keys.isEmpty()) {
     keys = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
             QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
-            QStringLiteral("passGate"), QStringLiteral("formatted"),
+            QStringLiteral("passGate"), QStringLiteral("urlOk"),
+            QStringLiteral("formatted"), QStringLiteral("lastRecv"),
             QStringLiteral("commPayload")};
   }
   return keys;

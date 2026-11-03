@@ -37,7 +37,7 @@ checks = [
     (QT / "MainWindow.cpp", ["emptyDefault", "FlowTabBar::stopRequested"]),
     (QT / "PropertyPanel.cpp", ["emptyDefault", "startswith|endswith|contains", "trim|strip|replace", "{{name}}"]),
     (QT / "FlowIoDialog.cpp", ["{{name}}", "Esc 取消"]),
-    (QT / "SieansDocument.cpp", ["emptyDefault", "BARCODE empty", "urlOk", "startswith(barcodeText"]),
+    (QT / "SieansDocument.cpp", ["emptyDefault", "BARCODE empty", "urlOk", "startswith(barcodeText", "lastRecv"]),
     (QT / "FlowCanvas.cpp", ["Right-edge run-state", "状态：%2", "theme::WARN", "showState", "F/Home 适应画布", "Key_F"]),
     (QT / "HostStatePanel.cpp", ["tickPulse", "pulseTimer_", "outline:1px solid", "开始运行当前绑定流程"]),
     (QT / "CommHub.cpp", ["reconnectAttempts_", "reconnect #%1", "backoff", "setInterval(ms)", "attempts reset"]),
@@ -45,7 +45,7 @@ checks = [
     (QT / "PropertyFloat.cpp", ["focusNextPrevChild", "Key_Backtab", "id.left(8)"]),
     (QT / "CommPanel.cpp", ["reconnect", "color:#e0b84a", "listen-fail", "启动 tcpReal"]),
     (QT / "FlowTabBar.cpp", ["fitRequested", "适应流程画布"]),
-    (QT / "MainWindow.cpp", ["FlowTabBar::fitRequested"]),
+    (QT / "MainWindow.cpp", ["FlowTabBar::fitRequested", "AUTO_TCP port bump", "commListenBadge", "listen_badge_"]),
     (QT / "ImageView.cpp", ["Key_F", "Key_Home", "setFocusPolicy", "F/Home 适应", "hits %1"]),
     (QT / "VarWatchPanel.cpp", ["passGate", "urlOk", "setBold(true)"]),
 ]

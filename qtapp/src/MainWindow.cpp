@@ -194,8 +194,29 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   }
   if (qgetenv("SIEANS_QT_AUTO_TCP") == "1") {
     QTimer::singleShot(900, this, [this]() {
+      if (!comm_hub_) return;
       QString e;
-      comm_hub_->startTcp(&e);
+      if (comm_hub_->startTcp(&e)) {
+        logResult(QStringLiteral("AUTO_TCP: %1").arg(comm_hub_->tcpStatus()));
+        return;
+      }
+      // Port busy (live App / prior listen) — bump 19956→19957→19958 once each.
+      QVariantMap cm = comm_hub_->commManager();
+      QVariantMap tcp = cm.value(QStringLiteral("tcpReal")).toMap();
+      const int base = tcp.value(QStringLiteral("port"), 19956).toInt();
+      for (int d = 1; d <= 2; ++d) {
+        tcp.insert(QStringLiteral("port"), base + d);
+        cm.insert(QStringLiteral("tcpReal"), tcp);
+        comm_hub_->loadFromCommManager(cm);
+        QString e2;
+        if (comm_hub_->startTcp(&e2)) {
+          logResult(QStringLiteral("AUTO_TCP port bump %1: %2")
+                        .arg(base + d)
+                        .arg(comm_hub_->tcpStatus()));
+          return;
+        }
+      }
+      logResult(QStringLiteral("AUTO_TCP 失败: %1").arg(e));
     });
   }
   // Soft/open-and-run: grab one soft frame + full pipeline (GenTL→QR→TCP chain).
@@ -586,11 +607,32 @@ void MainWindow::buildToolbar() {
   mode_badge_->setObjectName(QStringLiteral("modeBadge"));
   mode_badge_->setProperty("runMode", false);
   tb->addWidget(mode_badge_);
-  auto* listen = new QLabel(QStringLiteral("监听·—"));
-  listen->setObjectName(QStringLiteral("commListenBadge"));
-  listen->setToolTip(QStringLiteral("通信监听状态 — 点击打开通信管理"));
-  listen->setCursor(Qt::PointingHandCursor);
-  tb->addWidget(listen);
+  listen_badge_ = new QLabel(QStringLiteral("监听·—"));
+  listen_badge_->setObjectName(QStringLiteral("commListenBadge"));
+  listen_badge_->setToolTip(QStringLiteral("通信监听/连接状态 — 点击打开通信管理"));
+  listen_badge_->setCursor(Qt::PointingHandCursor);
+  listen_badge_->setStyleSheet(
+      QStringLiteral("padding:2px 8px;border-radius:3px;background:#3a3d42;color:#a8a8a8;"));
+  tb->addWidget(listen_badge_);
+  if (comm_hub_) {
+    connect(comm_hub_, &CommHub::statusChanged, this, [this](const QString& s) {
+      if (!listen_badge_) return;
+      listen_badge_->setText(QStringLiteral("通信·%1").arg(s.left(28)));
+      if (s.contains(QStringLiteral("listen")) || s.contains(QStringLiteral("connected")))
+        listen_badge_->setStyleSheet(
+            QStringLiteral("padding:2px 8px;border-radius:3px;background:#1e3d2f;color:#3ecf8e;font-weight:600;"));
+      else if (s.contains(QStringLiteral("fail")) || s.contains(QStringLiteral("error")) ||
+               s.contains(QStringLiteral("disconnected")))
+        listen_badge_->setStyleSheet(
+            QStringLiteral("padding:2px 8px;border-radius:3px;background:#3a1c1c;color:#e35d6a;font-weight:600;"));
+      else if (s.contains(QStringLiteral("reconnect")) || s.contains(QStringLiteral("connecting")))
+        listen_badge_->setStyleSheet(
+            QStringLiteral("padding:2px 8px;border-radius:3px;background:#3a3420;color:#e0b84a;font-weight:600;"));
+      else
+        listen_badge_->setStyleSheet(
+            QStringLiteral("padding:2px 8px;border-radius:3px;background:#3a3d42;color:#a8a8a8;"));
+    });
+  }
 }
 
 void MainWindow::applyDocumentToUi() {
@@ -613,10 +655,27 @@ void MainWindow::applyDocumentToUi() {
     const QVariantMap tcp = document_.commManager().value(QStringLiteral("tcpReal")).toMap();
     if (tcp.value(QStringLiteral("autoStart")).toBool() && !comm_hub_->tcpActive()) {
       QString e;
-      if (comm_hub_->startTcp(&e))
+      if (comm_hub_->startTcp(&e)) {
         logResult(QStringLiteral("TCP autoStart: %1").arg(comm_hub_->tcpStatus()));
-      else if (!e.isEmpty())
-        logResult(QStringLiteral("TCP autoStart 失败: %1").arg(e));
+      } else {
+        QVariantMap cm = document_.commManager();
+        QVariantMap tcp2 = cm.value(QStringLiteral("tcpReal")).toMap();
+        const int base = tcp2.value(QStringLiteral("port"), 19956).toInt();
+        bool ok = false;
+        for (int d = 1; d <= 2 && !ok; ++d) {
+          tcp2.insert(QStringLiteral("port"), base + d);
+          cm.insert(QStringLiteral("tcpReal"), tcp2);
+          comm_hub_->loadFromCommManager(cm);
+          QString e2;
+          ok = comm_hub_->startTcp(&e2);
+          if (ok)
+            logResult(QStringLiteral("TCP autoStart port bump %1: %2")
+                          .arg(base + d)
+                          .arg(comm_hub_->tcpStatus()));
+        }
+        if (!ok && !e.isEmpty())
+          logResult(QStringLiteral("TCP autoStart 失败: %1").arg(e));
+      }
     }
   }
   if (host_strip_) host_strip_->updateFromVars(flow_vars_);

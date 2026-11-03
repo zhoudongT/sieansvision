@@ -108,6 +108,7 @@ class MainWindow : public QMainWindow {
   ImageView* output_view_ = nullptr;
   QTabWidget* image_tabs_ = nullptr;
   QLabel* mode_badge_ = nullptr;
+  QLabel* listen_badge_ = nullptr;
   QLabel* brand_label_ = nullptr;
 
   CommHub* comm_hub_ = nullptr;
