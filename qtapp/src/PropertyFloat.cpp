@@ -14,7 +14,7 @@
 namespace sieans_qt {
 
 PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
-  setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End/PgUp/PgDn/滚轮 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续 · Ctrl+S 同确定"));
+  setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · F2 首字段 · Tab/Home/End/PgUp/PgDn/滚轮 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续 · Ctrl+S 同确定"));
   setWhatsThis(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End/PgUp/PgDn · Ctrl/Alt/Shift+Enter/Ctrl+S 确定 · F5/F9 单次 · F6 连续"));
   setObjectName(QStringLiteral("propertyFloat"));
   setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
@@ -180,6 +180,19 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
     hide();
     event->accept();
     return;
+  }
+  if (event->key() == Qt::Key_F2) {
+    // Focus first editable field in the float (VM-ish).
+    const auto kids = findChildren<QWidget*>();
+    for (QWidget* w : kids) {
+      if (!w->isVisible() || !w->isEnabled() || w->focusPolicy() == Qt::NoFocus)
+        continue;
+      if (w == this || w == titleBar_ || w == closeBtn_ || w == title_ || w == subtitle_)
+        continue;
+      w->setFocus(Qt::ShortcutFocusReason);
+      event->accept();
+      return;
+    }
   }
   if (event->key() == Qt::Key_Escape ||
       (event->key() == Qt::Key_W && (event->modifiers() & Qt::ControlModifier))) {

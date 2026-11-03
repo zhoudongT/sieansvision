@@ -32,6 +32,9 @@ class CommPanel : public QWidget {
 
  private:
   void onDeviceRowChanged();
+  void onRemarkEdit();
+  void pushTcpEndpoint(bool emitSave);
+  void syncFramingFromDoc(const QVariantMap& tcp);
 
   CommHub* hub_ = nullptr;
   QTableWidget* deviceTable_ = nullptr;
@@ -39,6 +42,7 @@ class CommPanel : public QWidget {
   QLineEdit* payloadEdit_ = nullptr;
   QLineEdit* hostEdit_ = nullptr;
   QLineEdit* portEdit_ = nullptr;
+  QComboBox* framingCombo_ = nullptr;
   QPlainTextEdit* transcript_ = nullptr;
   QLabel* status_ = nullptr;
   QLabel* detail_ = nullptr;

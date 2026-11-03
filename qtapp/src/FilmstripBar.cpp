@@ -1,4 +1,6 @@
 #include "FilmstripBar.hpp"
+#include <QSet>
+#include <algorithm>
 
 #include <QCheckBox>
 #include <QFileInfo>
@@ -82,9 +84,9 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   list_->setFixedHeight(kThumbH + 22);
   list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
   list_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  list_->setStatusTip(QStringLiteral("胶片 · ←→ Home/End/PgUp/PgDn · 0/A/1-9 · Space/F6 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Del"));
+  list_->setStatusTip(QStringLiteral("胶片 · ←→ Home/End/PgUp/PgDn · 0/A/1-9 · Ctrl+A 全选 · Space/F6 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Del 多选删除"));
   list_->setSpacing(2);
-  list_->setSelectionMode(QAbstractItemView::SingleSelection);
+  list_->setSelectionMode(QAbstractItemView::ExtendedSelection);
   root->addWidget(list_);
 
   connect(add, &QPushButton::clicked, this, &FilmstripBar::addImagesRequested);
@@ -338,7 +340,16 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
-  if (event->key() == Qt::Key_0 || event->key() == Qt::Key_A) {
+  if (event->key() == Qt::Key_A && (event->modifiers() & Qt::ControlModifier)) {
+    if (list_ && list_->count() > 0) {
+      list_->selectAll();
+      setStatus(QStringLiteral("已全选 %1 张").arg(list_->count()));
+    }
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_0 ||
+      (event->key() == Qt::Key_A && !(event->modifiers() & Qt::ControlModifier))) {
     if (!paths_.isEmpty()) {
       selectIndex(0, true);
       setStatus(QStringLiteral("跳到 #1"));
@@ -366,6 +377,28 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
     return;
   }
   if (event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) {
+    if (list_) {
+      const auto selected = list_->selectedItems();
+      if (selected.size() > 1) {
+        QSet<int> rows;
+        for (auto* it : selected) rows.insert(list_->row(it));
+        QList<int> sorted = rows.values();
+        std::sort(sorted.begin(), sorted.end(), std::greater<int>());
+        for (int r : sorted) {
+          if (r >= 0 && r < paths_.size()) paths_.removeAt(r);
+        }
+        rebuildThumbs();
+        if (!paths_.isEmpty())
+          selectIndex(qMin(sorted.last(), paths_.size() - 1), true);
+        else {
+          index_ = -1;
+          refreshCount();
+        }
+        setStatus(QStringLiteral("已删除 %1 张").arg(selected.size()));
+        event->accept();
+        return;
+      }
+    }
     if (index_ >= 0 && index_ < paths_.size()) {
       paths_.removeAt(index_);
       const int next = qMin(index_, paths_.size() - 1);

@@ -467,6 +467,8 @@ void MainWindow::buildUi() {
   var_watch_ = new VarWatchPanel;
   bottom->addTab(var_watch_, QStringLiteral("变量监视"));
   comm_panel_ = new CommPanel(comm_hub_);
+  connect(comm_panel_, &CommPanel::requestSaveComm, this,
+          [this](const QVariantMap& cm) { document_.setCommManager(cm); });
   bottom->addTab(comm_panel_, QStringLiteral("通信"));
   host_sm_ = new HostStatePanel;
   bottom->addTab(host_sm_, QStringLiteral("上位机"));
@@ -1444,6 +1446,9 @@ void MainWindow::onOpenCommManager() {
   auto* panel = new CommPanel(comm_hub_, &dlg);
   panel->bindDocument(document_.commManager());
   panel->setFlowVars(flow_vars_);
+  connect(panel, &CommPanel::requestSaveComm, this, [this](const QVariantMap& cm) {
+    document_.setCommManager(cm);
+  });
   lay->addWidget(panel);
   auto* box = new QDialogButtonBox(QDialogButtonBox::Close);
   lay->addWidget(box);

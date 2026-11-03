@@ -5,9 +5,15 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QListWidget>
+#include <QAbstractItemView>
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QTimer>
+#include <QShortcut>
+#include <QKeySequence>
+#include <QApplication>
+#include <QClipboard>
+#include <QGuiApplication>
 
 namespace sieans_qt {
 namespace {
@@ -105,9 +111,32 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   history_ = new QListWidget;
   history_->setObjectName(QStringLiteral("alarmHistory"));
   history_->setMinimumHeight(72);
-  history_->setToolTip(QStringLiteral("报警历史 · 最近事件"));
-  history_->setStatusTip(QStringLiteral("Host · 报警历史"));
+  history_->setToolTip(QStringLiteral("报警历史 · 最近事件 · 双击复制 · Del 删行 · Ctrl+L 清空 · 最近 40 条"));
+  history_->setStatusTip(QStringLiteral("Host · 报警历史 · Ctrl+L/Del/双击"));
+  history_->setSelectionMode(QAbstractItemView::ExtendedSelection);
   root->addWidget(history_, 1);
+  {
+    auto* scL = new QShortcut(QKeySequence(QStringLiteral("Ctrl+L")), history_);
+    connect(scL, &QShortcut::activated, this, [this]() {
+      if (!history_) return;
+      history_->clear();
+      if (modeHint_)
+        modeHint_->setText(QStringLiteral("报警历史已清空 · Ctrl+L"));
+    });
+    auto* scDel = new QShortcut(QKeySequence(Qt::Key_Delete), history_);
+    connect(scDel, &QShortcut::activated, this, [this]() {
+      if (!history_) return;
+      for (auto* it : history_->selectedItems()) delete history_->takeItem(history_->row(it));
+    });
+    connect(history_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* it) {
+      if (!it) return;
+      if (auto* clip = QGuiApplication::clipboard()) {
+        clip->setText(it->text());
+        if (modeHint_)
+          modeHint_->setText(QStringLiteral("已复制报警行 · 双击"));
+      }
+    });
+  }
 
   connect(btnStart_, &QPushButton::clicked, this, [this]() {
     if (mode_->currentIndex() > 0) {
@@ -137,7 +166,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
 void HostStatePanel::bindFlow(const QString& name, int steps) {
   flowLabel_->setText(QStringLiteral("流程 · %1 · %2 步").arg(name).arg(steps));
   if (modeHint_ && modeHint_->text().isEmpty())
-    modeHint_->setText(QStringLiteral("HMI · Idle/Running/Paused/Alarm · 开始驱动当前流程"));
+    modeHint_->setText(QStringLiteral("HMI · Idle/Running/Paused/Alarm · 开始驱动当前流程 · 历史 Ctrl+L/Del/双击"));
 }
 
 void HostStatePanel::paintBadge() {

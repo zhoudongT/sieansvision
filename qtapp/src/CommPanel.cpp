@@ -9,6 +9,9 @@
 #include <QScrollBar>
 #include <QShortcut>
 #include <QKeySequence>
+#include <QInputDialog>
+#include <QMessageBox>
+#include <QAbstractItemView>
 
 namespace sieans_qt {
 
@@ -35,11 +38,13 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   deviceTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
   deviceTable_->setSelectionMode(QAbstractItemView::SingleSelection);
   deviceTable_->setMaximumHeight(120);
-  deviceTable_->setToolTip(QStringLiteral("通信设备表 · 选中后试发 / 查看备注 · framing 见启动 tip · 双击编辑备注"));
+  deviceTable_->setToolTip(QStringLiteral("通信设备表 · 选中后试发 / 查看备注 · framing 见启动 tip · 帧分隔见 framing 下拉 · 双击编辑备注"));
   deviceTable_->setStatusTip(QStringLiteral("通信 · 设备表 · LocalBus/TCP"));
   lay->addWidget(deviceTable_);
   connect(deviceTable_, &QTableWidget::itemSelectionChanged, this,
           &CommPanel::onDeviceRowChanged);
+  connect(deviceTable_, &QTableWidget::itemDoubleClicked, this,
+          [this](QTableWidgetItem*) { onRemarkEdit(); });
 
   detail_ = new QLabel(QStringLiteral("选择设备查看备注"));
   detail_->setObjectName(QStringLiteral("muted"));
@@ -59,6 +64,18 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   hp->addWidget(hostEdit_);
   hp->addWidget(portEdit_);
   form->addRow(QStringLiteral("TCP 端点"), hp);
+  framingCombo_ = new QComboBox;
+  framingCombo_->setObjectName(QStringLiteral("framingCombo"));
+  framingCombo_->addItem(QStringLiteral("LF (\\n)"), QStringLiteral("lf"));
+  framingCombo_->addItem(QStringLiteral("CRLF (\\r\\n)"), QStringLiteral("crlf"));
+  framingCombo_->addItem(QStringLiteral("Raw 原样"), QStringLiteral("raw"));
+  framingCombo_->addItem(QStringLiteral("Len4 BE 前缀"), QStringLiteral("len4"));
+  framingCombo_->setToolTip(
+      QStringLiteral("TCP 帧分隔 · lf/crlf/raw/len4 · 写入 tcpReal.framing · 启动前可改 · 运行中改写下次生效"));
+  framingCombo_->setStatusTip(QStringLiteral("通信 · framing lf/crlf/raw/len4"));
+  form->addRow(QStringLiteral("帧分隔"), framingCombo_);
+  connect(framingCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+          [this](int) { pushTcpEndpoint(true); });
   payloadEdit_ = new QLineEdit(
       QStringLiteral("BARCODE ok=${flow.passGate} text=${flow.barcodeText}"));
   payloadEdit_->setToolTip(
@@ -84,7 +101,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
       QStringLiteral("TX/RX 抄本 · LocalBus 软总线 + 真 TCP · peers 见状态行"));
   lay->addWidget(transcript_, 1);
 
-  btnTcp->setToolTip(QStringLiteral("启动 tcpReal（server 监听 / client 连接+重连）· framing lf/crlf/raw/len4 · 状态见徽章"));
+  btnTcp->setToolTip(QStringLiteral("启动 tcpReal（server 监听 / client 连接+重连）· framing lf/crlf/raw/len4 · framing 见启动 tip · 状态见徽章"));
   btnStop->setToolTip(QStringLiteral("停止 TCP · 清空重连计数 · framing 保留到下次启动 · peers 断开"));
   btnSend->setToolTip(QStringLiteral("按报文模板试发到所选设备（支持 ${flow.x}/{name}/{{name}}）· Enter/Ctrl+Enter"));
   btnClear->setToolTip(QStringLiteral("清空 TX/RX 抄本 · Ctrl+L"));
@@ -135,6 +152,7 @@ void CommPanel::bindDocument(const QVariantMap& commManager) {
   const QVariantMap tcp = commManager.value(QStringLiteral("tcpReal")).toMap();
   hostEdit_->setText(tcp.value(QStringLiteral("host"), QStringLiteral("127.0.0.1")).toString());
   portEdit_->setText(QString::number(tcp.value(QStringLiteral("port"), 19956).toInt()));
+  syncFramingFromDoc(tcp);
   refreshDevices();
   refreshTranscript();
 }
@@ -227,14 +245,7 @@ void CommPanel::onTrialSend() {
 
 void CommPanel::onStartTcp() {
   if (!hub_) return;
-  // push endpoint edits into tcpReal before start
-  QVariantMap cm = hub_->commManager();
-  QVariantMap tcp = cm.value(QStringLiteral("tcpReal")).toMap();
-  if (!hostEdit_->text().isEmpty()) tcp.insert(QStringLiteral("host"), hostEdit_->text());
-  if (!portEdit_->text().isEmpty())
-    tcp.insert(QStringLiteral("port"), portEdit_->text().toInt());
-  cm.insert(QStringLiteral("tcpReal"), tcp);
-  hub_->loadFromCommManager(cm);
+  pushTcpEndpoint(true);
   QString err;
   if (!hub_->startTcp(&err) && !err.isEmpty())
     status_->setText(QStringLiteral("TCP: %1").arg(err));
@@ -243,5 +254,77 @@ void CommPanel::onStartTcp() {
 void CommPanel::onStopTcp() {
   if (hub_) hub_->stopTcp();
 }
+
+
+void CommPanel::syncFramingFromDoc(const QVariantMap& tcp) {
+  if (!framingCombo_) return;
+  const QString fr = tcp.value(QStringLiteral("framing"), QStringLiteral("lf")).toString();
+  const int idx = framingCombo_->findData(fr);
+  framingCombo_->blockSignals(true);
+  framingCombo_->setCurrentIndex(idx >= 0 ? idx : 0);
+  framingCombo_->blockSignals(false);
+}
+
+void CommPanel::pushTcpEndpoint(bool emitSave) {
+  if (!hub_) return;
+  QVariantMap cm = hub_->commManager();
+  QVariantMap tcp = cm.value(QStringLiteral("tcpReal")).toMap();
+  if (hostEdit_ && !hostEdit_->text().isEmpty())
+    tcp.insert(QStringLiteral("host"), hostEdit_->text());
+  if (portEdit_ && !portEdit_->text().isEmpty())
+    tcp.insert(QStringLiteral("port"), portEdit_->text().toInt());
+  if (framingCombo_) {
+    const QString fr = framingCombo_->currentData().toString();
+    tcp.insert(QStringLiteral("framing"), fr.isEmpty() ? QStringLiteral("lf") : fr);
+  }
+  cm.insert(QStringLiteral("tcpReal"), tcp);
+  hub_->loadFromCommManager(cm);
+  if (status_ && framingCombo_) {
+    status_->setToolTip(
+        QStringLiteral("TCP: %1 · framing=%2")
+            .arg(hub_->tcpStatus(),
+                 framingCombo_->currentData().toString()));
+  }
+  if (emitSave) emit requestSaveComm(cm);
+}
+
+void CommPanel::onRemarkEdit() {
+  if (!deviceTable_ || !hub_) return;
+  const auto items = deviceTable_->selectedItems();
+  if (items.isEmpty()) return;
+  const int row = items.first()->row();
+  auto* nameItem = deviceTable_->item(row, 0);
+  if (!nameItem) return;
+  const QString name = nameItem->text();
+  const QString cur = nameItem->data(Qt::UserRole).toString();
+  bool ok = false;
+  const QString next = QInputDialog::getText(
+      this, QStringLiteral("设备备注"),
+      QStringLiteral("备注 · %1").arg(name), QLineEdit::Normal, cur, &ok);
+  if (!ok) return;
+  nameItem->setData(Qt::UserRole, next);
+  // write back into device list in commManager
+  QVariantMap cm = hub_->commManager();
+  QVariantList devices = cm.value(QStringLiteral("devices")).toList();
+  bool found = false;
+  for (int i = 0; i < devices.size(); ++i) {
+    QVariantMap d = devices[i].toMap();
+    if (d.value(QStringLiteral("name")).toString() == name) {
+      d.insert(QStringLiteral("remark"), next);
+      devices[i] = d;
+      found = true;
+      break;
+    }
+  }
+  if (found) {
+    cm.insert(QStringLiteral("devices"), devices);
+    hub_->loadFromCommManager(cm);
+    emit requestSaveComm(cm);
+  }
+  onDeviceRowChanged();
+  if (detail_)
+    detail_->setText(detail_->text() + QStringLiteral(" · 备注已保存"));
+}
+
 
 }  // namespace sieans_qt

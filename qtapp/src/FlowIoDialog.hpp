@@ -18,6 +18,8 @@ class FlowIoDialog : public QDialog {
  private:
   QTableWidget* makeTable(const QVariantList& rows, const QString& kind);
   QVariantList readTable(QTableWidget* table) const;
+  void addRow(QTableWidget* table);
+  void removeSelectedRows(QTableWidget* table);
 
   QTableWidget* inTable_ = nullptr;
   QTableWidget* outTable_ = nullptr;
