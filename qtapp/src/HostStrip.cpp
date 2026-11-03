@@ -7,7 +7,7 @@
 namespace sieans_qt {
 
 HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
-  setStatusTip(QStringLiteral("Host 条 · OK/NG/ALARM · tcp= 摘要 · Esc 停止运行"));
+  setStatusTip(QStringLiteral("Host 条 · OK/NG/ALARM · tcp= 摘要(lf/crlf/raw/len4) · Esc 停止运行"));
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(8, 4, 8, 4);
   root->setSpacing(2);
@@ -32,7 +32,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
                      "padding:3px 8px;font-size:11px;"));
   detail_ = new QLabel(QStringLiteral("Host · 等待运行"));
   detail_->setObjectName(QStringLiteral("muted"));
-  detail_->setToolTip(QStringLiteral("count/text/RX/urlOk/tcp 摘要 · framing 见 tcp="));
+  detail_->setToolTip(QStringLiteral("count/text/RX/urlOk/tcp 摘要 · framing lf/crlf/raw/len4 见 tcp="));
   alarmLabel_ = new QLabel;
   alarmLabel_->setVisible(false);
   alarmLabel_->setToolTip(QStringLiteral("报警锁存 · Host 清报警解除"));

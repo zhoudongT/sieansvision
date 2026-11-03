@@ -9,20 +9,22 @@
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QVBoxLayout>
+#include <QShortcut>
+#include <QKeySequence>
 
 namespace sieans_qt {
 
 FlowIoDialog::FlowIoDialog(const QVariantMap& io, QWidget* parent)
     : QDialog(parent), io_(io) {
   setWindowTitle(QStringLiteral("流程参数 · I/O 绑定"));
-  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Esc 取消"));
+  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Esc 取消 · Enter/Ctrl+Enter 确定"));
   resize(560, 440);
   setStyleSheet(theme::workbenchStyleSheet());
   auto* root = new QVBoxLayout(this);
   auto* hint = new QLabel(
       QStringLiteral(
           "流程级 I/O 与显示：表格可编辑；确定后写回 flow.io（订阅 模块.字段 / flow.var；"
-          "报文模板支持 {name} / ${flow.x} / {{name}}）· Esc 取消 · Enter 确定"));
+          "报文模板支持 {name} / ${flow.x} / {{name}}）· Esc 取消 · Enter/Ctrl+Enter 确定"));
   hint->setObjectName(QStringLiteral("muted"));
   hint->setWordWrap(true);
   root->addWidget(hint);
@@ -59,6 +61,12 @@ FlowIoDialog::FlowIoDialog(const QVariantMap& io, QWidget* parent)
   connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
   connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
   root->addWidget(buttons);
+  {
+    auto* sc = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Return")), this);
+    connect(sc, &QShortcut::activated, this, &QDialog::accept);
+    auto* sc2 = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Enter")), this);
+    connect(sc2, &QShortcut::activated, this, &QDialog::accept);
+  }
 }
 
 QTableWidget* FlowIoDialog::makeTable(const QVariantList& rows, const QString& kind) {
