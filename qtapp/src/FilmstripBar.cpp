@@ -40,7 +40,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   status_ = new QLabel(QStringLiteral("本地图像"));
   status_->setObjectName(QStringLiteral("muted"));
   autoSwitch_ = new QCheckBox(QStringLiteral("自动切换"));
-  autoSwitch_->setToolTip(QStringLiteral("连续运行时切到下一张本地图 · Space/F6"));
+  autoSwitch_->setToolTip(QStringLiteral("连续运行时切到下一张本地图 · Space/F6 · 勾选后连续自动翻帧"));
   auto* runAll = new QPushButton(QStringLiteral("运行全部"));
   runAll->setToolTip(QStringLiteral("运行全部本地图 · F5/F9"));
   runAll->setStatusTip(QStringLiteral("胶片 · 运行全部 · F5/F9"));
