@@ -41,6 +41,8 @@ class FlowTabBar : public QWidget {
   int intervalMs_ = 200;
   int cycle_ = 0;
   double lastMs_ = -1;
+  bool continuous_ = false;
+  bool paused_ = false;
   void refreshCycleLabel();
 };
 

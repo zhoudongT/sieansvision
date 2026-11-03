@@ -123,6 +123,8 @@ void FlowTabBar::setRunChrome(const QString& mode, int cycle, double lastMs,
   }
   cycle_ = cycle;
   lastMs_ = lastMs;
+  continuous_ = continuous;
+  paused_ = paused;
   refreshCycleLabel();
   if (pauseBtn_) {
     pauseBtn_->setEnabled(continuous);
@@ -215,6 +217,14 @@ bool FlowTabBar::eventFilter(QObject* obj, QEvent* event) {
     auto* ke = static_cast<QKeyEvent*>(event);
     if (ke->key() == Qt::Key_Escape) {
       emit stopRequested();
+      return true;
+    }
+    if (ke->key() == Qt::Key_Space &&
+        !(ke->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::ShiftModifier))) {
+      if (continuous_ || paused_)
+        emit pauseRequested();
+      else
+        emit runContinuousRequested();
       return true;
     }
     if (ke->key() == Qt::Key_F5 || ke->key() == Qt::Key_F9) {

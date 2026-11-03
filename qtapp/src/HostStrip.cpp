@@ -19,7 +19,7 @@ namespace sieans_qt {
 
 HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   setFocusPolicy(Qt::StrongFocus);
-  setStatusTip(QStringLiteral("Host 条 · OK/NG/ALARM · tcp= 摘要(lf/crlf/raw/len4) · Esc 停止运行 · 周期 chip 见右侧 · 单击模式切换 · 右键连续 · Ctrl+单击周期清零 · 双击明细复制 · Ctrl+Shift+V 粘贴监视键 · 周期中键良率 · 周期 ms"));
+  setStatusTip(QStringLiteral("Host 条 · OK/NG/ALARM · tcp= 摘要(lf/crlf/raw/len4) · Esc 停止 · Space 开始/暂停 · F5/F9 单次 · F6 连续 · F7 暂停 · 周期 chip 见右侧 · 单击模式切换 · 右键连续 · Ctrl+单击周期清零 · 双击明细复制 · Ctrl+Shift+V 粘贴监视键 · 周期中键良率 · 周期 ms"));
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(8, 4, 8, 4);
   root->setSpacing(2);
@@ -93,10 +93,10 @@ void HostStrip::setAlarm(bool on, const QString& reason) {
 
 void HostStrip::setRunChrome(const QString& mode, const QString& hostState, int cycle) {
   cycle_ = cycle;
+  hostState_ = hostState.isEmpty() ? QStringLiteral("Idle") : hostState;
   const bool run = mode.contains(QStringLiteral("运行")) || mode.contains(QStringLiteral("连续")) ||
                    mode.contains(QStringLiteral("暂停"));
-  modeChip_->setText(QStringLiteral("%1 · %2").arg(mode, hostState.isEmpty() ? QStringLiteral("Idle")
-                                                                          : hostState));
+  modeChip_->setText(QStringLiteral("%1 · %2").arg(mode, hostState_));
   modeChip_->setStyleSheet(
       run ? QStringLiteral("background:#1e3d2f;color:#3ecf8e;border-radius:3px;"
                            "padding:3px 8px;font-size:11px;font-weight:600;")
@@ -439,6 +439,14 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
     }
     if (ke->key() == Qt::Key_Escape) {
       emit stopRequested();
+      return true;
+    }
+    if (ke->key() == Qt::Key_Space &&
+        !(ke->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::ShiftModifier))) {
+      if (hostState_ == QLatin1String("Running") || hostState_ == QLatin1String("Paused"))
+        emit pauseRequested();
+      else
+        emit runContinuousRequested();
       return true;
     }
     if (ke->key() == Qt::Key_F5 || ke->key() == Qt::Key_F9) {
