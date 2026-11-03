@@ -23,12 +23,12 @@ checks = [
     (QT / "FilmstripBar.cpp", ["KeepAspectRatio", "letterbox", "item:hover", "Key_Left", "selectPrev", "2px solid #e67a2e", "QEvent::Wheel"]),
     (QT / "PropertyFloat.cpp", ["Key_Escape", "Key_Return", "ControlModifier", "baseline_", "acceptedCommit", "propertyFloatHint", "findChild<QLineEdit*>"]),
     (QT / "main.cpp", ["setSoftQrSamplePath", "SIEANS_QT_EXPR_SELFTEST"]),
-    (QT / "MainWindow.cpp", ["SIEANS_QT_AUTO_RUN", "SIEANS_QT_FORCE_SEED", "autoStart", "barcodeText=%6", "lastRecv=%8"]),
+    (QT / "MainWindow.cpp", ["SIEANS_QT_AUTO_RUN", "SIEANS_QT_FORCE_SEED", "autoStart", "barcodeText=%6", "lastRecv=%8", "urlOk=%9", "tcp=%10"]),
     (QT / "GenTLWorker.cpp", ["makeSoftFrame(1280, 1024"]),
     (QT / "OperatorLibrary.cpp", ["focusSearch", "Key_F", "def.tip.contains"]),
     (QT / "ExprEval.cpp", ['"needle" in haystack', "in-miss", "startswith", "endswith", "contains-fn", "lower"]),
     (QT / "VarWatchPanel.cpp", ["lastRecv", "theme::OK", "theme::NG"]),
-    (QT / "HostStrip.cpp", ["lastRecv", "RX="]),
+    (QT / "HostStrip.cpp", ["lastRecv", "RX=", "urlOk="]),
     (QT / "CommPanel.cpp", ["TX %2", "RX %3"]),
     (QT / "OperatorRail.cpp", ["点击筛选"]),
     (QT / "ImageView.cpp", ["码 %1", "QColor(0, 0, 0, 160)", "#%1 %2: %3"]),
@@ -41,7 +41,7 @@ checks = [
     (QT / "FlowCanvas.cpp", ["Right-edge run-state", "状态：%2", "theme::WARN", "showState"]),
     (QT / "HostStatePanel.cpp", ["tickPulse", "pulseTimer_", "outline:1px solid"]),
     (QT / "CommHub.cpp", ["reconnectAttempts_", "reconnect #%1", "backoff", "setInterval(ms)"]),
-    (QT / "FilmstripBar.cpp", ["InternalMove", "已重排", "拖拽缩略图重排"]),
+    (QT / "FilmstripBar.cpp", ["InternalMove", "已重排", "拖拽缩略图重排", "%1×%2"]),
     (QT / "PropertyFloat.cpp", ["focusNextPrevChild", "Key_Backtab"]),
     (QT / "CommPanel.cpp", ["reconnect", "color:#e0b84a"]),
     (QT / "FlowTabBar.cpp", ["fitRequested", "适应流程画布"]),
@@ -110,7 +110,7 @@ env3["SIEANS_QT_SCREENSHOT"] = str(ROOT / "artifacts" / "verify-wave4-soft-run.p
 env3["SIEANS_QT_SCREENSHOT_QUIT"] = "1"
 r3 = subprocess.run([str(BIN)], env=env3, capture_output=True, text=True, timeout=40)
 body = smoke.read_text(encoding="utf-8", errors="replace") if smoke.exists() else ""
-if r3.returncode == 0 and "passGate=1" in body and "codes=" in body and "lastRecv=BARCODE" in body:
+if r3.returncode == 0 and "passGate=1" in body and "codes=" in body and "lastRecv=BARCODE" in body and "urlOk=1" in body:
     ok(f"soft AUTO_RUN decode+echo: {body.strip()[:160]}")
 else:
     bad(f"soft AUTO_RUN rc={r3.returncode} body={body!r} err={r3.stderr[-300:]}")
@@ -152,7 +152,7 @@ proj = ROOT / "projects" / "open-and-run-gentl-qr.sieans"
 proj_txt = proj.read_text(encoding="utf-8", errors="replace") if proj.exists() else ""
 if "result_gate" not in proj_txt:
     bad("project missing result_gate")
-elif r5.returncode == 0 and "passGate=1" in body5 and "lastRecv=BARCODE" in body5:
+elif r5.returncode == 0 and "passGate=1" in body5 and "lastRecv=BARCODE" in body5 and "urlOk=1" in body5:
     ok(f"project AUTO_RUN decode+echo: {body5.strip()[:140]}")
 else:
     bad(f"project AUTO_RUN rc={r5.returncode} body={body5!r} err={(r5.stderr or '')[-300:]}")

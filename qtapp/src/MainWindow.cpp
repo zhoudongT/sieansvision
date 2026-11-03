@@ -1272,7 +1272,7 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
       const QString line =
           QStringLiteral(
               "codes=%1 ms=%2 w=%3 h=%4 passGate=%5 barcodeText=%6 "
-              "formatted=%7 lastRecv=%8\n")
+              "formatted=%7 lastRecv=%8 urlOk=%9 tcp=%10\n")
               .arg(hits.size())
               .arg(decodeMs, 0, 'f', 2)
               .arg(src.width())
@@ -1283,7 +1283,9 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
               .arg(flow_vars_.value(QStringLiteral("formatted")).toString()
                        .left(120).replace(QLatin1Char('\n'), QLatin1Char('|')))
               .arg(flow_vars_.value(QStringLiteral("lastRecv")).toString()
-                       .left(120).replace(QLatin1Char('\n'), QLatin1Char('|')));
+                       .left(120).replace(QLatin1Char('\n'), QLatin1Char('|')))
+              .arg(flow_vars_.value(QStringLiteral("urlOk")).toString())
+              .arg(comm_hub_ ? comm_hub_->tcpStatus() : QStringLiteral("n/a"));
       f.write(line.toUtf8());
     }
   }

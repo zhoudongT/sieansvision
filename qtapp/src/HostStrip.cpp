@@ -136,6 +136,9 @@ void HostStrip::updateFromVars(const QVariantMap& vars, int codeCount, bool eval
   const QString lastRecv = vars.value(QStringLiteral("lastRecv")).toString();
   if (!lastRecv.isEmpty())
     detail += QStringLiteral(" · RX=%1").arg(lastRecv.left(28));
+  const QString urlOk = vars.value(QStringLiteral("urlOk")).toString();
+  if (!urlOk.isEmpty())
+    detail += QStringLiteral(" · urlOk=%1").arg(urlOk);
   const QString ioOut = vars.value(QStringLiteral("io.Result")).toString();
   if (!ioOut.isEmpty()) detail += QStringLiteral(" · I/O.Result=%1").arg(ioOut.left(24));
   detail_->setText(detail);

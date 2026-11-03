@@ -102,7 +102,14 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
     if (rebuilding_ || row < 0 || row >= paths_.size()) return;
     index_ = row;
     refreshCount();
-    emit imageSelected(paths_.at(row));
+    const QString path = paths_.at(row);
+    QImage img(path);
+    if (!img.isNull())
+      setStatus(QStringLiteral("%1×%2 · %3")
+                    .arg(img.width())
+                    .arg(img.height())
+                    .arg(QFileInfo(path).fileName()));
+    emit imageSelected(path);
   });
   connect(list_->model(), &QAbstractItemModel::rowsMoved, this,
           [this](const QModelIndex&, int, int, const QModelIndex&, int) {
