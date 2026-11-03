@@ -698,10 +698,11 @@ void FlowView::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
-  if (event->key() == Qt::Key_F || event->key() == Qt::Key_Home ||
-      event->key() == Qt::Key_0 || event->key() == Qt::Key_R ||
-      event->key() == Qt::Key_G || event->key() == Qt::Key_A ||
-      event->key() == Qt::Key_Space) {
+  if (((event->key() == Qt::Key_F || event->key() == Qt::Key_Home ||
+        event->key() == Qt::Key_0 || event->key() == Qt::Key_R ||
+        event->key() == Qt::Key_G || event->key() == Qt::Key_A ||
+        event->key() == Qt::Key_Space) &&
+       !(event->modifiers() & Qt::ControlModifier))) {
     fitAll();
     event->accept();
     return;

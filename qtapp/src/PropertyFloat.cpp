@@ -13,12 +13,14 @@
 #include <QVariantMap>
 #include <QtGlobal>
 #include <QClipboard>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QGuiApplication>
 
 namespace sieans_qt {
 
 PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
-  setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · F2 首字段 · Tab/Home/End/PgUp/PgDn/滚轮 · Alt+滚轮透明度 · Ctrl+0 透明度重置 · Ctrl+[ / ] 宽度 · Ctrl+Shift+[ / ] 高度 · Ctrl+Shift+0 复位尺寸 · Ctrl+R 还原 · Ctrl+Shift+C 复制可见 · 双击/中键标题钉住 · 右键标题复制节点 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续 · Ctrl+S 确定 · Ctrl+Shift+S 应用保持 · F4 末字段 · Alt+1/2/3 透明度 · Ctrl+Shift+方向吸附"));
+  setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · F2 首字段 · Tab/Home/End/PgUp/PgDn/滚轮 · Alt+滚轮透明度 · Ctrl+0 透明度重置 · Ctrl+[ / ] 宽度 · Ctrl+Shift+[ / ] 高度 · Ctrl+Shift+0 复位尺寸 · Ctrl+R 还原 · Ctrl+Shift+C 复制可见 · 双击/中键标题钉住 · 右键标题复制节点 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续 · Ctrl+S 确定 · Ctrl+Shift+S 应用保持 · F4 末字段 · Alt+1/2/3 透明度 · Ctrl+Shift+方向吸附 · Ctrl+Shift+G 复制几何 · Ctrl+Alt+G 粘贴几何"));
   setWhatsThis(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End/PgUp/PgDn · Ctrl/Alt/Shift+Enter/Ctrl+S 确定 · F5/F9 单次 · F6 连续"));
   setObjectName(QStringLiteral("propertyFloat"));
   setWindowFlags(Qt::Tool | Qt::FramelessWindowHint);
@@ -336,6 +338,50 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
       (event->modifiers() & Qt::ShiftModifier)) {
     if (panel_) panel_->pasteKeyValueParams();
     if (subtitle_) subtitle_->setText(QStringLiteral("已粘贴参数 · Ctrl+Shift+V"));
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_G && (event->modifiers() & Qt::ControlModifier) &&
+      (event->modifiers() & Qt::ShiftModifier)) {
+    const QRect g = geometry();
+    QJsonObject o;
+    o.insert(QStringLiteral("x"), g.x());
+    o.insert(QStringLiteral("y"), g.y());
+    o.insert(QStringLiteral("w"), g.width());
+    o.insert(QStringLiteral("h"), g.height());
+    o.insert(QStringLiteral("opacity"), opacity_);
+    if (auto* clip = QGuiApplication::clipboard())
+      clip->setText(QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact)));
+    if (subtitle_) subtitle_->setText(QStringLiteral("已复制浮窗几何 · Ctrl+Shift+G"));
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_G && (event->modifiers() & Qt::ControlModifier) &&
+      (event->modifiers() & Qt::AltModifier)) {
+    const QString raw = QGuiApplication::clipboard()
+                            ? QGuiApplication::clipboard()->text().trimmed()
+                            : QString();
+    QJsonParseError err;
+    const QJsonDocument doc = QJsonDocument::fromJson(raw.toUtf8(), &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+      if (subtitle_) subtitle_->setText(QStringLiteral("几何 JSON 无效 · Ctrl+Alt+G"));
+      event->accept();
+      return;
+    }
+    const QJsonObject o = doc.object();
+    QRect g(o.value(QStringLiteral("x")).toInt(geometry().x()),
+            o.value(QStringLiteral("y")).toInt(geometry().y()),
+            o.value(QStringLiteral("w")).toInt(width()),
+            o.value(QStringLiteral("h")).toInt(height()));
+    if (g.width() >= 200 && g.height() >= 200) {
+      applyChromeGeometry(g);
+      notifyChromeGeometry();
+    }
+    if (o.contains(QStringLiteral("opacity"))) {
+      opacity_ = qBound(0.4, o.value(QStringLiteral("opacity")).toDouble(1.0), 1.0);
+      setWindowOpacity(opacity_);
+    }
+    if (subtitle_) subtitle_->setText(QStringLiteral("已应用浮窗几何 · Ctrl+Alt+G"));
     event->accept();
     return;
   }
