@@ -28,7 +28,7 @@ namespace sieans_qt {
 FlowIoDialog::FlowIoDialog(const QVariantMap& io, QWidget* parent)
     : QDialog(parent), io_(io) {
   setWindowTitle(QStringLiteral("流程参数 · I/O 绑定"));
-  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+D 复制行 · Ctrl+A 全选 · Ctrl+E 补默认 · Ctrl+Tab 切换表 · Ctrl+Shift+C 复制CSV · Ctrl+Shift+V 粘贴 · 清空行 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果"));
+  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+D 复制行 · Ctrl+A 全选 · Ctrl+E 补默认 · Ctrl+Shift+E 清默认 · Ctrl+Tab 切换表 · Ctrl+Shift+C 复制CSV · Ctrl+Shift+V 粘贴 · 清空行 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果"));
   resize(560, 440);
   setStyleSheet(theme::workbenchStyleSheet());
   auto* root = new QVBoxLayout(this);
@@ -292,6 +292,8 @@ void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
   connect(scPaste, &QShortcut::activated, this, [this, table]() { pasteRows(table); });
   auto* scE = new QShortcut(QKeySequence(QStringLiteral("Ctrl+E")), table);
   connect(scE, &QShortcut::activated, this, [this, table]() { fillEmptyDefaults(table); });
+  auto* scClrDef = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+E")), table);
+  connect(scClrDef, &QShortcut::activated, this, [this, table]() { clearEmptyDefaults(table); });
   auto* scA = new QShortcut(QKeySequence(QStringLiteral("Ctrl+A")), table);
   connect(scA, &QShortcut::activated, this, [this, table]() { selectAllRows(table); });
   auto* scCopy = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+C")), table);
@@ -437,6 +439,20 @@ void FlowIoDialog::fillEmptyDefaults(QTableWidget* table) {
 void FlowIoDialog::selectAllRows(QTableWidget* table) {
   if (!table) return;
   table->selectAll();
+}
+
+
+void FlowIoDialog::clearEmptyDefaults(QTableWidget* table) {
+  if (!table) return;
+  int n = 0;
+  for (int r = 0; r < table->rowCount(); ++r) {
+    QTableWidgetItem* it = table->item(r, 3);
+    if (!it) continue;
+    if (it->text().trimmed().isEmpty()) continue;
+    it->setText(QString());
+    ++n;
+  }
+  table->setToolTip(QStringLiteral("已清 emptyDefault %1 行 · Ctrl+Shift+E").arg(n));
 }
 
 }  // namespace sieans_qt

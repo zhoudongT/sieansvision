@@ -10,6 +10,7 @@
 #include <QMimeData>
 #include <QLineEdit>
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <QClipboard>
 #include <QGuiApplication>
 #include <QEvent>
@@ -208,7 +209,7 @@ OperatorDef OperatorLibrary::findDef(const QString& key) {
 }
 
 OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
-  setStatusTip(QStringLiteral("Toolbox · / 或 Ctrl+F/L 搜索 · 最近 · Ctrl+1-9 最近项 · Ctrl+0 清过滤 · Ctrl+C 复制算子 · Ctrl+Shift+Del 清最近 · 分类芯片 · Enter 添加(列表/搜索) · Home/End/PgUp/PgDn · Esc 清空"));
+  setStatusTip(QStringLiteral("Toolbox · / 或 Ctrl+F/L 搜索 · 最近 · Ctrl+1-9 最近项 · Ctrl+0 清过滤 · Ctrl+C 复制算子 · Ctrl+Shift+Del 清最近 · 分类芯片 · Enter 添加(列表/搜索) · Enter/中键 添加 · Home/End/PgUp/PgDn · Esc 清空"));
   setObjectName(QStringLiteral("libraryPane"));
   auto* lay = new QVBoxLayout(this);
   lay->setContentsMargins(0, 0, 0, 0);
@@ -238,7 +239,7 @@ OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
   list_->setIconSize(QSize(32, 24));
   list_->setUniformItemSizes(true);
   list_->setObjectName(QStringLiteral("operatorTiles"));
-  list_->setToolTip(QStringLiteral("双击/Enter 添加算子 · ↑↓/Home/End/Pg · Esc 清空搜索"));
+  list_->setToolTip(QStringLiteral("双击/Enter 添加算子 · 中键添加 · ↑↓/Home/End/Pg · Esc 清空搜索 · Ctrl+C 复制"));
   list_->setStatusTip(QStringLiteral("Toolbox 列表 · 双击或 Enter 添加 · / 聚焦搜索"));
   lay->addWidget(list_, 1);
   connect(list_, &QListWidget::itemDoubleClicked, this,
@@ -447,6 +448,22 @@ void OperatorLibrary::focusSearch() {
 }
 
 bool OperatorLibrary::eventFilter(QObject* obj, QEvent* event) {
+  if (obj == list_ && event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::MiddleButton) {
+      QListWidgetItem* hit = list_->itemAt(me->position().toPoint());
+      if (!hit) hit = list_->currentItem();
+      if (hit && !hit->data(Qt::UserRole).toString().isEmpty()) {
+        list_->setCurrentItem(hit);
+        const QString k = hit->data(Qt::UserRole).toString();
+        const QString n = hit->data(Qt::UserRole + 1).toString();
+        rememberRecent(k);
+        emit operatorActivated(k, n);
+        if (search_) search_->setToolTip(QStringLiteral("已添加 · 中键 · %1").arg(k));
+      }
+      return true;
+    }
+  }
   if (event->type() == QEvent::KeyPress) {
     auto* ke = static_cast<QKeyEvent*>(event);
     if ((ke->modifiers() & Qt::ControlModifier) &&

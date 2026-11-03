@@ -34,7 +34,7 @@ constexpr int kThumbH = 52;
 
 FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   setObjectName(QStringLiteral("filmstripBar"));
-  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→ Home/End/PgUp/PgDn · 0/A/1-9 跳转 · Space 自动切换 · Ctrl+C 路径 · Ctrl+Shift+C 文件名 · Ctrl+D 复制 · Ctrl+Shift+I 反选 · Ctrl+Shift+S 排序 · Ctrl+Shift+M 剔缺失 · Ctrl+Shift+R 乱序 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Del"));
+  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→/Alt+←→ Home/End/PgUp/PgDn · 0/A/1-9 跳转 · Space 自动切换 · Ctrl+C 路径 · Ctrl+Shift+C 文件名 · Ctrl+D 复制 · Ctrl+Shift+I 反选 · Ctrl+Shift+S 排序 · Ctrl+Shift+M 剔缺失 · Ctrl+Shift+R 乱序 · Ctrl+E 导出 · Ctrl+Shift+E 导出选中 · 右键复制路径 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Del"));
   setFocusPolicy(Qt::StrongFocus);
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(6, 2, 6, 4);
@@ -307,6 +307,9 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
   if (event->key() == Qt::Key_Left) {
     if (event->modifiers() & Qt::ControlModifier) {
       if (!paths_.isEmpty()) selectIndex(0, true);
+    } else if (event->modifiers() & Qt::AltModifier) {
+      if (!paths_.isEmpty())
+        selectIndex(qMax(0, qMax(0, index_) - 10), true);
     } else {
       selectPrev();
     }
@@ -316,6 +319,9 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
   if (event->key() == Qt::Key_Right) {
     if (event->modifiers() & Qt::ControlModifier) {
       if (!paths_.isEmpty()) selectIndex(paths_.size() - 1, true);
+    } else if (event->modifiers() & Qt::AltModifier) {
+      if (!paths_.isEmpty())
+        selectIndex(qMin(paths_.size() - 1, qMax(0, index_) + 10), true);
     } else {
       selectNext();
     }
@@ -385,9 +391,12 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
-  if (event->key() == Qt::Key_E && (event->modifiers() & Qt::ControlModifier) &&
-      !(event->modifiers() & Qt::ShiftModifier)) {
-    exportPathList();
+  if (event->key() == Qt::Key_E && (event->modifiers() & Qt::ControlModifier)) {
+    if (event->modifiers() & Qt::ShiftModifier) {
+      exportSelectedPathList();
+    } else {
+      exportPathList();
+    }
     event->accept();
     return;
   }
@@ -478,7 +487,19 @@ bool FilmstripBar::eventFilter(QObject* obj, QEvent* event) {
   }
   if (obj == list_ && event->type() == QEvent::MouseButtonRelease) {
     auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::RightButton) {
+      QListWidgetItem* hit = list_->itemAt(me->position().toPoint());
+      if (hit) {
+        const int r = list_->row(hit);
+        if (r >= 0 && r < paths_.size()) {
+          if (auto* clip = QGuiApplication::clipboard()) clip->setText(paths_.at(r));
+          setStatus(QStringLiteral("已复制路径 · 右键"));
+        }
+      }
+      return true;
+    }
     if (me->button() == Qt::MiddleButton) {
+
       // Middle-click: delete thumb under cursor (or current)
       QListWidgetItem* hit = list_->itemAt(me->position().toPoint());
       if (hit) {
@@ -633,6 +654,22 @@ void FilmstripBar::exportPathList() {
   if (paths_.isEmpty()) return;
   if (auto* clip = QGuiApplication::clipboard()) clip->setText(paths_.join(QLatin1Char('\n')));
   if (status_) status_->setText(QStringLiteral("已导出路径 %1 · Ctrl+E").arg(paths_.size()));
+}
+
+
+void FilmstripBar::exportSelectedPathList() {
+  if (!list_) return;
+  QStringList lines;
+  for (auto* it : list_->selectedItems()) {
+    const int r = list_->row(it);
+    if (r >= 0 && r < paths_.size()) lines << paths_.at(r);
+  }
+  if (lines.isEmpty() && index_ >= 0 && index_ < paths_.size())
+    lines << paths_.at(index_);
+  if (lines.isEmpty()) return;
+  if (auto* clip = QGuiApplication::clipboard())
+    clip->setText(lines.join(QLatin1Char('\n')));
+  if (status_) status_->setText(QStringLiteral("已导出选中 %1 · Ctrl+Shift+E").arg(lines.size()));
 }
 
 }  // namespace sieans_qt

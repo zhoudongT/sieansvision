@@ -4,12 +4,16 @@
 #include <QHBoxLayout>
 #include <QPushButton>
 #include <QLabel>
+#include <QEvent>
+#include <QMouseEvent>
+#include <QClipboard>
+#include <QGuiApplication>
 
 namespace sieans_qt {
 
 FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   setObjectName(QStringLiteral("flowTabBar"));
-  setStatusTip(QStringLiteral("流程条 · ▶一次 F5/F9 / ↻连续 F6 / ■停止 Esc · F/G/A/Space/R 适应 · 暂停/周期芯片"));
+  setStatusTip(QStringLiteral("流程条 · ▶一次 F5/F9 / ↻连续 F6 / ■停止 Esc · F/G/A/Space/R 适应 · 暂停/周期芯片 · 单击模式连续 · 右键模式暂停 · 中键模式适应 · 周期单击复制/Ctrl清零"));
   setFixedHeight(28);
   auto* lay = new QHBoxLayout(this);
   lay->setContentsMargins(4, 2, 4, 2);
@@ -55,13 +59,17 @@ FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   modeChip_->setStyleSheet(
       QStringLiteral("QLabel{color:#c8ccd0;background:#2a2e32;border:1px solid #4a4e54;"
                      "border-radius:3px;padding:1px 6px;font-size:11px;}"));
-  modeChip_->setToolTip(QStringLiteral("运行模式芯片 · 设计/单次/连续/暂停"));
+  modeChip_->setToolTip(QStringLiteral("运行模式芯片 · 设计/单次/连续/暂停 · 单击连续 · 右键暂停 · 中键适应"));
+  modeChip_->setCursor(Qt::PointingHandCursor);
+  modeChip_->installEventFilter(this);
   cycleLabel_ = new QLabel(QStringLiteral("周期 0"));
   cycleLabel_->setObjectName(QStringLiteral("flowCycleChip"));
   cycleLabel_->setStyleSheet(
       QStringLiteral("QLabel{color:#9ad0ff;background:#1e2830;border:1px solid #3a5060;"
                      "border-radius:3px;padding:1px 6px;font-size:11px;}"));
-  cycleLabel_->setToolTip(QStringLiteral("流程条周期 · 与 HostStrip 同步"));
+  cycleLabel_->setToolTip(QStringLiteral("流程条周期 · 与 HostStrip 同步 · 单击复制 · Ctrl+单击/双击清零 · 右键清零"));
+  cycleLabel_->setCursor(Qt::PointingHandCursor);
+  cycleLabel_->installEventFilter(this);
   auto* hint = new QLabel(QStringLiteral("F5 一次 · F6 连续 · F/R 适应 · I/O 绑定 · Esc 取消连线 · Del 删连线"));
   hint->setObjectName(QStringLiteral("muted"));
   lay->addWidget(allBtn_);
@@ -127,6 +135,47 @@ void FlowTabBar::setDesignLocked(bool locked) {
   if (allBtn_) allBtn_->setEnabled(!locked);
   if (flowBtn_) flowBtn_->setEnabled(!locked);
   // run/pause/stop/fit/io stay usable in 运行态 (VisionMaster HMI)
+}
+
+
+bool FlowTabBar::eventFilter(QObject* obj, QEvent* event) {
+  if (event->type() == QEvent::MouseButtonDblClick) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::LeftButton && obj == cycleLabel_) {
+      emit cycleResetRequested();
+      return true;
+    }
+  }
+  if (event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (obj == modeChip_) {
+      if (me->button() == Qt::LeftButton) {
+        emit continuousToggleRequested();
+        return true;
+      }
+      if (me->button() == Qt::RightButton) {
+        emit pauseRequested();
+        return true;
+      }
+      if (me->button() == Qt::MiddleButton) {
+        emit fitRequested();
+        return true;
+      }
+    }
+    if (obj == cycleLabel_) {
+      if (me->button() == Qt::RightButton ||
+          (me->button() == Qt::LeftButton && (me->modifiers() & Qt::ControlModifier))) {
+        emit cycleResetRequested();
+        return true;
+      }
+      if (me->button() == Qt::LeftButton && cycleLabel_) {
+        if (auto* clip = QGuiApplication::clipboard()) clip->setText(cycleLabel_->text());
+        cycleLabel_->setToolTip(QStringLiteral("已复制周期 · 单击 · Ctrl+单击清零"));
+        return true;
+      }
+    }
+  }
+  return QWidget::eventFilter(obj, event);
 }
 
 }  // namespace sieans_qt

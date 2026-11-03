@@ -202,7 +202,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   }
   if (badge_) {
     badge_->setCursor(Qt::PointingHandCursor);
-    badge_->setToolTip(QStringLiteral("上位机状态 · Idle/Running/Paused/Alarm/Stopped · 双击清除报警"));
+    badge_->setToolTip(QStringLiteral("上位机状态 · Idle/Running/Paused/Alarm/Stopped · 双击清除报警 · 右键清除 · 中键暂停/继续"));
     badge_->installEventFilter(this);
   }
 
@@ -325,6 +325,16 @@ bool HostStatePanel::eventFilter(QObject* obj, QEvent* event) {
       emit clearAlarmRequested();
       if (modeHint_)
         modeHint_->setText(QStringLiteral("报警已清除 · 右键徽章"));
+      return true;
+    }
+    if (me->button() == Qt::MiddleButton) {
+      if (state_ == QLatin1String("Running")) {
+        emit pauseRequested();
+        if (modeHint_) modeHint_->setText(QStringLiteral("暂停 · 中键徽章"));
+      } else if (state_ == QLatin1String("Paused")) {
+        emit resumeRequested();
+        if (modeHint_) modeHint_->setText(QStringLiteral("继续 · 中键徽章"));
+      }
       return true;
     }
   }

@@ -59,10 +59,10 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   modeChip_->setCursor(Qt::PointingHandCursor);
   cycleChip_->setCursor(Qt::PointingHandCursor);
   detail_->setCursor(Qt::PointingHandCursor);
-  badge_->setToolTip(QStringLiteral("OK/NG/ALARM · passGate 判定 · 单击打开 Host 面板 · Alt+单击清连OK/NG · tcp= 见明细"));
-  modeChip_->setToolTip(QStringLiteral("运行模式 · 设计态/运行/连续/暂停 · 单击切换设计/运行态 · 右键切换连续 · 运行态锁画布 · F5/F9 仍可单次"));
+  badge_->setToolTip(QStringLiteral("OK/NG/ALARM · passGate 判定 · 单击打开 Host 面板 · Alt+单击清连OK/NG · 中键复制运行统计 · tcp= 见明细"));
+  modeChip_->setToolTip(QStringLiteral("运行模式 · 设计态/运行/连续/暂停 · 单击切换设计/运行态 · 右键切换连续 · 中键切换连续 · 运行态锁画布 · F5/F9 仍可单次"));
   cycleChip_->setToolTip(QStringLiteral("运行周期计数 · 每次流程完成 +1 · 显示上次 ms · Ctrl+单击/双击清零 · 右键/Alt+单击清连OK · 周期 chip 见右侧"));
-  detail_->setToolTip(QStringLiteral("count/text/RX/urlOk/tcp/良率 摘要 · framing lf/crlf/raw/len4 见 tcp= · 双击复制全文 · 中键复制连OK/NG · Ctrl+Shift+C 运行统计 · 悬停看全文"));
+  detail_->setToolTip(QStringLiteral("count/text/RX/urlOk/tcp/良率 摘要 · framing lf/crlf/raw/len4 见 tcp= · 双击复制全文 · 中键复制连OK/NG · 右键/Ctrl+Shift+C 运行统计 · 悬停看全文"));
   badge_->installEventFilter(this);
   modeChip_->installEventFilter(this);
   cycleChip_->installEventFilter(this);
@@ -288,6 +288,18 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
         clip->setText(QStringLiteral("连OK=%1 NG=%2").arg(okStreak_).arg(ngCount_));
         detail_->setToolTip(QStringLiteral("已复制良率摘要 · 中键"));
       }
+      return true;
+    }
+    if (me->button() == Qt::MiddleButton && obj == badge_) {
+      copyRunStats();
+      return true;
+    }
+    if (me->button() == Qt::MiddleButton && obj == modeChip_) {
+      emit continuousToggleRequested();
+      return true;
+    }
+    if (me->button() == Qt::RightButton && obj == detail_ && detail_) {
+      copyRunStats();
       return true;
     }
     if (me->button() != Qt::LeftButton) return QWidget::eventFilter(obj, event);

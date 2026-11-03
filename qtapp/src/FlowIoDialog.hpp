@@ -27,6 +27,7 @@ class FlowIoDialog : public QDialog {
   void copySelectedRows(QTableWidget* table);
   void clearEmptyRows(QTableWidget* table);
   void fillEmptyDefaults(QTableWidget* table);
+  void clearEmptyDefaults(QTableWidget* table);
   void selectAllRows(QTableWidget* table);
   void insertBindingToken(QTableWidget* table, const QString& token);
   void wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns);

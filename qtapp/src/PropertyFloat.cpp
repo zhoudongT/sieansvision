@@ -12,11 +12,13 @@
 #include <QLineEdit>
 #include <QVariantMap>
 #include <QtGlobal>
+#include <QClipboard>
+#include <QGuiApplication>
 
 namespace sieans_qt {
 
 PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
-  setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · F2 首字段 · Tab/Home/End/PgUp/PgDn/滚轮 · Alt+滚轮透明度 · Ctrl+0 透明度重置 · Ctrl+[ / ] 宽度 · Ctrl+R 还原 · Ctrl+Shift+C 复制可见 · 双击标题钉住 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续 · Ctrl+S 同确定"));
+  setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · F2 首字段 · Tab/Home/End/PgUp/PgDn/滚轮 · Alt+滚轮透明度 · Ctrl+0 透明度重置 · Ctrl+[ / ] 宽度 · Ctrl+Shift+[ / ] 高度 · Ctrl+Shift+0 复位尺寸 · Ctrl+R 还原 · Ctrl+Shift+C 复制可见 · 双击/中键标题钉住 · 右键标题复制节点 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续 · Ctrl+S 同确定"));
   setWhatsThis(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End/PgUp/PgDn · Ctrl/Alt/Shift+Enter/Ctrl+S 确定 · F5/F9 单次 · F6 连续"));
   setObjectName(QStringLiteral("propertyFloat"));
   setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
@@ -126,6 +128,21 @@ void PropertyFloat::revertAndHide() {
 }
 
 void PropertyFloat::mousePressEvent(QMouseEvent* event) {
+  if (titleBar_ && titleBar_->geometry().contains(event->position().toPoint())) {
+    if (event->button() == Qt::MiddleButton) {
+      if (pinBtn_) pinBtn_->toggle();
+      event->accept();
+      return;
+    }
+    if (event->button() == Qt::RightButton) {
+      if (auto* clip = QGuiApplication::clipboard()) {
+        clip->setText(nodeId_.isEmpty() ? title_->text() : nodeId_);
+        if (subtitle_) subtitle_->setText(QStringLiteral("已复制节点 · 右键标题"));
+      }
+      event->accept();
+      return;
+    }
+  }
   if (event->button() == Qt::LeftButton && titleBar_ &&
       titleBar_->geometry().contains(event->position().toPoint())) {
     const QPoint local = titleBar_->mapFrom(this, event->position().toPoint());
@@ -221,14 +238,35 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
     return;
   }
   if (event->key() == Qt::Key_BracketLeft && (event->modifiers() & Qt::ControlModifier)) {
+    if (event->modifiers() & Qt::ShiftModifier) {
+      resize(width(), qMax(280, height() - 40));
+      if (subtitle_) subtitle_->setText(QStringLiteral("高度 %1 · Ctrl+Shift+[").arg(height()));
+      event->accept();
+      return;
+    }
     resize(qMax(280, width() - 40), height());
     if (subtitle_) subtitle_->setText(QStringLiteral("宽度 %1 · Ctrl+[").arg(width()));
     event->accept();
     return;
   }
   if (event->key() == Qt::Key_BracketRight && (event->modifiers() & Qt::ControlModifier)) {
+    if (event->modifiers() & Qt::ShiftModifier) {
+      resize(width(), qMin(900, height() + 40));
+      if (subtitle_) subtitle_->setText(QStringLiteral("高度 %1 · Ctrl+Shift+]").arg(height()));
+      event->accept();
+      return;
+    }
     resize(qMin(720, width() + 40), height());
     if (subtitle_) subtitle_->setText(QStringLiteral("宽度 %1 · Ctrl+]").arg(width()));
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_0 && (event->modifiers() & Qt::ControlModifier) &&
+      (event->modifiers() & Qt::ShiftModifier)) {
+    resize(460, 560);
+    opacity_ = 1.0;
+    setWindowOpacity(opacity_);
+    if (subtitle_) subtitle_->setText(QStringLiteral("尺寸已复位 · Ctrl+Shift+0"));
     event->accept();
     return;
   }

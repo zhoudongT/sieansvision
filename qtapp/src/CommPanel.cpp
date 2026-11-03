@@ -18,6 +18,7 @@
 #include <QEvent>
 #include <QMouseEvent>
 #include <QKeyEvent>
+#include <QTextCursor>
 #include <QRegularExpression>
 #include <initializer_list>
 #include <utility>
@@ -36,7 +37,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   lay->addWidget(title);
 
   status_ = new QLabel(QStringLiteral("TCP: idle"));
-  setStatusTip(QStringLiteral("通信面板 · LocalBus/TCP · peers/framing(lf/crlf/raw/len4) · 快选芯片 · 模板预设 · Ctrl+T 启停 · 右键摘要粘贴端点 · Alt+↑↓ 报文历史 · ${flow.x} · AUTO_TCP bump"));
+  setStatusTip(QStringLiteral("通信面板 · LocalBus/TCP · peers/framing(lf/crlf/raw/len4) · 快选芯片 · 模板预设 · Ctrl+T 启停 · Ctrl+[ / ] 切帧 · Ctrl+Shift+R 装入末 RX · 右键摘要粘贴端点 · Alt+↑↓ 报文历史 · 中键状态复制 TX/RX · 双击抄本行装入报文 · ${flow.x} · AUTO_TCP bump"));
   status_->setObjectName(QStringLiteral("muted"));
   lay->addWidget(status_);
 
@@ -219,7 +220,14 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   transcript_ = new QPlainTextEdit;
   transcript_->setReadOnly(true);
   transcript_->setPlaceholderText(
-      QStringLiteral("TX/RX 抄本 · LocalBus 软总线 + 真 TCP · peers 见状态行 · 过滤见上方"));
+      QStringLiteral("TX/RX 抄本 · LocalBus 软总线 + 真 TCP · peers 见状态行 · 过滤见上方 · 双击行装入报文"));
+  transcript_->setToolTip(QStringLiteral("通信抄本 · Ctrl+Shift+C 复制过滤 · 双击行→报文框 · 中键清空过滤"));
+  transcript_->installEventFilter(this);
+  if (status_) {
+    status_->setCursor(Qt::PointingHandCursor);
+    status_->setToolTip(QStringLiteral("TCP 状态 · 单击/中键复制 TX/RX · framing/peers 见行内"));
+    status_->installEventFilter(this);
+  }
   lay->addWidget(transcript_, 1);
 
   btnTcp->setToolTip(QStringLiteral("启动 tcpReal（server 监听 / client 连接+重连）· framing lf/crlf/raw/len4 · framing 见启动 tip · 状态见徽章"));
@@ -248,6 +256,12 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
     connect(scCopy, &QShortcut::activated, this, &CommPanel::copyTranscriptFiltered);
     auto* scT = new QShortcut(QKeySequence(QStringLiteral("Ctrl+T")), this);
     connect(scT, &QShortcut::activated, this, &CommPanel::toggleTcp);
+    auto* scFrL = new QShortcut(QKeySequence(QStringLiteral("Ctrl+[")), this);
+    connect(scFrL, &QShortcut::activated, this, [this]() { cycleFraming(-1); });
+    auto* scFrR = new QShortcut(QKeySequence(QStringLiteral("Ctrl+]")), this);
+    connect(scFrR, &QShortcut::activated, this, [this]() { cycleFraming(+1); });
+    auto* scRx = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+R")), this);
+    connect(scRx, &QShortcut::activated, this, &CommPanel::loadLastRxToPayload);
   }
   if (hub_) {
     connect(hub_, &CommHub::transcriptChanged, this, &CommPanel::refreshTranscript);
@@ -470,6 +484,34 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
         recallPayloadHistory(+1);
         return true;
       }
+    }
+  }
+  if (obj == status_ && event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::LeftButton || me->button() == Qt::MiddleButton) {
+      copyLastTxRx();
+      return true;
+    }
+  }
+  if (obj == transcript_ && event->type() == QEvent::MouseButtonDblClick) {
+    if (!transcript_ || !payloadEdit_) return true;
+    QTextCursor cur = transcript_->cursorForPosition(
+        static_cast<QMouseEvent*>(event)->position().toPoint());
+    cur.select(QTextCursor::LineUnderCursor);
+    const QString line = cur.selectedText().trimmed();
+    if (!line.isEmpty()) {
+      payloadEdit_->setText(line);
+      payloadEdit_->setFocus(Qt::OtherFocusReason);
+      if (status_) status_->setToolTip(QStringLiteral("已装入抄本行 · 双击"));
+    }
+    return true;
+  }
+  if (obj == transcript_ && event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::MiddleButton && txFilter_) {
+      txFilter_->clear();
+      if (status_) status_->setToolTip(QStringLiteral("已清空抄本过滤 · 中键"));
+      return true;
     }
   }
   return QWidget::eventFilter(obj, event);
@@ -721,6 +763,41 @@ void CommPanel::recallPayloadHistory(int delta) {
     status_->setToolTip(QStringLiteral("报文历史 %1/%2 · Alt+↑↓")
                             .arg(payloadHistoryIdx_ + 1)
                             .arg(payloadHistory_.size()));
+}
+
+
+void CommPanel::cycleFraming(int delta) {
+  if (!framingCombo_ || framingCombo_->count() <= 0) return;
+  const int n = framingCombo_->count();
+  int idx = framingCombo_->currentIndex();
+  if (idx < 0) idx = 0;
+  idx = ((idx + delta) % n + n) % n;
+  framingCombo_->setCurrentIndex(idx);
+  pushTcpEndpoint(true);
+  if (status_)
+    status_->setToolTip(QStringLiteral("帧分隔=%1 · Ctrl+[ / ]")
+                            .arg(framingCombo_->currentData().toString()));
+}
+
+void CommPanel::loadLastRxToPayload() {
+  if (!hub_ || !payloadEdit_) return;
+  const QString rx = hub_->lastRx();
+  if (rx.isEmpty()) {
+    if (status_) status_->setToolTip(QStringLiteral("无末 RX · Ctrl+Shift+R"));
+    return;
+  }
+  payloadEdit_->setText(rx);
+  payloadEdit_->setFocus(Qt::OtherFocusReason);
+  if (status_) status_->setToolTip(QStringLiteral("已装入末 RX · Ctrl+Shift+R"));
+}
+
+void CommPanel::copyLastTxRx() {
+  if (!hub_) return;
+  const QString line = QStringLiteral("TX=%1\nRX=%2")
+                           .arg(hub_->lastTx().isEmpty() ? QStringLiteral("—") : hub_->lastTx(),
+                                hub_->lastRx().isEmpty() ? QStringLiteral("—") : hub_->lastRx());
+  if (auto* clip = QGuiApplication::clipboard()) clip->setText(line);
+  if (status_) status_->setToolTip(QStringLiteral("已复制 TX/RX · 状态单击/中键"));
 }
 
 }  // namespace sieans_qt
