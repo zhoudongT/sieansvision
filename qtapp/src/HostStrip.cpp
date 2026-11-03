@@ -13,6 +13,7 @@
 #include <QWheelEvent>
 #include <QKeyEvent>
 #include <QEvent>
+#include <algorithm>
 
 namespace sieans_qt {
 
@@ -73,7 +74,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   chips_->setObjectName(QStringLiteral("muted"));
   chips_->setWordWrap(true);
   chips_->setCursor(Qt::PointingHandCursor);
-  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+K/V 复制/粘贴键 · Alt+←→ 调序 · 单击复制全文"));
+  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+K/V 复制/粘贴键 · Alt+←→ 调序 · Ctrl+Shift+Y 反序 · 单击复制全文"));
   chips_->installEventFilter(this);
   root->addWidget(chips_);
   setStyleSheet(QStringLiteral("background:#232528;border-top:1px solid #4a4e54;"));
@@ -440,6 +441,11 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       emit pauseRequested();
       return true;
     }
+    if (ke->key() == Qt::Key_Y && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier)) {
+      reverseWatchKeys();
+      return true;
+    }
     if ((ke->modifiers() & Qt::ControlModifier) &&
         (ke->key() == Qt::Key_BracketLeft || ke->key() == Qt::Key_BracketRight ||
          ke->key() == Qt::Key_Up || ke->key() == Qt::Key_Down)) {
@@ -540,6 +546,20 @@ void HostStrip::moveWatchKey(int delta) {
   refreshChips({});
   if (chips_)
     chips_->setToolTip(QStringLiteral("监视键轮转 · 首=%1 · Alt+←→").arg(watchKeys_.first()));
+}
+
+void HostStrip::reverseWatchKeys() {
+  if (watchKeys_.size() < 2) {
+    if (chips_) chips_->setToolTip(QStringLiteral("监视键不足 · Ctrl+Shift+Y"));
+    return;
+  }
+  std::reverse(watchKeys_.begin(), watchKeys_.end());
+  emit watchKeysChanged(watchKeys_);
+  refreshChips({});
+  if (chips_)
+    chips_->setToolTip(QStringLiteral("监视键已反序 %1 · Ctrl+Shift+Y · 首=%2")
+                           .arg(watchKeys_.size())
+                           .arg(watchKeys_.first()));
 }
 
 void HostStrip::copyWatchKeys() {

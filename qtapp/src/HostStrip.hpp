@@ -31,6 +31,7 @@ class HostStrip : public QWidget {
   void pasteWatchKeysFromClipboard();
   void copyWatchKeys();
   void moveWatchKey(int delta);
+  void reverseWatchKeys();
   int okStreak() const { return okStreak_; }
   int ngCount() const { return ngCount_; }
 

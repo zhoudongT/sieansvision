@@ -54,7 +54,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   deviceTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
   deviceTable_->setSelectionMode(QAbstractItemView::SingleSelection);
   deviceTable_->setMaximumHeight(120);
-  deviceTable_->setToolTip(QStringLiteral("设备表 · F2 改名 · Insert/Ctrl+N 增 · Ctrl+D 复制 · Shift+Del 删 · Ctrl+X 剪切 · Ctrl+Shift+V 合并粘贴 · Alt+↑↓ 调序 · Enter 写回 · Space/Alt 启停 · Ctrl+Shift+J/O JSON · 中键端点 · 右键复制 · 双击备注"));
+  deviceTable_->setToolTip(QStringLiteral("设备表 · F2 改名 · Insert/Ctrl+N 增 · Ctrl+D 复制 · Shift+Del 删 · Ctrl+X 剪切 · Ctrl+Shift+V 合并粘贴 · Alt+↑↓ 调序 · Ctrl+Shift+Y 反序 · Enter 写回 · Space/Alt 启停 · Ctrl+Shift+J/O JSON · 中键端点 · 右键复制 · 双击备注"));
   deviceTable_->setStatusTip(QStringLiteral("通信 · 设备表 · LocalBus/TCP · 中键端点"));
   deviceTable_->installEventFilter(this);
   lay->addWidget(deviceTable_);
@@ -583,6 +583,11 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
     if ((ke->key() == Qt::Key_Up || ke->key() == Qt::Key_Down) &&
         (ke->modifiers() & Qt::AltModifier)) {
       moveSelectedDevice(ke->key() == Qt::Key_Up ? -1 : +1);
+      return true;
+    }
+    if (ke->key() == Qt::Key_Y && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier)) {
+      reverseDeviceOrder();
       return true;
     }
   }
@@ -1459,6 +1464,33 @@ void CommPanel::mergePasteDevicesFromClipboard() {
   refreshDevices();
   if (status_)
     status_->setToolTip(QStringLiteral("已合并粘贴设备 +%1 · Ctrl+Shift+V").arg(added));
+}
+
+
+void CommPanel::reverseDeviceOrder() {
+  if (!deviceTable_ || deviceTable_->rowCount() < 2) {
+    if (status_) status_->setToolTip(QStringLiteral("设备不足 · Ctrl+Shift+Y"));
+    return;
+  }
+  const int n = deviceTable_->rowCount();
+  const int cols = deviceTable_->columnCount();
+  deviceTable_->blockSignals(true);
+  for (int i = 0; i < n / 2; ++i) {
+    const int j = n - 1 - i;
+    for (int c = 0; c < cols; ++c) {
+      QTableWidgetItem* a = deviceTable_->takeItem(i, c);
+      QTableWidgetItem* b = deviceTable_->takeItem(j, c);
+      deviceTable_->setItem(i, c, b);
+      deviceTable_->setItem(j, c, a);
+    }
+  }
+  deviceTable_->blockSignals(false);
+  // persist via existing writeback if any
+  if (hub_) {
+    // trigger row change to flush
+    onDeviceRowChanged();
+  }
+  if (status_) status_->setToolTip(QStringLiteral("设备已反序 %1 · Ctrl+Shift+Y").arg(n));
 }
 
 void CommPanel::moveSelectedDevice(int delta) {

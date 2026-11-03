@@ -9,6 +9,7 @@
 #include <QAbstractItemView>
 #include <QItemSelectionModel>
 #include <QColor>
+#include <algorithm>
 #include <QClipboard>
 #include <QApplication>
 #include <QToolTip>
@@ -71,6 +72,8 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
     connect(scX, &QShortcut::activated, this, &VarWatchPanel::cutSelectedKeys);
     auto* scHost = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+H")), this);
     connect(scHost, &QShortcut::activated, this, &VarWatchPanel::copyHostWatchKeys);
+    auto* scRev = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+Y")), this);
+    connect(scRev, &QShortcut::activated, this, &VarWatchPanel::reverseWatchKeys);
   }
   table_ = new QTableWidget(0, 2);
   table_->setHorizontalHeaderLabels(
@@ -103,7 +106,7 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
   table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · 中键 ${flow} · 右键键=值 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Esc 取消选中 · F2 聚焦表 · Ctrl+Shift+J JSON"));
   table_->installEventFilter(this);
   if (filterEdit_) filterEdit_->installEventFilter(this);
-  setStatusTip(QStringLiteral("变量监视 · ★=Host条 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · 中键token/右键键=值 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+X 剪切 · Ctrl+Shift+H ★键 · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
+  setStatusTip(QStringLiteral("变量监视 · ★=Host条 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · 中键token/右键键=值 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+X 剪切 · Ctrl+Shift+H ★键 · Ctrl+Shift+Y 反序 · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
   keys_ = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
            QStringLiteral("passGate"), QStringLiteral("urlOk"),
@@ -519,6 +522,19 @@ void VarWatchPanel::copyHostWatchKeys() {
   QToolTip::showText(QCursor::pos(),
                      QStringLiteral("已复制 Host★ 键 %1 · Ctrl+Shift+H").arg(keys.size()), table_);
 }
+
+void VarWatchPanel::reverseWatchKeys() {
+  if (keys_.size() < 2) {
+    QToolTip::showText(QCursor::pos(), QStringLiteral("监视不足 · Ctrl+Shift+Y"), table_);
+    return;
+  }
+  std::reverse(keys_.begin(), keys_.end());
+  rebuild();
+  emit watchListChanged(keys_);
+  QToolTip::showText(QCursor::pos(),
+                     QStringLiteral("监视已反序 %1 · Ctrl+Shift+Y").arg(keys_.size()), table_);
+}
+
 
 void VarWatchPanel::moveSelectedKey(int delta) {
   if (!table_ || keys_.isEmpty() || delta == 0) return;
