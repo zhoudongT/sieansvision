@@ -48,6 +48,12 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
     connect(scL, &QShortcut::activated, this, [this]() {
       if (filterEdit_) filterEdit_->clear();
     });
+    auto* scExp = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+C")), this);
+    connect(scExp, &QShortcut::activated, this, &VarWatchPanel::exportFiltered);
+    auto* scKv = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+K")), this);
+    connect(scKv, &QShortcut::activated, this, &VarWatchPanel::copyKeyEqualsValue);
+    auto* scTok = new QShortcut(QKeySequence(QStringLiteral("Ctrl+I")), this);
+    connect(scTok, &QShortcut::activated, this, &VarWatchPanel::copyFlowToken);
   }
   table_ = new QTableWidget(0, 2);
   table_->setHorizontalHeaderLabels(
@@ -75,7 +81,7 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
   table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Esc 取消选中 · F2 聚焦表"));
   table_->installEventFilter(this);
   if (filterEdit_) filterEdit_->installEventFilter(this);
-  setStatusTip(QStringLiteral("变量监视 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Home/End/PgUp/PgDn · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
+  setStatusTip(QStringLiteral("变量监视 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Home/End/PgUp/PgDn · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
   keys_ = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
            QStringLiteral("passGate"), QStringLiteral("urlOk"),
@@ -231,6 +237,45 @@ void VarWatchPanel::rebuild() {
         QStringLiteral("变量监视过滤 · 匹配 %1 · Ctrl+F 聚焦 · Esc/Ctrl+L 清空")
             .arg(matched));
   }
+}
+
+
+void VarWatchPanel::exportFiltered() {
+  if (!table_) return;
+  QStringList lines;
+  for (int r = 0; r < table_->rowCount(); ++r) {
+    auto* k = table_->item(r, 0);
+    auto* v = table_->item(r, 1);
+    if (!k) continue;
+    const QString raw = vars_.value(k->text()).toString();
+    lines << QStringLiteral("%1\t%2").arg(k->text(), raw.isEmpty() && v ? v->text() : raw);
+  }
+  if (auto* clip = QApplication::clipboard()) clip->setText(lines.join(QLatin1Char('\n')));
+  QToolTip::showText(QCursor::pos(),
+                     QStringLiteral("已导出 %1 行 · Ctrl+Shift+C").arg(lines.size()), table_);
+}
+
+void VarWatchPanel::copyKeyEqualsValue() {
+  if (!table_) return;
+  const int row = table_->currentRow();
+  if (row < 0) return;
+  auto* k = table_->item(row, 0);
+  if (!k) return;
+  const QString raw = vars_.value(k->text()).toString();
+  const QString line = QStringLiteral("%1=%2").arg(k->text(), raw);
+  if (auto* clip = QApplication::clipboard()) clip->setText(line);
+  QToolTip::showText(QCursor::pos(), QStringLiteral("已复制 %1 · Ctrl+Shift+K").arg(line.left(40)), table_);
+}
+
+void VarWatchPanel::copyFlowToken() {
+  if (!table_) return;
+  const int row = table_->currentRow();
+  if (row < 0) return;
+  auto* k = table_->item(row, 0);
+  if (!k) return;
+  const QString tok = QStringLiteral("${flow.%1}").arg(k->text());
+  if (auto* clip = QApplication::clipboard()) clip->setText(tok);
+  QToolTip::showText(QCursor::pos(), QStringLiteral("已复制 %1 · Ctrl+I").arg(tok), table_);
 }
 
 }  // namespace sieans_qt

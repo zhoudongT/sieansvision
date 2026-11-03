@@ -17,6 +17,9 @@ class VarWatchPanel : public QWidget {
 
   void setWatchKeys(const QStringList& keys);
   void setVariables(const QVariantMap& vars);
+  void exportFiltered();
+  void copyKeyEqualsValue();
+  void copyFlowToken();
   QVariantMap variables() const { return vars_; }
 
  protected:

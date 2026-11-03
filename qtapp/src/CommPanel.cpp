@@ -17,6 +17,7 @@
 #include <QGuiApplication>
 #include <QEvent>
 #include <QMouseEvent>
+#include <QKeyEvent>
 #include <QRegularExpression>
 #include <initializer_list>
 #include <utility>
@@ -35,7 +36,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   lay->addWidget(title);
 
   status_ = new QLabel(QStringLiteral("TCP: idle"));
-  setStatusTip(QStringLiteral("通信面板 · LocalBus/TCP · peers/framing(lf/crlf/raw/len4) · 快选芯片 · 模板预设 · Ctrl+T 启停 · 右键摘要粘贴端点 · ${flow.x} · AUTO_TCP bump"));
+  setStatusTip(QStringLiteral("通信面板 · LocalBus/TCP · peers/framing(lf/crlf/raw/len4) · 快选芯片 · 模板预设 · Ctrl+T 启停 · 右键摘要粘贴端点 · Alt+↑↓ 报文历史 · ${flow.x} · AUTO_TCP bump"));
   status_->setObjectName(QStringLiteral("muted"));
   lay->addWidget(status_);
 
@@ -127,8 +128,9 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   payloadEdit_ = new QLineEdit(
       QStringLiteral("BARCODE ok=${flow.passGate} text=${flow.barcodeText}"));
   payloadEdit_->setToolTip(
-      QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · 下方芯片插入 · Enter/Ctrl+Enter 试发 · LocalBus echo"));
+      QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · 下方芯片插入 · Enter/Ctrl+Enter 试发 · Alt+↑↓ 历史 · LocalBus echo"));
   form->addRow(QStringLiteral("报文"), payloadEdit_);
+  payloadEdit_->installEventFilter(this);
   lay->addLayout(form);
 
   varChipHost_ = new QWidget;
@@ -427,6 +429,19 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
       return true;
     }
   }
+  if (obj == payloadEdit_ && event->type() == QEvent::KeyPress) {
+    auto* ke = static_cast<QKeyEvent*>(event);
+    if (ke->modifiers() & Qt::AltModifier) {
+      if (ke->key() == Qt::Key_Up) {
+        recallPayloadHistory(-1);
+        return true;
+      }
+      if (ke->key() == Qt::Key_Down) {
+        recallPayloadHistory(+1);
+        return true;
+      }
+    }
+  }
   return QWidget::eventFilter(obj, event);
 }
 
@@ -465,6 +480,7 @@ void CommPanel::refreshTranscript() {
 }
 
 void CommPanel::onTrialSend() {
+  pushPayloadHistory();
   if (!hub_) return;
   const QString payload = CommHub::expandTemplate(payloadEdit_->text(), vars_);
   QString err;
@@ -651,5 +667,30 @@ void CommPanel::onRemarkEdit() {
     detail_->setText(detail_->text() + QStringLiteral(" · 备注已保存"));
 }
 
+
+
+void CommPanel::pushPayloadHistory() {
+  if (!payloadEdit_) return;
+  const QString t = payloadEdit_->text();
+  if (t.trimmed().isEmpty()) return;
+  if (!payloadHistory_.isEmpty() && payloadHistory_.first() == t) {
+    payloadHistoryIdx_ = 0;
+    return;
+  }
+  payloadHistory_.prepend(t);
+  while (payloadHistory_.size() > 24) payloadHistory_.removeLast();
+  payloadHistoryIdx_ = 0;
+}
+
+void CommPanel::recallPayloadHistory(int delta) {
+  if (!payloadEdit_ || payloadHistory_.isEmpty()) return;
+  if (payloadHistoryIdx_ < 0) payloadHistoryIdx_ = 0;
+  payloadHistoryIdx_ = qBound(0, payloadHistoryIdx_ + delta, payloadHistory_.size() - 1);
+  payloadEdit_->setText(payloadHistory_.at(payloadHistoryIdx_));
+  if (status_)
+    status_->setToolTip(QStringLiteral("报文历史 %1/%2 · Alt+↑↓")
+                            .arg(payloadHistoryIdx_ + 1)
+                            .arg(payloadHistory_.size()));
+}
 
 }  // namespace sieans_qt

@@ -15,6 +15,8 @@
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QShortcut>
+#include <QClipboard>
+#include <QGuiApplication>
 #include <QKeySequence>
 #include <QFrame>
 
@@ -143,7 +145,11 @@ PropertyPanel::PropertyPanel(QWidget* parent) : QWidget(parent) {
       if (filterEdit_ && !filterEdit_->text().isEmpty()) filterEdit_->clear();
     });
   }
-  setStatusTip(QStringLiteral("属性面板 · Ctrl+F 过滤 · Esc 清过滤 · emptyDefault/{name}"));
+  {
+    auto* scCopy = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+C")), this);
+    connect(scCopy, &QShortcut::activated, this, &PropertyPanel::copyVisibleParams);
+  }
+  setStatusTip(QStringLiteral("属性面板 · Ctrl+F 过滤 · Esc 清过滤 · Ctrl+Shift+C 复制可见 · emptyDefault/{name}"));
 
   auto* scroll = new QScrollArea;
   scroll->setWidgetResizable(true);
@@ -471,6 +477,41 @@ void PropertyPanel::applyFilter() {
   filterEdit_->setToolTip(
       QStringLiteral("属性过滤 · %1 · Ctrl+F 聚焦 · Esc 清空")
           .arg(f.isEmpty() ? QStringLiteral("全部") : QStringLiteral("「%1」").arg(f)));
+}
+
+
+void PropertyPanel::copyVisibleParams() {
+  if (!form_) return;
+  QStringList lines;
+  for (int r = 0; r < form_->rowCount(); ++r) {
+    QWidget* labW = nullptr;
+    QWidget* fieldW = nullptr;
+    if (auto* li = form_->itemAt(r, QFormLayout::LabelRole)) labW = li->widget();
+    if (auto* fi = form_->itemAt(r, QFormLayout::FieldRole)) fieldW = fi->widget();
+    if (labW && !labW->isVisibleTo(formHost_)) continue;
+    QString key = labW ? labW->property("propKey").toString() : QString();
+    if (key.isEmpty() && fieldW) key = fieldW->property("propKey").toString();
+    if (key.isEmpty()) continue;
+    QString val;
+    if (auto* le = qobject_cast<QLineEdit*>(fieldW)) {
+      val = le->text();
+    } else if (auto* sp = qobject_cast<QSpinBox*>(fieldW)) {
+      val = QString::number(sp->value());
+    } else if (auto* dsp = qobject_cast<QDoubleSpinBox*>(fieldW)) {
+      val = QString::number(dsp->value());
+    } else if (auto* box = qobject_cast<QCheckBox*>(fieldW)) {
+      val = box->isChecked() ? QStringLiteral("true") : QStringLiteral("false");
+    } else if (auto* combo = qobject_cast<QComboBox*>(fieldW)) {
+      val = combo->currentData().toString();
+      if (val.isEmpty()) val = combo->currentText();
+    } else if (fieldW) {
+      val = fieldW->property("text").toString();
+    }
+    lines << QStringLiteral("%1=%2").arg(key, val);
+  }
+  if (auto* clip = QGuiApplication::clipboard()) clip->setText(lines.join(QLatin1Char('\n')));
+  if (filterEdit_)
+    filterEdit_->setToolTip(QStringLiteral("已复制可见参数 %1 · Ctrl+Shift+C").arg(lines.size()));
 }
 
 }  // namespace sieans_qt

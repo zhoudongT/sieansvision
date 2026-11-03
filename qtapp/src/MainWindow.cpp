@@ -362,6 +362,7 @@ void MainWindow::buildUi() {
   connect(flow_tabs_, &FlowTabBar::runContinuousRequested, this,
           &MainWindow::onRunContinuous);
   connect(flow_tabs_, &FlowTabBar::stopRequested, this, &MainWindow::onStopRun);
+  connect(flow_tabs_, &FlowTabBar::pauseRequested, this, &MainWindow::onPauseRun);
   connect(flow_tabs_, &FlowTabBar::ioRequested, this, &MainWindow::onOpenFlowIo);
   connect(flow_tabs_, &FlowTabBar::fitRequested, flow_view_, &FlowView::fitAll);
   horizontal->addWidget(flowPane);
@@ -979,10 +980,13 @@ void MainWindow::updateRunChrome() {
   }
   if (op_lib_) op_lib_->setEnabled(!run_mode_);
   if (op_rail_) op_rail_->setEnabled(!run_mode_);
-  if (flow_tabs_) flow_tabs_->setEnabled(!run_mode_);
+  if (flow_tabs_) flow_tabs_->setDesignLocked(run_mode_);
   if (act_mode_) act_mode_->setChecked(run_mode_);
   const QString hostState = host_sm_ ? host_sm_->state() : QStringLiteral("Idle");
   if (host_strip_) host_strip_->setRunChrome(modeText, hostState, run_cycle_);
+  if (flow_tabs_)
+    flow_tabs_->setRunChrome(modeText, run_cycle_, last_cycle_ms_, continuous_run_,
+                             run_paused_);
 }
 
 void MainWindow::pushSoftControls() {

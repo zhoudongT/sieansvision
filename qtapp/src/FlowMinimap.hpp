@@ -8,6 +8,7 @@ class QGraphicsView;
 class QEvent;
 class QMouseEvent;
 class QWheelEvent;
+class QKeyEvent;
 class QPaintEvent;
 
 namespace sieans_qt {
@@ -31,6 +32,7 @@ class FlowMinimap : public QWidget {
   void mouseReleaseEvent(QMouseEvent* event) override;
   void mouseDoubleClickEvent(QMouseEvent* event) override;
   void wheelEvent(QWheelEvent* event) override;
+  void keyPressEvent(QKeyEvent* event) override;
   bool eventFilter(QObject* obj, QEvent* event) override;
 
  private:

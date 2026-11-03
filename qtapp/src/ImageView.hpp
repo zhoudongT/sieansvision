@@ -39,6 +39,7 @@ class ImageView : public QGraphicsView {
   void wheelEvent(QWheelEvent* event) override;
   void mouseMoveEvent(QMouseEvent* event) override;
   void keyPressEvent(QKeyEvent* event) override;
+  void mousePressEvent(QMouseEvent* event) override;
 
  private:
   void redrawOverlays();
@@ -53,6 +54,7 @@ class ImageView : public QGraphicsView {
   bool overlaysHidden_ = false;
   bool probeHidden_ = false;
   QLabel* probe_ = nullptr;
+  QString lastProbe_;
 };
 
 }  // namespace sieans_qt

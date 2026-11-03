@@ -24,6 +24,7 @@ class PropertyPanel : public QWidget {
   /** Live param map while the float is open (edits applied immediately). */
   QVariantMap currentParams() const { return params_; }
   void focusFilter();
+  void copyVisibleParams();
   /** Re-apply a param snapshot into live editors (PF Ctrl+R). */
   void applySnapshot(const QVariantMap& snap);
 

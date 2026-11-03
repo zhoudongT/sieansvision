@@ -49,6 +49,8 @@ class CommPanel : public QWidget {
   void applyFraming(const QString& framing);
   void applyPayloadPreset(const QString& kind);
   void pasteEndpointFromClipboard();
+  void pushPayloadHistory();
+  void recallPayloadHistory(int delta);
 
   CommHub* hub_ = nullptr;
   QTableWidget* deviceTable_ = nullptr;
@@ -68,6 +70,8 @@ class CommPanel : public QWidget {
   QLabel* status_ = nullptr;
   QLabel* detail_ = nullptr;
   QVariantMap vars_;
+  QStringList payloadHistory_;
+  int payloadHistoryIdx_ = -1;
 };
 
 }  // namespace sieans_qt

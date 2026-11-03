@@ -9,14 +9,18 @@
 #include <QMouseEvent>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QClipboard>
+#include <QGuiApplication>
+#include <QToolTip>
+#include <QCursor>
 #include <QResizeEvent>
 
 namespace sieans_qt {
 
 ImageView::ImageView(QWidget* parent) : QGraphicsView(parent) {
   setFocusPolicy(Qt::StrongFocus);
-  setToolTip(QStringLiteral("F/G/A/Space/Home/0/R 适应 · +/- 缩放 · 1 像素1:1 · O 叠显 · P 探针 · Esc/C/Del/Backspace 清叠加 · 拖拽平移 · 滚轮缩放"));
-  setStatusTip(QStringLiteral("图像视图 · F/G/A/Space/Home/0/R 适应 · +/- 缩放 · 1=1:1 · O 叠显 · P 探针 · Esc/C/Del/Backspace 清叠加 · 码框 hits · 拖拽平移 · 滚轮缩放"));
+  setToolTip(QStringLiteral("F/G/A/Space/Home/0/R 适应 · +/- 缩放 · 1 像素1:1 · 2=200% · O 叠显 · P 探针 · Ctrl+Shift+C 复制探针 · 中键适应 · Esc/C/Del/Backspace 清叠加 · 拖拽平移 · 滚轮缩放"));
+  setStatusTip(QStringLiteral("图像视图 · F/G/A/Space/Home/0/R 适应 · +/- 缩放 · 1=1:1 · 2=200% · O 叠显 · P 探针 · Ctrl+Shift+C 探针 · 中键适应 · Esc/C/Del/Backspace 清叠加 · 码框 hits · 拖拽平移 · 滚轮缩放"));
   setScene(&scene_);
   setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
   setDragMode(QGraphicsView::ScrollHandDrag);
@@ -112,6 +116,7 @@ void ImageView::updateProbe(int x, int y) {
                         .arg(qBlue(px))
                         .arg(hitChip));
   }
+  lastProbe_ = probe_->text();
   probe_->adjustSize();
   probe_->move(8, qMax(0, height() - probe_->height() - 6));
   probe_->raise();
@@ -175,7 +180,34 @@ void ImageView::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
+  if (event->key() == Qt::Key_2 && !(event->modifiers() & Qt::ControlModifier)) {
+    resetTransform();
+    scale(2.0, 2.0);
+    userZoomed_ = true;
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_C && (event->modifiers() & Qt::ControlModifier) &&
+      (event->modifiers() & Qt::ShiftModifier)) {
+    if (!lastProbe_.isEmpty()) {
+      if (auto* clip = QGuiApplication::clipboard()) clip->setText(lastProbe_);
+      QToolTip::showText(QCursor::pos(), QStringLiteral("已复制探针 · Ctrl+Shift+C"), this);
+    }
+    event->accept();
+    return;
+  }
   QGraphicsView::keyPressEvent(event);
+}
+
+
+void ImageView::mousePressEvent(QMouseEvent* event) {
+  if (event->button() == Qt::MiddleButton) {
+    userZoomed_ = false;
+    fitToView();
+    event->accept();
+    return;
+  }
+  QGraphicsView::mousePressEvent(event);
 }
 
 void ImageView::wheelEvent(QWheelEvent* event) {
