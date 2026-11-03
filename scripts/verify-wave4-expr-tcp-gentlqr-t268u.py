@@ -16,7 +16,7 @@ def bad(msg):
     print(f"FAIL  {msg}")
 
 checks = [
-    (QT / "SoftFrame.cpp", ["loadSoftQrSample", "sample-qr.png", "drawFinder", "SIEANS-", "SOFT exp=", "setSoftQrSamplePath", "FastTransformation", "Letterbox", "Guide frame"]),
+    (QT / "SoftFrame.cpp", ["loadSoftQrSample", "sample-qr.png", "drawFinder", "SIEANS-", "SOFT exp=", "setSoftQrSamplePath", "FastTransformation", "Letterbox", "Guide frame", "SOFT"]),
     (QT / "SieansDocument.cpp", ["seedGentlQrDemo", "format_data", "send_data", "receive_data", "result_gate", "LocalLoop", "passGate", "barcodeCount >= 1", "TcpRealLoopback", "gate1"]),
     (QT / "CommHub.cpp", ["Local Bus", "echo", "lastRx_ = payload", r"{([A-Za-z_]", "mustache", "soft-echo", "tryReconnect", "reconnecting"]),
     (QT / "MainWindow.cpp", ["sourceVar", "named braces", "lastTx()", "format_data", "receive_data"]),
@@ -46,6 +46,8 @@ checks = [
     (QT / "CommPanel.cpp", ["reconnect", "color:#e0b84a"]),
     (QT / "FlowTabBar.cpp", ["fitRequested", "适应流程画布"]),
     (QT / "MainWindow.cpp", ["FlowTabBar::fitRequested"]),
+    (QT / "ImageView.cpp", ["Key_F", "Key_Home", "setFocusPolicy", "F/Home 适应"]),
+    (QT / "VarWatchPanel.cpp", ["passGate", "setBold(true)"]),
 ]
 
 for path, needles in checks:

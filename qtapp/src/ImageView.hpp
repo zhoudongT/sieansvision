@@ -8,6 +8,7 @@
 #include <QPolygonF>
 
 class QLabel;
+class QKeyEvent;
 
 namespace sieans_qt {
 
@@ -37,6 +38,7 @@ class ImageView : public QGraphicsView {
   void resizeEvent(QResizeEvent* event) override;
   void wheelEvent(QWheelEvent* event) override;
   void mouseMoveEvent(QMouseEvent* event) override;
+  void keyPressEvent(QKeyEvent* event) override;
 
  private:
   void redrawOverlays();

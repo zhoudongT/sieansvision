@@ -127,6 +127,16 @@ QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gain
     p.setPen(QPen(QColor(0, 188, 212), 1));
     p.setBrush(Qt::NoBrush);
     p.drawRect(x - 1, y - 1, scaled.width() + 1, scaled.height() + 1);
+    // Corner SOFT badge (outside QR ROI)
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(0, 0, 0, 150));
+    p.drawRoundedRect(QRectF(6, 6, 52, 18), 3, 3);
+    p.setPen(QColor(0, 230, 118));
+    QFont bf = p.font();
+    bf.setPointSize(9);
+    bf.setBold(true);
+    p.setFont(bf);
+    p.drawText(QRectF(6, 6, 52, 18), Qt::AlignCenter, QStringLiteral("SOFT"));
     drewQr = true;
   } else {
     p.setPen(Qt::NoPen);

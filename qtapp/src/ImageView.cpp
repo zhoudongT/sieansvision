@@ -7,12 +7,15 @@
 #include <QPainterPath>
 #include <QWheelEvent>
 #include <QMouseEvent>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QResizeEvent>
 
 namespace sieans_qt {
 
 ImageView::ImageView(QWidget* parent) : QGraphicsView(parent) {
+  setFocusPolicy(Qt::StrongFocus);
+  setToolTip(QStringLiteral("F/Home 适应 · +/- 缩放 · 拖拽平移"));
   setScene(&scene_);
   setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
   setDragMode(QGraphicsView::ScrollHandDrag);
@@ -110,6 +113,29 @@ void ImageView::mouseMoveEvent(QMouseEvent* event) {
   }
   const QPointF sp = mapToScene(event->pos());
   updateProbe(int(sp.x()), int(sp.y()));
+}
+
+
+void ImageView::keyPressEvent(QKeyEvent* event) {
+  if (event->key() == Qt::Key_F || event->key() == Qt::Key_Home) {
+    userZoomed_ = false;
+    fitToView();
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_Plus || event->key() == Qt::Key_Equal) {
+    userZoomed_ = true;
+    scale(1.15, 1.15);
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_Minus) {
+    userZoomed_ = true;
+    scale(1.0 / 1.15, 1.0 / 1.15);
+    event->accept();
+    return;
+  }
+  QGraphicsView::keyPressEvent(event);
 }
 
 void ImageView::wheelEvent(QWheelEvent* event) {
