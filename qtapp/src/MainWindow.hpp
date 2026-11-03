@@ -133,6 +133,7 @@ class MainWindow : public QMainWindow {
 
   QAction* act_run_ = nullptr;
   QAction* act_cont_ = nullptr;
+  QAction* act_pause_ = nullptr;
   QAction* act_stop_ = nullptr;
   QAction* act_mode_ = nullptr;
   QAction* act_preview_ = nullptr;

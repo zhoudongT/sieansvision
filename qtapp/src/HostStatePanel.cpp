@@ -90,7 +90,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   btnStart_->setObjectName(QStringLiteral("primaryButton"));
   btnStart_->setToolTip(QStringLiteral("开始运行当前绑定流程 · F5/F9 · 连续 F6 · 已运行则重入"));
   btnStart_->setStatusTip(QStringLiteral("Host · 开始运行"));
-  btnPause_->setToolTip(QStringLiteral("暂停连续运行 · 连续中可暂停 · 单次运行无效"));
+  btnPause_->setToolTip(QStringLiteral("暂停连续运行 · F7 · 连续中可暂停 · 单次运行无效"));
   btnPause_->setStatusTip(QStringLiteral("Host · 暂停"));
   btnResume_->setToolTip(QStringLiteral("从暂停/报警继续 · Idle 时无效"));
   btnResume_->setStatusTip(QStringLiteral("Host · 继续"));
@@ -98,7 +98,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   btnStop_->setStatusTip(QStringLiteral("Host · 停止 · Esc"));
   btnClear_->setToolTip(QStringLiteral("清除报警锁存 · 不清运行状态 · Alarm→可继续"));
   btnClear_->setStatusTip(QStringLiteral("Host · 清除报警"));
-  setStatusTip(QStringLiteral("上位机控制 · F5/F9 开始 · F6 连续 · Space 开始/暂停 · 暂停/继续 · Esc 停止 · 清报警 · 双击徽章清报警 · 右键徽章清除 · Ctrl+Shift+C 复制历史"));
+  setStatusTip(QStringLiteral("上位机控制 · F5/F9 开始 · F6 连续 · F7 暂停/继续 · Space 开始/暂停 · 暂停/继续 · Esc 停止 · 清报警 · 双击徽章清报警 · 右键徽章清除 · Ctrl+Shift+C 复制历史"));
   for (QPushButton* b : {btnStart_, btnPause_, btnResume_, btnStop_, btnClear_}) {
     b->setMinimumHeight(28);
     quick->addWidget(b);
@@ -242,6 +242,11 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
       if (state_ == QLatin1String("Running")) emit pauseRequested();
       else if (state_ == QLatin1String("Paused")) emit resumeRequested();
       else emit startRequested();
+    });
+    auto* sc7 = new QShortcut(QKeySequence(Qt::Key_F7), this);
+    connect(sc7, &QShortcut::activated, this, [this]() {
+      if (state_ == QLatin1String("Paused")) emit resumeRequested();
+      else if (state_ == QLatin1String("Running")) emit pauseRequested();
     });
     auto* scEsc = new QShortcut(QKeySequence(Qt::Key_Escape), this);
     connect(scEsc, &QShortcut::activated, this, &HostStatePanel::stopRequested);

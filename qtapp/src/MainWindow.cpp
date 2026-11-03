@@ -1045,8 +1045,16 @@ void MainWindow::buildToolbar() {
   act_cont_ =
       tb->addAction(QStringLiteral("↻ 连续"), this, &MainWindow::onRunContinuous);
   act_cont_->setShortcut(QKeySequence(Qt::Key_F6));
-  act_cont_->setToolTip(QStringLiteral("连续运行当前流程 · F6 · Esc 停止"));
+  act_cont_->setToolTip(QStringLiteral("连续运行当前流程 · F6 · Esc 停止 · F7 暂停/继续"));
   act_cont_->setStatusTip(QStringLiteral("连续 · F6"));
+  act_pause_ = tb->addAction(QStringLiteral("⏸ 暂停"));
+  act_pause_->setShortcut(QKeySequence(Qt::Key_F7));
+  act_pause_->setToolTip(QStringLiteral("暂停/继续连续运行 · F7 · 仅连续态有效"));
+  act_pause_->setStatusTip(QStringLiteral("暂停 · F7"));
+  connect(act_pause_, &QAction::triggered, this, [this]() {
+    if (run_paused_) onResumeRun();
+    else onPauseRun();
+  });
   act_stop_ = tb->addAction(QStringLiteral("■ 停止"), this, &MainWindow::onStopRun);
   act_stop_->setShortcut(QKeySequence(Qt::Key_Escape));
   act_stop_->setToolTip(QStringLiteral("停止运行 / 连续 · Esc · 预览中亦停采集"));
@@ -1280,6 +1288,10 @@ void MainWindow::updateRunChrome() {
   const bool busy = busy_.load();
   if (act_run_) act_run_->setEnabled(!busy || continuous_run_);
   if (act_stop_) act_stop_->setEnabled(busy || continuous_run_ || preview_active_);
+  if (act_pause_) {
+    act_pause_->setEnabled(continuous_run_);
+    act_pause_->setText(run_paused_ ? QStringLiteral("▶ 继续") : QStringLiteral("⏸ 暂停"));
+  }
   QString modeText = QStringLiteral("设计态");
   if (run_mode_)
     modeText = QStringLiteral("运行态");
