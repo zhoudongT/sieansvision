@@ -16,6 +16,9 @@
 #include <QVBoxLayout>
 #include <QShortcut>
 #include <QKeySequence>
+#include <QClipboard>
+#include <QGuiApplication>
+#include <QApplication>
 #include <QInputDialog>
 #include <QHBoxLayout>
 #include <QPushButton>
@@ -25,7 +28,7 @@ namespace sieans_qt {
 FlowIoDialog::FlowIoDialog(const QVariantMap& io, QWidget* parent)
     : QDialog(parent), io_(io) {
   setWindowTitle(QStringLiteral("流程参数 · I/O 绑定"));
-  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+D 复制 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果"));
+  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+D 复制 · Ctrl+Shift+V 粘贴 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果"));
   resize(560, 440);
   setStyleSheet(theme::workbenchStyleSheet());
   auto* root = new QVBoxLayout(this);
@@ -128,7 +131,7 @@ QTableWidget* FlowIoDialog::makeTable(const QVariantList& rows, const QString& k
   table->setSelectionBehavior(QAbstractItemView::SelectRows);
   table->setSelectionMode(QAbstractItemView::ExtendedSelection);
   table->setToolTip(
-      QStringLiteral("I/O 绑定 · Insert/Ctrl+N 增行 · Del 删行 · Alt+↑↓ 移行 · Ctrl+D 复制 · emptyDefault 空结果占位 · {name}/${flow.x}/{{name}}"));
+      QStringLiteral("I/O 绑定 · Insert/Ctrl+N 增行 · Del 删行 · Alt+↑↓ 移行 · Ctrl+D 复制 · Ctrl+Shift+V 粘贴 · binding 芯片 · emptyDefault 空结果占位 · {name}/${flow.x}/{{name}}"));
   table->setStatusTip(QStringLiteral("流程 I/O 表 · emptyDefault"));
   if (rows.isEmpty()) {
     const QList<QStringList> demo =
@@ -217,23 +220,43 @@ void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
   auto* up = new QPushButton(QStringLiteral("↑"));
   auto* down = new QPushButton(QStringLiteral("↓"));
   auto* dup = new QPushButton(QStringLiteral("复制"));
+  auto* paste = new QPushButton(QStringLiteral("粘贴行"));
+  auto* tokPass = new QPushButton(QStringLiteral("${flow.passGate}"));
+  auto* tokText = new QPushButton(QStringLiteral("${flow.barcodeText}"));
   up->setFixedWidth(28);
   down->setFixedWidth(28);
   up->setToolTip(QStringLiteral("上移选中行 · Alt+↑"));
   down->setToolTip(QStringLiteral("下移选中行 · Alt+↓"));
   dup->setToolTip(QStringLiteral("复制选中行 · Ctrl+D"));
+  paste->setToolTip(QStringLiteral("从剪贴板粘贴多行绑定 · Ctrl+Shift+V · 每行 name,type,binding,emptyDefault"));
+  tokPass->setToolTip(QStringLiteral("写入当前行 binding · ${flow.passGate}"));
+  tokText->setToolTip(QStringLiteral("写入当前行 binding · ${flow.barcodeText}"));
+  tokPass->setStyleSheet(QStringLiteral("font-size:11px;"));
+  tokText->setStyleSheet(QStringLiteral("font-size:11px;"));
   rowBtns->addWidget(up);
   rowBtns->addWidget(down);
   rowBtns->addWidget(dup);
+  rowBtns->addWidget(paste);
+  rowBtns->addWidget(tokPass);
+  rowBtns->addWidget(tokText);
   connect(up, &QPushButton::clicked, this, [this, table]() { moveSelectedRows(table, -1); });
   connect(down, &QPushButton::clicked, this, [this, table]() { moveSelectedRows(table, +1); });
   connect(dup, &QPushButton::clicked, this, [this, table]() { duplicateSelectedRows(table); });
+  connect(paste, &QPushButton::clicked, this, [this, table]() { pasteRows(table); });
+  connect(tokPass, &QPushButton::clicked, this, [this, table]() {
+    insertBindingToken(table, QStringLiteral("${flow.passGate}"));
+  });
+  connect(tokText, &QPushButton::clicked, this, [this, table]() {
+    insertBindingToken(table, QStringLiteral("${flow.barcodeText}"));
+  });
   auto* scUp = new QShortcut(QKeySequence(QStringLiteral("Alt+Up")), table);
   connect(scUp, &QShortcut::activated, this, [this, table]() { moveSelectedRows(table, -1); });
   auto* scDn = new QShortcut(QKeySequence(QStringLiteral("Alt+Down")), table);
   connect(scDn, &QShortcut::activated, this, [this, table]() { moveSelectedRows(table, +1); });
   auto* scDup = new QShortcut(QKeySequence(QStringLiteral("Ctrl+D")), table);
   connect(scDup, &QShortcut::activated, this, [this, table]() { duplicateSelectedRows(table); });
+  auto* scPaste = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+V")), table);
+  connect(scPaste, &QShortcut::activated, this, [this, table]() { pasteRows(table); });
 }
 
 void FlowIoDialog::moveSelectedRows(QTableWidget* table, int delta) {
@@ -282,4 +305,41 @@ void FlowIoDialog::duplicateSelectedRows(QTableWidget* table) {
     }
   }
 }
+void FlowIoDialog::insertBindingToken(QTableWidget* table, const QString& token) {
+  if (!table || token.isEmpty()) return;
+  int r = table->currentRow();
+  if (r < 0) {
+    addRow(table);
+    r = table->rowCount() - 1;
+  }
+  if (!table->item(r, 2)) table->setItem(r, 2, new QTableWidgetItem);
+  table->item(r, 2)->setText(token);
+  table->setCurrentCell(r, 2);
+}
+
+void FlowIoDialog::pasteRows(QTableWidget* table) {
+  if (!table) return;
+  const QClipboard* clip = QGuiApplication::clipboard();
+  if (!clip) return;
+  const QString text = clip->text().trimmed();
+  if (text.isEmpty()) return;
+  int added = 0;
+  for (const QString& line : text.split(QLatin1Char('\n'), Qt::SkipEmptyParts)) {
+    const QStringList parts = line.split(QLatin1Char(','));
+    if (parts.isEmpty()) continue;
+    const int r = table->rowCount();
+    table->insertRow(r);
+    table->setItem(r, 0, new QTableWidgetItem(parts.value(0).trimmed().isEmpty()
+                                                  ? QStringLiteral("Param%1").arg(r + 1)
+                                                  : parts.value(0).trimmed()));
+    table->setItem(r, 1, new QTableWidgetItem(parts.value(1).trimmed().isEmpty()
+                                                  ? QStringLiteral("ANY")
+                                                  : parts.value(1).trimmed()));
+    table->setItem(r, 2, new QTableWidgetItem(parts.value(2).trimmed()));
+    table->setItem(r, 3, new QTableWidgetItem(parts.value(3).trimmed()));
+    ++added;
+  }
+  if (added > 0) table->selectRow(table->rowCount() - 1);
+}
+
 }  // namespace sieans_qt

@@ -14,6 +14,8 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QGuiApplication>
+#include <QEvent>
+#include <QMouseEvent>
 
 namespace sieans_qt {
 namespace {
@@ -79,7 +81,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   btnStop_->setStatusTip(QStringLiteral("Host · 停止 · Esc"));
   btnClear_->setToolTip(QStringLiteral("清除报警锁存 · 不清运行状态 · Alarm→可继续"));
   btnClear_->setStatusTip(QStringLiteral("Host · 清除报警"));
-  setStatusTip(QStringLiteral("上位机控制 · F5/F9 开始 · F6 连续 · 暂停/继续 · Esc 停止 · 清报警"));
+  setStatusTip(QStringLiteral("上位机控制 · F5/F9 开始 · F6 连续 · Space 开始/暂停 · 暂停/继续 · Esc 停止 · 清报警 · 双击徽章清报警"));
   for (QPushButton* b : {btnStart_, btnPause_, btnResume_, btnStop_, btnClear_}) {
     b->setMinimumHeight(28);
     quick->addWidget(b);
@@ -172,6 +174,17 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
     });
     auto* scEsc = new QShortcut(QKeySequence(Qt::Key_Escape), this);
     connect(scEsc, &QShortcut::activated, this, &HostStatePanel::stopRequested);
+    auto* scSp = new QShortcut(QKeySequence(Qt::Key_Space), this);
+    connect(scSp, &QShortcut::activated, this, [this]() {
+      if (state_ == QLatin1String("Running")) emit pauseRequested();
+      else if (state_ == QLatin1String("Paused")) emit resumeRequested();
+      else emit startRequested();
+    });
+  }
+  if (badge_) {
+    badge_->setCursor(Qt::PointingHandCursor);
+    badge_->setToolTip(QStringLiteral("上位机状态 · Idle/Running/Paused/Alarm/Stopped · 双击清除报警"));
+    badge_->installEventFilter(this);
   }
 
   applyState(QStringLiteral("Idle"));
@@ -263,6 +276,18 @@ void HostStatePanel::notifyOk() {
                            ? latchedRun_
                            : QStringLiteral("Idle");
   applyState(back);
+}
+
+bool HostStatePanel::eventFilter(QObject* obj, QEvent* event) {
+  if (obj == badge_ && event->type() == QEvent::MouseButtonDblClick) {
+    appendAlarm(QStringLiteral("双击徽章清除"), true);
+    applyState(QStringLiteral("Idle"));
+    emit clearAlarmRequested();
+    if (modeHint_)
+      modeHint_->setText(QStringLiteral("报警已清除 · 双击徽章"));
+    return true;
+  }
+  return QWidget::eventFilter(obj, event);
 }
 
 }  // namespace sieans_qt

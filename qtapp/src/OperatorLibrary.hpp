@@ -7,6 +7,8 @@ class QListWidget;
 class QListWidgetItem;
 class QLineEdit;
 class QEvent;
+class QHBoxLayout;
+class QWidget;
 
 namespace sieans_qt {
 
@@ -35,8 +37,12 @@ class OperatorLibrary : public QWidget {
  private:
   void rebuild();
   void rememberRecent(const QString& key);
+  void activateRecentAt(int index);
+  void rebuildCategoryChips();
   QListWidget* list_ = nullptr;
   QLineEdit* search_ = nullptr;
+  QWidget* catChipHost_ = nullptr;
+  QHBoxLayout* catChipLay_ = nullptr;
   QString categoryFilter_;
   QStringList recentKeys_;
 };

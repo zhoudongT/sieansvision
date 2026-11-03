@@ -23,6 +23,8 @@ class FlowIoDialog : public QDialog {
   void removeSelectedRows(QTableWidget* table);
   void moveSelectedRows(QTableWidget* table, int delta);
   void duplicateSelectedRows(QTableWidget* table);
+  void pasteRows(QTableWidget* table);
+  void insertBindingToken(QTableWidget* table, const QString& token);
   void wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns);
 
   QTableWidget* inTable_ = nullptr;

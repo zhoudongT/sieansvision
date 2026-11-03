@@ -9,6 +9,7 @@ class QLabel;
 class QListWidget;
 class QComboBox;
 class QPushButton;
+class QEvent;
 
 namespace sieans_qt {
 
@@ -35,6 +36,9 @@ class HostStatePanel : public QWidget {
   void resumeRequested();
   void stopRequested();
   void clearAlarmRequested();
+
+ protected:
+  bool eventFilter(QObject* obj, QEvent* event) override;
 
  private:
   void paintBadge();

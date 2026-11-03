@@ -3,6 +3,8 @@
 
 #include <QVBoxLayout>
 #include <QLabel>
+#include <QHBoxLayout>
+#include <QPushButton>
 #include <QHash>
 #include <QDrag>
 #include <QMimeData>
@@ -204,7 +206,7 @@ OperatorDef OperatorLibrary::findDef(const QString& key) {
 }
 
 OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
-  setStatusTip(QStringLiteral("Toolbox · / 或 Ctrl+F/L 搜索 · 最近 · Enter 添加(列表/搜索) · Home/End/PgUp/PgDn · Esc 清空"));
+  setStatusTip(QStringLiteral("Toolbox · / 或 Ctrl+F/L 搜索 · 最近 · Ctrl+1-9 最近项 · 分类芯片 · Enter 添加(列表/搜索) · Home/End/PgUp/PgDn · Esc 清空"));
   setObjectName(QStringLiteral("libraryPane"));
   auto* lay = new QVBoxLayout(this);
   lay->setContentsMargins(0, 0, 0, 0);
@@ -217,6 +219,13 @@ OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
   search_->setPlaceholderText(QStringLiteral("搜索…"));
   search_->setClearButtonEnabled(true);
   lay->addWidget(search_);
+  catChipHost_ = new QWidget;
+  catChipHost_->setObjectName(QStringLiteral("toolboxCatChips"));
+  catChipLay_ = new QHBoxLayout(catChipHost_);
+  catChipLay_->setContentsMargins(4, 2, 4, 2);
+  catChipLay_->setSpacing(3);
+  lay->addWidget(catChipHost_);
+  rebuildCategoryChips();
   list_ = new OperatorListWidget;
   list_->setSpacing(0);
   list_->setUniformItemSizes(true);
@@ -258,6 +267,8 @@ OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
 void OperatorLibrary::setCategoryFilter(const QString& category) {
   categoryFilter_ = category;
   rebuild();
+  // chips may be driven externally (rail) — keep checked state in sync when host exists
+  if (catChipLay_) rebuildCategoryChips();
 }
 
 void OperatorLibrary::rememberRecent(const QString& key) {
@@ -367,6 +378,51 @@ void OperatorLibrary::rebuild() {
   }
 }
 
+void OperatorLibrary::activateRecentAt(int index) {
+  if (index < 0 || index >= recentKeys_.size()) return;
+  const QString key = recentKeys_.at(index);
+  const OperatorDef def = findDef(key);
+  rememberRecent(key);
+  emit operatorActivated(def.key, def.name.isEmpty() ? def.key : def.name);
+  if (search_)
+    search_->setToolTip(QStringLiteral("已激活最近 #%1 · %2 · Ctrl+1-9")
+                            .arg(index + 1)
+                            .arg(def.name));
+}
+
+void OperatorLibrary::rebuildCategoryChips() {
+  if (!catChipLay_) return;
+  while (catChipLay_->count() > 0) {
+    QLayoutItem* it = catChipLay_->takeAt(0);
+    if (it->widget()) it->widget()->deleteLater();
+    delete it;
+  }
+  QStringList cats{QStringLiteral("全部")};
+  for (const auto& def : catalog()) {
+    if (!cats.contains(def.category)) cats << def.category;
+  }
+  for (const QString& c : cats) {
+    auto* b = new QPushButton(c == QLatin1String("全部") ? QStringLiteral("全部") : c);
+    b->setFlat(true);
+    b->setCheckable(true);
+    const bool on = (c == QLatin1String("全部") && categoryFilter_.isEmpty()) ||
+                    (c == categoryFilter_);
+    b->setChecked(on);
+    b->setCursor(Qt::PointingHandCursor);
+    b->setStyleSheet(
+        QStringLiteral("QPushButton{background:#2a2d32;color:#a8a8a8;border-radius:3px;"
+                       "padding:2px 6px;font-size:10px;}"
+                       "QPushButton:checked{background:#1e3d2f;color:#3ecf8e;font-weight:600;}"
+                       "QPushButton:hover{color:#e8e8e8;}"));
+    b->setToolTip(QStringLiteral("Toolbox 分类 · %1").arg(c));
+    connect(b, &QPushButton::clicked, this, [this, c]() {
+      setCategoryFilter(c == QLatin1String("全部") ? QString() : c);
+    });
+    catChipLay_->addWidget(b);
+  }
+  catChipLay_->addStretch(1);
+}
+
 void OperatorLibrary::focusSearch() {
   if (!search_) return;
   search_->setFocus(Qt::ShortcutFocusReason);
@@ -376,6 +432,11 @@ void OperatorLibrary::focusSearch() {
 bool OperatorLibrary::eventFilter(QObject* obj, QEvent* event) {
   if (event->type() == QEvent::KeyPress) {
     auto* ke = static_cast<QKeyEvent*>(event);
+    if ((ke->modifiers() & Qt::ControlModifier) &&
+        ke->key() >= Qt::Key_1 && ke->key() <= Qt::Key_9) {
+      activateRecentAt(ke->key() - Qt::Key_1);
+      return true;
+    }
     if ((ke->modifiers() & Qt::ControlModifier) &&
         (ke->key() == Qt::Key_F || ke->key() == Qt::Key_L)) {
       focusSearch();

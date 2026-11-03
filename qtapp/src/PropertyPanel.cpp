@@ -389,6 +389,39 @@ void PropertyPanel::showStep(const FlowStep& step) {
 }
 
 
+void PropertyPanel::applySnapshot(const QVariantMap& snap) {
+  if (!form_) return;
+  building_ = true;
+  params_ = snap;
+  for (int r = 0; r < form_->rowCount(); ++r) {
+    QLayoutItem* labItem = form_->itemAt(r, QFormLayout::LabelRole);
+    QLayoutItem* fieldItem = form_->itemAt(r, QFormLayout::FieldRole);
+    if (!labItem || !fieldItem) continue;
+    QWidget* labW = labItem->widget();
+    QWidget* field = fieldItem->widget();
+    if (!labW || !field) continue;
+    const QString key = labW->property("propKey").toString();
+    if (key.isEmpty() || !snap.contains(key)) continue;
+    const QVariant v = snap.value(key);
+    if (auto* le = qobject_cast<QLineEdit*>(field)) {
+      le->setText(stringify(v));
+    } else if (auto* sp = qobject_cast<QSpinBox*>(field)) {
+      sp->setValue(v.toInt());
+    } else if (auto* dsp = qobject_cast<QDoubleSpinBox*>(field)) {
+      dsp->setValue(v.toDouble());
+    } else if (auto* box = qobject_cast<QCheckBox*>(field)) {
+      const QString s = stringify(v);
+      box->setChecked(v.toBool() || s == QLatin1String("true") || s == QLatin1String("1"));
+    } else if (auto* combo = qobject_cast<QComboBox*>(field)) {
+      const int idx = combo->findData(v.toString());
+      if (idx >= 0) combo->setCurrentIndex(idx);
+    }
+  }
+  building_ = false;
+  for (auto it = snap.begin(); it != snap.end(); ++it)
+    emitEdit(it.key(), stringify(it.value()));
+}
+
 void PropertyPanel::focusFilter() {
   if (!filterEdit_) return;
   filterEdit_->setFocus(Qt::ShortcutFocusReason);

@@ -13,6 +13,12 @@
 #include <QCheckBox>
 #include <QMessageBox>
 #include <QAbstractItemView>
+#include <QClipboard>
+#include <QGuiApplication>
+#include <QEvent>
+#include <QMouseEvent>
+#include <QPushButton>
+#include <QScrollArea>
 
 namespace sieans_qt {
 
@@ -90,14 +96,25 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   bindSummary_ = new QLabel(QStringLiteral("绑定 · —"));
   bindSummary_->setObjectName(QStringLiteral("commBindSummary"));
   bindSummary_->setWordWrap(true);
-  bindSummary_->setToolTip(QStringLiteral("tcpReal 绑定摘要 · host:port · framing · ack · reconnect"));
+  bindSummary_->setCursor(Qt::PointingHandCursor);
+  bindSummary_->setToolTip(QStringLiteral("tcpReal 绑定摘要 · host:port · framing · ack · reconnect · 单击复制"));
+  bindSummary_->installEventFilter(this);
   form->addRow(QStringLiteral("摘要"), bindSummary_);
   payloadEdit_ = new QLineEdit(
       QStringLiteral("BARCODE ok=${flow.passGate} text=${flow.barcodeText}"));
   payloadEdit_->setToolTip(
-      QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · Enter/Ctrl+Enter 试发 · LocalBus echo"));
+      QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · 下方芯片插入 · Enter/Ctrl+Enter 试发 · LocalBus echo"));
   form->addRow(QStringLiteral("报文"), payloadEdit_);
   lay->addLayout(form);
+
+  varChipHost_ = new QWidget;
+  varChipHost_->setObjectName(QStringLiteral("commVarChips"));
+  varChipLay_ = new QHBoxLayout(varChipHost_);
+  varChipLay_->setContentsMargins(0, 0, 0, 2);
+  varChipLay_->setSpacing(4);
+  varChipLay_->addWidget(new QLabel(QStringLiteral("插入")));
+  varChipLay_->addStretch(1);
+  lay->addWidget(varChipHost_);
 
   auto* row = new QHBoxLayout;
   auto* btnTcp = new QPushButton(QStringLiteral("启动 TCP"));
@@ -158,6 +175,8 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
     connect(sc, &QShortcut::activated, this, [this]() {
       if (hub_) hub_->clearTranscript();
     });
+    auto* scCopy = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+C")), this);
+    connect(scCopy, &QShortcut::activated, this, &CommPanel::copyTranscriptFiltered);
   }
   if (hub_) {
     connect(hub_, &CommHub::transcriptChanged, this, &CommPanel::refreshTranscript);
@@ -274,7 +293,91 @@ void CommPanel::onDeviceRowChanged() {
   if (!port.isEmpty() && port != QLatin1String("0")) portEdit_->setText(port);
 }
 
-void CommPanel::setFlowVars(const QVariantMap& vars) { vars_ = vars; }
+void CommPanel::setFlowVars(const QVariantMap& vars) {
+  vars_ = vars;
+  rebuildVarChips();
+}
+
+void CommPanel::insertFlowToken(const QString& key) {
+  if (!payloadEdit_ || key.isEmpty()) return;
+  const QString tok = QStringLiteral("${flow.%1}").arg(key);
+  const int pos = payloadEdit_->cursorPosition();
+  QString cur = payloadEdit_->text();
+  cur.insert(pos, tok);
+  payloadEdit_->setText(cur);
+  payloadEdit_->setCursorPosition(pos + tok.size());
+  payloadEdit_->setFocus(Qt::OtherFocusReason);
+  if (status_)
+    status_->setToolTip(QStringLiteral("已插入 %1").arg(tok));
+}
+
+void CommPanel::rebuildVarChips() {
+  if (!varChipLay_) return;
+  while (varChipLay_->count() > 0) {
+    QLayoutItem* it = varChipLay_->takeAt(0);
+    if (it->widget()) it->widget()->deleteLater();
+    delete it;
+  }
+  varChipLay_->addWidget(new QLabel(QStringLiteral("插入")));
+  // Prefer common VM keys first, then remaining flow vars (cap ~10).
+  QStringList prefer{QStringLiteral("passGate"), QStringLiteral("barcodeText"),
+                     QStringLiteral("barcodeCount"), QStringLiteral("formatted"),
+                     QStringLiteral("lastRecv"), QStringLiteral("urlOk"),
+                     QStringLiteral("locateScore")};
+  QStringList keys;
+  for (const QString& k : prefer) {
+    if (vars_.contains(k)) keys << k;
+  }
+  for (auto it = vars_.begin(); it != vars_.end(); ++it) {
+    if (keys.contains(it.key())) continue;
+    if (it.key().startsWith(QStringLiteral("io."))) continue;
+    keys << it.key();
+    if (keys.size() >= 10) break;
+  }
+  if (keys.isEmpty()) {
+    auto* empty = new QLabel(QStringLiteral("（无 flow 变量）"));
+    empty->setObjectName(QStringLiteral("muted"));
+    varChipLay_->addWidget(empty);
+  } else {
+    for (const QString& k : keys) {
+      auto* b = new QPushButton(k);
+      b->setFlat(true);
+      b->setCursor(Qt::PointingHandCursor);
+      b->setStyleSheet(
+          QStringLiteral("QPushButton{background:#32353a;color:#c8cdd4;border-radius:3px;"
+                         "padding:2px 8px;font-size:11px;}"
+                         "QPushButton:hover{background:#3ecf8e;color:#102018;}"));
+      b->setToolTip(QStringLiteral("插入 ${flow.%1} · 当前=%2")
+                        .arg(k, vars_.value(k).toString().left(40)));
+      connect(b, &QPushButton::clicked, this, [this, k]() { insertFlowToken(k); });
+      varChipLay_->addWidget(b);
+    }
+  }
+  varChipLay_->addStretch(1);
+}
+
+void CommPanel::copyTranscriptFiltered() {
+  if (!transcript_) return;
+  const QString text = transcript_->toPlainText();
+  if (auto* clip = QGuiApplication::clipboard()) clip->setText(text);
+  if (status_)
+    status_->setToolTip(QStringLiteral("已复制抄本 %1 行 · Ctrl+Shift+C")
+                            .arg(text.isEmpty() ? 0 : text.split(QLatin1Char('\n')).size()));
+}
+
+bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
+  if (obj == bindSummary_ && event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::LeftButton && bindSummary_) {
+      if (auto* clip = QGuiApplication::clipboard()) {
+        clip->setText(bindSummary_->text());
+        bindSummary_->setToolTip(QStringLiteral("已复制绑定摘要 · 单击"));
+      }
+      return true;
+    }
+  }
+  return QWidget::eventFilter(obj, event);
+}
 
 void CommPanel::refreshTranscript() {
   if (!hub_ || !transcript_) return;

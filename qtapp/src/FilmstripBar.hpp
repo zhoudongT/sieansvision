@@ -29,7 +29,10 @@ class FilmstripBar : public QWidget {
   void selectPrev();
   void selectNext();
   void copySelectedPaths();
+  void copySelectedBasenames();
   void duplicateSelected();
+  void invertSelection();
+  void sortByName();
 
  protected:
   void keyPressEvent(QKeyEvent* event) override;

@@ -150,6 +150,7 @@ class MainWindow : public QMainWindow {
   bool run_paused_ = false;
   bool run_mode_ = false;
   int run_cycle_ = 0;
+  double last_cycle_ms_ = -1;
   bool preview_active_ = false;
   qint64 preview_frames_ = 0;
 };

@@ -11,11 +11,12 @@
 #include <QWheelEvent>
 #include <QLineEdit>
 #include <QVariantMap>
+#include <QtGlobal>
 
 namespace sieans_qt {
 
 PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
-  setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · F2 首字段 · Tab/Home/End/PgUp/PgDn/滚轮 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续 · Ctrl+S 同确定"));
+  setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · F2 首字段 · Tab/Home/End/PgUp/PgDn/滚轮 · Alt+滚轮透明度 · Ctrl+R 还原 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续 · Ctrl+S 同确定"));
   setWhatsThis(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End/PgUp/PgDn · Ctrl/Alt/Shift+Enter/Ctrl+S 确定 · F5/F9 单次 · F6 连续"));
   setObjectName(QStringLiteral("propertyFloat"));
   setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
@@ -52,12 +53,14 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   titleLay->addWidget(pinBtn_, 0, Qt::AlignTop);
   connect(pinBtn_, &QPushButton::toggled, this, [this](bool on) {
     pinned_ = on;
+    if (on) pinnedGeom_ = geometry();
     setWindowFlag(Qt::WindowStaysOnTopHint, on);
     // re-show to apply flag
     const bool vis = isVisible();
     if (vis) {
       hide();
       show();
+      if (on && pinnedGeom_.isValid()) setGeometry(pinnedGeom_);
     }
     pinBtn_->setText(on ? QStringLiteral("📍") : QStringLiteral("📌"));
     pinBtn_->setToolTip(on ? QStringLiteral("取消钉住 · Ctrl+P") : QStringLiteral("钉住浮窗 · 置顶 · Ctrl+P"));
@@ -97,7 +100,7 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   auto* ok = new QPushButton(QStringLiteral("确定"));
   ok->setObjectName(QStringLiteral("propertyFloatOk"));
   ok->setToolTip(QStringLiteral("保留修改并关闭 · Ctrl/Alt/Shift+Enter · Ctrl+S · Esc 相反"));
-  auto* hint = new QLabel(QStringLiteral("Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End/PgUp/PgDn 切换 · Ctrl+S/Ctrl+Enter 确定 · F5/F9 执行 · F6 连续"));
+  auto* hint = new QLabel(QStringLiteral("Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End/PgUp/PgDn 切换 · Ctrl+R 还原 · Alt+滚轮透明度 · Ctrl+S/Ctrl+Enter 确定 · F5/F9 执行 · F6 连续"));
   hint->setObjectName(QStringLiteral("propertyFloatHint"));
   hint->setStyleSheet(QStringLiteral("color:#8a9098;font-size:11px;"));
   foot->addWidget(cont);
@@ -195,6 +198,18 @@ void PropertyFloat::showForStep(const FlowStep& step) {
 }
 
 void PropertyFloat::keyPressEvent(QKeyEvent* event) {
+  if (event->key() == Qt::Key_R && (event->modifiers() & Qt::ControlModifier)) {
+    // Restore baseline into editors without closing (VM-ish revert).
+    if (panel_) panel_->applySnapshot(baseline_);
+    emit paramsReverted(nodeId_, baseline_);
+    if (subtitle_) {
+      const QString s = subtitle_->text();
+      if (!s.contains(QStringLiteral("已还原")))
+        subtitle_->setText(s + QStringLiteral(" · 已还原"));
+    }
+    event->accept();
+    return;
+  }
   if (event->key() == Qt::Key_S && (event->modifiers() & Qt::ControlModifier)) {
     if (panel_) baseline_ = panel_->currentParams();
     emit acceptedCommit();
@@ -290,7 +305,15 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
 
 void PropertyFloat::wheelEvent(QWheelEvent* event) {
   // Scroll wheel cycles focus among editable fields (VM-ish).
+  // Alt+wheel adjusts float opacity (VM chrome depth).
   if (!event) return;
+  if (event->modifiers() & Qt::AltModifier) {
+    const qreal delta = event->angleDelta().y() > 0 ? 0.05 : -0.05;
+    opacity_ = qBound(0.45, opacity_ + delta, 1.0);
+    setWindowOpacity(opacity_);
+    event->accept();
+    return;
+  }
   const bool next = event->angleDelta().y() < 0 || event->angleDelta().x() < 0;
   focusNextPrevChild(next);
   event->accept();

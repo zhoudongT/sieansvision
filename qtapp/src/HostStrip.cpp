@@ -15,7 +15,7 @@
 namespace sieans_qt {
 
 HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
-  setStatusTip(QStringLiteral("Host 条 · OK/NG/ALARM · tcp= 摘要(lf/crlf/raw/len4) · Esc 停止运行 · 周期 chip 见右侧 · 单击模式切换 · Ctrl+单击周期清零 · 双击明细复制"));
+  setStatusTip(QStringLiteral("Host 条 · OK/NG/ALARM · tcp= 摘要(lf/crlf/raw/len4) · Esc 停止运行 · 周期 chip 见右侧 · 单击模式切换 · 右键连续 · Ctrl+单击周期清零 · 双击明细复制 · 周期 ms"));
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(8, 4, 8, 4);
   root->setSpacing(2);
@@ -58,8 +58,8 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   cycleChip_->setCursor(Qt::PointingHandCursor);
   detail_->setCursor(Qt::PointingHandCursor);
   badge_->setToolTip(QStringLiteral("OK/NG/ALARM · passGate 判定 · 单击打开 Host 面板 · tcp= 见明细"));
-  modeChip_->setToolTip(QStringLiteral("运行模式 · 设计态/运行/连续/暂停 · 单击切换设计/运行态 · 运行态锁画布 · F5/F9 仍可单次"));
-  cycleChip_->setToolTip(QStringLiteral("运行周期计数 · 每次流程完成 +1 · Ctrl+单击清零 · 双击清零 · 周期 chip 见右侧"));
+  modeChip_->setToolTip(QStringLiteral("运行模式 · 设计态/运行/连续/暂停 · 单击切换设计/运行态 · 右键切换连续 · 运行态锁画布 · F5/F9 仍可单次"));
+  cycleChip_->setToolTip(QStringLiteral("运行周期计数 · 每次流程完成 +1 · 显示上次 ms · Ctrl+单击清零 · 双击清零 · 周期 chip 见右侧"));
   detail_->setToolTip(QStringLiteral("count/text/RX/urlOk/tcp 摘要 · framing lf/crlf/raw/len4 见 tcp= · 双击复制全文 · 悬停看全文"));
   badge_->installEventFilter(this);
   modeChip_->installEventFilter(this);
@@ -87,6 +87,7 @@ void HostStrip::setAlarm(bool on, const QString& reason) {
 }
 
 void HostStrip::setRunChrome(const QString& mode, const QString& hostState, int cycle) {
+  cycle_ = cycle;
   const bool run = mode.contains(QStringLiteral("运行")) || mode.contains(QStringLiteral("连续")) ||
                    mode.contains(QStringLiteral("暂停"));
   modeChip_->setText(QStringLiteral("%1 · %2").arg(mode, hostState.isEmpty() ? QStringLiteral("Idle")
@@ -96,7 +97,22 @@ void HostStrip::setRunChrome(const QString& mode, const QString& hostState, int 
                            "padding:3px 8px;font-size:11px;font-weight:600;")
           : QStringLiteral("background:#3a3d42;color:#a8a8a8;border-radius:3px;"
                            "padding:3px 8px;font-size:11px;font-weight:600;"));
-  cycleChip_->setText(QStringLiteral("周期 %1").arg(cycle));
+  if (lastCycleMs_ >= 0)
+    cycleChip_->setText(QStringLiteral("周期 %1 · %2 ms").arg(cycle).arg(lastCycleMs_, 0, 'f', 1));
+  else
+    cycleChip_->setText(QStringLiteral("周期 %1").arg(cycle));
+}
+
+void HostStrip::setCycleTiming(double lastMs) {
+  lastCycleMs_ = lastMs;
+  if (!cycleChip_) return;
+  if (lastCycleMs_ >= 0)
+    cycleChip_->setText(QStringLiteral("周期 %1 · %2 ms").arg(cycle_).arg(lastCycleMs_, 0, 'f', 1));
+  else
+    cycleChip_->setText(QStringLiteral("周期 %1").arg(cycle_));
+  cycleChip_->setToolTip(
+      QStringLiteral("运行周期计数 · 每次流程完成 +1 · 上次 %1 ms · Ctrl+单击清零 · 双击清零 · 周期 chip 见右侧")
+          .arg(lastCycleMs_, 0, 'f', 1));
 }
 
 void HostStrip::refreshChips(const QVariantMap& vars) {
@@ -148,6 +164,14 @@ void HostStrip::updateFromVars(const QVariantMap& vars, int codeCount, bool eval
                         : vars.value(QStringLiteral("barcodeCount")).toInt();
   const QString text = vars.value(QStringLiteral("barcodeText")).toString();
   const bool ran = evaluated;
+  if (ran) {
+    if (ok) {
+      ++okStreak_;
+    } else {
+      okStreak_ = 0;
+      ++ngCount_;
+    }
+  }
 
   if (alarmOn_) {
     badge_->setText(QStringLiteral("ALARM"));
@@ -189,6 +213,10 @@ void HostStrip::updateFromVars(const QVariantMap& vars, int codeCount, bool eval
   if (!ioOut.isEmpty()) detail += QStringLiteral(" · I/O.Result=%1").arg(ioOut.left(24));
   if (!tcpStatus_.isEmpty())
     detail += QStringLiteral(" · tcp=%1").arg(tcpStatus_.left(36));
+  if (ran)
+    detail += QStringLiteral(" · 连OK %1 · NG %2").arg(okStreak_).arg(ngCount_);
+  if (lastCycleMs_ >= 0)
+    detail += QStringLiteral(" · %1 ms").arg(lastCycleMs_, 0, 'f', 1);
   detail_->setText(detail);
   refreshChips(vars);
 }
@@ -229,6 +257,10 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
   }
   if (event->type() == QEvent::MouseButtonRelease) {
     auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::RightButton && obj == modeChip_) {
+      emit continuousToggleRequested();
+      return true;
+    }
     if (me->button() != Qt::LeftButton) return QWidget::eventFilter(obj, event);
     if (obj == modeChip_) {
       emit modeToggleRequested();

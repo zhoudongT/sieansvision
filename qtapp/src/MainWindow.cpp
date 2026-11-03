@@ -416,8 +416,19 @@ void MainWindow::buildUi() {
   });
   connect(host_strip_, &HostStrip::cycleResetRequested, this, [this]() {
     run_cycle_ = 0;
+    last_cycle_ms_ = -1;
+    if (host_strip_) host_strip_->setCycleTiming(-1);
     updateRunChrome();
     showStatus(QStringLiteral("周期已清零"));
+  });
+  connect(host_strip_, &HostStrip::continuousToggleRequested, this, [this]() {
+    if (continuous_run_ && !run_paused_) {
+      onStopRun();
+      showStatus(QStringLiteral("连续已停 · Host 右键"));
+    } else {
+      onRunContinuous();
+      showStatus(QStringLiteral("连续已启 · Host 右键"));
+    }
   });
   connect(host_strip_, &HostStrip::watchKeysChanged, this, [this](const QStringList& keys) {
     if (host_strip_) host_strip_->setWatchKeys(keys);
@@ -1499,6 +1510,8 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                             std::chrono::steady_clock::now() - flowT0)
                             .count();
   const double toolMs = qMax(0.0, flowMs - algoMs);
+  last_cycle_ms_ = flowMs;
+  if (host_strip_) host_strip_->setCycleTiming(flowMs);
   if (status_timing_) {
     status_timing_->setText(QStringLiteral("流程 %1 ms · 工具 %2 ms · 算法 %3 ms")
                                 .arg(flowMs, 0, 'f', 2)

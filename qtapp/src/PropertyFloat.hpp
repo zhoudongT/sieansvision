@@ -2,6 +2,7 @@
 #include "PropertyPanel.hpp"
 #include <QDialog>
 #include <QPoint>
+#include <QRect>
 #include <QVariantMap>
 
 class QLabel;
@@ -50,6 +51,8 @@ class PropertyFloat : public QDialog {
   QVariantMap baseline_;
   QPoint dragOffset_;
   bool dragging_ = false;
+  QRect pinnedGeom_;
+  qreal opacity_ = 1.0;
 };
 
 }  // namespace sieans_qt

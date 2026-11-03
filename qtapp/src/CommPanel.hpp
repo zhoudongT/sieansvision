@@ -10,6 +10,9 @@
 #include <QCheckBox>
 #include <QTableWidget>
 #include <QVariantMap>
+#include <QHBoxLayout>
+
+class QEvent;
 
 namespace sieans_qt {
 
@@ -31,11 +34,17 @@ class CommPanel : public QWidget {
  signals:
   void requestSaveComm(const QVariantMap& cm);
 
+ protected:
+  bool eventFilter(QObject* obj, QEvent* event) override;
+
  private:
   void onDeviceRowChanged();
   void onRemarkEdit();
   void pushTcpEndpoint(bool emitSave);
   void syncFramingFromDoc(const QVariantMap& tcp);
+  void rebuildVarChips();
+  void insertFlowToken(const QString& key);
+  void copyTranscriptFiltered();
 
   CommHub* hub_ = nullptr;
   QTableWidget* deviceTable_ = nullptr;
@@ -47,6 +56,8 @@ class CommPanel : public QWidget {
   QLineEdit* ackEdit_ = nullptr;
   QCheckBox* reconnectCheck_ = nullptr;
   QLabel* bindSummary_ = nullptr;
+  QWidget* varChipHost_ = nullptr;
+  QHBoxLayout* varChipLay_ = nullptr;
   QPlainTextEdit* transcript_ = nullptr;
   QLineEdit* txFilter_ = nullptr;
   QStringList transcriptAll_;

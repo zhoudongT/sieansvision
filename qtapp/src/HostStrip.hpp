@@ -20,9 +20,12 @@ class HostStrip : public QWidget {
   /** 设计态 / 运行态 / 连续 / 暂停 — thin HMI chrome. */
   void setRunChrome(const QString& mode, const QString& hostState, int cycle = 0);
   void setTcpStatus(const QString& status);
+  /** Last completed-cycle wall time (ms) — shown on cycle chip. */
+  void setCycleTiming(double lastMs);
 
  signals:
   void modeToggleRequested();
+  void continuousToggleRequested();
   void cycleResetRequested();
   void openHostRequested();
   void watchKeysChanged(const QStringList& keys);
@@ -43,6 +46,10 @@ class HostStrip : public QWidget {
   bool alarmOn_ = false;
   QString alarmReason_;
   QString tcpStatus_;
+  int cycle_ = 0;
+  double lastCycleMs_ = -1;
+  int okStreak_ = 0;
+  int ngCount_ = 0;
 };
 
 }  // namespace sieans_qt
