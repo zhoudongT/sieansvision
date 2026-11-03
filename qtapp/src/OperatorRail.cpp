@@ -88,11 +88,11 @@ QIcon railIcon(const char* kind, bool active) {
 }  // namespace
 
 OperatorRail::OperatorRail(QWidget* parent) : QWidget(parent) {
-  setStatusTip(QStringLiteral("Toolbox 分类轨 · ↑↓/←→/Home/End/PgUp/PgDn · Esc/A 全部"));
+  setStatusTip(QStringLiteral("Toolbox 分类轨 · ↑↓/←→/Home/End/PgUp/PgDn · Esc/A/0 全部"));
   setObjectName(QStringLiteral("operatorRail"));
   setFixedWidth(44);
   setFocusPolicy(Qt::StrongFocus);
-  setToolTip(QStringLiteral("算子分类轨 · ↑↓/←→/Home/End/PgUp/PgDn · Esc/A 全部 · 点击筛选"));
+  setToolTip(QStringLiteral("算子分类轨 · ↑↓/←→/Home/End/PgUp/PgDn · Esc/A/0 全部 · 点击筛选"));
   auto* lay = new QVBoxLayout(this);
   lay->setContentsMargins(2, 6, 2, 6);
   lay->setSpacing(2);
@@ -152,7 +152,9 @@ OperatorRail::OperatorRail(QWidget* parent) : QWidget(parent) {
 bool OperatorRail::eventFilter(QObject* obj, QEvent* event) {
   if (event->type() == QEvent::KeyPress) {
     auto* ke = static_cast<QKeyEvent*>(event);
-    if ((ke->key() == Qt::Key_Escape || ke->key() == Qt::Key_A) && group_) {
+    if ((ke->key() == Qt::Key_Escape || ke->key() == Qt::Key_A ||
+         ke->key() == Qt::Key_0) &&
+        group_) {
       // Esc → 全部 (first button / id 0)
       if (auto* b = group_->button(0)) {
         b->setChecked(true);

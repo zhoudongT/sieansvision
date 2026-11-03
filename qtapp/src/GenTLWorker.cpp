@@ -281,10 +281,15 @@ void GenTLWorker::startPreview() {
       QMutexLocker lock(&frameMutex_);
       soft = latest_;
     }
-    emit statusChanged(QStringLiteral("连续预览中… Soft %1×%2 @%3fps")
+    const QString qrPath = softQrSampleLoadedPath();
+    const QString qrNote =
+        qrPath.isEmpty() ? QStringLiteral(" · QR:letterbox")
+                         : QStringLiteral(" · QR:%1").arg(QFileInfo(qrPath).fileName());
+    emit statusChanged(QStringLiteral("连续预览中… Soft %1×%2 @%3fps%4")
                            .arg(soft.isNull() ? 1280 : soft.width())
                            .arg(soft.isNull() ? 1024 : soft.height())
-                           .arg(fps_, 0, 'f', 1));
+                           .arg(fps_, 0, 'f', 1)
+                           .arg(qrNote));
   } else {
     emit statusChanged(QStringLiteral("连续预览中…"));
   }

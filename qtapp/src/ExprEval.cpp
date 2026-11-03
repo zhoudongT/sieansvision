@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper|nvl|lstrip|rstrip|iff|bool|oct|fabs|fmod|cbrt|log10|frac|log2|isfinite|atan2|copysign|bitand|bitor|bitxor|gcd|lcm|clamp01|lerp|invlerp|smoothstep|step|saturate)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper|nvl|lstrip|rstrip|iff|bool|oct|fabs|fmod|cbrt|log10|frac|log2|isfinite|atan2|copysign|bitand|bitor|bitxor|gcd|lcm|clamp01|lerp|invlerp|smoothstep|step|saturate|fract)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -418,7 +418,8 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
           const double v = evalRec(args[0]).toDouble();
           return v <= 0.0 ? 0 : std::log10(v);
         }
-        if (name == QLatin1String("frac")) {
+        if (name == QLatin1String("frac") ||
+            name == QLatin1String("fract")) {
           if (args.isEmpty()) return 0;
           const double v = evalRec(args[0]).toDouble();
           return v - std::trunc(v);
@@ -1061,6 +1062,9 @@ QStringList exprSelfTest() {
         QStringLiteral("2"));
   check(QStringLiteral("frac"),
         ev.eval(QStringLiteral("frac(3.25)")),
+        QStringLiteral("0.25"));
+  check(QStringLiteral("fract"),
+        ev.eval(QStringLiteral("fract(3.25)")),
         QStringLiteral("0.25"));
   check(QStringLiteral("log2"),
         ev.eval(QStringLiteral("log2(8)")),
