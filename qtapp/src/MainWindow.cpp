@@ -439,6 +439,20 @@ void MainWindow::buildUi() {
   image_tabs_ = new QTabWidget;
   image_view_ = new ImageView;
   output_view_ = new ImageView;
+  connect(image_view_, &ImageView::imagePasted, this, [this](const QImage& img) {
+    if (img.isNull()) return;
+    const QString dir = QDir::temp().filePath(QStringLiteral("sieans_paste"));
+    QDir().mkpath(dir);
+    const QString path = QDir(dir).filePath(
+        QStringLiteral("paste_%1.png")
+            .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_hhmmss_zzz"))));
+    if (!img.save(path, "PNG")) {
+      showStatus(QStringLiteral("粘贴图像保存失败"));
+      return;
+    }
+    loadImagePath(path, true);
+    showStatus(QStringLiteral("已粘贴图像 %1×%2 → 胶片").arg(img.width()).arg(img.height()));
+  });
   image_tabs_->addTab(image_view_, QStringLiteral("全局图像"));
   image_tabs_->addTab(output_view_, QStringLiteral("模块结果"));
   imgLay->addWidget(image_tabs_, 1);

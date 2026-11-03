@@ -31,6 +31,9 @@ class ImageView : public QGraphicsView {
   void clearOverlays();
   QImage currentImage() const { return image_; }
 
+ signals:
+  void imagePasted(const QImage& image);
+
  public slots:
   void fitToView();
 

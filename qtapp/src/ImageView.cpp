@@ -9,6 +9,8 @@
 #include <QMouseEvent>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QMimeData>
+#include <QUrl>
 #include <QClipboard>
 #include <QGuiApplication>
 #include <QToolTip>
@@ -19,7 +21,7 @@ namespace sieans_qt {
 
 ImageView::ImageView(QWidget* parent) : QGraphicsView(parent) {
   setFocusPolicy(Qt::StrongFocus);
-  setToolTip(QStringLiteral("F/G/A/Space/Home/0/R 适应 · +/- 缩放 · Alt+/- 微调 · 1=1:1 · 2=200% · 3=50% · O 叠显 · P 探针 · Ctrl+C 复制图像 · Ctrl+Shift+C 探针 · Ctrl+H 叠显 · 中键适应 · Esc/C/Del 清叠加 · 滚轮缩放"));
+  setToolTip(QStringLiteral("F/G/A/Space/Home/0/R 适应 · +/- 缩放 · Alt+/- 微调 · 1=1:1 · 2=200% · 3=50% · O 叠显 · P 探针 · Ctrl+C 复制图像 · Ctrl+V 粘贴到胶片 · Ctrl+Shift+C 探针 · Ctrl+H 叠显 · 中键适应 · Esc/C/Del 清叠加 · 滚轮缩放"));
   setStatusTip(QStringLiteral("图像视图 · F/G/A/Space/Home/0/R 适应 · +/- 缩放 · 1=1:1 · 2=200% · O 叠显 · P 探针 · Ctrl+Shift+C 探针 · 中键适应 · Esc/C/Del/Backspace 清叠加 · 码框 hits · 拖拽平移 · 滚轮缩放"));
   setScene(&scene_);
   setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
@@ -221,6 +223,34 @@ void ImageView::keyPressEvent(QKeyEvent* event) {
                              .arg(image_.width())
                              .arg(image_.height()),
                          this);
+    }
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_V && (event->modifiers() & Qt::ControlModifier)) {
+    QImage img;
+    if (auto* clip = QGuiApplication::clipboard()) {
+      img = clip->image();
+      if (img.isNull()) {
+        const QMimeData* md = clip->mimeData();
+        if (md && md->hasUrls()) {
+          for (const QUrl& u : md->urls()) {
+            if (!u.isLocalFile()) continue;
+            QImage probe(u.toLocalFile());
+            if (!probe.isNull()) { img = probe; break; }
+          }
+        }
+      }
+    }
+    if (!img.isNull()) {
+      emit imagePasted(img);
+      QToolTip::showText(QCursor::pos(),
+                         QStringLiteral("已粘贴图像 %1×%2 · Ctrl+V")
+                             .arg(img.width())
+                             .arg(img.height()),
+                         this);
+    } else {
+      QToolTip::showText(QCursor::pos(), QStringLiteral("剪贴板无图像 · Ctrl+V"), this);
     }
     event->accept();
     return;
