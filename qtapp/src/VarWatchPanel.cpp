@@ -17,6 +17,9 @@
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QEvent>
+#include <QRegularExpression>
+#include <QSet>
+#include <QChar>
 
 namespace sieans_qt {
 
@@ -57,6 +60,12 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
     connect(scTok, &QShortcut::activated, this, &VarWatchPanel::copyFlowToken);
     auto* scJson = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+J")), this);
     connect(scJson, &QShortcut::activated, this, &VarWatchPanel::exportJsonFiltered);
+    auto* scAdd = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+V")), this);
+    connect(scAdd, &QShortcut::activated, this, &VarWatchPanel::addKeysFromClipboard);
+    auto* scIns = new QShortcut(QKeySequence(Qt::Key_Insert), this);
+    connect(scIns, &QShortcut::activated, this, &VarWatchPanel::addKeysFromClipboard);
+    auto* scRm = new QShortcut(QKeySequence(Qt::Key_Delete), this);
+    connect(scRm, &QShortcut::activated, this, &VarWatchPanel::removeSelectedKeys);
   }
   table_ = new QTableWidget(0, 2);
   table_->setHorizontalHeaderLabels(
@@ -217,6 +226,16 @@ bool VarWatchPanel::eventFilter(QObject* obj, QEvent* event) {
   return QWidget::eventFilter(obj, event);
 }
 
+void VarWatchPanel::setKeyList(const QStringList& keys) {
+  QStringList next;
+  for (const QString& k : keys) {
+    const QString t = k.trimmed();
+    if (!t.isEmpty() && !next.contains(t)) next << t;
+  }
+  if (!next.isEmpty()) keys_ = next;
+  rebuild();
+}
+
 void VarWatchPanel::setWatchKeys(const QStringList& keys) {
   hostWatch_ = keys;
   // Prefer host-watched keys at top of the table; keep defaults for the rest.
@@ -370,6 +389,63 @@ void VarWatchPanel::exportJsonFiltered() {
   if (auto* clip = QApplication::clipboard()) clip->setText(body);
   QToolTip::showText(QCursor::pos(),
                      QStringLiteral("已导出 JSON %1 · Ctrl+Shift+J").arg(parts.size()), table_);
+}
+
+
+void VarWatchPanel::addKeysFromClipboard() {
+  const QString clip = QApplication::clipboard() ? QApplication::clipboard()->text() : QString();
+  if (clip.trimmed().isEmpty()) return;
+  int added = 0;
+  for (QString line : clip.split(QRegularExpression(QStringLiteral("[\n,;]+")))) {
+    line = line.trimmed();
+    if (line.isEmpty()) continue;
+    // accept key=value or ${flow.key} or bare key
+    if (line.startsWith(QLatin1String("${flow.")) && line.endsWith(QLatin1Char('}')))
+      line = line.mid(7, line.size() - 8);
+    const int eq = line.indexOf(QLatin1Char('='));
+    if (eq > 0) line = line.left(eq).trimmed();
+    const int tab = line.indexOf(QChar(QChar::Tabulation));
+    if (tab > 0) line = line.left(tab).trimmed();
+    if (line.isEmpty() || keys_.contains(line)) continue;
+    keys_.push_back(line);
+    ++added;
+  }
+  if (added > 0) {
+    rebuild();
+    emit watchListChanged(keys_);
+    QToolTip::showText(QCursor::pos(),
+                       QStringLiteral("已加入监视 %1 · Insert/Ctrl+Shift+V").arg(added), table_);
+  }
+}
+
+void VarWatchPanel::removeSelectedKeys() {
+  if (!table_) return;
+  const auto ranges = table_->selectedRanges();
+  QSet<int> rows;
+  for (const auto& r : ranges)
+    for (int i = r.topRow(); i <= r.bottomRow(); ++i) rows.insert(i);
+  if (rows.isEmpty() && table_->currentRow() >= 0) rows.insert(table_->currentRow());
+  if (rows.isEmpty()) return;
+  QStringList remove;
+  for (int row : rows) {
+    auto* it = table_->item(row, 0);
+    if (!it) continue;
+    QString kn = it->data(Qt::UserRole).toString();
+    if (kn.isEmpty()) kn = it->text();
+    if (kn.startsWith(QStringLiteral("★ "))) kn = kn.mid(2);
+    remove << kn;
+  }
+  int n = 0;
+  for (const QString& kn : remove) {
+    if (keys_.removeAll(kn) > 0) ++n;
+    if (hostWatch_.contains(kn)) emit hostWatchToggleRequested(kn);
+  }
+  if (n > 0) {
+    rebuild();
+    emit watchListChanged(keys_);
+    QToolTip::showText(QCursor::pos(),
+                       QStringLiteral("已移除监视 %1 · Del").arg(n), table_);
+  }
 }
 
 }  // namespace sieans_qt

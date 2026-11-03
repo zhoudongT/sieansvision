@@ -456,4 +456,23 @@ void SieansDocument::setAlarmPolicy(const QString& policy) {
               t.isEmpty() ? QStringLiteral("on_ok") : t);
 }
 
+
+QStringList SieansDocument::varWatchKeys() const {
+  QStringList out;
+  for (const QVariant& v : raw_.value(QStringLiteral("varWatchKeys")).toArray().toVariantList()) {
+    const QString t = v.toString().trimmed();
+    if (!t.isEmpty() && !out.contains(t)) out << t;
+  }
+  return out;
+}
+
+void SieansDocument::setVarWatchKeys(const QStringList& keys) {
+  QJsonArray arr;
+  for (const QString& k : keys) {
+    const QString t = k.trimmed();
+    if (!t.isEmpty()) arr.append(t);
+  }
+  raw_.insert(QStringLiteral("varWatchKeys"), arr);
+}
+
 }  // namespace sieans_qt

@@ -16,15 +16,20 @@ class VarWatchPanel : public QWidget {
   explicit VarWatchPanel(QWidget* parent = nullptr);
 
   void setWatchKeys(const QStringList& keys);
+  void setKeyList(const QStringList& keys);
   void setVariables(const QVariantMap& vars);
   void exportFiltered();
   void copyKeyEqualsValue();
   void copyFlowToken();
   void exportJsonFiltered();
+  void addKeysFromClipboard();
+  void removeSelectedKeys();
+  QStringList watchKeyList() const { return keys_; }
   QVariantMap variables() const { return vars_; }
 
  signals:
   void hostWatchToggleRequested(const QString& key);
+  void watchListChanged(const QStringList& keys);
 
  protected:
   bool eventFilter(QObject* obj, QEvent* event) override;

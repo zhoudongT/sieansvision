@@ -793,6 +793,10 @@ void MainWindow::buildUi() {
     showStatus(QStringLiteral("Host 监视 %1 %2")
                    .arg(keys.contains(key) ? QStringLiteral("＋") : QStringLiteral("－"), key));
   });
+  connect(var_watch_, &VarWatchPanel::watchListChanged, this, [this](const QStringList& keys) {
+    document_.setVarWatchKeys(keys);
+    showStatus(QStringLiteral("变量监视列表 %1 项").arg(keys.size()));
+  });
   comm_panel_ = new CommPanel(comm_hub_);
   connect(comm_panel_, &CommPanel::requestSaveComm, this,
           [this](const QVariantMap& cm) { document_.setCommManager(cm); });
@@ -1069,6 +1073,10 @@ void MainWindow::applyDocumentToUi() {
   flow_vars_ = document_.variables();
   if (var_watch_) {
     var_watch_->setWatchKeys(document_.hostWatchKeys());
+    {
+      const QStringList vwk = document_.varWatchKeys();
+      if (!vwk.isEmpty()) var_watch_->setKeyList(vwk);
+    }
     var_watch_->setVariables(flow_vars_);
   }
   if (host_strip_) host_strip_->setWatchKeys(document_.hostWatchKeys());

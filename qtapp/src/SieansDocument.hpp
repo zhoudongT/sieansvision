@@ -75,6 +75,8 @@ class SieansDocument {
   void setHostMode(const QString& mode);
   QString alarmPolicy() const;
   void setAlarmPolicy(const QString& policy);
+  QStringList varWatchKeys() const;
+  void setVarWatchKeys(const QStringList& keys);
 
   QString cameraDeviceId() const;
   QString cameraBackend() const;  // gentl | uvc | soft
