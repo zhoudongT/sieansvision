@@ -25,6 +25,7 @@ class VarWatchPanel : public QWidget {
   void addKeysFromClipboard();
   void removeSelectedKeys();
   void moveSelectedKey(int delta);
+  void cutSelectedKeys();
   QStringList watchKeyList() const { return keys_; }
   QVariantMap variables() const { return vars_; }
 

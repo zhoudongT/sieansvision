@@ -7,6 +7,7 @@
 #include <QLineEdit>
 #include <QHeaderView>
 #include <QAbstractItemView>
+#include <QItemSelectionModel>
 #include <QColor>
 #include <QClipboard>
 #include <QApplication>
@@ -66,6 +67,8 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
     connect(scIns, &QShortcut::activated, this, &VarWatchPanel::addKeysFromClipboard);
     auto* scRm = new QShortcut(QKeySequence(Qt::Key_Delete), this);
     connect(scRm, &QShortcut::activated, this, &VarWatchPanel::removeSelectedKeys);
+    auto* scX = new QShortcut(QKeySequence(QStringLiteral("Ctrl+X")), this);
+    connect(scX, &QShortcut::activated, this, &VarWatchPanel::cutSelectedKeys);
   }
   table_ = new QTableWidget(0, 2);
   table_->setHorizontalHeaderLabels(
@@ -98,7 +101,7 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
   table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · 中键 ${flow} · 右键键=值 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Esc 取消选中 · F2 聚焦表 · Ctrl+Shift+J JSON"));
   table_->installEventFilter(this);
   if (filterEdit_) filterEdit_->installEventFilter(this);
-  setStatusTip(QStringLiteral("变量监视 · ★=Host条 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · 中键token/右键键=值 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
+  setStatusTip(QStringLiteral("变量监视 · ★=Host条 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · 中键token/右键键=值 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+X 剪切 · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
   keys_ = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
            QStringLiteral("passGate"), QStringLiteral("urlOk"),
@@ -450,6 +453,56 @@ void VarWatchPanel::removeSelectedKeys() {
     emit watchListChanged(keys_);
     QToolTip::showText(QCursor::pos(),
                        QStringLiteral("已移除监视 %1 · Del").arg(n), table_);
+  }
+}
+
+
+void VarWatchPanel::cutSelectedKeys() {
+  if (!table_) return;
+  QStringList lines;
+  QStringList remove;
+  const auto ranges = table_->selectionModel() ? table_->selectionModel()->selectedRows() : QModelIndexList();
+  if (ranges.isEmpty()) {
+    const int row = table_->currentRow();
+    if (row < 0) {
+      QToolTip::showText(QCursor::pos(), QStringLiteral("无选中 · Ctrl+X"), table_);
+      return;
+    }
+    auto* it = table_->item(row, 0);
+    if (!it) return;
+    QString kn = it->data(Qt::UserRole).toString();
+    if (kn.isEmpty()) kn = it->text().trimmed();
+    if (kn.startsWith(QStringLiteral("★ "))) kn = kn.mid(2).trimmed();
+    remove << kn;
+    const QString val = vars_.value(kn).toString();
+    lines << (val.isEmpty() ? kn : (kn + QLatin1Char('=') + val));
+  } else {
+    for (const QModelIndex& idx : ranges) {
+      auto* it = table_->item(idx.row(), 0);
+      if (!it) continue;
+      QString kn = it->data(Qt::UserRole).toString();
+      if (kn.isEmpty()) kn = it->text().trimmed();
+      if (kn.startsWith(QStringLiteral("★ "))) kn = kn.mid(2).trimmed();
+      if (kn.isEmpty() || remove.contains(kn)) continue;
+      remove << kn;
+      const QString val = vars_.value(kn).toString();
+      lines << (val.isEmpty() ? kn : (kn + QLatin1Char('=') + val));
+    }
+  }
+  if (remove.isEmpty()) return;
+  if (auto* clip = QApplication::clipboard())
+    clip->setText(lines.join(QLatin1Char('\n')));
+  int n = 0;
+  for (const QString& kn : remove) {
+    if (keys_.removeAll(kn) > 0) ++n;
+    if (hostWatch_.contains(kn)) emit hostWatchToggleRequested(kn);
+  }
+  if (n > 0) {
+    rebuild();
+    emit watchListChanged(keys_);
+    QToolTip::showText(QCursor::pos(),
+                       QStringLiteral("已剪切监视 %1 · Ctrl+X · Ctrl+Shift+V 粘贴").arg(n),
+                       table_);
   }
 }
 

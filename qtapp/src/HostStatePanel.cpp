@@ -130,7 +130,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   intervalSpin_->setSingleStep(50);
   intervalSpin_->setSuffix(QStringLiteral(" ms"));
   intervalSpin_->setValue(200);
-  intervalSpin_->setToolTip(QStringLiteral("连续运行节拍 · 写入方案 runIntervalMs · 滚轮±50 · Ctrl+↑↓/[] ±50 · Ctrl+Shift+↑↓/[] ±200 · 运行中即时生效"));
+  intervalSpin_->setToolTip(QStringLiteral("连续运行节拍 · 写入方案 runIntervalMs · 滚轮±50 · Ctrl+↑↓/[] ±50 · Ctrl+Shift+↑↓/[] ±200 · Alt+1/2/3/4 → 50/100/200/500 · 运行中即时生效"));
   intervalSpin_->setStatusTip(QStringLiteral("Host · 连续间隔 ms"));
   intervalSpin_->installEventFilter(this);
   ivRow->addWidget(intervalSpin_, 1);
@@ -521,6 +521,17 @@ bool HostStatePanel::eventFilter(QObject* obj, QEvent* event) {
       }
       return true;
     }
+    if ((ke->modifiers() & Qt::AltModifier) && intervalSpin_ &&
+        ke->key() >= Qt::Key_1 && ke->key() <= Qt::Key_4 &&
+        !(ke->modifiers() & Qt::ControlModifier)) {
+      static const int kPresets[] = {50, 100, 200, 500};
+      const int next = kPresets[ke->key() - Qt::Key_1];
+      if (next != intervalSpin_->value()) intervalSpin_->setValue(next);
+      if (modeHint_)
+        modeHint_->setText(QStringLiteral("节拍 %1 ms · Alt+%2").arg(next).arg(ke->key() - Qt::Key_0));
+      return true;
+    }
+
   }
   return QWidget::eventFilter(obj, event);
 }
