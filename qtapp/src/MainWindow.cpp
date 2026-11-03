@@ -625,7 +625,7 @@ void MainWindow::buildToolbar() {
   tb->addSeparator();
   act_mode_ = tb->addAction(QStringLiteral("运行模式"));
   act_mode_->setCheckable(true);
-  act_mode_->setToolTip(QStringLiteral("设计态可编辑画布；运行态锁定拖拽、连线和删除"));
+  act_mode_->setToolTip(QStringLiteral("设计态可编辑画布；运行态锁定拖拽、连线和删除 · F5/F9 仍可运行"));
   connect(act_mode_, &QAction::toggled, this, &MainWindow::onToggleRunMode);
   tb->addSeparator();
   tb->addAction(QStringLiteral("示例 QR"), this, &MainWindow::onLoadSample);
