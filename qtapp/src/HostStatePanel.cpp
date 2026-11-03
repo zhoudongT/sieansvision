@@ -84,7 +84,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   mode_ = new QComboBox;
   mode_->addItems({QStringLiteral("正常生产"), QStringLiteral("九点标定"),
                    QStringLiteral("旋转标定")});
-  mode_->setToolTip(QStringLiteral("标定模式只切换壳状态；开始仍跑当前视觉流程"));
+  mode_->setToolTip(QStringLiteral("标定模式只切换壳状态；开始仍跑当前视觉流程 · 非标定=生产"));
   policy_ = new QComboBox;
   policy_->addItem(QStringLiteral("下次运行成功清除"), QStringLiteral("on_ok"));
   policy_->addItem(QStringLiteral("关闭（需手动清除）"), QStringLiteral("off"));
