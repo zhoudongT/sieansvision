@@ -341,7 +341,7 @@ void PropertyPanel::showSource(const QVariantMap& sourceConfig) {
 void PropertyPanel::showStep(const FlowStep& step) {
   QString hint = QStringLiteral("算子 %1 · %2").arg(step.operation, step.runState);
   if (step.operation == QLatin1String("format_data"))
-    hint += QStringLiteral(" · 支持 {name} / ${flow.x} / {{name}} · emptyDefault 空结果");
+    hint += QStringLiteral(" · 支持 {name} / ${flow.x} / {{name}} · emptyDefault 空结果 · expr 见白名单");
   else if (step.operation == QLatin1String("send_data") ||
            step.operation == QLatin1String("receive_data"))
     hint += QStringLiteral(" · LocalLoop 回环 / TCP");
@@ -349,7 +349,7 @@ void PropertyPanel::showStep(const FlowStep& step) {
     hint += QStringLiteral(" · sourceVar → passVar");
   else if (step.operation == QLatin1String("var_calc"))
     hint += QStringLiteral(
-        " · expr: in / startswith|endswith|contains / lower|upper / trim|strip|replace / slice|substr|mid|isdigit|isalpha|lpad|rpad|repeat|default|coalesce|nvl|ifempty|indexof|find|left|right|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper|nvl|lstrip|rstrip|iff|bool|oct|fabs|fmod|cbrt|log10|frac|log2|isfinite|atan2|copysign|bitand|bitor|bitxor|gcd|lcm|clamp01|lerp|invlerp|smoothstep|step|saturate|fract|isnan|isinf|mix|exp2|fma|sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|log1p|expm1|fdim|nearbyint|bitshl|bitshr|remainder|scalbn|nextafter|tgamma|lgamma|erf|erfc|asinh|acosh|atanh|rint|logb|ilogb|signbit|isnormal|fmax|fmin|bitnot|between|approxeq|inrange|nan|inf|reverse|join|cmp|eq|ne|gt|lt|ge|le|choose|nth|ifelse|nullif|iif|not_|and_|or_|xor_|truthy");
+        " · expr: in / startswith|endswith|contains / lower|upper / trim|strip|replace / slice|substr|mid|isdigit|isalpha|lpad|rpad|repeat|default|coalesce|nvl|ifempty|indexof|find|left|right|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper|nvl|lstrip|rstrip|iff|bool|oct|fabs|fmod|cbrt|log10|frac|log2|isfinite|atan2|copysign|bitand|bitor|bitxor|gcd|lcm|clamp01|lerp|invlerp|smoothstep|step|saturate|fract|isnan|isinf|mix|exp2|fma|sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|log1p|expm1|fdim|nearbyint|bitshl|bitshr|remainder|scalbn|nextafter|tgamma|lgamma|erf|erfc|asinh|acosh|atanh|rint|logb|ilogb|signbit|isnormal|fmax|fmin|bitnot|between|approxeq|inrange|nan|inf|reverse|join|cmp|eq|ne|gt|lt|ge|le|choose|nth|ifelse|nullif|iif|not_|and_|or_|xor_|truthy|falsy");
   else if (step.operation == QLatin1String("barcode") ||
            step.operation == QLatin1String("qr_decode"))
     hint += QStringLiteral(" · ZXing 多码 · 判定 judgeMinCount");
