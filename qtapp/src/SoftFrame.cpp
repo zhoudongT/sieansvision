@@ -2,9 +2,57 @@
 
 #include <QPainter>
 #include <QFont>
+#include <QFileInfo>
+#include <QDir>
+#include <QCoreApplication>
 #include <QtMath>
 
 namespace sieans_qt {
+
+QString g_softQrOverride;  // file-local via anon below + setter
+
+namespace {
+
+void drawFinder(QPainter& p, const QRect& r) {
+  p.setPen(Qt::NoPen);
+  p.setBrush(Qt::black);
+  p.drawRect(r);
+  p.setBrush(Qt::white);
+  p.drawRect(r.adjusted(3, 3, -3, -3));
+  p.setBrush(Qt::black);
+  p.drawRect(r.adjusted(6, 6, -6, -6));
+}
+
+QImage loadSoftQrSample() {
+  static QImage cached;
+  static bool tried = false;
+  if (!g_softQrOverride.isEmpty()) {
+    QImage img(g_softQrOverride);
+    if (!img.isNull()) return img;
+  }
+  if (tried) return cached;
+  tried = true;
+  const QStringList cands = {
+      QCoreApplication::applicationDirPath() + QStringLiteral("/resources/sample-qr.png"),
+      QDir(QCoreApplication::applicationDirPath())
+          .absoluteFilePath(QStringLiteral("../resources/sample-qr.png")),
+      QStringLiteral("/home/allen/文档/sieansvision/qtapp/resources/sample-qr.png"),
+      QStringLiteral("/home/allen/文档/sieansvision/qtapp/build/resources/sample-qr.png"),
+  };
+  for (const QString& p : cands) {
+    if (!QFileInfo::exists(p)) continue;
+    QImage img(p);
+    if (!img.isNull()) {
+      cached = img.convertToFormat(QImage::Format_RGB888);
+      break;
+    }
+  }
+  return cached;
+}
+
+}  // namespace
+
+void setSoftQrSamplePath(const QString& path) { g_softQrOverride = path; }
 
 int clampExposureUs(double v) {
   if (!qIsFinite(v)) v = 10000.0;
@@ -55,61 +103,50 @@ QImage applySoftTone(const QImage& src, int exposureUs, double gainDb, int seq,
   return img;
 }
 
-static void drawFinder(QPainter& p, int x, int y, int s) {
-  p.setPen(Qt::NoPen);
-  p.setBrush(Qt::black);
-  p.drawRect(x, y, s, s);
-  p.setBrush(Qt::white);
-  p.drawRect(x + s / 7, y + s / 7, s - 2 * s / 7, s - 2 * s / 7);
-  p.setBrush(Qt::black);
-  p.drawRect(x + 2 * s / 7, y + 2 * s / 7, s - 4 * s / 7, s - 4 * s / 7);
-}
-
 QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gainDb) {
   const int w = qMax(16, width);
   const int h = qMax(16, height);
   QImage img(w, h, QImage::Format_RGB888);
-  img.fill(QColor(245, 245, 245));
+  img.fill(QColor(236, 236, 236));
   QPainter p(&img);
-  p.setRenderHint(QPainter::Antialiasing, false);
+  p.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
-  // geometric targets for locate / template match
-  p.setPen(Qt::NoPen);
-  p.setBrush(Qt::white);
-  p.drawRect(QRect(w / 10, h / 8, (w * 4 / 10) - (w / 10), (h * 4 / 10) - (h / 8)));
-  const int r = qMax(2, qMin(w, h) / 9);
-  p.setBrush(QColor(30, 30, 30));
-  p.drawEllipse(QPoint(w * 7 / 10, h / 4), r, r);
-
-  // QR-like module block (visual target; not a real QR payload)
-  const int qs = qMin(w, h) / 3;
-  const int qx = w / 2 - qs / 2;
-  const int qy = h / 2 - qs / 4;
-  p.setBrush(Qt::white);
-  p.setPen(QPen(Qt::black, 1));
-  p.drawRect(qx, qy, qs, qs);
-  drawFinder(p, qx + 2, qy + 2, qs / 4);
-  drawFinder(p, qx + qs - qs / 4 - 2, qy + 2, qs / 4);
-  drawFinder(p, qx + 2, qy + qs - qs / 4 - 2, qs / 4);
-  p.setPen(Qt::NoPen);
-  p.setBrush(Qt::black);
-  for (int i = 0; i < 9; ++i) {
-    const int bx = qx + qs / 3 + (i % 3) * (qs / 9);
-    const int by = qy + qs / 3 + (i / 3) * (qs / 9);
-    if ((i + seq) % 2 == 0) p.drawRect(bx, by, qs / 10, qs / 10);
+  // Prefer a real sample QR so soft/GenTL-fallback → barcode is reliable.
+  const QImage qr = loadSoftQrSample();
+  bool drewQr = false;
+  if (!qr.isNull()) {
+    const int side = qMin(w, h) * 3 / 5;
+    const QImage scaled =
+        qr.scaled(side, side, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    const int x = (w - scaled.width()) / 2;
+    const int y = (h - scaled.height()) / 2 - h / 20;
+    p.fillRect(QRect(x - 6, y - 6, scaled.width() + 12, scaled.height() + 12), Qt::white);
+    p.drawImage(x, y, scaled);
+    drewQr = true;
+  } else {
+    // Geometric QR-ish fallback when sample missing
+    p.setPen(Qt::NoPen);
+    p.setBrush(Qt::white);
+    const QRect plate(w / 8, h / 10, w * 3 / 4, h * 3 / 5);
+    p.drawRect(plate);
+    const int fs = qMax(14, qMin(plate.width(), plate.height()) / 5);
+    drawFinder(p, QRect(plate.left() + 8, plate.top() + 8, fs, fs));
+    drawFinder(p, QRect(plate.right() - fs - 8, plate.top() + 8, fs, fs));
+    drawFinder(p, QRect(plate.left() + 8, plate.bottom() - fs - 8, fs, fs));
   }
-  p.setPen(QColor(20, 20, 20));
+
+  p.setPen(QColor(40, 40, 40));
   QFont font(QStringLiteral("DejaVu Sans Mono"), 10);
   font.setBold(true);
-  font.setPixelSize(qBound(10, qs / 8, 18));
+  font.setPixelSize(qBound(10, qMin(w, h) / 22, 16));
   p.setFont(font);
-  p.drawText(QRect(qx, qy + qs - qs / 5, qs, qs / 5), Qt::AlignCenter,
-             QStringLiteral("SIEANS-%1").arg(seq % 1000));
+  p.drawText(QRect(0, h - h / 7, w, h / 8), Qt::AlignCenter,
+             drewQr ? QStringLiteral("SIEANS- soft·QR #%1").arg(seq % 1000)
+                    : QStringLiteral("SIEANS- soft #%1").arg(seq % 1000));
 
-  // moving tick for motion / FPS feel
   p.setPen(QPen(QColor(200, 40, 40), qMax(1, h / 80)));
   const int x = (seq * 17) % qMax(1, w - 20) + 10;
-  const int y = h * 7 / 8;
+  const int y = h * 11 / 12;
   p.drawLine(x, y, qMin(w - 10, x + 40), y);
   p.end();
   return applySoftTone(img, exposureUs, gainDb, seq, true);

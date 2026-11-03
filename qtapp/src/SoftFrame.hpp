@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QImage>
+#include <QString>
 
 namespace sieans_qt {
 
@@ -16,7 +17,10 @@ double clampGainDb(double v);
  */
 double softToneScale(int exposureUs, double gainDb);
 
-/** CI-safe synthetic frame: white block, circle, moving tick, then tone + HUD. */
+/**
+ * CI-safe synthetic frame with a real sample QR composited when available,
+ * so soft/GenTL-fallback open-and-run can decode barcodes.
+ */
 QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gainDb);
 
 /**
@@ -25,5 +29,8 @@ QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gain
  */
 QImage applySoftTone(const QImage& src, int exposureUs, double gainDb, int seq,
                      bool stampHud);
+
+/** Optional override path for the embedded QR (tests / packaging). */
+void setSoftQrSamplePath(const QString& path);
 
 }  // namespace sieans_qt

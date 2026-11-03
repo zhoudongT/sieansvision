@@ -1,9 +1,12 @@
 #include "ExprEval.hpp"
+#include "SoftFrame.hpp"
 #include "MainWindow.hpp"
 #include "Theme.hpp"
 
 #include <QApplication>
 #include <QFont>
+#include <QFileInfo>
+#include <QCoreApplication>
 #include <QStyleFactory>
 
 #include <cstdio>
@@ -49,6 +52,14 @@ int main(int argc, char* argv[]) {
   app.setPalette(pal);
   app.setStyleSheet(sieans_qt::theme::workbenchStyleSheet());
 
+
+  // Prefer packaged sample-qr for soft/GenTL-fallback open-and-run decode.
+  {
+    const QString beside = QCoreApplication::applicationDirPath() +
+                           QStringLiteral("/resources/sample-qr.png");
+    if (QFileInfo::exists(beside))
+      sieans_qt::setSoftQrSamplePath(beside);
+  }
   sieans_qt::MainWindow win;
   win.show();
   return app.exec();

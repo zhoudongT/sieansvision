@@ -210,19 +210,22 @@ double SieansDocument::gainDb() const {
 }
 
 void SieansDocument::seedGentlQrDemo() {
-  name_ = QStringLiteral("打开即跑 · GenTL相机→二维码");
+  name_ = QStringLiteral("打开即跑 · GenTL/Soft→二维码→TCP");
   path_.clear();
   sourcePosition_ = QPointF(80, 160);
+  // Prefer GenTL when present; GenTLWorker soft-fallback keeps open-and-run alive.
   sourceConfig_ = {
-      {QStringLiteral("mode"), QStringLiteral("local")},
+      {QStringLiteral("mode"), QStringLiteral("camera")},
       {QStringLiteral("cameraParams"),
        QVariantMap{
+           {QStringLiteral("imageSource"), QStringLiteral("camera")},
            {QStringLiteral("driver"), QStringLiteral("gentl")},
            {QStringLiteral("backendKind"), QStringLiteral("gentl")},
            {QStringLiteral("continuousLive"), true},
            {QStringLiteral("sessionPersist"), true},
            {QStringLiteral("trigger"), QStringLiteral("freerun")},
-           {QStringLiteral("exposureTime"), 2000},
+           {QStringLiteral("exposureTime"), 10000},
+           {QStringLiteral("gainDb"), 0},
            {QStringLiteral("acquisitionFrameRate"), 15},
        }},
   };
@@ -230,7 +233,7 @@ void SieansDocument::seedGentlQrDemo() {
   edges_.clear();
 
   auto add = [&](const QString& id, const QString& name, const QString& op, qreal x,
-                 qreal y, const QString& from) {
+                 qreal y, const QString& from, const QVariantMap& params) {
     FlowStep s;
     s.id = id;
     s.name = name;
@@ -238,14 +241,51 @@ void SieansDocument::seedGentlQrDemo() {
     s.position = QPointF(x, y);
     s.imageFrom = from;
     s.runState = QStringLiteral("等待执行");
+    s.params = params;
     steps_.push_back(s);
   };
   add(QStringLiteral("cam1"), QStringLiteral("MV GenTL 采集"),
-      QStringLiteral("camera_capture"), 300, 160, QStringLiteral("source"));
+      QStringLiteral("camera_capture"), 300, 140, QStringLiteral("source"),
+      {{QStringLiteral("backendKind"), QStringLiteral("gentl")},
+       {QStringLiteral("driver"), QStringLiteral("gentl")},
+       {QStringLiteral("continuousLive"), true}});
   add(QStringLiteral("qr1"), QStringLiteral("二维码/条码识别"),
-      QStringLiteral("barcode"), 300, 300, QStringLiteral("cam1"));
-  add(QStringLiteral("var1"), QStringLiteral("二维码结果·OK/NG"),
-      QStringLiteral("var_calc"), 300, 440, QStringLiteral("qr1"));
+      QStringLiteral("barcode"), 300, 260, QStringLiteral("cam1"),
+      {{QStringLiteral("types"), QStringLiteral("QRCode")},
+       {QStringLiteral("maxCodes"), 16},
+       {QStringLiteral("showOverlay"), true},
+       {QStringLiteral("judgeEnable"), true},
+       {QStringLiteral("judgeMinCount"), 1}});
+  add(QStringLiteral("var1"), QStringLiteral("变量计算 · OK/NG"),
+      QStringLiteral("var_calc"), 300, 380, QStringLiteral("qr1"),
+      {{QStringLiteral("scope"), QStringLiteral("flow")},
+       {QStringLiteral("expressions"),
+        QVariantList{
+            QVariantMap{{QStringLiteral("name"), QStringLiteral("passGate")},
+                        {QStringLiteral("expr"), QStringLiteral("barcodeCount >= 1")},
+                        {QStringLiteral("enabled"), true}},
+            QVariantMap{{QStringLiteral("name"), QStringLiteral("barcodeOk")},
+                        {QStringLiteral("expr"), QStringLiteral("barcodeCount >= 1")},
+                        {QStringLiteral("enabled"), true}},
+        }}});
+  add(QStringLiteral("fmt1"), QStringLiteral("格式化报文"),
+      QStringLiteral("format_data"), 300, 500, QStringLiteral("var1"),
+      {{QStringLiteral("template"),
+        QStringLiteral("BARCODE ok={passGate} count={barcodeCount} text={barcodeText}")},
+       {QStringLiteral("args"), QStringLiteral("passGate,barcodeCount,barcodeText")},
+       {QStringLiteral("targetVar"), QStringLiteral("formatted")}});
+  add(QStringLiteral("tx1"), QStringLiteral("发送数据 · LocalLoop/TCP"),
+      QStringLiteral("send_data"), 300, 620, QStringLiteral("fmt1"),
+      {{QStringLiteral("device"), QStringLiteral("LocalLoop")},
+       {QStringLiteral("message"),
+        QStringLiteral(
+            "BARCODE ok=${flow.passGate} count=${flow.barcodeCount} "
+            "text=${flow.barcodeText}")}});
+  add(QStringLiteral("rx1"), QStringLiteral("接收回环"),
+      QStringLiteral("receive_data"), 300, 740, QStringLiteral("tx1"),
+      {{QStringLiteral("device"), QStringLiteral("LocalLoop")},
+       {QStringLiteral("targetVar"), QStringLiteral("lastRecv")},
+       {QStringLiteral("timeoutMs"), 200}});
 
   auto link = [&](const QString& a, const QString& b) {
     FlowEdge e;
@@ -257,6 +297,9 @@ void SieansDocument::seedGentlQrDemo() {
   link(QStringLiteral("source"), QStringLiteral("cam1"));
   link(QStringLiteral("cam1"), QStringLiteral("qr1"));
   link(QStringLiteral("qr1"), QStringLiteral("var1"));
+  link(QStringLiteral("var1"), QStringLiteral("fmt1"));
+  link(QStringLiteral("fmt1"), QStringLiteral("tx1"));
+  link(QStringLiteral("tx1"), QStringLiteral("rx1"));
 
   variables_ = {
       {QStringLiteral("barcodeCount"), 0},
@@ -266,6 +309,7 @@ void SieansDocument::seedGentlQrDemo() {
       {QStringLiteral("passGate"), 0},
       {QStringLiteral("formatted"), QString()},
       {QStringLiteral("commPayload"), QString()},
+      {QStringLiteral("lastRecv"), QString()},
   };
   commManager_ = {
       {QStringLiteral("devices"),
@@ -286,7 +330,8 @@ void SieansDocument::seedGentlQrDemo() {
                    {QStringLiteral("port"), 19956},
                    {QStringLiteral("framing"), QStringLiteral("lf")},
                    {QStringLiteral("role"), QStringLiteral("server")},
-                   {QStringLiteral("ack"), QStringLiteral("OK")}}},
+                   {QStringLiteral("ack"), QStringLiteral("OK")},
+                   {QStringLiteral("autoStart"), true}}},
   };
   flowIo_ = {
       {QStringLiteral("inputs"),
@@ -305,7 +350,10 @@ void SieansDocument::seedGentlQrDemo() {
                        {QStringLiteral("binding"), QStringLiteral("source.image")}},
            QVariantMap{{QStringLiteral("name"), QStringLiteral("Result")},
                        {QStringLiteral("type"), QStringLiteral("JSON")},
-                       {QStringLiteral("binding"), QStringLiteral("flow.vars")}},
+                       {QStringLiteral("binding"), QStringLiteral("flow.formatted")}},
+           QVariantMap{{QStringLiteral("name"), QStringLiteral("PassGate")},
+                       {QStringLiteral("type"), QStringLiteral("INT")},
+                       {QStringLiteral("binding"), QStringLiteral("flow.passGate")}},
        }},
       {QStringLiteral("display"),
        QVariantMap{{QStringLiteral("globalImage"), true},

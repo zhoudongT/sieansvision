@@ -25,7 +25,7 @@ class CommHub : public QObject {
   QVariantMap deviceInfo(const QString& name) const;
   QVariantList deviceList() const;
 
-  /** Soft LocalBus TX — always records transcript; also mirrors to TCP if up. */
+  /** Soft LocalBus TX — records transcript + TX→RX echo; mirrors to TCP if up. */
   bool sendPayload(const QString& deviceName, const QString& payload,
                    QString* error = nullptr);
 
@@ -40,7 +40,7 @@ class CommHub : public QObject {
   QString lastTx() const { return lastTx_; }
   QString lastRx() const { return lastRx_; }
 
-  /** Expand ${flow.x} / ${x} placeholders from vars map. */
+  /** Expand ${flow.x} / ${x} / {name} placeholders from vars map. */
   static QString expandTemplate(const QString& tmpl, const QVariantMap& vars);
 
  signals:

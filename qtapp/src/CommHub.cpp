@@ -55,19 +55,36 @@ QString CommHub::deviceProtocol(const QString& name) const {
 
 QString CommHub::expandTemplate(const QString& tmpl, const QVariantMap& vars) {
   QString out = tmpl;
-  QRegularExpression re(QStringLiteral(R"(\$\{(?:flow\.)?([A-Za-z_][A-Za-z0-9_]*)\})"));
-  QRegularExpressionMatchIterator it = re.globalMatch(tmpl);
-  // Replace from end to keep indices stable — collect pairs first
-  struct Rep { int start; int len; QString val; };
-  QVector<Rep> reps;
-  while (it.hasNext()) {
-    const auto m = it.next();
-    const QString key = m.captured(1);
-    reps.push_back({static_cast<int>(m.capturedStart()), static_cast<int>(m.capturedLength()),
-                    vars.value(key).toString()});
+  // ${flow.x} / ${x}
+  {
+    QRegularExpression re(QStringLiteral(R"(\$\{(?:flow\.)?([A-Za-z_][A-Za-z0-9_]*)\})"));
+    QRegularExpressionMatchIterator it = re.globalMatch(out);
+    struct Rep { int start; int len; QString val; };
+    QVector<Rep> reps;
+    while (it.hasNext()) {
+      const auto m = it.next();
+      const QString key = m.captured(1);
+      reps.push_back({static_cast<int>(m.capturedStart()), static_cast<int>(m.capturedLength()),
+                      vars.value(key).toString()});
+    }
+    for (int i = reps.size() - 1; i >= 0; --i)
+      out.replace(reps[i].start, reps[i].len, reps[i].val);
   }
-  for (int i = reps.size() - 1; i >= 0; --i) {
-    out.replace(reps[i].start, reps[i].len, reps[i].val);
+  // Named braces {barcodeText} — skip pure numeric {0}/{1} (format_data indices).
+  {
+    QRegularExpression re(QStringLiteral(R"(\{([A-Za-z_][A-Za-z0-9_]*)\})"));
+    QRegularExpressionMatchIterator it = re.globalMatch(out);
+    struct Rep { int start; int len; QString val; };
+    QVector<Rep> reps;
+    while (it.hasNext()) {
+      const auto m = it.next();
+      const QString key = m.captured(1);
+      if (!vars.contains(key)) continue;
+      reps.push_back({static_cast<int>(m.capturedStart()), static_cast<int>(m.capturedLength()),
+                      vars.value(key).toString()});
+    }
+    for (int i = reps.size() - 1; i >= 0; --i)
+      out.replace(reps[i].start, reps[i].len, reps[i].val);
   }
   return out;
 }
@@ -94,12 +111,32 @@ bool CommHub::sendPayload(const QString& deviceName, const QString& payload,
                    QStringLiteral("%1 (%2): %3")
                        .arg(deviceName, proto, payload.left(240)));
 
-  // Soft LocalBus always accepts
+  // Local Bus / LocalLoop: in-process TX→RX echo so receive_data works open-and-run.
+  const bool local =
+      proto.contains(QStringLiteral("Local"), Qt::CaseInsensitive) ||
+      deviceName.contains(QStringLiteral("Local"), Qt::CaseInsensitive) ||
+      deviceName.compare(QStringLiteral("LocalLoop"), Qt::CaseInsensitive) == 0;
+  if (local) {
+    lastRx_ = payload;
+    appendTranscript(QStringLiteral("RX"),
+                     QStringLiteral("%1 (echo): %2").arg(deviceName, payload.left(240)));
+    emit payloadReceived(deviceName, payload);
+  }
+
   // If TCP device or tcpReal active, also push on wire
   const bool wantTcp =
-      proto.contains(QStringLiteral("TCP"), Qt::CaseInsensitive) || tcpActive();
+      proto.contains(QStringLiteral("TCP"), Qt::CaseInsensitive) ||
+      deviceName.contains(QStringLiteral("Tcp"), Qt::CaseInsensitive);
   if (wantTcp && tcpActive()) {
     sendTcpRaw(payload);
+  } else if (wantTcp && !tcpActive()) {
+    // Soft TCP mirror when server not up: still echo so RX step is not empty.
+    if (lastRx_.isEmpty()) {
+      lastRx_ = payload;
+      appendTranscript(QStringLiteral("RX"),
+                       QStringLiteral("%1 (soft-echo): %2").arg(deviceName, payload.left(240)));
+      emit payloadReceived(deviceName, payload);
+    }
   }
   return true;
 }

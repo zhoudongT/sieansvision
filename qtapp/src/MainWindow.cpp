@@ -1095,13 +1095,38 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
       step_snaps.insert(id, snap);
     } else if (op == QLatin1String("result_gate")) {
       const int minC = step->params.value(QStringLiteral("minCount"), 1).toInt();
-      const int count = flow_vars_.value(QStringLiteral("barcodeCount")).toInt();
-      const bool gate = count >= minC;
+      const QString srcVar =
+          step->params
+              .value(QStringLiteral("sourceVar"), QStringLiteral("barcodeCount"))
+              .toString();
+      QVariant src = flow_vars_.value(srcVar);
+      bool gate = false;
+      int count = 0;
+      if (src.typeId() == QMetaType::Bool) {
+        gate = src.toBool();
+        count = gate ? 1 : 0;
+      } else if (src.canConvert<double>()) {
+        const double d = src.toDouble();
+        count = int(d);
+        // bool-ish 0/1 or numeric threshold
+        if (srcVar.contains(QStringLiteral("Ok"), Qt::CaseInsensitive) ||
+            srcVar.contains(QStringLiteral("Gate"), Qt::CaseInsensitive) ||
+            srcVar.contains(QStringLiteral("pass"), Qt::CaseInsensitive))
+          gate = d != 0.0;
+        else
+          gate = count >= minC;
+      } else {
+        const QString s = src.toString().trimmed();
+        gate = !s.isEmpty() && s != QLatin1String("0") &&
+               s.compare(QStringLiteral("false"), Qt::CaseInsensitive) != 0;
+        count = gate ? 1 : 0;
+      }
       flow_vars_.insert(QStringLiteral("barcodeOk"), gate ? 1 : 0);
       flow_vars_.insert(QStringLiteral("passGate"), gate ? 1 : 0);
       ok = gate;
-      note = QStringLiteral("passGate=%1 count=%2 min=%3")
+      note = QStringLiteral("passGate=%1 src=%2=%3 min=%4")
                  .arg(gate ? 1 : 0)
+                 .arg(srcVar)
                  .arg(count)
                  .arg(minC);
     } else if (op == QLatin1String("format_data")) {
@@ -1119,9 +1144,11 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
       const QStringList args = argsCsv.split(QLatin1Char(','), Qt::SkipEmptyParts);
       for (int i = 0; i < args.size(); ++i) {
         const QString key = args[i].trimmed();
-        out.replace(QStringLiteral("{%1}").arg(i), flow_vars_.value(key).toString());
+        const QString val = flow_vars_.value(key).toString();
+        out.replace(QStringLiteral("{%1}").arg(i), val);
+        out.replace(QStringLiteral("{%1}").arg(key), val);  // named braces
       }
-      // also ${flow.x}
+      // also ${flow.x} / remaining {name}
       out = CommHub::expandTemplate(out, flow_vars_);
       const QString target =
           step->params.value(QStringLiteral("targetVar"), QStringLiteral("formatted"))
@@ -1145,13 +1172,14 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
       flow_vars_.insert(QStringLiteral("commPayload"), msg);
       note = QStringLiteral("TX→%1: %2").arg(device, msg.left(60));
     } else if (op == QLatin1String("receive_data")) {
-      const QString rx = comm_hub_->lastRx();
+      QString rx = comm_hub_->lastRx();
+      if (rx.isEmpty()) rx = comm_hub_->lastTx();  // LocalBus echo race-safe
       const QString target =
           step->params.value(QStringLiteral("targetVar"), QStringLiteral("lastRecv"))
               .toString();
       flow_vars_.insert(target, rx);
       ok = !rx.isEmpty();
-      note = rx.isEmpty() ? QStringLiteral("(无 RX)") : rx.left(60);
+      note = rx.isEmpty() ? QStringLiteral("(空 RX)") : rx.left(60);
     } else if (op == QLatin1String("save_image")) {
       const QString dir =
           step->params
@@ -1714,7 +1742,8 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
   } else if (key == QLatin1String("receive_data")) {
     s.params = {{QStringLiteral("targetVar"), QStringLiteral("lastRecv")}};
   } else if (key == QLatin1String("result_gate")) {
-    s.params = {{QStringLiteral("minCount"), 1}};
+    s.params = {{QStringLiteral("minCount"), 1},
+                {QStringLiteral("sourceVar"), QStringLiteral("barcodeCount")}};
   } else if (key == QLatin1String("save_image")) {
     s.params = {{QStringLiteral("dir"),
                  QStringLiteral("/home/allen/文档/sieansvision/artifacts")}};

@@ -89,7 +89,8 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   setStyleSheet(QStringLiteral(
       "QWidget#filmstripBar{background:#232528;border-top:1px solid #4a4e54;}"
       "QListWidget#filmstripList{background:#1a1b1d;border:0;color:#ddd;outline:0;}"
-      "QListWidget#filmstripList::item{padding:1px;border:1px solid transparent;border-radius:3px;}"
+      "QListWidget#filmstripList::item{padding:1px;border:1px solid #3a3d42;border-radius:3px;}"
+      "QListWidget#filmstripList::item:hover{border:1px solid #6a7078;background:#26282c;}"
       "QListWidget#filmstripList::item:selected{border:1px solid #e67a2e;background:#2a2d32;}"));
   refreshCount();
 }
@@ -118,7 +119,14 @@ QIcon FilmstripBar::makeThumb(const QString& path) const {
         src.scaled(kThumbW - 2, kThumbH - 2, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     const int x = (kThumbW - scaled.width()) / 2;
     const int y = (kThumbH - scaled.height()) / 2;
+    // letterbox bars (VM filmstrip density)
+    if (x > 1 || y > 1) {
+      p.fillRect(0, 0, kThumbW, kThumbH, QColor(0x12, 0x13, 0x14));
+      p.fillRect(x, y, scaled.width(), scaled.height(), QColor(0x1a, 0x1b, 0x1d));
+    }
     p.drawImage(x, y, scaled);
+    p.setPen(QColor(0x3a, 0x3d, 0x42));
+    p.drawRect(0, 0, kThumbW - 1, kThumbH - 1);
   }
   p.end();
   return QIcon(QPixmap::fromImage(canvas));

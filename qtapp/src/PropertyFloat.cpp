@@ -160,6 +160,15 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
+  if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+    // Enter: commit current edits (editingFinished already flushed).
+    // Ctrl+Enter: commit + hide (VM-ish apply).
+    if (event->modifiers() & Qt::ControlModifier) {
+      hide();
+    }
+    event->accept();
+    return;
+  }
   QDialog::keyPressEvent(event);
 }
 
