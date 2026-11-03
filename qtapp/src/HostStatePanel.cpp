@@ -15,6 +15,9 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QGuiApplication>
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QEvent>
 #include <QMouseEvent>
 #include <QKeyEvent>
@@ -125,7 +128,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   intervalSpin_->setSingleStep(50);
   intervalSpin_->setSuffix(QStringLiteral(" ms"));
   intervalSpin_->setValue(200);
-  intervalSpin_->setToolTip(QStringLiteral("连续运行节拍 · 写入方案 runIntervalMs · 滚轮 ±50 · 运行中即时生效"));
+  intervalSpin_->setToolTip(QStringLiteral("连续运行节拍 · 写入方案 runIntervalMs · 滚轮±50 · Ctrl+↑↓/[] ±50 · Ctrl+Shift+↑↓/[] ±200 · 运行中即时生效"));
   intervalSpin_->setStatusTip(QStringLiteral("Host · 连续间隔 ms"));
   intervalSpin_->installEventFilter(this);
   ivRow->addWidget(intervalSpin_, 1);
@@ -148,7 +151,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   history_ = new QListWidget;
   history_->setObjectName(QStringLiteral("alarmHistory"));
   history_->setMinimumHeight(72);
-  history_->setToolTip(QStringLiteral("报警历史 · 最近事件 · 双击/中键复制行 · 右键清空 · Del 删行 · Ctrl+L 清空 · 最近 40 条"));
+  history_->setToolTip(QStringLiteral("报警历史 · 双击/中键复制 · 右键/Ctrl+L 清空 · Del 删行 · Ctrl+Shift+J JSON · 最近 40 条"));
   history_->setStatusTip(QStringLiteral("Host · 报警历史 · Ctrl+L/Del/双击/中键"));
   history_->installEventFilter(this);
   history_->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -165,6 +168,24 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
     connect(scDel, &QShortcut::activated, this, [this]() {
       if (!history_) return;
       for (auto* it : history_->selectedItems()) delete history_->takeItem(history_->row(it));
+    });
+    auto* scJ = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+J")), history_);
+    connect(scJ, &QShortcut::activated, this, [this]() {
+      if (!history_) return;
+      QJsonArray arr;
+      for (int i = 0; i < history_->count(); ++i) {
+        auto* it = history_->item(i);
+        if (it) arr.append(it->text());
+      }
+      QJsonObject root;
+      root.insert(QStringLiteral("alarms"), arr);
+      root.insert(QStringLiteral("state"), state_);
+      root.insert(QStringLiteral("count"), arr.size());
+      const QByteArray bytes = QJsonDocument(root).toJson(QJsonDocument::Compact);
+      if (auto* clip = QGuiApplication::clipboard())
+        clip->setText(QString::fromUtf8(bytes));
+      if (modeHint_)
+        modeHint_->setText(QStringLiteral("已导出报警JSON %1 · Ctrl+Shift+J").arg(arr.size()));
     });
     connect(history_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* it) {
       if (!it) return;
@@ -467,6 +488,21 @@ bool HostStatePanel::eventFilter(QObject* obj, QEvent* event) {
         (ke->modifiers() & Qt::ShiftModifier) && statsLabel_) {
       if (auto* clip = QGuiApplication::clipboard()) clip->setText(statsLabel_->text());
       if (modeHint_) modeHint_->setText(QStringLiteral("已复制运行统计 · Ctrl+Shift+C"));
+      return true;
+    }
+    if ((ke->modifiers() & Qt::ControlModifier) && intervalSpin_ &&
+        (ke->key() == Qt::Key_Up || ke->key() == Qt::Key_Down ||
+         ke->key() == Qt::Key_BracketLeft || ke->key() == Qt::Key_BracketRight)) {
+      const int step = (ke->modifiers() & Qt::ShiftModifier) ? 200 : 50;
+      int delta = 0;
+      if (ke->key() == Qt::Key_Up || ke->key() == Qt::Key_BracketRight) delta = step;
+      else delta = -step;
+      const int next = qBound(20, intervalSpin_->value() + delta, 60000);
+      if (next != intervalSpin_->value()) {
+        intervalSpin_->setValue(next);  // emits intervalChanged
+        if (modeHint_)
+          modeHint_->setText(QStringLiteral("连续间隔 %1 ms · Ctrl+↑↓/[]").arg(next));
+      }
       return true;
     }
   }
