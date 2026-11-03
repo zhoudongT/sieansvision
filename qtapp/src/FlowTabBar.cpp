@@ -39,7 +39,12 @@ FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   fit->setFixedWidth(40);
   fit->setToolTip(QStringLiteral("适应流程画布 · F/G/A/Space/Home/0/R · 含选中节点"));
   fit->setStatusTip(QStringLiteral("流程 · 适应画布"));
-  auto* hint = new QLabel(QStringLiteral("F5 一次 · F6 连续 · F/R 适应 · Esc 取消连线 · Del 删连线"));
+  auto* ioBtn = new QPushButton(QStringLiteral("I/O"));
+  ioBtn->setFixedWidth(36);
+  ioBtn->setToolTip(QStringLiteral("流程 I/O 绑定 · Ctrl+I · emptyDefault/{name}/${flow.x}/{{name}}"));
+  ioBtn->setStatusTip(QStringLiteral("流程 · I/O 绑定"));
+  ioBtn->setObjectName(QStringLiteral("flowIoBtn"));
+  auto* hint = new QLabel(QStringLiteral("F5 一次 · F6 连续 · F/R 适应 · I/O 绑定 · Esc 取消连线 · Del 删连线"));
   hint->setObjectName(QStringLiteral("muted"));
   lay->addWidget(allBtn_);
   lay->addWidget(flowBtn_);
@@ -48,6 +53,7 @@ FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   lay->addWidget(runCont);
   lay->addWidget(stop);
   lay->addWidget(fit);
+  lay->addWidget(ioBtn);
   lay->addStretch(1);
   lay->addWidget(hint);
   connect(allBtn_, &QPushButton::clicked, this, &FlowTabBar::allFlowsRequested);
@@ -55,6 +61,7 @@ FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   connect(runCont, &QPushButton::clicked, this, &FlowTabBar::runContinuousRequested);
   connect(stop, &QPushButton::clicked, this, &FlowTabBar::stopRequested);
   connect(fit, &QPushButton::clicked, this, &FlowTabBar::fitRequested);
+  connect(ioBtn, &QPushButton::clicked, this, &FlowTabBar::ioRequested);
   setStyleSheet(QStringLiteral(
       "QWidget#flowTabBar{background:#232528;border-bottom:1px solid #4a4e54;}"
       "QPushButton#flowTab,QPushButton#flowTabActive{border:0;padding:3px 10px;"

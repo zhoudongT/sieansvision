@@ -8,6 +8,7 @@
 #include <QFrame>
 #include <QMouseEvent>
 #include <QKeyEvent>
+#include <QWheelEvent>
 #include <QLineEdit>
 #include <QVariantMap>
 
@@ -253,6 +254,15 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
     return;
   }
   QDialog::keyPressEvent(event);
+}
+
+
+void PropertyFloat::wheelEvent(QWheelEvent* event) {
+  // Scroll wheel cycles focus among editable fields (VM-ish).
+  if (!event) return;
+  const bool next = event->angleDelta().y() < 0 || event->angleDelta().x() < 0;
+  focusNextPrevChild(next);
+  event->accept();
 }
 
 }  // namespace sieans_qt

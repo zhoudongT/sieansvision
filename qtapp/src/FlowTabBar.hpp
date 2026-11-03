@@ -17,6 +17,7 @@ class FlowTabBar : public QWidget {
   void runContinuousRequested();
   void stopRequested();
   void fitRequested();
+  void ioRequested();
  private:
   QPushButton* allBtn_ = nullptr;
   QPushButton* flowBtn_ = nullptr;

@@ -357,6 +357,7 @@ void MainWindow::buildUi() {
   connect(flow_tabs_, &FlowTabBar::runContinuousRequested, this,
           &MainWindow::onRunContinuous);
   connect(flow_tabs_, &FlowTabBar::stopRequested, this, &MainWindow::onStopRun);
+  connect(flow_tabs_, &FlowTabBar::ioRequested, this, &MainWindow::onOpenFlowIo);
   connect(flow_tabs_, &FlowTabBar::fitRequested, flow_view_, &FlowView::fitAll);
   horizontal->addWidget(flowPane);
 
@@ -814,7 +815,11 @@ void MainWindow::applyFlowIoBindings() {
     const QString name = row.value(QStringLiteral("name")).toString().trimmed();
     if (name.isEmpty()) continue;
     const QString binding = row.value(QStringLiteral("binding")).toString();
-    const QVariant val = resolveIoBinding(binding);
+    QVariant val = resolveIoBinding(binding);
+    const QString emptyDef = row.value(QStringLiteral("emptyDefault")).toString();
+    const bool emptyVal = !val.isValid() || val.isNull() ||
+                          (val.typeId() == QMetaType::QString && val.toString().isEmpty());
+    if (emptyVal && !emptyDef.isEmpty()) val = emptyDef;
     flow_vars_.insert(QStringLiteral("io.%1").arg(name), val);
     // also mirror Result / common names into plain vars for Comm/HMI
     if (name == QLatin1String("Result") && !flow_vars_.contains(QStringLiteral("formatted"))) {

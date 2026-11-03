@@ -10,6 +10,7 @@
 #include <QShortcut>
 #include <QKeySequence>
 #include <QInputDialog>
+#include <QCheckBox>
 #include <QMessageBox>
 #include <QAbstractItemView>
 
@@ -76,6 +77,16 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   form->addRow(QStringLiteral("帧分隔"), framingCombo_);
   connect(framingCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
           [this](int) { pushTcpEndpoint(true); });
+  ackEdit_ = new QLineEdit;
+  ackEdit_->setPlaceholderText(QStringLiteral("ACK 应答 · 空=不回"));
+  ackEdit_->setToolTip(QStringLiteral("收到报文后自动回 ACK · 写入 tcpReal.ack · 空则不回 · 随 framing 附加换行"));
+  form->addRow(QStringLiteral("ACK"), ackEdit_);
+  connect(ackEdit_, &QLineEdit::editingFinished, this, [this]() { pushTcpEndpoint(true); });
+  reconnectCheck_ = new QCheckBox(QStringLiteral("客户端断线重连"));
+  reconnectCheck_->setChecked(true);
+  reconnectCheck_->setToolTip(QStringLiteral("tcpReal.reconnect · client 模式断线自动重连 · 最多约 40 次"));
+  form->addRow(QStringLiteral("重连"), reconnectCheck_);
+  connect(reconnectCheck_, &QCheckBox::toggled, this, [this](bool) { pushTcpEndpoint(true); });
   payloadEdit_ = new QLineEdit(
       QStringLiteral("BARCODE ok=${flow.passGate} text=${flow.barcodeText}"));
   payloadEdit_->setToolTip(
@@ -153,6 +164,16 @@ void CommPanel::bindDocument(const QVariantMap& commManager) {
   hostEdit_->setText(tcp.value(QStringLiteral("host"), QStringLiteral("127.0.0.1")).toString());
   portEdit_->setText(QString::number(tcp.value(QStringLiteral("port"), 19956).toInt()));
   syncFramingFromDoc(tcp);
+  if (ackEdit_) {
+    ackEdit_->blockSignals(true);
+    ackEdit_->setText(tcp.value(QStringLiteral("ack")).toString());
+    ackEdit_->blockSignals(false);
+  }
+  if (reconnectCheck_) {
+    reconnectCheck_->blockSignals(true);
+    reconnectCheck_->setChecked(tcp.value(QStringLiteral("reconnect"), true).toBool());
+    reconnectCheck_->blockSignals(false);
+  }
   refreshDevices();
   refreshTranscript();
 }
@@ -277,6 +298,9 @@ void CommPanel::pushTcpEndpoint(bool emitSave) {
     const QString fr = framingCombo_->currentData().toString();
     tcp.insert(QStringLiteral("framing"), fr.isEmpty() ? QStringLiteral("lf") : fr);
   }
+  if (ackEdit_) tcp.insert(QStringLiteral("ack"), ackEdit_->text());
+  if (reconnectCheck_)
+    tcp.insert(QStringLiteral("reconnect"), reconnectCheck_->isChecked());
   cm.insert(QStringLiteral("tcpReal"), tcp);
   hub_->loadFromCommManager(cm);
   if (status_ && framingCombo_) {

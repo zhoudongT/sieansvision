@@ -7,6 +7,7 @@
 #include <QComboBox>
 #include <QLineEdit>
 #include <QLabel>
+#include <QCheckBox>
 #include <QTableWidget>
 #include <QVariantMap>
 
@@ -43,6 +44,8 @@ class CommPanel : public QWidget {
   QLineEdit* hostEdit_ = nullptr;
   QLineEdit* portEdit_ = nullptr;
   QComboBox* framingCombo_ = nullptr;
+  QLineEdit* ackEdit_ = nullptr;
+  QCheckBox* reconnectCheck_ = nullptr;
   QPlainTextEdit* transcript_ = nullptr;
   QLabel* status_ = nullptr;
   QLabel* detail_ = nullptr;
