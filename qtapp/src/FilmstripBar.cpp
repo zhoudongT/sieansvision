@@ -36,7 +36,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   head->setSpacing(6);
   countLabel_ = new QLabel(QStringLiteral("图像源 (0/0)"));
   countLabel_->setStyleSheet(QStringLiteral("color:#e8e8e8;font-weight:600;"));
-  countLabel_->setToolTip(QStringLiteral("←→ Home/End/PgUp/PgDn/滚轮 · Del 删除 · 拖拽重排"));
+  countLabel_->setToolTip(QStringLiteral("←→ Home/End/PgUp/PgDn/滚轮 · 0/1-9 跳转 · Del 删除 · 拖拽重排"));
   status_ = new QLabel(QStringLiteral("本地图像"));
   status_->setObjectName(QStringLiteral("muted"));
   autoSwitch_ = new QCheckBox(QStringLiteral("自动切换"));
@@ -323,6 +323,14 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
   if (event->key() == Qt::Key_PageDown) {
     if (!paths_.isEmpty())
       selectIndex(qMin(paths_.size() - 1, qMax(0, index_) + 5), true);
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_0) {
+    if (!paths_.isEmpty()) {
+      selectIndex(0, true);
+      setStatus(QStringLiteral("跳到 #1"));
+    }
     event->accept();
     return;
   }

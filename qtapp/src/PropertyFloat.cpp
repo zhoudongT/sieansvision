@@ -75,7 +75,7 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   cancel->setToolTip(QStringLiteral("放弃修改并关闭 · Esc/Ctrl+W"));
   auto* ok = new QPushButton(QStringLiteral("确定"));
   ok->setObjectName(QStringLiteral("propertyFloatOk"));
-  ok->setToolTip(QStringLiteral("保留修改并关闭 · Ctrl/Alt/Shift+Enter"));
+  ok->setToolTip(QStringLiteral("保留修改并关闭 · Ctrl/Alt/Shift+Enter · Ctrl+S"));
   auto* hint = new QLabel(QStringLiteral("Esc 放弃 · Enter 保留 · Tab 切换 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续"));
   hint->setObjectName(QStringLiteral("propertyFloatHint"));
   hint->setStyleSheet(QStringLiteral("color:#8a9098;font-size:11px;"));
@@ -174,6 +174,13 @@ void PropertyFloat::showForStep(const FlowStep& step) {
 }
 
 void PropertyFloat::keyPressEvent(QKeyEvent* event) {
+  if (event->key() == Qt::Key_S && (event->modifiers() & Qt::ControlModifier)) {
+    if (panel_) baseline_ = panel_->currentParams();
+    emit acceptedCommit();
+    hide();
+    event->accept();
+    return;
+  }
   if (event->key() == Qt::Key_Escape ||
       (event->key() == Qt::Key_W && (event->modifiers() & Qt::ControlModifier))) {
     revertAndHide();

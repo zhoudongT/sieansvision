@@ -374,10 +374,11 @@ void CommHub::tryReconnect() {
   // Cap attempts so runaway client reconnect does not spin forever.
   if (reconnectAttempts_ > 40) {
     if (reconnectTimer_) reconnectTimer_->stop();
-    tcpStatus_ = QStringLiteral("reconnect paused #%1 %2:%3")
+    tcpStatus_ = QStringLiteral("reconnect paused #%1 %2:%3 · %4")
                      .arg(reconnectAttempts_ - 1)
                      .arg(reconnectHost_)
-                     .arg(reconnectPort_);
+                     .arg(reconnectPort_)
+                     .arg(framing_.isEmpty() ? QStringLiteral("lf") : framing_);
     emit statusChanged(tcpStatus_);
     appendTranscript(QStringLiteral("SYS"),
                      QStringLiteral("%1 · give up until restartTcp").arg(tcpStatus_));
