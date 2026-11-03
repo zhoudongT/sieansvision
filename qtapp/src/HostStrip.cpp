@@ -62,7 +62,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   detail_->setCursor(Qt::PointingHandCursor);
   badge_->setToolTip(QStringLiteral("OK/NG/ALARM · passGate 判定 · 单击打开 Host 面板 · Alt+单击清连OK/NG · 中键复制运行统计 · tcp= 见明细"));
   modeChip_->setToolTip(QStringLiteral("运行模式 · 单击设计/运行 · Alt 暂停/继续 · 右键/中键连续"));
-  cycleChip_->setToolTip(QStringLiteral("周期 · 上次 ms · 节拍 · 滚轮±50 · Ctrl+滚轮±200 · Ctrl+单击/双击清零 · 右键/Alt+单击清连OK · 中键良率"));
+  cycleChip_->setToolTip(QStringLiteral("周期 · 上次 ms · 节拍 · 滚轮±50 · Ctrl+滚轮±200 · Alt+1/2/3/4→50/100/200/500 · Ctrl+单击/双击清零 · 右键/Alt+单击清连OK · 中键良率"));
   detail_->setToolTip(QStringLiteral("count/text/RX/urlOk/tcp/良率 摘要 · framing lf/crlf/raw/len4 见 tcp= · 双击复制全文 · 中键复制连OK/NG · 右键/Ctrl+Shift+C 运行统计 · 悬停看全文"));
   badge_->installEventFilter(this);
   modeChip_->installEventFilter(this);
@@ -123,7 +123,7 @@ void HostStrip::refreshCycleChip() {
   text += QStringLiteral(" · 节拍 %1").arg(intervalMs_);
   cycleChip_->setText(text);
   cycleChip_->setToolTip(
-      QStringLiteral("周期 %1 · 上次 %2 ms · 连续节拍 %3 ms · 滚轮±50 · Ctrl+滚轮±200 · Ctrl+单击清零 · 双击清零 · 右键清连OK")
+      QStringLiteral("周期 %1 · 上次 %2 ms · 连续节拍 %3 ms · 滚轮±50 · Ctrl+滚轮±200 · Alt+1..4 预设 · Ctrl+单击清零 · 双击清零 · 右键清连OK")
           .arg(cycle_)
           .arg(lastCycleMs_ >= 0 ? lastCycleMs_ : 0.0, 0, 'f', 1)
           .arg(intervalMs_));
@@ -438,6 +438,19 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
     if ((ke->key() == Qt::Key_Left || ke->key() == Qt::Key_Right) &&
         (ke->modifiers() & Qt::AltModifier)) {
       moveWatchKey(ke->key() == Qt::Key_Left ? -1 : +1);
+      return true;
+    }
+    if ((ke->modifiers() & Qt::AltModifier) && ke->key() >= Qt::Key_1 && ke->key() <= Qt::Key_4 &&
+        !(ke->modifiers() & Qt::ControlModifier)) {
+      static const int kPresets[] = {50, 100, 200, 500};
+      const int next = kPresets[ke->key() - Qt::Key_1];
+      if (next != intervalMs_) {
+        intervalMs_ = next;
+        refreshCycleChip();
+        emit intervalChanged(intervalMs_);
+      }
+      if (cycleChip_)
+        cycleChip_->setToolTip(QStringLiteral("节拍 %1 ms · Alt+%2").arg(next).arg(ke->key() - Qt::Key_0));
       return true;
     }
   }

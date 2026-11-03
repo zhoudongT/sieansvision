@@ -31,7 +31,7 @@ namespace sieans_qt {
 FlowIoDialog::FlowIoDialog(const QVariantMap& io, QWidget* parent)
     : QDialog(parent), io_(io) {
   setWindowTitle(QStringLiteral("流程参数 · I/O 绑定"));
-  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+D 复制行 · Ctrl+A 全选 · Ctrl+E 补默认 · Ctrl+Shift+E 清默认 · Ctrl+Tab 切换表 · Ctrl+Shift+C 复制CSV · Ctrl+Shift+V 粘贴 · 清空行 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果 · Ctrl+Shift+J/O 导出/导入JSON"));
+  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+D 复制行 · Ctrl+A 全选 · Ctrl+E 补默认 · Ctrl+Shift+E 清默认 · Ctrl+Tab 切换表 · Ctrl+Shift+C 复制CSV · Ctrl+X 剪切 · Ctrl+Shift+V 粘贴 · 清空行 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果 · Ctrl+Shift+J/O 导出/导入JSON"));
   resize(560, 440);
   setStyleSheet(theme::workbenchStyleSheet());
   auto* root = new QVBoxLayout(this);
@@ -147,7 +147,7 @@ QTableWidget* FlowIoDialog::makeTable(const QVariantList& rows, const QString& k
   table->setSelectionBehavior(QAbstractItemView::SelectRows);
   table->setSelectionMode(QAbstractItemView::ExtendedSelection);
   table->setToolTip(
-      QStringLiteral("I/O 绑定 · Insert/Ctrl+N 增行 · Del 删行 · Alt+↑↓ 移行 · Ctrl+D 复制 · Ctrl+Shift+V 粘贴 · binding 芯片 · emptyDefault 空结果占位 · {name}/${flow.x}/{{name}}"));
+      QStringLiteral("I/O 绑定 · Insert/Ctrl+N 增行 · Del 删行 · Alt+↑↓ 移行 · Ctrl+D 复制 · Ctrl+X 剪切 · Ctrl+Shift+V 粘贴 · binding 芯片 · emptyDefault 空结果占位 · {name}/${flow.x}/{{name}}"));
   table->setStatusTip(QStringLiteral("流程 I/O 表 · emptyDefault"));
   if (rows.isEmpty()) {
     const QList<QStringList> demo =
@@ -309,6 +309,8 @@ void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
   connect(scA, &QShortcut::activated, this, [this, table]() { selectAllRows(table); });
   auto* scCopy = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+C")), table);
   connect(scCopy, &QShortcut::activated, this, [this, table]() { copySelectedRows(table); });
+  auto* scCut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+X")), table);
+  connect(scCut, &QShortcut::activated, this, [this, table]() { cutSelectedRows(table); });
   auto* scOther = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+Tab")), table);
   connect(scOther, &QShortcut::activated, this, [this, table]() { moveSelectedToOtherTable(table); });
   {
@@ -430,6 +432,33 @@ void FlowIoDialog::copySelectedRows(QTableWidget* table) {
     lines << cols.join(QLatin1Char(','));
   }
   if (auto* clip = QGuiApplication::clipboard()) clip->setText(lines.join(QLatin1Char('\n')));
+}
+
+void FlowIoDialog::cutSelectedRows(QTableWidget* table) {
+  if (!table) return;
+  const auto ranges = table->selectionModel() ? table->selectionModel()->selectedRows()
+                                              : QModelIndexList{};
+  QList<int> rows;
+  for (const QModelIndex& ix : ranges) rows.push_back(ix.row());
+  if (rows.isEmpty() && table->currentRow() >= 0) rows.push_back(table->currentRow());
+  if (rows.isEmpty()) {
+    table->setToolTip(QStringLiteral("无选中行 · Ctrl+X"));
+    return;
+  }
+  std::sort(rows.begin(), rows.end());
+  QStringList lines;
+  for (int r : rows) {
+    QStringList cols;
+    for (int c = 0; c < table->columnCount(); ++c) {
+      QTableWidgetItem* it = table->item(r, c);
+      cols << (it ? it->text() : QString());
+    }
+    lines << cols.join(QLatin1Char(','));
+  }
+  if (auto* clip = QGuiApplication::clipboard()) clip->setText(lines.join(QLatin1Char('\n')));
+  std::sort(rows.begin(), rows.end(), std::greater<int>());
+  for (int r : rows) table->removeRow(r);
+  table->setToolTip(QStringLiteral("已剪切 I/O 行 %1 · Ctrl+X · Ctrl+Shift+V 粘贴").arg(lines.size()));
 }
 
 void FlowIoDialog::clearEmptyRows(QTableWidget* table) {
