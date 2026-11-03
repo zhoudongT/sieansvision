@@ -75,6 +75,10 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
       QStringLiteral("TX/RX 抄本 · LocalBus 软总线 + 真 TCP"));
   lay->addWidget(transcript_, 1);
 
+  btnTcp->setToolTip(QStringLiteral("启动 tcpReal（server 监听 / client 连接+重连）"));
+  btnStop->setToolTip(QStringLiteral("停止 TCP · 清空重连计数"));
+  btnSend->setToolTip(QStringLiteral("按报文模板试发到所选设备（支持 ${flow.x}/{name}/{{name}}）"));
+  btnClear->setToolTip(QStringLiteral("清空 TX/RX 抄本"));
   connect(btnTcp, &QPushButton::clicked, this, &CommPanel::onStartTcp);
   connect(btnStop, &QPushButton::clicked, this, &CommPanel::onStopTcp);
   connect(btnSend, &QPushButton::clicked, this, &CommPanel::onTrialSend);
@@ -87,8 +91,16 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
       status_->setText(QStringLiteral("TCP: %1").arg(s));
       if (s.contains(QStringLiteral("reconnect")))
         status_->setStyleSheet(QStringLiteral("color:#e0b84a;font-weight:600;"));
-      else if (s.contains(QStringLiteral("connected")))
+      else if (s.contains(QStringLiteral("connected")) ||
+               s.contains(QStringLiteral("listening")) ||
+               s.contains(QStringLiteral("peer-connected")))
         status_->setStyleSheet(QStringLiteral("color:#3ecf8e;font-weight:600;"));
+      else if (s.contains(QStringLiteral("listen-fail")) ||
+               s.contains(QStringLiteral("error")) ||
+               s.contains(QStringLiteral("disconnected")))
+        status_->setStyleSheet(QStringLiteral("color:#e53935;font-weight:600;"));
+      else if (s.contains(QStringLiteral("connecting")))
+        status_->setStyleSheet(QStringLiteral("color:#64b5f6;font-weight:600;"));
       else
         status_->setStyleSheet(QString());
     });

@@ -16,7 +16,7 @@ def bad(msg):
     print(f"FAIL  {msg}")
 
 checks = [
-    (QT / "SoftFrame.cpp", ["loadSoftQrSample", "sample-qr.png", "drawFinder", "SIEANS-", "SOFT exp=", "setSoftQrSamplePath", "FastTransformation", "Letterbox", "Guide frame", "SOFT"]),
+    (QT / "SoftFrame.cpp", ["loadSoftQrSample", "sample-qr.png", "drawFinder", "SIEANS-", "SOFT exp=", "setSoftQrSamplePath", "FastTransformation", "Letterbox", "Guide frame", "SOFT", "soft·QR %1×%2"]),
     (QT / "SieansDocument.cpp", ["seedGentlQrDemo", "format_data", "send_data", "receive_data", "result_gate", "LocalLoop", "passGate", "barcodeCount >= 1", "TcpRealLoopback", "gate1"]),
     (QT / "CommHub.cpp", ["Local Bus", "echo", "lastRx_ = payload", r"{([A-Za-z_]", "mustache", "soft-echo", "tryReconnect", "reconnecting"]),
     (QT / "MainWindow.cpp", ["sourceVar", "named braces", "lastTx()", "format_data", "receive_data"]),
@@ -26,7 +26,7 @@ checks = [
     (QT / "MainWindow.cpp", ["SIEANS_QT_AUTO_RUN", "SIEANS_QT_FORCE_SEED", "autoStart", "barcodeText=%6", "lastRecv=%8", "urlOk=%9", "tcp=%10"]),
     (QT / "GenTLWorker.cpp", ["makeSoftFrame(1280, 1024"]),
     (QT / "OperatorLibrary.cpp", ["focusSearch", "Key_F", "def.tip.contains"]),
-    (QT / "ExprEval.cpp", ['"needle" in haystack', "in-miss", "startswith", "endswith", "contains-fn", "lower", "trim", "strip", "replace"]),
+    (QT / "ExprEval.cpp", ['"needle" in haystack', "in-miss", "startswith", "endswith", "contains-fn", "lower", "trim", "strip", "replace", "slice"]),
     (QT / "VarWatchPanel.cpp", ["lastRecv", "theme::OK", "theme::NG"]),
     (QT / "HostStrip.cpp", ["lastRecv", "RX=", "urlOk="]),
     (QT / "CommPanel.cpp", ["TX %2", "RX %3"]),
@@ -35,18 +35,18 @@ checks = [
     (QT / "FlowTabBar.cpp", ["stopRequested", "停止运行"]),
     (QT / "FlowTabBar.hpp", ["stopRequested"]),
     (QT / "MainWindow.cpp", ["emptyDefault", "FlowTabBar::stopRequested"]),
-    (QT / "PropertyPanel.cpp", ["emptyDefault", "startswith/endswith/contains", "{{name}}"]),
-    (QT / "FlowIoDialog.cpp", ["{{name}}"]),
+    (QT / "PropertyPanel.cpp", ["emptyDefault", "startswith|endswith|contains", "trim|strip|replace", "{{name}}"]),
+    (QT / "FlowIoDialog.cpp", ["{{name}}", "Esc 取消"]),
     (QT / "SieansDocument.cpp", ["emptyDefault", "BARCODE empty", "urlOk", "startswith(barcodeText"]),
     (QT / "FlowCanvas.cpp", ["Right-edge run-state", "状态：%2", "theme::WARN", "showState"]),
     (QT / "HostStatePanel.cpp", ["tickPulse", "pulseTimer_", "outline:1px solid"]),
     (QT / "CommHub.cpp", ["reconnectAttempts_", "reconnect #%1", "backoff", "setInterval(ms)", "attempts reset"]),
     (QT / "FilmstripBar.cpp", ["InternalMove", "已重排", "拖拽缩略图重排", "%1×%2", "%1/%2 · %3×%4 · %5"]),
     (QT / "PropertyFloat.cpp", ["focusNextPrevChild", "Key_Backtab", "id.left(8)"]),
-    (QT / "CommPanel.cpp", ["reconnect", "color:#e0b84a"]),
+    (QT / "CommPanel.cpp", ["reconnect", "color:#e0b84a", "listen-fail", "启动 tcpReal"]),
     (QT / "FlowTabBar.cpp", ["fitRequested", "适应流程画布"]),
     (QT / "MainWindow.cpp", ["FlowTabBar::fitRequested"]),
-    (QT / "ImageView.cpp", ["Key_F", "Key_Home", "setFocusPolicy", "F/Home 适应"]),
+    (QT / "ImageView.cpp", ["Key_F", "Key_Home", "setFocusPolicy", "F/Home 适应", "hits %1"]),
     (QT / "VarWatchPanel.cpp", ["passGate", "urlOk", "setBold(true)"]),
 ]
 

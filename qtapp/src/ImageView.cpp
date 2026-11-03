@@ -85,20 +85,27 @@ void ImageView::resizeEvent(QResizeEvent* event) {
 
 void ImageView::updateProbe(int x, int y) {
   if (!probe_) return;
+  const QString hitChip =
+      hits_.isEmpty() ? QString()
+                      : QStringLiteral(" · hits %1").arg(hits_.size());
   if (image_.isNull()) {
     probe_->setText(QStringLiteral("无图像"));
   } else if (x < 0 || y < 0 || x >= image_.width() || y >= image_.height()) {
-    probe_->setText(QStringLiteral("%1*%2").arg(image_.width()).arg(image_.height()));
+    probe_->setText(QStringLiteral("%1*%2%3")
+                        .arg(image_.width())
+                        .arg(image_.height())
+                        .arg(hitChip));
   } else {
     const QRgb px = image_.pixel(x, y);
-    probe_->setText(QStringLiteral("%1*%2 | X %3 Y %4 | R %5 G %6 B %7")
+    probe_->setText(QStringLiteral("%1*%2 | X %3 Y %4 | R %5 G %6 B %7%8")
                         .arg(image_.width())
                         .arg(image_.height())
                         .arg(x)
                         .arg(y)
                         .arg(qRed(px))
                         .arg(qGreen(px))
-                        .arg(qBlue(px)));
+                        .arg(qBlue(px))
+                        .arg(hitChip));
   }
   probe_->adjustSize();
   probe_->move(8, qMax(0, height() - probe_->height() - 6));
