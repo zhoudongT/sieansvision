@@ -213,6 +213,10 @@ bool FlowTabBar::eventFilter(QObject* obj, QEvent* event) {
   }
   if (event->type() == QEvent::KeyPress) {
     auto* ke = static_cast<QKeyEvent*>(event);
+    if (ke->key() == Qt::Key_Escape) {
+      emit stopRequested();
+      return true;
+    }
     if (ke->key() == Qt::Key_F5 || ke->key() == Qt::Key_F9) {
       emit runOnceRequested();
       return true;

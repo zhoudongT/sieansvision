@@ -31,7 +31,7 @@ namespace sieans_qt {
 FlowIoDialog::FlowIoDialog(const QVariantMap& io, QWidget* parent)
     : QDialog(parent), io_(io) {
   setWindowTitle(QStringLiteral("流程参数 · I/O 绑定"));
-  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 按名排序 · Ctrl+Shift+D 复制到另一表 · Ctrl+D 复制行 · Ctrl+A 全选 · Ctrl+E 补默认 · Ctrl+Shift+E 清默认 · Ctrl+Tab 切换表 · Ctrl+Shift+C 复制CSV · Ctrl+X 剪切 · Ctrl+Shift+V 粘贴 · 清空行 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果 · Ctrl+Shift+J/O 导出/导入JSON"));
+  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 按名排序 · Ctrl+Shift+D 复制到另一表 · Ctrl+Home/End 置顶/底 · Ctrl+D 复制行 · Ctrl+A 全选 · Ctrl+E 补默认 · Ctrl+Shift+E 清默认 · Ctrl+Tab 切换表 · Ctrl+Shift+C 复制CSV · Ctrl+X 剪切 · Ctrl+Shift+V 粘贴 · 清空行 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果 · Ctrl+Shift+J/O 导出/导入JSON"));
   resize(560, 440);
   setStyleSheet(theme::workbenchStyleSheet());
   auto* root = new QVBoxLayout(this);
@@ -147,7 +147,7 @@ QTableWidget* FlowIoDialog::makeTable(const QVariantList& rows, const QString& k
   table->setSelectionBehavior(QAbstractItemView::SelectRows);
   table->setSelectionMode(QAbstractItemView::ExtendedSelection);
   table->setToolTip(
-      QStringLiteral("I/O 绑定 · Insert/Ctrl+N 增行 · Del 删行 · Alt+↑↓ 移行 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 按名排序 · Ctrl+Shift+D 复制到另一表 · Ctrl+D 复制 · Ctrl+X 剪切 · Ctrl+Shift+V 粘贴 · Home/End · binding 芯片 · emptyDefault 空结果占位 · {name}/${flow.x}/{{name}}"));
+      QStringLiteral("I/O 绑定 · Insert/Ctrl+N 增行 · Del 删行 · Alt+↑↓ 移行 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 按名排序 · Ctrl+Shift+D 复制到另一表 · Ctrl+Home/End 置顶/底 · Ctrl+D 复制 · Ctrl+X 剪切 · Ctrl+Shift+V 粘贴 · Home/End · binding 芯片 · emptyDefault 空结果占位 · {name}/${flow.x}/{{name}}"));
   table->setStatusTip(QStringLiteral("流程 I/O 表 · emptyDefault"));
   if (rows.isEmpty()) {
     const QList<QStringList> demo =
@@ -334,6 +334,10 @@ void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
   connect(scSort, &QShortcut::activated, this, [this, table]() { sortRowsByName(table); });
   auto* scDupOther = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+D")), table);
   connect(scDupOther, &QShortcut::activated, this, [this, table]() { duplicateSelectedToOtherTable(table); });
+  auto* scTop = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Home")), table);
+  connect(scTop, &QShortcut::activated, this, [this, table]() { moveSelectedToEdge(table, -1); });
+  auto* scBot = new QShortcut(QKeySequence(QStringLiteral("Ctrl+End")), table);
+  connect(scBot, &QShortcut::activated, this, [this, table]() { moveSelectedToEdge(table, +1); });
   {
     const char* toks[] = {"${flow.passGate}", "${flow.barcodeText}", "${flow.formatted}",
                           "${flow.io.Result}"};
@@ -663,6 +667,48 @@ void FlowIoDialog::reverseRows(QTableWidget* table) {
   table->setToolTip(QStringLiteral("绑定已反序 %1 · Ctrl+Shift+Y").arg(n));
 }
 
+
+
+void FlowIoDialog::moveSelectedToEdge(QTableWidget* table, int edge) {
+  if (!table || table->rowCount() < 2) {
+    if (table) table->setToolTip(QStringLiteral("行不足 · Ctrl+Home/End"));
+    return;
+  }
+  const auto ranges = table->selectionModel() ? table->selectionModel()->selectedRows()
+                                              : QModelIndexList{};
+  if (ranges.isEmpty()) {
+    table->setToolTip(QStringLiteral("未选中 · Ctrl+Home/End"));
+    return;
+  }
+  QList<int> rows;
+  for (const QModelIndex& ix : ranges) rows.push_back(ix.row());
+  std::sort(rows.begin(), rows.end());
+  const int cols = table->columnCount();
+  QList<QList<QTableWidgetItem*>> taken;
+  table->blockSignals(true);
+  for (int i = rows.size() - 1; i >= 0; --i) {
+    const int r = rows[i];
+    QList<QTableWidgetItem*> cells;
+    for (int c = 0; c < cols; ++c) cells << table->takeItem(r, c);
+    taken.prepend(cells);
+    table->removeRow(r);
+  }
+  int insertAt = edge < 0 ? 0 : table->rowCount();
+  for (const auto& cells : taken) {
+    table->insertRow(insertAt);
+    for (int c = 0; c < cols; ++c) table->setItem(insertAt, c, cells[c]);
+    ++insertAt;
+  }
+  table->blockSignals(false);
+  table->clearSelection();
+  const int n = taken.size();
+  const int start = edge < 0 ? 0 : table->rowCount() - n;
+  for (int i = 0; i < n; ++i) table->selectRow(start + i);
+  table->setToolTip(QStringLiteral("已%1 %2 行 · Ctrl+%3")
+                        .arg(edge < 0 ? QStringLiteral("置顶") : QStringLiteral("置底"))
+                        .arg(n)
+                        .arg(edge < 0 ? QStringLiteral("Home") : QStringLiteral("End")));
+}
 
 void FlowIoDialog::duplicateSelectedToOtherTable(QTableWidget* from) {
   if (!from || !inTable_ || !outTable_) return;

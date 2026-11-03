@@ -42,6 +42,7 @@ class HostStrip : public QWidget {
   void modeToggleRequested();
   void continuousToggleRequested();
   void pauseRequested();
+  void stopRequested();
   void runOnceRequested();
   void runContinuousRequested();
   void cycleResetRequested();
