@@ -73,12 +73,16 @@ void VarWatchPanel::rebuild() {
       }
     }
     table_->setItem(row, 1, val);
-    if (k.compare(QStringLiteral("passGate"), Qt::CaseInsensitive) == 0) {
+    if (k.compare(QStringLiteral("passGate"), Qt::CaseInsensitive) == 0 ||
+        k.compare(QStringLiteral("urlOk"), Qt::CaseInsensitive) == 0) {
       if (auto* keyItem = table_->item(row, 0)) {
         QFont f = keyItem->font();
         f.setBold(true);
         keyItem->setFont(f);
       }
+      QFont vf = val->font();
+      vf.setBold(true);
+      val->setFont(vf);
     }
   }
 }

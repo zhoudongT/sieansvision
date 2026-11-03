@@ -238,12 +238,18 @@ void FilmstripBar::selectIndex(int index, bool emitSignal) {
   rebuilding_ = false;
   refreshCount();
   QImage probe(paths_.at(index));
+  const QString fname = QFileInfo(paths_.at(index)).fileName();
   status_->setText(probe.isNull()
-                       ? QFileInfo(paths_.at(index)).fileName()
-                       : QStringLiteral("%1 · %2×%3")
-                             .arg(QFileInfo(paths_.at(index)).fileName())
+                       ? QStringLiteral("%1/%2 · %3")
+                             .arg(index + 1)
+                             .arg(paths_.size())
+                             .arg(fname)
+                       : QStringLiteral("%1/%2 · %3×%4 · %5")
+                             .arg(index + 1)
+                             .arg(paths_.size())
                              .arg(probe.width())
-                             .arg(probe.height()));
+                             .arg(probe.height())
+                             .arg(fname));
   if (emitSignal) emit imageSelected(paths_.at(index));
 }
 

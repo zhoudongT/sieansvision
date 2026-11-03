@@ -183,11 +183,15 @@ bool CommHub::startTcp(QString* error) {
     connect(client_, &QTcpSocket::readyRead, this, &CommHub::onClientReadyRead);
     connect(client_, &QTcpSocket::errorOccurred, this, &CommHub::onSocketError);
     connect(client_, &QTcpSocket::disconnected, this, &CommHub::onClientDisconnected);
+    reconnectAttempts_ = 0;
     connect(client_, &QTcpSocket::connected, this, [this, host, port]() {
       if (reconnectTimer_) reconnectTimer_->stop();
+      reconnectAttempts_ = 0;
+      if (reconnectTimer_) reconnectTimer_->setInterval(1500);
       tcpStatus_ = QStringLiteral("connected %1:%2").arg(host).arg(port);
       emit statusChanged(tcpStatus_);
-      appendTranscript(QStringLiteral("SYS"), tcpStatus_);
+      appendTranscript(QStringLiteral("SYS"),
+                       QStringLiteral("%1 · attempts reset").arg(tcpStatus_));
     });
     client_->connectToHost(host, port);
     tcpStatus_ = QStringLiteral("connecting %1:%2").arg(host).arg(port);
@@ -216,7 +220,11 @@ bool CommHub::startTcp(QString* error) {
 
 void CommHub::stopTcp() {
   reconnectEnabled_ = false;
-  if (reconnectTimer_) reconnectTimer_->stop();
+  reconnectAttempts_ = 0;
+  if (reconnectTimer_) {
+    reconnectTimer_->stop();
+    reconnectTimer_->setInterval(1500);
+  }
   for (QTcpSocket* s : peers_) {
     if (s) {
       s->disconnectFromHost();
@@ -333,11 +341,14 @@ void CommHub::tryReconnect() {
     connect(client_, &QTcpSocket::disconnected, this, &CommHub::onClientDisconnected);
     connect(client_, &QTcpSocket::connected, this, [this]() {
       if (reconnectTimer_) reconnectTimer_->stop();
+      reconnectAttempts_ = 0;
+      if (reconnectTimer_) reconnectTimer_->setInterval(1500);
       tcpStatus_ = QStringLiteral("connected %1:%2")
                        .arg(reconnectHost_)
                        .arg(reconnectPort_);
       emit statusChanged(tcpStatus_);
-      appendTranscript(QStringLiteral("SYS"), tcpStatus_);
+      appendTranscript(QStringLiteral("SYS"),
+                       QStringLiteral("%1 · attempts reset").arg(tcpStatus_));
     });
   }
   client_->abort();

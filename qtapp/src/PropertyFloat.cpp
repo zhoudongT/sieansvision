@@ -155,7 +155,8 @@ void PropertyFloat::showForStep(const FlowStep& step) {
   nodeId_ = step.id;
   baseline_ = QVariantMap(step.params);
   setNodeTitle(QStringLiteral("属性 · %1").arg(step.name),
-               QStringLiteral("%1 · %2").arg(step.operation, step.runState));
+               QStringLiteral("%1 · %2 · %3")
+                   .arg(step.operation, step.runState, step.id.left(8)));
   panel_->showStep(step);
   show();
   raise();

@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -430,6 +430,18 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
         if (name == QLatin1String("upper"))
           return args.isEmpty() ? QString()
                                 : evalRec(args[0]).toString().toUpper();
+        if (name == QLatin1String("trim") || name == QLatin1String("strip"))
+          return args.isEmpty() ? QString()
+                                : evalRec(args[0]).toString().trimmed();
+        if (name == QLatin1String("replace")) {
+          if (args.size() < 3) return args.isEmpty() ? QString()
+                                                     : evalRec(args[0]).toString();
+          QString hay = evalRec(args[0]).toString();
+          const QString from = evalRec(args[1]).toString();
+          const QString to = evalRec(args[2]).toString();
+          if (!from.isEmpty()) hay.replace(from, to);
+          return hay;
+        }
       }
     }
 
@@ -539,6 +551,15 @@ QStringList exprSelfTest() {
   check(QStringLiteral("lower"),
         ev.eval(QStringLiteral("lower(%1.text)").arg(sid)),
         QStringLiteral("hello"));
+  check(QStringLiteral("trim"),
+        ev.eval(QStringLiteral("trim('  HI  ')")),
+        QStringLiteral("HI"));
+  check(QStringLiteral("strip"),
+        ev.eval(QStringLiteral("strip('  HI  ')")),
+        QStringLiteral("HI"));
+  check(QStringLiteral("replace"),
+        ev.eval(QStringLiteral("replace(%1.text, 'LL', 'xx')").arg(sid)),
+        QStringLiteral("HExxO"));
   return fails;
 }
 
