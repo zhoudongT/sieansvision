@@ -72,7 +72,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   chips_->setObjectName(QStringLiteral("muted"));
   chips_->setWordWrap(true);
   chips_->setCursor(Qt::PointingHandCursor);
-  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+K/V 复制/粘贴键 · 单击复制全文"));
+  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+K/V 复制/粘贴键 · Alt+←→ 调序 · 单击复制全文"));
   chips_->installEventFilter(this);
   root->addWidget(chips_);
   setStyleSheet(QStringLiteral("background:#232528;border-top:1px solid #4a4e54;"));
@@ -130,16 +130,18 @@ void HostStrip::refreshCycleChip() {
 }
 
 void HostStrip::refreshChips(const QVariantMap& vars) {
+  if (!vars.isEmpty()) lastVars_ = vars;
+  const QVariantMap& src = vars.isEmpty() ? lastVars_ : vars;
   if (watchKeys_.isEmpty()) {
     chips_->setText({});
     return;
   }
   QStringList parts;
   for (const QString& k : watchKeys_) {
-    parts << QStringLiteral("%1=%2").arg(k, vars.value(k).toString().left(24));
+    parts << QStringLiteral("%1=%2").arg(k, src.value(k).toString().left(24));
   }
   // also surface bound I/O output names if present
-  for (auto it = vars.begin(); it != vars.end(); ++it) {
+  for (auto it = src.begin(); it != src.end(); ++it) {
     if (it.key().startsWith(QStringLiteral("io.")))
       parts << QStringLiteral("%1=%2").arg(it.key(), it.value().toString().left(20));
   }
@@ -422,6 +424,7 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       if (auto* clip = QGuiApplication::clipboard()) clip->setText(js);
       if (detail_) detail_->setToolTip(QStringLiteral("已复制良率JSON · Ctrl+Shift+J"));
       return true;
+    }
     if (ke->key() == Qt::Key_V && (ke->modifiers() & Qt::ControlModifier) &&
         (ke->modifiers() & Qt::ShiftModifier)) {
       pasteWatchKeysFromClipboard();
@@ -432,6 +435,10 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       copyWatchKeys();
       return true;
     }
+    if ((ke->key() == Qt::Key_Left || ke->key() == Qt::Key_Right) &&
+        (ke->modifiers() & Qt::AltModifier)) {
+      moveWatchKey(ke->key() == Qt::Key_Left ? -1 : +1);
+      return true;
     }
   }
   return QWidget::eventFilter(obj, event);
@@ -481,6 +488,25 @@ void HostStrip::pasteWatchKeysFromClipboard() {
     chips_->setToolTip(QStringLiteral("已粘贴监视键 %1 · Ctrl+Shift+V").arg(keys.size()));
 }
 
+
+
+void HostStrip::moveWatchKey(int delta) {
+  if (watchKeys_.size() < 2 || delta == 0) {
+    if (chips_) chips_->setToolTip(QStringLiteral("监视键不足 · Alt+←→"));
+    return;
+  }
+  if (delta < 0) {
+    const QString head = watchKeys_.takeFirst();
+    watchKeys_.append(head);
+  } else {
+    const QString tail = watchKeys_.takeLast();
+    watchKeys_.prepend(tail);
+  }
+  emit watchKeysChanged(watchKeys_);
+  refreshChips({});
+  if (chips_)
+    chips_->setToolTip(QStringLiteral("监视键轮转 · 首=%1 · Alt+←→").arg(watchKeys_.first()));
+}
 
 void HostStrip::copyWatchKeys() {
   const QString line = watchKeys_.join(QLatin1Char(','));

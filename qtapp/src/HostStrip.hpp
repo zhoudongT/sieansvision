@@ -29,6 +29,7 @@ class HostStrip : public QWidget {
   void copyRunStats();
   void pasteWatchKeysFromClipboard();
   void copyWatchKeys();
+  void moveWatchKey(int delta);
   int okStreak() const { return okStreak_; }
   int ngCount() const { return ngCount_; }
 
@@ -55,6 +56,7 @@ class HostStrip : public QWidget {
   QLabel* modeChip_ = nullptr;
   QLabel* cycleChip_ = nullptr;
   QStringList watchKeys_;
+  QVariantMap lastVars_;
   bool alarmOn_ = false;
   QString alarmReason_;
   QString tcpStatus_;
