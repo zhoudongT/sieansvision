@@ -55,37 +55,27 @@ QString CommHub::deviceProtocol(const QString& name) const {
 
 QString CommHub::expandTemplate(const QString& tmpl, const QVariantMap& vars) {
   QString out = tmpl;
+  auto applyRe = [&](const QRegularExpression& re, bool requireKey) {
+    QRegularExpressionMatchIterator it = re.globalMatch(out);
+    struct Rep { int start; int len; QString val; };
+    QVector<Rep> reps;
+    while (it.hasNext()) {
+      const auto m = it.next();
+      const QString key = m.captured(1);
+      if (requireKey && !vars.contains(key)) continue;
+      reps.push_back({static_cast<int>(m.capturedStart()), static_cast<int>(m.capturedLength()),
+                      vars.value(key).toString()});
+    }
+    for (int i = reps.size() - 1; i >= 0; --i)
+      out.replace(reps[i].start, reps[i].len, reps[i].val);
+  };
   // ${flow.x} / ${x}
-  {
-    QRegularExpression re(QStringLiteral(R"(\$\{(?:flow\.)?([A-Za-z_][A-Za-z0-9_]*)\})"));
-    QRegularExpressionMatchIterator it = re.globalMatch(out);
-    struct Rep { int start; int len; QString val; };
-    QVector<Rep> reps;
-    while (it.hasNext()) {
-      const auto m = it.next();
-      const QString key = m.captured(1);
-      reps.push_back({static_cast<int>(m.capturedStart()), static_cast<int>(m.capturedLength()),
-                      vars.value(key).toString()});
-    }
-    for (int i = reps.size() - 1; i >= 0; --i)
-      out.replace(reps[i].start, reps[i].len, reps[i].val);
-  }
+  applyRe(QRegularExpression(QStringLiteral(R"(\$\{(?:flow\.)?([A-Za-z_][A-Za-z0-9_]*)\})")),
+          false);
+  // {{name}} mustache — before single braces so {{x}} is not eaten as {x}
+  applyRe(QRegularExpression(QStringLiteral(R"(\{\{([A-Za-z_][A-Za-z0-9_]*)\}\})")), true);
   // Named braces {barcodeText} — skip pure numeric {0}/{1} (format_data indices).
-  {
-    QRegularExpression re(QStringLiteral(R"(\{([A-Za-z_][A-Za-z0-9_]*)\})"));
-    QRegularExpressionMatchIterator it = re.globalMatch(out);
-    struct Rep { int start; int len; QString val; };
-    QVector<Rep> reps;
-    while (it.hasNext()) {
-      const auto m = it.next();
-      const QString key = m.captured(1);
-      if (!vars.contains(key)) continue;
-      reps.push_back({static_cast<int>(m.capturedStart()), static_cast<int>(m.capturedLength()),
-                      vars.value(key).toString()});
-    }
-    for (int i = reps.size() - 1; i >= 0; --i)
-      out.replace(reps[i].start, reps[i].len, reps[i].val);
-  }
+  applyRe(QRegularExpression(QStringLiteral(R"(\{([A-Za-z_][A-Za-z0-9_]*)\})")), true);
   return out;
 }
 

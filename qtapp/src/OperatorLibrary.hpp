@@ -6,6 +6,7 @@
 class QListWidget;
 class QListWidgetItem;
 class QLineEdit;
+class QEvent;
 
 namespace sieans_qt {
 
@@ -23,6 +24,10 @@ class OperatorLibrary : public QWidget {
   static QVector<OperatorDef> catalog();
   static OperatorDef findDef(const QString& key);
   void setCategoryFilter(const QString& category);
+  void focusSearch();
+
+ protected:
+  bool eventFilter(QObject* obj, QEvent* event) override;
 
  signals:
   void operatorActivated(const QString& key, const QString& name);

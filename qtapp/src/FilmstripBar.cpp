@@ -11,6 +11,10 @@
 #include <QPainter>
 #include <QPushButton>
 #include <QVBoxLayout>
+#include <QKeyEvent>
+#include <QEvent>
+#include <QApplication>
+#include <QWidget>
 
 namespace sieans_qt {
 namespace {
@@ -38,12 +42,20 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   add->setFixedWidth(28);
   auto* folder = new QPushButton(QStringLiteral("文件夹"));
   folder->setToolTip(QStringLiteral("添加图像文件夹"));
+  auto* prev = new QPushButton(QStringLiteral("◀"));
+  prev->setToolTip(QStringLiteral("上一张 · ←"));
+  prev->setFixedWidth(28);
+  auto* next = new QPushButton(QStringLiteral("▶"));
+  next->setToolTip(QStringLiteral("下一张 · →"));
+  next->setFixedWidth(28);
   auto* del = new QPushButton(QStringLiteral("删除"));
-  del->setToolTip(QStringLiteral("删除选中图像"));
+  del->setToolTip(QStringLiteral("删除选中图像 · Del"));
   head->addWidget(countLabel_);
   head->addWidget(status_, 1);
   head->addWidget(autoSwitch_);
   head->addWidget(runAll);
+  head->addWidget(prev);
+  head->addWidget(next);
   head->addWidget(add);
   head->addWidget(folder);
   head->addWidget(del);
@@ -68,6 +80,8 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   connect(add, &QPushButton::clicked, this, &FilmstripBar::addImagesRequested);
   connect(folder, &QPushButton::clicked, this, &FilmstripBar::addFolderRequested);
   connect(runAll, &QPushButton::clicked, this, &FilmstripBar::runAllRequested);
+  connect(prev, &QPushButton::clicked, this, &FilmstripBar::selectPrev);
+  connect(next, &QPushButton::clicked, this, &FilmstripBar::selectNext);
   connect(del, &QPushButton::clicked, this, [this]() {
     if (index_ < 0 || index_ >= paths_.size()) return;
     paths_.removeAt(index_);
@@ -91,7 +105,11 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
       "QListWidget#filmstripList{background:#1a1b1d;border:0;color:#ddd;outline:0;}"
       "QListWidget#filmstripList::item{padding:1px;border:1px solid #3a3d42;border-radius:3px;}"
       "QListWidget#filmstripList::item:hover{border:1px solid #6a7078;background:#26282c;}"
-      "QListWidget#filmstripList::item:selected{border:1px solid #e67a2e;background:#2a2d32;}"));
+      "QListWidget#filmstripList::item:selected{"
+      "border:2px solid #e67a2e;background:#322820;color:#f0e6dc;}"));
+  setFocusPolicy(Qt::StrongFocus);
+  list_->setFocusPolicy(Qt::StrongFocus);
+  list_->installEventFilter(this);
   refreshCount();
 }
 
@@ -136,8 +154,16 @@ void FilmstripBar::rebuildThumbs() {
   rebuilding_ = true;
   list_->clear();
   for (const QString& path : paths_) {
-    auto* item = new QListWidgetItem(makeThumb(path), QFileInfo(path).fileName());
-    item->setToolTip(path);
+    const QFileInfo fi(path);
+    auto* item = new QListWidgetItem(makeThumb(path), fi.completeBaseName().left(10));
+    QImage probe(path);
+    const QString tip = probe.isNull()
+                            ? path
+                            : QStringLiteral("%1\n%2×%3")
+                                  .arg(path)
+                                  .arg(probe.width())
+                                  .arg(probe.height());
+    item->setToolTip(tip);
     item->setData(Qt::UserRole, path);
     item->setTextAlignment(Qt::AlignHCenter | Qt::AlignTop);
     list_->addItem(item);
@@ -197,6 +223,54 @@ void FilmstripBar::advance() {
   if (paths_.size() < 2) return;
   const int next = (qMax(0, index_) + 1) % paths_.size();
   selectIndex(next, true);
+}
+
+void FilmstripBar::selectPrev() {
+  if (paths_.isEmpty()) return;
+  const int cur = qMax(0, index_);
+  selectIndex((cur - 1 + paths_.size()) % paths_.size(), true);
+}
+
+void FilmstripBar::selectNext() {
+  if (paths_.isEmpty()) return;
+  const int cur = qMax(0, index_);
+  selectIndex((cur + 1) % paths_.size(), true);
+}
+
+void FilmstripBar::keyPressEvent(QKeyEvent* event) {
+  if (event->key() == Qt::Key_Left) {
+    selectPrev();
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_Right) {
+    selectNext();
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) {
+    if (index_ >= 0 && index_ < paths_.size()) {
+      paths_.removeAt(index_);
+      const int next = qMin(index_, paths_.size() - 1);
+      rebuildThumbs();
+      if (next >= 0) selectIndex(next, true);
+      else {
+        index_ = -1;
+        refreshCount();
+      }
+    }
+    event->accept();
+    return;
+  }
+  QWidget::keyPressEvent(event);
+}
+
+bool FilmstripBar::eventFilter(QObject* obj, QEvent* event) {
+  if (obj == list_ && event->type() == QEvent::KeyPress) {
+    keyPressEvent(static_cast<QKeyEvent*>(event));
+    return event->isAccepted();
+  }
+  return QWidget::eventFilter(obj, event);
 }
 
 }  // namespace sieans_qt

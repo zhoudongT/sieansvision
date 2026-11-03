@@ -137,6 +137,22 @@
       "variables": {}
     },
     {
+      "id": "g7b8193a4b5c6d7e",
+      "name": "结果门限 OK/NG",
+      "operation": "result_gate",
+      "position": {
+        "x": 300,
+        "y": 500
+      },
+      "imageFrom": "c3d4e5f60718293a",
+      "runState": "等待执行",
+      "params": {
+        "sourceVar": "barcodeCount",
+        "minCount": 1,
+        "passVar": "passGate"
+      }
+    },
+    {
       "id": "d4e5f60718293a4b",
       "operation": "format_data",
       "name": "格式化二维码报文",
@@ -150,9 +166,9 @@
       "reference": "",
       "position": {
         "x": 300,
-        "y": 560
+        "y": 620
       },
-      "imageFrom": "c3d4e5f60718293a",
+      "imageFrom": "g7b8193a4b5c6d7e",
       "variables": {}
     },
     {
@@ -174,7 +190,7 @@
       "reference": "",
       "position": {
         "x": 300,
-        "y": 680
+        "y": 740
       },
       "imageFrom": "d4e5f60718293a4b",
       "variables": {}
@@ -185,7 +201,7 @@
       "operation": "receive_data",
       "position": {
         "x": 300,
-        "y": 800
+        "y": 860
       },
       "imageFrom": "e5f60718293a4b5c",
       "runState": "等待执行",
@@ -219,8 +235,15 @@
       "toPort": "top"
     },
     {
-      "id": "e4",
+      "id": "e3b",
       "from": "c3d4e5f60718293a",
+      "to": "g7b8193a4b5c6d7e",
+      "fromPort": "bottom",
+      "toPort": "top"
+    },
+    {
+      "id": "e3c",
+      "from": "g7b8193a4b5c6d7e",
       "to": "d4e5f60718293a4b",
       "fromPort": "bottom",
       "toPort": "top"

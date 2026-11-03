@@ -69,9 +69,12 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   cancel->setObjectName(QStringLiteral("propertyFloatRun"));
   auto* ok = new QPushButton(QStringLiteral("确定"));
   ok->setObjectName(QStringLiteral("propertyFloatOk"));
+  auto* hint = new QLabel(QStringLiteral("Esc 放弃 · Enter 保留 · Ctrl+Enter 确定"));
+  hint->setObjectName(QStringLiteral("propertyFloatHint"));
+  hint->setStyleSheet(QStringLiteral("color:#8a9098;font-size:11px;"));
   foot->addWidget(cont);
   foot->addWidget(exec);
-  foot->addStretch(1);
+  foot->addWidget(hint, 1);
   foot->addWidget(cancel);
   foot->addWidget(ok);
   root->addWidget(footer);
@@ -161,9 +164,11 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
     return;
   }
   if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
-    // Enter: commit current edits (editingFinished already flushed).
-    // Ctrl+Enter: commit + hide (VM-ish apply).
+    // Enter: keep float open (edits already flushed via editingFinished).
+    // Ctrl+Enter: commit baseline + hide (VM-ish apply).
     if (event->modifiers() & Qt::ControlModifier) {
+      if (panel_) baseline_ = panel_->currentParams();
+      emit acceptedCommit();
       hide();
     }
     event->accept();

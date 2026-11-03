@@ -7,6 +7,8 @@
 #include <QDrag>
 #include <QMimeData>
 #include <QLineEdit>
+#include <QKeyEvent>
+#include <QEvent>
 #include <QListWidget>
 #include <QPainter>
 #include <QPixmap>
@@ -209,6 +211,10 @@ OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
                                    item->data(Qt::UserRole + 1).toString());
           });
   connect(search_, &QLineEdit::textChanged, this, [this](const QString&) { rebuild(); });
+  search_->setPlaceholderText(QStringLiteral("搜索… Ctrl+F"));
+  search_->installEventFilter(this);
+  list_->installEventFilter(this);
+  installEventFilter(this);
   rebuild();
 }
 
@@ -235,7 +241,8 @@ void OperatorLibrary::rebuild() {
     if (!categoryFilter_.isEmpty() && def.category != categoryFilter_) continue;
     if (!q.isEmpty() && !def.name.contains(q, Qt::CaseInsensitive) &&
         !def.key.contains(q, Qt::CaseInsensitive) &&
-        !def.category.contains(q, Qt::CaseInsensitive))
+        !def.category.contains(q, Qt::CaseInsensitive) &&
+        !def.tip.contains(q, Qt::CaseInsensitive))
       continue;
     if (def.category != lastCat) {
       lastCat = def.category;
@@ -256,7 +263,7 @@ void OperatorLibrary::rebuild() {
     item->setData(Qt::UserRole + 1, def.name);
     item->setToolTip(QStringLiteral("[%1] %2 · 拖到画布").arg(def.category, def.tip));
     item->setForeground(accent);
-    item->setSizeHint(QSize(0, 32));
+    item->setSizeHint(QSize(0, 28));
     list_->addItem(item);
   }
   if (list_->count() == 0) {
@@ -265,6 +272,33 @@ void OperatorLibrary::rebuild() {
     empty->setForeground(QColor(theme::TEXT_DIM));
     list_->addItem(empty);
   }
+}
+
+void OperatorLibrary::focusSearch() {
+  if (!search_) return;
+  search_->setFocus(Qt::ShortcutFocusReason);
+  search_->selectAll();
+}
+
+bool OperatorLibrary::eventFilter(QObject* obj, QEvent* event) {
+  if (event->type() == QEvent::KeyPress) {
+    auto* ke = static_cast<QKeyEvent*>(event);
+    if ((ke->modifiers() & Qt::ControlModifier) && ke->key() == Qt::Key_F) {
+      focusSearch();
+      return true;
+    }
+    if (ke->key() == Qt::Key_Escape && obj == search_ && search_ &&
+        !search_->text().isEmpty()) {
+      search_->clear();
+      return true;
+    }
+    if (ke->key() == Qt::Key_Slash && obj != search_ &&
+        !(ke->modifiers() & (Qt::ControlModifier | Qt::AltModifier))) {
+      focusSearch();
+      return true;
+    }
+  }
+  return QWidget::eventFilter(obj, event);
 }
 
 }  // namespace sieans_qt

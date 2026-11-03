@@ -6,6 +6,8 @@
 class QLabel;
 class QListWidget;
 class QCheckBox;
+class QKeyEvent;
+class QEvent;
 
 namespace sieans_qt {
 
@@ -24,6 +26,12 @@ class FilmstripBar : public QWidget {
   bool autoSwitch() const;
   void advance();
   QStringList paths() const { return paths_; }
+  void selectPrev();
+  void selectNext();
+
+ protected:
+  void keyPressEvent(QKeyEvent* event) override;
+  bool eventFilter(QObject* obj, QEvent* event) override;
 
  signals:
   void imageSelected(const QString& path);

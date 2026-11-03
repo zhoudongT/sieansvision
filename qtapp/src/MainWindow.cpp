@@ -1584,6 +1584,14 @@ void MainWindow::onRunOnce() {
     if (frame.save(snap)) filmstrip_->addPaths({snap});
   }
   runPipeline(frame, true);
+  if (filmstrip_ && document_.cameraBackend() == QLatin1String("soft")) {
+    filmstrip_->setStatus(
+        QStringLiteral("soft %1×%2 · 码%3 · gate%4")
+            .arg(frame.width())
+            .arg(frame.height())
+            .arg(flow_vars_.value(QStringLiteral("barcodeCount")).toInt())
+            .arg(flow_vars_.value(QStringLiteral("passGate")).toInt()));
+  }
   setBusy(false);
 }
 
@@ -1783,7 +1791,8 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
     s.params = {{QStringLiteral("targetVar"), QStringLiteral("lastRecv")}};
   } else if (key == QLatin1String("result_gate")) {
     s.params = {{QStringLiteral("minCount"), 1},
-                {QStringLiteral("sourceVar"), QStringLiteral("barcodeCount")}};
+                {QStringLiteral("sourceVar"), QStringLiteral("barcodeCount")},
+                {QStringLiteral("passVar"), QStringLiteral("passGate")}};
   } else if (key == QLatin1String("save_image")) {
     s.params = {{QStringLiteral("dir"),
                  QStringLiteral("/home/allen/文档/sieansvision/artifacts")}};

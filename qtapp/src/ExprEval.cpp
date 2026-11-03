@@ -312,6 +312,44 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
       }
     }
 
+    // "needle" in haystack  (substring / membership)
+    {
+      // split on bare " in " outside quotes — simple scan
+      int depth = 0;
+      bool inStr = false;
+      QChar qch;
+      for (int i = 0; i + 4 <= s.size(); ++i) {
+        const QChar c = s.at(i);
+        if (inStr) {
+          if (c == qch) inStr = false;
+          continue;
+        }
+        if (c == QLatin1Char('"') || c == QLatin1Char('\'')) {
+          inStr = true;
+          qch = c;
+          continue;
+        }
+        if (c == QLatin1Char('(')) {
+          ++depth;
+          continue;
+        }
+        if (c == QLatin1Char(')')) {
+          --depth;
+          continue;
+        }
+        if (depth == 0 && s.mid(i, 4) == QLatin1String(" in ") &&
+            (i == 0 || !s.at(i - 1).isLetterOrNumber()) ) {
+          const QString L = s.left(i).trimmed();
+          const QString R = s.mid(i + 4).trimmed();
+          if (!L.isEmpty() && !R.isEmpty()) {
+            const QString left = evalRec(L).toString();
+            const QString right = evalRec(R).toString();
+            return right.contains(left) ? 1 : 0;
+          }
+        }
+      }
+    }
+
     // + -
     pos = findTopLevel(s, {QStringLiteral("+"), QStringLiteral("-")});
     if (pos > 0) {  // pos==0 would be unary
@@ -467,6 +505,10 @@ QStringList exprSelfTest() {
         ev.eval(QStringLiteral("((%1.count or 0) >= 1) and ((%1.confidence or 0) > 0.5)")
                     .arg(sid)),
         QStringLiteral("1"));
+  check(QStringLiteral("in"),
+        ev.eval(QStringLiteral("\"ELL\" in %1.text").arg(sid)), QStringLiteral("1"));
+  check(QStringLiteral("in-miss"),
+        ev.eval(QStringLiteral("\"ZZZ\" in %1.text").arg(sid)), QStringLiteral("0"));
   return fails;
 }
 

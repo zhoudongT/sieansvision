@@ -268,21 +268,26 @@ void SieansDocument::seedGentlQrDemo() {
                         {QStringLiteral("expr"), QStringLiteral("barcodeCount >= 1")},
                         {QStringLiteral("enabled"), true}},
         }}});
+  add(QStringLiteral("gate1"), QStringLiteral("结果门限 OK/NG"),
+      QStringLiteral("result_gate"), 300, 500, QStringLiteral("var1"),
+      {{QStringLiteral("sourceVar"), QStringLiteral("barcodeCount")},
+       {QStringLiteral("minCount"), 1},
+       {QStringLiteral("passVar"), QStringLiteral("passGate")}});
   add(QStringLiteral("fmt1"), QStringLiteral("格式化报文"),
-      QStringLiteral("format_data"), 300, 500, QStringLiteral("var1"),
+      QStringLiteral("format_data"), 300, 620, QStringLiteral("gate1"),
       {{QStringLiteral("template"),
         QStringLiteral("BARCODE ok={passGate} count={barcodeCount} text={barcodeText}")},
        {QStringLiteral("args"), QStringLiteral("passGate,barcodeCount,barcodeText")},
        {QStringLiteral("targetVar"), QStringLiteral("formatted")}});
   add(QStringLiteral("tx1"), QStringLiteral("发送数据 · LocalLoop/TCP"),
-      QStringLiteral("send_data"), 300, 620, QStringLiteral("fmt1"),
+      QStringLiteral("send_data"), 300, 740, QStringLiteral("fmt1"),
       {{QStringLiteral("device"), QStringLiteral("LocalLoop")},
        {QStringLiteral("message"),
         QStringLiteral(
             "BARCODE ok=${flow.passGate} count=${flow.barcodeCount} "
             "text=${flow.barcodeText}")}});
   add(QStringLiteral("rx1"), QStringLiteral("接收回环"),
-      QStringLiteral("receive_data"), 300, 740, QStringLiteral("tx1"),
+      QStringLiteral("receive_data"), 300, 860, QStringLiteral("tx1"),
       {{QStringLiteral("device"), QStringLiteral("LocalLoop")},
        {QStringLiteral("targetVar"), QStringLiteral("lastRecv")},
        {QStringLiteral("timeoutMs"), 200}});
@@ -297,7 +302,8 @@ void SieansDocument::seedGentlQrDemo() {
   link(QStringLiteral("source"), QStringLiteral("cam1"));
   link(QStringLiteral("cam1"), QStringLiteral("qr1"));
   link(QStringLiteral("qr1"), QStringLiteral("var1"));
-  link(QStringLiteral("var1"), QStringLiteral("fmt1"));
+  link(QStringLiteral("var1"), QStringLiteral("gate1"));
+  link(QStringLiteral("gate1"), QStringLiteral("fmt1"));
   link(QStringLiteral("fmt1"), QStringLiteral("tx1"));
   link(QStringLiteral("tx1"), QStringLiteral("rx1"));
 
