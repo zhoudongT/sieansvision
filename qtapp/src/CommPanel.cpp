@@ -55,7 +55,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   deviceTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
   deviceTable_->setSelectionMode(QAbstractItemView::SingleSelection);
   deviceTable_->setMaximumHeight(120);
-  deviceTable_->setToolTip(QStringLiteral("设备表 · F2 改名 · Insert/Ctrl+N 增 · Ctrl+D 复制 · Shift+Del 删 · Ctrl+X 剪切 · Ctrl+Shift+V 合并粘贴 · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/底 · Ctrl+Shift+Y 反序 · Alt+Shift+E/D 全启/全停 · Enter 写回 · Space/Alt 启停 · Ctrl+Shift+J/O JSON · 中键端点 · 右键复制 · 双击备注"));
+  deviceTable_->setToolTip(QStringLiteral("设备表 · F2 改名 · Insert/Ctrl+N 增 · Ctrl+D 复制 · Shift+Del 删 · Ctrl+X 剪切 · Ctrl+Shift+V 合并粘贴 · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/底 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 按名排序 · Alt+Shift+E/D 全启/全停 · Enter 写回 · Space/Alt 启停 · Ctrl+Shift+J/O JSON · 中键端点 · 右键复制 · 双击备注"));
   deviceTable_->setStatusTip(QStringLiteral("通信 · 设备表 · LocalBus/TCP · 中键端点"));
   deviceTable_->installEventFilter(this);
   lay->addWidget(deviceTable_);
@@ -594,6 +594,11 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
     if (ke->key() == Qt::Key_Y && (ke->modifiers() & Qt::ControlModifier) &&
         (ke->modifiers() & Qt::ShiftModifier)) {
       reverseDeviceOrder();
+      return true;
+    }
+    if (ke->key() == Qt::Key_S && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier)) {
+      sortDevicesByName();
       return true;
     }
     if ((ke->modifiers() & Qt::AltModifier) && (ke->modifiers() & Qt::ShiftModifier) &&
@@ -1564,6 +1569,32 @@ void CommPanel::reverseDeviceOrder() {
   refreshDevices();
   if (status_)
     status_->setToolTip(QStringLiteral("设备已反序 %1 · Ctrl+Shift+Y").arg(devices.size()));
+}
+
+
+void CommPanel::sortDevicesByName() {
+  if (!hub_ || !deviceTable_ || deviceTable_->rowCount() < 2) {
+    if (status_) status_->setToolTip(QStringLiteral("设备不足 · Ctrl+Shift+S"));
+    return;
+  }
+  QVariantMap cm = hub_->commManager();
+  QVariantList devices = cm.value(QStringLiteral("devices")).toList();
+  if (devices.size() < 2) {
+    if (status_) status_->setToolTip(QStringLiteral("设备不足 · Ctrl+Shift+S"));
+    return;
+  }
+  std::stable_sort(devices.begin(), devices.end(),
+                   [](const QVariant& a, const QVariant& b) {
+                     return QString::localeAwareCompare(
+                                a.toMap().value(QStringLiteral("name")).toString(),
+                                b.toMap().value(QStringLiteral("name")).toString()) < 0;
+                   });
+  cm.insert(QStringLiteral("devices"), devices);
+  hub_->loadFromCommManager(cm);
+  emit requestSaveComm(cm);
+  refreshDevices();
+  if (status_)
+    status_->setToolTip(QStringLiteral("设备已按名排序 %1 · Ctrl+Shift+S").arg(devices.size()));
 }
 
 void CommPanel::moveSelectedDeviceToEdge(int edge) {

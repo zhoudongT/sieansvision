@@ -82,6 +82,8 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
     connect(scStar, &QShortcut::activated, this, &VarWatchPanel::toggleSelectedHostWatch);
     auto* scClr = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+Backspace")), this);
     connect(scClr, &QShortcut::activated, this, &VarWatchPanel::clearAllWatchKeys);
+    auto* scSort = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+S")), this);
+    connect(scSort, &QShortcut::activated, this, &VarWatchPanel::sortWatchKeys);
   }
   table_ = new QTableWidget(0, 2);
   table_->setHorizontalHeaderLabels(
@@ -114,7 +116,7 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
   table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · 中键 ${flow} · 右键键=值 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/置底 · Esc 取消选中 · F2 聚焦表 · Ctrl+Shift+J JSON"));
   table_->installEventFilter(this);
   if (filterEdit_) filterEdit_->installEventFilter(this);
-  setStatusTip(QStringLiteral("变量监视 · ★=Host条 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · 中键token/右键键=值 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/置底 · Ctrl+Shift+Space 批量★ · Ctrl+Shift+Bksp 清空 · Ctrl+X 剪切 · Ctrl+Shift+H ★键 · Ctrl+Shift+Y 反序 · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
+  setStatusTip(QStringLiteral("变量监视 · ★=Host条 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · 中键token/右键键=值 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/置底 · Ctrl+Shift+Space 批量★ · Ctrl+Shift+Bksp 清空 · Ctrl+X 剪切 · Ctrl+Shift+H ★键 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
   keys_ = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
            QStringLiteral("passGate"), QStringLiteral("urlOk"),
@@ -681,6 +683,22 @@ void VarWatchPanel::clearAllWatchKeys() {
   emit watchListChanged(keys_);
   QToolTip::showText(QCursor::pos(),
                      QStringLiteral("已清空监视 %1 · Ctrl+Shift+Bksp").arg(n), table_);
+}
+
+
+void VarWatchPanel::sortWatchKeys() {
+  if (keys_.size() < 2) {
+    QToolTip::showText(QCursor::pos(), QStringLiteral("监视不足 · Ctrl+Shift+S"), table_);
+    return;
+  }
+  std::sort(keys_.begin(), keys_.end(),
+            [](const QString& a, const QString& b) {
+              return QString::localeAwareCompare(a, b) < 0;
+            });
+  rebuild();
+  emit watchListChanged(keys_);
+  QToolTip::showText(QCursor::pos(),
+                     QStringLiteral("监视已排序 %1 · Ctrl+Shift+S").arg(keys_.size()), table_);
 }
 
 

@@ -74,7 +74,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   chips_->setObjectName(QStringLiteral("muted"));
   chips_->setWordWrap(true);
   chips_->setCursor(Qt::PointingHandCursor);
-  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+K/V 复制/粘贴键 · Alt+←→ 调序 · Ctrl+Shift+Y 反序 · Del/Bksp 删首 · Ctrl+Shift+Bksp 清空 · 单击复制全文"));
+  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+K/V 复制/粘贴键 · Alt+←→ 调序 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Del/Bksp 删首 · Ctrl+Shift+Bksp 清空 · 单击复制全文"));
   chips_->installEventFilter(this);
   root->addWidget(chips_);
   setStyleSheet(QStringLiteral("background:#232528;border-top:1px solid #4a4e54;"));
@@ -450,6 +450,11 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       reverseWatchKeys();
       return true;
     }
+    if (ke->key() == Qt::Key_S && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier)) {
+      sortWatchKeys();
+      return true;
+    }
     if ((ke->key() == Qt::Key_Delete || ke->key() == Qt::Key_Backspace) &&
         (ke->modifiers() & Qt::ControlModifier) && (ke->modifiers() & Qt::ShiftModifier)) {
       clearWatchKeys();
@@ -582,6 +587,24 @@ void HostStrip::reverseWatchKeys() {
                            .arg(watchKeys_.first()));
 }
 
+
+
+void HostStrip::sortWatchKeys() {
+  if (watchKeys_.size() < 2) {
+    if (chips_) chips_->setToolTip(QStringLiteral("监视键不足 · Ctrl+Shift+S"));
+    return;
+  }
+  std::sort(watchKeys_.begin(), watchKeys_.end(),
+            [](const QString& a, const QString& b) {
+              return QString::localeAwareCompare(a, b) < 0;
+            });
+  emit watchKeysChanged(watchKeys_);
+  refreshChips({});
+  if (chips_)
+    chips_->setToolTip(QStringLiteral("监视键已排序 %1 · Ctrl+Shift+S · 首=%2")
+                           .arg(watchKeys_.size())
+                           .arg(watchKeys_.first()));
+}
 
 void HostStrip::removeHeadWatchKey() {
   if (watchKeys_.isEmpty()) {

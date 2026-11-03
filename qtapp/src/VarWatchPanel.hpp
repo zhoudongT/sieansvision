@@ -31,6 +31,7 @@ class VarWatchPanel : public QWidget {
   void moveSelectedToEdge(int edge);
   void toggleSelectedHostWatch();
   void clearAllWatchKeys();
+  void sortWatchKeys();
   QStringList watchKeyList() const { return keys_; }
   QVariantMap variables() const { return vars_; }
 

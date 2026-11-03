@@ -66,6 +66,7 @@ class CommPanel : public QWidget {
   void removeSelectedDevice();
   void moveSelectedDevice(int delta);
   void moveSelectedDeviceToEdge(int edge);
+  void sortDevicesByName();
   void reverseDeviceOrder();
   void exportDevicesJson();
   void importDevicesJson();
