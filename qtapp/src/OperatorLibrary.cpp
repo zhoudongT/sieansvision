@@ -223,7 +223,7 @@ OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
           });
   connect(search_, &QLineEdit::textChanged, this, [this](const QString&) { rebuild(); });
   search_->setPlaceholderText(QStringLiteral("搜索… / 或 Ctrl+F · Esc 清空"));
-  search_->setToolTip(QStringLiteral("Toolbox 搜索 · Esc/Del/Backspace 清空(搜索/列表) · / 或 Ctrl+F/L 聚焦 · Enter 添加"));
+  search_->setToolTip(QStringLiteral("Toolbox 搜索 · Esc/Del/Backspace 清空(搜索/列表) · / 或 Ctrl+F/L 聚焦 · Enter 添加 · 模糊匹配 tip"));
   search_->installEventFilter(this);
   list_->installEventFilter(this);
   installEventFilter(this);
