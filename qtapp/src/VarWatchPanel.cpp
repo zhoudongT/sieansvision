@@ -49,9 +49,9 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
                                  table_);
             }
           });
-  table_->setToolTip(QStringLiteral("双击或 Ctrl+C 复制 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Esc 取消选中"));
+  table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Esc 取消选中"));
   table_->installEventFilter(this);
-  setStatusTip(QStringLiteral("变量监视 · 双击/Ctrl+C 复制 · Home/End/PgUp/PgDn · Esc 取消选中 · passGate/urlOk/lastRecv 高亮"));
+  setStatusTip(QStringLiteral("变量监视 · 双击/Ctrl+C/C 复制 · Home/End/PgUp/PgDn · Esc 取消选中 · passGate/urlOk/lastRecv 高亮"));
   keys_ = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
            QStringLiteral("passGate"), QStringLiteral("urlOk"),
@@ -74,6 +74,11 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
   };
   auto* sc = new QShortcut(QKeySequence::Copy, this);
   connect(sc, &QShortcut::activated, this, copySel);
+  {
+    auto* scC = new QShortcut(QKeySequence(Qt::Key_C), table_);
+    scC->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(scC, &QShortcut::activated, this, copySel);
+  }
   rebuild();
 }
 

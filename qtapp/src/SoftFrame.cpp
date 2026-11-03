@@ -132,8 +132,9 @@ QImage applySoftTone(const QImage& src, int exposureUs, double gainDb, int seq,
 }
 
 QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gainDb) {
-  const int w = qMax(16, width);
-  const int h = qMax(16, height);
+  // Force even canvas so letterbox origin & finder stay on integer grid.
+  const int w = qMax(16, width) & ~1;
+  const int h = qMax(16, height) & ~1;
   QImage img(w, h, QImage::Format_RGB888);
   img.fill(QColor(236, 236, 236));
   QPainter p(&img);
