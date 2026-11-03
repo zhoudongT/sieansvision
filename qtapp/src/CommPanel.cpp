@@ -189,7 +189,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   payloadEdit_ = new QLineEdit(
       QStringLiteral("BARCODE ok=${flow.passGate} text=${flow.barcodeText}"));
   payloadEdit_->setToolTip(
-      QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · 下方芯片插入 · Enter/Ctrl+Enter 试发 · Alt+↑↓ 历史 · Alt+Del 删当前 · Alt+Shift+Del 清空 · Alt+Shift+Y 反序 · Alt+Shift+S 排序 · Alt+Shift+U 去重 · LocalBus echo"));
+      QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · 下方芯片插入 · Enter/Ctrl+Enter 试发 · Alt+↑↓ 历史 · Alt+Del 删当前 · Alt+Shift+Del 清空 · Alt+Shift+Y 反序 · Alt+Shift+S 排序 · Alt+Shift+U 去重 · Alt+Shift+J JSON导出 · LocalBus echo"));
   form->addRow(QStringLiteral("报文"), payloadEdit_);
   payloadEdit_->installEventFilter(this);
   lay->addLayout(form);
@@ -701,6 +701,10 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
       }
       if (ke->key() == Qt::Key_S && (ke->modifiers() & Qt::ShiftModifier)) {
         sortPayloadHistory();
+        return true;
+      }
+      if (ke->key() == Qt::Key_J && (ke->modifiers() & Qt::ShiftModifier)) {
+        exportPayloadHistoryJson();
         return true;
       }
     }
@@ -1238,6 +1242,23 @@ void CommPanel::sortPayloadHistory() {
   }
   if (status_)
     status_->setToolTip(QStringLiteral("报文历史已排序 %1 · Alt+Shift+S").arg(payloadHistory_.size()));
+}
+
+void CommPanel::exportPayloadHistoryJson() {
+  if (payloadHistory_.isEmpty()) {
+    if (status_) status_->setToolTip(QStringLiteral("报文历史空 · Alt+Shift+J"));
+    return;
+  }
+  QJsonArray arr;
+  for (const QString& s : payloadHistory_) arr.append(s);
+  QJsonObject root;
+  root.insert(QStringLiteral("payloadHistory"), arr);
+  root.insert(QStringLiteral("count"), arr.size());
+  const QByteArray bytes = QJsonDocument(root).toJson(QJsonDocument::Compact);
+  if (auto* clip = QGuiApplication::clipboard())
+    clip->setText(QString::fromUtf8(bytes));
+  if (status_)
+    status_->setToolTip(QStringLiteral("已导出报文历史JSON %1 · Alt+Shift+J").arg(arr.size()));
 }
 
 void CommPanel::cycleFraming(int delta) {

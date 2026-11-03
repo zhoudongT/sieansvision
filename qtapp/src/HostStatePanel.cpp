@@ -153,7 +153,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   history_ = new QListWidget;
   history_->setObjectName(QStringLiteral("alarmHistory"));
   history_->setMinimumHeight(72);
-  history_->setToolTip(QStringLiteral("报警历史 · 双击/中键复制 · 右键/Ctrl+L 清空 · Del 删行 · Ctrl+X 剪切 · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/底 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Ctrl+Shift+J/V JSON导出/粘贴 · 最近 40 条"));
+  history_->setToolTip(QStringLiteral("报警历史 · 双击/中键复制 · 右键/Ctrl+L 清空 · Del 删行 · Ctrl+A 全选 · Ctrl+D 复制行 · Ctrl+X 剪切 · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/底 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Ctrl+Shift+J/V JSON导出/粘贴 · 最近 40 条"));
   history_->setStatusTip(QStringLiteral("Host · 报警历史 · Ctrl+L/Del/双击/中键"));
   history_->installEventFilter(this);
   history_->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -209,6 +209,10 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
     connect(scUp, &QShortcut::activated, this, [this]() { moveSelectedAlarm(-1); });
     auto* scDn = new QShortcut(QKeySequence(QStringLiteral("Alt+Down")), history_);
     connect(scDn, &QShortcut::activated, this, [this]() { moveSelectedAlarm(+1); });
+    auto* scA = new QShortcut(QKeySequence(QStringLiteral("Ctrl+A")), history_);
+    connect(scA, &QShortcut::activated, this, [this]() { selectAllAlarmHistory(); });
+    auto* scDup = new QShortcut(QKeySequence(QStringLiteral("Ctrl+D")), history_);
+    connect(scDup, &QShortcut::activated, this, [this]() { duplicateSelectedAlarmHistory(); });
 
     connect(history_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* it) {
       if (!it) return;
@@ -830,6 +834,43 @@ void HostStatePanel::moveSelectedAlarmToEdge(int edge) {
     if (modeHint_) modeHint_->setText(QStringLiteral("报警已置底 %1 · Ctrl+End").arg(texts.size()));
   }
   emit alarmHistoryChanged(alarmHistoryLines());
+}
+
+
+void HostStatePanel::selectAllAlarmHistory() {
+  if (!history_ || history_->count() <= 0) {
+    if (modeHint_) modeHint_->setText(QStringLiteral("报警空 · Ctrl+A"));
+    return;
+  }
+  history_->selectAll();
+  if (modeHint_)
+    modeHint_->setText(QStringLiteral("已全选报警 %1 · Ctrl+A").arg(history_->count()));
+}
+
+void HostStatePanel::duplicateSelectedAlarmHistory() {
+  if (!history_) return;
+  const auto selected = history_->selectedItems();
+  if (selected.isEmpty()) {
+    if (modeHint_) modeHint_->setText(QStringLiteral("未选中 · Ctrl+D"));
+    return;
+  }
+  QList<int> rows;
+  for (auto* it : selected) rows << history_->row(it);
+  std::sort(rows.begin(), rows.end());
+  // Insert copies after each original, bottom-up to keep indices
+  int added = 0;
+  for (int i = rows.size() - 1; i >= 0; --i) {
+    const int r = rows[i];
+    auto* src = history_->item(r);
+    if (!src) continue;
+    history_->insertItem(r + 1, src->text());
+    ++added;
+  }
+  // Cap at 40
+  while (history_->count() > 40) delete history_->takeItem(history_->count() - 1);
+  emit alarmHistoryChanged(alarmHistoryLines());
+  if (modeHint_)
+    modeHint_->setText(QStringLiteral("已复制报警 %1 · Ctrl+D").arg(added));
 }
 
 }  // namespace sieans_qt

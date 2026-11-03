@@ -56,6 +56,7 @@ class CommPanel : public QWidget {
   void reversePayloadHistory();
   void dedupePayloadHistory();
   void sortPayloadHistory();
+  void exportPayloadHistoryJson();
   void cycleFraming(int delta);
   void loadLastRxToPayload();
   void copyLastTxRx();

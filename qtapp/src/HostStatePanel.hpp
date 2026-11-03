@@ -48,6 +48,8 @@ class HostStatePanel : public QWidget {
   void dedupeAlarmHistory();
   void moveSelectedAlarm(int delta);
   void moveSelectedAlarmToEdge(int edge);
+  void selectAllAlarmHistory();
+  void duplicateSelectedAlarmHistory();
 
  signals:
   void startRequested();
