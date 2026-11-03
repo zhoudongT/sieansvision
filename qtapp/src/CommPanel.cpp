@@ -20,7 +20,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   lay->addWidget(title);
 
   status_ = new QLabel(QStringLiteral("TCP: idle"));
-  setStatusTip(QStringLiteral("通信面板 · LocalBus/TCP · peers/framing 在状态行 · 模板 ${flow.x}/{name}/{{name}}"));
+  setStatusTip(QStringLiteral("通信面板 · LocalBus/TCP · peers/framing(lf/crlf/raw/len4) · 模板 ${flow.x}/{name}/{{name}}"));
   status_->setObjectName(QStringLiteral("muted"));
   lay->addWidget(status_);
 

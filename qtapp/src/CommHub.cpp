@@ -1,4 +1,5 @@
 #include "CommHub.hpp"
+#include <QtEndian>
 
 #include <QDateTime>
 #include <QHostAddress>
@@ -133,12 +134,21 @@ bool CommHub::sendPayload(const QString& deviceName, const QString& payload,
 }
 
 void CommHub::sendTcpRaw(const QString& payload) {
-  QByteArray bytes = payload.toUtf8();
-  if (framing_ == QLatin1String("crlf"))
-    bytes.append("\r\n");
-  else if (framing_ == QLatin1String("lf") || framing_.isEmpty())
-    bytes.append('\n');
-  // raw / len4: send as-is (len4 simplified to raw for this wave)
+  QByteArray body = payload.toUtf8();
+  QByteArray bytes;
+  if (framing_ == QLatin1String("len4")) {
+    const quint32 n = quint32(body.size());
+    bytes.resize(4);
+    qToBigEndian(n, reinterpret_cast<uchar*>(bytes.data()));
+    bytes.append(body);
+  } else {
+    bytes = body;
+    if (framing_ == QLatin1String("crlf"))
+      bytes.append("\r\n");
+    else if (framing_ == QLatin1String("lf") || framing_.isEmpty())
+      bytes.append('\n');
+    // raw: as-is
+  }
 
   auto writeSock = [&](QTcpSocket* s) {
     if (!s || s->state() != QAbstractSocket::ConnectedState) return;
@@ -300,14 +310,29 @@ void CommHub::onClientReadyRead() {
   QTcpSocket* s = qobject_cast<QTcpSocket*>(src);
   if (!s) return;
   const QByteArray raw = s->readAll();
-  QString text = QString::fromUtf8(raw).trimmed();
+  QString text;
+  if (framing_ == QLatin1String("len4") && raw.size() >= 4) {
+    const quint32 n = qFromBigEndian<quint32>(
+        reinterpret_cast<const uchar*>(raw.constData()));
+    const int take = qMin(int(n), raw.size() - 4);
+    text = QString::fromUtf8(raw.constData() + 4, take).trimmed();
+  } else {
+    text = QString::fromUtf8(raw).trimmed();
+  }
   if (text.isEmpty()) return;
   lastRx_ = text;
   appendTranscript(QStringLiteral("RX"), text.left(240));
   emit payloadReceived(QStringLiteral("TCP"), text);
   if (!ack_.isEmpty() && s->state() == QAbstractSocket::ConnectedState) {
     QByteArray a = ack_.toUtf8();
-    if (framing_ == QLatin1String("crlf")) a.append("\r\n");
+    if (framing_ == QLatin1String("len4")) {
+      QByteArray framed;
+      const quint32 n = quint32(a.size());
+      framed.resize(4);
+      qToBigEndian(n, reinterpret_cast<uchar*>(framed.data()));
+      framed.append(a);
+      a = framed;
+    } else if (framing_ == QLatin1String("crlf")) a.append("\r\n");
     else if (framing_ != QLatin1String("raw")) a.append('\n');
     s->write(a);
     s->flush();

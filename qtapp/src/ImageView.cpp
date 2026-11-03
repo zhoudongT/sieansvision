@@ -15,8 +15,8 @@ namespace sieans_qt {
 
 ImageView::ImageView(QWidget* parent) : QGraphicsView(parent) {
   setFocusPolicy(Qt::StrongFocus);
-  setToolTip(QStringLiteral("F/Home/0/R 适应 · +/- 缩放 · 拖拽平移"));
-  setStatusTip(QStringLiteral("图像视图 · F/Home/0/R 适应 · +/- 缩放 · 码框叠加 hits"));
+  setToolTip(QStringLiteral("F/Home/0/R 适应 · +/- 缩放 · Esc 清叠加 · 拖拽平移"));
+  setStatusTip(QStringLiteral("图像视图 · F/Home/0/R 适应 · +/- 缩放 · Esc 清叠加 · 码框 hits"));
   setScene(&scene_);
   setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
   setDragMode(QGraphicsView::ScrollHandDrag);
@@ -129,6 +129,11 @@ void ImageView::mouseMoveEvent(QMouseEvent* event) {
 
 
 void ImageView::keyPressEvent(QKeyEvent* event) {
+  if (event->key() == Qt::Key_Escape) {
+    clearOverlays();
+    event->accept();
+    return;
+  }
   if (event->key() == Qt::Key_F || event->key() == Qt::Key_Home ||
       event->key() == Qt::Key_0 || event->key() == Qt::Key_R) {
     userZoomed_ = false;
