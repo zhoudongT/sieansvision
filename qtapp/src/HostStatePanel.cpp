@@ -185,6 +185,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
     auto* sc6 = new QShortcut(QKeySequence(Qt::Key_F6), this);
     connect(sc6, &QShortcut::activated, this, [this]() {
       if (state_ == QLatin1String("Running")) emit pauseRequested();
+      else if (state_ == QLatin1String("Paused")) emit resumeRequested();
       else emit startRequested();
     });
     auto* scEsc = new QShortcut(QKeySequence(Qt::Key_Escape), this);

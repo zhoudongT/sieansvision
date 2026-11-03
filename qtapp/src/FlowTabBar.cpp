@@ -59,7 +59,7 @@ FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   modeChip_->setStyleSheet(
       QStringLiteral("QLabel{color:#c8ccd0;background:#2a2e32;border:1px solid #4a4e54;"
                      "border-radius:3px;padding:1px 6px;font-size:11px;}"));
-  modeChip_->setToolTip(QStringLiteral("运行模式芯片 · 设计/单次/连续/暂停 · 单击连续 · 右键暂停 · 中键适应"));
+  modeChip_->setToolTip(QStringLiteral("运行模式芯片 · 设计/单次/连续/暂停 · 单击连续 · Alt/右键暂停 · 中键适应"));
   modeChip_->setCursor(Qt::PointingHandCursor);
   modeChip_->installEventFilter(this);
   cycleLabel_ = new QLabel(QStringLiteral("周期 0"));
@@ -150,6 +150,10 @@ bool FlowTabBar::eventFilter(QObject* obj, QEvent* event) {
     auto* me = static_cast<QMouseEvent*>(event);
     if (obj == modeChip_) {
       if (me->button() == Qt::LeftButton) {
+        if (me->modifiers() & Qt::AltModifier) {
+          emit pauseRequested();
+          return true;
+        }
         emit continuousToggleRequested();
         return true;
       }

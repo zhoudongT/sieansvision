@@ -73,18 +73,23 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
             auto* val = table_->item(row, 1);
             auto* key = table_->item(row, 0);
             if (!val) return;
-            const QString raw = key ? vars_.value(key->text()).toString() : val->text();
+            QString kn;
+            if (key) {
+              kn = key->data(Qt::UserRole).toString();
+              if (kn.isEmpty()) kn = key->text();
+            }
+            const QString raw = kn.isEmpty() ? val->text() : vars_.value(kn).toString();
             if (auto* clip = QApplication::clipboard()) {
               clip->setText(raw.isEmpty() ? val->text() : raw);
               QToolTip::showText(QCursor::pos(),
-                                 QStringLiteral("已复制 %1").arg(key ? key->text() : QStringLiteral("值")),
+                                 QStringLiteral("已复制 %1").arg(kn.isEmpty() ? QStringLiteral("值") : kn),
                                  table_);
             }
           });
   table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · 中键 ${flow} · 右键键=值 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Esc 取消选中 · F2 聚焦表 · Ctrl+Shift+J JSON"));
   table_->installEventFilter(this);
   if (filterEdit_) filterEdit_->installEventFilter(this);
-  setStatusTip(QStringLiteral("变量监视 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · 中键token/右键键=值 · Home/End/PgUp/PgDn · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
+  setStatusTip(QStringLiteral("变量监视 · ★=Host条 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · 中键token/右键键=值 · Home/End/PgUp/PgDn · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
   keys_ = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
            QStringLiteral("passGate"), QStringLiteral("urlOk"),
@@ -97,11 +102,16 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
     auto* val = table_->item(row, 1);
     auto* key = table_->item(row, 0);
     if (!val) return;
-    const QString raw = key ? vars_.value(key->text()).toString() : val->text();
+    QString kn;
+    if (key) {
+      kn = key->data(Qt::UserRole).toString();
+      if (kn.isEmpty()) kn = key->text();
+    }
+    const QString raw = kn.isEmpty() ? val->text() : vars_.value(kn).toString();
     if (auto* clip = QApplication::clipboard()) {
       clip->setText(raw.isEmpty() ? val->text() : raw);
       QToolTip::showText(QCursor::pos(),
-                         QStringLiteral("已复制 %1").arg(key ? key->text() : QStringLiteral("值")),
+                         QStringLiteral("已复制 %1").arg(kn.isEmpty() ? QStringLiteral("值") : kn),
                          table_);
     }
   };
@@ -136,7 +146,8 @@ bool VarWatchPanel::eventFilter(QObject* obj, QEvent* event) {
       const QPoint pos = me->position().toPoint();
       if (auto* hit = table_->itemAt(pos)) {
         if (auto* keyItem = table_->item(hit->row(), 0)) {
-          emit hostWatchToggleRequested(keyItem->text());
+          const QString rawKey = keyItem->data(Qt::UserRole).toString();
+          emit hostWatchToggleRequested(rawKey.isEmpty() ? keyItem->text() : rawKey);
           return true;
         }
       }
@@ -183,7 +194,8 @@ bool VarWatchPanel::eventFilter(QObject* obj, QEvent* event) {
       const int row = table_->currentRow();
       auto* it = row >= 0 ? table_->item(row, 0) : nullptr;
       if (it && !it->text().isEmpty()) {
-        emit hostWatchToggleRequested(it->text());
+        const QString rawKey = it->data(Qt::UserRole).toString();
+        emit hostWatchToggleRequested(rawKey.isEmpty() ? it->text() : rawKey);
         return true;
       }
     }
@@ -206,7 +218,14 @@ bool VarWatchPanel::eventFilter(QObject* obj, QEvent* event) {
 }
 
 void VarWatchPanel::setWatchKeys(const QStringList& keys) {
-  if (!keys.isEmpty()) keys_ = keys;
+  hostWatch_ = keys;
+  // Prefer host-watched keys at top of the table; keep defaults for the rest.
+  if (!keys.isEmpty()) {
+    QStringList ordered = keys;
+    for (const QString& k : keys_)
+      if (!ordered.contains(k)) ordered << k;
+    keys_ = ordered;
+  }
   rebuild();
 }
 
@@ -232,7 +251,19 @@ void VarWatchPanel::rebuild() {
     ++matched;
     const int row = table_->rowCount();
     table_->insertRow(row);
-    table_->setItem(row, 0, new QTableWidgetItem(k));
+    const bool watched = hostWatch_.contains(k);
+    auto* keyItem = new QTableWidgetItem(watched ? (QStringLiteral("★ ") + k) : k);
+    if (watched) {
+      keyItem->setForeground(QColor(0x9a, 0xd0, 0xff));
+      keyItem->setToolTip(QStringLiteral("Host 监视中 · Space/双击取消"));
+      QFont kf = keyItem->font();
+      kf.setBold(true);
+      keyItem->setFont(kf);
+    } else {
+      keyItem->setToolTip(QStringLiteral("Space/双击加入 Host 监视条"));
+    }
+    keyItem->setData(Qt::UserRole, k);  // raw key without ★
+    table_->setItem(row, 0, keyItem);
     const QString raw = vars_.value(k).toString();
     const QString shown = raw.size() > 96 ? raw.left(93) + QStringLiteral("…") : raw;
     auto* val = new QTableWidgetItem(shown);
@@ -281,8 +312,10 @@ void VarWatchPanel::exportFiltered() {
     auto* k = table_->item(r, 0);
     auto* v = table_->item(r, 1);
     if (!k) continue;
-    const QString raw = vars_.value(k->text()).toString();
-    lines << QStringLiteral("%1\t%2").arg(k->text(), raw.isEmpty() && v ? v->text() : raw);
+    QString kn = k->data(Qt::UserRole).toString();
+    if (kn.isEmpty()) kn = k->text();
+    const QString raw = vars_.value(kn).toString();
+    lines << QStringLiteral("%1\t%2").arg(kn, raw.isEmpty() && v ? v->text() : raw);
   }
   if (auto* clip = QApplication::clipboard()) clip->setText(lines.join(QLatin1Char('\n')));
   QToolTip::showText(QCursor::pos(),
@@ -295,8 +328,10 @@ void VarWatchPanel::copyKeyEqualsValue() {
   if (row < 0) return;
   auto* k = table_->item(row, 0);
   if (!k) return;
-  const QString raw = vars_.value(k->text()).toString();
-  const QString line = QStringLiteral("%1=%2").arg(k->text(), raw);
+  QString kn = k->data(Qt::UserRole).toString();
+  if (kn.isEmpty()) kn = k->text();
+  const QString raw = vars_.value(kn).toString();
+  const QString line = QStringLiteral("%1=%2").arg(kn, raw);
   if (auto* clip = QApplication::clipboard()) clip->setText(line);
   QToolTip::showText(QCursor::pos(), QStringLiteral("已复制 %1 · Ctrl+Shift+K").arg(line.left(40)), table_);
 }
@@ -307,11 +342,12 @@ void VarWatchPanel::copyFlowToken() {
   if (row < 0) return;
   auto* k = table_->item(row, 0);
   if (!k) return;
-  const QString tok = QStringLiteral("${flow.%1}").arg(k->text());
+  QString kn = k->data(Qt::UserRole).toString();
+  if (kn.isEmpty()) kn = k->text();
+  const QString tok = QStringLiteral("${flow.%1}").arg(kn);
   if (auto* clip = QApplication::clipboard()) clip->setText(tok);
   QToolTip::showText(QCursor::pos(), QStringLiteral("已复制 %1 · Ctrl+I").arg(tok), table_);
 }
-
 
 void VarWatchPanel::exportJsonFiltered() {
   if (!table_) return;
@@ -321,9 +357,11 @@ void VarWatchPanel::exportJsonFiltered() {
     auto* k = table_->item(r, 0);
     auto* v = table_->item(r, 1);
     if (!k) continue;
-    const QString key = k->text();
-    const QString val = v ? v->text() : QString();
-    QString esc = val;
+    QString key = k->data(Qt::UserRole).toString();
+    if (key.isEmpty()) key = k->text();
+    const QString val = vars_.value(key).toString();
+    const QString shown = val.isEmpty() && v ? v->text() : val;
+    QString esc = shown;
     esc.replace(QLatin1Char('\\'), QStringLiteral("\\\\"));
     esc.replace(QLatin1Char('"'), QStringLiteral("\\\""));
     parts << QStringLiteral("\"%1\": \"%2\"").arg(key, esc);

@@ -10,6 +10,8 @@
 #include "UvcCapture.hpp"
 
 #include <QJsonDocument>
+#include <QJsonArray>
+#include <QJsonObject>
 
 #include <sieans/barcode.hpp>
 #include <sieans/gentl_capture.hpp>
@@ -625,6 +627,27 @@ void MainWindow::buildUi() {
       if (resultFilter_)
         resultFilter_->setToolTip(QStringLiteral("已复制可见结果 %1 · Ctrl+Shift+C").arg(lines.size()));
     });
+    auto* scJson = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+J")), result_table_);
+    connect(scJson, &QShortcut::activated, this, [this]() {
+      if (!result_table_) return;
+      QJsonArray rows;
+      for (int r = 0; r < result_table_->rowCount(); ++r) {
+        if (result_table_->isRowHidden(r)) continue;
+        QJsonObject o;
+        auto* a = result_table_->item(r, 0);
+        auto* b = result_table_->item(r, 1);
+        auto* c = result_table_->item(r, 2);
+        o.insert(QStringLiteral("module"), a ? a->text() : QString());
+        o.insert(QStringLiteral("value"), b ? b->text() : QString());
+        o.insert(QStringLiteral("type"), c ? c->text() : QString());
+        rows.append(o);
+      }
+      const QByteArray bytes = QJsonDocument(rows).toJson(QJsonDocument::Compact);
+      if (auto* clip = QGuiApplication::clipboard())
+        clip->setText(QString::fromUtf8(bytes));
+      if (resultFilter_)
+        resultFilter_->setToolTip(QStringLiteral("已复制结果JSON %1 · Ctrl+Shift+J").arg(rows.size()));
+    });
   }
   result_log_ = new QPlainTextEdit;
   result_log_->setReadOnly(true);
@@ -820,7 +843,20 @@ void MainWindow::buildMenus() {
   });
 
   auto* records = menuBar()->addMenu(QStringLiteral("记录与账号"));
-  records->addAction(QStringLiteral("运行日志…"), this, [this]() {
+  records->addAction(QStringLiteral("当前结果…"), this, [this]() {
+    if (bottom_tabs_ && result_table_) {
+      for (int i = 0; i < bottom_tabs_->count(); ++i) {
+        QWidget* w = bottom_tabs_->widget(i);
+        if (w && (w == result_table_->parentWidget() || w->isAncestorOf(result_table_))) {
+          bottom_tabs_->setCurrentIndex(i);
+          result_table_->setFocus(Qt::OtherFocusReason);
+          break;
+        }
+      }
+      showStatus(QStringLiteral("当前结果"));
+    }
+  });
+    records->addAction(QStringLiteral("运行日志…"), this, [this]() {
     if (bottom_tabs_ && result_log_) {
       for (int i = 0; i < bottom_tabs_->count(); ++i) {
         QWidget* w = bottom_tabs_->widget(i);
@@ -914,7 +950,7 @@ void MainWindow::buildToolbar() {
   listen_badge_ = new QLabel(QStringLiteral("监听·—"));
   listen_badge_->setObjectName(QStringLiteral("commListenBadge"));
   listen_badge_->setToolTip(QStringLiteral("通信状态 · 单击底栏通信 · 中键/右键通信管理对话框"));
-  listen_badge_->setStatusTip(QStringLiteral("通信徽章 · 单击/中键/右键打开通信管理 · tcp=/listen/reconnect · framing 见 tip"));
+  listen_badge_->setStatusTip(QStringLiteral("通信徽章 · 单击底栏通信 · 中键/右键通信管理对话框 · tcp=/listen/reconnect"));
   listen_badge_->setCursor(Qt::PointingHandCursor);
   listen_badge_->setStyleSheet(
       QStringLiteral("padding:2px 8px;border-radius:3px;background:#3a3d42;color:#a8a8a8;"));

@@ -98,7 +98,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   list_->setFixedHeight(kThumbH + 22);
   list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
   list_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  list_->setStatusTip(QStringLiteral("胶片 · ←→ Home/End/PgUp/PgDn · 0/A/1-9 · Ctrl+A 全选 · Ctrl+C 路径 · Ctrl+Shift+C 文件名 · Ctrl+E 导出列表 · Ctrl+Shift+K 仅保留 · Ctrl+D 复制 · Ctrl+Shift+I 反选 · Ctrl+Shift+S 排序 · 中键删除 · Space/F6 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Del 多选删除"));
+  list_->setStatusTip(QStringLiteral("胶片 · ←→ Home/End · Ctrl+单击置顶 · Ctrl+Shift+单击置底 · 中键删除 · Space/F6 · F5/F9 · Del"));
   list_->setSpacing(2);
   list_->setSelectionMode(QAbstractItemView::ExtendedSelection);
   root->addWidget(list_);
@@ -545,15 +545,23 @@ bool FilmstripBar::eventFilter(QObject* obj, QEvent* event) {
       }
       return true;
     }
+    if (me->button() == Qt::LeftButton && (me->modifiers() & Qt::ControlModifier)) {
+      QListWidgetItem* hit = list_->itemAt(me->position().toPoint());
+      if (hit) {
+        list_->setCurrentItem(hit);
+        index_ = list_->row(hit);
+        if (me->modifiers() & Qt::ShiftModifier) moveSelectedToEnd();
+        else moveSelectedToFront();
+      }
+      return true;
+    }
     if (me->button() == Qt::MiddleButton) {
-
       // Middle-click: delete thumb under cursor (or current)
       QListWidgetItem* hit = list_->itemAt(me->position().toPoint());
       if (hit) {
         list_->setCurrentItem(hit);
         index_ = list_->row(hit);
       }
-      // synthesize Delete key path
       QKeyEvent del(QEvent::KeyPress, Qt::Key_Delete, Qt::NoModifier);
       keyPressEvent(&del);
       return true;

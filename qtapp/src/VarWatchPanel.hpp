@@ -35,6 +35,7 @@ private:
   QTableWidget* table_ = nullptr;
   QLineEdit* filterEdit_ = nullptr;
   QStringList keys_;
+  QStringList hostWatch_;
   QVariantMap vars_;
   QString filter_;
 };
