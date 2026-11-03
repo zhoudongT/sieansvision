@@ -446,6 +446,13 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       return true;
     }
     if (ke->key() == Qt::Key_Escape) {
+      if (alarmOn_ && (hostState_ == QLatin1String("Idle") || hostState_ == QLatin1String("Alarm") ||
+                       hostState_ == QLatin1String("Stopped"))) {
+        setAlarm(false);
+        if (detail_) detail_->setToolTip(QStringLiteral("报警已清除 · Esc"));
+        emit clearAlarmRequested();
+        return true;
+      }
       emit stopRequested();
       return true;
     }

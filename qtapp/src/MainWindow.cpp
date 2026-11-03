@@ -522,6 +522,18 @@ void MainWindow::buildUi() {
     }
   });
       connect(host_strip_, &HostStrip::stopRequested, this, &MainWindow::onStopRun);
+  connect(host_strip_, &HostStrip::clearAlarmRequested, this, [this]() {
+    if (host_strip_) host_strip_->setAlarm(false);
+    if (host_sm_) {
+      if (continuous_run_ && !run_paused_)
+        host_sm_->applyState(QStringLiteral("Running"));
+      else if (run_paused_)
+        host_sm_->applyState(QStringLiteral("Paused"));
+      else
+        host_sm_->applyState(QStringLiteral("Idle"));
+    }
+    showStatus(QStringLiteral("报警已清除 · Host Esc"));
+  });
   connect(host_strip_, &HostStrip::runOnceRequested, this, [this]() {
     onRunOnce();
   });
