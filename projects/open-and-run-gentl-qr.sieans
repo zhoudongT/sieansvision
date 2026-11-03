@@ -134,7 +134,19 @@
         "y": 440
       },
       "imageFrom": "b2c3d4e5f6071829",
-      "variables": {}
+      "variables": {},
+      "expressions": [
+        {
+          "name": "urlOk",
+          "expr": "startswith(barcodeText, \"http\")",
+          "enabled": true
+        },
+        {
+          "name": "barcodeOk",
+          "expr": "barcodeCount >= 1",
+          "enabled": true
+        }
+      ]
     },
     {
       "id": "g7b8193a4b5c6d7e",

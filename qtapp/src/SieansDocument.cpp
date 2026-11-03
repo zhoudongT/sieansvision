@@ -267,6 +267,10 @@ void SieansDocument::seedGentlQrDemo() {
             QVariantMap{{QStringLiteral("name"), QStringLiteral("barcodeOk")},
                         {QStringLiteral("expr"), QStringLiteral("barcodeCount >= 1")},
                         {QStringLiteral("enabled"), true}},
+            QVariantMap{{QStringLiteral("name"), QStringLiteral("urlOk")},
+                        {QStringLiteral("expr"),
+                         QStringLiteral("startswith(barcodeText, \"http\")")},
+                        {QStringLiteral("enabled"), true}},
         }}});
   add(QStringLiteral("gate1"), QStringLiteral("结果门限 OK/NG"),
       QStringLiteral("result_gate"), 300, 500, QStringLiteral("var1"),

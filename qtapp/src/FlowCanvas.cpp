@@ -179,11 +179,25 @@ void FlowNodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*,
   painter->setPen(QColor(QStringLiteral("#222222")));
   QFont font(QStringLiteral("Microsoft YaHei UI"), 9, QFont::Medium);
   painter->setFont(font);
-  const QRectF textRect(28, 0, kWidth - 34, kHeight);
+  const bool showState =
+      !runState_.isEmpty() && runState_ != QStringLiteral("等待执行");
+  const qreal stateW = showState ? 46.0 : 8.0;
+  const QRectF textRect(28, 0, kWidth - 28 - stateW, kHeight);
   painter->drawText(
       textRect, Qt::AlignVCenter | Qt::AlignLeft,
       painter->fontMetrics().elidedText(label_, Qt::ElideRight,
                                         int(textRect.width())));
+  if (showState) {
+    painter->setPen(badgeColor_);
+    QFont sf = font;
+    sf.setPointSize(8);
+    sf.setBold(true);
+    painter->setFont(sf);
+    const QString st =
+        painter->fontMetrics().elidedText(runState_, Qt::ElideRight, int(stateW));
+    painter->drawText(QRectF(kWidth - stateW - 4, 0, stateW, kHeight),
+                      Qt::AlignVCenter | Qt::AlignRight, st);
+  }
   // Right-edge run-state chrome
   QColor strip = badgeColor_;
   strip.setAlpha(210);
