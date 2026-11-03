@@ -49,9 +49,9 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
                                  table_);
             }
           });
-  table_->setToolTip(QStringLiteral("双击或 Ctrl+C 复制变量值 · Home/End 首末行"));
+  table_->setToolTip(QStringLiteral("双击或 Ctrl+C 复制变量值 · Home/End/PgUp/PgDn"));
   table_->installEventFilter(this);
-  setStatusTip(QStringLiteral("变量监视 · 双击/Ctrl+C 复制 · Home/End · passGate/urlOk/lastRecv 高亮"));
+  setStatusTip(QStringLiteral("变量监视 · 双击/Ctrl+C 复制 · Home/End/PgUp/PgDn · passGate/urlOk/lastRecv 高亮"));
   keys_ = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
            QStringLiteral("passGate"), QStringLiteral("urlOk"),
@@ -81,9 +81,16 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
 bool VarWatchPanel::eventFilter(QObject* obj, QEvent* event) {
   if (obj == table_ && event->type() == QEvent::KeyPress && table_) {
     auto* ke = static_cast<QKeyEvent*>(event);
-    if (ke->key() == Qt::Key_Home || ke->key() == Qt::Key_End) {
-      if (table_->rowCount() <= 0) return true;
-      const int row = ke->key() == Qt::Key_Home ? 0 : table_->rowCount() - 1;
+    if (ke->key() == Qt::Key_Home || ke->key() == Qt::Key_End ||
+        ke->key() == Qt::Key_PageUp || ke->key() == Qt::Key_PageDown) {
+      const int rows = table_->rowCount();
+      if (rows <= 0) return true;
+      int row = table_->currentRow();
+      if (row < 0) row = 0;
+      if (ke->key() == Qt::Key_Home) row = 0;
+      else if (ke->key() == Qt::Key_End) row = rows - 1;
+      else if (ke->key() == Qt::Key_PageUp) row = qMax(0, row - 5);
+      else row = qMin(rows - 1, row + 5);
       table_->setCurrentCell(row, 0);
       table_->scrollToItem(table_->item(row, 0));
       return true;

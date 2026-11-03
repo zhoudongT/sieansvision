@@ -26,7 +26,7 @@ constexpr int kThumbH = 52;
 
 FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   setObjectName(QStringLiteral("filmstripBar"));
-  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→ Home/End/PgUp/PgDn · Space 自动切换 · F5 运行全部 · Del 删除"));
+  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→ Home/End/PgUp/PgDn · 1-9 跳转 · Space 自动切换 · F5 运行全部 · Del"));
   setFocusPolicy(Qt::StrongFocus);
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(6, 2, 6, 4);
@@ -82,7 +82,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   list_->setFixedHeight(kThumbH + 22);
   list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
   list_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  list_->setStatusTip(QStringLiteral("胶片 · ←→ Home/End/PgUp/PgDn · Space/F6 自动切换 · F5 运行全部 · Del"));
+  list_->setStatusTip(QStringLiteral("胶片 · ←→ Home/End/PgUp/PgDn · 1-9 · Space/F6 · F5 运行全部 · Del"));
   list_->setSpacing(2);
   list_->setSelectionMode(QAbstractItemView::SingleSelection);
   root->addWidget(list_);
@@ -323,6 +323,15 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
   if (event->key() == Qt::Key_PageDown) {
     if (!paths_.isEmpty())
       selectIndex(qMin(paths_.size() - 1, qMax(0, index_) + 5), true);
+    event->accept();
+    return;
+  }
+  if (event->key() >= Qt::Key_1 && event->key() <= Qt::Key_9) {
+    const int want = event->key() - Qt::Key_1;  // 0-based
+    if (want < paths_.size()) {
+      selectIndex(want, true);
+      setStatus(QStringLiteral("跳到 #%1").arg(want + 1));
+    }
     event->accept();
     return;
   }

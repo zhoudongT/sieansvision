@@ -88,11 +88,11 @@ QIcon railIcon(const char* kind, bool active) {
 }  // namespace
 
 OperatorRail::OperatorRail(QWidget* parent) : QWidget(parent) {
-  setStatusTip(QStringLiteral("Toolbox 分类轨 · ↑↓/Home/End/PgUp/PgDn · Esc 全部"));
+  setStatusTip(QStringLiteral("Toolbox 分类轨 · ↑↓/←→/Home/End/PgUp/PgDn · Esc 全部"));
   setObjectName(QStringLiteral("operatorRail"));
   setFixedWidth(44);
   setFocusPolicy(Qt::StrongFocus);
-  setToolTip(QStringLiteral("算子分类轨 · ↑↓/Home/End/PgUp/PgDn · Esc 全部 · 点击筛选"));
+  setToolTip(QStringLiteral("算子分类轨 · ↑↓/←→/Home/End/PgUp/PgDn · Esc 全部 · 点击筛选"));
   auto* lay = new QVBoxLayout(this);
   lay->setContentsMargins(2, 6, 2, 6);
   lay->setSpacing(2);
@@ -168,6 +168,7 @@ bool OperatorRail::eventFilter(QObject* obj, QEvent* event) {
       return true;
     }
     if (ke->key() == Qt::Key_Up || ke->key() == Qt::Key_Down ||
+        ke->key() == Qt::Key_Left || ke->key() == Qt::Key_Right ||
         ke->key() == Qt::Key_Home || ke->key() == Qt::Key_End ||
         ke->key() == Qt::Key_PageUp || ke->key() == Qt::Key_PageDown) {
       if (!group_) return QWidget::eventFilter(obj, event);
@@ -180,7 +181,7 @@ bool OperatorRail::eventFilter(QObject* obj, QEvent* event) {
       else if (ke->key() == Qt::Key_End || ke->key() == Qt::Key_PageDown)
         next = btns.size() - 1;
       else
-        next = ke->key() == Qt::Key_Up
+        next = (ke->key() == Qt::Key_Up || ke->key() == Qt::Key_Left)
                            ? (cur - 1 + btns.size()) % btns.size()
                            : (cur + 1) % btns.size();
       if (auto* b = group_->button(next)) {

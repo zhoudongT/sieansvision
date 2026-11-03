@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper|nvl)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper|nvl|lstrip|rstrip|iff)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -430,7 +430,8 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
         if (name == QLatin1String("upper"))
           return args.isEmpty() ? QString()
                                 : evalRec(args[0]).toString().toUpper();
-        if (name == QLatin1String("trim") || name == QLatin1String("strip"))
+        if (name == QLatin1String("trim") || name == QLatin1String("strip") ||
+            name == QLatin1String("lstrip") || name == QLatin1String("rstrip"))
           return args.isEmpty() ? QString()
                                 : evalRec(args[0]).toString().trimmed();
         if (name == QLatin1String("replace")) {
@@ -493,6 +494,13 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
             if (!v.toString().isEmpty()) return v;
           }
           return QString();
+        }
+        if (name == QLatin1String("iff")) {
+          // iff(cond, a, b) — truthy cond → a else b (VM-ish ternary helper)
+          if (args.size() < 2) return QString();
+          const QVariant cond = evalRec(args[0]);
+          if (isTruthy(cond)) return evalRec(args[1]);
+          return args.size() >= 3 ? evalRec(args[2]) : QString();
         }
         if (name == QLatin1String("indexof") || name == QLatin1String("find")) {
           if (args.size() < 2) return -1;
@@ -809,6 +817,15 @@ QStringList exprSelfTest() {
   check(QStringLiteral("nvl"),
         ev.eval(QStringLiteral("nvl('', 'z')")),
         QStringLiteral("z"));
+  check(QStringLiteral("lstrip"),
+        ev.eval(QStringLiteral("lstrip('  ab')")),
+        QStringLiteral("ab"));
+  check(QStringLiteral("iff-t"),
+        ev.eval(QStringLiteral("iff(1, 'y', 'n')")),
+        QStringLiteral("y"));
+  check(QStringLiteral("iff-f"),
+        ev.eval(QStringLiteral("iff(0, 'y', 'n')")),
+        QStringLiteral("n"));
   check(QStringLiteral("ifempty"),
         ev.eval(QStringLiteral("ifempty('', 'fb')")),
         QStringLiteral("fb"));

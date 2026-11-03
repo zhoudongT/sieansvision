@@ -20,7 +20,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   lay->addWidget(title);
 
   status_ = new QLabel(QStringLiteral("TCP: idle"));
-  setStatusTip(QStringLiteral("通信面板 · LocalBus/TCP · peers 在状态行 · 模板 ${flow.x}/{name}/{{name}}"));
+  setStatusTip(QStringLiteral("通信面板 · LocalBus/TCP · peers/framing 在状态行 · 模板 ${flow.x}/{name}/{{name}}"));
   status_->setObjectName(QStringLiteral("muted"));
   lay->addWidget(status_);
 
@@ -96,7 +96,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
     connect(hub_, &CommHub::transcriptChanged, this, &CommPanel::refreshTranscript);
     connect(hub_, &CommHub::statusChanged, this, [this](const QString& s) {
       status_->setText(QStringLiteral("TCP: %1").arg(s));
-      status_->setToolTip(QStringLiteral("TCP: %1").arg(s));
+      status_->setToolTip(QStringLiteral("TCP: %1 · framing/peers 见状态").arg(s));
       if (s.contains(QStringLiteral("reconnect")))
         status_->setStyleSheet(QStringLiteral("color:#e0b84a;font-weight:600;"));
       else if (s.contains(QStringLiteral("connected")) ||

@@ -68,11 +68,11 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   btnPause_->setStatusTip(QStringLiteral("Host · 暂停"));
   btnResume_->setToolTip(QStringLiteral("从暂停/报警继续"));
   btnResume_->setStatusTip(QStringLiteral("Host · 继续"));
-  btnStop_->setToolTip(QStringLiteral("停止运行并回 Idle"));
-  btnStop_->setStatusTip(QStringLiteral("Host · 停止"));
+  btnStop_->setToolTip(QStringLiteral("停止运行并回 Idle · Esc"));
+  btnStop_->setStatusTip(QStringLiteral("Host · 停止 · Esc"));
   btnClear_->setToolTip(QStringLiteral("清除报警锁存"));
   btnClear_->setStatusTip(QStringLiteral("Host · 清除报警"));
-  setStatusTip(QStringLiteral("上位机控制 · 开始/暂停/继续/停止/清报警"));
+  setStatusTip(QStringLiteral("上位机控制 · F5 开始 · 暂停/继续 · Esc 停止 · 清报警"));
   for (QPushButton* b : {btnStart_, btnPause_, btnResume_, btnStop_, btnClear_}) {
     b->setMinimumHeight(28);
     quick->addWidget(b);
