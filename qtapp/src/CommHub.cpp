@@ -223,7 +223,8 @@ bool CommHub::startTcp(QString* error) {
     if (error) *error = err;
     appendTranscript(QStringLiteral("ERR"),
                      QStringLiteral("listen %1:%2 failed: %3").arg(host).arg(port).arg(err));
-    tcpStatus_ = QStringLiteral("listen-fail");
+    tcpStatus_ = QStringLiteral("listen-fail · %1")
+                     .arg(framing_.isEmpty() ? QStringLiteral("lf") : framing_);
     emit statusChanged(tcpStatus_);
     server_->deleteLater();
     server_ = nullptr;
