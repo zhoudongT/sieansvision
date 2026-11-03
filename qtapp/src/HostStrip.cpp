@@ -23,7 +23,7 @@ namespace sieans_qt {
 
 HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   setFocusPolicy(Qt::StrongFocus);
-  setStatusTip(QStringLiteral("Host 条 · OK/NG/ALARM · tcp= 摘要(lf/crlf/raw/len4) · Esc 停止 · Space 开始/暂停 · F5/F9 单次 · F6 连续 · F7 暂停 · 周期 chip 见右侧 · 单击模式切换 · 右键连续 · Ctrl+单击周期清零 · 双击明细复制 · Ctrl+Shift+V 粘贴监视键 · 周期中键良率 · 周期 ms"));
+  setStatusTip(QStringLiteral("Host 条 · OK/NG/ALARM · tcp= 摘要(lf/crlf/raw/len4) · Esc 停止 · Space 开始/暂停 · F5/F9 单次 · F6 连续 · F7 暂停 · 周期 chip 见右侧 · 单击模式切换 · 右键连续 · Ctrl+单击周期清零 · 双击明细复制 · Ctrl+Shift+V 粘贴监视键 · Ctrl+Shift+P 粘贴 Host 配置 · 周期中键良率 · 周期 ms"));
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(8, 4, 8, 4);
   root->setSpacing(2);
@@ -423,6 +423,11 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       pasteIntervalMs();
       return true;
     }
+    if (ke->key() == Qt::Key_P && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier)) {
+      pasteHostConfig();
+      return true;
+    }
     if (ke->key() == Qt::Key_R && (ke->modifiers() & Qt::ControlModifier)) {
       resetStreak();
       return true;
@@ -640,6 +645,56 @@ void HostStrip::pasteIntervalMs() {
   }
   if (cycleChip_)
     cycleChip_->setToolTip(QStringLiteral("已粘贴节拍 %1 ms · Ctrl+Shift+I").arg(intervalMs_));
+}
+
+
+void HostStrip::pasteHostConfig() {
+  const QString raw = QGuiApplication::clipboard()
+                          ? QGuiApplication::clipboard()->text().trimmed()
+                          : QString();
+  if (raw.isEmpty()) {
+    if (cycleChip_) cycleChip_->setToolTip(QStringLiteral("剪贴板空 · Ctrl+Shift+P"));
+    return;
+  }
+  int ms = -1;
+  QString mode, policy;
+  for (const QString& part : raw.split(QRegularExpression(QStringLiteral("[\t\n;]+")))) {
+    const QString p = part.trimmed();
+    if (p.startsWith(QLatin1String("intervalMs="))) {
+      bool ok = false;
+      const int v = p.mid(11).trimmed().toInt(&ok);
+      if (ok) ms = v;
+    } else if (p.startsWith(QLatin1String("mode="))) {
+      mode = p.mid(5).trimmed();
+    } else if (p.startsWith(QLatin1String("policy="))) {
+      policy = p.mid(7).trimmed();
+    }
+  }
+  if (ms < 0) {
+    // fall back to pasteIntervalMs parser path
+    pasteIntervalMs();
+    return;
+  }
+  int applied = 0;
+  if (ms >= 20 && ms <= 60000) {
+    if (ms != intervalMs_) {
+      intervalMs_ = ms;
+      refreshCycleChip();
+      emit intervalChanged(intervalMs_);
+    }
+    ++applied;
+  }
+  QString tip = QStringLiteral("已粘贴 Host 配置");
+  if (applied) tip += QStringLiteral(" 节拍%1").arg(intervalMs_);
+  if (!mode.isEmpty()) tip += QStringLiteral(" mode=%1").arg(mode);
+  if (!policy.isEmpty()) tip += QStringLiteral(" policy=%1").arg(policy);
+  tip += QStringLiteral(" · Ctrl+Shift+P");
+  if (!applied && mode.isEmpty() && policy.isEmpty()) {
+    if (cycleChip_) cycleChip_->setToolTip(QStringLiteral("无匹配配置 · Ctrl+Shift+P"));
+    return;
+  }
+  if (cycleChip_) cycleChip_->setToolTip(tip);
+  else if (detail_) detail_->setToolTip(tip);
 }
 
 

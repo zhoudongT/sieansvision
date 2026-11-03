@@ -775,7 +775,11 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
       loadLastRxToPayload();
       return true;
     }
-    if (me->button() == Qt::LeftButton || me->button() == Qt::MiddleButton) {
+    if (me->button() == Qt::MiddleButton) {
+      loadLastTxToPayload();
+      return true;
+    }
+    if (me->button() == Qt::LeftButton) {
       copyLastTxRx();
       return true;
     }
