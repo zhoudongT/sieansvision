@@ -368,6 +368,17 @@ void CommPanel::bindDocument(const QVariantMap& commManager) {
             .arg(ack.isEmpty() ? QStringLiteral("关") : ack.left(16))
             .arg(rc ? QStringLiteral("开") : QStringLiteral("关")));
   }
+  payloadHistory_.clear();
+  payloadHistoryIdx_ = -1;
+  for (const QVariant& v : commManager.value(QStringLiteral("payloadHistory")).toList()) {
+    const QString t = v.toString();
+    if (!t.trimmed().isEmpty()) payloadHistory_ << t;
+  }
+  while (payloadHistory_.size() > 24) payloadHistory_.removeLast();
+  if (!payloadHistory_.isEmpty() && payloadEdit_ && payloadEdit_->text().trimmed().isEmpty()) {
+    payloadEdit_->setText(payloadHistory_.first());
+    payloadHistoryIdx_ = 0;
+  }
   refreshDevices();
   refreshTranscript();
 }
@@ -979,6 +990,14 @@ void CommPanel::pushPayloadHistory() {
   payloadHistory_.prepend(t);
   while (payloadHistory_.size() > 24) payloadHistory_.removeLast();
   payloadHistoryIdx_ = 0;
+  if (hub_) {
+    QVariantMap cm = hub_->commManager();
+    QVariantList hist;
+    for (const QString& s : payloadHistory_) hist << s;
+    cm.insert(QStringLiteral("payloadHistory"), hist);
+    hub_->loadFromCommManager(cm);
+    emit requestSaveComm(cm);
+  }
 }
 
 void CommPanel::recallPayloadHistory(int delta) {
