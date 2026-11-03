@@ -25,6 +25,7 @@ class FilmstripBar : public QWidget {
   QString currentPath() const;
   int count() const;
   int index() const;
+  void setCurrentIndex(int index, bool emitSignal = true);
   bool autoSwitch() const;
   void advance();
   QStringList paths() const { return paths_; }

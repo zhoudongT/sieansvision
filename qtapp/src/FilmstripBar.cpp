@@ -277,6 +277,10 @@ QString FilmstripBar::currentPath() const {
 
 int FilmstripBar::count() const { return paths_.size(); }
 int FilmstripBar::index() const { return index_; }
+
+void FilmstripBar::setCurrentIndex(int index, bool emitSignal) {
+  selectIndex(index, emitSignal);
+}
 bool FilmstripBar::autoSwitch() const { return autoSwitch_ && autoSwitch_->isChecked(); }
 
 void FilmstripBar::selectIndex(int index, bool emitSignal) {

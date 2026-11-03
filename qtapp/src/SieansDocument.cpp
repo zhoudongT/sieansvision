@@ -475,4 +475,13 @@ void SieansDocument::setVarWatchKeys(const QStringList& keys) {
   raw_.insert(QStringLiteral("varWatchKeys"), arr);
 }
 
+
+int SieansDocument::filmstripIndex() const {
+  return raw_.value(QStringLiteral("filmstripIndex")).toInt(-1);
+}
+
+void SieansDocument::setFilmstripIndex(int index) {
+  raw_.insert(QStringLiteral("filmstripIndex"), index);
+}
+
 }  // namespace sieans_qt

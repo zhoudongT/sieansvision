@@ -71,6 +71,8 @@ class SieansDocument {
   void setFilmstripPaths(const QStringList& paths);
   bool filmstripAutoSwitch() const;
   void setFilmstripAutoSwitch(bool on);
+  int filmstripIndex() const;
+  void setFilmstripIndex(int index);
   QString hostMode() const;
   void setHostMode(const QString& mode);
   QString alarmPolicy() const;

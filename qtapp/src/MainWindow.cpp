@@ -532,11 +532,15 @@ void MainWindow::buildUi() {
                   .arg(filmstrip_->count() - before));
   });
   connect(filmstrip_, &FilmstripBar::imageSelected, this,
-          [this](const QString& path) { loadImagePath(path, false); });
+          [this](const QString& path) {
+            loadImagePath(path, false);
+            if (filmstrip_) document_.setFilmstripIndex(filmstrip_->index());
+          });
   connect(filmstrip_, &FilmstripBar::runAllRequested, this, &MainWindow::onRunAllImages);
   connect(filmstrip_, &FilmstripBar::pathsChanged, this, [this]() {
     if (!filmstrip_) return;
     document_.setFilmstripPaths(filmstrip_->paths());
+    document_.setFilmstripIndex(filmstrip_->index());
   });
   connect(filmstrip_, &FilmstripBar::autoSwitchChanged, this, [this](bool on) {
     document_.setFilmstripAutoSwitch(on);
@@ -1094,6 +1098,9 @@ void MainWindow::applyDocumentToUi() {
     const QStringList fps = document_.filmstripPaths();
     if (!fps.isEmpty()) filmstrip_->setPaths(fps);
     filmstrip_->setAutoSwitch(document_.filmstripAutoSwitch());
+    const int fidx = document_.filmstripIndex();
+    if (fidx >= 0 && fidx < filmstrip_->count())
+      filmstrip_->setCurrentIndex(fidx, true);
   }
   if (comm_panel_) comm_panel_->bindDocument(document_.commManager());
   if (comm_hub_) {
