@@ -32,7 +32,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
                      "padding:3px 8px;font-size:11px;"));
   detail_ = new QLabel(QStringLiteral("Host · 等待运行"));
   detail_->setObjectName(QStringLiteral("muted"));
-  detail_->setToolTip(QStringLiteral("count/text/RX/urlOk/tcp 摘要 · framing lf/crlf/raw/len4 见 tcp="));
+  detail_->setToolTip(QStringLiteral("count/text/RX/urlOk/tcp 摘要 · framing lf/crlf/raw/len4 见 tcp= · 悬停看全文"));
   alarmLabel_ = new QLabel;
   alarmLabel_->setVisible(false);
   alarmLabel_->setToolTip(QStringLiteral("报警锁存 · Host 清报警解除 · 不影响周期计数"));
