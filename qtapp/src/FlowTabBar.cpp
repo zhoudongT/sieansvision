@@ -25,7 +25,7 @@ FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   flowBtn_->setObjectName(QStringLiteral("flowTabActive"));
   auto* runOnce = new QPushButton(QStringLiteral("▶"));
   runOnce->setFixedWidth(28);
-  runOnce->setToolTip(QStringLiteral("运行当前流程一次 · F5/F9"));
+  runOnce->setToolTip(QStringLiteral("运行当前流程一次 · F5/F9 · 设计/运行态均可"));
   runOnce->setStatusTip(QStringLiteral("流程 · 运行一次"));
   auto* runCont = new QPushButton(QStringLiteral("↻"));
   runCont->setFixedWidth(28);
