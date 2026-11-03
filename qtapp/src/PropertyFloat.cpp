@@ -14,7 +14,7 @@
 namespace sieans_qt {
 
 PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
-  setStatusTip(QStringLiteral("属性浮窗 · Esc 放弃 · Enter 保留 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续"));
+  setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续"));
   setWhatsThis(QStringLiteral("属性浮窗 · Esc 放弃 · Enter 保留 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 单次 · F6 连续"));
   setObjectName(QStringLiteral("propertyFloat"));
   setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
@@ -72,7 +72,7 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   exec->setToolTip(QStringLiteral("单次运行本模块 · F5/F9"));
   auto* cancel = new QPushButton(QStringLiteral("取消"));
   cancel->setObjectName(QStringLiteral("propertyFloatRun"));
-  cancel->setToolTip(QStringLiteral("放弃修改并关闭 · Esc"));
+  cancel->setToolTip(QStringLiteral("放弃修改并关闭 · Esc/Ctrl+W"));
   auto* ok = new QPushButton(QStringLiteral("确定"));
   ok->setObjectName(QStringLiteral("propertyFloatOk"));
   ok->setToolTip(QStringLiteral("保留修改并关闭 · Ctrl/Alt/Shift+Enter"));
@@ -174,7 +174,8 @@ void PropertyFloat::showForStep(const FlowStep& step) {
 }
 
 void PropertyFloat::keyPressEvent(QKeyEvent* event) {
-  if (event->key() == Qt::Key_Escape) {
+  if (event->key() == Qt::Key_Escape ||
+      (event->key() == Qt::Key_W && (event->modifiers() & Qt::ControlModifier))) {
     revertAndHide();
     event->accept();
     return;

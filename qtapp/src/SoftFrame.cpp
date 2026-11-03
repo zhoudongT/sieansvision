@@ -6,6 +6,8 @@
 #include <QDir>
 #include <QCoreApplication>
 #include <QtMath>
+#include <QByteArray>
+#include <QtGlobal>
 
 namespace sieans_qt {
 
@@ -31,6 +33,16 @@ QImage loadSoftQrSample() {
     QImage img(g_softQrOverride);
     if (!img.isNull()) {
       return img.convertToFormat(QImage::Format_RGB888);
+    }
+  }
+  // Env override (open-and-run / CI) before built-in candidate scan.
+  const QByteArray envSample = qgetenv("SIEANS_QT_SAMPLE_QR");
+  if (!envSample.isEmpty()) {
+    QImage img(QString::fromLocal8Bit(envSample));
+    if (!img.isNull()) {
+      cached = img.convertToFormat(QImage::Format_RGB888);
+      tried = true;
+      return cached;
     }
   }
   if (tried) return cached;

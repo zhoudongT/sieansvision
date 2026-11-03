@@ -56,7 +56,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   next->setToolTip(QStringLiteral("下一张 · →"));
   next->setFixedWidth(28);
   auto* del = new QPushButton(QStringLiteral("删除"));
-  del->setToolTip(QStringLiteral("删除选中图像 · Del"));
+  del->setToolTip(QStringLiteral("删除选中 · Del · Ctrl+Del 清空"));
   head->addWidget(countLabel_);
   head->addWidget(status_, 1);
   head->addWidget(autoSwitch_);
@@ -332,6 +332,16 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
       selectIndex(want, true);
       setStatus(QStringLiteral("跳到 #%1").arg(want + 1));
     }
+    event->accept();
+    return;
+  }
+  if ((event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) &&
+      (event->modifiers() & Qt::ControlModifier)) {
+    paths_.clear();
+    index_ = -1;
+    rebuildThumbs();
+    refreshCount();
+    setStatus(QStringLiteral("已清空胶片"));
     event->accept();
     return;
   }
