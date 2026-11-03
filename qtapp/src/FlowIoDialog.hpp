@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QDialog>
+#include <QEvent>
 #include <QVariantMap>
 #include <QJsonArray>
 
@@ -16,6 +17,9 @@ class FlowIoDialog : public QDialog {
  public:
   explicit FlowIoDialog(const QVariantMap& io, QWidget* parent = nullptr);
   QVariantMap resultIo() const;
+
+ protected:
+  bool eventFilter(QObject* obj, QEvent* event) override;
 
  private:
   QTableWidget* makeTable(const QVariantList& rows, const QString& kind);

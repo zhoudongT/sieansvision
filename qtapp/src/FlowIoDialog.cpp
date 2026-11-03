@@ -21,6 +21,8 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QGuiApplication>
+#include <QMouseEvent>
+#include <QEvent>
 #include <QApplication>
 #include <QInputDialog>
 #include <QHBoxLayout>
@@ -31,7 +33,7 @@ namespace sieans_qt {
 FlowIoDialog::FlowIoDialog(const QVariantMap& io, QWidget* parent)
     : QDialog(parent), io_(io) {
   setWindowTitle(QStringLiteral("流程参数 · I/O 绑定"));
-  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 按名排序 · Ctrl+Shift+D 复制到另一表 · Ctrl+Home/End 置顶/底 · Ctrl+Shift+U 去重 · Ctrl+D 复制行 · Ctrl+A 全选 · Ctrl+E 补默认 · Ctrl+Shift+E 清默认 · Alt+Del 清选中默认 · Ctrl+Tab 切换表 · Ctrl+Shift+C 复制CSV · Ctrl+Shift+I ${flow} · Ctrl+X 剪切 · Ctrl+Shift+V 粘贴 · Ctrl+Shift+L 清空空行 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果 · Ctrl+Shift+J/O 导出/导入JSON"));
+  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 按名排序 · Ctrl+Shift+D 复制到另一表 · Ctrl+Home/End 置顶/底 · Ctrl+Shift+U 去重 · Ctrl+D 复制行 · Ctrl+A 全选 · Ctrl+E 补默认 · Ctrl+Shift+E 清默认 · Alt+Del 清选中默认 · Ctrl+Tab 切换表 · Ctrl+Shift+C 复制CSV · Ctrl+Shift+I/${flow} · 中键 ${flow} · Ctrl+X 剪切 · Ctrl+Shift+V 粘贴 · Ctrl+Shift+L 清空空行 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果 · Ctrl+Shift+J/O 导出/导入JSON"));
   resize(560, 440);
   setStyleSheet(theme::workbenchStyleSheet());
   auto* root = new QVBoxLayout(this);
@@ -171,7 +173,8 @@ QTableWidget* FlowIoDialog::makeTable(const QVariantList& rows, const QString& k
       table->setItem(r, 3, new QTableWidgetItem(row.value(QStringLiteral("emptyDefault")).toString()));
     }
   }
-  return table;
+    table->viewport()->installEventFilter(this);
+return table;
 }
 
 QVariantList FlowIoDialog::readTable(QTableWidget* table) const {
@@ -861,6 +864,36 @@ void FlowIoDialog::moveSelectedToOtherTable(QTableWidget* from) {
     to->setFocus(Qt::OtherFocusReason);
   }
   from->setToolTip(QStringLiteral("已移到对表 %1 行 · Ctrl+Shift+Tab").arg(moved.size()));
+}
+
+
+bool FlowIoDialog::eventFilter(QObject* obj, QEvent* event) {
+  auto* table = qobject_cast<QTableWidget*>(obj ? obj->parent() : nullptr);
+  if (!table) table = qobject_cast<QTableWidget*>(obj);
+  if (table && (table == inTable_ || table == outTable_) &&
+      event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::MiddleButton) {
+      QPoint pos = me->position().toPoint();
+      if (obj != table) {
+        // viewport coords
+      }
+      QModelIndex ix = table->indexAt(pos);
+      if (!ix.isValid() && table->currentRow() >= 0)
+        ix = table->model()->index(table->currentRow(), 0);
+      if (ix.isValid()) {
+        QTableWidgetItem* it = table->item(ix.row(), 0);
+        const QString name = it ? it->text().trimmed() : QString();
+        if (!name.isEmpty()) {
+          const QString tok = QStringLiteral("${flow.%1}").arg(name);
+          if (auto* clip = QGuiApplication::clipboard()) clip->setText(tok);
+          table->setToolTip(QStringLiteral("已复制 %1 · 中键").arg(tok));
+        }
+      }
+      return true;
+    }
+  }
+  return QDialog::eventFilter(obj, event);
 }
 
 }  // namespace sieans_qt
