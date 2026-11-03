@@ -190,7 +190,7 @@ QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gain
     if (drewQr) {
       const QString leaf = QFileInfo(g_softQrLoadedPath).fileName();
       hud = leaf.isEmpty()
-                ? QStringLiteral("SIEANS- soft·QR %1×%2 #%3 even·letterbox").arg(w).arg(h).arg(seq % 1000)
+                ? QStringLiteral("SIEANS- soft·QR %1×%2 #%3 even·letterbox · Soft").arg(w).arg(h).arg(seq % 1000)
                 : QStringLiteral("SIEANS- soft·QR %1×%2 #%3 %4")
                       .arg(w)
                       .arg(h)
