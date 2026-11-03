@@ -75,7 +75,7 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   cancel->setToolTip(QStringLiteral("放弃修改并关闭 · Esc/Ctrl+W"));
   auto* ok = new QPushButton(QStringLiteral("确定"));
   ok->setObjectName(QStringLiteral("propertyFloatOk"));
-  ok->setToolTip(QStringLiteral("保留修改并关闭 · Ctrl/Alt/Shift+Enter · Ctrl+S"));
+  ok->setToolTip(QStringLiteral("保留修改并关闭 · Ctrl/Alt/Shift+Enter · Ctrl+S · Esc 相反"));
   auto* hint = new QLabel(QStringLiteral("Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End/PgUp/PgDn 切换 · Ctrl+S/Ctrl+Enter 确定 · F5/F9 执行 · F6 连续"));
   hint->setObjectName(QStringLiteral("propertyFloatHint"));
   hint->setStyleSheet(QStringLiteral("color:#8a9098;font-size:11px;"));
