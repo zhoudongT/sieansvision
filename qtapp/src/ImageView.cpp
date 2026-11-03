@@ -19,7 +19,7 @@ namespace sieans_qt {
 
 ImageView::ImageView(QWidget* parent) : QGraphicsView(parent) {
   setFocusPolicy(Qt::StrongFocus);
-  setToolTip(QStringLiteral("F/G/A/Space/Home/0/R 适应 · +/- 缩放 · Alt+/- 微调 · 1 像素1:1 · 2=200% · 3=50% · O 叠显 · P 探针 · Ctrl+Shift+C 复制探针 · 右键复制探针 · Ctrl+H 复制叠显 · 中键适应 · Esc/C/Del/Backspace 清叠加 · 拖拽平移 · 滚轮缩放"));
+  setToolTip(QStringLiteral("F/G/A/Space/Home/0/R 适应 · +/- 缩放 · Alt+/- 微调 · 1=1:1 · 2=200% · 3=50% · O 叠显 · P 探针 · Ctrl+C 复制图像 · Ctrl+Shift+C 探针 · Ctrl+H 叠显 · 中键适应 · Esc/C/Del 清叠加 · 滚轮缩放"));
   setStatusTip(QStringLiteral("图像视图 · F/G/A/Space/Home/0/R 适应 · +/- 缩放 · 1=1:1 · 2=200% · O 叠显 · P 探针 · Ctrl+Shift+C 探针 · 中键适应 · Esc/C/Del/Backspace 清叠加 · 码框 hits · 拖拽平移 · 滚轮缩放"));
   setScene(&scene_);
   setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
@@ -134,8 +134,9 @@ void ImageView::mouseMoveEvent(QMouseEvent* event) {
 
 
 void ImageView::keyPressEvent(QKeyEvent* event) {
-  if (event->key() == Qt::Key_Escape || event->key() == Qt::Key_C ||
-      event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) {
+  if (event->key() == Qt::Key_Escape ||
+      event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace ||
+      (event->key() == Qt::Key_C && !(event->modifiers() & Qt::ControlModifier))) {
     clearOverlays();
     event->accept();
     return;
@@ -165,6 +166,7 @@ void ImageView::keyPressEvent(QKeyEvent* event) {
     // 1:1 像素
     resetTransform();
     userZoomed_ = true;
+    QToolTip::showText(QCursor::pos(), QStringLiteral("缩放 100% · 1:1"), this);
     event->accept();
     return;
   }
@@ -172,6 +174,8 @@ void ImageView::keyPressEvent(QKeyEvent* event) {
     userZoomed_ = true;
     const qreal f = (event->modifiers() & Qt::AltModifier) ? 1.05 : 1.15;
     scale(f, f);
+    QToolTip::showText(QCursor::pos(),
+                       QStringLiteral("缩放 %1%").arg(transform().m11() * 100.0, 0, 'f', 0), this);
     event->accept();
     return;
   }
@@ -179,6 +183,8 @@ void ImageView::keyPressEvent(QKeyEvent* event) {
     userZoomed_ = true;
     const qreal f = (event->modifiers() & Qt::AltModifier) ? 1.05 : 1.15;
     scale(1.0 / f, 1.0 / f);
+    QToolTip::showText(QCursor::pos(),
+                       QStringLiteral("缩放 %1%").arg(transform().m11() * 100.0, 0, 'f', 0), this);
     event->accept();
     return;
   }
@@ -186,6 +192,7 @@ void ImageView::keyPressEvent(QKeyEvent* event) {
     resetTransform();
     scale(0.5, 0.5);
     userZoomed_ = true;
+    QToolTip::showText(QCursor::pos(), QStringLiteral("缩放 50%"), this);
     event->accept();
     return;
   }
@@ -193,6 +200,7 @@ void ImageView::keyPressEvent(QKeyEvent* event) {
     resetTransform();
     scale(2.0, 2.0);
     userZoomed_ = true;
+    QToolTip::showText(QCursor::pos(), QStringLiteral("缩放 200%"), this);
     event->accept();
     return;
   }
@@ -201,6 +209,18 @@ void ImageView::keyPressEvent(QKeyEvent* event) {
     if (!lastProbe_.isEmpty()) {
       if (auto* clip = QGuiApplication::clipboard()) clip->setText(lastProbe_);
       QToolTip::showText(QCursor::pos(), QStringLiteral("已复制探针 · Ctrl+Shift+C"), this);
+    }
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_C && (event->modifiers() & Qt::ControlModifier)) {
+    if (!image_.isNull()) {
+      if (auto* clip = QGuiApplication::clipboard()) clip->setImage(image_);
+      QToolTip::showText(QCursor::pos(),
+                         QStringLiteral("已复制图像 %1×%2 · Ctrl+C")
+                             .arg(image_.width())
+                             .arg(image_.height()),
+                         this);
     }
     event->accept();
     return;
