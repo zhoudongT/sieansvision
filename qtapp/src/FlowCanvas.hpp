@@ -134,6 +134,7 @@ class FlowScene : public QGraphicsScene {
   void edgeRemoved(const QString& edgeId);
   void linkNotice(const QString& msg);
   void renameRequested(const QString& nodeId);
+  void duplicateRequested(const QString& nodeId);
 
  protected:
   void drawBackground(QPainter* painter, const QRectF& rect) override;

@@ -388,6 +388,7 @@ void MainWindow::buildUi() {
   connect(flow_scene_, &FlowScene::nodeSelected, this, &MainWindow::onNodeSelected);
   connect(flow_scene_, &FlowScene::edgeConnected, this, &MainWindow::onEdgeConnected);
   connect(flow_scene_, &FlowScene::linkNotice, this, &MainWindow::onLinkNotice);
+  connect(flow_scene_, &FlowScene::duplicateRequested, this, &MainWindow::onDuplicateNode);
   connect(flow_scene_, &FlowScene::renameRequested, this, [this](const QString& nodeId) {
     FlowStep* step = document_.findStep(nodeId);
     if (!step) return;
@@ -2136,6 +2137,33 @@ void MainWindow::onEdgeConnected(const QString&, const QString&, const QString&,
 void MainWindow::onLinkNotice(const QString& msg) {
   showStatus(msg, 2500);
   logResult(msg);
+}
+
+
+void MainWindow::onDuplicateNode(const QString& nodeId) {
+  if (run_mode_) {
+    showStatus(QStringLiteral("运行模式已锁定画布"));
+    return;
+  }
+  if (nodeId.isEmpty() || nodeId == QLatin1String("source")) {
+    showStatus(QStringLiteral("无法复制图像源 · Ctrl+D"));
+    return;
+  }
+  const FlowStep* src = document_.findStep(nodeId);
+  if (!src) {
+    showStatus(QStringLiteral("未找到模块 · Ctrl+D"));
+    return;
+  }
+  FlowStep s = *src;
+  s.id = QUuid::createUuid().toString(QUuid::WithoutBraces).left(16);
+  s.name = src->name + QStringLiteral(" 副本");
+  s.position = src->position + QPointF(36, 48);
+  s.runState = QStringLiteral("等待执行");
+  // keep operation + params
+  document_.stepsMut().push_back(s);
+  applyDocumentToUi();
+  logResult(QStringLiteral("已复制模块: %1 → %2").arg(src->name, s.name));
+  showStatus(QStringLiteral("已复制模块 · Ctrl+D · %1").arg(s.name));
 }
 
 void MainWindow::onAddOperator(const QString& key, const QString& name) {

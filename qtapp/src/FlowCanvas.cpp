@@ -629,6 +629,22 @@ void FlowScene::keyPressEvent(QKeyEvent* event) {
       return;
     }
   }
+  if (event->key() == Qt::Key_D && (event->modifiers() & Qt::ControlModifier)) {
+    if (editingLocked_) {
+      emit linkNotice(QStringLiteral("运行模式已锁定画布"));
+      event->accept();
+      return;
+    }
+    const QString id = selectedNodeId();
+    if (!id.isEmpty() && id != QLatin1String("source")) {
+      emit duplicateRequested(id);
+      event->accept();
+      return;
+    }
+    emit linkNotice(QStringLiteral("请先选中模块 · Ctrl+D"));
+    event->accept();
+    return;
+  }
   if (event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) {
     if (editingLocked_) {
       emit linkNotice(QStringLiteral("运行模式已锁定画布"));
@@ -648,8 +664,8 @@ void FlowScene::keyPressEvent(QKeyEvent* event) {
 
 FlowView::FlowView(FlowScene* scene, QWidget* parent)
     : QGraphicsView(scene, parent) {
-  setToolTip(QStringLiteral("滚轮/+/- 缩放 · Alt+/- 微调 · F/G/A/Space/Home/0/R 适应画布 · Ctrl+Shift+F 适应选中 · F2 重命名 · Ctrl+A 全选节点 · Ctrl+C/Ctrl+Shift+C 复制选中节点 · 中键/空白右键适应 · Del/Backspace 删连线 · Esc 取消连线 · I 打开 I/O"));
-  setStatusTip(QStringLiteral("流程画布 · F/G/A/Space/Home/0/R 适应 · I→I/O · +/- 缩放 · Ctrl+C 节点 · 中键适应 · Esc 取消连线 · Del/Backspace 删连线 · 滚轮缩放"));
+  setToolTip(QStringLiteral("滚轮/+/- 缩放 · Alt+/- 微调 · F/G/A/Space/Home/0/R 适应画布 · Ctrl+Shift+F 适应选中 · F2 重命名 · Ctrl+A 全选节点 · Ctrl+C/Ctrl+Shift+C 复制选中节点 · Ctrl+D 复制模块 · 中键/空白右键适应 · Del/Backspace 删连线 · Esc 取消连线 · I 打开 I/O"));
+  setStatusTip(QStringLiteral("流程画布 · F/G/A/Space/Home/0/R 适应 · I→I/O · +/- 缩放 · Ctrl+C 节点 · Ctrl+D 复制模块 · 中键适应 · Esc 取消连线 · Del/Backspace 删连线 · 滚轮缩放"));
   setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing);
   setDragMode(QGraphicsView::RubberBandDrag);
   setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
@@ -746,7 +762,10 @@ void FlowView::keyPressEvent(QKeyEvent* event) {
   }
   if (auto* sc = qobject_cast<FlowScene*>(scene())) {
     if (event->key() == Qt::Key_Escape || event->key() == Qt::Key_Delete ||
-        event->key() == Qt::Key_Backspace) {
+        event->key() == Qt::Key_Backspace ||
+        (event->key() == Qt::Key_D && (event->modifiers() & Qt::ControlModifier)) ||
+        event->key() == Qt::Key_F2 ||
+        (event->key() == Qt::Key_A && (event->modifiers() & Qt::ControlModifier))) {
       sc->handleKey(event);
       if (event->isAccepted()) return;
     }

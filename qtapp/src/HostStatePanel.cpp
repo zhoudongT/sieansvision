@@ -17,6 +17,7 @@
 #include <QEvent>
 #include <QMouseEvent>
 #include <QKeyEvent>
+#include <QWheelEvent>
 
 namespace sieans_qt {
 namespace {
@@ -103,12 +104,13 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   mode_ = new QComboBox;
   mode_->addItems({QStringLiteral("正常生产"), QStringLiteral("九点标定"),
                    QStringLiteral("旋转标定")});
-  mode_->setToolTip(QStringLiteral("标定模式只切换壳状态；开始仍跑当前视觉流程 · 非标定=生产"));
   policy_ = new QComboBox;
   policy_->addItem(QStringLiteral("下次运行成功清除"), QStringLiteral("on_ok"));
   policy_->addItem(QStringLiteral("关闭（需手动清除）"), QStringLiteral("off"));
   modeRow->addWidget(new QLabel(QStringLiteral("模式")));
   modeRow->addWidget(mode_, 1);
+  mode_->installEventFilter(this);
+  mode_->setToolTip(QStringLiteral("标定模式 · 滚轮切换 · 开始仍跑当前视觉流程 · 非标定=生产"));
   modeRow->addWidget(new QLabel(QStringLiteral("报警清除")));
   modeRow->addWidget(policy_, 1);
   root->addLayout(modeRow);
@@ -124,8 +126,9 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   history_ = new QListWidget;
   history_->setObjectName(QStringLiteral("alarmHistory"));
   history_->setMinimumHeight(72);
-  history_->setToolTip(QStringLiteral("报警历史 · 最近事件 · 双击复制 · Del 删行 · Ctrl+L 清空 · 最近 40 条"));
-  history_->setStatusTip(QStringLiteral("Host · 报警历史 · Ctrl+L/Del/双击"));
+  history_->setToolTip(QStringLiteral("报警历史 · 最近事件 · 双击/中键复制行 · 右键清空 · Del 删行 · Ctrl+L 清空 · 最近 40 条"));
+  history_->setStatusTip(QStringLiteral("Host · 报警历史 · Ctrl+L/Del/双击/中键"));
+  history_->installEventFilter(this);
   history_->setSelectionMode(QAbstractItemView::ExtendedSelection);
   root->addWidget(history_, 1);
   {
@@ -382,6 +385,34 @@ bool HostStatePanel::eventFilter(QObject* obj, QEvent* event) {
       if (modeHint_) modeHint_->setText(QStringLiteral("清报警 · 右键统计"));
       return true;
     }
+  }
+  if (obj == history_ && event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::MiddleButton && history_) {
+      QListWidgetItem* hit = history_->itemAt(me->position().toPoint());
+      if (!hit) hit = history_->currentItem();
+      if (hit) {
+        if (auto* clip = QGuiApplication::clipboard()) clip->setText(hit->text());
+        if (modeHint_) modeHint_->setText(QStringLiteral("已复制报警行 · 中键"));
+      }
+      return true;
+    }
+    if (me->button() == Qt::RightButton && history_) {
+      history_->clear();
+      if (modeHint_) modeHint_->setText(QStringLiteral("报警历史已清空 · 右键"));
+      return true;
+    }
+  }
+  if (obj == mode_ && event->type() == QEvent::Wheel) {
+    auto* we = static_cast<QWheelEvent*>(event);
+    if (!mode_ || mode_->count() <= 0) return true;
+    int i = mode_->currentIndex();
+    i += (we->angleDelta().y() > 0 ? -1 : +1);
+    if (i < 0) i = mode_->count() - 1;
+    if (i >= mode_->count()) i = 0;
+    mode_->setCurrentIndex(i);
+    if (modeHint_) modeHint_->setText(QStringLiteral("模式 %1 · 滚轮").arg(mode_->currentText()));
+    return true;
   }
   if (event->type() == QEvent::KeyPress) {
     auto* ke = static_cast<QKeyEvent*>(event);

@@ -60,6 +60,7 @@ class MainWindow : public QMainWindow {
   void onNodeSelected(const QString& nodeId);
   void onAddOperator(const QString& key, const QString& name);
   void onDropOperator(const QString& key, const QPointF& scenePos);
+  void onDuplicateNode(const QString& nodeId);
   void onParamEdited(const QString& nodeId, const QString& key,
                      const QString& value);
   void onParamsReverted(const QString& nodeId, const QVariantMap& snapshot);
