@@ -72,7 +72,7 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   exec->setToolTip(QStringLiteral("单次运行本模块 · F5/F9 · 保留浮窗"));
   auto* cancel = new QPushButton(QStringLiteral("取消"));
   cancel->setObjectName(QStringLiteral("propertyFloatRun"));
-  cancel->setToolTip(QStringLiteral("放弃修改并关闭 · Esc/Ctrl+W"));
+  cancel->setToolTip(QStringLiteral("放弃修改并关闭 · Esc/Ctrl+W · 不写回属性"));
   auto* ok = new QPushButton(QStringLiteral("确定"));
   ok->setObjectName(QStringLiteral("propertyFloatOk"));
   ok->setToolTip(QStringLiteral("保留修改并关闭 · Ctrl/Alt/Shift+Enter · Ctrl+S · Esc 相反"));
