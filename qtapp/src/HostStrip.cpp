@@ -18,7 +18,7 @@ namespace sieans_qt {
 
 HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   setFocusPolicy(Qt::StrongFocus);
-  setStatusTip(QStringLiteral("Host 条 · OK/NG/ALARM · tcp= 摘要(lf/crlf/raw/len4) · Esc 停止运行 · 周期 chip 见右侧 · 单击模式切换 · 右键连续 · Ctrl+单击周期清零 · 双击明细复制 · 周期中键良率 · 周期 ms"));
+  setStatusTip(QStringLiteral("Host 条 · OK/NG/ALARM · tcp= 摘要(lf/crlf/raw/len4) · Esc 停止运行 · 周期 chip 见右侧 · 单击模式切换 · 右键连续 · Ctrl+单击周期清零 · 双击明细复制 · Ctrl+Shift+V 粘贴监视键 · 周期中键良率 · 周期 ms"));
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(8, 4, 8, 4);
   root->setSpacing(2);
@@ -72,7 +72,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   chips_->setObjectName(QStringLiteral("muted"));
   chips_->setWordWrap(true);
   chips_->setCursor(Qt::PointingHandCursor);
-  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑键列表 · 单击复制全文"));
+  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+V 粘贴键 · 单击复制全文"));
   chips_->installEventFilter(this);
   root->addWidget(chips_);
   setStyleSheet(QStringLiteral("background:#232528;border-top:1px solid #4a4e54;"));
@@ -422,6 +422,11 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       if (auto* clip = QGuiApplication::clipboard()) clip->setText(js);
       if (detail_) detail_->setToolTip(QStringLiteral("已复制良率JSON · Ctrl+Shift+J"));
       return true;
+    if (ke->key() == Qt::Key_V && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier)) {
+      pasteWatchKeysFromClipboard();
+      return true;
+    }
     }
   }
   return QWidget::eventFilter(obj, event);
@@ -441,6 +446,34 @@ void HostStrip::copyRunStats() {
       .arg(detail_ ? detail_->text() : QString());
   if (auto* clip = QGuiApplication::clipboard()) clip->setText(line);
   if (detail_) detail_->setToolTip(QStringLiteral("已复制运行统计 · Ctrl+Shift+C"));
+}
+
+
+void HostStrip::pasteWatchKeysFromClipboard() {
+  const QString raw = QGuiApplication::clipboard()
+                          ? QGuiApplication::clipboard()->text().trimmed()
+                          : QString();
+  if (raw.isEmpty()) {
+    if (chips_) chips_->setToolTip(QStringLiteral("剪贴板空 · Ctrl+Shift+V"));
+    return;
+  }
+  QStringList keys;
+  const QString norm = QString(raw).replace(QLatin1Char('\n'), QLatin1Char(','))
+                           .replace(QLatin1Char(';'), QLatin1Char(','))
+                           .replace(QLatin1Char('\t'), QLatin1Char(','));
+  for (const QString& p : norm.split(QLatin1Char(','))) {
+    const QString k = p.trimmed();
+    if (!k.isEmpty() && !keys.contains(k)) keys << k;
+  }
+  if (keys.isEmpty()) {
+    if (chips_) chips_->setToolTip(QStringLiteral("无有效监视键 · Ctrl+Shift+V"));
+    return;
+  }
+  watchKeys_ = keys;
+  emit watchKeysChanged(watchKeys_);
+  refreshChips({});
+  if (chips_)
+    chips_->setToolTip(QStringLiteral("已粘贴监视键 %1 · Ctrl+Shift+V").arg(keys.size()));
 }
 
 }  // namespace sieans_qt
