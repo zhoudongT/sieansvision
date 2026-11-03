@@ -616,7 +616,7 @@ void MainWindow::buildToolbar() {
   act_cont_ =
       tb->addAction(QStringLiteral("↻ 连续"), this, &MainWindow::onRunContinuous);
   act_cont_->setShortcut(QKeySequence(Qt::Key_F6));
-  act_cont_->setToolTip(QStringLiteral("连续运行当前流程 · F6"));
+  act_cont_->setToolTip(QStringLiteral("连续运行当前流程 · F6 · Esc 停止"));
   act_cont_->setStatusTip(QStringLiteral("连续 · F6"));
   act_stop_ = tb->addAction(QStringLiteral("■ 停止"), this, &MainWindow::onStopRun);
   act_stop_->setShortcut(QKeySequence(Qt::Key_Escape));
