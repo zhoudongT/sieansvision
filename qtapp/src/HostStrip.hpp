@@ -32,6 +32,7 @@ class HostStrip : public QWidget {
   void copyWatchKeys();
   void exportWatchKeysJson();
   void moveWatchKey(int delta);
+  void moveWatchKeyToEdge(int edge);
   void reverseWatchKeys();
   void removeHeadWatchKey();
   void clearWatchKeys();

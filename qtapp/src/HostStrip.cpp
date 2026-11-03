@@ -77,7 +77,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   chips_->setObjectName(QStringLiteral("muted"));
   chips_->setWordWrap(true);
   chips_->setCursor(Qt::PointingHandCursor);
-  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+K/V 复制/粘贴键(JSON) · Ctrl+Shift+E JSON导出 · Alt+←→ 调序 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Del/Bksp 删首 · Ctrl+Shift+Bksp 清空 · 单击复制全文"));
+  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+K/V 复制/粘贴键(JSON) · Ctrl+Shift+E JSON导出 · Alt+←→ 调序 · Ctrl+Home/End 置顶末/置底首 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Del/Bksp 删首 · Ctrl+Shift+Bksp 清空 · 单击复制全文"));
   chips_->installEventFilter(this);
   root->addWidget(chips_);
   setStyleSheet(QStringLiteral("background:#232528;border-top:1px solid #4a4e54;"));
@@ -532,6 +532,11 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       moveWatchKey(ke->key() == Qt::Key_Left ? -1 : +1);
       return true;
     }
+    if ((ke->key() == Qt::Key_Home || ke->key() == Qt::Key_End) &&
+        (ke->modifiers() & Qt::ControlModifier)) {
+      moveWatchKeyToEdge(ke->key() == Qt::Key_Home ? -1 : +1);
+      return true;
+    }
     if ((ke->modifiers() & Qt::AltModifier) && ke->key() >= Qt::Key_1 && ke->key() <= Qt::Key_4 &&
         !(ke->modifiers() & Qt::ControlModifier)) {
       static const int kPresets[] = {50, 100, 200, 500};
@@ -643,6 +648,28 @@ void HostStrip::moveWatchKey(int delta) {
   refreshChips({});
   if (chips_)
     chips_->setToolTip(QStringLiteral("监视键轮转 · 首=%1 · Alt+←→").arg(watchKeys_.first()));
+}
+
+void HostStrip::moveWatchKeyToEdge(int edge) {
+  if (watchKeys_.size() < 2) {
+    if (chips_) chips_->setToolTip(QStringLiteral("监视键不足 · Ctrl+Home/End"));
+    return;
+  }
+  if (edge < 0) {
+    // Ctrl+Home: pin last key to front
+    const QString tail = watchKeys_.takeLast();
+    watchKeys_.prepend(tail);
+    if (chips_)
+      chips_->setToolTip(QStringLiteral("末键置顶 %1 · Ctrl+Home").arg(watchKeys_.first()));
+  } else {
+    // Ctrl+End: pin first key to end
+    const QString head = watchKeys_.takeFirst();
+    watchKeys_.append(head);
+    if (chips_)
+      chips_->setToolTip(QStringLiteral("首键置底 · 现首=%1 · Ctrl+End").arg(watchKeys_.first()));
+  }
+  emit watchKeysChanged(watchKeys_);
+  refreshChips({});
 }
 
 void HostStrip::reverseWatchKeys() {

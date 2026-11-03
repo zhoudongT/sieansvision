@@ -65,6 +65,8 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
     connect(scTok, &QShortcut::activated, this, &VarWatchPanel::copyFlowToken);
     auto* scJson = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+J")), this);
     connect(scJson, &QShortcut::activated, this, &VarWatchPanel::exportJsonFiltered);
+    auto* scKeys = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+E")), this);
+    connect(scKeys, &QShortcut::activated, this, &VarWatchPanel::exportKeysJson);
     auto* scAdd = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+V")), this);
     connect(scAdd, &QShortcut::activated, this, &VarWatchPanel::addKeysFromClipboard);
     auto* scIns = new QShortcut(QKeySequence(Qt::Key_Insert), this);
@@ -118,10 +120,10 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
                                  table_);
             }
           });
-  table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · 中键 ${flow} · 右键键=值 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/置底 · Esc 取消选中 · F2 聚焦表 · Ctrl+Shift+J JSON"));
+  table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · 中键 ${flow} · 右键键=值 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/置底 · Esc 取消选中 · F2 聚焦表 · Ctrl+Shift+J JSON · Ctrl+Shift+E 键JSON"));
   table_->installEventFilter(this);
   if (filterEdit_) filterEdit_->installEventFilter(this);
-  setStatusTip(QStringLiteral("变量监视 · ★=Host条 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · 中键token/右键键=值 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/置底 · Ctrl+Shift+Space 批量★ · Ctrl+Shift+Bksp 清空 · Ctrl+X 剪切 · Ctrl+Shift+H ★键 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
+  setStatusTip(QStringLiteral("变量监视 · ★=Host条 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · Ctrl+Shift+E 键JSON · 中键token/右键键=值 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/置底 · Ctrl+Shift+Space 批量★ · Ctrl+Shift+Bksp 清空 · Ctrl+X 剪切 · Ctrl+Shift+H ★键 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
   keys_ = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
            QStringLiteral("passGate"), QStringLiteral("urlOk"),
@@ -430,6 +432,20 @@ void VarWatchPanel::exportJsonFiltered() {
                      QStringLiteral("已导出 JSON %1 · Ctrl+Shift+J").arg(parts.size()), table_);
 }
 
+
+
+void VarWatchPanel::exportKeysJson() {
+  QJsonArray arr;
+  for (const QString& k : keys_) arr.append(k);
+  QJsonObject root;
+  root.insert(QStringLiteral("keys"), arr);
+  root.insert(QStringLiteral("varWatchKeys"), arr);
+  root.insert(QStringLiteral("count"), arr.size());
+  if (auto* clip = QApplication::clipboard())
+    clip->setText(QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact)));
+  QToolTip::showText(QCursor::pos(),
+                     QStringLiteral("已导出键JSON %1 · Ctrl+Shift+E").arg(arr.size()), table_);
+}
 
 void VarWatchPanel::addKeysFromClipboard() {
   const QString clip = QApplication::clipboard() ? QApplication::clipboard()->text() : QString();
