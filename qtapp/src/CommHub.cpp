@@ -259,12 +259,16 @@ void CommHub::refreshListenStatus() {
   if (!server_ || !server_->isListening()) return;
   const int n = peers_.size();
   if (n <= 0)
-    tcpStatus_ = QStringLiteral("listening %1:%2").arg(listenHost_).arg(listenPort_);
-  else
-    tcpStatus_ = QStringLiteral("listening %1:%2 · peers %3")
+    tcpStatus_ = QStringLiteral("listening %1:%2 · %3")
                      .arg(listenHost_)
                      .arg(listenPort_)
-                     .arg(n);
+                     .arg(framing_.isEmpty() ? QStringLiteral("lf") : framing_);
+  else
+    tcpStatus_ = QStringLiteral("listening %1:%2 · peers %3 · %4")
+                     .arg(listenHost_)
+                     .arg(listenPort_)
+                     .arg(n)
+                     .arg(framing_.isEmpty() ? QStringLiteral("lf") : framing_);
   emit statusChanged(tcpStatus_);
 }
 

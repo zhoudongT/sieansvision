@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -534,6 +534,21 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
             from = at + needle.size();
           }
           return n;
+        }
+        if (name == QLatin1String("clamp")) {
+          if (args.isEmpty()) return 0;
+          double v = evalRec(args[0]).toDouble();
+          if (args.size() > 1) v = std::max(v, evalRec(args[1]).toDouble());
+          if (args.size() > 2) v = std::min(v, evalRec(args[2]).toDouble());
+          return v;
+        }
+        if (name == QLatin1String("round")) {
+          if (args.isEmpty()) return 0;
+          const double v = evalRec(args[0]).toDouble();
+          const int places = args.size() > 1 ? int(evalRec(args[1]).toDouble()) : 0;
+          if (places <= 0) return std::round(v);
+          const double f = std::pow(10.0, places);
+          return std::round(v * f) / f;
         }
       }
     }
@@ -716,6 +731,12 @@ QStringList exprSelfTest() {
   check(QStringLiteral("count"),
         ev.eval(QStringLiteral("count(%1.text, 'L')").arg(sid)),
         QStringLiteral("2"));
+  check(QStringLiteral("clamp"),
+        ev.eval(QStringLiteral("clamp(5, 0, 3)")),
+        QStringLiteral("3"));
+  check(QStringLiteral("round"),
+        ev.eval(QStringLiteral("round(3.7)")),
+        QStringLiteral("4"));
   return fails;
 }
 

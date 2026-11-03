@@ -55,6 +55,10 @@ void ImageView::setLiveImage(const QImage& image) {
     scene_.setSceneRect(pixmap_item_->boundingRect());
     if (!userZoomed_) fitToView();
   }
+  setToolTip(QStringLiteral("图像 %1×%2 · F/Home/0 适应 · 码 %3")
+                 .arg(image_.width())
+                 .arg(image_.height())
+                 .arg(hits_.size()));
   updateProbe(-1, -1);
 }
 
