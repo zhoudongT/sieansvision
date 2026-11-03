@@ -74,6 +74,10 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
     connect(scHost, &QShortcut::activated, this, &VarWatchPanel::copyHostWatchKeys);
     auto* scRev = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+Y")), this);
     connect(scRev, &QShortcut::activated, this, &VarWatchPanel::reverseWatchKeys);
+    auto* scHome = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Home")), this);
+    connect(scHome, &QShortcut::activated, this, [this]() { moveSelectedToEdge(-1); });
+    auto* scEnd = new QShortcut(QKeySequence(QStringLiteral("Ctrl+End")), this);
+    connect(scEnd, &QShortcut::activated, this, [this]() { moveSelectedToEdge(+1); });
   }
   table_ = new QTableWidget(0, 2);
   table_->setHorizontalHeaderLabels(
@@ -103,10 +107,10 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
                                  table_);
             }
           });
-  table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · 中键 ${flow} · 右键键=值 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Esc 取消选中 · F2 聚焦表 · Ctrl+Shift+J JSON"));
+  table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · 中键 ${flow} · 右键键=值 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/置底 · Esc 取消选中 · F2 聚焦表 · Ctrl+Shift+J JSON"));
   table_->installEventFilter(this);
   if (filterEdit_) filterEdit_->installEventFilter(this);
-  setStatusTip(QStringLiteral("变量监视 · ★=Host条 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · 中键token/右键键=值 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+X 剪切 · Ctrl+Shift+H ★键 · Ctrl+Shift+Y 反序 · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
+  setStatusTip(QStringLiteral("变量监视 · ★=Host条 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · 中键token/右键键=值 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/置底 · Ctrl+X 剪切 · Ctrl+Shift+H ★键 · Ctrl+Shift+Y 反序 · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
   keys_ = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
            QStringLiteral("passGate"), QStringLiteral("urlOk"),
@@ -572,6 +576,54 @@ void VarWatchPanel::moveSelectedKey(int delta) {
   emit watchListChanged(keys_);
   QToolTip::showText(QCursor::pos(),
                      QStringLiteral("监视调序 %1 → #%2 · Alt+↑↓").arg(kn).arg(dest + 1),
+                     table_);
+}
+
+
+void VarWatchPanel::moveSelectedToEdge(int edge) {
+  if (!table_ || keys_.size() < 2) {
+    QToolTip::showText(QCursor::pos(), QStringLiteral("监视不足 · Ctrl+Home/End"), table_);
+    return;
+  }
+  const int row = table_->currentRow();
+  if (row < 0) {
+    QToolTip::showText(QCursor::pos(), QStringLiteral("未选中 · Ctrl+Home/End"), table_);
+    return;
+  }
+  auto* keyItem = table_->item(row, 0);
+  if (!keyItem) return;
+  QString kn = keyItem->data(Qt::UserRole).toString();
+  if (kn.isEmpty()) kn = keyItem->text().trimmed();
+  if (kn.startsWith(QStringLiteral("★ "))) kn = kn.mid(2).trimmed();
+  const int idx = keys_.indexOf(kn);
+  if (idx < 0) return;
+  const int dest = edge < 0 ? 0 : keys_.size() - 1;
+  if (idx == dest) {
+    QToolTip::showText(QCursor::pos(),
+                       edge < 0 ? QStringLiteral("已在顶 · Ctrl+Home")
+                                : QStringLiteral("已在底 · Ctrl+End"),
+                       table_);
+    return;
+  }
+  keys_.move(idx, dest);
+  rebuild();
+  emit watchListChanged(keys_);
+  // reselect
+  for (int r = 0; r < table_->rowCount(); ++r) {
+    auto* it = table_->item(r, 0);
+    if (!it) continue;
+    QString k = it->data(Qt::UserRole).toString();
+    if (k.isEmpty()) k = it->text().trimmed();
+    if (k.startsWith(QStringLiteral("★ "))) k = k.mid(2).trimmed();
+    if (k == kn) {
+      table_->setCurrentCell(r, 0);
+      table_->selectRow(r);
+      break;
+    }
+  }
+  QToolTip::showText(QCursor::pos(),
+                     edge < 0 ? QStringLiteral("已置顶 %1 · Ctrl+Home").arg(kn)
+                              : QStringLiteral("已置底 %1 · Ctrl+End").arg(kn),
                      table_);
 }
 

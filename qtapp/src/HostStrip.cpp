@@ -74,7 +74,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   chips_->setObjectName(QStringLiteral("muted"));
   chips_->setWordWrap(true);
   chips_->setCursor(Qt::PointingHandCursor);
-  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+K/V 复制/粘贴键 · Alt+←→ 调序 · Ctrl+Shift+Y 反序 · 单击复制全文"));
+  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+K/V 复制/粘贴键 · Alt+←→ 调序 · Ctrl+Shift+Y 反序 · Del/Bksp 删首 · Ctrl+Shift+Bksp 清空 · 单击复制全文"));
   chips_->installEventFilter(this);
   root->addWidget(chips_);
   setStyleSheet(QStringLiteral("background:#232528;border-top:1px solid #4a4e54;"));
@@ -446,6 +446,16 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       reverseWatchKeys();
       return true;
     }
+    if ((ke->key() == Qt::Key_Delete || ke->key() == Qt::Key_Backspace) &&
+        (ke->modifiers() & Qt::ControlModifier) && (ke->modifiers() & Qt::ShiftModifier)) {
+      clearWatchKeys();
+      return true;
+    }
+    if ((ke->key() == Qt::Key_Delete || ke->key() == Qt::Key_Backspace) &&
+        !(ke->modifiers() & Qt::ControlModifier) && !(ke->modifiers() & Qt::AltModifier)) {
+      removeHeadWatchKey();
+      return true;
+    }
     if ((ke->modifiers() & Qt::ControlModifier) &&
         (ke->key() == Qt::Key_BracketLeft || ke->key() == Qt::Key_BracketRight ||
          ke->key() == Qt::Key_Up || ke->key() == Qt::Key_Down)) {
@@ -560,6 +570,34 @@ void HostStrip::reverseWatchKeys() {
     chips_->setToolTip(QStringLiteral("监视键已反序 %1 · Ctrl+Shift+Y · 首=%2")
                            .arg(watchKeys_.size())
                            .arg(watchKeys_.first()));
+}
+
+
+void HostStrip::removeHeadWatchKey() {
+  if (watchKeys_.isEmpty()) {
+    if (chips_) chips_->setToolTip(QStringLiteral("监视键空 · Del"));
+    return;
+  }
+  const QString gone = watchKeys_.takeFirst();
+  emit watchKeysChanged(watchKeys_);
+  refreshChips({});
+  if (chips_)
+    chips_->setToolTip(QStringLiteral("已删首键 %1 · 剩 %2 · Del")
+                           .arg(gone)
+                           .arg(watchKeys_.size()));
+}
+
+void HostStrip::clearWatchKeys() {
+  if (watchKeys_.isEmpty()) {
+    if (chips_) chips_->setToolTip(QStringLiteral("监视键已空 · Ctrl+Shift+Bksp"));
+    return;
+  }
+  const int n = watchKeys_.size();
+  watchKeys_.clear();
+  emit watchKeysChanged(watchKeys_);
+  refreshChips({});
+  if (chips_)
+    chips_->setToolTip(QStringLiteral("已清空监视键 %1 · Ctrl+Shift+Bksp").arg(n));
 }
 
 void HostStrip::copyWatchKeys() {
