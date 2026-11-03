@@ -6,6 +6,7 @@
 #include <QStringList>
 
 class QEvent;
+class QKeyEvent;
 
 namespace sieans_qt {
 
@@ -44,6 +45,7 @@ class HostStrip : public QWidget {
 
  protected:
   bool eventFilter(QObject* obj, QEvent* event) override;
+  void keyPressEvent(QKeyEvent* event) override;
 
  private:
   void refreshChips(const QVariantMap& vars);

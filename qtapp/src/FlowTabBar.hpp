@@ -4,6 +4,7 @@ class QPushButton;
 class QHBoxLayout;
 class QLabel;
 class QEvent;
+class QKeyEvent;
 
 namespace sieans_qt {
 
@@ -29,6 +30,7 @@ class FlowTabBar : public QWidget {
   void intervalChanged(int ms);
  protected:
   bool eventFilter(QObject* obj, QEvent* event) override;
+  void keyPressEvent(QKeyEvent* event) override;
  private:
   QPushButton* allBtn_ = nullptr;
   QPushButton* flowBtn_ = nullptr;

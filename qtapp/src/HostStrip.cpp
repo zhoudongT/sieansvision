@@ -59,6 +59,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   badge_->setCursor(Qt::PointingHandCursor);
   modeChip_->setCursor(Qt::PointingHandCursor);
   cycleChip_->setCursor(Qt::PointingHandCursor);
+  cycleChip_->setFocusPolicy(Qt::ClickFocus);
   detail_->setCursor(Qt::PointingHandCursor);
   badge_->setToolTip(QStringLiteral("OK/NG/ALARM · passGate 判定 · 单击打开 Host 面板 · Alt+单击清连OK/NG · 中键复制运行统计 · tcp= 见明细"));
   modeChip_->setToolTip(QStringLiteral("运行模式 · 单击设计/运行 · Alt 暂停/继续 · 右键/中键连续"));
@@ -435,6 +436,22 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       copyWatchKeys();
       return true;
     }
+    if ((ke->modifiers() & Qt::ControlModifier) &&
+        (ke->key() == Qt::Key_BracketLeft || ke->key() == Qt::Key_BracketRight ||
+         ke->key() == Qt::Key_Up || ke->key() == Qt::Key_Down)) {
+      const int step = (ke->modifiers() & Qt::ShiftModifier) ? 200 : 50;
+      const int delta =
+          (ke->key() == Qt::Key_BracketRight || ke->key() == Qt::Key_Up) ? step : -step;
+      const int next = qBound(20, intervalMs_ + delta, 60000);
+      if (next != intervalMs_) {
+        intervalMs_ = next;
+        refreshCycleChip();
+        emit intervalChanged(intervalMs_);
+      }
+      if (cycleChip_)
+        cycleChip_->setToolTip(QStringLiteral("节拍 %1 ms · Ctrl+↑↓/[]").arg(next));
+      return true;
+    }
     if ((ke->key() == Qt::Key_Left || ke->key() == Qt::Key_Right) &&
         (ke->modifiers() & Qt::AltModifier)) {
       moveWatchKey(ke->key() == Qt::Key_Left ? -1 : +1);
@@ -528,6 +545,12 @@ void HostStrip::copyWatchKeys() {
     chips_->setToolTip(
         line.isEmpty() ? QStringLiteral("监视键空 · Ctrl+Shift+K")
                        : QStringLiteral("已复制监视键 %1 · Ctrl+Shift+K").arg(watchKeys_.size()));
+}
+
+
+void HostStrip::keyPressEvent(QKeyEvent* event) {
+  if (event && eventFilter(this, event)) return;
+  QWidget::keyPressEvent(event);
 }
 
 }  // namespace sieans_qt

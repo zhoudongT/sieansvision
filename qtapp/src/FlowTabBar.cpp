@@ -7,12 +7,14 @@
 #include <QEvent>
 #include <QMouseEvent>
 #include <QWheelEvent>
+#include <QKeyEvent>
 #include <QClipboard>
 #include <QGuiApplication>
 
 namespace sieans_qt {
 
 FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
+  setFocusPolicy(Qt::StrongFocus);
   setObjectName(QStringLiteral("flowTabBar"));
   setStatusTip(QStringLiteral("流程条 · ▶一次 F5/F9 / ↻连续 F6 / ■停止 Esc · F/G/A/Space/R 适应 · 暂停/周期芯片 · 单击模式连续 · 右键模式暂停 · 中键模式适应 · 周期单击复制/Ctrl清零"));
   setFixedHeight(28);
@@ -68,8 +70,9 @@ FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   cycleLabel_->setStyleSheet(
       QStringLiteral("QLabel{color:#9ad0ff;background:#1e2830;border:1px solid #3a5060;"
                      "border-radius:3px;padding:1px 6px;font-size:11px;}"));
-  cycleLabel_->setToolTip(QStringLiteral("流程条周期 · 节拍 · 滚轮±50 · Ctrl+滚轮±200 · 单击复制 · Ctrl+单击/双击清零 · 右键清零"));
+  cycleLabel_->setToolTip(QStringLiteral("流程条周期 · 节拍 · 滚轮±50 · Ctrl+滚轮±200 · Alt+1/2/3/4→50/100/200/500 · 单击复制 · Ctrl+单击/双击清零 · 右键清零"));
   cycleLabel_->setCursor(Qt::PointingHandCursor);
+  cycleLabel_->setFocusPolicy(Qt::ClickFocus);
   cycleLabel_->installEventFilter(this);
   auto* hint = new QLabel(QStringLiteral("F5 一次 · F6 连续 · F/R 适应 · I/O 绑定 · Esc 取消连线 · Del 删连线"));
   hint->setObjectName(QStringLiteral("muted"));
@@ -151,7 +154,7 @@ void FlowTabBar::refreshCycleLabel() {
   text += QStringLiteral(" · 节拍 %1").arg(intervalMs_);
   cycleLabel_->setText(text);
   cycleLabel_->setToolTip(
-      QStringLiteral("周期 · 上次 ms · 节拍 %1 ms · 滚轮±50 · Ctrl+滚轮±200 · 单击复制 · Ctrl+单击/双击清零")
+      QStringLiteral("周期 · 上次 ms · 节拍 %1 ms · 滚轮±50 · Ctrl+滚轮±200 · Alt+1/2/3/4→50/100/200/500 · 单击复制 · Ctrl+单击/双击清零")
           .arg(intervalMs_));
 }
 
@@ -208,7 +211,43 @@ bool FlowTabBar::eventFilter(QObject* obj, QEvent* event) {
       }
     }
   }
+  if (event->type() == QEvent::KeyPress) {
+    auto* ke = static_cast<QKeyEvent*>(event);
+    if ((ke->modifiers() & Qt::AltModifier) && ke->key() >= Qt::Key_1 && ke->key() <= Qt::Key_4 &&
+        !(ke->modifiers() & Qt::ControlModifier)) {
+      static const int kPresets[] = {50, 100, 200, 500};
+      const int next = kPresets[ke->key() - Qt::Key_1];
+      if (next != intervalMs_) {
+        intervalMs_ = next;
+        refreshCycleLabel();
+        emit intervalChanged(intervalMs_);
+      }
+      if (cycleLabel_)
+        cycleLabel_->setToolTip(
+            QStringLiteral("节拍 %1 ms · Alt+%2").arg(next).arg(ke->key() - Qt::Key_0));
+      return true;
+    }
+    if ((ke->modifiers() & Qt::ControlModifier) &&
+        (ke->key() == Qt::Key_BracketLeft || ke->key() == Qt::Key_BracketRight ||
+         ke->key() == Qt::Key_Up || ke->key() == Qt::Key_Down)) {
+      const int step = (ke->modifiers() & Qt::ShiftModifier) ? 200 : 50;
+      const int delta =
+          (ke->key() == Qt::Key_BracketRight || ke->key() == Qt::Key_Up) ? step : -step;
+      const int next = qBound(20, intervalMs_ + delta, 60000);
+      if (next != intervalMs_) {
+        intervalMs_ = next;
+        refreshCycleLabel();
+        emit intervalChanged(intervalMs_);
+      }
+      return true;
+    }
+  }
   return QWidget::eventFilter(obj, event);
+}
+
+void FlowTabBar::keyPressEvent(QKeyEvent* event) {
+  if (event && eventFilter(this, event)) return;
+  QWidget::keyPressEvent(event);
 }
 
 }  // namespace sieans_qt
