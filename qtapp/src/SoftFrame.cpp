@@ -123,6 +123,10 @@ QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gain
     const int y = (h - scaled.height()) / 2;
     p.fillRect(QRect(0, 0, w, h), Qt::white);
     p.drawImage(x, y, scaled);
+    // Guide frame (outside scaled content — decode uses interior pixels).
+    p.setPen(QPen(QColor(0, 188, 212), 1));
+    p.setBrush(Qt::NoBrush);
+    p.drawRect(x - 1, y - 1, scaled.width() + 1, scaled.height() + 1);
     drewQr = true;
   } else {
     p.setPen(Qt::NoPen);

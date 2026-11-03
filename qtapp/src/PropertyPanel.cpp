@@ -89,9 +89,10 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
     return {S("scope", "作用域", kChoice, "flow|流程;global|全局")};
   }
   if (op == QLatin1String("format_data")) {
-    return {S("template", "模板 {name}/${flow.x}", kLine, ""),
+    return {S("template", "模板 {name}/${flow.x}/{{name}}", kLine, ""),
             S("args", "参数变量 CSV", kLine, ""),
-            S("targetVar", "目标变量", kLine, "")};
+            S("targetVar", "目标变量", kLine, ""),
+            S("emptyDefault", "空结果默认", kLine, "")};
   }
   if (op == QLatin1String("result_gate")) {
     return {S("minCount", "最少码数", kInt, ""),
@@ -319,12 +320,17 @@ void PropertyPanel::showSource(const QVariantMap& sourceConfig) {
 void PropertyPanel::showStep(const FlowStep& step) {
   QString hint = QStringLiteral("算子 %1 · %2").arg(step.operation, step.runState);
   if (step.operation == QLatin1String("format_data"))
-    hint += QStringLiteral(" · 支持 {name} / ${flow.x}");
+    hint += QStringLiteral(" · 支持 {name} / ${flow.x} / {{name}}");
   else if (step.operation == QLatin1String("send_data") ||
            step.operation == QLatin1String("receive_data"))
     hint += QStringLiteral(" · LocalLoop 回环 / TCP");
   else if (step.operation == QLatin1String("result_gate"))
     hint += QStringLiteral(" · sourceVar → passVar");
+  else if (step.operation == QLatin1String("var_calc"))
+    hint += QStringLiteral(" · expr: in / and / or / A if C else B");
+  else if (step.operation == QLatin1String("barcode") ||
+           step.operation == QLatin1String("qr_decode"))
+    hint += QStringLiteral(" · ZXing 多码 · 判定 judgeMinCount");
   meta_->setText(hint);
   rebuildForm(QStringLiteral("属性 · %1").arg(step.name), step.id, step.operation,
               step.params);

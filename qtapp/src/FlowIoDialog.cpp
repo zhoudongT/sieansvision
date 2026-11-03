@@ -19,7 +19,9 @@ FlowIoDialog::FlowIoDialog(const QVariantMap& io, QWidget* parent)
   setStyleSheet(theme::workbenchStyleSheet());
   auto* root = new QVBoxLayout(this);
   auto* hint = new QLabel(
-      QStringLiteral("流程级 I/O 与显示：表格可编辑；确定后写回 flow.io（订阅名支持 模块.字段）"));
+      QStringLiteral(
+          "流程级 I/O 与显示：表格可编辑；确定后写回 flow.io（订阅 模块.字段 / flow.var；"
+          "报文模板支持 {name} / ${flow.x} / {{name}}）"));
   hint->setObjectName(QStringLiteral("muted"));
   hint->setWordWrap(true);
   root->addWidget(hint);

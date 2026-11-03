@@ -161,7 +161,7 @@
         "args": "passGate,barcodeCount,barcodeText",
         "targetVar": "formatted",
         "scope": "flow",
-        "emptyDefault": ""
+        "emptyDefault": "BARCODE empty"
       },
       "reference": "",
       "position": {

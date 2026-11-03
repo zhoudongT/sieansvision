@@ -3,6 +3,7 @@
 #include <QGraphicsPathItem>
 #include <QPainter>
 #include <QGraphicsSimpleTextItem>
+#include <QGraphicsRectItem>
 #include <QPainterPath>
 #include <QWheelEvent>
 #include <QMouseEvent>
@@ -125,7 +126,9 @@ void ImageView::redrawOverlays() {
   overlay_items_.clear();
 
   QPen pen(QColor(0, 230, 118), 2.5);
+  int idx = 0;
   for (const auto& h : hits_) {
+    ++idx;
     if (h.polygon.size() >= 2) {
       QPainterPath path;
       path.addPolygon(h.polygon);
@@ -134,15 +137,41 @@ void ImageView::redrawOverlays() {
       overlay_items_.push_back(poly);
     }
     if (!h.text.isEmpty() && !h.polygon.isEmpty()) {
-      auto* label = scene_.addSimpleText(h.format + QStringLiteral(": ") + h.text);
+      const QString text =
+          QStringLiteral("#%1 %2: %3").arg(idx).arg(h.format, h.text.left(48));
+      auto* label = scene_.addSimpleText(text);
       QFont f = label->font();
       f.setPointSize(11);
       f.setBold(true);
       label->setFont(f);
       label->setBrush(QColor(255, 235, 59));
-      label->setPos(h.polygon.boundingRect().topLeft() + QPointF(0, -18));
+      const QRectF br = h.polygon.boundingRect();
+      const QRectF lr = label->boundingRect();
+      auto* bg = scene_.addRect(
+          QRectF(0, 0, lr.width() + 8, lr.height() + 4), Qt::NoPen,
+          QColor(0, 0, 0, 160));
+      bg->setPos(br.topLeft() + QPointF(0, -lr.height() - 6));
+      label->setPos(br.topLeft() + QPointF(4, -lr.height() - 4));
+      overlay_items_.push_back(bg);
       overlay_items_.push_back(label);
     }
+  }
+  if (!hits_.isEmpty()) {
+    auto* chip = scene_.addSimpleText(
+        QStringLiteral("码 %1").arg(hits_.size()));
+    QFont f = chip->font();
+    f.setPointSize(12);
+    f.setBold(true);
+    chip->setFont(f);
+    chip->setBrush(QColor(0, 230, 118));
+    auto* chipBg = scene_.addRect(
+        QRectF(0, 0, chip->boundingRect().width() + 10,
+               chip->boundingRect().height() + 6),
+        Qt::NoPen, QColor(0, 0, 0, 170));
+    chipBg->setPos(8, 8);
+    chip->setPos(13, 11);
+    overlay_items_.push_back(chipBg);
+    overlay_items_.push_back(chip);
   }
 }
 

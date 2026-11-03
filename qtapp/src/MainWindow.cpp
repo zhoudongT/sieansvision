@@ -320,6 +320,7 @@ void MainWindow::buildUi() {
   connect(flow_tabs_, &FlowTabBar::runOnceRequested, this, &MainWindow::onRunOnce);
   connect(flow_tabs_, &FlowTabBar::runContinuousRequested, this,
           &MainWindow::onRunContinuous);
+  connect(flow_tabs_, &FlowTabBar::stopRequested, this, &MainWindow::onStopRun);
   horizontal->addWidget(flowPane);
 
   connect(flow_scene_, &FlowScene::nodeSelected, this, &MainWindow::onNodeSelected);
@@ -1173,8 +1174,12 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
         out.replace(QStringLiteral("{%1}").arg(i), val);
         out.replace(QStringLiteral("{%1}").arg(key), val);  // named braces
       }
-      // also ${flow.x} / remaining {name}
+      // also ${flow.x} / remaining {name} / {{name}}
       out = CommHub::expandTemplate(out, flow_vars_);
+      if (out.trimmed().isEmpty()) {
+        out = step->params.value(QStringLiteral("emptyDefault")).toString();
+        out = CommHub::expandTemplate(out, flow_vars_);
+      }
       const QString target =
           step->params.value(QStringLiteral("targetVar"), QStringLiteral("formatted"))
               .toString();

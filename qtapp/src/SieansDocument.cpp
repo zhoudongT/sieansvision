@@ -278,7 +278,9 @@ void SieansDocument::seedGentlQrDemo() {
       {{QStringLiteral("template"),
         QStringLiteral("BARCODE ok={passGate} count={barcodeCount} text={barcodeText}")},
        {QStringLiteral("args"), QStringLiteral("passGate,barcodeCount,barcodeText")},
-       {QStringLiteral("targetVar"), QStringLiteral("formatted")}});
+       {QStringLiteral("targetVar"), QStringLiteral("formatted")},
+       {QStringLiteral("emptyDefault"),
+        QStringLiteral("BARCODE empty")}});
   add(QStringLiteral("tx1"), QStringLiteral("发送数据 · LocalLoop/TCP"),
       QStringLiteral("send_data"), 300, 740, QStringLiteral("fmt1"),
       {{QStringLiteral("device"), QStringLiteral("LocalLoop")},

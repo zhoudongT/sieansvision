@@ -16,7 +16,7 @@ def bad(msg):
     print(f"FAIL  {msg}")
 
 checks = [
-    (QT / "SoftFrame.cpp", ["loadSoftQrSample", "sample-qr.png", "drawFinder", "SIEANS-", "SOFT exp=", "setSoftQrSamplePath", "FastTransformation", "Letterbox"]),
+    (QT / "SoftFrame.cpp", ["loadSoftQrSample", "sample-qr.png", "drawFinder", "SIEANS-", "SOFT exp=", "setSoftQrSamplePath", "FastTransformation", "Letterbox", "Guide frame"]),
     (QT / "SieansDocument.cpp", ["seedGentlQrDemo", "format_data", "send_data", "receive_data", "result_gate", "LocalLoop", "passGate", "barcodeCount >= 1", "TcpRealLoopback", "gate1"]),
     (QT / "CommHub.cpp", ["Local Bus", "echo", "lastRx_ = payload", r"{([A-Za-z_]", "mustache", "soft-echo", "tryReconnect", "reconnecting"]),
     (QT / "MainWindow.cpp", ["sourceVar", "named braces", "lastTx()", "format_data", "receive_data"]),
@@ -31,7 +31,15 @@ checks = [
     (QT / "HostStrip.cpp", ["lastRecv", "RX="]),
     (QT / "CommPanel.cpp", ["TX %2", "RX %3"]),
     (QT / "OperatorRail.cpp", ["点击筛选"]),
+    (QT / "ImageView.cpp", ["码 %1", "QColor(0, 0, 0, 160)", "#%1 %2: %3"]),
+    (QT / "FlowTabBar.cpp", ["stopRequested", "停止运行"]),
+    (QT / "FlowTabBar.hpp", ["stopRequested"]),
+    (QT / "MainWindow.cpp", ["emptyDefault", "FlowTabBar::stopRequested"]),
+    (QT / "PropertyPanel.cpp", ["emptyDefault", "expr: in / and / or", "{{name}}"]),
+    (QT / "FlowIoDialog.cpp", ["{{name}}"]),
+    (QT / "SieansDocument.cpp", ["emptyDefault", "BARCODE empty"]),
 ]
+
 for path, needles in checks:
     text = path.read_text(encoding="utf-8", errors="replace")
     missing = [n for n in needles if n not in text]
