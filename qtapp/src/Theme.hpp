@@ -15,6 +15,7 @@ inline constexpr const char* TEXT = "#e8e8e8";
 inline constexpr const char* TEXT_MUTED = "#a8a8a8";
 inline constexpr const char* TEXT_DIM = "#787878";
 inline constexpr const char* OK = "#2d9b6c";
+inline constexpr const char* NG = "#c62828";
 inline constexpr const char* WARN = "#d4a017";
 inline constexpr const char* HOVER = "#3d4046";
 inline constexpr const char* SELECTED = "#3d2e1f";

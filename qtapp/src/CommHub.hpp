@@ -7,6 +7,7 @@
 #include <QTcpSocket>
 #include <QHash>
 #include <QVariantMap>
+#include <QTimer>
 
 namespace sieans_qt {
 
@@ -40,7 +41,7 @@ class CommHub : public QObject {
   QString lastTx() const { return lastTx_; }
   QString lastRx() const { return lastRx_; }
 
-  /** Expand ${flow.x} / ${x} / {name} placeholders from vars map. */
+  /** Expand ${flow.x} / ${x} / {name} / {{name}} placeholders from vars map. */
   static QString expandTemplate(const QString& tmpl, const QVariantMap& vars);
 
  signals:
@@ -52,6 +53,8 @@ class CommHub : public QObject {
   void onNewConnection();
   void onClientReadyRead();
   void onSocketError();
+  void onClientDisconnected();
+  void tryReconnect();
 
  private:
   void appendTranscript(const QString& tag, const QString& line);
@@ -68,6 +71,10 @@ class CommHub : public QObject {
   QTcpServer* server_ = nullptr;
   QTcpSocket* client_ = nullptr;   // outbound client role
   QList<QTcpSocket*> peers_;       // accepted server clients
+  bool reconnectEnabled_ = false;
+  QString reconnectHost_;
+  quint16 reconnectPort_ = 0;
+  QTimer* reconnectTimer_ = nullptr;
 };
 
 }  // namespace sieans_qt

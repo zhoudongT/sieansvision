@@ -3,6 +3,7 @@
 #include <QDateTime>
 #include <QHostAddress>
 #include <QRegularExpression>
+#include <QTimer>
 
 namespace sieans_qt {
 
@@ -170,10 +171,20 @@ bool CommHub::startTcp(QString* error) {
   ack_ = tcp.value(QStringLiteral("ack")).toString();
 
   if (role.compare(QStringLiteral("client"), Qt::CaseInsensitive) == 0) {
+    reconnectEnabled_ = tcp.value(QStringLiteral("reconnect"), true).toBool();
+    reconnectHost_ = host;
+    reconnectPort_ = port;
+    if (!reconnectTimer_) {
+      reconnectTimer_ = new QTimer(this);
+      reconnectTimer_->setInterval(1500);
+      connect(reconnectTimer_, &QTimer::timeout, this, &CommHub::tryReconnect);
+    }
     client_ = new QTcpSocket(this);
     connect(client_, &QTcpSocket::readyRead, this, &CommHub::onClientReadyRead);
     connect(client_, &QTcpSocket::errorOccurred, this, &CommHub::onSocketError);
+    connect(client_, &QTcpSocket::disconnected, this, &CommHub::onClientDisconnected);
     connect(client_, &QTcpSocket::connected, this, [this, host, port]() {
+      if (reconnectTimer_) reconnectTimer_->stop();
       tcpStatus_ = QStringLiteral("connected %1:%2").arg(host).arg(port);
       emit statusChanged(tcpStatus_);
       appendTranscript(QStringLiteral("SYS"), tcpStatus_);
@@ -204,6 +215,8 @@ bool CommHub::startTcp(QString* error) {
 }
 
 void CommHub::stopTcp() {
+  reconnectEnabled_ = false;
+  if (reconnectTimer_) reconnectTimer_->stop();
   for (QTcpSocket* s : peers_) {
     if (s) {
       s->disconnectFromHost();
@@ -271,6 +284,55 @@ void CommHub::onSocketError() {
   appendTranscript(QStringLiteral("ERR"), err);
   tcpStatus_ = QStringLiteral("error");
   emit statusChanged(tcpStatus_);
+  if (reconnectEnabled_ && client_ && s == client_ && reconnectTimer_ &&
+      !reconnectTimer_->isActive())
+    reconnectTimer_->start();
+}
+
+void CommHub::onClientDisconnected() {
+  appendTranscript(QStringLiteral("SYS"), QStringLiteral("client disconnected"));
+  tcpStatus_ = QStringLiteral("disconnected");
+  emit statusChanged(tcpStatus_);
+  if (reconnectEnabled_ && reconnectTimer_ && !reconnectTimer_->isActive())
+    reconnectTimer_->start();
+}
+
+void CommHub::tryReconnect() {
+  if (!reconnectEnabled_ || reconnectHost_.isEmpty() || reconnectPort_ == 0) {
+    if (reconnectTimer_) reconnectTimer_->stop();
+    return;
+  }
+  if (client_ && client_->state() == QAbstractSocket::ConnectedState) {
+    if (reconnectTimer_) reconnectTimer_->stop();
+    return;
+  }
+  if (client_ && (client_->state() == QAbstractSocket::ConnectingState ||
+                  client_->state() == QAbstractSocket::HostLookupState))
+    return;
+  appendTranscript(QStringLiteral("SYS"),
+                   QStringLiteral("reconnect %1:%2")
+                       .arg(reconnectHost_)
+                       .arg(reconnectPort_));
+  tcpStatus_ = QStringLiteral("reconnecting %1:%2")
+                   .arg(reconnectHost_)
+                   .arg(reconnectPort_);
+  emit statusChanged(tcpStatus_);
+  if (!client_) {
+    client_ = new QTcpSocket(this);
+    connect(client_, &QTcpSocket::readyRead, this, &CommHub::onClientReadyRead);
+    connect(client_, &QTcpSocket::errorOccurred, this, &CommHub::onSocketError);
+    connect(client_, &QTcpSocket::disconnected, this, &CommHub::onClientDisconnected);
+    connect(client_, &QTcpSocket::connected, this, [this]() {
+      if (reconnectTimer_) reconnectTimer_->stop();
+      tcpStatus_ = QStringLiteral("connected %1:%2")
+                       .arg(reconnectHost_)
+                       .arg(reconnectPort_);
+      emit statusChanged(tcpStatus_);
+      appendTranscript(QStringLiteral("SYS"), tcpStatus_);
+    });
+  }
+  client_->abort();
+  client_->connectToHost(reconnectHost_, reconnectPort_);
 }
 
 }  // namespace sieans_qt

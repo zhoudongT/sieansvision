@@ -337,7 +337,8 @@ void SieansDocument::seedGentlQrDemo() {
                    {QStringLiteral("framing"), QStringLiteral("lf")},
                    {QStringLiteral("role"), QStringLiteral("server")},
                    {QStringLiteral("ack"), QStringLiteral("OK")},
-                   {QStringLiteral("autoStart"), true}}},
+                   {QStringLiteral("autoStart"), true},
+                   {QStringLiteral("reconnect"), true}}},
   };
   flowIo_ = {
       {QStringLiteral("inputs"),

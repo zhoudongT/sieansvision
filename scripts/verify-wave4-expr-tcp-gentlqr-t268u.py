@@ -18,15 +18,16 @@ def bad(msg):
 checks = [
     (QT / "SoftFrame.cpp", ["loadSoftQrSample", "sample-qr.png", "drawFinder", "SIEANS-", "SOFT exp=", "setSoftQrSamplePath", "FastTransformation", "Letterbox"]),
     (QT / "SieansDocument.cpp", ["seedGentlQrDemo", "format_data", "send_data", "receive_data", "result_gate", "LocalLoop", "passGate", "barcodeCount >= 1", "TcpRealLoopback", "gate1"]),
-    (QT / "CommHub.cpp", ["Local Bus", "echo", "lastRx_ = payload", r"{([A-Za-z_]", "mustache", "soft-echo"]),
+    (QT / "CommHub.cpp", ["Local Bus", "echo", "lastRx_ = payload", r"{([A-Za-z_]", "mustache", "soft-echo", "tryReconnect", "reconnecting"]),
     (QT / "MainWindow.cpp", ["sourceVar", "named braces", "lastTx()", "format_data", "receive_data"]),
-    (QT / "FilmstripBar.cpp", ["KeepAspectRatio", "letterbox", "item:hover", "Key_Left", "selectPrev", "2px solid #e67a2e"]),
+    (QT / "FilmstripBar.cpp", ["KeepAspectRatio", "letterbox", "item:hover", "Key_Left", "selectPrev", "2px solid #e67a2e", "QEvent::Wheel"]),
     (QT / "PropertyFloat.cpp", ["Key_Escape", "Key_Return", "ControlModifier", "baseline_", "acceptedCommit", "propertyFloatHint"]),
     (QT / "main.cpp", ["setSoftQrSamplePath", "SIEANS_QT_EXPR_SELFTEST"]),
     (QT / "MainWindow.cpp", ["SIEANS_QT_AUTO_RUN", "SIEANS_QT_FORCE_SEED", "autoStart", "barcodeText=%6", "lastRecv=%8"]),
     (QT / "GenTLWorker.cpp", ["makeSoftFrame(1280, 1024"]),
     (QT / "OperatorLibrary.cpp", ["focusSearch", "Key_F", "def.tip.contains"]),
     (QT / "ExprEval.cpp", ['"needle" in haystack', "in-miss"]),
+    (QT / "VarWatchPanel.cpp", ["lastRecv", "theme::OK", "theme::NG"]),
 ]
 for path, needles in checks:
     text = path.read_text(encoding="utf-8", errors="replace")

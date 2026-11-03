@@ -6,6 +6,7 @@
 #include <QLabel>
 #include <QHeaderView>
 #include <QAbstractItemView>
+#include <QColor>
 
 namespace sieans_qt {
 
@@ -28,7 +29,7 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
   keys_ = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
            QStringLiteral("passGate"), QStringLiteral("formatted"),
-           QStringLiteral("commPayload")};
+           QStringLiteral("commPayload"), QStringLiteral("lastRecv")};
   rebuild();
 }
 
@@ -52,8 +53,21 @@ void VarWatchPanel::rebuild() {
     const int row = table_->rowCount();
     table_->insertRow(row);
     table_->setItem(row, 0, new QTableWidgetItem(k));
-    table_->setItem(row, 1,
-                    new QTableWidgetItem(vars_.value(k).toString()));
+    const QString raw = vars_.value(k).toString();
+    const QString shown = raw.size() > 96 ? raw.left(93) + QStringLiteral("…") : raw;
+    auto* val = new QTableWidgetItem(shown);
+    if (raw.size() > 96) val->setToolTip(raw);
+    // OK/NG tint for gate-ish vars
+    if (k.contains(QStringLiteral("pass"), Qt::CaseInsensitive) ||
+        k.contains(QStringLiteral("Gate"), Qt::CaseInsensitive) ||
+        k.endsWith(QStringLiteral("Ok"))) {
+      const bool okish = vars_.value(k).toInt() != 0 || vars_.value(k).toBool() ||
+                         (raw != QLatin1String("0") && !raw.isEmpty() &&
+                          raw.compare(QStringLiteral("false"), Qt::CaseInsensitive) != 0 &&
+                          raw.compare(QStringLiteral("NG"), Qt::CaseInsensitive) != 0);
+      val->setForeground(okish ? QColor(theme::OK) : QColor(theme::NG));
+    }
+    table_->setItem(row, 1, val);
   }
 }
 

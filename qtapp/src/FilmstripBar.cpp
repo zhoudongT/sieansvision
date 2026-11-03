@@ -15,6 +15,8 @@
 #include <QEvent>
 #include <QApplication>
 #include <QWidget>
+#include <QWheelEvent>
+#include <QScrollBar>
 
 namespace sieans_qt {
 namespace {
@@ -269,6 +271,16 @@ bool FilmstripBar::eventFilter(QObject* obj, QEvent* event) {
   if (obj == list_ && event->type() == QEvent::KeyPress) {
     keyPressEvent(static_cast<QKeyEvent*>(event));
     return event->isAccepted();
+  }
+  if (obj == list_ && event->type() == QEvent::Wheel) {
+    auto* we = static_cast<QWheelEvent*>(event);
+    if (list_ && list_->horizontalScrollBar()) {
+      const int delta = we->angleDelta().y() != 0 ? we->angleDelta().y()
+                                                 : we->angleDelta().x();
+      list_->horizontalScrollBar()->setValue(
+          list_->horizontalScrollBar()->value() - delta);
+      return true;
+    }
   }
   return QWidget::eventFilter(obj, event);
 }
