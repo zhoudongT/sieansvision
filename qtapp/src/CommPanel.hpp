@@ -57,6 +57,11 @@ class CommPanel : public QWidget {
   void copyEndpoint();
   void writeBackSelectedDeviceEndpoint();
   void toggleSelectedDeviceEnabled();
+  void addDeviceRow();
+  void duplicateSelectedDevice();
+  void removeSelectedDevice();
+  void exportDevicesJson();
+  void importDevicesJson();
 
   CommHub* hub_ = nullptr;
   QTableWidget* deviceTable_ = nullptr;

@@ -7,6 +7,9 @@
 #include <QFormLayout>
 #include <QHeaderView>
 #include <QScrollBar>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QShortcut>
 #include <QKeySequence>
 #include <QInputDialog>
@@ -51,7 +54,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   deviceTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
   deviceTable_->setSelectionMode(QAbstractItemView::SingleSelection);
   deviceTable_->setMaximumHeight(120);
-  deviceTable_->setToolTip(QStringLiteral("设备表 · F2 改名 · 中键装入端点 · Enter 写回 host:port · Space/Alt 启停 · 右键复制 · 双击备注"));
+  deviceTable_->setToolTip(QStringLiteral("设备表 · F2 改名 · Insert/Ctrl+N 增 · Ctrl+D 复制 · Shift+Del 删 · Enter 写回 · Space/Alt 启停 · Ctrl+Shift+J/O JSON · 中键端点 · 右键复制 · 双击备注"));
   deviceTable_->setStatusTip(QStringLiteral("通信 · 设备表 · LocalBus/TCP · 中键端点"));
   deviceTable_->installEventFilter(this);
   lay->addWidget(deviceTable_);
@@ -530,6 +533,29 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
           if (status_) status_->setToolTip(QStringLiteral("编辑设备名 · F2 · Enter 结束写回"));
         }
       }
+      return true;
+    }
+    if (ke->key() == Qt::Key_Insert ||
+        (ke->key() == Qt::Key_N && (ke->modifiers() & Qt::ControlModifier))) {
+      addDeviceRow();
+      return true;
+    }
+    if (ke->key() == Qt::Key_D && (ke->modifiers() & Qt::ControlModifier)) {
+      duplicateSelectedDevice();
+      return true;
+    }
+    if (ke->key() == Qt::Key_Delete && (ke->modifiers() & Qt::ShiftModifier)) {
+      removeSelectedDevice();
+      return true;
+    }
+    if (ke->key() == Qt::Key_J && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier)) {
+      exportDevicesJson();
+      return true;
+    }
+    if (ke->key() == Qt::Key_O && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier)) {
+      importDevicesJson();
       return true;
     }
   }
@@ -1076,6 +1102,152 @@ void CommPanel::toggleSelectedDeviceEnabled() {
   if (status_)
     status_->setToolTip(QStringLiteral("设备 %1 · %2 · Space/Alt+单击")
                             .arg(name, on ? QStringLiteral("启用") : QStringLiteral("禁用")));
+}
+
+
+void CommPanel::addDeviceRow() {
+  if (!hub_ || !deviceTable_) return;
+  QVariantMap cm = hub_->commManager();
+  QVariantList devices = cm.value(QStringLiteral("devices")).toList();
+  QString base = QStringLiteral("Device");
+  int n = 1;
+  QString name;
+  for (;;) {
+    name = QStringLiteral("%1%2").arg(base).arg(n);
+    bool hit = false;
+    for (const QVariant& v : devices) {
+      if (v.toMap().value(QStringLiteral("name")).toString() == name) { hit = true; break; }
+    }
+    if (!hit) break;
+    ++n;
+  }
+  const QString host = hostEdit_ ? hostEdit_->text().trimmed() : QStringLiteral("127.0.0.1");
+  const int port = portEdit_ ? portEdit_->text().trimmed().toInt() : 19956;
+  QVariantMap d;
+  d.insert(QStringLiteral("name"), name);
+  d.insert(QStringLiteral("protocol"), QStringLiteral("TCP"));
+  d.insert(QStringLiteral("host"), host.isEmpty() ? QStringLiteral("127.0.0.1") : host);
+  d.insert(QStringLiteral("port"), port > 0 ? port : 19956);
+  d.insert(QStringLiteral("enabled"), true);
+  d.insert(QStringLiteral("remark"), QString());
+  devices.push_back(d);
+  cm.insert(QStringLiteral("devices"), devices);
+  hub_->loadFromCommManager(cm);
+  emit requestSaveComm(cm);
+  refreshDevices();
+  // select new row
+  for (int r = 0; r < deviceTable_->rowCount(); ++r) {
+    auto* it = deviceTable_->item(r, 0);
+    if (it && it->text() == name) { deviceTable_->selectRow(r); break; }
+  }
+  if (status_) status_->setToolTip(QStringLiteral("已添加设备 %1 · Insert/Ctrl+N").arg(name));
+}
+
+void CommPanel::duplicateSelectedDevice() {
+  if (!hub_ || !deviceTable_) return;
+  const auto items = deviceTable_->selectedItems();
+  if (items.isEmpty()) return;
+  const int row = items.first()->row();
+  auto* nameItem = deviceTable_->item(row, 0);
+  if (!nameItem) return;
+  const QString srcName = nameItem->text();
+  QVariantMap cm = hub_->commManager();
+  QVariantList devices = cm.value(QStringLiteral("devices")).toList();
+  QVariantMap src;
+  for (const QVariant& v : devices) {
+    QVariantMap d = v.toMap();
+    if (d.value(QStringLiteral("name")).toString() == srcName) { src = d; break; }
+  }
+  if (src.isEmpty()) return;
+  QString base = srcName + QStringLiteral("_copy");
+  QString name = base;
+  int n = 2;
+  for (;;) {
+    bool hit = false;
+    for (const QVariant& v : devices) {
+      if (v.toMap().value(QStringLiteral("name")).toString() == name) { hit = true; break; }
+    }
+    if (!hit) break;
+    name = QStringLiteral("%1%2").arg(base).arg(n++);
+  }
+  src.insert(QStringLiteral("name"), name);
+  devices.push_back(src);
+  cm.insert(QStringLiteral("devices"), devices);
+  hub_->loadFromCommManager(cm);
+  emit requestSaveComm(cm);
+  refreshDevices();
+  for (int r = 0; r < deviceTable_->rowCount(); ++r) {
+    auto* it = deviceTable_->item(r, 0);
+    if (it && it->text() == name) { deviceTable_->selectRow(r); break; }
+  }
+  if (status_) status_->setToolTip(QStringLiteral("已复制设备 %1 → %2 · Ctrl+D").arg(srcName, name));
+}
+
+void CommPanel::removeSelectedDevice() {
+  if (!hub_ || !deviceTable_) return;
+  const auto items = deviceTable_->selectedItems();
+  if (items.isEmpty()) return;
+  const int row = items.first()->row();
+  auto* nameItem = deviceTable_->item(row, 0);
+  if (!nameItem) return;
+  const QString name = nameItem->text();
+  if (name == QLatin1String("LocalLoop")) {
+    if (status_) status_->setToolTip(QStringLiteral("LocalLoop 不可删 · Shift+Del"));
+    return;
+  }
+  QVariantMap cm = hub_->commManager();
+  QVariantList devices = cm.value(QStringLiteral("devices")).toList();
+  QVariantList next;
+  for (const QVariant& v : devices) {
+    if (v.toMap().value(QStringLiteral("name")).toString() != name) next << v;
+  }
+  if (next.size() == devices.size()) return;
+  cm.insert(QStringLiteral("devices"), next);
+  hub_->loadFromCommManager(cm);
+  emit requestSaveComm(cm);
+  refreshDevices();
+  if (status_) status_->setToolTip(QStringLiteral("已删除设备 %1 · Shift+Del").arg(name));
+}
+
+void CommPanel::exportDevicesJson() {
+  if (!hub_) return;
+  const QVariantList devices = hub_->commManager().value(QStringLiteral("devices")).toList();
+  QJsonArray arr;
+  for (const QVariant& v : devices) arr.append(QJsonObject::fromVariantMap(v.toMap()));
+  const QByteArray bytes = QJsonDocument(arr).toJson(QJsonDocument::Compact);
+  if (auto* clip = QGuiApplication::clipboard()) clip->setText(QString::fromUtf8(bytes));
+  if (status_)
+    status_->setToolTip(QStringLiteral("已导出设备 JSON %1 · Ctrl+Shift+J").arg(arr.size()));
+}
+
+void CommPanel::importDevicesJson() {
+  if (!hub_) return;
+  const QString clip = QGuiApplication::clipboard() ? QGuiApplication::clipboard()->text() : QString();
+  if (clip.trimmed().isEmpty()) return;
+  QJsonParseError pe;
+  const QJsonDocument doc = QJsonDocument::fromJson(clip.toUtf8(), &pe);
+  if (pe.error != QJsonParseError::NoError || !doc.isArray()) {
+    if (status_) status_->setToolTip(QStringLiteral("设备 JSON 无效 · Ctrl+Shift+O"));
+    return;
+  }
+  QVariantList devices;
+  for (const QJsonValue& v : doc.array()) {
+    if (!v.isObject()) continue;
+    QVariantMap d = v.toObject().toVariantMap();
+    if (d.value(QStringLiteral("name")).toString().trimmed().isEmpty()) continue;
+    devices << d;
+  }
+  if (devices.isEmpty()) {
+    if (status_) status_->setToolTip(QStringLiteral("设备 JSON 无有效项 · Ctrl+Shift+O"));
+    return;
+  }
+  QVariantMap cm = hub_->commManager();
+  cm.insert(QStringLiteral("devices"), devices);
+  hub_->loadFromCommManager(cm);
+  emit requestSaveComm(cm);
+  refreshDevices();
+  if (status_)
+    status_->setToolTip(QStringLiteral("已导入设备 %1 · Ctrl+Shift+O").arg(devices.size()));
 }
 
 }  // namespace sieans_qt
