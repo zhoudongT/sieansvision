@@ -371,7 +371,8 @@ void CommHub::onSocketError() {
 void CommHub::onClientDisconnected() {
   if (client_) len4Buf_.remove(client_);
   appendTranscript(QStringLiteral("SYS"), QStringLiteral("client disconnected"));
-  tcpStatus_ = QStringLiteral("disconnected");
+  tcpStatus_ = QStringLiteral("disconnected · %1")
+                   .arg(framing_.isEmpty() ? QStringLiteral("lf") : framing_);
   emit statusChanged(tcpStatus_);
   if (reconnectEnabled_ && reconnectTimer_ && !reconnectTimer_->isActive())
     reconnectTimer_->start();

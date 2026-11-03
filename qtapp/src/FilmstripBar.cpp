@@ -36,7 +36,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   head->setSpacing(6);
   countLabel_ = new QLabel(QStringLiteral("图像源 (0/0)"));
   countLabel_->setStyleSheet(QStringLiteral("color:#e8e8e8;font-weight:600;"));
-  countLabel_->setToolTip(QStringLiteral("←→ Home/End/PgUp/PgDn/滚轮 · 0/1-9 跳转 · Del 删除 · 拖拽重排"));
+  countLabel_->setToolTip(QStringLiteral("←→/Ctrl+←→ Home/End/PgUp/PgDn/滚轮 · 0/1-9 跳转 · Del 删除 · 拖拽重排"));
   status_ = new QLabel(QStringLiteral("本地图像"));
   status_->setObjectName(QStringLiteral("muted"));
   autoSwitch_ = new QCheckBox(QStringLiteral("自动切换"));

@@ -49,7 +49,7 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
                                  table_);
             }
           });
-  table_->setToolTip(QStringLiteral("双击或 Ctrl+C 复制变量值 · Home/End/PgUp/PgDn · Esc 取消选中"));
+  table_->setToolTip(QStringLiteral("双击或 Ctrl+C 复制 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Esc 取消选中"));
   table_->installEventFilter(this);
   setStatusTip(QStringLiteral("变量监视 · 双击/Ctrl+C 复制 · Home/End/PgUp/PgDn · Esc 取消选中 · passGate/urlOk/lastRecv 高亮"));
   keys_ = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
@@ -84,6 +84,10 @@ bool VarWatchPanel::eventFilter(QObject* obj, QEvent* event) {
     if (ke->key() == Qt::Key_Escape) {
       table_->clearSelection();
       table_->setCurrentCell(-1, -1);
+      return true;
+    }
+    if ((ke->modifiers() & Qt::ControlModifier) && ke->key() == Qt::Key_A) {
+      table_->selectAll();
       return true;
     }
     if (ke->key() == Qt::Key_Home || ke->key() == Qt::Key_End ||
