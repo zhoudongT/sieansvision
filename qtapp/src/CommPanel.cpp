@@ -85,7 +85,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   lay->addWidget(transcript_, 1);
 
   btnTcp->setToolTip(QStringLiteral("启动 tcpReal（server 监听 / client 连接+重连）· framing lf/crlf/raw/len4"));
-  btnStop->setToolTip(QStringLiteral("停止 TCP · 清空重连计数"));
+  btnStop->setToolTip(QStringLiteral("停止 TCP · 清空重连计数 · framing 保留到下次启动"));
   btnSend->setToolTip(QStringLiteral("按报文模板试发到所选设备（支持 ${flow.x}/{name}/{{name}}）· Enter/Ctrl+Enter"));
   btnClear->setToolTip(QStringLiteral("清空 TX/RX 抄本 · Ctrl+L"));
   connect(btnTcp, &QPushButton::clicked, this, &CommPanel::onStartTcp);

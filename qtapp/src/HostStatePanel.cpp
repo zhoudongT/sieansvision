@@ -70,7 +70,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   btnResume_->setStatusTip(QStringLiteral("Host · 继续"));
   btnStop_->setToolTip(QStringLiteral("停止运行并回 Idle · Esc"));
   btnStop_->setStatusTip(QStringLiteral("Host · 停止 · Esc"));
-  btnClear_->setToolTip(QStringLiteral("清除报警锁存"));
+  btnClear_->setToolTip(QStringLiteral("清除报警锁存 · 不清运行状态"));
   btnClear_->setStatusTip(QStringLiteral("Host · 清除报警"));
   setStatusTip(QStringLiteral("上位机控制 · F5/F9 开始 · F6 连续 · 暂停/继续 · Esc 停止 · 清报警"));
   for (QPushButton* b : {btnStart_, btnPause_, btnResume_, btnStop_, btnClear_}) {
