@@ -26,7 +26,7 @@ constexpr int kThumbH = 52;
 
 FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   setObjectName(QStringLiteral("filmstripBar"));
-  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→ Home/End/PgUp/PgDn · 0/A/1-9 跳转 · Space 自动切换 · F5/F9 运行全部 · Insert 添加 · Del"));
+  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→ Home/End/PgUp/PgDn · 0/A/1-9 跳转 · Space 自动切换 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Del"));
   setFocusPolicy(Qt::StrongFocus);
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(6, 2, 6, 4);
@@ -48,7 +48,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   add->setToolTip(QStringLiteral("添加图像 · Insert"));
   add->setFixedWidth(28);
   auto* folder = new QPushButton(QStringLiteral("文件夹"));
-  folder->setToolTip(QStringLiteral("添加图像文件夹"));
+  folder->setToolTip(QStringLiteral("添加图像文件夹 · F7"));
   auto* prev = new QPushButton(QStringLiteral("◀"));
   prev->setToolTip(QStringLiteral("上一张 · ←"));
   prev->setFixedWidth(28);
@@ -82,7 +82,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   list_->setFixedHeight(kThumbH + 22);
   list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
   list_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  list_->setStatusTip(QStringLiteral("胶片 · ←→ Home/End/PgUp/PgDn · 0/A/1-9 · Space/F6 · F5/F9 运行全部 · Insert 添加 · Del"));
+  list_->setStatusTip(QStringLiteral("胶片 · ←→ Home/End/PgUp/PgDn · 0/A/1-9 · Space/F6 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Del"));
   list_->setSpacing(2);
   list_->setSelectionMode(QAbstractItemView::SingleSelection);
   root->addWidget(list_);
@@ -273,6 +273,12 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
   if (event->key() == Qt::Key_Insert) {
     emit addImagesRequested();
     setStatus(QStringLiteral("添加图像…"));
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_F7) {
+    emit addFolderRequested();
+    setStatus(QStringLiteral("添加文件夹…"));
     event->accept();
     return;
   }
