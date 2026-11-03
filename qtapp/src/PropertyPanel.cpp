@@ -92,7 +92,7 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
     return {S("template", "模板 {name}/${flow.x}/{{name}}", kLine, ""),
             S("args", "参数变量 CSV", kLine, ""),
             S("targetVar", "目标变量", kLine, ""),
-            S("emptyDefault", "空结果默认", kLine, "")};
+            S("emptyDefault", "空结果默认", kLine, "空输出时的占位报文（如 BARCODE empty）")};
   }
   if (op == QLatin1String("result_gate")) {
     return {S("minCount", "最少码数", kInt, ""),
@@ -341,7 +341,7 @@ void PropertyPanel::showSource(const QVariantMap& sourceConfig) {
 void PropertyPanel::showStep(const FlowStep& step) {
   QString hint = QStringLiteral("算子 %1 · %2").arg(step.operation, step.runState);
   if (step.operation == QLatin1String("format_data"))
-    hint += QStringLiteral(" · 支持 {name} / ${flow.x} / {{name}}");
+    hint += QStringLiteral(" · 支持 {name} / ${flow.x} / {{name}} · emptyDefault 空结果");
   else if (step.operation == QLatin1String("send_data") ||
            step.operation == QLatin1String("receive_data"))
     hint += QStringLiteral(" · LocalLoop 回环 / TCP");
@@ -349,7 +349,7 @@ void PropertyPanel::showStep(const FlowStep& step) {
     hint += QStringLiteral(" · sourceVar → passVar");
   else if (step.operation == QLatin1String("var_calc"))
     hint += QStringLiteral(
-        " · expr: in / startswith|endswith|contains / lower|upper / trim|strip|replace / slice|substr|mid|isdigit|isalpha|lpad|rpad|repeat|default|coalesce|ifempty|indexof|find|left|right|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex");
+        " · expr: in / startswith|endswith|contains / lower|upper / trim|strip|replace / slice|substr|mid|isdigit|isalpha|lpad|rpad|repeat|default|coalesce|ifempty|indexof|find|left|right|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper");
   else if (step.operation == QLatin1String("barcode") ||
            step.operation == QLatin1String("qr_decode"))
     hint += QStringLiteral(" · ZXing 多码 · 判定 judgeMinCount");

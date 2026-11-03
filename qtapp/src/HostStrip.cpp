@@ -35,6 +35,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   detail_->setToolTip(QStringLiteral("count/text/RX/urlOk/tcp 摘要"));
   alarmLabel_ = new QLabel;
   alarmLabel_->setVisible(false);
+  alarmLabel_->setToolTip(QStringLiteral("报警锁存 · Host 清报警解除"));
   alarmLabel_->setStyleSheet(
       QStringLiteral("background:#c62828;color:#fff;border-radius:3px;"
                      "font-weight:700;padding:2px 8px;"));

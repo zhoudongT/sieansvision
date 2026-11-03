@@ -597,8 +597,12 @@ void MainWindow::buildToolbar() {
   tb->addAction(QStringLiteral("I/O"), this, &MainWindow::onOpenFlowIo);
   act_preview_ = tb->addAction(QStringLiteral("连续预览"), this,
                                &MainWindow::onStartContinuousPreview);
+  act_preview_->setToolTip(QStringLiteral("连续采集预览 · Soft/UVC/GenTL"));
+  act_preview_->setStatusTip(QStringLiteral("预览 · 连续采集"));
   act_preview_stop_ =
       tb->addAction(QStringLiteral("停预览"), this, &MainWindow::onStopContinuousPreview);
+  act_preview_stop_->setToolTip(QStringLiteral("停止连续采集预览"));
+  act_preview_stop_->setStatusTip(QStringLiteral("预览 · 停止"));
   tb->addSeparator();
   act_run_ = tb->addAction(QStringLiteral("▶ 运行"), this, &MainWindow::onRunOnce);
   act_run_->setShortcut(QKeySequence(Qt::Key_F5));

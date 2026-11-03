@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -648,6 +648,16 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
             return QStringLiteral("0b") + QString::number(v, 2);
           return QStringLiteral("0x") + QString::number(v, 16);
         }
+        if (name == QLatin1String("islower") || name == QLatin1String("isupper")) {
+          if (args.isEmpty()) return 0;
+          const QString s = evalRec(args[0]).toString();
+          if (s.isEmpty()) return 0;
+          for (const QChar ch : s) {
+            if (name == QLatin1String("islower") ? !ch.isLower() : !ch.isUpper())
+              return 0;
+          }
+          return 1;
+        }
       }
     }
 
@@ -889,6 +899,12 @@ QStringList exprSelfTest() {
   check(QStringLiteral("hex"),
         ev.eval(QStringLiteral("hex(255)")),
         QStringLiteral("0xff"));
+  check(QStringLiteral("islower"),
+        ev.eval(QStringLiteral("islower('abc')")),
+        QStringLiteral("1"));
+  check(QStringLiteral("isupper"),
+        ev.eval(QStringLiteral("isupper('ABC')")),
+        QStringLiteral("1"));
   return fails;
 }
 

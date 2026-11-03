@@ -33,6 +33,8 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   deviceTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
   deviceTable_->setSelectionMode(QAbstractItemView::SingleSelection);
   deviceTable_->setMaximumHeight(120);
+  deviceTable_->setToolTip(QStringLiteral("通信设备表 · 选中后试发 / 查看备注"));
+  deviceTable_->setStatusTip(QStringLiteral("通信 · 设备表 · LocalBus/TCP"));
   lay->addWidget(deviceTable_);
   connect(deviceTable_, &QTableWidget::itemSelectionChanged, this,
           &CommPanel::onDeviceRowChanged);
