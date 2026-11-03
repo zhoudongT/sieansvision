@@ -395,11 +395,12 @@ void CommHub::tryReconnect() {
                        .arg(reconnectHost_)
                        .arg(reconnectPort_)
                        .arg(reconnectTimer_ ? reconnectTimer_->interval() : 0));
-  tcpStatus_ = QStringLiteral("reconnecting #%1 %2:%3 · backoff %4ms")
+  tcpStatus_ = QStringLiteral("reconnecting #%1 %2:%3 · backoff %4ms · %5")
                    .arg(reconnectAttempts_)
                    .arg(reconnectHost_)
                    .arg(reconnectPort_)
-                   .arg(reconnectTimer_ ? reconnectTimer_->interval() : 0);
+                   .arg(reconnectTimer_ ? reconnectTimer_->interval() : 0)
+                   .arg(framing_.isEmpty() ? QStringLiteral("lf") : framing_);
   emit statusChanged(tcpStatus_);
   if (!client_) {
     client_ = new QTcpSocket(this);

@@ -60,7 +60,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   payloadEdit_ = new QLineEdit(
       QStringLiteral("BARCODE ok=${flow.passGate} text=${flow.barcodeText}"));
   payloadEdit_->setToolTip(
-      QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · LocalBus echo"));
+      QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · Enter 试发 · LocalBus echo"));
   form->addRow(QStringLiteral("报文"), payloadEdit_);
   lay->addLayout(form);
 
@@ -84,11 +84,12 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
 
   btnTcp->setToolTip(QStringLiteral("启动 tcpReal（server 监听 / client 连接+重连）"));
   btnStop->setToolTip(QStringLiteral("停止 TCP · 清空重连计数"));
-  btnSend->setToolTip(QStringLiteral("按报文模板试发到所选设备（支持 ${flow.x}/{name}/{{name}}）"));
+  btnSend->setToolTip(QStringLiteral("按报文模板试发到所选设备（支持 ${flow.x}/{name}/{{name}}）· Enter"));
   btnClear->setToolTip(QStringLiteral("清空 TX/RX 抄本"));
   connect(btnTcp, &QPushButton::clicked, this, &CommPanel::onStartTcp);
   connect(btnStop, &QPushButton::clicked, this, &CommPanel::onStopTcp);
   connect(btnSend, &QPushButton::clicked, this, &CommPanel::onTrialSend);
+  connect(payloadEdit_, &QLineEdit::returnPressed, this, &CommPanel::onTrialSend);
   connect(btnClear, &QPushButton::clicked, this, [this]() {
     if (hub_) hub_->clearTranscript();
   });
