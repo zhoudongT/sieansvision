@@ -62,7 +62,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   btnStop_ = new QPushButton(QStringLiteral("■ 停止"));
   btnClear_ = new QPushButton(QStringLiteral("清除报警"));
   btnStart_->setObjectName(QStringLiteral("primaryButton"));
-  btnStart_->setToolTip(QStringLiteral("开始运行当前绑定流程 · F5/F9 · 连续 F6"));
+  btnStart_->setToolTip(QStringLiteral("开始运行当前绑定流程 · F5/F9 · 连续 F6 · 已运行则重入"));
   btnStart_->setStatusTip(QStringLiteral("Host · 开始运行"));
   btnPause_->setToolTip(QStringLiteral("暂停连续运行 · 连续中可暂停 · 单次运行无效"));
   btnPause_->setStatusTip(QStringLiteral("Host · 暂停"));
