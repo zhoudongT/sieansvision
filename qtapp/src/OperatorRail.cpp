@@ -91,7 +91,7 @@ OperatorRail::OperatorRail(QWidget* parent) : QWidget(parent) {
   setObjectName(QStringLiteral("operatorRail"));
   setFixedWidth(44);
   setFocusPolicy(Qt::StrongFocus);
-  setToolTip(QStringLiteral("算子分类轨 · ↑↓ 切换 · 点击筛选"));
+  setToolTip(QStringLiteral("算子分类轨 · ↑↓/Home/End 切换 · 点击筛选"));
   auto* lay = new QVBoxLayout(this);
   lay->setContentsMargins(2, 6, 2, 6);
   lay->setSpacing(2);
@@ -151,13 +151,18 @@ OperatorRail::OperatorRail(QWidget* parent) : QWidget(parent) {
 bool OperatorRail::eventFilter(QObject* obj, QEvent* event) {
   if (event->type() == QEvent::KeyPress) {
     auto* ke = static_cast<QKeyEvent*>(event);
-    if (ke->key() == Qt::Key_Up || ke->key() == Qt::Key_Down) {
+    if (ke->key() == Qt::Key_Up || ke->key() == Qt::Key_Down ||
+        ke->key() == Qt::Key_Home || ke->key() == Qt::Key_End) {
       if (!group_) return QWidget::eventFilter(obj, event);
       const QList<QAbstractButton*> btns = group_->buttons();
       if (btns.isEmpty()) return true;
       int cur = group_->checkedId();
       if (cur < 0) cur = 0;
-      const int next = ke->key() == Qt::Key_Up
+      int next = cur;
+      if (ke->key() == Qt::Key_Home) next = 0;
+      else if (ke->key() == Qt::Key_End) next = btns.size() - 1;
+      else
+        next = ke->key() == Qt::Key_Up
                            ? (cur - 1 + btns.size()) % btns.size()
                            : (cur + 1) % btns.size();
       if (auto* b = group_->button(next)) {

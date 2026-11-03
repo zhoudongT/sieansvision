@@ -26,6 +26,8 @@ constexpr int kThumbH = 52;
 
 FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   setObjectName(QStringLiteral("filmstripBar"));
+  setStatusTip(QStringLiteral("胶片条 · ←→ Home/End/PgUp/PgDn · Space 自动切换 · Del 删除"));
+  setFocusPolicy(Qt::StrongFocus);
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(6, 2, 6, 4);
   root->setSpacing(2);
@@ -265,6 +267,13 @@ void FilmstripBar::selectNext() {
 }
 
 void FilmstripBar::keyPressEvent(QKeyEvent* event) {
+  if (event->key() == Qt::Key_Space && autoSwitch_) {
+    autoSwitch_->setChecked(!autoSwitch_->isChecked());
+    setStatus(autoSwitch_->isChecked() ? QStringLiteral("自动切换 开")
+                                       : QStringLiteral("自动切换 关"));
+    event->accept();
+    return;
+  }
   if (event->key() == Qt::Key_Left) {
     selectPrev();
     event->accept();

@@ -98,8 +98,12 @@ void HostStrip::setTcpStatus(const QString& status) {
   if (at >= 0) d = d.left(at);
   if (!tcpStatus_.isEmpty())
     d += marker + tcpStatus_.left(36);
-  if (detail_) detail_->setText(d.isEmpty() ? QStringLiteral("Host · tcp=%1").arg(tcpStatus_.left(36))
-                                            : d);
+  if (detail_) {
+    detail_->setText(d.isEmpty() ? QStringLiteral("Host · tcp=%1").arg(tcpStatus_.left(36))
+                                 : d);
+    if (!tcpStatus_.isEmpty())
+      detail_->setToolTip(QStringLiteral("tcp=%1").arg(tcpStatus_));
+  }
 }
 
 void HostStrip::updateFromVars(const QVariantMap& vars, int codeCount, bool evaluated) {

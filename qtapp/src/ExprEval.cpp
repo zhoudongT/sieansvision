@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -486,12 +486,19 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
           n = qBound(0, n, 256);
           return hay.repeated(n);
         }
-        if (name == QLatin1String("default") || name == QLatin1String("coalesce")) {
+        if (name == QLatin1String("default") || name == QLatin1String("coalesce") ||
+            name == QLatin1String("ifempty")) {
           for (const QString& a : args) {
             const QVariant v = evalRec(a);
             if (!v.toString().isEmpty()) return v;
           }
           return QString();
+        }
+        if (name == QLatin1String("indexof")) {
+          if (args.size() < 2) return -1;
+          const QString hay = evalRec(args[0]).toString();
+          const QString needle = evalRec(args[1]).toString();
+          return hay.indexOf(needle);
         }
       }
     }
@@ -641,6 +648,15 @@ QStringList exprSelfTest() {
   check(QStringLiteral("coalesce"),
         ev.eval(QStringLiteral("coalesce('', '', 'z')")),
         QStringLiteral("z"));
+  check(QStringLiteral("ifempty"),
+        ev.eval(QStringLiteral("ifempty('', 'fb')")),
+        QStringLiteral("fb"));
+  check(QStringLiteral("indexof"),
+        ev.eval(QStringLiteral("indexof(%1.text, 'LL')").arg(sid)),
+        QStringLiteral("2"));
+  check(QStringLiteral("indexof-miss"),
+        ev.eval(QStringLiteral("indexof(%1.text, 'ZZ')").arg(sid)),
+        QStringLiteral("-1"));
   return fails;
 }
 

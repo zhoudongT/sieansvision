@@ -322,6 +322,14 @@ bool OperatorLibrary::eventFilter(QObject* obj, QEvent* event) {
       focusSearch();
       return true;
     }
+    if ((ke->key() == Qt::Key_Home || ke->key() == Qt::Key_End) && list_ &&
+        (obj == list_ || obj == search_)) {
+      if (list_->count() <= 0) return true;
+      const int row = ke->key() == Qt::Key_Home ? 0 : list_->count() - 1;
+      list_->setCurrentRow(row);
+      if (auto* it = list_->item(row)) list_->scrollToItem(it);
+      return true;
+    }
     if ((ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) &&
         obj == search_ && list_) {
       for (int i = 0; i < list_->count(); ++i) {
