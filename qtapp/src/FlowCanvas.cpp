@@ -619,6 +619,7 @@ void FlowScene::keyPressEvent(QKeyEvent* event) {
 FlowView::FlowView(FlowScene* scene, QWidget* parent)
     : QGraphicsView(scene, parent) {
   setToolTip(QStringLiteral("滚轮缩放 · F/Home 适应画布 · Del 删连线"));
+  setStatusTip(QStringLiteral("流程画布 · F/Home 适应 · Esc 取消连线 · Del 删连线"));
   setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing);
   setDragMode(QGraphicsView::RubberBandDrag);
   setTransformationAnchor(QGraphicsView::AnchorUnderMouse);

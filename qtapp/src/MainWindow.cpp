@@ -202,11 +202,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         logResult(QStringLiteral("AUTO_TCP: %1").arg(comm_hub_->tcpStatus()));
         return;
       }
-      // Port busy (live App / prior listen) — bump 19956→19957→19958 once each.
+      // Port busy (live App / prior listen) — bump base+1..+4.
       QVariantMap cm = comm_hub_->commManager();
       QVariantMap tcp = cm.value(QStringLiteral("tcpReal")).toMap();
       const int base = tcp.value(QStringLiteral("port"), 19956).toInt();
-      for (int d = 1; d <= 2; ++d) {
+      for (int d = 1; d <= 4; ++d) {
         tcp.insert(QStringLiteral("port"), base + d);
         cm.insert(QStringLiteral("tcpReal"), tcp);
         comm_hub_->loadFromCommManager(cm);
@@ -665,7 +665,7 @@ void MainWindow::applyDocumentToUi() {
         QVariantMap tcp2 = cm.value(QStringLiteral("tcpReal")).toMap();
         const int base = tcp2.value(QStringLiteral("port"), 19956).toInt();
         bool ok = false;
-        for (int d = 1; d <= 2 && !ok; ++d) {
+        for (int d = 1; d <= 4 && !ok; ++d) {
           tcp2.insert(QStringLiteral("port"), base + d);
           cm.insert(QStringLiteral("tcpReal"), tcp2);
           comm_hub_->loadFromCommManager(cm);

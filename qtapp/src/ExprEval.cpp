@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -466,6 +466,18 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
             }
           }
           return ok ? 1 : 0;
+        }
+        if (name == QLatin1String("lpad") || name == QLatin1String("rpad")) {
+          if (args.isEmpty()) return QString();
+          QString hay = evalRec(args[0]).toString();
+          const int width = args.size() > 1 ? int(evalRec(args[1]).toDouble()) : hay.size();
+          QString fill = args.size() > 2 ? evalRec(args[2]).toString() : QStringLiteral(" ");
+          if (fill.isEmpty()) fill = QStringLiteral(" ");
+          const QChar ch = fill.at(0);
+          if (width <= hay.size()) return hay;
+          const int n = width - hay.size();
+          const QString pad = QString(n, ch);
+          return name == QLatin1String("lpad") ? pad + hay : hay + pad;
         }
       }
     }
@@ -597,6 +609,12 @@ QStringList exprSelfTest() {
   check(QStringLiteral("isalpha"),
         ev.eval(QStringLiteral("isalpha('AbC')")),
         QStringLiteral("1"));
+  check(QStringLiteral("lpad"),
+        ev.eval(QStringLiteral("lpad('7', 3, '0')")),
+        QStringLiteral("007"));
+  check(QStringLiteral("rpad"),
+        ev.eval(QStringLiteral("rpad('x', 3, '-')")),
+        QStringLiteral("x--"));
   return fails;
 }
 

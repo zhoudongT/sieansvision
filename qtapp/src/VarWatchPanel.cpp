@@ -16,6 +16,7 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
   lay->setSpacing(4);
   auto* title = new QLabel(QStringLiteral("变量监视"));
   title->setObjectName(QStringLiteral("sectionTitle"));
+  title->setToolTip(QStringLiteral("变量监视 · passGate/urlOk/lastRecv 高亮"));
   lay->addWidget(title);
   table_ = new QTableWidget(0, 2);
   table_->setHorizontalHeaderLabels(
@@ -74,7 +75,8 @@ void VarWatchPanel::rebuild() {
     }
     table_->setItem(row, 1, val);
     if (k.compare(QStringLiteral("passGate"), Qt::CaseInsensitive) == 0 ||
-        k.compare(QStringLiteral("urlOk"), Qt::CaseInsensitive) == 0) {
+        k.compare(QStringLiteral("urlOk"), Qt::CaseInsensitive) == 0 ||
+        k.compare(QStringLiteral("lastRecv"), Qt::CaseInsensitive) == 0) {
       if (auto* keyItem = table_->item(row, 0)) {
         QFont f = keyItem->font();
         f.setBold(true);

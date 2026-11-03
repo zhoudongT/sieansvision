@@ -212,8 +212,9 @@ bool CommHub::startTcp(QString* error) {
     server_ = nullptr;
     return false;
   }
-  tcpStatus_ = QStringLiteral("listening %1:%2").arg(host).arg(port);
-  emit statusChanged(tcpStatus_);
+  listenHost_ = host;
+  listenPort_ = port;
+  refreshListenStatus();
   appendTranscript(QStringLiteral("SYS"), tcpStatus_);
   return true;
 }
@@ -242,11 +243,26 @@ void CommHub::stopTcp() {
     server_->deleteLater();
     server_ = nullptr;
   }
+  listenHost_.clear();
+  listenPort_ = 0;
   if (tcpStatus_ != QLatin1String("idle")) {
     tcpStatus_ = QStringLiteral("idle");
     emit statusChanged(tcpStatus_);
     appendTranscript(QStringLiteral("SYS"), QStringLiteral("TCP stopped"));
   }
+}
+
+void CommHub::refreshListenStatus() {
+  if (!server_ || !server_->isListening()) return;
+  const int n = peers_.size();
+  if (n <= 0)
+    tcpStatus_ = QStringLiteral("listening %1:%2").arg(listenHost_).arg(listenPort_);
+  else
+    tcpStatus_ = QStringLiteral("listening %1:%2 · peers %3")
+                     .arg(listenHost_)
+                     .arg(listenPort_)
+                     .arg(n);
+  emit statusChanged(tcpStatus_);
 }
 
 void CommHub::onNewConnection() {
@@ -258,12 +274,12 @@ void CommHub::onNewConnection() {
       peers_.removeAll(s);
       s->deleteLater();
       appendTranscript(QStringLiteral("SYS"), QStringLiteral("peer disconnected"));
+      refreshListenStatus();
     });
     appendTranscript(QStringLiteral("SYS"),
                      QStringLiteral("peer connected %1")
                          .arg(s->peerAddress().toString()));
-    tcpStatus_ = QStringLiteral("peer-connected");
-    emit statusChanged(tcpStatus_);
+    refreshListenStatus();
   }
 }
 

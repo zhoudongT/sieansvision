@@ -1,6 +1,7 @@
 #pragma once
 #include <QWidget>
 #include <QButtonGroup>
+#include <QEvent>
 class QToolButton;
 
 namespace sieans_qt {
@@ -10,6 +11,7 @@ class OperatorRail : public QWidget {
   Q_OBJECT
  public:
   explicit OperatorRail(QWidget* parent = nullptr);
+  bool eventFilter(QObject* obj, QEvent* event) override;
  signals:
   /** Empty string = show all categories. */
   void categorySelected(const QString& category);

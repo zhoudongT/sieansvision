@@ -95,7 +95,9 @@ QImage applySoftTone(const QImage& src, int exposureUs, double gainDb, int seq,
     font.setPixelSize(px);
     p.setFont(font);
     const QString label =
-        QStringLiteral("SOFT exp=%1us gain=%2dB #%3")
+        QStringLiteral("SOFT %1×%2 exp=%3us gain=%4dB #%5")
+            .arg(img.width())
+            .arg(img.height())
             .arg(clampExposureUs(exposureUs))
             .arg(clampGainDb(gainDb), 0, 'f', 1)
             .arg(seq);

@@ -3,12 +3,15 @@
 
 #include <QVBoxLayout>
 #include <QToolButton>
+#include <QAbstractButton>
 #include <QPainter>
 #include <QPixmap>
 #include <QIcon>
 #include <QPen>
 #include <QPolygonF>
 #include <cstring>
+#include <QKeyEvent>
+#include <QEvent>
 
 namespace sieans_qt {
 namespace {
@@ -87,6 +90,8 @@ QIcon railIcon(const char* kind, bool active) {
 OperatorRail::OperatorRail(QWidget* parent) : QWidget(parent) {
   setObjectName(QStringLiteral("operatorRail"));
   setFixedWidth(44);
+  setFocusPolicy(Qt::StrongFocus);
+  setToolTip(QStringLiteral("算子分类轨 · ↑↓ 切换 · 点击筛选"));
   auto* lay = new QVBoxLayout(this);
   lay->setContentsMargins(2, 6, 2, 6);
   lay->setSpacing(2);
@@ -96,7 +101,7 @@ OperatorRail::OperatorRail(QWidget* parent) : QWidget(parent) {
   auto* allBtn = new QToolButton;
   allBtn->setCheckable(true);
   allBtn->setChecked(true);
-  allBtn->setToolTip(QStringLiteral("全部算子 · 清除分类筛选"));
+  allBtn->setToolTip(QStringLiteral("全部算子 · 清除分类筛选 · ↑↓ 切换"));
   allBtn->setStatusTip(QStringLiteral("Toolbox · 显示全部算子"));
   allBtn->setIcon(railIcon("ext", true));
   allBtn->setIconSize(QSize(28, 28));
@@ -140,6 +145,38 @@ OperatorRail::OperatorRail(QWidget* parent) : QWidget(parent) {
     }
     emit categorySelected(cat);
   });
+  installEventFilter(this);
 }
+
+bool OperatorRail::eventFilter(QObject* obj, QEvent* event) {
+  if (event->type() == QEvent::KeyPress) {
+    auto* ke = static_cast<QKeyEvent*>(event);
+    if (ke->key() == Qt::Key_Up || ke->key() == Qt::Key_Down) {
+      if (!group_) return QWidget::eventFilter(obj, event);
+      const QList<QAbstractButton*> btns = group_->buttons();
+      if (btns.isEmpty()) return true;
+      int cur = group_->checkedId();
+      if (cur < 0) cur = 0;
+      const int next = ke->key() == Qt::Key_Up
+                           ? (cur - 1 + btns.size()) % btns.size()
+                           : (cur + 1) % btns.size();
+      if (auto* b = group_->button(next)) {
+        b->setChecked(true);
+        // mirror idClicked path
+        for (auto* bb : group_->buttons()) {
+          auto* tb = qobject_cast<QToolButton*>(bb);
+          if (!tb) continue;
+          const QString kind = tb->property("railKind").toString();
+          const QString k = kind.isEmpty() ? QStringLiteral("ext") : kind;
+          tb->setIcon(railIcon(k.toUtf8().constData(), tb->isChecked()));
+        }
+        emit categorySelected(b->property("railCategory").toString());
+      }
+      return true;
+    }
+  }
+  return QWidget::eventFilter(obj, event);
+}
+
 
 }  // namespace sieans_qt

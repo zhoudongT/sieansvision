@@ -328,7 +328,7 @@ void PropertyPanel::showStep(const FlowStep& step) {
     hint += QStringLiteral(" · sourceVar → passVar");
   else if (step.operation == QLatin1String("var_calc"))
     hint += QStringLiteral(
-        " · expr: in / startswith|endswith|contains / lower|upper / trim|strip|replace / slice|isdigit|isalpha");
+        " · expr: in / startswith|endswith|contains / lower|upper / trim|strip|replace / slice|isdigit|isalpha|lpad|rpad");
   else if (step.operation == QLatin1String("barcode") ||
            step.operation == QLatin1String("qr_decode"))
     hint += QStringLiteral(" · ZXing 多码 · 判定 judgeMinCount");
