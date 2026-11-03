@@ -96,7 +96,7 @@ OperatorRail::OperatorRail(QWidget* parent) : QWidget(parent) {
   auto* allBtn = new QToolButton;
   allBtn->setCheckable(true);
   allBtn->setChecked(true);
-  allBtn->setToolTip(QStringLiteral("全部算子"));
+  allBtn->setToolTip(QStringLiteral("全部算子 · 清除分类筛选"));
   allBtn->setIcon(railIcon("ext", true));
   allBtn->setIconSize(QSize(28, 28));
   allBtn->setAutoRaise(true);
@@ -109,7 +109,9 @@ OperatorRail::OperatorRail(QWidget* parent) : QWidget(parent) {
   for (const auto& it : kItems) {
     auto* btn = new QToolButton;
     btn->setCheckable(true);
-    btn->setToolTip(QString::fromUtf8(it.tip));
+    btn->setToolTip(QStringLiteral("%1 · %2 · 点击筛选")
+                        .arg(QString::fromUtf8(it.category),
+                             QString::fromUtf8(it.tip)));
     btn->setIcon(railIcon(it.kind, false));
     btn->setIconSize(QSize(28, 28));
     btn->setAutoRaise(true);

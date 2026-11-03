@@ -164,6 +164,17 @@ void CommPanel::refreshTranscript() {
   transcript_->setPlainText(hub_->transcript().join(QLatin1Char('\n')));
   auto* bar = transcript_->verticalScrollBar();
   if (bar) bar->setValue(bar->maximum());
+  // Keep status line aware of last TX/RX even when TCP idle (LocalBus path).
+  if (status_) {
+    const QString tx = hub_->lastTx().left(40);
+    const QString rx = hub_->lastRx().left(40);
+    if (!tx.isEmpty() || !rx.isEmpty()) {
+      status_->setText(QStringLiteral("TCP: %1 · TX %2 · RX %3")
+                           .arg(hub_->tcpStatus(),
+                                tx.isEmpty() ? QStringLiteral("—") : tx,
+                                rx.isEmpty() ? QStringLiteral("—") : rx));
+    }
+  }
 }
 
 void CommPanel::onTrialSend() {

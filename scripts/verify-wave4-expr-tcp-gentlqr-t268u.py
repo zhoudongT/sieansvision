@@ -21,13 +21,16 @@ checks = [
     (QT / "CommHub.cpp", ["Local Bus", "echo", "lastRx_ = payload", r"{([A-Za-z_]", "mustache", "soft-echo", "tryReconnect", "reconnecting"]),
     (QT / "MainWindow.cpp", ["sourceVar", "named braces", "lastTx()", "format_data", "receive_data"]),
     (QT / "FilmstripBar.cpp", ["KeepAspectRatio", "letterbox", "item:hover", "Key_Left", "selectPrev", "2px solid #e67a2e", "QEvent::Wheel"]),
-    (QT / "PropertyFloat.cpp", ["Key_Escape", "Key_Return", "ControlModifier", "baseline_", "acceptedCommit", "propertyFloatHint"]),
+    (QT / "PropertyFloat.cpp", ["Key_Escape", "Key_Return", "ControlModifier", "baseline_", "acceptedCommit", "propertyFloatHint", "findChild<QLineEdit*>"]),
     (QT / "main.cpp", ["setSoftQrSamplePath", "SIEANS_QT_EXPR_SELFTEST"]),
     (QT / "MainWindow.cpp", ["SIEANS_QT_AUTO_RUN", "SIEANS_QT_FORCE_SEED", "autoStart", "barcodeText=%6", "lastRecv=%8"]),
     (QT / "GenTLWorker.cpp", ["makeSoftFrame(1280, 1024"]),
     (QT / "OperatorLibrary.cpp", ["focusSearch", "Key_F", "def.tip.contains"]),
     (QT / "ExprEval.cpp", ['"needle" in haystack', "in-miss"]),
     (QT / "VarWatchPanel.cpp", ["lastRecv", "theme::OK", "theme::NG"]),
+    (QT / "HostStrip.cpp", ["lastRecv", "RX="]),
+    (QT / "CommPanel.cpp", ["TX %2", "RX %3"]),
+    (QT / "OperatorRail.cpp", ["点击筛选"]),
 ]
 for path, needles in checks:
     text = path.read_text(encoding="utf-8", errors="replace")
@@ -112,6 +115,29 @@ if r4.returncode == 0 and "passGate=1" in body4:
     ok(f"AUTO_TCP+soft run: {body4.strip()[:140]}")
 else:
     bad(f"AUTO_TCP rc={r4.returncode} body={body4!r}")
+
+
+
+# project-file open-and-run (no FORCE_SEED) — GenTL→QR reliability via .sieans
+env5 = os.environ.copy()
+env5["QT_QPA_PLATFORM"] = "offscreen"
+env5["SIEANS_QT_AUTO_SOFT"] = "1"
+env5["SIEANS_QT_AUTO_RUN"] = "1"
+# ensure we hit the on-disk project (default load path), not seed
+smoke5 = ROOT / "artifacts" / "verify-wave4-project-run.txt"
+env5["SIEANS_QT_SMOKE_REPORT"] = str(smoke5)
+env5["SIEANS_QT_SCREENSHOT"] = str(ROOT / "artifacts" / "verify-wave4-project-run.png")
+env5["SIEANS_QT_SCREENSHOT_QUIT"] = "1"
+r5 = subprocess.run([str(BIN)], env=env5, capture_output=True, text=True, timeout=45)
+body5 = smoke5.read_text(encoding="utf-8", errors="replace") if smoke5.exists() else ""
+proj = ROOT / "projects" / "open-and-run-gentl-qr.sieans"
+proj_txt = proj.read_text(encoding="utf-8", errors="replace") if proj.exists() else ""
+if "result_gate" not in proj_txt:
+    bad("project missing result_gate")
+elif r5.returncode == 0 and "passGate=1" in body5 and "lastRecv=BARCODE" in body5:
+    ok(f"project AUTO_RUN decode+echo: {body5.strip()[:140]}")
+else:
+    bad(f"project AUTO_RUN rc={r5.returncode} body={body5!r} err={(r5.stderr or '')[-300:]}")
 
 print("---")
 print("FAILS", fail)

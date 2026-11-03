@@ -8,6 +8,7 @@
 #include <QFrame>
 #include <QMouseEvent>
 #include <QKeyEvent>
+#include <QLineEdit>
 #include <QVariantMap>
 
 namespace sieans_qt {
@@ -144,6 +145,10 @@ void PropertyFloat::showForSource(const QVariantMap& sourceConfig) {
   show();
   raise();
   activateWindow();
+  if (QLineEdit* le = findChild<QLineEdit*>()) {
+    le->setFocus(Qt::OtherFocusReason);
+    le->selectAll();
+  }
 }
 
 void PropertyFloat::showForStep(const FlowStep& step) {
@@ -155,6 +160,10 @@ void PropertyFloat::showForStep(const FlowStep& step) {
   show();
   raise();
   activateWindow();
+  if (QLineEdit* le = findChild<QLineEdit*>()) {
+    le->setFocus(Qt::OtherFocusReason);
+    le->selectAll();
+  }
 }
 
 void PropertyFloat::keyPressEvent(QKeyEvent* event) {
