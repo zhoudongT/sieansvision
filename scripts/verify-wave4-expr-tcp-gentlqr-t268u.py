@@ -38,7 +38,7 @@ checks = [
     (QT / "PropertyPanel.cpp", ["emptyDefault", "startswith|endswith|contains", "trim|strip|replace", "slice|substr|mid|isdigit|isalpha|lpad|rpad|repeat|default|coalesce|ifempty|indexof|find|left|right|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex", "{{name}}", "BARCODE empty", "binding"]),
     (QT / "FlowIoDialog.cpp", ["{{name}}", "Esc 取消", "流程 I/O · {name}"]),
     (QT / "SieansDocument.cpp", ["emptyDefault", "BARCODE empty", "urlOk", "startswith(barcodeText", "lastRecv"]),
-    (QT / "FlowCanvas.cpp", ["Right-edge run-state", "状态：%2", "theme::WARN", "showState", "F/Home 适应画布", "Key_F", "流程画布 · F/Home", "Key_0", "F/Home/0 适应"]),
+    (QT / "FlowCanvas.cpp", ["Right-edge run-state", "状态：%2", "theme::WARN", "showState", "F/Home/0 适应画布", "Key_F", "流程画布 · F/Home", "Key_0", "F/Home/0 适应"]),
     (QT / "HostStatePanel.cpp", ["tickPulse", "pulseTimer_", "outline:1px solid", "开始运行当前绑定流程", "Host · 暂停", "Host · 继续", "Host · 清除报警", "Idle/Running/Paused", "报警历史 · 最近事件", "F5"]),
     (QT / "CommHub.cpp", ["reconnectAttempts_", "reconnect #%1", "backoff", "setInterval(ms)", "attempts reset", "refreshListenStatus", "peers %3", "reconnect=%3", "peers %3 · %4", "backoff %4ms", "connecting %1:%2 · reconnect=%3 · %4", "connected %1:%2 · %3"]),
     (QT / "FilmstripBar.cpp", ["InternalMove", "已重排", "拖拽重排", "%1/%2 · %3×%4 · %5", "Key_Home", "Key_End", "Home/End", "selectIndex(row, true)", "Key_PageUp", "Key_PageDown", "PgUp/PgDn", "Key_Space", "自动切换 开", "胶片 · ←→", "ControlModifier", "Key_F5", "运行全部", "运行全部本地图 · F5", "F5 运行全部", "Key_F6", "Space/F6"]),
