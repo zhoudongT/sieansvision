@@ -185,9 +185,22 @@ QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gain
   p.setFont(font);
   // Keep label in a thin bottom strip so it does not cover QR modules.
   p.fillRect(0, h - 18, w, 18, QColor(236, 236, 236, 220));
-  p.drawText(QRect(0, h - 18, w, 18), Qt::AlignCenter,
-             drewQr ? QStringLiteral("SIEANS- soft·QR %1×%2 #%3 even").arg(w).arg(h).arg(seq % 1000)
-                    : QStringLiteral("SIEANS- soft %1×%2 #%3").arg(w).arg(h).arg(seq % 1000));
+  {
+    QString hud;
+    if (drewQr) {
+      const QString leaf = QFileInfo(g_softQrLoadedPath).fileName();
+      hud = leaf.isEmpty()
+                ? QStringLiteral("SIEANS- soft·QR %1×%2 #%3 even").arg(w).arg(h).arg(seq % 1000)
+                : QStringLiteral("SIEANS- soft·QR %1×%2 #%3 %4")
+                      .arg(w)
+                      .arg(h)
+                      .arg(seq % 1000)
+                      .arg(leaf.left(18));
+    } else {
+      hud = QStringLiteral("SIEANS- soft %1×%2 #%3").arg(w).arg(h).arg(seq % 1000);
+    }
+    p.drawText(QRect(0, h - 18, w, 18), Qt::AlignCenter, hud);
+  }
   p.end();
   return applySoftTone(img, exposureUs, gainDb, seq, true);
 }
