@@ -455,6 +455,13 @@ void MainWindow::buildUi() {
       showStatus(QStringLiteral("连续已启 · Host 右键"));
     }
   });
+  connect(host_strip_, &HostStrip::intervalChanged, this, [this](int ms) {
+    document_.setRunIntervalMs(ms);
+    if (host_sm_) host_sm_->setRunIntervalMs(ms);
+    if (continuous_run_ && !run_paused_)
+      continuous_timer_.setInterval(ms > 0 ? ms : 200);
+    showStatus(QStringLiteral("连续节拍 %1 ms · Host条滚轮").arg(ms));
+  });
   connect(host_strip_, &HostStrip::watchKeysChanged, this, [this](const QStringList& keys) {
     if (host_strip_) host_strip_->setWatchKeys(keys);
     document_.setHostWatchKeys(keys);
@@ -782,6 +789,7 @@ void MainWindow::buildUi() {
   connect(host_sm_, &HostStatePanel::stopRequested, this, &MainWindow::onStopRun);
   connect(host_sm_, &HostStatePanel::intervalChanged, this, [this](int ms) {
     document_.setRunIntervalMs(ms);
+    if (host_strip_) host_strip_->setIntervalMs(ms);
     if (continuous_run_ && !run_paused_) {
       continuous_timer_.setInterval(ms > 0 ? ms : 200);
     }
@@ -1041,9 +1049,11 @@ void MainWindow::applyDocumentToUi() {
     var_watch_->setVariables(flow_vars_);
   }
   if (host_strip_) host_strip_->setWatchKeys(document_.hostWatchKeys());
-  if (host_sm_) host_sm_->setRunIntervalMs(document_.runIntervalMs() > 0
-                                               ? document_.runIntervalMs()
-                                               : 200);
+  {
+    const int iv = document_.runIntervalMs() > 0 ? document_.runIntervalMs() : 200;
+    if (host_sm_) host_sm_->setRunIntervalMs(iv);
+    if (host_strip_) host_strip_->setIntervalMs(iv);
+  }
   if (comm_panel_) comm_panel_->bindDocument(document_.commManager());
   if (comm_hub_) {
     comm_hub_->loadFromCommManager(document_.commManager());
@@ -1201,7 +1211,10 @@ void MainWindow::updateRunChrome() {
   if (flow_tabs_) flow_tabs_->setDesignLocked(run_mode_);
   if (act_mode_) act_mode_->setChecked(run_mode_);
   const QString hostState = host_sm_ ? host_sm_->state() : QStringLiteral("Idle");
-  if (host_strip_) host_strip_->setRunChrome(modeText, hostState, run_cycle_);
+  if (host_strip_) {
+    host_strip_->setIntervalMs(document_.runIntervalMs() > 0 ? document_.runIntervalMs() : 200);
+    host_strip_->setRunChrome(modeText, hostState, run_cycle_);
+  }
   if (flow_tabs_)
     flow_tabs_->setRunChrome(modeText, run_cycle_, last_cycle_ms_, continuous_run_,
                              run_paused_);

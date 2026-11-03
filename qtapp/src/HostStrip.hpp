@@ -22,6 +22,9 @@ class HostStrip : public QWidget {
   void setTcpStatus(const QString& status);
   /** Last completed-cycle wall time (ms) — shown on cycle chip. */
   void setCycleTiming(double lastMs);
+  /** Continuous run interval (ms) — shown on cycle chip; wheel nudges. */
+  void setIntervalMs(int ms);
+  int intervalMs() const { return intervalMs_; }
   void resetStreak();
   void copyRunStats();
   int okStreak() const { return okStreak_; }
@@ -34,12 +37,14 @@ class HostStrip : public QWidget {
   void cycleResetRequested();
   void openHostRequested();
   void watchKeysChanged(const QStringList& keys);
+  void intervalChanged(int ms);
 
  protected:
   bool eventFilter(QObject* obj, QEvent* event) override;
 
  private:
   void refreshChips(const QVariantMap& vars);
+  void refreshCycleChip();
 
   QLabel* badge_ = nullptr;
   QLabel* detail_ = nullptr;
@@ -53,6 +58,7 @@ class HostStrip : public QWidget {
   QString tcpStatus_;
   int cycle_ = 0;
   double lastCycleMs_ = -1;
+  int intervalMs_ = 200;
   int okStreak_ = 0;
   int ngCount_ = 0;
 };

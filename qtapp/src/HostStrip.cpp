@@ -10,6 +10,7 @@
 #include <QClipboard>
 #include <QApplication>
 #include <QMouseEvent>
+#include <QWheelEvent>
 #include <QKeyEvent>
 #include <QEvent>
 
@@ -61,7 +62,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   detail_->setCursor(Qt::PointingHandCursor);
   badge_->setToolTip(QStringLiteral("OK/NG/ALARM · passGate 判定 · 单击打开 Host 面板 · Alt+单击清连OK/NG · 中键复制运行统计 · tcp= 见明细"));
   modeChip_->setToolTip(QStringLiteral("运行模式 · 单击设计/运行 · Alt 暂停/继续 · 右键/中键连续"));
-  cycleChip_->setToolTip(QStringLiteral("运行周期计数 · 每次流程完成 +1 · 显示上次 ms · Ctrl+单击/双击清零 · 右键/Alt+单击清连OK · 中键复制良率 · 周期 chip 见右侧"));
+  cycleChip_->setToolTip(QStringLiteral("周期 · 上次 ms · 节拍 · 滚轮±50 · Ctrl+滚轮±200 · Ctrl+单击/双击清零 · 右键/Alt+单击清连OK · 中键良率"));
   detail_->setToolTip(QStringLiteral("count/text/RX/urlOk/tcp/良率 摘要 · framing lf/crlf/raw/len4 见 tcp= · 双击复制全文 · 中键复制连OK/NG · 右键/Ctrl+Shift+C 运行统计 · 悬停看全文"));
   badge_->installEventFilter(this);
   modeChip_->installEventFilter(this);
@@ -99,22 +100,33 @@ void HostStrip::setRunChrome(const QString& mode, const QString& hostState, int 
                            "padding:3px 8px;font-size:11px;font-weight:600;")
           : QStringLiteral("background:#3a3d42;color:#a8a8a8;border-radius:3px;"
                            "padding:3px 8px;font-size:11px;font-weight:600;"));
-  if (lastCycleMs_ >= 0)
-    cycleChip_->setText(QStringLiteral("周期 %1 · %2 ms").arg(cycle).arg(lastCycleMs_, 0, 'f', 1));
-  else
-    cycleChip_->setText(QStringLiteral("周期 %1").arg(cycle));
+  refreshCycleChip();
 }
 
 void HostStrip::setCycleTiming(double lastMs) {
   lastCycleMs_ = lastMs;
+  refreshCycleChip();
+}
+
+void HostStrip::setIntervalMs(int ms) {
+  intervalMs_ = qBound(20, ms > 0 ? ms : 200, 60000);
+  refreshCycleChip();
+}
+
+void HostStrip::refreshCycleChip() {
   if (!cycleChip_) return;
+  QString text;
   if (lastCycleMs_ >= 0)
-    cycleChip_->setText(QStringLiteral("周期 %1 · %2 ms").arg(cycle_).arg(lastCycleMs_, 0, 'f', 1));
+    text = QStringLiteral("周期 %1 · %2 ms").arg(cycle_).arg(lastCycleMs_, 0, 'f', 1);
   else
-    cycleChip_->setText(QStringLiteral("周期 %1").arg(cycle_));
+    text = QStringLiteral("周期 %1").arg(cycle_);
+  text += QStringLiteral(" · 节拍 %1").arg(intervalMs_);
+  cycleChip_->setText(text);
   cycleChip_->setToolTip(
-      QStringLiteral("运行周期计数 · 每次流程完成 +1 · 上次 %1 ms · Ctrl+单击清零 · 双击清零 · 周期 chip 见右侧")
-          .arg(lastCycleMs_, 0, 'f', 1));
+      QStringLiteral("周期 %1 · 上次 %2 ms · 连续节拍 %3 ms · 滚轮±50 · Ctrl+滚轮±200 · Ctrl+单击清零 · 双击清零 · 右键清连OK")
+          .arg(cycle_)
+          .arg(lastCycleMs_ >= 0 ? lastCycleMs_ : 0.0, 0, 'f', 1)
+          .arg(intervalMs_));
 }
 
 void HostStrip::refreshChips(const QVariantMap& vars) {
@@ -241,6 +253,18 @@ void HostStrip::resetStreak() {
 }
 
 bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
+  if (event->type() == QEvent::Wheel && obj == cycleChip_) {
+    auto* we = static_cast<QWheelEvent*>(event);
+    const int step = (we->modifiers() & Qt::ControlModifier) ? 200 : 50;
+    const int delta = we->angleDelta().y() > 0 ? step : -step;
+    const int next = qBound(20, intervalMs_ + delta, 60000);
+    if (next != intervalMs_) {
+      intervalMs_ = next;
+      refreshCycleChip();
+      emit intervalChanged(intervalMs_);
+    }
+    return true;
+  }
   if (event->type() == QEvent::MouseButtonDblClick) {
     auto* me = static_cast<QMouseEvent*>(event);
     if (me->button() == Qt::LeftButton && obj == chips_) {
