@@ -14,6 +14,9 @@
 #include <QMetaType>
 #include <QSpinBox>
 #include <QTableWidget>
+#include <QShortcut>
+#include <QKeySequence>
+#include <QFrame>
 
 namespace sieans_qt {
 namespace {
@@ -125,6 +128,22 @@ PropertyPanel::PropertyPanel(QWidget* parent) : QWidget(parent) {
   meta_->setObjectName(QStringLiteral("muted"));
   meta_->setWordWrap(true);
   lay->addWidget(meta_);
+  filterEdit_ = new QLineEdit;
+  filterEdit_->setObjectName(QStringLiteral("propFilter"));
+  filterEdit_->setPlaceholderText(QStringLiteral("过滤参数 · Ctrl+F · Esc 清空"));
+  filterEdit_->setClearButtonEnabled(true);
+  filterEdit_->setToolTip(QStringLiteral("属性过滤 · 匹配键/标签 · Ctrl+F 聚焦 · Esc 清空"));
+  lay->addWidget(filterEdit_);
+  connect(filterEdit_, &QLineEdit::textChanged, this, [this](const QString&) { applyFilter(); });
+  {
+    auto* scF = new QShortcut(QKeySequence(QStringLiteral("Ctrl+F")), this);
+    connect(scF, &QShortcut::activated, this, &PropertyPanel::focusFilter);
+    auto* scEsc = new QShortcut(QKeySequence(Qt::Key_Escape), filterEdit_);
+    connect(scEsc, &QShortcut::activated, this, [this]() {
+      if (filterEdit_ && !filterEdit_->text().isEmpty()) filterEdit_->clear();
+    });
+  }
+  setStatusTip(QStringLiteral("属性面板 · Ctrl+F 过滤 · Esc 清过滤 · emptyDefault/{name}"));
 
   auto* scroll = new QScrollArea;
   scroll->setWidgetResizable(true);
@@ -154,6 +173,8 @@ void PropertyPanel::emitEdit(const QString& key, const QString& value) {
 
 void PropertyPanel::addExprTable(const QVariantList& rows) {
   auto* table = new QTableWidget(rows.size(), 3);
+  table->setProperty("propKey", QStringLiteral("expressions"));
+  table->setObjectName(QStringLiteral("exprTable"));
   table->setHorizontalHeaderLabels(
       {QStringLiteral("启用"), QStringLiteral("变量"), QStringLiteral("表达式")});
   table->horizontalHeader()->setStretchLastSection(true);
@@ -193,13 +214,20 @@ void PropertyPanel::addExprTable(const QVariantList& rows) {
     emitEdit(QStringLiteral("expressions"),
              QString::fromUtf8(QJsonDocument::fromVariant(out).toJson(QJsonDocument::Compact)));
   });
-  form_->addRow(QStringLiteral("表达式"), table);
+  auto* exprLab = new QLabel(QStringLiteral("表达式"));
+  exprLab->setProperty("propKey", QStringLiteral("expressions"));
+  exprLab->setProperty("propLabel", QStringLiteral("表达式"));
+  form_->addRow(exprLab, table);
 }
+
 
 void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
   const QString key = spec.key;
   const QString label = spec.label;
   const QVariant value = params.value(key);
+  auto* lab = new QLabel(label);
+  lab->setProperty("propKey", key);
+  lab->setProperty("propLabel", label);
   const auto tipFor = [](const QString& k) -> QString {
     if (k == QLatin1String("emptyDefault"))
       return QStringLiteral("模板展开为空时写入的默认值（如 BARCODE empty）");
@@ -220,6 +248,7 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
     return {};
   };
   const QString tip = tipFor(key);
+  if (!tip.isEmpty()) lab->setToolTip(tip);
   switch (spec.kind) {
     case 3: {
       auto* box = new QCheckBox(QStringLiteral("启用"));
@@ -228,7 +257,7 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
       connect(box, &QCheckBox::toggled, this, [this, key](bool on) {
         emitEdit(key, on ? QStringLiteral("true") : QStringLiteral("false"));
       });
-      form_->addRow(label, box);
+      form_->addRow(lab, box);
       break;
     }
     case 1: {
@@ -237,7 +266,7 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
       spin->setValue(value.toInt());
       connect(spin, QOverload<int>::of(&QSpinBox::valueChanged), this,
               [this, key](int v) { emitEdit(key, QString::number(v)); });
-      form_->addRow(label, spin);
+      form_->addRow(lab, spin);
       break;
     }
     case 2: {
@@ -256,7 +285,7 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
       spin->setValue(value.toDouble());
       connect(spin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
               [this, key](double v) { emitEdit(key, QString::number(v, 'g', 8)); });
-      form_->addRow(label, spin);
+      form_->addRow(lab, spin);
       break;
     }
     case 4: {
@@ -273,7 +302,7 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
       combo->setCurrentIndex(pick);
       connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
               [this, key, combo](int) { emitEdit(key, combo->currentData().toString()); });
-      form_->addRow(label, combo);
+      form_->addRow(lab, combo);
       break;
     }
     case 0:
@@ -283,7 +312,7 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
       connect(edit, &QLineEdit::editingFinished, this, [this, key, edit]() {
         emitEdit(key, edit->text());
       });
-      form_->addRow(label, edit);
+      form_->addRow(lab, edit);
       break;
     }
   }
@@ -317,6 +346,7 @@ void PropertyPanel::rebuildForm(const QString& title, const QString& nodeId,
     }
   }
   building_ = false;
+  applyFilter();
 }
 
 void PropertyPanel::showSource(const QVariantMap& sourceConfig) {
@@ -356,6 +386,58 @@ void PropertyPanel::showStep(const FlowStep& step) {
   meta_->setText(hint);
   rebuildForm(QStringLiteral("属性 · %1").arg(step.name), step.id, step.operation,
               step.params);
+}
+
+
+void PropertyPanel::focusFilter() {
+  if (!filterEdit_) return;
+  filterEdit_->setFocus(Qt::ShortcutFocusReason);
+  filterEdit_->selectAll();
+}
+
+void PropertyPanel::applyFilter() {
+  if (!form_ || !filterEdit_) return;
+  const QString f = filterEdit_->text().trimmed();
+  for (int r = 0; r < form_->rowCount(); ++r) {
+    QString hay;
+    if (auto* li = form_->itemAt(r, QFormLayout::LabelRole)) {
+      if (auto* w = li->widget()) {
+        hay += w->property("propKey").toString() + QLatin1Char(' ');
+        hay += w->property("propLabel").toString() + QLatin1Char(' ');
+        if (auto* lab = qobject_cast<QLabel*>(w)) hay += lab->text() + QLatin1Char(' ');
+        else hay += w->objectName() + QLatin1Char(' ');
+      }
+    }
+    if (auto* fi = form_->itemAt(r, QFormLayout::FieldRole)) {
+      if (auto* w = fi->widget()) {
+        hay += w->property("propKey").toString() + QLatin1Char(' ');
+        if (qobject_cast<QTableWidget*>(w)) hay += QStringLiteral("expressions expr 表达式 ");
+      }
+    }
+    // spanning full-row widgets (expr table)
+    if (auto* si = form_->itemAt(r, QFormLayout::SpanningRole)) {
+      if (auto* w = si->widget()) {
+        hay += w->property("propKey").toString() + QStringLiteral(" expressions expr 表达式 ");
+      }
+    }
+    const bool show = f.isEmpty() || hay.contains(f, Qt::CaseInsensitive);
+    form_->setRowVisible(r, show);
+  }
+  if (meta_ && !f.isEmpty()) {
+    int vis = 0;
+    for (int r = 0; r < form_->rowCount(); ++r) {
+      // setRowVisible doesn't expose getter easily — count via label visibility
+      if (auto* li = form_->itemAt(r, QFormLayout::LabelRole)) {
+        if (li->widget() && li->widget()->isVisibleTo(formHost_)) ++vis;
+      } else if (auto* si = form_->itemAt(r, QFormLayout::SpanningRole)) {
+        if (si->widget() && si->widget()->isVisibleTo(formHost_)) ++vis;
+      }
+    }
+    Q_UNUSED(vis);
+  }
+  filterEdit_->setToolTip(
+      QStringLiteral("属性过滤 · %1 · Ctrl+F 聚焦 · Esc 清空")
+          .arg(f.isEmpty() ? QStringLiteral("全部") : QStringLiteral("「%1」").arg(f)));
 }
 
 }  // namespace sieans_qt

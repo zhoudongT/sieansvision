@@ -169,6 +169,7 @@ class FlowView : public QGraphicsView {
 
  signals:
   void operatorDropped(const QString& key, const QPointF& scenePos);
+  void ioRequested();
 
  protected:
   void wheelEvent(QWheelEvent* event) override;

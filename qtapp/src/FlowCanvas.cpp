@@ -618,8 +618,8 @@ void FlowScene::keyPressEvent(QKeyEvent* event) {
 
 FlowView::FlowView(FlowScene* scene, QWidget* parent)
     : QGraphicsView(scene, parent) {
-  setToolTip(QStringLiteral("滚轮/+/- 缩放 · F/G/A/Space/Home/0/R 适应画布 · Del/Backspace 删连线 · Esc 取消连线"));
-  setStatusTip(QStringLiteral("流程画布 · F/G/A/Space/Home/0/R 适应 · +/- 缩放 · Esc 取消连线 · Del/Backspace 删连线 · 滚轮缩放"));
+  setToolTip(QStringLiteral("滚轮/+/- 缩放 · F/G/A/Space/Home/0/R 适应画布 · Del/Backspace 删连线 · Esc 取消连线 · I 打开 I/O"));
+  setStatusTip(QStringLiteral("流程画布 · F/0/R 适应 · I→I/O · +/- 缩放 · Esc 取消连线 · Del 删连线 · 滚轮缩放"));
   setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing);
   setDragMode(QGraphicsView::RubberBandDrag);
   setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
@@ -647,6 +647,11 @@ void FlowView::wheelEvent(QWheelEvent* event) {
 }
 
 void FlowView::keyPressEvent(QKeyEvent* event) {
+  if (event->key() == Qt::Key_I) {
+    emit ioRequested();
+    event->accept();
+    return;
+  }
   if (event->key() == Qt::Key_F || event->key() == Qt::Key_Home ||
       event->key() == Qt::Key_0 || event->key() == Qt::Key_R ||
       event->key() == Qt::Key_G || event->key() == Qt::Key_A ||

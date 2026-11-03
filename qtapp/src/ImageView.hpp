@@ -50,6 +50,8 @@ class ImageView : public QGraphicsView {
   QImage image_;
   QVector<OverlayHit> hits_;
   bool userZoomed_ = false;
+  bool overlaysHidden_ = false;
+  bool probeHidden_ = false;
   QLabel* probe_ = nullptr;
 };
 

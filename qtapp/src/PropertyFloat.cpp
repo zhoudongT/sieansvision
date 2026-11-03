@@ -182,6 +182,12 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
+  if ((event->key() == Qt::Key_F && (event->modifiers() & Qt::ControlModifier)) ||
+      event->key() == Qt::Key_F3) {
+    if (panel_) panel_->focusFilter();
+    event->accept();
+    return;
+  }
   if (event->key() == Qt::Key_F2) {
     // Focus first editable field in the float (VM-ish).
     const auto kids = findChildren<QWidget*>();

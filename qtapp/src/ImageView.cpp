@@ -15,8 +15,8 @@ namespace sieans_qt {
 
 ImageView::ImageView(QWidget* parent) : QGraphicsView(parent) {
   setFocusPolicy(Qt::StrongFocus);
-  setToolTip(QStringLiteral("F/G/A/Space/Home/0/R 适应 · +/- 缩放 · Esc/C/Del/Backspace 清叠加 · 拖拽平移 · 滚轮缩放"));
-  setStatusTip(QStringLiteral("图像视图 · F/G/A/Space/Home/0/R 适应 · +/- 缩放 · Esc/C/Del/Backspace 清叠加 · 码框 hits · 拖拽平移 · 滚轮缩放"));
+  setToolTip(QStringLiteral("F/G/A/Space/Home/0/R 适应 · 1 像素1:1 · O 叠显 · P 探针 · +/- 缩放 · Esc/C/Del 清叠加 · 拖拽/滚轮"));
+  setStatusTip(QStringLiteral("图像视图 · F/0/R 适应 · 1=1:1 · O 叠显 · P 探针 · +/- 缩放 · Esc 清叠加 · 拖拽/滚轮"));
   setScene(&scene_);
   setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
   setDragMode(QGraphicsView::ScrollHandDrag);
@@ -144,6 +144,25 @@ void ImageView::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
+  if (event->key() == Qt::Key_O) {
+    overlaysHidden_ = !overlaysHidden_;
+    redrawOverlays();
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_P) {
+    probeHidden_ = !probeHidden_;
+    if (probe_) probe_->setVisible(!probeHidden_);
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_1 && !(event->modifiers() & Qt::ControlModifier)) {
+    // 1:1 像素
+    resetTransform();
+    userZoomed_ = true;
+    event->accept();
+    return;
+  }
   if (event->key() == Qt::Key_Plus || event->key() == Qt::Key_Equal) {
     userZoomed_ = true;
     scale(1.15, 1.15);
@@ -172,7 +191,8 @@ void ImageView::redrawOverlays() {
   }
   overlay_items_.clear();
 
-  QPen pen(QColor(0, 230, 118), 2.5);
+   if (overlaysHidden_) return;
+ QPen pen(QColor(0, 230, 118), 2.5);
   int idx = 0;
   for (const auto& h : hits_) {
     ++idx;

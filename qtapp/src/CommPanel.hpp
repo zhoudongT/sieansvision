@@ -46,6 +46,7 @@ class CommPanel : public QWidget {
   QComboBox* framingCombo_ = nullptr;
   QLineEdit* ackEdit_ = nullptr;
   QCheckBox* reconnectCheck_ = nullptr;
+  QLabel* bindSummary_ = nullptr;
   QPlainTextEdit* transcript_ = nullptr;
   QLabel* status_ = nullptr;
   QLabel* detail_ = nullptr;

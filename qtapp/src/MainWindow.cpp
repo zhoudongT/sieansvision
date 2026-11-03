@@ -353,6 +353,7 @@ void MainWindow::buildUi() {
   flow_view_ = new FlowView(flow_scene_);
   flowLay->addWidget(flow_view_, 1);
   connect(flow_view_, &FlowView::operatorDropped, this, &MainWindow::onDropOperator);
+  connect(flow_view_, &FlowView::ioRequested, this, &MainWindow::onOpenFlowIo);
   connect(flow_tabs_, &FlowTabBar::runOnceRequested, this, &MainWindow::onRunOnce);
   connect(flow_tabs_, &FlowTabBar::runContinuousRequested, this,
           &MainWindow::onRunContinuous);

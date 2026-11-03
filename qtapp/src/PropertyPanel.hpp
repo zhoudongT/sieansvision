@@ -9,6 +9,8 @@
 #include <QVector>
 #include <QWidget>
 
+class QLineEdit;
+
 namespace sieans_qt {
 
 class PropertyPanel : public QWidget {
@@ -21,6 +23,7 @@ class PropertyPanel : public QWidget {
   void clear();
   /** Live param map while the float is open (edits applied immediately). */
   QVariantMap currentParams() const { return params_; }
+  void focusFilter();
 
  signals:
   void paramEdited(const QString& nodeId, const QString& key, const QString& value);
@@ -38,8 +41,10 @@ class PropertyPanel : public QWidget {
   void addSpecRow(const Spec& spec, const QVariantMap& params);
   void addExprTable(const QVariantList& rows);
   void emitEdit(const QString& key, const QString& value);
+  void applyFilter();
 
   QLabel* title_ = nullptr;
+  QLineEdit* filterEdit_ = nullptr;
   QLabel* meta_ = nullptr;
   QWidget* formHost_ = nullptr;
   QFormLayout* form_ = nullptr;

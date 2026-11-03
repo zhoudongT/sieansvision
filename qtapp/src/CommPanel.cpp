@@ -87,6 +87,11 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   reconnectCheck_->setToolTip(QStringLiteral("tcpReal.reconnect · client 模式断线自动重连 · 最多约 40 次"));
   form->addRow(QStringLiteral("重连"), reconnectCheck_);
   connect(reconnectCheck_, &QCheckBox::toggled, this, [this](bool) { pushTcpEndpoint(true); });
+  bindSummary_ = new QLabel(QStringLiteral("绑定 · —"));
+  bindSummary_->setObjectName(QStringLiteral("commBindSummary"));
+  bindSummary_->setWordWrap(true);
+  bindSummary_->setToolTip(QStringLiteral("tcpReal 绑定摘要 · host:port · framing · ack · reconnect"));
+  form->addRow(QStringLiteral("摘要"), bindSummary_);
   payloadEdit_ = new QLineEdit(
       QStringLiteral("BARCODE ok=${flow.passGate} text=${flow.barcodeText}"));
   payloadEdit_->setToolTip(
@@ -173,6 +178,19 @@ void CommPanel::bindDocument(const QVariantMap& commManager) {
     reconnectCheck_->blockSignals(true);
     reconnectCheck_->setChecked(tcp.value(QStringLiteral("reconnect"), true).toBool());
     reconnectCheck_->blockSignals(false);
+  }
+  if (bindSummary_) {
+    const QString host = tcp.value(QStringLiteral("host")).toString();
+    const int port = tcp.value(QStringLiteral("port"), 9000).toInt();
+    const QString fr = tcp.value(QStringLiteral("framing"), QStringLiteral("lf")).toString();
+    const QString ack = tcp.value(QStringLiteral("ack")).toString();
+    const bool rc = tcp.value(QStringLiteral("reconnect"), true).toBool();
+    bindSummary_->setText(
+        QStringLiteral("%1:%2 · %3 · ACK %4 · 重连 %5")
+            .arg(host.isEmpty() ? QStringLiteral("0.0.0.0") : host)
+            .arg(port).arg(fr)
+            .arg(ack.isEmpty() ? QStringLiteral("关") : ack.left(16))
+            .arg(rc ? QStringLiteral("开") : QStringLiteral("关")));
   }
   refreshDevices();
   refreshTranscript();
@@ -301,6 +319,18 @@ void CommPanel::pushTcpEndpoint(bool emitSave) {
   if (ackEdit_) tcp.insert(QStringLiteral("ack"), ackEdit_->text());
   if (reconnectCheck_)
     tcp.insert(QStringLiteral("reconnect"), reconnectCheck_->isChecked());
+  if (bindSummary_) {
+    const QString host = hostEdit_ ? hostEdit_->text().trimmed() : QString();
+    const QString port = portEdit_ ? portEdit_->text().trimmed() : QString();
+    const QString fr = framingCombo_ ? framingCombo_->currentData().toString() : QStringLiteral("lf");
+    const QString ack = ackEdit_ ? ackEdit_->text() : QString();
+    const bool rc = reconnectCheck_ && reconnectCheck_->isChecked();
+    bindSummary_->setText(
+        QStringLiteral("%1:%2 · %3 · ACK %4 · 重连 %5")
+            .arg(host.isEmpty() ? QStringLiteral("0.0.0.0") : host, port.isEmpty() ? QStringLiteral("9000") : port,
+                 fr, ack.isEmpty() ? QStringLiteral("关") : ack.left(16),
+                 rc ? QStringLiteral("开") : QStringLiteral("关")));
+  }
   cm.insert(QStringLiteral("tcpReal"), tcp);
   hub_->loadFromCommManager(cm);
   if (status_ && framingCombo_) {
