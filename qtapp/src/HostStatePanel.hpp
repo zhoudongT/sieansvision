@@ -34,6 +34,10 @@ class HostStatePanel : public QWidget {
   void setRunStats(int okStreak, int ngCount, double lastMs = -1);
   void setRunIntervalMs(int ms);
   int runIntervalMs() const;
+  void setHostMode(const QString& mode);
+  QString hostMode() const;
+  void setAlarmPolicy(const QString& policy);
+  QString alarmPolicy() const;
 
  signals:
   void startRequested();
@@ -42,6 +46,8 @@ class HostStatePanel : public QWidget {
   void stopRequested();
   void clearAlarmRequested();
   void intervalChanged(int ms);
+  void hostModeChanged(const QString& mode);
+  void alarmPolicyChanged(const QString& policy);
 
  protected:
   bool eventFilter(QObject* obj, QEvent* event) override;

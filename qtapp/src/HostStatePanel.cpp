@@ -217,6 +217,11 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   });
   connect(policy_, &QComboBox::currentIndexChanged, this, [this](int) {
     alarmPolicy_ = policy_->currentData().toString();
+    emit alarmPolicyChanged(alarmPolicy_);
+  });
+  connect(mode_, &QComboBox::currentIndexChanged, this, [this](int) {
+    if (!mode_) return;
+    emit hostModeChanged(mode_->currentText());
   });
   {
     auto* sc = new QShortcut(QKeySequence(Qt::Key_F5), this);
@@ -507,6 +512,44 @@ bool HostStatePanel::eventFilter(QObject* obj, QEvent* event) {
     }
   }
   return QWidget::eventFilter(obj, event);
+}
+
+
+void HostStatePanel::setHostMode(const QString& mode) {
+  if (!mode_) return;
+  const QString t = mode.trimmed();
+  int idx = mode_->findText(t);
+  if (idx < 0 && !t.isEmpty()) {
+    // tolerate stored index as string
+    bool ok = false;
+    const int asInt = t.toInt(&ok);
+    if (ok && asInt >= 0 && asInt < mode_->count()) idx = asInt;
+  }
+  if (idx < 0) idx = 0;
+  const bool blocked = mode_->blockSignals(true);
+  mode_->setCurrentIndex(idx);
+  mode_->blockSignals(blocked);
+}
+
+QString HostStatePanel::hostMode() const {
+  return mode_ ? mode_->currentText() : QStringLiteral("正常生产");
+}
+
+void HostStatePanel::setAlarmPolicy(const QString& policy) {
+  if (!policy_) return;
+  QString t = policy.trimmed();
+  if (t.isEmpty()) t = QStringLiteral("on_ok");
+  int idx = policy_->findData(t);
+  if (idx < 0) idx = policy_->findText(t);
+  if (idx < 0) idx = 0;
+  const bool blocked = policy_->blockSignals(true);
+  policy_->setCurrentIndex(idx);
+  policy_->blockSignals(blocked);
+  alarmPolicy_ = policy_->currentData().toString();
+}
+
+QString HostStatePanel::alarmPolicy() const {
+  return alarmPolicy_;
 }
 
 }  // namespace sieans_qt

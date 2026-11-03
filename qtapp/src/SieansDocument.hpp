@@ -71,6 +71,10 @@ class SieansDocument {
   void setFilmstripPaths(const QStringList& paths);
   bool filmstripAutoSwitch() const;
   void setFilmstripAutoSwitch(bool on);
+  QString hostMode() const;
+  void setHostMode(const QString& mode);
+  QString alarmPolicy() const;
+  void setAlarmPolicy(const QString& policy);
 
   QString cameraDeviceId() const;
   QString cameraBackend() const;  // gentl | uvc | soft

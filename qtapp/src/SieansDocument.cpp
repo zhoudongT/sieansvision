@@ -436,4 +436,24 @@ void SieansDocument::setFilmstripAutoSwitch(bool on) {
   raw_.insert(QStringLiteral("filmstripAutoSwitch"), on);
 }
 
+
+QString SieansDocument::hostMode() const {
+  return raw_.value(QStringLiteral("hostMode")).toString(QStringLiteral("正常生产"));
+}
+
+void SieansDocument::setHostMode(const QString& mode) {
+  const QString t = mode.trimmed();
+  raw_.insert(QStringLiteral("hostMode"), t.isEmpty() ? QStringLiteral("正常生产") : t);
+}
+
+QString SieansDocument::alarmPolicy() const {
+  return raw_.value(QStringLiteral("alarmPolicy")).toString(QStringLiteral("on_ok"));
+}
+
+void SieansDocument::setAlarmPolicy(const QString& policy) {
+  const QString t = policy.trimmed();
+  raw_.insert(QStringLiteral("alarmPolicy"),
+              t.isEmpty() ? QStringLiteral("on_ok") : t);
+}
+
 }  // namespace sieans_qt

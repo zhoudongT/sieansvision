@@ -812,6 +812,12 @@ void MainWindow::buildUi() {
     }
     showStatus(QStringLiteral("连续间隔 %1 ms").arg(ms > 0 ? ms : 200));
   });
+  connect(host_sm_, &HostStatePanel::hostModeChanged, this, [this](const QString& mode) {
+    document_.setHostMode(mode);
+  });
+  connect(host_sm_, &HostStatePanel::alarmPolicyChanged, this, [this](const QString& pol) {
+    document_.setAlarmPolicy(pol);
+  });
   connect(host_sm_, &HostStatePanel::clearAlarmRequested, this, [this]() {
     if (host_strip_) host_strip_->setAlarm(false);
     if (!host_sm_) return;
@@ -1071,6 +1077,10 @@ void MainWindow::applyDocumentToUi() {
     if (host_sm_) host_sm_->setRunIntervalMs(iv);
     if (host_strip_) host_strip_->setIntervalMs(iv);
     if (flow_tabs_) flow_tabs_->setIntervalMs(iv);
+    if (host_sm_) {
+      host_sm_->setHostMode(document_.hostMode());
+      host_sm_->setAlarmPolicy(document_.alarmPolicy());
+    }
   }
   if (filmstrip_) {
     const QStringList fps = document_.filmstripPaths();
