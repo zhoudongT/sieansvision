@@ -116,7 +116,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   modeRow->addWidget(new QLabel(QStringLiteral("模式")));
   modeRow->addWidget(mode_, 1);
   mode_->installEventFilter(this);
-  mode_->setToolTip(QStringLiteral("标定模式 · 滚轮切换 · Alt+1/2/3 → 生产/九点/旋转 · 开始仍跑当前视觉流程 · 非标定=生产"));
+  mode_->setToolTip(QStringLiteral("标定模式 · 滚轮切换 · Alt+1/2/3 → 生产/九点/旋转 · 开始仍跑当前视觉流程 · 非标定=生产 · F8 循环"));
   modeRow->addWidget(new QLabel(QStringLiteral("报警清除")));
   modeRow->addWidget(policy_, 1);
   policy_->installEventFilter(this);
@@ -153,7 +153,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   history_ = new QListWidget;
   history_->setObjectName(QStringLiteral("alarmHistory"));
   history_->setMinimumHeight(72);
-  history_->setToolTip(QStringLiteral("报警历史 · Esc停止 · Space/F5/F9 启停 · F6/F7 暂停续 · 双击/中键复制 · 右键/Ctrl+L 清空 · Del 删行 · Ctrl+A 全选 · Ctrl+D 复制行 · Ctrl+X 剪切 · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/底 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Ctrl+Shift+J/V JSON导出/粘贴 · 最近 40 条"));
+  history_->setToolTip(QStringLiteral("报警历史 · Esc停止 · Space/F5/F9 启停 · F6/F7 暂停续 · F8 切模式 · 双击/中键复制 · 右键/Ctrl+L 清空 · Del 删行 · Ctrl+A 全选 · Ctrl+D 复制行 · Ctrl+X 剪切 · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/底 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Ctrl+Shift+J/V JSON导出/粘贴 · 最近 40 条"));
   history_->setStatusTip(QStringLiteral("Host · 报警历史 · Ctrl+L/Del/双击/中键"));
   history_->installEventFilter(this);
   history_->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -510,6 +510,10 @@ bool HostStatePanel::eventFilter(QObject* obj, QEvent* event) {
       else if (state_ == QLatin1String("Running")) emit pauseRequested();
       return true;
     }
+    if (ke->key() == Qt::Key_F8) {
+      cycleHostMode(+1);
+      return true;
+    }
   }
   if (obj == history_ && event->type() == QEvent::MouseButtonRelease) {
     auto* me = static_cast<QMouseEvent*>(event);
@@ -693,6 +697,18 @@ void HostStatePanel::cutSelectedAlarmHistory() {
   emit alarmHistoryChanged(alarmHistoryLines());
   if (modeHint_)
     modeHint_->setText(QStringLiteral("已剪切报警 %1 · Ctrl+X · Ctrl+Shift+V 粘贴").arg(lines.size()));
+}
+
+void HostStatePanel::cycleHostMode(int delta) {
+  if (!mode_ || mode_->count() == 0) return;
+  const int n = mode_->count();
+  int i = mode_->currentIndex();
+  if (i < 0) i = 0;
+  i = (i + delta) % n;
+  if (i < 0) i += n;
+  mode_->setCurrentIndex(i);
+  if (modeHint_)
+    modeHint_->setText(QStringLiteral("模式 · %1 · F8").arg(mode_->currentText()));
 }
 
 void HostStatePanel::pasteAlarmHistoryFromClipboard() {

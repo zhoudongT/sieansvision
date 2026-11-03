@@ -536,6 +536,11 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
       if (status_) status_->setToolTip(QStringLiteral("已写回设备端点 · Enter"));
       return true;
     }
+    if (ke->key() == Qt::Key_C && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier)) {
+      copySelectedDeviceEndpoint();
+      return true;
+    }
     if (ke->key() == Qt::Key_F2) {
       const auto items = deviceTable_->selectedItems();
       if (!items.isEmpty()) {
@@ -1429,6 +1434,27 @@ void CommPanel::writeBackSelectedDeviceEndpoint() {
                          .arg(proto, name, host, port,
                               remark.isEmpty() ? QStringLiteral("(无备注)") : remark));
   }
+}
+
+
+void CommPanel::copySelectedDeviceEndpoint() {
+  if (!deviceTable_) return;
+  const auto items = deviceTable_->selectedItems();
+  if (items.isEmpty()) {
+    if (status_) status_->setToolTip(QStringLiteral("未选设备 · Ctrl+Shift+C"));
+    return;
+  }
+  const int row = items.first()->row();
+  QStringList parts;
+  for (int c = 0; c < deviceTable_->columnCount(); ++c) {
+    auto* it = deviceTable_->item(row, c);
+    parts << (it ? it->text().trimmed() : QString());
+  }
+  const QString line = parts.join(QLatin1Char('\t'));
+  if (auto* clip = QGuiApplication::clipboard()) clip->setText(line);
+  if (status_)
+    status_->setToolTip(QStringLiteral("已复制设备行 · Ctrl+Shift+C · %1")
+                            .arg(parts.value(0)));
 }
 
 

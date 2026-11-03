@@ -64,6 +64,7 @@ class CommPanel : public QWidget {
   void copyLastTxRx();
   void copyEndpoint();
   void writeBackSelectedDeviceEndpoint();
+  void copySelectedDeviceEndpoint();
   void toggleSelectedDeviceEnabled();
   void setAllDevicesEnabled(bool on);
   void addDeviceRow();

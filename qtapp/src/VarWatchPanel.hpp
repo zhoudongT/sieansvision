@@ -26,6 +26,7 @@ class VarWatchPanel : public QWidget {
   void addKeysFromClipboard();
   void replaceKeysFromClipboard();
   void removeSelectedKeys();
+  void removeTailWatchKey();
   void moveSelectedKey(int delta);
   void cutSelectedKeys();
   void copyHostWatchKeys();

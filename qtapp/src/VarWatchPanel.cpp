@@ -75,6 +75,8 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
     connect(scIns, &QShortcut::activated, this, &VarWatchPanel::addKeysFromClipboard);
     auto* scRm = new QShortcut(QKeySequence(Qt::Key_Delete), this);
     connect(scRm, &QShortcut::activated, this, &VarWatchPanel::removeSelectedKeys);
+    auto* scTail = new QShortcut(QKeySequence(QStringLiteral("Shift+Delete")), this);
+    connect(scTail, &QShortcut::activated, this, &VarWatchPanel::removeTailWatchKey);
     auto* scX = new QShortcut(QKeySequence(QStringLiteral("Ctrl+X")), this);
     connect(scX, &QShortcut::activated, this, &VarWatchPanel::cutSelectedKeys);
     auto* scHost = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+H")), this);
@@ -122,7 +124,7 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
                                  table_);
             }
           });
-  table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · 中键 ${flow} · 右键键=值 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/置底 · Esc 取消选中 · F2 聚焦表 · Ctrl+Shift+J JSON · Ctrl+Shift+E 键JSON · Ctrl+Shift+O 替换键"));
+  table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · 中键 ${flow} · 右键键=值 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/置底 · Esc 取消选中 · F2 聚焦表 · Ctrl+Shift+J JSON · Ctrl+Shift+E 键JSON · Ctrl+Shift+O 替换键 · Shift+Del 删末"));
   table_->installEventFilter(this);
   if (filterEdit_) filterEdit_->installEventFilter(this);
   setStatusTip(QStringLiteral("变量监视 · ★=Host条 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · Ctrl+Shift+E 键JSON · Ctrl+Shift+O 替换键 · 中键token/右键键=值 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/置底 · Ctrl+Shift+Space 批量★ · Ctrl+Shift+Bksp 清空 · Ctrl+X 剪切 · Ctrl+Shift+H ★键 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
@@ -603,6 +605,20 @@ void VarWatchPanel::removeSelectedKeys() {
     QToolTip::showText(QCursor::pos(),
                        QStringLiteral("已移除监视 %1 · Del").arg(n), table_);
   }
+}
+
+
+void VarWatchPanel::removeTailWatchKey() {
+  if (keys_.isEmpty()) {
+    QToolTip::showText(QCursor::pos(), QStringLiteral("监视键空 · Shift+Del"), table_);
+    return;
+  }
+  const QString gone = keys_.takeLast();
+  rebuild();
+  emit watchListChanged(keys_);
+  QToolTip::showText(QCursor::pos(),
+                     QStringLiteral("已删末键 %1 · Shift+Del · 余 %2").arg(gone).arg(keys_.size()),
+                     table_);
 }
 
 
