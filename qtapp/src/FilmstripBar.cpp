@@ -71,6 +71,12 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   auto* next = new QPushButton(QStringLiteral("▶"));
   next->setToolTip(QStringLiteral("下一张 · → · End 到末张"));
   next->setFixedWidth(28);
+  auto* pinFront = new QPushButton(QStringLiteral("⇈"));
+  pinFront->setToolTip(QStringLiteral("选中置顶 · Ctrl+Shift+Home · Ctrl+单击缩略图"));
+  pinFront->setFixedWidth(28);
+  auto* pinEnd = new QPushButton(QStringLiteral("⇊"));
+  pinEnd->setToolTip(QStringLiteral("选中置底 · Ctrl+Shift+End · Ctrl+Shift+单击缩略图"));
+  pinEnd->setFixedWidth(28);
   auto* del = new QPushButton(QStringLiteral("删除"));
   del->setToolTip(QStringLiteral("删除选中 · Del · Ctrl+Del 清空 · 不可撤销"));
   head->addWidget(countLabel_);
@@ -81,6 +87,8 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   head->addWidget(next);
   head->addWidget(add);
   head->addWidget(folder);
+  head->addWidget(pinFront);
+  head->addWidget(pinEnd);
   head->addWidget(del);
   root->addLayout(head);
 
@@ -108,6 +116,8 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   connect(runAll, &QPushButton::clicked, this, &FilmstripBar::runAllRequested);
   connect(prev, &QPushButton::clicked, this, &FilmstripBar::selectPrev);
   connect(next, &QPushButton::clicked, this, &FilmstripBar::selectNext);
+  connect(pinFront, &QPushButton::clicked, this, [this]() { moveSelectedToFront(); });
+  connect(pinEnd, &QPushButton::clicked, this, [this]() { moveSelectedToEnd(); });
   connect(del, &QPushButton::clicked, this, [this]() {
     if (index_ < 0 || index_ >= paths_.size()) return;
     paths_.removeAt(index_);

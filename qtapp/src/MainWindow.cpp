@@ -540,8 +540,8 @@ void MainWindow::buildUi() {
   result_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
   result_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
   result_table_->setObjectName(QStringLiteral("resultTree"));
-  result_table_->setToolTip(QStringLiteral("当前结果 · Ctrl+C 选中 · Ctrl+Shift+C 可见全部 · 过滤 Ctrl+Shift+F"));
-  result_table_->setStatusTip(QStringLiteral("结果表 · Ctrl+C/Ctrl+Shift+C 复制 · 过滤 Ctrl+Shift+F"));
+  result_table_->setToolTip(QStringLiteral("当前结果 · Ctrl+C 选中 · Ctrl+Shift+C 可见全部 · Ctrl+Shift+J JSON · Home/End/Pg · 过滤 Ctrl+Shift+F"));
+  result_table_->setStatusTip(QStringLiteral("结果表 · Ctrl+C/Ctrl+Shift+C/J · Home/End/Pg · 过滤 Ctrl+Shift+F"));
   auto* resultHost = new QWidget;
   auto* resultLay = new QVBoxLayout(resultHost);
   resultLay->setContentsMargins(0, 0, 0, 0);
@@ -648,6 +648,33 @@ void MainWindow::buildUi() {
       if (resultFilter_)
         resultFilter_->setToolTip(QStringLiteral("已复制结果JSON %1 · Ctrl+Shift+J").arg(rows.size()));
     });
+    auto jumpResult = [this](int mode) {
+      if (!result_table_) return;
+      QList<int> vis;
+      for (int r = 0; r < result_table_->rowCount(); ++r)
+        if (!result_table_->isRowHidden(r)) vis << r;
+      if (vis.isEmpty()) return;
+      int cur = result_table_->currentRow();
+      int idx = 0;
+      for (int i = 0; i < vis.size(); ++i) {
+        if (vis[i] == cur) { idx = i; break; }
+        if (vis[i] < cur) idx = i;
+      }
+      if (mode == 0) idx = 0;
+      else if (mode == 1) idx = vis.size() - 1;
+      else if (mode == 2) idx = qMax(0, idx - 5);
+      else idx = qMin(vis.size() - 1, idx + 5);
+      result_table_->setCurrentCell(vis[idx], 0);
+      if (auto* it = result_table_->item(vis[idx], 0)) result_table_->scrollToItem(it);
+    };
+    auto* scHome = new QShortcut(QKeySequence(Qt::Key_Home), result_table_);
+    connect(scHome, &QShortcut::activated, this, [jumpResult]() { jumpResult(0); });
+    auto* scEnd = new QShortcut(QKeySequence(Qt::Key_End), result_table_);
+    connect(scEnd, &QShortcut::activated, this, [jumpResult]() { jumpResult(1); });
+    auto* scPu = new QShortcut(QKeySequence(Qt::Key_PageUp), result_table_);
+    connect(scPu, &QShortcut::activated, this, [jumpResult]() { jumpResult(2); });
+    auto* scPd = new QShortcut(QKeySequence(Qt::Key_PageDown), result_table_);
+    connect(scPd, &QShortcut::activated, this, [jumpResult]() { jumpResult(3); });
   }
   result_log_ = new QPlainTextEdit;
   result_log_->setReadOnly(true);

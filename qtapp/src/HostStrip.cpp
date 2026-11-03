@@ -335,6 +335,25 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       }
     }
     if (obj == chips_ && chips_) {
+      if (chips_->text().trimmed().isEmpty() || watchKeys_.isEmpty()) {
+        // Empty: open editor (same as double-click) so first pin is one click.
+        const QString cur = watchKeys_.join(QLatin1Char(','));
+        bool ok = false;
+        const QString text = QInputDialog::getText(
+            this, QStringLiteral("Host 监视键"),
+            QStringLiteral("逗号分隔变量名 · 空=清除"),
+            QLineEdit::Normal, cur, &ok);
+        if (ok) {
+          QStringList keys;
+          for (const QString& p : text.split(QLatin1Char(','))) {
+            const QString t = p.trimmed();
+            if (!t.isEmpty()) keys << t;
+          }
+          watchKeys_ = keys;
+          emit watchKeysChanged(watchKeys_);
+        }
+        return true;
+      }
       if (auto* clip = QGuiApplication::clipboard()) {
         clip->setText(chips_->text());
         chips_->setToolTip(QStringLiteral("已复制监视芯片 · 双击编辑键列表"));

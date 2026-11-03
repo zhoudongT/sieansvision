@@ -575,7 +575,15 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
       return true;
     }
   }
-  if ((obj == hostEdit_ || obj == portEdit_) && event->type() == QEvent::Wheel) {
+  if ((obj == hostEdit_ || obj == portEdit_) && event->type() == QEvent::KeyPress) {
+    auto* ke = static_cast<QKeyEvent*>(event);
+    if (ke->key() == Qt::Key_V && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier)) {
+      pasteEndpointFromClipboard();
+      return true;
+    }
+  }
+    if ((obj == hostEdit_ || obj == portEdit_) && event->type() == QEvent::Wheel) {
     auto* we = static_cast<QWheelEvent*>(event);
     if (!portEdit_) return true;
     bool ok = false;

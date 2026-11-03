@@ -21,7 +21,7 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · F2 首字段 · Tab/Home/End/PgUp/PgDn/滚轮 · Alt+滚轮透明度 · Ctrl+0 透明度重置 · Ctrl+[ / ] 宽度 · Ctrl+Shift+[ / ] 高度 · Ctrl+Shift+0 复位尺寸 · Ctrl+R 还原 · Ctrl+Shift+C 复制可见 · 双击/中键标题钉住 · 右键标题复制节点 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续 · Ctrl+S 同确定 · F4 末字段 · Alt+1/2/3 透明度 · Ctrl+Shift+方向吸附"));
   setWhatsThis(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End/PgUp/PgDn · Ctrl/Alt/Shift+Enter/Ctrl+S 确定 · F5/F9 单次 · F6 连续"));
   setObjectName(QStringLiteral("propertyFloat"));
-  setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+  setWindowFlags(Qt::Tool | Qt::FramelessWindowHint);
   setModal(false);
   resize(460, 560);
   setStyleSheet(theme::propertyFloatStyleSheet());
@@ -51,7 +51,7 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   pinBtn_->setCheckable(true);
   pinBtn_->setCursor(Qt::PointingHandCursor);
   pinBtn_->setFocusPolicy(Qt::NoFocus);
-  pinBtn_->setToolTip(QStringLiteral("钉住浮窗 · 置顶 · Ctrl+P"));
+  pinBtn_->setToolTip(QStringLiteral("钉住浮窗置顶 · Ctrl+P · 中键/双击标题"));
   titleLay->addWidget(pinBtn_, 0, Qt::AlignTop);
   connect(pinBtn_, &QPushButton::toggled, this, [this](bool on) {
     pinned_ = on;
