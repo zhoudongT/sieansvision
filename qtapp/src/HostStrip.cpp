@@ -3,11 +3,17 @@
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QCursor>
+#include <QGuiApplication>
+#include <QClipboard>
+#include <QApplication>
+#include <QMouseEvent>
+#include <QEvent>
 
 namespace sieans_qt {
 
 HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
-  setStatusTip(QStringLiteral("Host 条 · OK/NG/ALARM · tcp= 摘要(lf/crlf/raw/len4) · Esc 停止运行 · 周期 chip 见右侧"));
+  setStatusTip(QStringLiteral("Host 条 · OK/NG/ALARM · tcp= 摘要(lf/crlf/raw/len4) · Esc 停止运行 · 周期 chip 见右侧 · 单击模式切换 · Ctrl+单击周期清零 · 双击明细复制"));
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(8, 4, 8, 4);
   root->setSpacing(2);
@@ -45,6 +51,18 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   row->addWidget(detail_, 1);
   row->addWidget(alarmLabel_);
   root->addLayout(row);
+  badge_->setCursor(Qt::PointingHandCursor);
+  modeChip_->setCursor(Qt::PointingHandCursor);
+  cycleChip_->setCursor(Qt::PointingHandCursor);
+  detail_->setCursor(Qt::PointingHandCursor);
+  badge_->setToolTip(QStringLiteral("OK/NG/ALARM · passGate 判定 · 单击打开 Host 面板 · tcp= 见明细"));
+  modeChip_->setToolTip(QStringLiteral("运行模式 · 设计态/运行/连续/暂停 · 单击切换设计/运行态 · 运行态锁画布 · F5/F9 仍可单次"));
+  cycleChip_->setToolTip(QStringLiteral("运行周期计数 · 每次流程完成 +1 · Ctrl+单击清零"));
+  detail_->setToolTip(QStringLiteral("count/text/RX/urlOk/tcp 摘要 · framing lf/crlf/raw/len4 见 tcp= · 双击复制全文 · 悬停看全文"));
+  badge_->installEventFilter(this);
+  modeChip_->installEventFilter(this);
+  cycleChip_->installEventFilter(this);
+  detail_->installEventFilter(this);
   chips_ = new QLabel;
   chips_->setObjectName(QStringLiteral("muted"));
   chips_->setWordWrap(true);
@@ -168,6 +186,39 @@ void HostStrip::updateFromVars(const QVariantMap& vars, int codeCount, bool eval
     detail += QStringLiteral(" · tcp=%1").arg(tcpStatus_.left(36));
   detail_->setText(detail);
   refreshChips(vars);
+}
+
+
+bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
+  if (event->type() == QEvent::MouseButtonDblClick) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::LeftButton && obj == detail_ && detail_) {
+      if (auto* clip = QGuiApplication::clipboard()) {
+        clip->setText(detail_->text());
+        detail_->setToolTip(QStringLiteral("已复制 Host 明细 · 双击"));
+      }
+      return true;
+    }
+  }
+  if (event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() != Qt::LeftButton) return QWidget::eventFilter(obj, event);
+    if (obj == modeChip_) {
+      emit modeToggleRequested();
+      return true;
+    }
+    if (obj == cycleChip_) {
+      if (me->modifiers() & Qt::ControlModifier) {
+        emit cycleResetRequested();
+        return true;
+      }
+    }
+    if (obj == badge_ || obj == alarmLabel_) {
+      emit openHostRequested();
+      return true;
+    }
+  }
+  return QWidget::eventFilter(obj, event);
 }
 
 }  // namespace sieans_qt

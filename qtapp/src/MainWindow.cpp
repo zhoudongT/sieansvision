@@ -388,6 +388,21 @@ void MainWindow::buildUi() {
   imgLay->addWidget(image_tabs_, 1);
   host_strip_ = new HostStrip;
   imgLay->addWidget(host_strip_);
+  connect(host_strip_, &HostStrip::modeToggleRequested, this, [this]() {
+    if (act_mode_) act_mode_->toggle();
+  });
+  connect(host_strip_, &HostStrip::cycleResetRequested, this, [this]() {
+    run_cycle_ = 0;
+    updateRunChrome();
+    showStatus(QStringLiteral("周期已清零"));
+  });
+  connect(host_strip_, &HostStrip::openHostRequested, this, [this]() {
+    if (host_sm_) {
+      host_sm_->setFocus(Qt::OtherFocusReason);
+      host_sm_->raise();
+      showStatus(QStringLiteral("Host 面板"));
+    }
+  });
   if (comm_hub_) {
     connect(comm_hub_, &CommHub::statusChanged, host_strip_,
             [this](const QString& s) {
@@ -601,7 +616,11 @@ void MainWindow::buildToolbar() {
   tb->addSeparator();
   tb->addAction(QStringLiteral("相机"), this, &MainWindow::onOpenCameraManager);
   tb->addAction(QStringLiteral("通信"), this, &MainWindow::onOpenCommManager);
-  tb->addAction(QStringLiteral("I/O"), this, &MainWindow::onOpenFlowIo);
+  {
+    auto* a = tb->addAction(QStringLiteral("I/O"), this, &MainWindow::onOpenFlowIo);
+    a->setShortcut(QKeySequence(QStringLiteral("Ctrl+I")));
+    a->setToolTip(QStringLiteral("流程 I/O 绑定 · Ctrl+I · emptyDefault/{name}/${flow.x}"));
+  }
   act_preview_ = tb->addAction(QStringLiteral("连续预览"), this,
                                &MainWindow::onStartContinuousPreview);
   act_preview_->setToolTip(QStringLiteral("连续采集预览 · Soft/UVC/GenTL · 不跑流程"));
@@ -638,6 +657,8 @@ void MainWindow::buildToolbar() {
   mode_badge_->setToolTip(QStringLiteral("设计态可编辑 · 运行态锁定画布 · 点击可切换模式"));
   mode_badge_->setStatusTip(QStringLiteral("模式徽章 · 设计态/运行态"));
   mode_badge_->setProperty("runMode", false);
+  mode_badge_->setCursor(Qt::PointingHandCursor);
+  mode_badge_->installEventFilter(this);
   tb->addWidget(mode_badge_);
   listen_badge_ = new QLabel(QStringLiteral("监听·—"));
   listen_badge_->setObjectName(QStringLiteral("commListenBadge"));
@@ -1432,6 +1453,13 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
     auto* me = static_cast<QMouseEvent*>(event);
     if (me->button() == Qt::LeftButton) {
       onOpenCommManager();
+      return true;
+    }
+  }
+  if (obj == mode_badge_ && event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::LeftButton) {
+      if (act_mode_) act_mode_->toggle();
       return true;
     }
   }

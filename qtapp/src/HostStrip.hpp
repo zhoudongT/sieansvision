@@ -5,6 +5,8 @@
 #include <QVariantMap>
 #include <QStringList>
 
+class QEvent;
+
 namespace sieans_qt {
 
 /** Host OK/NG/ALARM strip + watch chips under the image (VM 运行条). */
@@ -18,6 +20,14 @@ class HostStrip : public QWidget {
   /** 设计态 / 运行态 / 连续 / 暂停 — thin HMI chrome. */
   void setRunChrome(const QString& mode, const QString& hostState, int cycle = 0);
   void setTcpStatus(const QString& status);
+
+ signals:
+  void modeToggleRequested();
+  void cycleResetRequested();
+  void openHostRequested();
+
+ protected:
+  bool eventFilter(QObject* obj, QEvent* event) override;
 
  private:
   void refreshChips(const QVariantMap& vars);

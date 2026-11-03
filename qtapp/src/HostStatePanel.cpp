@@ -39,6 +39,7 @@ BadgeStyle styleFor(const QString& state) {
 }  // namespace
 
 HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
+  setFocusPolicy(Qt::StrongFocus);
   setObjectName(QStringLiteral("hostStateMachine"));
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(8, 6, 8, 6);
@@ -159,6 +160,19 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   connect(policy_, &QComboBox::currentIndexChanged, this, [this](int) {
     alarmPolicy_ = policy_->currentData().toString();
   });
+  {
+    auto* sc = new QShortcut(QKeySequence(Qt::Key_F5), this);
+    connect(sc, &QShortcut::activated, this, &HostStatePanel::startRequested);
+    auto* sc9 = new QShortcut(QKeySequence(Qt::Key_F9), this);
+    connect(sc9, &QShortcut::activated, this, &HostStatePanel::startRequested);
+    auto* sc6 = new QShortcut(QKeySequence(Qt::Key_F6), this);
+    connect(sc6, &QShortcut::activated, this, [this]() {
+      if (state_ == QLatin1String("Running")) emit pauseRequested();
+      else emit startRequested();
+    });
+    auto* scEsc = new QShortcut(QKeySequence(Qt::Key_Escape), this);
+    connect(scEsc, &QShortcut::activated, this, &HostStatePanel::stopRequested);
+  }
 
   applyState(QStringLiteral("Idle"));
 }

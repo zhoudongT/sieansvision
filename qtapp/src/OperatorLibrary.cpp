@@ -15,6 +15,10 @@
 #include <QIcon>
 #include <QPen>
 #include <QPolygonF>
+#include <QRect>
+#include <QColor>
+#include <QFont>
+#include <QPoint>
 #include <cstring>
 
 namespace sieans_qt {
@@ -32,9 +36,25 @@ class OperatorListWidget : public QListWidget {
     auto* mime = new QMimeData;
     mime->setData(QStringLiteral("application/x-sieans-operator"), key.toUtf8());
     mime->setText(key);
+    // VM-ish drag chrome: icon + operator title
+    const QString title = item->text().section(QLatin1Char('\n'), 0, 0);
+    QPixmap tip(148, 36);
+    tip.fill(QColor(QStringLiteral("#2a2d32")));
+    QPainter p(&tip);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(QColor(QStringLiteral("#e67a2e")));
+    p.drawRoundedRect(0.5, 0.5, 147, 35, 4, 4);
+    const QPixmap ic = item->icon().pixmap(28, 22);
+    if (!ic.isNull()) p.drawPixmap(6, 7, ic);
+    p.setPen(QColor(QStringLiteral("#f0e6dc")));
+    p.setFont(QFont(QStringLiteral("Sans"), 10, QFont::DemiBold));
+    p.drawText(QRect(38, 0, 104, 36), Qt::AlignVCenter | Qt::AlignLeft,
+               title.left(14));
+    p.end();
     QDrag drag(this);
     drag.setMimeData(mime);
-    drag.setPixmap(item->icon().pixmap(32, 24));
+    drag.setPixmap(tip);
+    drag.setHotSpot(QPoint(16, 18));
     drag.exec(Qt::CopyAction, Qt::CopyAction);
   }
 };
@@ -201,6 +221,7 @@ OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
   list_->setSpacing(0);
   list_->setUniformItemSizes(true);
   list_->setDragEnabled(true);
+  list_->setToolTip(QStringLiteral("Toolbox · 拖入画布 / 双击添加 · 拖拽显示算子标题条 · Enter 激活"));
   list_->setDragDropMode(QAbstractItemView::DragOnly);
   list_->setDefaultDropAction(Qt::CopyAction);
   list_->setIconSize(QSize(32, 24));
