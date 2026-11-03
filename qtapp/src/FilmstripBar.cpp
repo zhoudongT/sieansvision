@@ -409,6 +409,12 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
+  if (event->key() == Qt::Key_P && (event->modifiers() & Qt::ControlModifier) &&
+      (event->modifiers() & Qt::ShiftModifier)) {
+    moveSelectedToFront();
+    event->accept();
+    return;
+  }
   if (event->key() == Qt::Key_E && (event->modifiers() & Qt::ControlModifier)) {
     if (event->modifiers() & Qt::ShiftModifier) {
       exportSelectedPathList();

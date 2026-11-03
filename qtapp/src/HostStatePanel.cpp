@@ -113,6 +113,8 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   mode_->setToolTip(QStringLiteral("标定模式 · 滚轮切换 · 开始仍跑当前视觉流程 · 非标定=生产"));
   modeRow->addWidget(new QLabel(QStringLiteral("报警清除")));
   modeRow->addWidget(policy_, 1);
+  policy_->installEventFilter(this);
+  policy_->setToolTip(QStringLiteral("报警清除策略 · 滚轮切换 · on_ok/手动"));
   root->addLayout(modeRow);
 
   modeHint_ = new QLabel;
@@ -402,6 +404,18 @@ bool HostStatePanel::eventFilter(QObject* obj, QEvent* event) {
       if (modeHint_) modeHint_->setText(QStringLiteral("报警历史已清空 · 右键"));
       return true;
     }
+  }
+  if (obj == policy_ && event->type() == QEvent::Wheel) {
+    auto* we = static_cast<QWheelEvent*>(event);
+    if (!policy_ || policy_->count() <= 0) return true;
+    int i = policy_->currentIndex();
+    i += (we->angleDelta().y() > 0 ? -1 : +1);
+    if (i < 0) i = policy_->count() - 1;
+    if (i >= policy_->count()) i = 0;
+    policy_->setCurrentIndex(i);
+    if (modeHint_)
+      modeHint_->setText(QStringLiteral("报警策略 %1 · 滚轮").arg(policy_->currentText()));
+    return true;
   }
   if (obj == mode_ && event->type() == QEvent::Wheel) {
     auto* we = static_cast<QWheelEvent*>(event);

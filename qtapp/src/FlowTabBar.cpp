@@ -124,10 +124,10 @@ void FlowTabBar::setRunChrome(const QString& mode, int cycle, double lastMs,
       cycleLabel_->setText(QStringLiteral("周期 %1").arg(cycle));
   }
   if (pauseBtn_) {
-    pauseBtn_->setEnabled(continuous && !paused);
+    pauseBtn_->setEnabled(continuous);
     pauseBtn_->setText(paused ? QStringLiteral("▶") : QStringLiteral("Ⅱ"));
-    pauseBtn_->setToolTip(paused ? QStringLiteral("已暂停 · Host 继续 / F6 重入")
-                                 : QStringLiteral("暂停连续运行 · Space/Host 暂停 · 再次继续"));
+    pauseBtn_->setToolTip(paused ? QStringLiteral("继续连续 · 流程条 ▶ / Host 继续")
+                                 : QStringLiteral("暂停连续 · 流程条 Ⅱ / Host 暂停"));
   }
 }
 

@@ -364,7 +364,10 @@ void MainWindow::buildUi() {
   connect(flow_tabs_, &FlowTabBar::runContinuousRequested, this,
           &MainWindow::onRunContinuous);
   connect(flow_tabs_, &FlowTabBar::stopRequested, this, &MainWindow::onStopRun);
-  connect(flow_tabs_, &FlowTabBar::pauseRequested, this, &MainWindow::onPauseRun);
+  connect(flow_tabs_, &FlowTabBar::pauseRequested, this, [this]() {
+    if (run_paused_) onResumeRun();
+    else onPauseRun();
+  });
   connect(flow_tabs_, &FlowTabBar::ioRequested, this, &MainWindow::onOpenFlowIo);
   connect(flow_tabs_, &FlowTabBar::fitRequested, flow_view_, &FlowView::fitAll);
   connect(flow_tabs_, &FlowTabBar::continuousToggleRequested, this, [this]() {
