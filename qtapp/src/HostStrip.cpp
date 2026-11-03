@@ -21,7 +21,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
       QStringLiteral("background:#3a3d42;color:#a8a8a8;border-radius:3px;"
                      "font-weight:700;font-size:14px;padding:4px;"));
   modeChip_ = new QLabel(QStringLiteral("设计态"));
-  modeChip_->setToolTip(QStringLiteral("运行模式 · 设计态/运行/连续/暂停 · 运行态锁画布"));
+  modeChip_->setToolTip(QStringLiteral("运行模式 · 设计态/运行/连续/暂停 · 运行态锁画布 · F5/F9 仍可单次"));
   modeChip_->setStyleSheet(
       QStringLiteral("background:#3a3d42;color:#a8a8a8;border-radius:3px;"
                      "padding:3px 8px;font-size:11px;font-weight:600;"));
