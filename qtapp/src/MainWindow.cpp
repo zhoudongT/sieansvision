@@ -1273,9 +1273,11 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
       }
       // also ${flow.x} / remaining {name} / {{name}}
       out = CommHub::expandTemplate(out, flow_vars_);
+      bool usedEmpty = false;
       if (out.trimmed().isEmpty()) {
         out = step->params.value(QStringLiteral("emptyDefault")).toString();
         out = CommHub::expandTemplate(out, flow_vars_);
+        usedEmpty = !out.isEmpty();
       }
       const QString target =
           step->params.value(QStringLiteral("targetVar"), QStringLiteral("formatted"))
@@ -1283,7 +1285,8 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
       flow_vars_.insert(target, out);
       flow_vars_.insert(QStringLiteral("formatted"), out);
       flow_vars_.insert(QStringLiteral("commPayload"), out);
-      note = out.left(80);
+      note = usedEmpty ? QStringLiteral("emptyDefault→%1").arg(out.left(64))
+                       : out.left(80);
     } else if (op == QLatin1String("send_data")) {
       QString msg = step->params.value(QStringLiteral("message")).toString();
       if (msg.isEmpty())

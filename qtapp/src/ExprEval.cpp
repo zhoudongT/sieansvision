@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper|nvl|lstrip|rstrip|iff|bool|oct|fabs)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper|nvl|lstrip|rstrip|iff|bool|oct|fabs|fmod)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -405,6 +405,12 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
           return args.isEmpty() ? QString() : evalRec(args[0]).toString();
         if (name == QLatin1String("abs") || name == QLatin1String("fabs"))
           return args.isEmpty() ? 0 : std::fabs(evalRec(args[0]).toDouble());
+        if (name == QLatin1String("fmod")) {
+          if (args.size() < 2) return 0;
+          const double a = evalRec(args[0]).toDouble();
+          const double b = evalRec(args[1]).toDouble();
+          return b == 0.0 ? 0 : std::fmod(a, b);
+        }
         if (name == QLatin1String("min") || name == QLatin1String("max")) {
           if (args.isEmpty()) return 0;
           double acc = evalRec(args[0]).toDouble();
@@ -936,6 +942,9 @@ QStringList exprSelfTest() {
   check(QStringLiteral("fabs"),
         ev.eval(QStringLiteral("fabs(-3)")),
         QStringLiteral("3"));
+  check(QStringLiteral("fmod"),
+        ev.eval(QStringLiteral("fmod(10, 4)")),
+        QStringLiteral("2"));
   check(QStringLiteral("islower"),
         ev.eval(QStringLiteral("islower('abc')")),
         QStringLiteral("1"));

@@ -353,7 +353,10 @@ void GenTLWorker::grabPreviewFrame() {
 void GenTLWorker::grabOne() {
   try {
     if (!open_.load()) {
-      emit errorOccurred(QStringLiteral("请先打开相机"));
+      emit errorOccurred(
+          backend_ == QLatin1String("soft")
+              ? QStringLiteral("Soft 未打开 — 请先 openDevice / AUTO_SOFT")
+              : QStringLiteral("请先打开相机"));
       return;
     }
     if (backend_ == QLatin1String("soft")) {

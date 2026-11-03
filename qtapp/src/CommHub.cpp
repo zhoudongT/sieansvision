@@ -409,9 +409,10 @@ void CommHub::tryReconnect() {
       if (reconnectTimer_) reconnectTimer_->stop();
       reconnectAttempts_ = 0;
       if (reconnectTimer_) reconnectTimer_->setInterval(1500);
-      tcpStatus_ = QStringLiteral("connected %1:%2")
+      tcpStatus_ = QStringLiteral("connected %1:%2 · %3")
                        .arg(reconnectHost_)
-                       .arg(reconnectPort_);
+                       .arg(reconnectPort_)
+                       .arg(framing_.isEmpty() ? QStringLiteral("lf") : framing_);
       emit statusChanged(tcpStatus_);
       appendTranscript(QStringLiteral("SYS"),
                        QStringLiteral("%1 · attempts reset").arg(tcpStatus_));
