@@ -140,10 +140,13 @@ void GenTLWorker::openUvc(const QString& deviceId) {
     if (!uvc_) uvc_ = std::make_unique<UvcCapture>();
     if (!uvc_->open(deviceId)) {
       auto list = UvcCapture::enumerate();
-      emit errorOccurred(
+      const QString why =
           list.isEmpty()
               ? QStringLiteral("未发现 UVC 设备（/dev/video*）")
-              : QStringLiteral("打开 UVC 失败: %1").arg(deviceId));
+              : QStringLiteral("打开 UVC 失败: %1").arg(deviceId);
+      emit statusChanged(QStringLiteral("%1 · 回退 Soft 仿真").arg(why));
+      backend_ = QStringLiteral("soft");
+      openSoft(QStringLiteral("soft:uvc-fallback"));
       return;
     }
     deviceId_ = uvc_->deviceId();
@@ -151,9 +154,11 @@ void GenTLWorker::openUvc(const QString& deviceId) {
     emit opened(deviceId_);
     emit statusChanged(QStringLiteral("UVC 已打开 %1").arg(deviceId_));
   } catch (const std::exception& ex) {
-    open_.store(false);
-    emit errorOccurred(
-        QStringLiteral("UVC 打开失败: %1").arg(QString::fromUtf8(ex.what())));
+    emit statusChanged(
+        QStringLiteral("UVC 打开失败: %1 · 回退 Soft 仿真")
+            .arg(QString::fromUtf8(ex.what())));
+    backend_ = QStringLiteral("soft");
+    openSoft(QStringLiteral("soft:uvc-fallback"));
   }
 }
 
@@ -161,7 +166,9 @@ void GenTLWorker::openGentl(const QString& deviceId, double fps,
                             double exposureUs) {
   try {
     if (!sieans::GenTLCapture::available()) {
-      emit errorOccurred(QStringLiteral("GenTL 不可用（未链接 MvCameraControl）"));
+      emit statusChanged(QStringLiteral("GenTL 不可用 · 回退 Soft 仿真"));
+      backend_ = QStringLiteral("soft");
+      openSoft(QStringLiteral("soft:gentl-unavailable"));
       return;
     }
     if (!capture_) capture_ = std::make_unique<sieans::GenTLCapture>();
@@ -173,7 +180,9 @@ void GenTLWorker::openGentl(const QString& deviceId, double fps,
     if (id.isEmpty()) {
       auto devices = sieans::GenTLCapture::enumerate();
       if (devices.empty()) {
-        emit errorOccurred(QStringLiteral("未发现 GenTL 设备"));
+        emit statusChanged(QStringLiteral("未发现 GenTL 设备 · 回退 Soft 仿真"));
+        backend_ = QStringLiteral("soft");
+        openSoft(QStringLiteral("soft:gentl-empty"));
         return;
       }
       id = QString::fromStdString(devices.front().id);
@@ -214,8 +223,11 @@ void GenTLWorker::openGentl(const QString& deviceId, double fps,
     emit opened(id);
     emit statusChanged(QStringLiteral("GenTL 已打开 %1").arg(id));
   } catch (const std::exception& ex) {
-    open_.store(false);
-    emit errorOccurred(QStringLiteral("打开失败: %1").arg(QString::fromUtf8(ex.what())));
+    emit statusChanged(
+        QStringLiteral("GenTL 打开失败: %1 · 回退 Soft 仿真")
+            .arg(QString::fromUtf8(ex.what())));
+    backend_ = QStringLiteral("soft");
+    openSoft(QStringLiteral("soft:gentl-fallback"));
   }
 }
 

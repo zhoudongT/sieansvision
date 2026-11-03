@@ -8,10 +8,15 @@
 #include <QListWidget>
 #include <QPixmap>
 #include <QImage>
+#include <QPainter>
 #include <QPushButton>
 #include <QVBoxLayout>
 
 namespace sieans_qt {
+namespace {
+constexpr int kThumbW = 80;
+constexpr int kThumbH = 52;
+}  // namespace
 
 FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   setObjectName(QStringLiteral("filmstripBar"));
@@ -51,12 +56,13 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   list_->setWrapping(false);
   list_->setMovement(QListView::Static);
   list_->setResizeMode(QListView::Adjust);
-  list_->setIconSize(QSize(72, 48));
-  list_->setGridSize(QSize(86, 62));
-  list_->setFixedHeight(70);
+  list_->setIconSize(QSize(kThumbW, kThumbH));
+  list_->setGridSize(QSize(kThumbW + 14, kThumbH + 18));
+  list_->setFixedHeight(kThumbH + 22);
   list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
   list_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   list_->setSpacing(2);
+  list_->setSelectionMode(QAbstractItemView::SingleSelection);
   root->addWidget(list_);
 
   connect(add, &QPushButton::clicked, this, &FilmstripBar::addImagesRequested);
@@ -68,7 +74,10 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
     const int next = qMin(index_, paths_.size() - 1);
     rebuildThumbs();
     if (next >= 0) selectIndex(next, true);
-    else refreshCount();
+    else {
+      index_ = -1;
+      refreshCount();
+    }
   });
   connect(list_, &QListWidget::currentRowChanged, this, [this](int row) {
     if (rebuilding_ || row < 0 || row >= paths_.size()) return;
@@ -79,7 +88,9 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
 
   setStyleSheet(QStringLiteral(
       "QWidget#filmstripBar{background:#232528;border-top:1px solid #4a4e54;}"
-      "QListWidget#filmstripList{background:#1a1b1d;border:0;color:#ddd;}"));
+      "QListWidget#filmstripList{background:#1a1b1d;border:0;color:#ddd;outline:0;}"
+      "QListWidget#filmstripList::item{padding:1px;border:1px solid transparent;border-radius:3px;}"
+      "QListWidget#filmstripList::item:selected{border:1px solid #e67a2e;background:#2a2d32;}"));
   refreshCount();
 }
 
@@ -92,19 +103,45 @@ void FilmstripBar::refreshCount() {
   if (n == 0) status_->setText(QStringLiteral("本地图像"));
 }
 
+QIcon FilmstripBar::makeThumb(const QString& path) const {
+  QImage src(path);
+  QImage canvas(kThumbW, kThumbH, QImage::Format_RGB32);
+  canvas.fill(QColor(0x1a, 0x1b, 0x1d));
+  QPainter p(&canvas);
+  p.setRenderHint(QPainter::SmoothPixmapTransform);
+  if (src.isNull()) {
+    p.setPen(QColor(0x88, 0x88, 0x88));
+    p.drawRect(2, 2, kThumbW - 5, kThumbH - 5);
+    p.drawText(canvas.rect(), Qt::AlignCenter, QStringLiteral("?"));
+  } else {
+    const QImage scaled =
+        src.scaled(kThumbW - 2, kThumbH - 2, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    const int x = (kThumbW - scaled.width()) / 2;
+    const int y = (kThumbH - scaled.height()) / 2;
+    p.drawImage(x, y, scaled);
+  }
+  p.end();
+  return QIcon(QPixmap::fromImage(canvas));
+}
+
 void FilmstripBar::rebuildThumbs() {
   rebuilding_ = true;
   list_->clear();
   for (const QString& path : paths_) {
-    QPixmap thumb(path);
-    if (!thumb.isNull()) thumb = thumb.scaled(72, 48, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-    auto* item = new QListWidgetItem(QIcon(thumb), QFileInfo(path).fileName());
+    auto* item = new QListWidgetItem(makeThumb(path), QFileInfo(path).fileName());
     item->setToolTip(path);
     item->setData(Qt::UserRole, path);
+    item->setTextAlignment(Qt::AlignHCenter | Qt::AlignTop);
     list_->addItem(item);
   }
   rebuilding_ = false;
   refreshCount();
+}
+
+void FilmstripBar::clearPaths() {
+  paths_.clear();
+  index_ = -1;
+  rebuildThumbs();
 }
 
 void FilmstripBar::addPaths(const QStringList& paths) {
@@ -138,7 +175,13 @@ void FilmstripBar::selectIndex(int index, bool emitSignal) {
   list_->setCurrentRow(index);
   rebuilding_ = false;
   refreshCount();
-  status_->setText(QFileInfo(paths_.at(index)).fileName());
+  QImage probe(paths_.at(index));
+  status_->setText(probe.isNull()
+                       ? QFileInfo(paths_.at(index)).fileName()
+                       : QStringLiteral("%1 · %2×%3")
+                             .arg(QFileInfo(paths_.at(index)).fileName())
+                             .arg(probe.width())
+                             .arg(probe.height()));
   if (emitSignal) emit imageSelected(paths_.at(index));
 }
 

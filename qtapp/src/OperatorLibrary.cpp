@@ -32,27 +32,29 @@ class OperatorListWidget : public QListWidget {
     mime->setText(key);
     QDrag drag(this);
     drag.setMimeData(mime);
-    drag.setPixmap(item->icon().pixmap(36, 28));
+    drag.setPixmap(item->icon().pixmap(32, 24));
     drag.exec(Qt::CopyAction, Qt::CopyAction);
   }
 };
 
 const char* glyphKindFor(const QString& key, const QString& category) {
   if (key == QLatin1String("camera_capture")) return "camera";
-  if (key == QLatin1String("preprocess") || key == QLatin1String("save_image")) return "image";
+  if (key == QLatin1String("preprocess")) return "image";
+  if (key == QLatin1String("save_image")) return "save";
   if (key == QLatin1String("locate")) return "locate";
-  if (key == QLatin1String("barcode") || key == QLatin1String("qr_decode")) return "ocr";
-  if (key == QLatin1String("send_data") || key == QLatin1String("receive_data")) return "comm";
-  if (key == QLatin1String("var_calc") || key == QLatin1String("format_data") ||
-      key == QLatin1String("result_gate"))
-    return "var";
+  if (key == QLatin1String("barcode") || key == QLatin1String("qr_decode")) return "barcode";
+  if (key == QLatin1String("send_data")) return "tx";
+  if (key == QLatin1String("receive_data")) return "rx";
+  if (key == QLatin1String("result_gate")) return "gate";
+  if (key == QLatin1String("format_data")) return "format";
+  if (key == QLatin1String("var_calc")) return "var";
   if (category.contains(QStringLiteral("3D"))) return "cloud";
   if (category.contains(QStringLiteral("流程"))) return "logic";
   return "ext";
 }
 
 QIcon opGlyph(const char* kind, const QColor& accent) {
-  const int w = 36, h = 28;
+  const int w = 32, h = 24;
   QPixmap pix(w, h);
   pix.fill(Qt::transparent);
   QPainter p(&pix);
@@ -60,49 +62,85 @@ QIcon opGlyph(const char* kind, const QColor& accent) {
   p.setPen(Qt::NoPen);
   p.setBrush(QColor(theme::CARD));
   p.drawRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1), 3, 3);
-  p.setPen(QPen(accent, 1.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+  // left accent rail (VM toolbox density cue)
+  p.setBrush(accent);
+  p.drawRoundedRect(QRectF(1, 2, 3, h - 4), 1, 1);
+  p.setPen(QPen(accent, 1.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
   p.setBrush(Qt::NoBrush);
-  const qreal cx = w / 2.0, cy = h / 2.0;
+  const qreal cx = w / 2.0 + 1, cy = h / 2.0;
   if (std::strcmp(kind, "camera") == 0) {
-    p.drawRoundedRect(QRectF(8, 8, 18, 12), 2, 2);
-    p.drawEllipse(QRectF(13, 10, 8, 8));
-    p.drawRoundedRect(QRectF(21, 5, 5, 4), 1, 1);
+    p.drawRoundedRect(QRectF(9, 7, 16, 11), 2, 2);
+    p.drawEllipse(QRectF(13, 9, 7, 7));
+    p.drawRoundedRect(QRectF(20, 4, 4, 3), 1, 1);
   } else if (std::strcmp(kind, "image") == 0) {
-    p.drawRect(QRectF(8, 6, 20, 16));
-    p.drawLine(QPointF(8, 16), QPointF(15, 11));
-    p.drawLine(QPointF(15, 11), QPointF(22, 18));
-    p.drawEllipse(QRectF(22, 8, 4, 4));
+    p.drawRect(QRectF(9, 5, 17, 14));
+    p.drawLine(QPointF(9, 14), QPointF(15, 9));
+    p.drawLine(QPointF(15, 9), QPointF(21, 16));
+    p.drawEllipse(QRectF(20, 7, 3.5, 3.5));
+  } else if (std::strcmp(kind, "save") == 0) {
+    p.drawRoundedRect(QRectF(10, 5, 14, 14), 1, 1);
+    p.drawRect(QRectF(13, 5, 8, 5));
+    p.drawLine(QPointF(12, 14), QPointF(22, 14));
   } else if (std::strcmp(kind, "locate") == 0) {
-    p.drawEllipse(QRectF(cx - 8, cy - 8, 16, 16));
-    p.drawLine(QPointF(cx, 4), QPointF(cx, h - 4));
-    p.drawLine(QPointF(4, cy), QPointF(w - 4, cy));
+    p.drawEllipse(QRectF(cx - 7, cy - 7, 14, 14));
+    p.drawLine(QPointF(cx, 3), QPointF(cx, h - 3));
+    p.drawLine(QPointF(6, cy), QPointF(w - 3, cy));
+  } else if (std::strcmp(kind, "barcode") == 0) {
+    for (int i = 0; i < 7; ++i) {
+      const qreal x = 10 + i * 2.4;
+      if (i % 2 == 0) p.drawLine(QPointF(x, 5), QPointF(x, 19));
+    }
+    p.drawRect(QRectF(20, 6, 7, 7));
   } else if (std::strcmp(kind, "ocr") == 0) {
-    p.drawRoundedRect(QRectF(8, 5, 20, 18), 2, 2);
-    p.drawLine(QPointF(11, 10), QPointF(25, 10));
-    p.drawLine(QPointF(11, 14), QPointF(22, 14));
-    p.drawLine(QPointF(11, 18), QPointF(24, 18));
+    p.drawRoundedRect(QRectF(9, 4, 17, 16), 2, 2);
+    p.drawLine(QPointF(11, 9), QPointF(23, 9));
+    p.drawLine(QPointF(11, 12), QPointF(20, 12));
+    p.drawLine(QPointF(11, 15), QPointF(22, 15));
   } else if (std::strcmp(kind, "cloud") == 0) {
     QPolygonF poly;
-    poly << QPointF(cx, 4) << QPointF(28, 10) << QPointF(28, 18) << QPointF(cx, 24)
-         << QPointF(8, 18) << QPointF(8, 10);
+    poly << QPointF(cx, 3) << QPointF(26, 9) << QPointF(26, 16) << QPointF(cx, 21)
+         << QPointF(9, 16) << QPointF(9, 9);
     p.drawPolygon(poly);
   } else if (std::strcmp(kind, "logic") == 0) {
     QPolygonF poly;
-    poly << QPointF(cx, 4) << QPointF(28, cy) << QPointF(cx, h - 4) << QPointF(8, cy);
+    poly << QPointF(cx, 3) << QPointF(26, cy) << QPointF(cx, h - 3) << QPointF(9, cy);
     p.drawPolygon(poly);
-  } else if (std::strcmp(kind, "comm") == 0) {
-    p.drawEllipse(QRectF(8, 6, 8, 8));
-    p.drawEllipse(QRectF(20, 14, 8, 8));
-    p.drawLine(QPointF(15, 12), QPointF(21, 16));
+  } else if (std::strcmp(kind, "comm") == 0 || std::strcmp(kind, "tx") == 0) {
+    p.drawEllipse(QRectF(9, 5, 7, 7));
+    p.drawLine(QPointF(16, 10), QPointF(22, 15));
+    QPolygonF arrow;
+    arrow << QPointF(20, 12) << QPointF(26, 16) << QPointF(19, 18);
+    p.setBrush(accent);
+    p.drawPolygon(arrow);
+    p.setBrush(Qt::NoBrush);
+  } else if (std::strcmp(kind, "rx") == 0) {
+    p.drawEllipse(QRectF(18, 12, 7, 7));
+    p.drawLine(QPointF(12, 8), QPointF(19, 14));
+    QPolygonF arrow;
+    arrow << QPointF(14, 5) << QPointF(9, 9) << QPointF(15, 11);
+    p.setBrush(accent);
+    p.drawPolygon(arrow);
+    p.setBrush(Qt::NoBrush);
+  } else if (std::strcmp(kind, "gate") == 0) {
+    p.drawRoundedRect(QRectF(10, 5, 14, 14), 2, 2);
+    p.drawLine(QPointF(13, 9), QPointF(21, 9));
+    p.drawLine(QPointF(13, 12), QPointF(18, 12));
+    p.drawLine(QPointF(13, 15), QPointF(20, 15));
+    p.drawEllipse(QRectF(19, 13, 4, 4));
+  } else if (std::strcmp(kind, "format") == 0) {
+    p.drawLine(QPointF(10, 6), QPointF(24, 6));
+    p.drawLine(QPointF(10, 12), QPointF(20, 12));
+    p.drawLine(QPointF(10, 18), QPointF(24, 18));
+    p.drawText(QRectF(18, 8, 10, 10), Qt::AlignCenter, QStringLiteral("{}"));
   } else if (std::strcmp(kind, "var") == 0) {
     QFont f = p.font();
     f.setBold(true);
-    f.setPointSize(11);
+    f.setPointSize(10);
     p.setFont(f);
-    p.drawText(pix.rect(), Qt::AlignCenter, QStringLiteral("x"));
+    p.drawText(QRectF(6, 0, w - 6, h), Qt::AlignCenter, QStringLiteral("x"));
   } else {
-    p.drawRoundedRect(QRectF(9, 6, 18, 16), 3, 3);
-    p.drawText(pix.rect(), Qt::AlignCenter, QStringLiteral("+"));
+    p.drawEllipse(QRectF(cx - 6, cy - 6, 12, 12));
+    p.drawPoint(QPointF(cx, cy));
   }
   p.end();
   return QIcon(pix);
@@ -155,11 +193,12 @@ OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
   search_->setClearButtonEnabled(true);
   lay->addWidget(search_);
   list_ = new OperatorListWidget;
-  list_->setSpacing(1);
+  list_->setSpacing(0);
+  list_->setUniformItemSizes(true);
   list_->setDragEnabled(true);
   list_->setDragDropMode(QAbstractItemView::DragOnly);
   list_->setDefaultDropAction(Qt::CopyAction);
-  list_->setIconSize(QSize(36, 28));
+  list_->setIconSize(QSize(32, 24));
   list_->setUniformItemSizes(true);
   list_->setObjectName(QStringLiteral("operatorTiles"));
   lay->addWidget(list_, 1);

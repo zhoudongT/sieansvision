@@ -16,6 +16,7 @@ class FilmstripBar : public QWidget {
   explicit FilmstripBar(QWidget* parent = nullptr);
 
   void addPaths(const QStringList& paths);
+  void clearPaths();
   void setStatus(const QString& text);
   QString currentPath() const;
   int count() const;
@@ -34,6 +35,7 @@ class FilmstripBar : public QWidget {
   void selectIndex(int index, bool emitSignal);
   void refreshCount();
   void rebuildThumbs();
+  QIcon makeThumb(const QString& path) const;
 
   QLabel* countLabel_ = nullptr;
   QLabel* status_ = nullptr;

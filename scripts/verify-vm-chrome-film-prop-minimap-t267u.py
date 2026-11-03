@@ -19,11 +19,13 @@ def bad(msg):
     print(f"FAIL  {msg}")
 
 checks = [
-    (QT / "FilmstripBar.cpp", ["rebuildThumbs", "QListWidget", "scaled(72, 48", "addPaths", "autoSwitch"]),
-    (QT / "PropertyFloat.cpp", ["paramsReverted", "baseline_", "revertAndHide", "propertyFloatOk"]),
-    (QT / "PropertyPanel.cpp", ["specsFor", "QDoubleSpinBox", "emitEdit", "QComboBox", "addExprTable"]),
-    (QT / "OperatorLibrary.cpp", ["opGlyph", "setIconSize", "glyphKindFor"]),
-    (QT / "FlowMinimap.cpp", ["flowMinimap", "centerOn", "itemsBoundingRect"]),
+    (QT / "FilmstripBar.cpp", ["rebuildThumbs", "makeThumb", "KeepAspectRatio", "addPaths", "clearPaths", "autoSwitch", "item:selected"]),
+    (QT / "PropertyFloat.cpp", ["paramsReverted", "baseline_", "revertAndHide", "propertyFloatOk", "Key_Escape", "currentParams"]),
+    (QT / "PropertyPanel.cpp", ["specsFor", "QDoubleSpinBox", "emitEdit", "QComboBox", "addExprTable", "params_.insert", "setKeyboardTracking"]),
+    (QT / "OperatorLibrary.cpp", ["opGlyph", "setIconSize", "glyphKindFor", "barcode", "gate", "left accent"]),
+    (QT / "FlowMinimap.cpp", ["flowMinimap", "centerOn", "itemsBoundingRect", "panTo", "dragging_", "拖拽平移"]),
+    (QT / "SoftFrame.cpp", ["makeSoftFrame", "drawFinder", "SIEANS-", "SOFT exp="]),
+    (QT / "GenTLWorker.cpp", ["回退 Soft 仿真", "openSoft", "soft:uvc-fallback", "soft:gentl"]),
     (QT / "FlowIoDialog.cpp", ["flowIoTable", "resultIo", "输入设置", "输出设置"]),
     (QT / "HostStatePanel.cpp", ["startRequested", "raiseAlarm", "Idle", "HMI · Idle/Running"]),
     (QT / "HostStrip.cpp", ["setRunChrome", "modeChip_", "周期", "io.Result"]),

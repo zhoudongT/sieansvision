@@ -7,6 +7,7 @@
 #include <QPushButton>
 #include <QFrame>
 #include <QMouseEvent>
+#include <QKeyEvent>
 #include <QVariantMap>
 
 namespace sieans_qt {
@@ -79,6 +80,7 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   connect(exec, &QPushButton::clicked, this, &PropertyFloat::runModule);
   connect(cancel, &QPushButton::clicked, this, &PropertyFloat::revertAndHide);
   connect(ok, &QPushButton::clicked, this, [this]() {
+    if (panel_) baseline_ = panel_->currentParams();
     emit acceptedCommit();
     hide();
   });
@@ -133,7 +135,7 @@ void PropertyFloat::setNodeTitle(const QString& title, const QString& subtitle) 
 
 void PropertyFloat::showForSource(const QVariantMap& sourceConfig) {
   nodeId_ = QStringLiteral("source");
-  baseline_ = sourceConfig;
+  baseline_ = QVariantMap(sourceConfig);  // deep-ish snapshot for ✕/Esc
   setNodeTitle(QStringLiteral("属性 · 图像源"), QStringLiteral("sourceConfig"));
   panel_->showSource(sourceConfig);
   show();
@@ -143,13 +145,22 @@ void PropertyFloat::showForSource(const QVariantMap& sourceConfig) {
 
 void PropertyFloat::showForStep(const FlowStep& step) {
   nodeId_ = step.id;
-  baseline_ = step.params;
+  baseline_ = QVariantMap(step.params);
   setNodeTitle(QStringLiteral("属性 · %1").arg(step.name),
                QStringLiteral("%1 · %2").arg(step.operation, step.runState));
   panel_->showStep(step);
   show();
   raise();
   activateWindow();
+}
+
+void PropertyFloat::keyPressEvent(QKeyEvent* event) {
+  if (event->key() == Qt::Key_Escape) {
+    revertAndHide();
+    event->accept();
+    return;
+  }
+  QDialog::keyPressEvent(event);
 }
 
 }  // namespace sieans_qt

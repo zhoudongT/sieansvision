@@ -19,6 +19,8 @@ class PropertyPanel : public QWidget {
   void showSource(const QVariantMap& sourceConfig);
   void showStep(const FlowStep& step);
   void clear();
+  /** Live param map while the float is open (edits applied immediately). */
+  QVariantMap currentParams() const { return params_; }
 
  signals:
   void paramEdited(const QString& nodeId, const QString& key, const QString& value);
@@ -42,6 +44,7 @@ class PropertyPanel : public QWidget {
   QWidget* formHost_ = nullptr;
   QFormLayout* form_ = nullptr;
   QString currentId_;
+  QVariantMap params_;
   bool building_ = false;
 };
 

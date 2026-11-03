@@ -46,7 +46,7 @@ QImage applySoftTone(const QImage& src, int exposureUs, double gainDb, int seq,
     font.setPixelSize(px);
     p.setFont(font);
     const QString label =
-        QStringLiteral("exp=%1us gain=%2dB #%3")
+        QStringLiteral("SOFT exp=%1us gain=%2dB #%3")
             .arg(clampExposureUs(exposureUs))
             .arg(clampGainDb(gainDb), 0, 'f', 1)
             .arg(seq);
@@ -55,20 +55,61 @@ QImage applySoftTone(const QImage& src, int exposureUs, double gainDb, int seq,
   return img;
 }
 
+static void drawFinder(QPainter& p, int x, int y, int s) {
+  p.setPen(Qt::NoPen);
+  p.setBrush(Qt::black);
+  p.drawRect(x, y, s, s);
+  p.setBrush(Qt::white);
+  p.drawRect(x + s / 7, y + s / 7, s - 2 * s / 7, s - 2 * s / 7);
+  p.setBrush(Qt::black);
+  p.drawRect(x + 2 * s / 7, y + 2 * s / 7, s - 4 * s / 7, s - 4 * s / 7);
+}
+
 QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gainDb) {
   const int w = qMax(16, width);
   const int h = qMax(16, height);
   QImage img(w, h, QImage::Format_RGB888);
-  img.fill(Qt::black);
+  img.fill(QColor(245, 245, 245));
   QPainter p(&img);
+  p.setRenderHint(QPainter::Antialiasing, false);
+
+  // geometric targets for locate / template match
   p.setPen(Qt::NoPen);
   p.setBrush(Qt::white);
   p.drawRect(QRect(w / 10, h / 8, (w * 4 / 10) - (w / 10), (h * 4 / 10) - (h / 8)));
   const int r = qMax(2, qMin(w, h) / 9);
+  p.setBrush(QColor(30, 30, 30));
   p.drawEllipse(QPoint(w * 7 / 10, h / 4), r, r);
-  p.setPen(QPen(QColor(255, 200, 200), qMax(1, h / 80)));
+
+  // QR-like module block (visual target; not a real QR payload)
+  const int qs = qMin(w, h) / 3;
+  const int qx = w / 2 - qs / 2;
+  const int qy = h / 2 - qs / 4;
+  p.setBrush(Qt::white);
+  p.setPen(QPen(Qt::black, 1));
+  p.drawRect(qx, qy, qs, qs);
+  drawFinder(p, qx + 2, qy + 2, qs / 4);
+  drawFinder(p, qx + qs - qs / 4 - 2, qy + 2, qs / 4);
+  drawFinder(p, qx + 2, qy + qs - qs / 4 - 2, qs / 4);
+  p.setPen(Qt::NoPen);
+  p.setBrush(Qt::black);
+  for (int i = 0; i < 9; ++i) {
+    const int bx = qx + qs / 3 + (i % 3) * (qs / 9);
+    const int by = qy + qs / 3 + (i / 3) * (qs / 9);
+    if ((i + seq) % 2 == 0) p.drawRect(bx, by, qs / 10, qs / 10);
+  }
+  p.setPen(QColor(20, 20, 20));
+  QFont font(QStringLiteral("DejaVu Sans Mono"), 10);
+  font.setBold(true);
+  font.setPixelSize(qBound(10, qs / 8, 18));
+  p.setFont(font);
+  p.drawText(QRect(qx, qy + qs - qs / 5, qs, qs / 5), Qt::AlignCenter,
+             QStringLiteral("SIEANS-%1").arg(seq % 1000));
+
+  // moving tick for motion / FPS feel
+  p.setPen(QPen(QColor(200, 40, 40), qMax(1, h / 80)));
   const int x = (seq * 17) % qMax(1, w - 20) + 10;
-  const int y = h * 3 / 4;
+  const int y = h * 7 / 8;
   p.drawLine(x, y, qMin(w - 10, x + 40), y);
   p.end();
   return applySoftTone(img, exposureUs, gainDb, seq, true);

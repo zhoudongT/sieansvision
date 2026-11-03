@@ -93,7 +93,9 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("targetVar", "目标变量", kLine, "")};
   }
   if (op == QLatin1String("result_gate")) {
-    return {S("minCount", "最少码数", kInt, "")};
+    return {S("minCount", "最少码数", kInt, ""),
+            S("sourceVar", "源变量", kLine, ""),
+            S("passVar", "输出变量", kLine, "")};
   }
   if (op == QLatin1String("send_data")) {
     return {S("device", "设备", kLine, ""), S("message", "报文", kLine, "")};
@@ -133,6 +135,7 @@ PropertyPanel::PropertyPanel(QWidget* parent) : QWidget(parent) {
 }
 
 void PropertyPanel::clear() {
+  params_.clear();
   currentId_.clear();
   title_->setText(QStringLiteral("属性"));
   meta_->setText(QStringLiteral("选中流程节点以编辑参数"));
@@ -141,6 +144,7 @@ void PropertyPanel::clear() {
 
 void PropertyPanel::emitEdit(const QString& key, const QString& value) {
   if (building_) return;
+  params_.insert(key, value);
   emit paramEdited(currentId_, key, value);
 }
 
@@ -215,9 +219,16 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
     case 2: {
       auto* spin = new QDoubleSpinBox;
       const bool unit = key.contains(QStringLiteral("Score"), Qt::CaseInsensitive);
-      spin->setRange(0, unit ? 1 : 10000000);
-      spin->setDecimals(key.contains(QStringLiteral("gain")) || unit ? 2 : 0);
-      spin->setSingleStep(unit ? 0.05 : 1);
+      const bool gain = key.contains(QStringLiteral("gain"), Qt::CaseInsensitive);
+      const bool exposure = key.contains(QStringLiteral("exposure"), Qt::CaseInsensitive) ||
+                            key.contains(QStringLiteral("Exposure"));
+      if (unit) spin->setRange(0, 1);
+      else if (gain) spin->setRange(0, 48);
+      else if (exposure) spin->setRange(100, 10000000);
+      else spin->setRange(0, 10000000);
+      spin->setDecimals(gain || unit ? 2 : (exposure ? 0 : 2));
+      spin->setSingleStep(unit ? 0.05 : (gain ? 0.5 : (exposure ? 100 : 1)));
+      spin->setKeyboardTracking(false);
       spin->setValue(value.toDouble());
       connect(spin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
               [this, key](double v) { emitEdit(key, QString::number(v, 'g', 8)); });
@@ -255,6 +266,7 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
 
 void PropertyPanel::rebuildForm(const QString& title, const QString& nodeId,
                                 const QString& op, const QVariantMap& params) {
+  params_ = params;
   building_ = true;
   currentId_ = nodeId;
   title_->setText(title);

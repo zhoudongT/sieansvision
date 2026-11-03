@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QWidget>
+#include <QPoint>
 
 class QGraphicsScene;
 class QGraphicsView;
@@ -8,7 +9,7 @@ class QEvent;
 
 namespace sieans_qt {
 
-/** VisionMaster-style canvas overview; click to pan the main FlowView. */
+/** VisionMaster-style canvas overview; click/drag to pan the main FlowView. */
 class FlowMinimap : public QWidget {
   Q_OBJECT
  public:
@@ -23,13 +24,17 @@ class FlowMinimap : public QWidget {
  protected:
   void paintEvent(QPaintEvent* event) override;
   void mousePressEvent(QMouseEvent* event) override;
+  void mouseMoveEvent(QMouseEvent* event) override;
+  void mouseReleaseEvent(QMouseEvent* event) override;
   bool eventFilter(QObject* obj, QEvent* event) override;
 
  private:
   bool mapMetrics(QRectF* bounds, qreal* scale, qreal* ox, qreal* oy) const;
+  void panTo(const QPointF& widgetPos);
 
   QGraphicsScene* scene_ = nullptr;
   QGraphicsView* view_ = nullptr;
+  bool dragging_ = false;
 };
 
 }  // namespace sieans_qt

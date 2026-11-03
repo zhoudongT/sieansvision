@@ -13,8 +13,10 @@ namespace sieans_qt {
 FlowMinimap::FlowMinimap(QGraphicsScene* scene, QGraphicsView* view, QWidget* parent)
     : QWidget(parent), scene_(scene), view_(view) {
   setObjectName(QStringLiteral("flowMinimap"));
-  setFixedSize(160, 110);
+  setFixedSize(180, 120);
+  setCursor(Qt::OpenHandCursor);
   setAttribute(Qt::WA_TransparentForMouseEvents, false);
+  setMouseTracking(true);
   if (scene_) connect(scene_, &QGraphicsScene::changed, this, [this](const QList<QRectF>&) { update(); });
   if (view_ && view_->viewport()) view_->viewport()->installEventFilter(this);
 }
@@ -40,6 +42,8 @@ bool FlowMinimap::eventFilter(QObject* obj, QEvent* event) {
       case QEvent::Resize:
       case QEvent::Wheel:
       case QEvent::MouseButtonRelease:
+      case QEvent::MouseMove:
+      case QEvent::Paint:
         update();
         break;
       default:
@@ -59,6 +63,17 @@ bool FlowMinimap::mapMetrics(QRectF* bounds, qreal* scale, qreal* ox, qreal* oy)
   return true;
 }
 
+void FlowMinimap::panTo(const QPointF& widgetPos) {
+  QRectF bounds;
+  qreal scale = 1, ox = 0, oy = 0;
+  if (!mapMetrics(&bounds, &scale, &ox, &oy) || !view_) return;
+  const qreal sx = bounds.x() + (widgetPos.x() - ox) / scale;
+  const qreal sy = bounds.y() + (widgetPos.y() - oy) / scale;
+  view_->centerOn(sx, sy);
+  emit navigate(sx, sy);
+  update();
+}
+
 void FlowMinimap::paintEvent(QPaintEvent*) {
   QPainter painter(this);
   painter.setRenderHint(QPainter::Antialiasing);
@@ -68,7 +83,11 @@ void FlowMinimap::paintEvent(QPaintEvent*) {
 
   QRectF bounds;
   qreal scale = 1, ox = 0, oy = 0;
-  if (!mapMetrics(&bounds, &scale, &ox, &oy)) return;
+  if (!mapMetrics(&bounds, &scale, &ox, &oy)) {
+    painter.setPen(QColor(theme::TEXT_MUTED));
+    painter.drawText(rect(), Qt::AlignCenter, QStringLiteral("流程概览"));
+    return;
+  }
 
   auto mapPt = [&](const QPointF& p) {
     return QPointF((p.x() - bounds.x()) * scale + ox, (p.y() - bounds.y()) * scale + oy);
@@ -106,20 +125,28 @@ void FlowMinimap::paintEvent(QPaintEvent*) {
     painter.drawRect(QRectF(p1, p2));
     const int pct = int(qRound(view_->transform().m11() * 100.0));
     painter.setPen(QColor(theme::TEXT_MUTED));
-    painter.drawText(6, height() - 6, QStringLiteral("%1%").arg(pct));
+    painter.drawText(6, height() - 6, QStringLiteral("%1% · 拖拽平移").arg(pct));
   }
 }
 
 void FlowMinimap::mousePressEvent(QMouseEvent* event) {
-  QRectF bounds;
-  qreal scale = 1, ox = 0, oy = 0;
-  if (!mapMetrics(&bounds, &scale, &ox, &oy) || !view_) return;
-  const QPointF pos = event->position();
-  const qreal sx = bounds.x() + (pos.x() - ox) / scale;
-  const qreal sy = bounds.y() + (pos.y() - oy) / scale;
-  view_->centerOn(sx, sy);
-  emit navigate(sx, sy);
-  update();
+  if (event->button() != Qt::LeftButton) return;
+  dragging_ = true;
+  setCursor(Qt::ClosedHandCursor);
+  panTo(event->position());
+  event->accept();
+}
+
+void FlowMinimap::mouseMoveEvent(QMouseEvent* event) {
+  if (!dragging_ || !(event->buttons() & Qt::LeftButton)) return;
+  panTo(event->position());
+  event->accept();
+}
+
+void FlowMinimap::mouseReleaseEvent(QMouseEvent* event) {
+  dragging_ = false;
+  setCursor(Qt::OpenHandCursor);
+  QWidget::mouseReleaseEvent(event);
 }
 
 }  // namespace sieans_qt
