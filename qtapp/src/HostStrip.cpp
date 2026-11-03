@@ -7,6 +7,7 @@
 #include <QHBoxLayout>
 #include <QCursor>
 #include <QGuiApplication>
+#include <QRegularExpression>
 #include <QClipboard>
 #include <QApplication>
 #include <QMouseEvent>
@@ -41,7 +42,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
       QStringLiteral("background:#3a3d42;color:#a8a8a8;border-radius:3px;"
                      "padding:3px 8px;font-size:11px;font-weight:600;"));
   cycleChip_ = new QLabel(QStringLiteral("周期 0"));
-  cycleChip_->setToolTip(QStringLiteral("运行周期计数 · 每次流程完成 +1 · 滚轮调节拍 · Ctrl+Shift+T 复制 · 中键良率 · 右键清连OK"));
+  cycleChip_->setToolTip(QStringLiteral("运行周期计数 · 每次流程完成 +1 · 滚轮调节拍 · Ctrl+Shift+T 复制 · Ctrl+Shift+I 粘贴节拍 · 中键良率 · 右键清连OK"));
   cycleChip_->setStyleSheet(
       QStringLiteral("background:#32353a;color:#a8a8a8;border-radius:3px;"
                      "padding:3px 8px;font-size:11px;"));
@@ -417,6 +418,11 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       copyCycleChip();
       return true;
     }
+    if (ke->key() == Qt::Key_I && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier)) {
+      pasteIntervalMs();
+      return true;
+    }
     if (ke->key() == Qt::Key_R && (ke->modifiers() & Qt::ControlModifier)) {
       resetStreak();
       return true;
@@ -601,6 +607,36 @@ void HostStrip::copyCycleChip() {
   if (auto* clip = QGuiApplication::clipboard()) clip->setText(text);
   if (cycleChip_)
     cycleChip_->setToolTip(QStringLiteral("已复制周期条 · Ctrl+Shift+T · 节拍 %1").arg(intervalMs_));
+}
+
+
+void HostStrip::pasteIntervalMs() {
+  const QString raw = QGuiApplication::clipboard()
+                          ? QGuiApplication::clipboard()->text().trimmed()
+                          : QString();
+  if (raw.isEmpty()) {
+    if (cycleChip_) cycleChip_->setToolTip(QStringLiteral("剪贴板空 · Ctrl+Shift+I"));
+    return;
+  }
+  // accept plain int, or ...intervalMs=200..., or "200 ms"
+  QString s = raw;
+  const int eq = s.lastIndexOf(QLatin1String("intervalMs="));
+  if (eq >= 0) s = s.mid(eq + 11);
+  s = s.split(QRegularExpression(QStringLiteral("[^0-9]"))).value(0);
+  bool ok = false;
+  const int ms = s.toInt(&ok);
+  if (!ok || ms <= 0) {
+    if (cycleChip_) cycleChip_->setToolTip(QStringLiteral("无效节拍 · Ctrl+Shift+I"));
+    return;
+  }
+  const int next = qBound(20, ms, 60000);
+  if (next != intervalMs_) {
+    intervalMs_ = next;
+    refreshCycleChip();
+    emit intervalChanged(intervalMs_);
+  }
+  if (cycleChip_)
+    cycleChip_->setToolTip(QStringLiteral("已粘贴节拍 %1 ms · Ctrl+Shift+I").arg(intervalMs_));
 }
 
 

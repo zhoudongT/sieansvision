@@ -29,6 +29,7 @@ class HostStrip : public QWidget {
   void resetStreak();
   void copyRunStats();
   void copyCycleChip();
+  void pasteIntervalMs();
   void pasteWatchKeysFromClipboard();
   void copyWatchKeys();
   void exportWatchKeysJson();

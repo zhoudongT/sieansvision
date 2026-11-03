@@ -98,7 +98,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   btnStop_->setStatusTip(QStringLiteral("Host · 停止 · Esc"));
   btnClear_->setToolTip(QStringLiteral("清除报警锁存 · 不清运行状态 · Alarm→可继续"));
   btnClear_->setStatusTip(QStringLiteral("Host · 清除报警"));
-  setStatusTip(QStringLiteral("上位机控制 · F5/F9 开始 · F6 连续 · F7 暂停/继续 · Space 开始/暂停 · 暂停/继续 · Esc 停止 · 清报警 · 双击徽章清报警 · 右键徽章清除 · Ctrl+Shift+C 复制历史"));
+  setStatusTip(QStringLiteral("上位机控制 · F5/F9 开始 · F6 连续 · F7 暂停/继续 · Space 开始/暂停 · 暂停/继续 · Esc 停止 · 清报警 · 双击徽章清报警 · 右键徽章清除 · Ctrl+Shift+C 复制历史 · Ctrl+Shift+T 配置"));
   for (QPushButton* b : {btnStart_, btnPause_, btnResume_, btnStop_, btnClear_}) {
     b->setMinimumHeight(28);
     quick->addWidget(b);
@@ -282,6 +282,8 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
     connect(scF4, &QShortcut::activated, this, [this]() { cycleAlarmPolicy(+1); });
     auto* scF4b = new QShortcut(QKeySequence(QStringLiteral("Shift+F4")), this);
     connect(scF4b, &QShortcut::activated, this, [this]() { cycleAlarmPolicy(-1); });
+    auto* scCfg = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+T")), this);
+    connect(scCfg, &QShortcut::activated, this, &HostStatePanel::copyHostConfig);
     auto* scCopyHist = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+C")), this);
     connect(scCopyHist, &QShortcut::activated, this, [this]() {
       if (!history_) return;
@@ -778,6 +780,20 @@ void HostStatePanel::cycleAlarmPolicy(int delta) {
   policy_->setCurrentIndex(i);
   if (modeHint_)
     modeHint_->setText(QStringLiteral("报警策略 · %1 · F4").arg(policy_->currentText()));
+}
+
+
+void HostStatePanel::copyHostConfig() {
+  const QString mode = mode_ ? mode_->currentText() : QString();
+  const QString policy = policy_ ? policy_->currentText() : QString();
+  const int ms = intervalSpin_ ? intervalSpin_->value() : 200;
+  const QString line = QStringLiteral("mode=%1\tpolicy=%2\tintervalMs=%3\tstate=%4")
+                           .arg(mode, policy)
+                           .arg(ms)
+                           .arg(state_);
+  if (auto* clip = QGuiApplication::clipboard()) clip->setText(line);
+  if (modeHint_)
+    modeHint_->setText(QStringLiteral("已复制 Host 配置 · Ctrl+Shift+T"));
 }
 
 
