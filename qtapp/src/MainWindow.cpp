@@ -521,6 +521,12 @@ void MainWindow::buildUi() {
       showStatus(QStringLiteral("Host 面板"));
     }
   });
+    connect(host_strip_, &HostStrip::runOnceRequested, this, [this]() {
+    onRunOnce();
+  });
+  connect(host_strip_, &HostStrip::runContinuousRequested, this, [this]() {
+    onRunContinuous();
+  });
   connect(host_strip_, &HostStrip::pauseRequested, this, [this]() {
     if (continuous_run_ && !run_paused_) {
       onPauseRun();

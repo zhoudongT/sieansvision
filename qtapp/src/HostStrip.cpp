@@ -437,6 +437,14 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       copyWatchKeys();
       return true;
     }
+    if (ke->key() == Qt::Key_F5 || ke->key() == Qt::Key_F9) {
+      emit runOnceRequested();
+      return true;
+    }
+    if (ke->key() == Qt::Key_F6) {
+      emit runContinuousRequested();
+      return true;
+    }
     if (ke->key() == Qt::Key_F7) {
       emit pauseRequested();
       return true;

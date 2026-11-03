@@ -42,6 +42,8 @@ class HostStrip : public QWidget {
   void modeToggleRequested();
   void continuousToggleRequested();
   void pauseRequested();
+  void runOnceRequested();
+  void runContinuousRequested();
   void cycleResetRequested();
   void openHostRequested();
   void watchKeysChanged(const QStringList& keys);
