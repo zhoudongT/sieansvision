@@ -153,7 +153,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   history_ = new QListWidget;
   history_->setObjectName(QStringLiteral("alarmHistory"));
   history_->setMinimumHeight(72);
-  history_->setToolTip(QStringLiteral("报警历史 · 双击/中键复制 · 右键/Ctrl+L 清空 · Del 删行 · Ctrl+X 剪切 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+J/V JSON导出/粘贴 · 最近 40 条"));
+  history_->setToolTip(QStringLiteral("报警历史 · 双击/中键复制 · 右键/Ctrl+L 清空 · Del 删行 · Ctrl+X 剪切 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Ctrl+Shift+J/V JSON导出/粘贴 · 最近 40 条"));
   history_->setStatusTip(QStringLiteral("Host · 报警历史 · Ctrl+L/Del/双击/中键"));
   history_->installEventFilter(this);
   history_->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -199,6 +199,8 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
     connect(scY, &QShortcut::activated, this, [this]() { reverseAlarmHistory(); });
     auto* scS = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+S")), history_);
     connect(scS, &QShortcut::activated, this, [this]() { sortAlarmHistory(); });
+    auto* scU = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+U")), history_);
+    connect(scU, &QShortcut::activated, this, [this]() { dedupeAlarmHistory(); });
 
     connect(history_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* it) {
       if (!it) return;
@@ -718,6 +720,32 @@ void HostStatePanel::sortAlarmHistory() {
   emit alarmHistoryChanged(alarmHistoryLines());
   if (modeHint_)
     modeHint_->setText(QStringLiteral("报警已排序 %1 · Ctrl+Shift+S").arg(lines.size()));
+}
+
+
+void HostStatePanel::dedupeAlarmHistory() {
+  if (!history_ || history_->count() <= 0) {
+    if (modeHint_) modeHint_->setText(QStringLiteral("报警空 · Ctrl+Shift+U"));
+    return;
+  }
+  QStringList lines = alarmHistoryLines();
+  QStringList uniq;
+  int dropped = 0;
+  for (const QString& line : lines) {
+    if (uniq.contains(line)) { ++dropped; continue; }
+    uniq << line;
+  }
+  if (dropped <= 0) {
+    if (modeHint_) modeHint_->setText(QStringLiteral("无重复报警 · Ctrl+Shift+U"));
+    return;
+  }
+  history_->clear();
+  for (const QString& line : uniq) history_->addItem(line);
+  emit alarmHistoryChanged(alarmHistoryLines());
+  if (modeHint_)
+    modeHint_->setText(QStringLiteral("报警去重 −%1 · 剩 %2 · Ctrl+Shift+U")
+                           .arg(dropped)
+                           .arg(uniq.size()));
 }
 
 

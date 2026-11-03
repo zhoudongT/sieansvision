@@ -189,7 +189,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   payloadEdit_ = new QLineEdit(
       QStringLiteral("BARCODE ok=${flow.passGate} text=${flow.barcodeText}"));
   payloadEdit_->setToolTip(
-      QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · 下方芯片插入 · Enter/Ctrl+Enter 试发 · Alt+↑↓ 历史 · Alt+Del 删当前 · Alt+Shift+Del 清空 · Alt+Shift+Y 反序历史 · LocalBus echo"));
+      QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · 下方芯片插入 · Enter/Ctrl+Enter 试发 · Alt+↑↓ 历史 · Alt+Del 删当前 · Alt+Shift+Del 清空 · Alt+Shift+Y 反序 · Alt+Shift+U 去重 · LocalBus echo"));
   form->addRow(QStringLiteral("报文"), payloadEdit_);
   payloadEdit_->installEventFilter(this);
   lay->addLayout(form);
@@ -695,6 +695,10 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
         reversePayloadHistory();
         return true;
       }
+      if (ke->key() == Qt::Key_U && (ke->modifiers() & Qt::ShiftModifier)) {
+        dedupePayloadHistory();
+        return true;
+      }
     }
   }
   if (obj == framingCombo_ && event->type() == QEvent::Wheel) {
@@ -1139,6 +1143,43 @@ void CommPanel::clearPayloadHistory() {
   if (status_) status_->setToolTip(QStringLiteral("报文历史已清空 · Alt+Shift+Del"));
 }
 
+
+
+void CommPanel::dedupePayloadHistory() {
+  if (payloadHistory_.isEmpty()) {
+    if (status_) status_->setToolTip(QStringLiteral("报文历史空 · Alt+Shift+U"));
+    return;
+  }
+  QStringList uniq;
+  int dropped = 0;
+  for (const QString& s : payloadHistory_) {
+    if (uniq.contains(s)) { ++dropped; continue; }
+    uniq << s;
+  }
+  if (dropped <= 0) {
+    if (status_) status_->setToolTip(QStringLiteral("无重复报文 · Alt+Shift+U"));
+    return;
+  }
+  const QString cur = payloadEdit_ ? payloadEdit_->text() : QString();
+  payloadHistory_ = uniq;
+  payloadHistoryIdx_ = payloadHistory_.indexOf(cur);
+  if (payloadHistoryIdx_ < 0 && !payloadHistory_.isEmpty()) {
+    payloadHistoryIdx_ = 0;
+    if (payloadEdit_) payloadEdit_->setText(payloadHistory_.first());
+  }
+  if (hub_) {
+    QVariantMap cm = hub_->commManager();
+    QVariantList hist;
+    for (const QString& s : payloadHistory_) hist << s;
+    cm.insert(QStringLiteral("payloadHistory"), hist);
+    hub_->loadFromCommManager(cm);
+    emit requestSaveComm(cm);
+  }
+  if (status_)
+    status_->setToolTip(QStringLiteral("报文去重 −%1 · 剩 %2 · Alt+Shift+U")
+                            .arg(dropped)
+                            .arg(payloadHistory_.size()));
+}
 
 void CommPanel::reversePayloadHistory() {
   if (payloadHistory_.size() < 2) {

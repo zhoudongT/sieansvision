@@ -45,6 +45,7 @@ class HostStatePanel : public QWidget {
   void cutSelectedAlarmHistory();
   void reverseAlarmHistory();
   void sortAlarmHistory();
+  void dedupeAlarmHistory();
 
  signals:
   void startRequested();
