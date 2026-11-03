@@ -223,7 +223,7 @@ OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
           });
   connect(search_, &QLineEdit::textChanged, this, [this](const QString&) { rebuild(); });
   search_->setPlaceholderText(QStringLiteral("搜索… / 或 Ctrl+F · Esc 清空"));
-  search_->setToolTip(QStringLiteral("Toolbox 搜索 · Esc/Del 清空(搜索/列表) · / 或 Ctrl+F/L 聚焦 · Enter 添加"));
+  search_->setToolTip(QStringLiteral("Toolbox 搜索 · Esc/Del/Backspace 清空(搜索/列表) · / 或 Ctrl+F/L 聚焦 · Enter 添加"));
   search_->installEventFilter(this);
   list_->installEventFilter(this);
   installEventFilter(this);
@@ -294,7 +294,7 @@ void OperatorLibrary::rebuild() {
                              ? QStringLiteral("全部")
                              : categoryFilter_;
     search_->setToolTip(
-        QStringLiteral("Toolbox 搜索 · %1 · 匹配 %2 个 · Esc 清空 · / 或 Ctrl+F/L 聚焦")
+        QStringLiteral("Toolbox 搜索 · %1 · 匹配 %2 个 · Esc/Backspace 清空 · / 或 Ctrl+F/L 聚焦")
             .arg(filt)
             .arg(ops));
     if (auto* title = findChild<QLabel*>(QStringLiteral("libraryTitle")))
@@ -317,7 +317,8 @@ bool OperatorLibrary::eventFilter(QObject* obj, QEvent* event) {
       return true;
     }
     if ((ke->key() == Qt::Key_Escape ||
-         (ke->key() == Qt::Key_Delete && obj == search_)) &&
+         ((ke->key() == Qt::Key_Delete || ke->key() == Qt::Key_Backspace) &&
+          obj == search_)) &&
         search_ && !search_->text().isEmpty() &&
         (obj == search_ || obj == list_)) {
       search_->clear();

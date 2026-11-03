@@ -48,6 +48,7 @@ QImage loadSoftQrSample() {
       tried = true;
       return cached;
     }
+    // Env set but unreadable — fall through to built-in candidates.
   }
   if (tried) return cached;
   tried = true;

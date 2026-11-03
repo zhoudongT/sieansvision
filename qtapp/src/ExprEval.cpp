@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper|nvl|lstrip|rstrip|iff|bool|oct|fabs|fmod|cbrt|log10|frac|log2|isfinite|atan2|copysign|bitand|bitor|bitxor|gcd|lcm|clamp01|lerp|invlerp)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper|nvl|lstrip|rstrip|iff|bool|oct|fabs|fmod|cbrt|log10|frac|log2|isfinite|atan2|copysign|bitand|bitor|bitxor|gcd|lcm|clamp01|lerp|invlerp|smoothstep)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -499,6 +499,18 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
           if (t < 0.0) t = 0.0;
           if (t > 1.0) t = 1.0;
           return t;
+        }
+        if (name == QLatin1String("smoothstep")) {
+          if (args.size() < 3) return 0;
+          const double e0 = evalRec(args[0]).toDouble();
+          const double e1 = evalRec(args[1]).toDouble();
+          const double x = evalRec(args[2]).toDouble();
+          const double d = e1 - e0;
+          if (d == 0.0) return x < e0 ? 0.0 : 1.0;
+          double t = (x - e0) / d;
+          if (t < 0.0) t = 0.0;
+          if (t > 1.0) t = 1.0;
+          return t * t * (3.0 - 2.0 * t);
         }
         if (name == QLatin1String("min") || name == QLatin1String("max")) {
           if (args.isEmpty()) return 0;
@@ -1078,6 +1090,9 @@ QStringList exprSelfTest() {
         QStringLiteral("5"));
   check(QStringLiteral("invlerp"),
         ev.eval(QStringLiteral("invlerp(0, 10, 5)")),
+        QStringLiteral("0.5"));
+  check(QStringLiteral("smoothstep"),
+        ev.eval(QStringLiteral("smoothstep(0, 1, 0.5)")),
         QStringLiteral("0.5"));
   check(QStringLiteral("islower"),
         ev.eval(QStringLiteral("islower('abc')")),

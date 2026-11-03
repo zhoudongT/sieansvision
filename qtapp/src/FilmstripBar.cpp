@@ -26,7 +26,7 @@ constexpr int kThumbH = 52;
 
 FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   setObjectName(QStringLiteral("filmstripBar"));
-  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→ Home/End/PgUp/PgDn · 0/1-9 跳转 · Space 自动切换 · F5/F9 运行全部 · Del"));
+  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→ Home/End/PgUp/PgDn · 0/A/1-9 跳转 · Space 自动切换 · F5/F9 运行全部 · Del"));
   setFocusPolicy(Qt::StrongFocus);
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(6, 2, 6, 4);
@@ -36,7 +36,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   head->setSpacing(6);
   countLabel_ = new QLabel(QStringLiteral("图像源 (0/0)"));
   countLabel_->setStyleSheet(QStringLiteral("color:#e8e8e8;font-weight:600;"));
-  countLabel_->setToolTip(QStringLiteral("←→/Ctrl+←→ Home/End/PgUp/PgDn/滚轮 · 0/1-9 跳转 · Del 删除 · 拖拽重排"));
+  countLabel_->setToolTip(QStringLiteral("←→/Ctrl+←→ Home/End/PgUp/PgDn/滚轮 · 0/A/1-9 跳转 · Del 删除 · 拖拽重排"));
   status_ = new QLabel(QStringLiteral("本地图像"));
   status_->setObjectName(QStringLiteral("muted"));
   autoSwitch_ = new QCheckBox(QStringLiteral("自动切换"));
@@ -82,7 +82,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   list_->setFixedHeight(kThumbH + 22);
   list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
   list_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  list_->setStatusTip(QStringLiteral("胶片 · ←→ Home/End/PgUp/PgDn · 0/1-9 · Space/F6 · F5/F9 运行全部 · Del"));
+  list_->setStatusTip(QStringLiteral("胶片 · ←→ Home/End/PgUp/PgDn · 0/A/1-9 · Space/F6 · F5/F9 运行全部 · Del"));
   list_->setSpacing(2);
   list_->setSelectionMode(QAbstractItemView::SingleSelection);
   root->addWidget(list_);
@@ -326,7 +326,7 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
-  if (event->key() == Qt::Key_0) {
+  if (event->key() == Qt::Key_0 || event->key() == Qt::Key_A) {
     if (!paths_.isEmpty()) {
       selectIndex(0, true);
       setStatus(QStringLiteral("跳到 #1"));
