@@ -801,7 +801,10 @@ void MainWindow::buildMenus() {
 
   auto* work = menuBar()->addMenu(QStringLiteral("工程管理"));
   work->addAction(QStringLiteral("变量监视"), this, [this]() {
-    showStatus(QStringLiteral("见右侧「变量」页"));
+    if (bottom_tabs_ && var_watch_) {
+      bottom_tabs_->setCurrentWidget(var_watch_);
+      showStatus(QStringLiteral("变量监视"));
+    }
   });
 
   auto* devices = menuBar()->addMenu(QStringLiteral("设备与模型"));
@@ -818,10 +821,23 @@ void MainWindow::buildMenus() {
 
   auto* records = menuBar()->addMenu(QStringLiteral("记录与账号"));
   records->addAction(QStringLiteral("运行日志…"), this, [this]() {
-    showStatus(QStringLiteral("见底栏「历史结果」"));
+    if (bottom_tabs_ && result_log_) {
+      for (int i = 0; i < bottom_tabs_->count(); ++i) {
+        QWidget* w = bottom_tabs_->widget(i);
+        if (w && (w == result_log_->parentWidget() || w->isAncestorOf(result_log_))) {
+          bottom_tabs_->setCurrentIndex(i);
+          result_log_->setFocus(Qt::OtherFocusReason);
+          break;
+        }
+      }
+      showStatus(QStringLiteral("历史结果"));
+    }
   });
   records->addAction(QStringLiteral("变量监视…"), this, [this]() {
-    showStatus(QStringLiteral("见底栏「变量监视」"));
+    if (bottom_tabs_ && var_watch_) {
+      bottom_tabs_->setCurrentWidget(var_watch_);
+      showStatus(QStringLiteral("变量监视"));
+    }
   });
 
   auto* help = menuBar()->addMenu(QStringLiteral("帮助(&H)"));
@@ -841,7 +857,16 @@ void MainWindow::buildToolbar() {
   tb->addAction(QStringLiteral("保存"), this, &MainWindow::onSaveProject);
   tb->addSeparator();
   tb->addAction(QStringLiteral("相机"), this, &MainWindow::onOpenCameraManager);
-  tb->addAction(QStringLiteral("通信"), this, &MainWindow::onOpenCommManager);
+  tb->addAction(QStringLiteral("通信"), this, [this]() {
+    if (bottom_tabs_ && comm_panel_) {
+      bottom_tabs_->setCurrentWidget(comm_panel_);
+      comm_panel_->bindDocument(document_.commManager());
+      comm_panel_->setFlowVars(flow_vars_);
+      showStatus(QStringLiteral("通信面板"));
+    } else {
+      onOpenCommManager();
+    }
+  });
   {
     auto* a = tb->addAction(QStringLiteral("I/O"), this, &MainWindow::onOpenFlowIo);
     a->setShortcut(QKeySequence(QStringLiteral("Ctrl+I")));

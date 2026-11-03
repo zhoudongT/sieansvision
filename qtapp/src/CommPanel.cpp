@@ -139,6 +139,10 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
     form->addRow(QStringLiteral("ACK快选"), ackRow);
   }
   connect(ackEdit_, &QLineEdit::editingFinished, this, [this]() { pushTcpEndpoint(true); });
+  if (hostEdit_)
+    connect(hostEdit_, &QLineEdit::editingFinished, this, [this]() { pushTcpEndpoint(true); });
+  if (portEdit_)
+    connect(portEdit_, &QLineEdit::editingFinished, this, [this]() { pushTcpEndpoint(true); });
   reconnectCheck_ = new QCheckBox(QStringLiteral("客户端断线重连"));
   reconnectCheck_->setChecked(true);
   reconnectCheck_->setToolTip(QStringLiteral("tcpReal.reconnect · client 模式断线自动重连 · 最多约 40 次"));
