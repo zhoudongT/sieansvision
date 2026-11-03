@@ -361,7 +361,8 @@ void CommHub::onSocketError() {
   QTcpSocket* s = qobject_cast<QTcpSocket*>(sender());
   const QString err = s ? s->errorString() : QStringLiteral("socket error");
   appendTranscript(QStringLiteral("ERR"), err);
-  tcpStatus_ = QStringLiteral("error");
+  tcpStatus_ = QStringLiteral("error · %1")
+                   .arg(framing_.isEmpty() ? QStringLiteral("lf") : framing_);
   emit statusChanged(tcpStatus_);
   if (reconnectEnabled_ && client_ && s == client_ && reconnectTimer_ &&
       !reconnectTimer_->isActive())
