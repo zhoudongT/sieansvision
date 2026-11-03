@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper|nvl|lstrip|rstrip|iff|bool|oct|fabs|fmod|cbrt|log10|frac|log2|isfinite|atan2|copysign|bitand|bitor|bitxor|gcd|lcm|clamp01|lerp|invlerp|smoothstep|step|saturate|fract|isnan|isinf|mix)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper|nvl|lstrip|rstrip|iff|bool|oct|fabs|fmod|cbrt|log10|frac|log2|isfinite|atan2|copysign|bitand|bitor|bitxor|gcd|lcm|clamp01|lerp|invlerp|smoothstep|step|saturate|fract|isnan|isinf|mix|exp2)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -740,6 +740,10 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
           if (args.isEmpty()) return 1;
           return std::exp(evalRec(args[0]).toDouble());
         }
+        if (name == QLatin1String("exp2")) {
+          if (args.isEmpty()) return 1;
+          return std::exp2(evalRec(args[0]).toDouble());
+        }
         if (name == QLatin1String("isalnum")) {
           if (args.isEmpty()) return 0;
           const QString s = evalRec(args[0]).toString();
@@ -1032,6 +1036,9 @@ QStringList exprSelfTest() {
   check(QStringLiteral("exp"),
         ev.eval(QStringLiteral("round(exp(0))")),
         QStringLiteral("1"));
+  check(QStringLiteral("exp2"),
+        ev.eval(QStringLiteral("exp2(3)")),
+        QStringLiteral("8"));
   check(QStringLiteral("isalnum"),
         ev.eval(QStringLiteral("isalnum('A1')")),
         QStringLiteral("1"));

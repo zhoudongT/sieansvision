@@ -371,7 +371,7 @@ void GenTLWorker::grabOne() {
     if (!open_.load()) {
       emit errorOccurred(
           backend_ == QLatin1String("soft")
-              ? QStringLiteral("Soft 未打开 — 请先 openDevice / AUTO_SOFT")
+              ? QStringLiteral("Soft 未打开 — 请先 openDevice / AUTO_SOFT · SAMPLE_QR 可选")
               : QStringLiteral("请先打开相机"));
       return;
     }
