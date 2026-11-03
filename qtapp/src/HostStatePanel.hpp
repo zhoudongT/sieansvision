@@ -51,6 +51,7 @@ class HostStatePanel : public QWidget {
   void selectAllAlarmHistory();
   void duplicateSelectedAlarmHistory();
   void cycleHostMode(int delta);
+  void cycleAlarmPolicy(int delta);
 
  signals:
   void startRequested();

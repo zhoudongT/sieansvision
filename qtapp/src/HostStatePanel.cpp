@@ -120,7 +120,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   modeRow->addWidget(new QLabel(QStringLiteral("报警清除")));
   modeRow->addWidget(policy_, 1);
   policy_->installEventFilter(this);
-  policy_->setToolTip(QStringLiteral("报警清除策略 · 滚轮切换 · Alt+1/2 → on_ok/手动"));
+  policy_->setToolTip(QStringLiteral("报警清除策略 · 滚轮切换 · Alt+1/2 → on_ok/手动 · F4/Shift+F4 循环"));
   root->addLayout(modeRow);
 
   auto* ivRow = new QHBoxLayout;
@@ -153,7 +153,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   history_ = new QListWidget;
   history_->setObjectName(QStringLiteral("alarmHistory"));
   history_->setMinimumHeight(72);
-  history_->setToolTip(QStringLiteral("报警历史 · Esc停止 · Space/F5/F9 启停 · F6/F7 暂停续 · F8/Shift+F8 切模式 · 双击/中键复制 · 右键/Ctrl+L 清空 · Del 删行 · Ctrl+A 全选 · Ctrl+D 复制行 · Ctrl+X 剪切 · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/底 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Ctrl+Shift+J/V JSON导出/粘贴 · 最近 40 条"));
+  history_->setToolTip(QStringLiteral("报警历史 · Esc停止 · Space/F5/F9 启停 · F6/F7 暂停续 · F8/Shift+F8 切模式 · F4 策略 · 双击/中键复制 · 右键/Ctrl+L 清空 · Del 删行 · Ctrl+A 全选 · Ctrl+D 复制行 · Ctrl+X 剪切 · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/底 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Ctrl+Shift+J/V JSON导出/粘贴 · 最近 40 条"));
   history_->setStatusTip(QStringLiteral("Host · 报警历史 · Ctrl+L/Del/双击/中键"));
   history_->installEventFilter(this);
   history_->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -278,6 +278,10 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
     connect(scF8, &QShortcut::activated, this, [this]() { cycleHostMode(+1); });
     auto* scF8b = new QShortcut(QKeySequence(QStringLiteral("Shift+F8")), this);
     connect(scF8b, &QShortcut::activated, this, [this]() { cycleHostMode(-1); });
+    auto* scF4 = new QShortcut(QKeySequence(Qt::Key_F4), this);
+    connect(scF4, &QShortcut::activated, this, [this]() { cycleAlarmPolicy(+1); });
+    auto* scF4b = new QShortcut(QKeySequence(QStringLiteral("Shift+F4")), this);
+    connect(scF4b, &QShortcut::activated, this, [this]() { cycleAlarmPolicy(-1); });
     auto* scCopyHist = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+C")), this);
     connect(scCopyHist, &QShortcut::activated, this, [this]() {
       if (!history_) return;
@@ -535,6 +539,10 @@ bool HostStatePanel::eventFilter(QObject* obj, QEvent* event) {
       cycleHostMode((ke->modifiers() & Qt::ShiftModifier) ? -1 : +1);
       return true;
     }
+    if (ke->key() == Qt::Key_F4) {
+      cycleAlarmPolicy((ke->modifiers() & Qt::ShiftModifier) ? -1 : +1);
+      return true;
+    }
   }
   if (obj == history_ && event->type() == QEvent::MouseButtonRelease) {
     auto* me = static_cast<QMouseEvent*>(event);
@@ -731,6 +739,19 @@ void HostStatePanel::cycleHostMode(int delta) {
   if (modeHint_)
     modeHint_->setText(QStringLiteral("模式 · %1 · F8").arg(mode_->currentText()));
 }
+
+void HostStatePanel::cycleAlarmPolicy(int delta) {
+  if (!policy_ || policy_->count() == 0) return;
+  const int n = policy_->count();
+  int i = policy_->currentIndex();
+  if (i < 0) i = 0;
+  i = (i + delta) % n;
+  if (i < 0) i += n;
+  policy_->setCurrentIndex(i);
+  if (modeHint_)
+    modeHint_->setText(QStringLiteral("报警策略 · %1 · F4").arg(policy_->currentText()));
+}
+
 
 void HostStatePanel::pasteAlarmHistoryFromClipboard() {
   const QString raw = QGuiApplication::clipboard()

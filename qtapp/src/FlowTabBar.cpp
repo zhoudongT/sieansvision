@@ -246,6 +246,16 @@ bool FlowTabBar::eventFilter(QObject* obj, QEvent* event) {
       emit modeToggleRequested();
       return true;
     }
+    if (ke->key() == Qt::Key_I && (ke->modifiers() & Qt::ControlModifier) &&
+        !(ke->modifiers() & Qt::ShiftModifier)) {
+      emit ioRequested();
+      return true;
+    }
+    if (ke->key() == Qt::Key_F && (ke->modifiers() & Qt::ControlModifier) &&
+        !(ke->modifiers() & Qt::ShiftModifier) && !(ke->modifiers() & Qt::AltModifier)) {
+      emit fitRequested();
+      return true;
+    }
     if (ke->key() == Qt::Key_0 && (ke->modifiers() & Qt::ControlModifier) &&
         (ke->modifiers() & Qt::ShiftModifier)) {
       emit cycleResetRequested();
