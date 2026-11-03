@@ -51,7 +51,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   form->addRow(QStringLiteral("试发设备"), deviceCombo_);
   hostEdit_ = new QLineEdit;
   hostEdit_->setPlaceholderText(QStringLiteral("tcpReal host"));
-  hostEdit_->setToolTip(QStringLiteral("TCP host · client 连接目标 / server 绑定"));
+  hostEdit_->setToolTip(QStringLiteral("TCP host · client 连接目标 / server 绑定 · 空=本机"));
   portEdit_ = new QLineEdit;
   portEdit_->setPlaceholderText(QStringLiteral("port"));
   portEdit_->setToolTip(QStringLiteral("TCP port · listen/connect · AUTO_TCP 可 bump +1..+4"));
