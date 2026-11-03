@@ -41,7 +41,7 @@ constexpr int kThumbH = 52;
 
 FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   setObjectName(QStringLiteral("filmstripBar"));
-  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→/Alt+←→ Home/End/PgUp/PgDn · 0/A/1-9 跳转 · Space 自动切换 · Ctrl+C 路径 · Ctrl+Shift+C 文件名 · Ctrl+D 复制 · Ctrl+Shift+I 反选 · Ctrl+Shift+S 排序 · Ctrl+Shift+M 剔缺失 · Ctrl+Shift+R 乱序 · Ctrl+E 导出 · Ctrl+Shift+E 导出选中 · 右键复制路径 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Ctrl+G 跳转 · Ctrl+Shift+B 全名 · Ctrl+Shift+O 打开目录 · Ctrl+Shift+U 剔重 · 计数双击跳转/中键乱序/右键全名 · Del"));
+  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→/Alt+←→/↑↓调序 Home/End/PgUp/PgDn · 0/A/1-9 跳转 · Space 自动切换 · Ctrl+C 路径 · Ctrl+Shift+C 文件名 · Ctrl+D 复制 · Ctrl+Shift+I 反选 · Ctrl+Shift+S 排序 · Ctrl+Shift+M 剔缺失 · Ctrl+Shift+R 乱序 · Ctrl+E 导出 · Ctrl+Shift+E 导出选中 · 右键复制路径 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Ctrl+G 跳转 · Ctrl+Shift+B 全名 · Ctrl+Shift+O 打开目录 · Ctrl+Shift+U 剔重 · 计数双击跳转/中键乱序/右键全名 · Del"));
   setFocusPolicy(Qt::StrongFocus);
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(6, 2, 6, 4);
@@ -353,6 +353,12 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
     autoSwitch_->setChecked(!autoSwitch_->isChecked());
     setStatus(autoSwitch_->isChecked() ? QStringLiteral("自动切换 开")
                                        : QStringLiteral("自动切换 关"));
+    event->accept();
+    return;
+  }
+  if ((event->key() == Qt::Key_Up || event->key() == Qt::Key_Down) &&
+      (event->modifiers() & Qt::AltModifier)) {
+    moveSelectedBy(event->key() == Qt::Key_Up ? -1 : +1);
     event->accept();
     return;
   }
@@ -912,6 +918,24 @@ void FilmstripBar::moveSelectedToFront() {
   }
   notifyPathsChanged();
   setStatus(QStringLiteral("已置顶 %1 · Ctrl+Shift+Home").arg(moved.size()));
+}
+
+
+void FilmstripBar::moveSelectedBy(int delta) {
+  if (!list_ || paths_.isEmpty() || delta == 0) return;
+  int idx = index_;
+  if (list_->currentRow() >= 0) idx = list_->currentRow();
+  if (idx < 0 || idx >= paths_.size()) return;
+  const int dest = idx + delta;
+  if (dest < 0 || dest >= paths_.size()) {
+    setStatus(QStringLiteral("已到边界 · Alt+↑↓"));
+    return;
+  }
+  paths_.swapItemsAt(idx, dest);
+  rebuildThumbs();
+  selectIndex(dest, true);
+  notifyPathsChanged();
+  setStatus(QStringLiteral("胶片调序 → #%1 · Alt+↑↓").arg(dest + 1));
 }
 
 void FilmstripBar::moveSelectedToEnd() {

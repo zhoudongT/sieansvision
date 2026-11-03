@@ -49,6 +49,7 @@ class FilmstripBar : public QWidget {
   void removeDuplicatePaths();
   void moveSelectedToFront();
   void moveSelectedToEnd();
+  void moveSelectedBy(int delta);
 
  protected:
   void keyPressEvent(QKeyEvent* event) override;
