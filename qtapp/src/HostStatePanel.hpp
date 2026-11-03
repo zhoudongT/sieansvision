@@ -53,6 +53,7 @@ class HostStatePanel : public QWidget {
   void cycleHostMode(int delta);
   void cycleAlarmPolicy(int delta);
   void copyHostConfig();
+  void pasteHostConfig();
 
  signals:
   void startRequested();

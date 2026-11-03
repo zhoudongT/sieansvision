@@ -20,6 +20,7 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QEvent>
 #include <QMouseEvent>
 #include <QKeyEvent>
@@ -98,7 +99,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   btnStop_->setStatusTip(QStringLiteral("Host · 停止 · Esc"));
   btnClear_->setToolTip(QStringLiteral("清除报警锁存 · 不清运行状态 · Alarm→可继续"));
   btnClear_->setStatusTip(QStringLiteral("Host · 清除报警"));
-  setStatusTip(QStringLiteral("上位机控制 · F5/F9 开始 · F6 连续 · F7 暂停/继续 · Space 开始/暂停 · 暂停/继续 · Esc 停止 · 清报警 · 双击徽章清报警 · 右键徽章清除 · Ctrl+Shift+C 复制历史 · Ctrl+Shift+T 配置"));
+  setStatusTip(QStringLiteral("上位机控制 · F5/F9 开始 · F6 连续 · F7 暂停/继续 · Space 开始/暂停 · 暂停/继续 · Esc 停止 · 清报警 · 双击徽章清报警 · 右键徽章清除 · Ctrl+Shift+C 复制历史 · Ctrl+Shift+T/P 配置复制/粘贴"));
   for (QPushButton* b : {btnStart_, btnPause_, btnResume_, btnStop_, btnClear_}) {
     b->setMinimumHeight(28);
     quick->addWidget(b);
@@ -284,6 +285,8 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
     connect(scF4b, &QShortcut::activated, this, [this]() { cycleAlarmPolicy(-1); });
     auto* scCfg = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+T")), this);
     connect(scCfg, &QShortcut::activated, this, &HostStatePanel::copyHostConfig);
+    auto* scPasteCfg = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+P")), this);
+    connect(scPasteCfg, &QShortcut::activated, this, &HostStatePanel::pasteHostConfig);
     auto* scCopyHist = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+C")), this);
     connect(scCopyHist, &QShortcut::activated, this, [this]() {
       if (!history_) return;
@@ -794,6 +797,47 @@ void HostStatePanel::copyHostConfig() {
   if (auto* clip = QGuiApplication::clipboard()) clip->setText(line);
   if (modeHint_)
     modeHint_->setText(QStringLiteral("已复制 Host 配置 · Ctrl+Shift+T"));
+}
+
+
+void HostStatePanel::pasteHostConfig() {
+  const QString raw = QGuiApplication::clipboard()
+                          ? QGuiApplication::clipboard()->text().trimmed()
+                          : QString();
+  if (raw.isEmpty()) {
+    if (modeHint_) modeHint_->setText(QStringLiteral("剪贴板空 · Ctrl+Shift+P"));
+    return;
+  }
+  QString mode, policy, state;
+  int ms = -1;
+  for (const QString& part : raw.split(QRegularExpression(QStringLiteral("[\t\n;]+")))) {
+    const QString p = part.trimmed();
+    if (p.startsWith(QLatin1String("mode="))) mode = p.mid(5).trimmed();
+    else if (p.startsWith(QLatin1String("policy="))) policy = p.mid(7).trimmed();
+    else if (p.startsWith(QLatin1String("intervalMs="))) {
+      bool ok = false;
+      const int v = p.mid(11).trimmed().toInt(&ok);
+      if (ok) ms = v;
+    } else if (p.startsWith(QLatin1String("state="))) state = p.mid(6).trimmed();
+  }
+  int applied = 0;
+  if (!mode.isEmpty() && mode_) {
+    const int idx = mode_->findText(mode);
+    if (idx >= 0) { mode_->setCurrentIndex(idx); ++applied; }
+  }
+  if (!policy.isEmpty() && policy_) {
+    const int idx = policy_->findText(policy);
+    if (idx >= 0) { policy_->setCurrentIndex(idx); ++applied; }
+  }
+  if (ms > 0 && intervalSpin_) {
+    const int next = qBound(20, ms, 60000);
+    if (next != intervalSpin_->value()) intervalSpin_->setValue(next);
+    ++applied;
+  }
+  if (modeHint_)
+    modeHint_->setText(applied > 0
+                           ? QStringLiteral("已粘贴 Host 配置 %1 · Ctrl+Shift+P").arg(applied)
+                           : QStringLiteral("无匹配配置 · Ctrl+Shift+P"));
 }
 
 

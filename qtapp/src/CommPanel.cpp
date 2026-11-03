@@ -189,7 +189,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   payloadEdit_ = new QLineEdit(
       QStringLiteral("BARCODE ok=${flow.passGate} text=${flow.barcodeText}"));
   payloadEdit_->setToolTip(
-      QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · 下方芯片插入 · Enter/Ctrl+Enter 试发 · Alt+↑↓ 历史 · Alt+Del 删当前 · Alt+Shift+Del 清空 · Alt+Shift+D 收录当前 · Alt+Shift+C 复制历史 · Alt+Shift+Y 反序 · Alt+Shift+S 排序 · Alt+Shift+U 去重 · Alt+Shift+J/O JSON导出/导入 · LocalBus echo"));
+      QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · 下方芯片插入 · Enter/Ctrl+Enter 试发 · Alt+↑↓ 历史 · Alt+Del 删当前 · Alt+Shift+Del 清空 · Alt+Shift+D 收录当前 · Alt+Shift+C 复制历史 · Alt+Shift+T/P 帧报复制/粘贴 · Alt+Shift+Y 反序 · Alt+Shift+S 排序 · Alt+Shift+U 去重 · Alt+Shift+J/O JSON导出/导入 · LocalBus echo"));
   form->addRow(QStringLiteral("报文"), payloadEdit_);
   payloadEdit_->installEventFilter(this);
   lay->addLayout(form);
@@ -730,6 +730,14 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
       }
       if (ke->key() == Qt::Key_C && (ke->modifiers() & Qt::ShiftModifier)) {
         copyPayloadHistoryText();
+        return true;
+      }
+      if (ke->key() == Qt::Key_T && (ke->modifiers() & Qt::ShiftModifier)) {
+        copyFramingPayload();
+        return true;
+      }
+      if (ke->key() == Qt::Key_P && (ke->modifiers() & Qt::ShiftModifier)) {
+        pasteFramingPayload();
         return true;
       }
     }
@@ -1366,6 +1374,36 @@ void CommPanel::copyFramingPayload() {
   if (status_)
     status_->setToolTip(QStringLiteral("已复制帧+报文 · Alt+Shift+T · %1")
                             .arg(framing.isEmpty() ? QStringLiteral("(无帧)") : framing));
+}
+
+
+void CommPanel::pasteFramingPayload() {
+  const QString raw = QGuiApplication::clipboard()
+                          ? QGuiApplication::clipboard()->text()
+                          : QString();
+  if (raw.trimmed().isEmpty()) {
+    if (status_) status_->setToolTip(QStringLiteral("剪贴板空 · Alt+Shift+P"));
+    return;
+  }
+  // framing\tpayload or first line only payload
+  const QString line = raw.split(QLatin1Char('\n')).value(0);
+  const int tab = line.indexOf(QLatin1Char('\t'));
+  if (tab >= 0) {
+    const QString framing = line.left(tab).trimmed();
+    const QString payload = line.mid(tab + 1);
+    if (framingCombo_ && !framing.isEmpty()) {
+      int idx = framingCombo_->findText(framing);
+      if (idx < 0) {
+        framingCombo_->addItem(framing);
+        idx = framingCombo_->findText(framing);
+      }
+      if (idx >= 0) framingCombo_->setCurrentIndex(idx);
+    }
+    if (payloadEdit_) payloadEdit_->setText(payload);
+  } else if (payloadEdit_) {
+    payloadEdit_->setText(line);
+  }
+  if (status_) status_->setToolTip(QStringLiteral("已粘贴帧+报文 · Alt+Shift+P"));
 }
 
 

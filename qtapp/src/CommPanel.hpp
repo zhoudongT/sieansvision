@@ -60,6 +60,7 @@ class CommPanel : public QWidget {
   void importPayloadHistoryJson();
   void copyPayloadHistoryText();
   void copyFramingPayload();
+  void pasteFramingPayload();
   void cycleFraming(int delta);
   void loadLastRxToPayload();
   void copyLastTxRx();
