@@ -18,6 +18,8 @@
 #include <QEvent>
 #include <QMouseEvent>
 #include <QApplication>
+#include <QClipboard>
+#include <QGuiApplication>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDialog>
@@ -502,6 +504,8 @@ void MainWindow::buildUi() {
   result_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
   result_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
   result_table_->setObjectName(QStringLiteral("resultTree"));
+  result_table_->setToolTip(QStringLiteral("当前结果 · Ctrl+C 选中 · Ctrl+Shift+C 可见全部 · 过滤 Ctrl+Shift+F"));
+  result_table_->setStatusTip(QStringLiteral("结果表 · Ctrl+C/Ctrl+Shift+C 复制 · 过滤 Ctrl+Shift+F"));
   auto* resultHost = new QWidget;
   auto* resultLay = new QVBoxLayout(resultHost);
   resultLay->setContentsMargins(0, 0, 0, 0);
@@ -543,6 +547,51 @@ void MainWindow::buildUi() {
   }
   bottom->addTab(resultHost, QStringLiteral("当前结果"));
 
+
+  {
+    auto* scCopy = new QShortcut(QKeySequence(QStringLiteral("Ctrl+C")), result_table_);
+    connect(scCopy, &QShortcut::activated, this, [this]() {
+      if (!result_table_) return;
+      QStringList lines;
+      const auto ranges = result_table_->selectedRanges();
+      QSet<int> rows;
+      for (const auto& rg : ranges)
+        for (int r = rg.topRow(); r <= rg.bottomRow(); ++r) rows.insert(r);
+      if (rows.isEmpty() && result_table_->currentRow() >= 0)
+        rows.insert(result_table_->currentRow());
+      QList<int> sorted = rows.values();
+      std::sort(sorted.begin(), sorted.end());
+      for (int r : sorted) {
+        if (result_table_->isRowHidden(r)) continue;
+        QStringList cols;
+        for (int c = 0; c < result_table_->columnCount(); ++c) {
+          auto* it = result_table_->item(r, c);
+          cols << (it ? it->text() : QString());
+        }
+        lines << cols.join(QLatin1Char('\t'));
+      }
+      if (auto* clip = QGuiApplication::clipboard()) clip->setText(lines.join(QLatin1Char('\n')));
+      if (resultFilter_)
+        resultFilter_->setToolTip(QStringLiteral("已复制结果 %1 行 · Ctrl+C").arg(lines.size()));
+    });
+    auto* scAll = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+C")), result_table_);
+    connect(scAll, &QShortcut::activated, this, [this]() {
+      if (!result_table_) return;
+      QStringList lines;
+      for (int r = 0; r < result_table_->rowCount(); ++r) {
+        if (result_table_->isRowHidden(r)) continue;
+        QStringList cols;
+        for (int c = 0; c < result_table_->columnCount(); ++c) {
+          auto* it = result_table_->item(r, c);
+          cols << (it ? it->text() : QString());
+        }
+        lines << cols.join(QLatin1Char('\t'));
+      }
+      if (auto* clip = QGuiApplication::clipboard()) clip->setText(lines.join(QLatin1Char('\n')));
+      if (resultFilter_)
+        resultFilter_->setToolTip(QStringLiteral("已复制可见结果 %1 · Ctrl+Shift+C").arg(lines.size()));
+    });
+  }
   result_log_ = new QPlainTextEdit;
   result_log_->setReadOnly(true);
   result_log_->setPlaceholderText(

@@ -28,7 +28,7 @@ namespace sieans_qt {
 FlowIoDialog::FlowIoDialog(const QVariantMap& io, QWidget* parent)
     : QDialog(parent), io_(io) {
   setWindowTitle(QStringLiteral("流程参数 · I/O 绑定"));
-  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+D 复制行 · Ctrl+Shift+C 复制CSV · Ctrl+Shift+V 粘贴 · 清空行 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果"));
+  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+D 复制行 · Ctrl+A 全选 · Ctrl+E 补默认 · Ctrl+Shift+C 复制CSV · Ctrl+Shift+V 粘贴 · 清空行 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果"));
   resize(560, 440);
   setStyleSheet(theme::workbenchStyleSheet());
   auto* root = new QVBoxLayout(this);
@@ -223,6 +223,7 @@ void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
   auto* paste = new QPushButton(QStringLiteral("粘贴行"));
   auto* copyClip = new QPushButton(QStringLiteral("复制行"));
   auto* clearEmpty = new QPushButton(QStringLiteral("清空行"));
+  auto* fillDef = new QPushButton(QStringLiteral("补默认"));
   auto* tokPass = new QPushButton(QStringLiteral("${flow.passGate}"));
   auto* tokText = new QPushButton(QStringLiteral("${flow.barcodeText}"));
   auto* tokFmt = new QPushButton(QStringLiteral("${flow.formatted}"));
@@ -235,11 +236,12 @@ void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
   paste->setToolTip(QStringLiteral("从剪贴板粘贴多行绑定 · Ctrl+Shift+V · 每行 name,type,binding,emptyDefault"));
   copyClip->setToolTip(QStringLiteral("复制选中行到剪贴板 · Ctrl+Shift+C · CSV"));
   clearEmpty->setToolTip(QStringLiteral("删除 name/binding 皆空的行"));
+  fillDef->setToolTip(QStringLiteral("空 emptyDefault 补 BARCODE · Ctrl+E"));
   tokPass->setToolTip(QStringLiteral("写入当前行 binding · ${flow.passGate}"));
   tokText->setToolTip(QStringLiteral("写入当前行 binding · ${flow.barcodeText}"));
   tokFmt->setToolTip(QStringLiteral("写入当前行 binding · ${flow.formatted}"));
   tokIo->setToolTip(QStringLiteral("写入当前行 binding · ${flow.io.Result}"));
-  for (auto* b : {tokPass, tokText, tokFmt, tokIo, copyClip, clearEmpty})
+  for (auto* b : {tokPass, tokText, tokFmt, tokIo, copyClip, clearEmpty, fillDef})
     b->setStyleSheet(QStringLiteral("font-size:11px;"));
   rowBtns->addWidget(up);
   rowBtns->addWidget(down);
@@ -247,6 +249,7 @@ void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
   rowBtns->addWidget(copyClip);
   rowBtns->addWidget(paste);
   rowBtns->addWidget(clearEmpty);
+  rowBtns->addWidget(fillDef);
   rowBtns->addWidget(tokPass);
   rowBtns->addWidget(tokText);
   rowBtns->addWidget(tokFmt);
@@ -257,6 +260,7 @@ void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
   connect(paste, &QPushButton::clicked, this, [this, table]() { pasteRows(table); });
   connect(copyClip, &QPushButton::clicked, this, [this, table]() { copySelectedRows(table); });
   connect(clearEmpty, &QPushButton::clicked, this, [this, table]() { clearEmptyRows(table); });
+  connect(fillDef, &QPushButton::clicked, this, [this, table]() { fillEmptyDefaults(table); });
   connect(tokPass, &QPushButton::clicked, this, [this, table]() {
     insertBindingToken(table, QStringLiteral("${flow.passGate}"));
   });
@@ -277,6 +281,10 @@ void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
   connect(scDup, &QShortcut::activated, this, [this, table]() { duplicateSelectedRows(table); });
   auto* scPaste = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+V")), table);
   connect(scPaste, &QShortcut::activated, this, [this, table]() { pasteRows(table); });
+  auto* scE = new QShortcut(QKeySequence(QStringLiteral("Ctrl+E")), table);
+  connect(scE, &QShortcut::activated, this, [this, table]() { fillEmptyDefaults(table); });
+  auto* scA = new QShortcut(QKeySequence(QStringLiteral("Ctrl+A")), table);
+  connect(scA, &QShortcut::activated, this, [this, table]() { selectAllRows(table); });
   auto* scCopy = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+C")), table);
   connect(scCopy, &QShortcut::activated, this, [this, table]() { copySelectedRows(table); });
 }
@@ -395,6 +403,31 @@ void FlowIoDialog::clearEmptyRows(QTableWidget* table) {
     const QString bind = b ? b->text().trimmed() : QString();
     if (name.isEmpty() && bind.isEmpty()) table->removeRow(r);
   }
+}
+
+
+void FlowIoDialog::fillEmptyDefaults(QTableWidget* table) {
+  if (!table) return;
+  int n = 0;
+  for (int r = 0; r < table->rowCount(); ++r) {
+    auto* name = table->item(r, 0);
+    auto* def = table->item(r, 3);
+    if (!name || name->text().trimmed().isEmpty()) continue;
+    if (!def) {
+      def = new QTableWidgetItem;
+      table->setItem(r, 3, def);
+    }
+    if (def->text().trimmed().isEmpty()) {
+      def->setText(QStringLiteral("BARCODE"));
+      ++n;
+    }
+  }
+  table->setToolTip(QStringLiteral("已补 emptyDefault %1 行 · Ctrl+E").arg(n));
+}
+
+void FlowIoDialog::selectAllRows(QTableWidget* table) {
+  if (!table) return;
+  table->selectAll();
 }
 
 }  // namespace sieans_qt

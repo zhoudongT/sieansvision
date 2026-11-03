@@ -11,6 +11,9 @@
 #include <QPolygonF>
 #include <cstring>
 #include <QKeyEvent>
+#include <QMouseEvent>
+#include <QClipboard>
+#include <QGuiApplication>
 #include <QEvent>
 
 namespace sieans_qt {
@@ -148,10 +151,27 @@ OperatorRail::OperatorRail(QWidget* parent) : QWidget(parent) {
   });
   installEventFilter(this);
   setFocusPolicy(Qt::StrongFocus);
-  setStatusTip(QStringLiteral("Toolbox 轨 · ↑↓/Home/End · 1-9 跳分类 · Esc/0/A 全部"));
+  setStatusTip(QStringLiteral("Toolbox 轨 · ↑↓/Home/End · 1-9 跳分类 · Esc/0/A/中键 全部 · Ctrl+C 分类名"));
 }
 
 bool OperatorRail::eventFilter(QObject* obj, QEvent* event) {
+  if (event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::MiddleButton && group_) {
+      if (auto* b = group_->button(0)) {
+        b->setChecked(true);
+        for (auto* bb : group_->buttons()) {
+          auto* tb = qobject_cast<QToolButton*>(bb);
+          if (!tb) continue;
+          const QString kind = tb->property("railKind").toString();
+          const QString k = kind.isEmpty() ? QStringLiteral("ext") : kind;
+          tb->setIcon(railIcon(k.toUtf8().constData(), tb->isChecked()));
+        }
+        emit categorySelected(QString());
+      }
+      return true;
+    }
+  }
   if (event->type() == QEvent::KeyPress) {
     auto* ke = static_cast<QKeyEvent*>(event);
     if ((ke->key() == Qt::Key_Escape || ke->key() == Qt::Key_A ||
@@ -199,6 +219,15 @@ bool OperatorRail::eventFilter(QObject* obj, QEvent* event) {
           tb->setIcon(railIcon(k.toUtf8().constData(), tb->isChecked()));
         }
         emit categorySelected(b->property("railCategory").toString());
+      }
+      return true;
+    }
+    if (ke->key() == Qt::Key_C && (ke->modifiers() & Qt::ControlModifier) && group_) {
+      if (auto* b = group_->checkedButton()) {
+        const QString cat = b->property("railCategory").toString();
+        const QString tip = b->toolTip();
+        if (auto* clip = QGuiApplication::clipboard())
+          clip->setText(cat.isEmpty() ? QStringLiteral("全部") : cat + QLatin1Char('\n') + tip);
       }
       return true;
     }

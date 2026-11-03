@@ -23,6 +23,7 @@ class HostStrip : public QWidget {
   /** Last completed-cycle wall time (ms) — shown on cycle chip. */
   void setCycleTiming(double lastMs);
   void resetStreak();
+  void copyRunStats();
   int okStreak() const { return okStreak_; }
   int ngCount() const { return ngCount_; }
 

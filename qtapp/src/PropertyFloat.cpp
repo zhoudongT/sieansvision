@@ -16,7 +16,7 @@
 namespace sieans_qt {
 
 PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
-  setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · F2 首字段 · Tab/Home/End/PgUp/PgDn/滚轮 · Alt+滚轮透明度 · Ctrl+0 透明度重置 · Ctrl+R 还原 · 双击标题钉住 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续 · Ctrl+S 同确定"));
+  setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · F2 首字段 · Tab/Home/End/PgUp/PgDn/滚轮 · Alt+滚轮透明度 · Ctrl+0 透明度重置 · Ctrl+R 还原 · Ctrl+Shift+C 复制可见 · 双击标题钉住 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续 · Ctrl+S 同确定"));
   setWhatsThis(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End/PgUp/PgDn · Ctrl/Alt/Shift+Enter/Ctrl+S 确定 · F5/F9 单次 · F6 连续"));
   setObjectName(QStringLiteral("propertyFloat"));
   setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
@@ -246,6 +246,13 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
   if ((event->key() == Qt::Key_F && (event->modifiers() & Qt::ControlModifier)) ||
       event->key() == Qt::Key_F3) {
     if (panel_) panel_->focusFilter();
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_C && (event->modifiers() & Qt::ControlModifier) &&
+      (event->modifiers() & Qt::ShiftModifier)) {
+    if (panel_) panel_->copyVisibleParams();
+    if (subtitle_) subtitle_->setText(QStringLiteral("已复制可见参数 · Ctrl+Shift+C"));
     event->accept();
     return;
   }
