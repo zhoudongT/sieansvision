@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -442,7 +442,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
           if (!from.isEmpty()) hay.replace(from, to);
           return hay;
         }
-        if (name == QLatin1String("slice") || name == QLatin1String("substr")) {
+        if (name == QLatin1String("slice") || name == QLatin1String("substr") || name == QLatin1String("mid")) {
           if (args.isEmpty()) return QString();
           const QString hay = evalRec(args[0]).toString();
           int a = args.size() > 1 ? int(evalRec(args[1]).toDouble()) : 0;
@@ -673,6 +673,9 @@ QStringList exprSelfTest() {
   check(QStringLiteral("right"),
         ev.eval(QStringLiteral("right(%1.text, 2)").arg(sid)),
         QStringLiteral("LO"));
+  check(QStringLiteral("mid"),
+        ev.eval(QStringLiteral("mid(%1.text, 1, 4)").arg(sid)),
+        QStringLiteral("ELL"));
   return fails;
 }
 

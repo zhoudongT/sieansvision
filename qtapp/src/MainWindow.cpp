@@ -1652,7 +1652,13 @@ void MainWindow::onRunOnce() {
                        sieans::GenTLCapture::available();
   if (frame.isNull() && canGrab) {
     ensureCameraOpen();
-    QMetaObject::invokeMethod(cam_worker_, "grabOne", Qt::QueuedConnection);
+    // Soft/UVC: block so GenTL→QR open-and-run sees a frame immediately.
+    const Qt::ConnectionType grabHow =
+        (backend == QLatin1String("soft") || backend == QLatin1String("uvc"))
+            ? Qt::BlockingQueuedConnection
+            : Qt::QueuedConnection;
+    QMetaObject::invokeMethod(cam_worker_, "grabOne", grabHow);
+    frame = cam_worker_ ? cam_worker_->latestFrame() : QImage();
     for (int i = 0; i < 40 && frame.isNull(); ++i) {
       QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
       QThread::msleep(50);

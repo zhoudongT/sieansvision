@@ -14,7 +14,7 @@
 namespace sieans_qt {
 
 PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
-  setStatusTip(QStringLiteral("属性浮窗 · Esc 放弃 · Enter 保留 · Ctrl+Enter 确定 · F5 执行"));
+  setStatusTip(QStringLiteral("属性浮窗 · Esc 放弃 · Enter 保留 · Ctrl+Enter 确定 · F5 执行 · F6 连续"));
   setObjectName(QStringLiteral("propertyFloat"));
   setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
   setModal(false);
@@ -75,7 +75,7 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   auto* ok = new QPushButton(QStringLiteral("确定"));
   ok->setObjectName(QStringLiteral("propertyFloatOk"));
   ok->setToolTip(QStringLiteral("保留修改并关闭 · Ctrl+Enter"));
-  auto* hint = new QLabel(QStringLiteral("Esc 放弃 · Enter 保留 · Tab 切换 · Ctrl+Enter 确定 · F5 执行"));
+  auto* hint = new QLabel(QStringLiteral("Esc 放弃 · Enter 保留 · Tab 切换 · Ctrl+Enter 确定 · F5 执行 · F6 连续"));
   hint->setObjectName(QStringLiteral("propertyFloatHint"));
   hint->setStyleSheet(QStringLiteral("color:#8a9098;font-size:11px;"));
   foot->addWidget(cont);
@@ -189,6 +189,11 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
   }
   if (event->key() == Qt::Key_F5) {
     emit runModule();
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_F6) {
+    emit runModuleContinuous();
     event->accept();
     return;
   }

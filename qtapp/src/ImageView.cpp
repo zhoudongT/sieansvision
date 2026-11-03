@@ -16,7 +16,7 @@ namespace sieans_qt {
 ImageView::ImageView(QWidget* parent) : QGraphicsView(parent) {
   setFocusPolicy(Qt::StrongFocus);
   setToolTip(QStringLiteral("F/Home 适应 · +/- 缩放 · 拖拽平移"));
-  setStatusTip(QStringLiteral("图像视图 · F/Home 适应 · 码框叠加 hits"));
+  setStatusTip(QStringLiteral("图像视图 · F/Home/0 适应 · +/- 缩放 · 码框叠加 hits"));
   setScene(&scene_);
   setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
   setDragMode(QGraphicsView::ScrollHandDrag);
@@ -125,7 +125,8 @@ void ImageView::mouseMoveEvent(QMouseEvent* event) {
 
 
 void ImageView::keyPressEvent(QKeyEvent* event) {
-  if (event->key() == Qt::Key_F || event->key() == Qt::Key_Home) {
+  if (event->key() == Qt::Key_F || event->key() == Qt::Key_Home ||
+      event->key() == Qt::Key_0) {
     userZoomed_ = false;
     fitToView();
     event->accept();
