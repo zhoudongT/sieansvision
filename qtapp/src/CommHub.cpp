@@ -194,7 +194,10 @@ bool CommHub::startTcp(QString* error) {
                        QStringLiteral("%1 · attempts reset").arg(tcpStatus_));
     });
     client_->connectToHost(host, port);
-    tcpStatus_ = QStringLiteral("connecting %1:%2").arg(host).arg(port);
+    tcpStatus_ = QStringLiteral("connecting %1:%2 · reconnect=%3")
+                     .arg(host)
+                     .arg(port)
+                     .arg(reconnectEnabled_ ? QStringLiteral("on") : QStringLiteral("off"));
     emit statusChanged(tcpStatus_);
     return true;
   }

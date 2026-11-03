@@ -80,6 +80,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   list_->setFixedHeight(kThumbH + 22);
   list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
   list_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  list_->setStatusTip(QStringLiteral("胶片 · ←→ Home/End/PgUp/PgDn · Space 自动切换 · Del"));
   list_->setSpacing(2);
   list_->setSelectionMode(QAbstractItemView::SingleSelection);
   root->addWidget(list_);

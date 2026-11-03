@@ -213,6 +213,10 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
       return QStringLiteral("判定通过时写入的变量名（默认 passGate）");
     if (k == QLatin1String("deviceId") || k == QLatin1String("cam.deviceId"))
       return QStringLiteral("soft:0 / GenTL ID / /dev/videoN");
+    if (k == QLatin1String("binding"))
+      return QStringLiteral("通信绑定 · flow.formatted / LocalBus 设备名");
+    if (k == QLatin1String("expressions") || k == QLatin1String("expression"))
+      return QStringLiteral("expr · in/startswith/…/isempty/notempty · 见底部提示");
     return {};
   };
   const QString tip = tipFor(key);
@@ -345,7 +349,7 @@ void PropertyPanel::showStep(const FlowStep& step) {
     hint += QStringLiteral(" · sourceVar → passVar");
   else if (step.operation == QLatin1String("var_calc"))
     hint += QStringLiteral(
-        " · expr: in / startswith|endswith|contains / lower|upper / trim|strip|replace / slice|substr|mid|isdigit|isalpha|lpad|rpad|repeat|default|coalesce|ifempty|indexof|find|left|right");
+        " · expr: in / startswith|endswith|contains / lower|upper / trim|strip|replace / slice|substr|mid|isdigit|isalpha|lpad|rpad|repeat|default|coalesce|ifempty|indexof|find|left|right|isempty|notempty");
   else if (step.operation == QLatin1String("barcode") ||
            step.operation == QLatin1String("qr_decode"))
     hint += QStringLiteral(" · ZXing 多码 · 判定 judgeMinCount");

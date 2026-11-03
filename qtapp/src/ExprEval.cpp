@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -506,6 +506,12 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
           int n = args.size() > 1 ? int(evalRec(args[1]).toDouble()) : hay.size();
           if (n < 0) n = 0;
           return name == QLatin1String("left") ? hay.left(n) : hay.right(n);
+        }
+        if (name == QLatin1String("isempty") || name == QLatin1String("notempty")) {
+          if (args.isEmpty()) return name == QLatin1String("isempty") ? 1 : 0;
+          const bool empty = evalRec(args[0]).toString().isEmpty();
+          if (name == QLatin1String("isempty")) return empty ? 1 : 0;
+          return empty ? 0 : 1;
         }
       }
     }
@@ -676,6 +682,12 @@ QStringList exprSelfTest() {
   check(QStringLiteral("mid"),
         ev.eval(QStringLiteral("mid(%1.text, 1, 4)").arg(sid)),
         QStringLiteral("ELL"));
+  check(QStringLiteral("isempty"),
+        ev.eval(QStringLiteral("isempty('')")),
+        QStringLiteral("1"));
+  check(QStringLiteral("notempty"),
+        ev.eval(QStringLiteral("notempty(%1.text)").arg(sid)),
+        QStringLiteral("1"));
   return fails;
 }
 
