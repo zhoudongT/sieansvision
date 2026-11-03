@@ -623,6 +623,8 @@ void MainWindow::buildToolbar() {
   tb->addSeparator();
   mode_badge_ = new QLabel(QStringLiteral("设计态"));
   mode_badge_->setObjectName(QStringLiteral("modeBadge"));
+  mode_badge_->setToolTip(QStringLiteral("设计态可编辑 · 运行态锁定画布"));
+  mode_badge_->setStatusTip(QStringLiteral("模式徽章 · 设计态/运行态"));
   mode_badge_->setProperty("runMode", false);
   tb->addWidget(mode_badge_);
   listen_badge_ = new QLabel(QStringLiteral("监听·—"));

@@ -88,11 +88,11 @@ QIcon railIcon(const char* kind, bool active) {
 }  // namespace
 
 OperatorRail::OperatorRail(QWidget* parent) : QWidget(parent) {
-  setStatusTip(QStringLiteral("Toolbox 分类轨 · ↑↓/Home/End · Esc 全部"));
+  setStatusTip(QStringLiteral("Toolbox 分类轨 · ↑↓/Home/End/PgUp/PgDn · Esc 全部"));
   setObjectName(QStringLiteral("operatorRail"));
   setFixedWidth(44);
   setFocusPolicy(Qt::StrongFocus);
-  setToolTip(QStringLiteral("算子分类轨 · ↑↓/Home/End · Esc 全部 · 点击筛选"));
+  setToolTip(QStringLiteral("算子分类轨 · ↑↓/Home/End/PgUp/PgDn · Esc 全部 · 点击筛选"));
   auto* lay = new QVBoxLayout(this);
   lay->setContentsMargins(2, 6, 2, 6);
   lay->setSpacing(2);
@@ -168,15 +168,17 @@ bool OperatorRail::eventFilter(QObject* obj, QEvent* event) {
       return true;
     }
     if (ke->key() == Qt::Key_Up || ke->key() == Qt::Key_Down ||
-        ke->key() == Qt::Key_Home || ke->key() == Qt::Key_End) {
+        ke->key() == Qt::Key_Home || ke->key() == Qt::Key_End ||
+        ke->key() == Qt::Key_PageUp || ke->key() == Qt::Key_PageDown) {
       if (!group_) return QWidget::eventFilter(obj, event);
       const QList<QAbstractButton*> btns = group_->buttons();
       if (btns.isEmpty()) return true;
       int cur = group_->checkedId();
       if (cur < 0) cur = 0;
       int next = cur;
-      if (ke->key() == Qt::Key_Home) next = 0;
-      else if (ke->key() == Qt::Key_End) next = btns.size() - 1;
+      if (ke->key() == Qt::Key_Home || ke->key() == Qt::Key_PageUp) next = 0;
+      else if (ke->key() == Qt::Key_End || ke->key() == Qt::Key_PageDown)
+        next = btns.size() - 1;
       else
         next = ke->key() == Qt::Key_Up
                            ? (cur - 1 + btns.size()) % btns.size()

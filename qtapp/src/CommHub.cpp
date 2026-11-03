@@ -188,16 +188,20 @@ bool CommHub::startTcp(QString* error) {
       if (reconnectTimer_) reconnectTimer_->stop();
       reconnectAttempts_ = 0;
       if (reconnectTimer_) reconnectTimer_->setInterval(1500);
-      tcpStatus_ = QStringLiteral("connected %1:%2").arg(host).arg(port);
+      tcpStatus_ = QStringLiteral("connected %1:%2 · %3")
+                       .arg(host)
+                       .arg(port)
+                       .arg(framing_.isEmpty() ? QStringLiteral("lf") : framing_);
       emit statusChanged(tcpStatus_);
       appendTranscript(QStringLiteral("SYS"),
                        QStringLiteral("%1 · attempts reset").arg(tcpStatus_));
     });
     client_->connectToHost(host, port);
-    tcpStatus_ = QStringLiteral("connecting %1:%2 · reconnect=%3")
+    tcpStatus_ = QStringLiteral("connecting %1:%2 · reconnect=%3 · %4")
                      .arg(host)
                      .arg(port)
-                     .arg(reconnectEnabled_ ? QStringLiteral("on") : QStringLiteral("off"));
+                     .arg(reconnectEnabled_ ? QStringLiteral("on") : QStringLiteral("off"))
+                     .arg(framing_.isEmpty() ? QStringLiteral("lf") : framing_);
     emit statusChanged(tcpStatus_);
     return true;
   }
