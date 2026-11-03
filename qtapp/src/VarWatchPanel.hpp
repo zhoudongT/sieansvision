@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QWidget>
+#include <QEvent>
 #include <QTableWidget>
 #include <QVariantMap>
 #include <QStringList>
@@ -16,7 +17,10 @@ class VarWatchPanel : public QWidget {
   void setVariables(const QVariantMap& vars);
   QVariantMap variables() const { return vars_; }
 
- private:
+ protected:
+  bool eventFilter(QObject* obj, QEvent* event) override;
+
+private:
   void rebuild();
 
   QTableWidget* table_ = nullptr;

@@ -9,6 +9,7 @@ namespace sieans_qt {
 
 FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   setObjectName(QStringLiteral("flowTabBar"));
+  setStatusTip(QStringLiteral("流程条 · ▶一次/↻连续/■停止 · F 适应 · Esc 取消连线"));
   setFixedHeight(28);
   auto* lay = new QHBoxLayout(this);
   lay->setContentsMargins(4, 2, 4, 2);
@@ -24,11 +25,11 @@ FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   flowBtn_->setObjectName(QStringLiteral("flowTabActive"));
   auto* runOnce = new QPushButton(QStringLiteral("▶"));
   runOnce->setFixedWidth(28);
-  runOnce->setToolTip(QStringLiteral("运行当前流程一次"));
+  runOnce->setToolTip(QStringLiteral("运行当前流程一次 · F5"));
   runOnce->setStatusTip(QStringLiteral("流程 · 运行一次"));
   auto* runCont = new QPushButton(QStringLiteral("↻"));
   runCont->setFixedWidth(28);
-  runCont->setToolTip(QStringLiteral("连续运行当前流程"));
+  runCont->setToolTip(QStringLiteral("连续运行当前流程 · F6"));
   runCont->setStatusTip(QStringLiteral("流程 · 连续运行"));
   auto* stop = new QPushButton(QStringLiteral("■"));
   stop->setFixedWidth(28);
@@ -38,7 +39,7 @@ FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   fit->setFixedWidth(40);
   fit->setToolTip(QStringLiteral("适应流程画布 · F"));
   fit->setStatusTip(QStringLiteral("流程 · 适应画布"));
-  auto* hint = new QLabel(QStringLiteral("F 适应 · Esc 取消连线 · Del 删连线"));
+  auto* hint = new QLabel(QStringLiteral("F5 一次 · F6 连续 · F 适应 · Esc 取消连线 · Del 删连线"));
   hint->setObjectName(QStringLiteral("muted"));
   lay->addWidget(allBtn_);
   lay->addWidget(flowBtn_);

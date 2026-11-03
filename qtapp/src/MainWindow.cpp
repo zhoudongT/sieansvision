@@ -226,6 +226,12 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     const int runDelay = (qgetenv("SIEANS_QT_AUTO_SOFT") == "1") ? 900 : 1400;
     QTimer::singleShot(runDelay, this, [this]() {
       logResult(QStringLiteral("AUTO_RUN · GenTL→QR open-and-run"));
+      // Soft warm-up: ensure latest_ soft frame before pipeline decode.
+      if (qgetenv("SIEANS_QT_AUTO_SOFT") == "1" && cam_worker_) {
+        QMetaObject::invokeMethod(cam_worker_, "grabOne",
+                                  Qt::BlockingQueuedConnection);
+        logResult(QStringLiteral("AUTO_RUN · soft warm-up grab"));
+      }
       onRunOnce();
     });
   }

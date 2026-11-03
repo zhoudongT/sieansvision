@@ -13,6 +13,8 @@
 #include <QCursor>
 #include <QShortcut>
 #include <QKeySequence>
+#include <QKeyEvent>
+#include <QEvent>
 
 namespace sieans_qt {
 
@@ -47,8 +49,9 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
                                  table_);
             }
           });
-  table_->setToolTip(QStringLiteral("双击或 Ctrl+C 复制变量值"));
-  setStatusTip(QStringLiteral("变量监视 · 双击/Ctrl+C 复制 · passGate/urlOk/lastRecv 高亮"));
+  table_->setToolTip(QStringLiteral("双击或 Ctrl+C 复制变量值 · Home/End 首末行"));
+  table_->installEventFilter(this);
+  setStatusTip(QStringLiteral("变量监视 · 双击/Ctrl+C 复制 · Home/End · passGate/urlOk/lastRecv 高亮"));
   keys_ = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
            QStringLiteral("passGate"), QStringLiteral("urlOk"),
@@ -72,6 +75,21 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
   auto* sc = new QShortcut(QKeySequence::Copy, this);
   connect(sc, &QShortcut::activated, this, copySel);
   rebuild();
+}
+
+
+bool VarWatchPanel::eventFilter(QObject* obj, QEvent* event) {
+  if (obj == table_ && event->type() == QEvent::KeyPress && table_) {
+    auto* ke = static_cast<QKeyEvent*>(event);
+    if (ke->key() == Qt::Key_Home || ke->key() == Qt::Key_End) {
+      if (table_->rowCount() <= 0) return true;
+      const int row = ke->key() == Qt::Key_Home ? 0 : table_->rowCount() - 1;
+      table_->setCurrentCell(row, 0);
+      table_->scrollToItem(table_->item(row, 0));
+      return true;
+    }
+  }
+  return QWidget::eventFilter(obj, event);
 }
 
 void VarWatchPanel::setWatchKeys(const QStringList& keys) {

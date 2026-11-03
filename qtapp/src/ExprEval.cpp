@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -591,6 +591,36 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
             } else {
               s[i] = s[i].toLower();
             }
+          }
+          return s;
+        }
+        if (name == QLatin1String("hypot")) {
+          if (args.size() < 2) return 0;
+          return std::hypot(evalRec(args[0]).toDouble(), evalRec(args[1]).toDouble());
+        }
+        if (name == QLatin1String("log")) {
+          if (args.isEmpty()) return 0;
+          const double v = evalRec(args[0]).toDouble();
+          return v <= 0 ? 0 : std::log(v);
+        }
+        if (name == QLatin1String("exp")) {
+          if (args.isEmpty()) return 1;
+          return std::exp(evalRec(args[0]).toDouble());
+        }
+        if (name == QLatin1String("isalnum")) {
+          if (args.isEmpty()) return 0;
+          const QString s = evalRec(args[0]).toString();
+          if (s.isEmpty()) return 0;
+          for (const QChar ch : s)
+            if (!ch.isLetterOrNumber()) return 0;
+          return 1;
+        }
+        if (name == QLatin1String("swapcase")) {
+          if (args.isEmpty()) return QString();
+          QString s = evalRec(args[0]).toString();
+          for (int i = 0; i < s.size(); ++i) {
+            if (s[i].isUpper()) s[i] = s[i].toLower();
+            else if (s[i].isLower()) s[i] = s[i].toUpper();
           }
           return s;
         }
@@ -805,6 +835,21 @@ QStringList exprSelfTest() {
   check(QStringLiteral("capitalize"),
         ev.eval(QStringLiteral("capitalize('hello')")),
         QStringLiteral("Hello"));
+  check(QStringLiteral("hypot"),
+        ev.eval(QStringLiteral("hypot(3, 4)")),
+        QStringLiteral("5"));
+  check(QStringLiteral("log"),
+        ev.eval(QStringLiteral("round(log(2.718281828), 0)")),
+        QStringLiteral("1"));
+  check(QStringLiteral("exp"),
+        ev.eval(QStringLiteral("round(exp(0))")),
+        QStringLiteral("1"));
+  check(QStringLiteral("isalnum"),
+        ev.eval(QStringLiteral("isalnum('A1')")),
+        QStringLiteral("1"));
+  check(QStringLiteral("swapcase"),
+        ev.eval(QStringLiteral("swapcase('AbC')")),
+        QStringLiteral("aBc"));
   return fails;
 }
 

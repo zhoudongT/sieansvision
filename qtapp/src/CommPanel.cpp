@@ -47,14 +47,18 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   form->addRow(QStringLiteral("试发设备"), deviceCombo_);
   hostEdit_ = new QLineEdit;
   hostEdit_->setPlaceholderText(QStringLiteral("tcpReal host"));
+  hostEdit_->setToolTip(QStringLiteral("TCP host · client 连接目标 / server 绑定"));
   portEdit_ = new QLineEdit;
   portEdit_->setPlaceholderText(QStringLiteral("port"));
+  portEdit_->setToolTip(QStringLiteral("TCP port · listen/connect · AUTO_TCP 可 bump +1..+4"));
   auto* hp = new QHBoxLayout;
   hp->addWidget(hostEdit_);
   hp->addWidget(portEdit_);
   form->addRow(QStringLiteral("TCP 端点"), hp);
   payloadEdit_ = new QLineEdit(
       QStringLiteral("BARCODE ok=${flow.passGate} text=${flow.barcodeText}"));
+  payloadEdit_->setToolTip(
+      QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · LocalBus echo"));
   form->addRow(QStringLiteral("报文"), payloadEdit_);
   lay->addLayout(form);
 
@@ -90,6 +94,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
     connect(hub_, &CommHub::transcriptChanged, this, &CommPanel::refreshTranscript);
     connect(hub_, &CommHub::statusChanged, this, [this](const QString& s) {
       status_->setText(QStringLiteral("TCP: %1").arg(s));
+      status_->setToolTip(QStringLiteral("TCP: %1").arg(s));
       if (s.contains(QStringLiteral("reconnect")))
         status_->setStyleSheet(QStringLiteral("color:#e0b84a;font-weight:600;"));
       else if (s.contains(QStringLiteral("connected")) ||
