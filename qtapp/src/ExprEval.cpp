@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -624,6 +624,23 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
           }
           return s;
         }
+        if (name == QLatin1String("radians")) {
+          if (args.isEmpty()) return 0;
+          return evalRec(args[0]).toDouble() * (3.14159265358979323846) / 180.0;
+        }
+        if (name == QLatin1String("degrees")) {
+          if (args.isEmpty()) return 0;
+          return evalRec(args[0]).toDouble() * 180.0 / (3.14159265358979323846);
+        }
+        if (name == QLatin1String("ord")) {
+          if (args.isEmpty()) return 0;
+          const QString s = evalRec(args[0]).toString();
+          return s.isEmpty() ? 0 : int(s.at(0).unicode());
+        }
+        if (name == QLatin1String("chr")) {
+          if (args.isEmpty()) return QString();
+          return QString(QChar(ushort(evalRec(args[0]).toInt())));
+        }
       }
     }
 
@@ -850,6 +867,15 @@ QStringList exprSelfTest() {
   check(QStringLiteral("swapcase"),
         ev.eval(QStringLiteral("swapcase('AbC')")),
         QStringLiteral("aBc"));
+  check(QStringLiteral("radians"),
+        ev.eval(QStringLiteral("round(degrees(radians(90)))")),
+        QStringLiteral("90"));
+  check(QStringLiteral("ord"),
+        ev.eval(QStringLiteral("ord('A')")),
+        QStringLiteral("65"));
+  check(QStringLiteral("chr"),
+        ev.eval(QStringLiteral("chr(65)")),
+        QStringLiteral("A"));
   return fails;
 }
 

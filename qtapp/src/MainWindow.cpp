@@ -525,7 +525,7 @@ void MainWindow::buildMenus() {
 
   auto* tools = menuBar()->addMenu(QStringLiteral("工具"));
   tools->addAction(QStringLiteral("C++ QR 解码"), this, &MainWindow::onDecodeQr,
-                   QKeySequence(Qt::Key_F5));
+                   QKeySequence(Qt::Key_F9));
   tools->addAction(QStringLiteral("适应图像窗口"), image_view_, &ImageView::fitToView);
   tools->addAction(QStringLiteral("适应流程画布"), flow_view_, &FlowView::fitAll);
   tools->addAction(QStringLiteral("流程 I/O 绑定…"), this, &MainWindow::onOpenFlowIo);
@@ -601,9 +601,17 @@ void MainWindow::buildToolbar() {
       tb->addAction(QStringLiteral("停预览"), this, &MainWindow::onStopContinuousPreview);
   tb->addSeparator();
   act_run_ = tb->addAction(QStringLiteral("▶ 运行"), this, &MainWindow::onRunOnce);
+  act_run_->setShortcut(QKeySequence(Qt::Key_F5));
+  act_run_->setToolTip(QStringLiteral("运行当前流程一次 · F5"));
+  act_run_->setStatusTip(QStringLiteral("运行 · F5"));
   act_cont_ =
       tb->addAction(QStringLiteral("↻ 连续"), this, &MainWindow::onRunContinuous);
+  act_cont_->setShortcut(QKeySequence(Qt::Key_F6));
+  act_cont_->setToolTip(QStringLiteral("连续运行当前流程 · F6"));
+  act_cont_->setStatusTip(QStringLiteral("连续 · F6"));
   act_stop_ = tb->addAction(QStringLiteral("■ 停止"), this, &MainWindow::onStopRun);
+  act_stop_->setToolTip(QStringLiteral("停止运行 / 连续"));
+  act_stop_->setStatusTip(QStringLiteral("停止"));
   tb->addSeparator();
   act_mode_ = tb->addAction(QStringLiteral("运行模式"));
   act_mode_->setCheckable(true);
@@ -620,6 +628,7 @@ void MainWindow::buildToolbar() {
   listen_badge_ = new QLabel(QStringLiteral("监听·—"));
   listen_badge_->setObjectName(QStringLiteral("commListenBadge"));
   listen_badge_->setToolTip(QStringLiteral("通信监听/连接状态 — 点击打开通信管理"));
+  listen_badge_->setStatusTip(QStringLiteral("通信徽章 · 点击打开通信管理 · tcp=/listen/reconnect"));
   listen_badge_->setCursor(Qt::PointingHandCursor);
   listen_badge_->setStyleSheet(
       QStringLiteral("padding:2px 8px;border-radius:3px;background:#3a3d42;color:#a8a8a8;"));

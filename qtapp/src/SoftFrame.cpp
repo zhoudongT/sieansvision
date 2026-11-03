@@ -126,8 +126,9 @@ QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gain
     // Prefer FastTransformation — Smooth blurs finder patterns at 640×400.
     const QImage scaled =
         qr.scaled(w - 4, h - 4, Qt::KeepAspectRatio, Qt::FastTransformation);
-    const int x = (w - scaled.width()) / 2;
-    const int y = (h - scaled.height()) / 2;
+    // Even-pixel origin keeps finder modules on integer grid for ZXing.
+    const int x = ((w - scaled.width()) / 2) & ~1;
+    const int y = ((h - scaled.height()) / 2) & ~1;
     p.fillRect(QRect(0, 0, w, h), Qt::white);
     p.drawImage(x, y, scaled);
     // Guide frame (outside scaled content — decode uses interior pixels).

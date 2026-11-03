@@ -40,7 +40,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   status_ = new QLabel(QStringLiteral("本地图像"));
   status_->setObjectName(QStringLiteral("muted"));
   autoSwitch_ = new QCheckBox(QStringLiteral("自动切换"));
-  autoSwitch_->setToolTip(QStringLiteral("连续运行时切到下一张本地图"));
+  autoSwitch_->setToolTip(QStringLiteral("连续运行时切到下一张本地图 · Space/F6"));
   auto* runAll = new QPushButton(QStringLiteral("运行全部"));
   runAll->setToolTip(QStringLiteral("运行全部本地图 · F5"));
   runAll->setStatusTip(QStringLiteral("胶片 · 运行全部 · F5"));
@@ -82,7 +82,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   list_->setFixedHeight(kThumbH + 22);
   list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
   list_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  list_->setStatusTip(QStringLiteral("胶片 · ←→ Home/End/PgUp/PgDn · Space · F5 运行全部 · Del"));
+  list_->setStatusTip(QStringLiteral("胶片 · ←→ Home/End/PgUp/PgDn · Space/F6 自动切换 · F5 运行全部 · Del"));
   list_->setSpacing(2);
   list_->setSelectionMode(QAbstractItemView::SingleSelection);
   root->addWidget(list_);
@@ -276,7 +276,8 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
-  if (event->key() == Qt::Key_Space && autoSwitch_) {
+  if ((event->key() == Qt::Key_Space || event->key() == Qt::Key_F6) &&
+      autoSwitch_) {
     autoSwitch_->setChecked(!autoSwitch_->isChecked());
     setStatus(autoSwitch_->isChecked() ? QStringLiteral("自动切换 开")
                                        : QStringLiteral("自动切换 关"));

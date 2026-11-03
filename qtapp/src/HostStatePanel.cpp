@@ -46,6 +46,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   badge_ = new QLabel;
   badge_->setAlignment(Qt::AlignCenter);
   badge_->setMinimumWidth(72);
+  badge_->setToolTip(QStringLiteral("上位机状态 · Idle/Running/Paused/Alarm/Stopped"));
   head->addWidget(badge_);
   root->addLayout(head);
 
@@ -61,9 +62,9 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   btnStop_ = new QPushButton(QStringLiteral("■ 停止"));
   btnClear_ = new QPushButton(QStringLiteral("清除报警"));
   btnStart_->setObjectName(QStringLiteral("primaryButton"));
-  btnStart_->setToolTip(QStringLiteral("开始运行当前绑定流程"));
+  btnStart_->setToolTip(QStringLiteral("开始运行当前绑定流程 · F5"));
   btnStart_->setStatusTip(QStringLiteral("Host · 开始运行"));
-  btnPause_->setToolTip(QStringLiteral("暂停连续运行"));
+  btnPause_->setToolTip(QStringLiteral("暂停连续运行 · 连续中可暂停"));
   btnPause_->setStatusTip(QStringLiteral("Host · 暂停"));
   btnResume_->setToolTip(QStringLiteral("从暂停/报警继续"));
   btnResume_->setStatusTip(QStringLiteral("Host · 继续"));
@@ -104,6 +105,8 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   history_ = new QListWidget;
   history_->setObjectName(QStringLiteral("alarmHistory"));
   history_->setMinimumHeight(72);
+  history_->setToolTip(QStringLiteral("报警历史 · 最近事件"));
+  history_->setStatusTip(QStringLiteral("Host · 报警历史"));
   root->addWidget(history_, 1);
 
   connect(btnStart_, &QPushButton::clicked, this, [this]() {
