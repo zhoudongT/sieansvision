@@ -31,7 +31,10 @@ FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   auto* stop = new QPushButton(QStringLiteral("■"));
   stop->setFixedWidth(28);
   stop->setToolTip(QStringLiteral("停止运行 / 连续"));
-  auto* hint = new QLabel(QStringLiteral("自动排列 · 适应 · 撤销 · 重做"));
+  auto* fit = new QPushButton(QStringLiteral("适应"));
+  fit->setFixedWidth(40);
+  fit->setToolTip(QStringLiteral("适应流程画布"));
+  auto* hint = new QLabel(QStringLiteral("自动排列 · 撤销 · 重做"));
   hint->setObjectName(QStringLiteral("muted"));
   lay->addWidget(allBtn_);
   lay->addWidget(flowBtn_);
@@ -39,12 +42,14 @@ FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   lay->addWidget(runOnce);
   lay->addWidget(runCont);
   lay->addWidget(stop);
+  lay->addWidget(fit);
   lay->addStretch(1);
   lay->addWidget(hint);
   connect(allBtn_, &QPushButton::clicked, this, &FlowTabBar::allFlowsRequested);
   connect(runOnce, &QPushButton::clicked, this, &FlowTabBar::runOnceRequested);
   connect(runCont, &QPushButton::clicked, this, &FlowTabBar::runContinuousRequested);
   connect(stop, &QPushButton::clicked, this, &FlowTabBar::stopRequested);
+  connect(fit, &QPushButton::clicked, this, &FlowTabBar::fitRequested);
   setStyleSheet(QStringLiteral(
       "QWidget#flowTabBar{background:#232528;border-bottom:1px solid #4a4e54;}"
       "QPushButton#flowTab,QPushButton#flowTabActive{border:0;padding:3px 10px;"

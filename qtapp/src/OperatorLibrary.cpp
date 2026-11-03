@@ -164,7 +164,7 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
        QStringLiteral("识别"), QStringLiteral("C++ zxing 解码")},
       {QStringLiteral("var_calc"), QStringLiteral("变量计算"),
        QStringLiteral("变量与数据"),
-       QStringLiteral("expr: in / and / or / A if C else B")},
+       QStringLiteral("expr: in / startswith / endswith / contains")},
       {QStringLiteral("format_data"), QStringLiteral("格式化数据"),
        QStringLiteral("变量与数据"),
        QStringLiteral("模板 {name}/${flow.x}/{{name}} · emptyDefault")},

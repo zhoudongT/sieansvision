@@ -26,7 +26,7 @@ checks = [
     (QT / "MainWindow.cpp", ["SIEANS_QT_AUTO_RUN", "SIEANS_QT_FORCE_SEED", "autoStart", "barcodeText=%6", "lastRecv=%8"]),
     (QT / "GenTLWorker.cpp", ["makeSoftFrame(1280, 1024"]),
     (QT / "OperatorLibrary.cpp", ["focusSearch", "Key_F", "def.tip.contains"]),
-    (QT / "ExprEval.cpp", ['"needle" in haystack', "in-miss"]),
+    (QT / "ExprEval.cpp", ['"needle" in haystack', "in-miss", "startswith", "endswith", "contains-fn", "lower"]),
     (QT / "VarWatchPanel.cpp", ["lastRecv", "theme::OK", "theme::NG"]),
     (QT / "HostStrip.cpp", ["lastRecv", "RX="]),
     (QT / "CommPanel.cpp", ["TX %2", "RX %3"]),
@@ -35,7 +35,7 @@ checks = [
     (QT / "FlowTabBar.cpp", ["stopRequested", "停止运行"]),
     (QT / "FlowTabBar.hpp", ["stopRequested"]),
     (QT / "MainWindow.cpp", ["emptyDefault", "FlowTabBar::stopRequested"]),
-    (QT / "PropertyPanel.cpp", ["emptyDefault", "expr: in / and / or", "{{name}}"]),
+    (QT / "PropertyPanel.cpp", ["emptyDefault", "startswith/endswith/contains", "{{name}}"]),
     (QT / "FlowIoDialog.cpp", ["{{name}}"]),
     (QT / "SieansDocument.cpp", ["emptyDefault", "BARCODE empty"]),
     (QT / "FlowCanvas.cpp", ["Right-edge run-state", "状态：%2", "theme::WARN"]),
@@ -43,6 +43,9 @@ checks = [
     (QT / "CommHub.cpp", ["reconnectAttempts_", "reconnect #%1"]),
     (QT / "FilmstripBar.cpp", ["InternalMove", "已重排", "拖拽缩略图重排"]),
     (QT / "PropertyFloat.cpp", ["focusNextPrevChild", "Key_Backtab"]),
+    (QT / "CommPanel.cpp", ["reconnect", "color:#e0b84a"]),
+    (QT / "FlowTabBar.cpp", ["fitRequested", "适应流程画布"]),
+    (QT / "MainWindow.cpp", ["FlowTabBar::fitRequested"]),
 ]
 
 for path, needles in checks:

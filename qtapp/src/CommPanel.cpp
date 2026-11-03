@@ -85,6 +85,12 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
     connect(hub_, &CommHub::transcriptChanged, this, &CommPanel::refreshTranscript);
     connect(hub_, &CommHub::statusChanged, this, [this](const QString& s) {
       status_->setText(QStringLiteral("TCP: %1").arg(s));
+      if (s.contains(QStringLiteral("reconnect")))
+        status_->setStyleSheet(QStringLiteral("color:#e0b84a;font-weight:600;"));
+      else if (s.contains(QStringLiteral("connected")))
+        status_->setStyleSheet(QStringLiteral("color:#3ecf8e;font-weight:600;"));
+      else
+        status_->setStyleSheet(QString());
     });
   }
 }

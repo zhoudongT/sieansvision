@@ -321,6 +321,7 @@ void MainWindow::buildUi() {
   connect(flow_tabs_, &FlowTabBar::runContinuousRequested, this,
           &MainWindow::onRunContinuous);
   connect(flow_tabs_, &FlowTabBar::stopRequested, this, &MainWindow::onStopRun);
+  connect(flow_tabs_, &FlowTabBar::fitRequested, flow_view_, &FlowView::fitAll);
   horizontal->addWidget(flowPane);
 
   connect(flow_scene_, &FlowScene::nodeSelected, this, &MainWindow::onNodeSelected);

@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -412,6 +412,24 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
           }
           return acc;
         }
+        if (name == QLatin1String("startswith") ||
+            name == QLatin1String("endswith") ||
+            name == QLatin1String("contains")) {
+          if (args.size() < 2) return 0;
+          const QString hay = evalRec(args[0]).toString();
+          const QString needle = evalRec(args[1]).toString();
+          if (name == QLatin1String("startswith"))
+            return hay.startsWith(needle) ? 1 : 0;
+          if (name == QLatin1String("endswith"))
+            return hay.endsWith(needle) ? 1 : 0;
+          return hay.contains(needle) ? 1 : 0;
+        }
+        if (name == QLatin1String("lower"))
+          return args.isEmpty() ? QString()
+                                : evalRec(args[0]).toString().toLower();
+        if (name == QLatin1String("upper"))
+          return args.isEmpty() ? QString()
+                                : evalRec(args[0]).toString().toUpper();
       }
     }
 
@@ -509,6 +527,18 @@ QStringList exprSelfTest() {
         ev.eval(QStringLiteral("\"ELL\" in %1.text").arg(sid)), QStringLiteral("1"));
   check(QStringLiteral("in-miss"),
         ev.eval(QStringLiteral("\"ZZZ\" in %1.text").arg(sid)), QStringLiteral("0"));
+  check(QStringLiteral("startswith"),
+        ev.eval(QStringLiteral("startswith(%1.text, \"HE\")").arg(sid)),
+        QStringLiteral("1"));
+  check(QStringLiteral("endswith"),
+        ev.eval(QStringLiteral("endswith(%1.text, \"LO\")").arg(sid)),
+        QStringLiteral("1"));
+  check(QStringLiteral("contains-fn"),
+        ev.eval(QStringLiteral("contains(%1.text, \"ELL\")").arg(sid)),
+        QStringLiteral("1"));
+  check(QStringLiteral("lower"),
+        ev.eval(QStringLiteral("lower(%1.text)").arg(sid)),
+        QStringLiteral("hello"));
   return fails;
 }
 
