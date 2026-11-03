@@ -28,6 +28,7 @@ class HostStrip : public QWidget {
   void resetStreak();
   void copyRunStats();
   void pasteWatchKeysFromClipboard();
+  void copyWatchKeys();
   int okStreak() const { return okStreak_; }
   int ngCount() const { return ngCount_; }
 

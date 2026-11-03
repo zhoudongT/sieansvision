@@ -72,7 +72,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   chips_->setObjectName(QStringLiteral("muted"));
   chips_->setWordWrap(true);
   chips_->setCursor(Qt::PointingHandCursor);
-  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+V 粘贴键 · 单击复制全文"));
+  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+K/V 复制/粘贴键 · 单击复制全文"));
   chips_->installEventFilter(this);
   root->addWidget(chips_);
   setStyleSheet(QStringLiteral("background:#232528;border-top:1px solid #4a4e54;"));
@@ -427,6 +427,11 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       pasteWatchKeysFromClipboard();
       return true;
     }
+    if (ke->key() == Qt::Key_K && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier)) {
+      copyWatchKeys();
+      return true;
+    }
     }
   }
   return QWidget::eventFilter(obj, event);
@@ -474,6 +479,16 @@ void HostStrip::pasteWatchKeysFromClipboard() {
   refreshChips({});
   if (chips_)
     chips_->setToolTip(QStringLiteral("已粘贴监视键 %1 · Ctrl+Shift+V").arg(keys.size()));
+}
+
+
+void HostStrip::copyWatchKeys() {
+  const QString line = watchKeys_.join(QLatin1Char(','));
+  if (auto* clip = QGuiApplication::clipboard()) clip->setText(line);
+  if (chips_)
+    chips_->setToolTip(
+        line.isEmpty() ? QStringLiteral("监视键空 · Ctrl+Shift+K")
+                       : QStringLiteral("已复制监视键 %1 · Ctrl+Shift+K").arg(watchKeys_.size()));
 }
 
 }  // namespace sieans_qt
