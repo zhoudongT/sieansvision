@@ -45,7 +45,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   runAll->setToolTip(QStringLiteral("运行全部本地图 · F5/F9"));
   runAll->setStatusTip(QStringLiteral("胶片 · 运行全部 · F5/F9"));
   auto* add = new QPushButton(QStringLiteral("+"));
-  add->setToolTip(QStringLiteral("添加图像 · Insert"));
+  add->setToolTip(QStringLiteral("添加图像 · Insert · 多选可一次加入"));
   add->setFixedWidth(28);
   auto* folder = new QPushButton(QStringLiteral("文件夹"));
   folder->setToolTip(QStringLiteral("添加图像文件夹 · F7"));
