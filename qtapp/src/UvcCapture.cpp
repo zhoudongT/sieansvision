@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QImage>
+#include <QtGlobal>
 
 #include <cerrno>
 #include <cstring>
@@ -12,6 +13,7 @@
 #include <sys/select.h>
 #include <unistd.h>
 #include <linux/videodev2.h>
+#include <linux/v4l2-controls.h>
 
 namespace sieans_qt {
 namespace {
@@ -225,6 +227,23 @@ QImage UvcCapture::decodeFrame(const void* data, size_t len) {
   }
   Q_UNUSED(fourccName);
   return {};
+}
+
+bool UvcCapture::applyHardwareControls(int exposureUs, double gainDb) {
+  if (fd_ < 0) return false;
+  bool any = false;
+  v4l2_control ctrl{};
+  ctrl.id = V4L2_CID_EXPOSURE_AUTO;
+  ctrl.value = V4L2_EXPOSURE_MANUAL;
+  if (xioctl(fd_, VIDIOC_S_CTRL, &ctrl) == 0) any = true;
+  ctrl.id = V4L2_CID_EXPOSURE_ABSOLUTE;
+  // Absolute exposure is in 100 µs units on most UVC webcams.
+  ctrl.value = qBound(1, exposureUs / 100, 10000);
+  if (xioctl(fd_, VIDIOC_S_CTRL, &ctrl) == 0) any = true;
+  ctrl.id = V4L2_CID_GAIN;
+  ctrl.value = qBound(0, int(gainDb), 255);
+  if (xioctl(fd_, VIDIOC_S_CTRL, &ctrl) == 0) any = true;
+  return any;
 }
 
 QImage UvcCapture::grab(int timeoutMs) {

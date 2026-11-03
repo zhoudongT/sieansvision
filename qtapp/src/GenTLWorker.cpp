@@ -1,4 +1,5 @@
 #include "GenTLWorker.hpp"
+#include "SoftFrame.hpp"
 #include "UvcCapture.hpp"
 
 #include <sieans/gentl_capture.hpp>
@@ -15,6 +16,7 @@ GenTLWorker::GenTLWorker(QObject* parent) : QObject(parent) {}
 GenTLWorker::~GenTLWorker() {
   stopPreview_.store(true);
   previewing_.store(false);
+  if (previewTimer_) previewTimer_->stop();
   try {
     if (capture_) {
       if (capture_->is_grabbing()) capture_->stop();
@@ -75,11 +77,62 @@ void GenTLWorker::openDeviceWithBackend(const QString& backend,
 
   backend_ = backend.toLower();
   if (backend_.isEmpty()) backend_ = QStringLiteral("gentl");
-  if (backend_ == QLatin1String("uvc") || backend_ == QLatin1String("usb")) {
+  if (backend_ == QLatin1String("usb")) backend_ = QStringLiteral("uvc");
+  if (backend_ == QLatin1String("sim") || backend_ == QLatin1String("synthetic"))
+    backend_ = QStringLiteral("soft");
+  fps_ = fps > 0 ? fps : 15.0;
+  if (exposureUs > 0) exposureUs_.store(clampExposureUs(exposureUs));
+  if (backend_ == QLatin1String("uvc")) {
     openUvc(deviceId);
+  } else if (backend_ == QLatin1String("soft")) {
+    openSoft(deviceId);
   } else {
-    openGentl(deviceId, fps, exposureUs);
+    openGentl(deviceId, fps_, exposureUs_.load());
   }
+}
+
+void GenTLWorker::setSoftControls(double exposureUs, double gainDb) {
+  exposureUs_.store(clampExposureUs(exposureUs));
+  gainMilliDb_.store(int(clampGainDb(gainDb) * 1000.0));
+  controlsDirty_.store(true);
+}
+
+QImage GenTLWorker::renderSoftFrame() {
+  return makeSoftFrame(640, 400, softSeq_++, exposureUs(), gainDb());
+}
+
+QImage GenTLWorker::toneIfNeeded(const QImage& src) {
+  if (src.isNull()) return {};
+  if (backend_ != QLatin1String("uvc") && backend_ != QLatin1String("soft")) return src;
+  return applySoftTone(src, exposureUs(), gainDb(), int(frameCounter_), true);
+}
+
+void GenTLWorker::applyDirtyHardware() {
+  if (!controlsDirty_.exchange(false)) return;
+  if (backend_ == QLatin1String("uvc") && uvc_ && uvc_->isOpen()) {
+    uvc_->applyHardwareControls(exposureUs(), gainDb());
+  } else if (backend_ == QLatin1String("gentl") && capture_ && capture_->is_open()) {
+    try {
+      capture_->set_exposure_us(exposureUs());
+    } catch (...) {
+    }
+  }
+}
+
+void GenTLWorker::openSoft(const QString& deviceId) {
+  deviceId_ = deviceId.isEmpty() ? QStringLiteral("soft:0") : deviceId;
+  open_.store(true);
+  QImage img = renderSoftFrame();
+  {
+    QMutexLocker lock(&frameMutex_);
+    latest_ = img;
+  }
+  emit opened(deviceId_);
+  emit frameReady(img, ++frameCounter_);
+  emit statusChanged(QStringLiteral("Soft 仿真相机已打开 %1 · exp=%2µs gain=%3dB")
+                         .arg(deviceId_)
+                         .arg(exposureUs())
+                         .arg(gainDb(), 0, 'f', 1));
 }
 
 void GenTLWorker::openUvc(const QString& deviceId) {
@@ -184,75 +237,91 @@ void GenTLWorker::startPreview() {
     emit errorOccurred(QStringLiteral("请先打开相机"));
     return;
   }
-  if (previewing_.load()) return;
+  if (previewing_.load() && previewTimer_ && previewTimer_->isActive()) return;
   stopPreview_.store(false);
   previewing_.store(true);
+  if (!previewTimer_) {
+    previewTimer_ = new QTimer(this);
+    connect(previewTimer_, &QTimer::timeout, this, &GenTLWorker::grabPreviewFrame);
+  }
+  const bool paced = backend_ == QLatin1String("soft") ||
+                     backend_ == QLatin1String("uvc") ||
+                     backend_ == QLatin1String("usb");
+  const int period =
+      paced ? qBound(30, int(1000.0 / (fps_ > 0 ? fps_ : 15.0)), 1000) : 1;
+  previewTimer_->start(period);
   emit statusChanged(QStringLiteral("连续预览中…"));
-  previewLoop();
+  grabPreviewFrame();
 }
+
+void GenTLWorker::requestStop() { stopPreview_.store(true); }
 
 void GenTLWorker::stopPreview() {
   stopPreview_.store(true);
-  previewing_.store(false);
-  try {
-    if (capture_ && capture_->is_grabbing()) capture_->stop();
-  } catch (...) {
-  }
+  if (QThread::currentThread() == thread()) shutdownPreview();
 }
 
-void GenTLWorker::previewLoop() {
-  if (backend_ == QLatin1String("uvc") || backend_ == QLatin1String("usb")) {
-    while (!stopPreview_.load()) {
-      if (!uvc_ || !uvc_->isOpen()) break;
-      QImage img = uvc_->grab(500);
-      if (!img.isNull()) {
-        {
-          QMutexLocker lock(&frameMutex_);
-          latest_ = img;
-        }
-        emit frameReady(img, ++frameCounter_);
-      }
-      if (stopPreview_.load()) break;
-    }
-    previewing_.store(false);
-    emit statusChanged(QStringLiteral("预览已停止"));
-    return;
-  }
-
-  try {
-    if (!capture_->is_grabbing()) capture_->start();
-    while (!stopPreview_.load()) {
-      try {
-        auto frame = capture_->grab(500);
-        QImage img = frameToImage(frame);
-        if (!img.isNull()) {
-          {
-            QMutexLocker lock(&frameMutex_);
-            latest_ = img;
-          }
-          emit frameReady(img, static_cast<qint64>(frame.frame_id));
-        }
-      } catch (const std::exception& ex) {
-        if (stopPreview_.load()) break;
-        const QString msg = QString::fromUtf8(ex.what());
-        if (!msg.contains(QStringLiteral("timeout"), Qt::CaseInsensitive) &&
-            !msg.contains(QStringLiteral("超时"))) {
-          emit errorOccurred(QStringLiteral("预览: %1").arg(msg));
-          QThread::msleep(50);
-        }
-      }
-      if (stopPreview_.load()) break;
-    }
-  } catch (const std::exception& ex) {
-    emit errorOccurred(QStringLiteral("预览循环异常: %1")
-                           .arg(QString::fromUtf8(ex.what())));
-  }
-  previewing_.store(false);
+void GenTLWorker::shutdownPreview() {
+  if (previewTimer_) previewTimer_->stop();
+  const bool was = previewing_.exchange(false);
   try {
     if (capture_ && capture_->is_grabbing()) capture_->stop();
   } catch (...) {
   }
-  emit statusChanged(QStringLiteral("预览已停止"));
+  if (was) emit statusChanged(QStringLiteral("预览已停止"));
+}
+
+void GenTLWorker::grabPreviewFrame() {
+  if (stopPreview_.load() || !open_.load()) {
+    shutdownPreview();
+    return;
+  }
+  try {
+    QImage img;
+    qint64 fid = ++frameCounter_;
+    if (backend_ == QLatin1String("soft")) {
+      img = renderSoftFrame();
+    } else if (backend_ == QLatin1String("uvc") || backend_ == QLatin1String("usb")) {
+      if (!uvc_ || !uvc_->isOpen()) {
+        emit errorOccurred(QStringLiteral("UVC 已断开"));
+        shutdownPreview();
+        return;
+      }
+      applyDirtyHardware();
+      img = toneIfNeeded(uvc_->grab(500));
+    } else {
+      if (!capture_) {
+        shutdownPreview();
+        return;
+      }
+      applyDirtyHardware();
+      if (!capture_->is_grabbing()) capture_->start();
+      auto frame = capture_->grab(500);
+      img = frameToImage(frame);
+      fid = static_cast<qint64>(frame.frame_id);
+    }
+    if (stopPreview_.load()) {
+      shutdownPreview();
+      return;
+    }
+    if (!img.isNull()) {
+      {
+        QMutexLocker lock(&frameMutex_);
+        latest_ = img;
+      }
+      emit frameReady(img, fid);
+    }
+  } catch (const std::exception& ex) {
+    if (stopPreview_.load()) {
+      shutdownPreview();
+      return;
+    }
+    const QString msg = QString::fromUtf8(ex.what());
+    if (!msg.contains(QStringLiteral("timeout"), Qt::CaseInsensitive) &&
+        !msg.contains(QStringLiteral("超时"))) {
+      emit errorOccurred(QStringLiteral("预览: %1").arg(msg));
+    }
+  }
 }
 
 void GenTLWorker::grabOne() {
@@ -261,9 +330,20 @@ void GenTLWorker::grabOne() {
       emit errorOccurred(QStringLiteral("请先打开相机"));
       return;
     }
+    if (backend_ == QLatin1String("soft")) {
+      applyDirtyHardware();
+      QImage img = renderSoftFrame();
+      {
+        QMutexLocker lock(&frameMutex_);
+        latest_ = img;
+      }
+      emit frameReady(img, ++frameCounter_);
+      return;
+    }
     if (backend_ == QLatin1String("uvc") || backend_ == QLatin1String("usb")) {
       if (!uvc_) return;
-      QImage img = uvc_->grab(3000);
+      applyDirtyHardware();
+      QImage img = toneIfNeeded(uvc_->grab(3000));
       if (img.isNull()) {
         emit errorOccurred(QStringLiteral("UVC 采到空帧"));
         return;

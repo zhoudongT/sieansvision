@@ -10,6 +10,7 @@
 #include <QHash>
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <QResizeEvent>
 
 namespace sieans_qt {
 
@@ -106,6 +107,8 @@ class FlowScene : public QGraphicsScene {
   void setNodeRunState(const QString& id, const QString& state,
                        const QColor& badge = {});
   void resetRunStates();
+  void setEditingLocked(bool locked);
+  bool editingLocked() const { return editingLocked_; }
   FlowNodeItem* selectedNode() const;
   QString selectedNodeId() const;
   FlowEdgeItem* selectedEdge() const;
@@ -148,17 +151,21 @@ class FlowScene : public QGraphicsScene {
   QVector<FlowEdgeItem*> edges_;
 
   bool linking_ = false;
+  bool editingLocked_ = false;
   QString linkNodeId_;
   QString linkSide_;
   bool linkOutput_ = true;
   QGraphicsPathItem* linkPreview_ = nullptr;
 };
 
+class FlowMinimap;
+
 class FlowView : public QGraphicsView {
   Q_OBJECT
  public:
   explicit FlowView(FlowScene* scene, QWidget* parent = nullptr);
   void fitAll();
+  FlowMinimap* minimap() const { return minimap_; }
 
  signals:
   void operatorDropped(const QString& key, const QPointF& scenePos);
@@ -169,6 +176,11 @@ class FlowView : public QGraphicsView {
   void dragEnterEvent(QDragEnterEvent* event) override;
   void dragMoveEvent(QDragMoveEvent* event) override;
   void dropEvent(QDropEvent* event) override;
+  void resizeEvent(QResizeEvent* event) override;
+
+ private:
+  void placeMinimap();
+  FlowMinimap* minimap_ = nullptr;
 };
 
 }  // namespace sieans_qt

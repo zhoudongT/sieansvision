@@ -1,4 +1,5 @@
 #include "FlowCanvas.hpp"
+#include "FlowMinimap.hpp"
 
 #include "Theme.hpp"
 #include <QMimeData>
@@ -121,7 +122,8 @@ void FlowNodeItem::setRunState(const QString& state, const QColor& badge) {
            state == QStringLiteral("完成"))
     badgeColor_ = QColor(theme::OK);
   else if (state.startsWith(QStringLiteral("NG")) ||
-           state.contains(QStringLiteral("失败")))
+           state.contains(QStringLiteral("失败")) ||
+           state.contains(QStringLiteral("未配置")))
     badgeColor_ = QColor(QStringLiteral("#e53935"));
   else if (state.contains(QStringLiteral("运行")))
     badgeColor_ = QColor(theme::WARN);
@@ -181,6 +183,15 @@ void FlowNodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*,
       textRect, Qt::AlignVCenter | Qt::AlignLeft,
       painter->fontMetrics().elidedText(label_, Qt::ElideRight,
                                         int(textRect.width())));
+  if (runState_.contains(QStringLiteral("未配置"))) {
+    painter->setPen(QColor(QStringLiteral("#e53935")));
+    QFont bang = font;
+    bang.setBold(true);
+    bang.setPointSize(12);
+    painter->setFont(bang);
+    painter->drawText(QRectF(kWidth - 16, 0, 14, kHeight), Qt::AlignCenter,
+                      QStringLiteral("!"));
+  }
 }
 
 QVariant FlowNodeItem::itemChange(GraphicsItemChange change,
@@ -299,6 +310,13 @@ void FlowScene::resetRunStates() {
   }
 }
 
+void FlowScene::setEditingLocked(bool locked) {
+  editingLocked_ = locked;
+  for (FlowNodeItem* node : nodes_) {
+    node->setFlag(QGraphicsItem::ItemIsMovable, !locked);
+  }
+}
+
 FlowNodeItem* FlowScene::selectedNode() const {
   for (QGraphicsItem* it : selectedItems()) {
     if (auto* n = dynamic_cast<FlowNodeItem*>(it)) return n;
@@ -334,6 +352,10 @@ void FlowScene::notifyMoved(FlowNodeItem* node) {
 }
 
 void FlowScene::startLink(FlowPortItem* port) {
+  if (editingLocked_) {
+    emit linkNotice(QStringLiteral("运行模式已锁定画布"));
+    return;
+  }
   if (!port || !port->owner()) return;
   cancelLink();
   linking_ = true;
@@ -549,6 +571,11 @@ void FlowScene::keyPressEvent(QKeyEvent* event) {
     return;
   }
   if (event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) {
+    if (editingLocked_) {
+      emit linkNotice(QStringLiteral("运行模式已锁定画布"));
+      event->accept();
+      return;
+    }
     if (selectedEdge()) {
       removeSelectedEdge();
       event->accept();
@@ -569,7 +596,12 @@ FlowView::FlowView(FlowScene* scene, QWidget* parent)
   setBackgroundBrush(QColor(theme::CANVAS));
   setFocusPolicy(Qt::StrongFocus);
   setAcceptDrops(true);
+
+  minimap_ = new FlowMinimap(scene, this, this);
+  minimap_->raise();
+  placeMinimap();
 }
+
 
 void FlowView::fitAll() {
   if (!scene() || scene()->items().isEmpty()) return;
@@ -580,6 +612,7 @@ void FlowView::fitAll() {
 void FlowView::wheelEvent(QWheelEvent* event) {
   const qreal factor = event->angleDelta().y() > 0 ? 1.12 : (1.0 / 1.12);
   scale(factor, factor);
+  if (minimap_) minimap_->update();
 }
 
 void FlowView::keyPressEvent(QKeyEvent* event) {
@@ -594,6 +627,12 @@ void FlowView::keyPressEvent(QKeyEvent* event) {
 }
 
 void FlowView::dragEnterEvent(QDragEnterEvent* event) {
+  if (auto* sc = qobject_cast<FlowScene*>(scene())) {
+    if (sc->editingLocked()) {
+      event->ignore();
+      return;
+    }
+  }
   if (event->mimeData() &&
       event->mimeData()->hasFormat(QStringLiteral("application/x-sieans-operator"))) {
     event->setDropAction(Qt::CopyAction);
@@ -614,6 +653,12 @@ void FlowView::dragMoveEvent(QDragMoveEvent* event) {
 }
 
 void FlowView::dropEvent(QDropEvent* event) {
+  if (auto* sc = qobject_cast<FlowScene*>(scene())) {
+    if (sc->editingLocked()) {
+      event->ignore();
+      return;
+    }
+  }
   if (!event->mimeData() ||
       !event->mimeData()->hasFormat(QStringLiteral("application/x-sieans-operator"))) {
     event->ignore();
@@ -629,6 +674,19 @@ void FlowView::dropEvent(QDropEvent* event) {
   emit operatorDropped(key, sp);
   event->setDropAction(Qt::CopyAction);
   event->accept();
+}
+
+void FlowView::placeMinimap() {
+  if (!minimap_) return;
+  const int m = 8;
+  minimap_->move(width() - minimap_->width() - m, height() - minimap_->height() - m);
+  minimap_->raise();
+  minimap_->update();
+}
+
+void FlowView::resizeEvent(QResizeEvent* event) {
+  QGraphicsView::resizeEvent(event);
+  placeMinimap();
 }
 
 }  // namespace sieans_qt

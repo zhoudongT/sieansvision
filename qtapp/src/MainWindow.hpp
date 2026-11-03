@@ -14,6 +14,7 @@
 #include "FlowTabBar.hpp"
 #include "PropertyFloat.hpp"
 #include "OperatorRail.hpp"
+#include "HostStatePanel.hpp"
 
 #include <QMainWindow>
 #include <QPlainTextEdit>
@@ -43,17 +44,23 @@ class MainWindow : public QMainWindow {
   void onEnumerateGenTL();
   void onOpenCameraManager();
   void onOpenCommManager();
+  void onOpenFlowIo();
   void onStartContinuousPreview();
   void onStopContinuousPreview();
   void onRunOnce();
   void onRunContinuous();
+  void onPauseRun();
+  void onResumeRun();
   void onStopRun();
+  void onToggleRunMode(bool on);
+  void onRunAllImages();
   void onAbout();
   void onNodeSelected(const QString& nodeId);
   void onAddOperator(const QString& key, const QString& name);
   void onDropOperator(const QString& key, const QPointF& scenePos);
   void onParamEdited(const QString& nodeId, const QString& key,
                      const QString& value);
+  void onParamsReverted(const QString& nodeId, const QVariantMap& snapshot);
   void onPreviewFrame(const QImage& image, qint64 frameId);
   void onWorkerError(const QString& msg);
   void onWorkerStatus(const QString& msg);
@@ -69,7 +76,10 @@ class MainWindow : public QMainWindow {
   void applyDocumentToUi();
   void logResult(const QString& line);
   void showStatus(const QString& msg, int timeout_ms = 5000);
-  bool loadImagePath(const QString& path);
+  bool loadImagePath(const QString& path, bool addToStrip = true);
+  void refreshConfigStatus();
+  void auditParam(const QString& nodeId, const QString& key, const QString& oldText,
+                  const QString& newText);
   void runPipeline(const QImage& src, bool updateFlowStates);
   void runDecodeOnImage(const QImage& src, bool updateFlowStates);
   bool ensureCameraOpen();
@@ -78,6 +88,8 @@ class MainWindow : public QMainWindow {
   void setBusy(bool busy);
   void updateRunChrome();
   void syncVarsToUi();
+  void pushSoftControls();
+  void noteHostResult(bool ok, const QString& detail);
   QStringList topologicalStepIds() const;
   void addOperatorAt(const QString& key, const QString& name,
                      const QPointF& pos, bool autoWire);
@@ -100,15 +112,20 @@ class MainWindow : public QMainWindow {
   CommPanel* comm_panel_ = nullptr;
   VarWatchPanel* var_watch_ = nullptr;
   HostStrip* host_strip_ = nullptr;
+  HostStatePanel* host_sm_ = nullptr;
+  QTabWidget* bottom_tabs_ = nullptr;
   QPlainTextEdit* result_log_ = nullptr;
   QTableWidget* result_table_ = nullptr;
   QLabel* status_backend_ = nullptr;
   QLabel* status_busy_ = nullptr;
+  QLabel* status_config_ = nullptr;
+  QLabel* status_timing_ = nullptr;
   QLabel* project_label_ = nullptr;
 
   QAction* act_run_ = nullptr;
   QAction* act_cont_ = nullptr;
   QAction* act_stop_ = nullptr;
+  QAction* act_mode_ = nullptr;
   QAction* act_preview_ = nullptr;
   QAction* act_preview_stop_ = nullptr;
 
@@ -122,6 +139,8 @@ class MainWindow : public QMainWindow {
   QTimer continuous_timer_;
   std::atomic<bool> busy_{false};
   bool continuous_run_ = false;
+  bool run_paused_ = false;
+  bool run_mode_ = false;
   bool preview_active_ = false;
   qint64 preview_frames_ = 0;
 };

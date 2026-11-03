@@ -4,6 +4,7 @@
 #include <QMutex>
 #include <QObject>
 #include <QString>
+#include <QTimer>
 #include <atomic>
 #include <memory>
 
@@ -22,7 +23,7 @@ class GenTLWorker : public QObject {
   ~GenTLWorker() override;
 
  public slots:
-  /** backend: "gentl" | "uvc" (default gentl). */
+  /** backend: "gentl" | "uvc" | "soft" (default gentl). */
   void openDevice(const QString& deviceId, double fps, double exposureUs);
   void openDeviceWithBackend(const QString& backend, const QString& deviceId,
                              double fps, double exposureUs);
@@ -30,6 +31,10 @@ class GenTLWorker : public QObject {
   void startPreview();
   void stopPreview();
   void grabOne();
+  /** Thread-safe. Sets the stop flag; the worker applies it between frames. */
+  void requestStop();
+  /** Thread-safe. Preview reads these every frame; hardware apply is deferred. */
+  void setSoftControls(double exposureUs, double gainDb);
 
  signals:
   void opened(const QString& deviceId);
@@ -38,6 +43,9 @@ class GenTLWorker : public QObject {
   void errorOccurred(const QString& message);
   void statusChanged(const QString& message);
 
+ private slots:
+  void grabPreviewFrame();
+
  public:
   bool isOpen() const { return open_.load(); }
   bool isPreviewing() const { return previewing_.load(); }
@@ -45,9 +53,15 @@ class GenTLWorker : public QObject {
   QImage latestFrame() const;
 
  private:
-  void previewLoop();
   void openGentl(const QString& deviceId, double fps, double exposureUs);
   void openUvc(const QString& deviceId);
+  void openSoft(const QString& deviceId);
+  void shutdownPreview();
+  QImage renderSoftFrame();
+  QImage toneIfNeeded(const QImage& src);
+  void applyDirtyHardware();
+  int exposureUs() const { return exposureUs_.load(); }
+  double gainDb() const { return gainMilliDb_.load() / 1000.0; }
 
   std::unique_ptr<sieans::GenTLCapture> capture_;
   std::unique_ptr<UvcCapture> uvc_;
@@ -57,9 +71,14 @@ class GenTLWorker : public QObject {
   std::atomic<bool> open_{false};
   std::atomic<bool> previewing_{false};
   std::atomic<bool> stopPreview_{false};
+  std::atomic<int> exposureUs_{10000};
+  std::atomic<int> gainMilliDb_{0};
+  std::atomic<bool> controlsDirty_{false};
+  QTimer* previewTimer_ = nullptr;
   QString deviceId_;
   double fps_ = 15.0;
   qint64 frameCounter_ = 0;
+  int softSeq_ = 0;
 };
 
 }  // namespace sieans_qt

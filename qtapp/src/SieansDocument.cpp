@@ -63,6 +63,7 @@ bool SieansDocument::loadFromFile(const QString& path, QString* error) {
 
   variables_ = objectToMap(raw_.value(QStringLiteral("variables")).toObject());
   commManager_ = objectToMap(raw_.value(QStringLiteral("commManager")).toObject());
+  flowIo_ = objectToMap(raw_.value(QStringLiteral("io")).toObject());
 
   edges_.clear();
   const QJsonArray edgesArr = raw_.value(QStringLiteral("edges")).toArray();
@@ -120,6 +121,8 @@ bool SieansDocument::saveToFile(const QString& path, QString* error) const {
   root.insert(QStringLiteral("variables"), mapToObject(variables_));
   if (!commManager_.isEmpty())
     root.insert(QStringLiteral("commManager"), mapToObject(commManager_));
+  if (!flowIo_.isEmpty())
+    root.insert(QStringLiteral("io"), mapToObject(flowIo_));
 
   QFile f(path);
   if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
@@ -161,6 +164,8 @@ QString SieansDocument::cameraBackend() const {
   }
   b = b.toLower();
   if (b == QLatin1String("usb")) b = QStringLiteral("uvc");
+  if (b == QLatin1String("sim") || b == QLatin1String("synthetic"))
+    b = QStringLiteral("soft");
   if (b.isEmpty()) b = QStringLiteral("gentl");
   return b;
 }
@@ -195,6 +200,13 @@ double SieansDocument::exposureUs() const {
   if (cam.contains(QStringLiteral("exposureTime")))
     return cam.value(QStringLiteral("exposureTime")).toDouble();
   return sourceConfig_.value(QStringLiteral("exposure"), 2000).toDouble();
+}
+
+double SieansDocument::gainDb() const {
+  const QVariantMap cam = sourceConfig_.value(QStringLiteral("cameraParams")).toMap();
+  if (cam.contains(QStringLiteral("gainDb")))
+    return cam.value(QStringLiteral("gainDb")).toDouble();
+  return sourceConfig_.value(QStringLiteral("gainDb"), 0).toDouble();
 }
 
 void SieansDocument::seedGentlQrDemo() {
@@ -275,6 +287,29 @@ void SieansDocument::seedGentlQrDemo() {
                    {QStringLiteral("framing"), QStringLiteral("lf")},
                    {QStringLiteral("role"), QStringLiteral("server")},
                    {QStringLiteral("ack"), QStringLiteral("OK")}}},
+  };
+  flowIo_ = {
+      {QStringLiteral("inputs"),
+       QVariantList{
+           QVariantMap{{QStringLiteral("name"), QStringLiteral("ImageData")},
+                       {QStringLiteral("type"), QStringLiteral("IMAGE")},
+                       {QStringLiteral("binding"), QStringLiteral("source.image")}},
+           QVariantMap{{QStringLiteral("name"), QStringLiteral("InputROI")},
+                       {QStringLiteral("type"), QStringLiteral("ROI")},
+                       {QStringLiteral("binding"), QString()}},
+       }},
+      {QStringLiteral("outputs"),
+       QVariantList{
+           QVariantMap{{QStringLiteral("name"), QStringLiteral("ImageData")},
+                       {QStringLiteral("type"), QStringLiteral("IMAGE")},
+                       {QStringLiteral("binding"), QStringLiteral("source.image")}},
+           QVariantMap{{QStringLiteral("name"), QStringLiteral("Result")},
+                       {QStringLiteral("type"), QStringLiteral("JSON")},
+                       {QStringLiteral("binding"), QStringLiteral("flow.vars")}},
+       }},
+      {QStringLiteral("display"),
+       QVariantMap{{QStringLiteral("globalImage"), true},
+                   {QStringLiteral("note"), QStringLiteral("Qt VM I/O 绑定")}}},
   };
 }
 

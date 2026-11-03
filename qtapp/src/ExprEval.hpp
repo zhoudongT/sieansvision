@@ -12,18 +12,23 @@ namespace sieans_qt {
 struct StepSnap {
   int count = 0;
   bool ok = false;
-  QStringList texts;  // items[].text
-  QVariantMap fields; // arbitrary extras
+  double score = 0;
+  double confidence = 0;
+  QString text;
+  int matches = 0;     // len(steps[id].matches)
+  QStringList texts;   // items[].text
+  QVariantMap fields;  // arbitrary extras (.field)
 };
 
 /**
- * Useful subset for open-and-run / passgate templates:
- *  - numbers, "strings", identifiers → vars
- *  - + - * / ( ) and comparisons == != < > <= >=
- *  - Python-ish `or` / `and`
+ * Subset of Python expressions used by open-and-run var_calc rows:
+ *  - numbers, strings, identifiers, flow.name
+ *  - + - * / // % and comparisons
+ *  - or / and / not
  *  - ternary: A if COND else B
- *  - steps["id"].count / .ok / .items / .items[N].text
- *  - "\\n".join(i.text for i in (steps["id"].items or []))  → join texts
+ *  - steps["id"].count|ok|score|confidence|text|matches|items|items[N].text
+ *  - len(...), int/str/abs/min/max
+ *  - "\\n".join(i.text for i in (steps["id"].items or []))
  */
 class ExprEval {
  public:
@@ -36,5 +41,8 @@ class ExprEval {
   QVariantMap vars_;
   QHash<QString, StepSnap> steps_;
 };
+
+/** Built-in rows from projects/*.sieans. Empty list means all passed. */
+QStringList exprSelfTest();
 
 }  // namespace sieans_qt

@@ -1,21 +1,47 @@
 #pragma once
+
 #include <QWidget>
+#include <QStringList>
+
 class QLabel;
-class QHBoxLayout;
+class QListWidget;
+class QCheckBox;
 
 namespace sieans_qt {
 
-/** PySide FilmstripBar chrome placeholder under image tabs. */
+/** VM 本地图像胶片条：图像源 (n/N)、自动切换、运行全部、添加/文件夹/删除。 */
 class FilmstripBar : public QWidget {
   Q_OBJECT
  public:
   explicit FilmstripBar(QWidget* parent = nullptr);
+
+  void addPaths(const QStringList& paths);
   void setStatus(const QString& text);
+  QString currentPath() const;
+  int count() const;
+  int index() const;
+  bool autoSwitch() const;
+  void advance();
+  QStringList paths() const { return paths_; }
+
  signals:
-  void openImageRequested();
+  void imageSelected(const QString& path);
+  void addImagesRequested();
+  void addFolderRequested();
   void runAllRequested();
+
  private:
+  void selectIndex(int index, bool emitSignal);
+  void refreshCount();
+  void rebuildThumbs();
+
+  QLabel* countLabel_ = nullptr;
   QLabel* status_ = nullptr;
+  QCheckBox* autoSwitch_ = nullptr;
+  QListWidget* list_ = nullptr;
+  QStringList paths_;
+  int index_ = -1;
+  bool rebuilding_ = false;
 };
 
 }  // namespace sieans_qt

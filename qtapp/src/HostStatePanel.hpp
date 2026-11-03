@@ -1,0 +1,59 @@
+#pragma once
+
+#include <QWidget>
+#include <QString>
+
+class QLabel;
+class QListWidget;
+class QComboBox;
+class QPushButton;
+
+namespace sieans_qt {
+
+/**
+ * Compact host HMI: Idle / Running / Paused / Alarm / Stopped,
+ * start-pause-resume-stop, and an alarm history list.
+ * Mechanical-arm jogs stay illustrative; start/stop drive the vision flow.
+ */
+class HostStatePanel : public QWidget {
+  Q_OBJECT
+ public:
+  explicit HostStatePanel(QWidget* parent = nullptr);
+
+  QString state() const { return state_; }
+  void applyState(const QString& state);
+  void raiseAlarm(const QString& reason);
+  /** Next OK clears a latched alarm when policy is "下次运行成功清除". */
+  void notifyOk();
+  void bindFlow(const QString& name, int steps);
+
+ signals:
+  void startRequested();
+  void pauseRequested();
+  void resumeRequested();
+  void stopRequested();
+  void clearAlarmRequested();
+
+ private:
+  void paintBadge();
+  void appendAlarm(const QString& reason, bool cleared);
+  void setButtons();
+
+  QString state_ = QStringLiteral("Idle");
+  QString latchedRun_ = QStringLiteral("Idle");
+  QString alarmPolicy_ = QStringLiteral("on_ok");
+  QLabel* badge_ = nullptr;
+  QLabel* flowLabel_ = nullptr;
+  QLabel* modeHint_ = nullptr;
+  QListWidget* history_ = nullptr;
+  QComboBox* mode_ = nullptr;
+  QComboBox* policy_ = nullptr;
+  QPushButton* btnStart_ = nullptr;
+  QPushButton* btnPause_ = nullptr;
+  QPushButton* btnResume_ = nullptr;
+  QPushButton* btnStop_ = nullptr;
+  QPushButton* btnClear_ = nullptr;
+  int alarmCount_ = 0;
+};
+
+}  // namespace sieans_qt

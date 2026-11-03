@@ -63,6 +63,16 @@ add_executable(sieans_qt
   src/FlowTabBar.cpp
   src/FilmstripBar.hpp
   src/FilmstripBar.cpp
+  src/SoftFrame.hpp
+  src/SoftFrame.cpp
+  src/HostStatePanel.hpp
+  src/HostStatePanel.cpp
+  src/TemplateMatch.hpp
+  src/TemplateMatch.cpp
+  src/FlowMinimap.hpp
+  src/FlowMinimap.cpp
+  src/FlowIoDialog.hpp
+  src/FlowIoDialog.cpp
 )
 
 target_include_directories(sieans_qt PRIVATE

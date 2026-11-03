@@ -12,7 +12,7 @@ class HostStrip : public QWidget {
   Q_OBJECT
  public:
   explicit HostStrip(QWidget* parent = nullptr);
-  void updateFromVars(const QVariantMap& vars, int codeCount = -1);
+  void updateFromVars(const QVariantMap& vars, int codeCount = -1, bool evaluated = false);
   void setWatchKeys(const QStringList& keys);
   void setAlarm(bool on, const QString& reason = {});
 

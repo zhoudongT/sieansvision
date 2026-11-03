@@ -4,8 +4,9 @@
 
 #include <QFormLayout>
 #include <QLabel>
-#include <QLineEdit>
 #include <QScrollArea>
+#include <QString>
+#include <QVector>
 #include <QWidget>
 
 namespace sieans_qt {
@@ -23,14 +24,25 @@ class PropertyPanel : public QWidget {
   void paramEdited(const QString& nodeId, const QString& key, const QString& value);
 
  private:
-  void rebuildForm(const QString& title, const QString& nodeId,
-                   const QVariantMap& params, const QStringList& preferKeys);
+  struct Spec {
+    QString key;
+    QString label;
+    int kind = 0;  // 0 line, 1 int, 2 real, 3 bool, 4 choice
+    QString choices;
+  };
+  static QVector<Spec> specsFor(const QString& op);
+  void rebuildForm(const QString& title, const QString& nodeId, const QString& op,
+                   const QVariantMap& params);
+  void addSpecRow(const Spec& spec, const QVariantMap& params);
+  void addExprTable(const QVariantList& rows);
+  void emitEdit(const QString& key, const QString& value);
 
   QLabel* title_ = nullptr;
   QLabel* meta_ = nullptr;
   QWidget* formHost_ = nullptr;
   QFormLayout* form_ = nullptr;
   QString currentId_;
+  bool building_ = false;
 };
 
 }  // namespace sieans_qt

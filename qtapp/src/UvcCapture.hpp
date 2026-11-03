@@ -30,6 +30,13 @@ class UvcCapture {
   /** Grab one frame; empty on failure/timeout. */
   QImage grab(int timeoutMs = 500);
 
+  /**
+   * Best-effort V4L2 manual exposure / analogue gain.
+   * Returns false when the driver rejects the control; caller still applies
+   * a software tone so the preview updates.
+   */
+  bool applyHardwareControls(int exposureUs, double gainDb);
+
   QString deviceId() const { return deviceId_; }
 
  private:

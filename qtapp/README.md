@@ -28,6 +28,8 @@
 - `SIEANS_QT_AUTO_SAMPLE=1` — 启动后加载示例 QR 并解码
 - `SIEANS_QT_AUTO_ENUM=1` — 枚举 GenTL
 - `SIEANS_QT_AUTO_PREVIEW=1` — 启动连续预览（相机空闲时）
+- `SIEANS_QT_AUTO_SOFT=1` — 切到 Soft 仿真相机并连续预览（不需要硬件）
+- `SIEANS_QT_AUTO_MATCH=1` — 追加快速匹配并单次运行（可与 `AUTO_SOFT` 同用）
 - `SIEANS_QT_AUTO_TCP=1` — 启动后按方案 tcpReal 配置监听/连接
 - `SIEANS_QT_SCREENSHOT=/path.png` — 启动后抓窗（配合 `SIEANS_QT_SCREENSHOT_QUIT=1` 可退出）
 - `SIEANS_QT_SMOKE_REPORT=/path.txt` — 写出 codes/ms/passGate 一行
@@ -36,6 +38,15 @@
 
 ## 已落地 vs NEXT
 
-**已落地（wave-3）：** 算子库 **拖放到画布**（mime `application/x-sieans-operator`）· **var_calc 表达式求值**（算术/比较/`or`/`and`/三元/`steps["id"].count|items[N].text`）· **UVC V4L2** 采集路径（与 GenTL 并列，空枚举友好）· Comm **多设备表** + TCP 端点编辑 · Host OK/NG/**ALARM** 条 + watch chips。
+**已落地（wave-5，对齐 VM P0）：** 本地图胶片条（图像源 n/N、添加图像、添加文件夹、删除、自动切换、运行全部）· 状态栏「组件配置完成 / 未配置」与「流程 · 工具 · 算法 ms」· 参数修改写历史日志（旧值/新值）· 工具栏「运行模式」锁定画布拖拽、连线和删除 · 图像源三种取图（本地图像 / 相机 / SDK）字段随模式切换 · 视口像素条 `宽×高 | X Y | R G B` · **快速匹配**：首次执行从当前图高对比区域建模板，绿框叠加分数。
 
-**NEXT：** 完整 Python AST var_calc · 算子属性浮窗对等 · Soft 仿真帧 · 更完整 Host 状态机 / 报警列表壳 · UVC 曝光软控热更新。
+**NEXT：** 快速匹配四 Tab（手动画模板 / 角度搜索）· 多流程 Tab 与 `.prc` 导入导出 · 运行界面设计器。
+
+## VM chrome (2026-11-03)
+
+- FilmstripBar: real local-image thumbs, add/folder/run-all/auto-switch
+- PropertyFloat: typed editors + revert on ✕/取消; drag title
+- OperatorLibrary: painted glyphs; FlowView corner FlowMinimap
+- Flow I/O dialog (输入/输出/显示) ↔ document `io`
+- HostStatePanel bottom tab + toolbar 运行模式 lock
+

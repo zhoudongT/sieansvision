@@ -168,9 +168,14 @@ QWidget#propertyFloatBody QLabel#sectionTitle { color: #c45f18; }
 QWidget#propertyFloatBody QLabel#muted { color: #666666; }
 QWidget#propertyFloatBody QLineEdit, QWidget#propertyFloatBody QSpinBox,
 QWidget#propertyFloatBody QDoubleSpinBox, QWidget#propertyFloatBody QComboBox,
-QWidget#propertyFloatBody QPlainTextEdit {
+QWidget#propertyFloatBody QPlainTextEdit, QWidget#propertyFloatBody QTableWidget {
   background: #ffffff; border: 1px solid #d0d0d0; border-radius: 2px;
   padding: 3px 6px; color: #222222; selection-background-color: #ffe0c0;
+}
+QWidget#propertyFloatBody QTableWidget { padding: 0; gridline-color: #e0e0e0; }
+QWidget#propertyFloatBody QHeaderView::section {
+  background: #f4f4f4; color: #333333; border: 0; border-bottom: 1px solid #d0d0d0;
+  padding: 3px;
 }
 QWidget#propertyFloatBody QLineEdit:focus {
   border: 1px solid #e67a2e;

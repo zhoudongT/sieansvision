@@ -2,6 +2,7 @@
 #include <functional>
 
 #include <QRegularExpression>
+#include <algorithm>
 #include <cmath>
 
 namespace sieans_qt {
@@ -74,87 +75,160 @@ int findTopLevel(const QString& s, const QStringList& ops) {
   return -1;
 }
 
+QString quoteLit(const QString& text) {
+  QString body = text;
+  body.replace(QLatin1Char('\\'), QStringLiteral("\\\\"));
+  body.replace(QLatin1Char('"'), QStringLiteral("\\\""));
+  body.replace(QLatin1Char('\n'), QStringLiteral("\\n"));
+  return QStringLiteral("\"%1\"").arg(body);
+}
+
+void replaceMatchesReverse(QString& expr, const QRegularExpression& re,
+                           const std::function<QString(const QRegularExpressionMatch&)>& repl) {
+  QRegularExpressionMatchIterator it = re.globalMatch(expr);
+  QList<QRegularExpressionMatch> ms;
+  while (it.hasNext()) ms.prepend(it.next());
+  for (const auto& m : ms) {
+    const int after = m.capturedStart() + m.capturedLength();
+    if (after < expr.size() && expr[after] == QLatin1Char('[')) continue;
+    expr.replace(m.capturedStart(), m.capturedLength(), repl(m));
+  }
+}
+
+int listLen(const StepSnap& snap, const QString& field) {
+  if (field == QLatin1String("matches"))
+    return snap.matches > 0 ? snap.matches : snap.texts.size();
+  if (field == QLatin1String("items")) return snap.texts.size();
+  return snap.texts.size();
+}
+
+QString rewriteStepFields(QString expr, const QHash<QString, StepSnap>& steps) {
+  {
+    static QRegularExpression lenOr(QStringLiteral(
+        R"re(len\s*\(\s*steps\["([^"]+)"\]\.(matches|items)(?:\s+or\s+steps\["([^"]+)"\]\.(matches|items))?(?:\s+or\s+\[\])?\s*\))re"));
+    replaceMatchesReverse(expr, lenOr, [&](const QRegularExpressionMatch& m) {
+      const StepSnap a = steps.value(m.captured(1));
+      const int na = listLen(a, m.captured(2));
+      if (na > 0 || m.captured(3).isEmpty()) return QString::number(na);
+      return QString::number(listLen(steps.value(m.captured(3)), m.captured(4)));
+    });
+  }
+  {
+    static QRegularExpression lenOne(QStringLiteral(
+        R"re(len\s*\(\s*steps\["([^"]+)"\]\.(matches|items)\s*\))re"));
+    replaceMatchesReverse(expr, lenOne, [&](const QRegularExpressionMatch& m) {
+      return QString::number(listLen(steps.value(m.captured(1)), m.captured(2)));
+    });
+  }
+  {
+    static QRegularExpression itemText(
+        QStringLiteral(R"re(steps\["([^"]+)"\]\.items\[(\d+)\]\.text)re"));
+    replaceMatchesReverse(expr, itemText, [&](const QRegularExpressionMatch& m) {
+      const StepSnap snap = steps.value(m.captured(1));
+      const int idx = m.captured(2).toInt();
+      const QString text =
+          (idx >= 0 && idx < snap.texts.size()) ? snap.texts[idx] : QString();
+      return quoteLit(text);
+    });
+  }
+
+  auto numField = [&](const QString& field, auto getter) {
+    const QRegularExpression re(
+        QStringLiteral(R"re(steps\["([^"]+)"\]\.)re") + field +
+        QStringLiteral("\\b"));
+    replaceMatchesReverse(expr, re, [&](const QRegularExpressionMatch& m) {
+      return getter(steps.value(m.captured(1)));
+    });
+  };
+  numField(QStringLiteral("count"), [](const StepSnap& s) { return QString::number(s.count); });
+  numField(QStringLiteral("ok"),
+           [](const StepSnap& s) { return QString::number(s.ok ? 1 : 0); });
+  numField(QStringLiteral("score"),
+           [](const StepSnap& s) { return QString::number(s.score, 'g', 8); });
+  numField(QStringLiteral("confidence"),
+           [](const StepSnap& s) { return QString::number(s.confidence, 'g', 8); });
+  numField(QStringLiteral("matches"),
+           [](const StepSnap& s) { return QString::number(s.matches); });
+  numField(QStringLiteral("text"), [](const StepSnap& s) { return quoteLit(s.text); });
+  numField(QStringLiteral("items"), [](const StepSnap& s) {
+    return QString::number(s.texts.isEmpty() ? 0 : 1);
+  });
+
+  {
+    static QRegularExpression extra(
+        QStringLiteral(R"re(steps\["([^"]+)"\]\.([A-Za-z_][A-Za-z0-9_]*))re"));
+    replaceMatchesReverse(expr, extra, [&](const QRegularExpressionMatch& m) {
+      const QVariant v = steps.value(m.captured(1)).fields.value(m.captured(2));
+      if (!v.isValid() || v.isNull()) return QStringLiteral("0");
+      if (v.typeId() == QMetaType::QString) return quoteLit(v.toString());
+      if (v.typeId() == QMetaType::Bool) return v.toBool() ? QStringLiteral("1") : QStringLiteral("0");
+      return v.toString().isEmpty() ? QStringLiteral("0") : v.toString();
+    });
+  }
+  return expr;
+}
+
+QStringList splitTopArgs(const QString& s) {
+  QStringList out;
+  int depth = 0;
+  bool inStr = false;
+  QChar q;
+  int start = 0;
+  for (int i = 0; i < s.size(); ++i) {
+    const QChar c = s[i];
+    if (inStr) {
+      if (c == q && (i == 0 || s[i - 1] != QLatin1Char('\\'))) inStr = false;
+      continue;
+    }
+    if (c == QLatin1Char('"') || c == QLatin1Char('\'')) {
+      inStr = true;
+      q = c;
+      continue;
+    }
+    if (c == QLatin1Char('(')) ++depth;
+    else if (c == QLatin1Char(')')) --depth;
+    else if (c == QLatin1Char(',') && depth == 0) {
+      out << s.mid(start, i - start).trimmed();
+      start = i + 1;
+    }
+  }
+  out << s.mid(start).trimmed();
+  return out;
+}
+
 }  // namespace
 
 QVariant ExprEval::eval(const QString& raw, QString* error) const {
   QString expr = raw.trimmed();
   if (expr.isEmpty()) return 0;
 
-  // Special-case join of step items texts (open-and-run barcodeAll)
+  // Whole-expression join used by barcodeAll rows (often wrapped in parens).
   {
     static QRegularExpression joinRe(
         QStringLiteral(
             R"re("[^"]*"\s*\.\s*join\s*\(\s*i\.text\s+for\s+i\s+in\s+\(steps\["([^"]+)"\]\.items(?:\s+or\s+\[\])?\)\s*\))re"));
-    auto m = joinRe.match(expr);
-    if (m.hasMatch()) {
-      const QString sid = m.captured(1);
-      const StepSnap snap = steps_.value(sid);
-      return snap.texts.join(QLatin1Char('\n'));
+    const QString stripped = stripParensOuter(expr);
+    auto m = joinRe.match(stripped);
+    if (m.hasMatch() && m.capturedStart() == 0 &&
+        m.capturedLength() == stripped.size()) {
+      return steps_.value(m.captured(1)).texts.join(QLatin1Char('\n'));
     }
   }
 
-  // Rewrite steps["id"].items[N].text
-  {
-    static QRegularExpression itemText(
-        QStringLiteral(R"re(steps\["([^"]+)"\]\.items\[(\d+)\]\.text)re"));
-    QRegularExpressionMatchIterator it = itemText.globalMatch(expr);
-    QList<QRegularExpressionMatch> ms;
-    while (it.hasNext()) ms.prepend(it.next());
-    for (const auto& m : ms) {
-      const StepSnap snap = steps_.value(m.captured(1));
-      const int idx = m.captured(2).toInt();
-      const QString text =
-          (idx >= 0 && idx < snap.texts.size()) ? snap.texts[idx] : QString();
-      QString lit = QStringLiteral("\"%1\"").arg(
-          QString(text).replace(QLatin1Char('\\'), QStringLiteral("\\\\"))
-              .replace(QLatin1Char('"'), QStringLiteral("\\\"")));
-      expr.replace(m.capturedStart(), m.capturedLength(), lit);
-    }
-  }
-  // steps["id"].count
-  {
-    static QRegularExpression countRe(
-        QStringLiteral(R"re(steps\["([^"]+)"\]\.count)re"));
-    QRegularExpressionMatchIterator it = countRe.globalMatch(expr);
-    QList<QRegularExpressionMatch> ms;
-    while (it.hasNext()) ms.prepend(it.next());
-    for (const auto& m : ms) {
-      const int c = steps_.value(m.captured(1)).count;
-      expr.replace(m.capturedStart(), m.capturedLength(), QString::number(c));
-    }
-  }
-  // steps["id"].ok
-  {
-    static QRegularExpression okRe(QStringLiteral(R"re(steps\["([^"]+)"\]\.ok)re"));
-    QRegularExpressionMatchIterator it = okRe.globalMatch(expr);
-    QList<QRegularExpressionMatch> ms;
-    while (it.hasNext()) ms.prepend(it.next());
-    for (const auto& m : ms) {
-      const int v = steps_.value(m.captured(1)).ok ? 1 : 0;
-      expr.replace(m.capturedStart(), m.capturedLength(), QString::number(v));
-    }
-  }
-  // steps["id"].items  (truthiness)
-  {
-    static QRegularExpression itemsRe(
-        QStringLiteral(R"re(steps\["([^"]+)"\]\.items)re"));
-    QRegularExpressionMatchIterator it = itemsRe.globalMatch(expr);
-    QList<QRegularExpressionMatch> ms;
-    while (it.hasNext()) ms.prepend(it.next());
-    for (const auto& m : ms) {
-      // skip if already rewritten as items[N]
-      const int after = m.capturedStart() + m.capturedLength();
-      if (after < expr.size() && expr[after] == QLatin1Char('[')) continue;
-      const int v = steps_.value(m.captured(1)).texts.isEmpty() ? 0 : 1;
-      expr.replace(m.capturedStart(), m.capturedLength(), QString::number(v));
-    }
-  }
+  expr = rewriteStepFields(expr, steps_);
 
   // Recursive evaluator on rewritten expr
   std::function<QVariant(QString)> evalRec;
   evalRec = [&](QString s) -> QVariant {
     s = stripParensOuter(s);
     if (s.isEmpty()) return 0;
+    if (s == QLatin1String("[]")) return 0;
+
+    if (s.startsWith(QLatin1String("not ")) || s.startsWith(QLatin1String("not("))) {
+      const QString rest =
+          s.startsWith(QLatin1String("not ")) ? s.mid(4) : s.mid(3);
+      return isTruthy(evalRec(rest)) ? 0 : 1;
+    }
 
     // ternary: A if COND else B
     {
@@ -251,15 +325,56 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
                                     : L.toDouble() - R.toDouble();
     }
 
-    // * /
-    pos = findTopLevel(s, {QStringLiteral("*"), QStringLiteral("/")});
+    // * / // %  (same precedence; longer ops first inside findTopLevel)
+    pos = findTopLevel(s, {QStringLiteral("//"), QStringLiteral("%"),
+                           QStringLiteral("*"), QStringLiteral("/")});
     if (pos >= 0) {
-      const QChar op = s[pos];
+      QString op = s.mid(pos, 2) == QLatin1String("//") ? QStringLiteral("//")
+                                                        : s.mid(pos, 1);
       QVariant L = evalRec(s.left(pos));
-      QVariant R = evalRec(s.mid(pos + 1));
-      if (op == QLatin1Char('*')) return L.toDouble() * R.toDouble();
+      QVariant R = evalRec(s.mid(pos + op.size()));
+      if (op == QLatin1String("*")) return L.toDouble() * R.toDouble();
+      if (op == QLatin1String("%")) {
+        const double den = R.toDouble();
+        if (den == 0.0) return 0;
+        return std::fmod(L.toDouble(), den);
+      }
       const double den = R.toDouble();
-      return den == 0.0 ? QVariant(0) : QVariant(L.toDouble() / den);
+      if (den == 0.0) return 0;
+      if (op == QLatin1String("//")) return std::floor(L.toDouble() / den);
+      return L.toDouble() / den;
+    }
+
+    // len / int / str / abs / min / max wrapping the whole atom
+    {
+      static QRegularExpression callRe(
+          QStringLiteral(R"re(^(len|int|str|abs|min|max)\((.*)\)$)re"));
+      const auto cm = callRe.match(s);
+      if (cm.hasMatch()) {
+        const QString name = cm.captured(1);
+        const QStringList args = splitTopArgs(cm.captured(2));
+        if (name == QLatin1String("len")) {
+          if (args.isEmpty()) return 0;
+          const QVariant v = evalRec(args[0]);
+          if (v.typeId() == QMetaType::QString) return v.toString().size();
+          return 0;
+        }
+        if (name == QLatin1String("int"))
+          return args.isEmpty() ? 0 : int(evalRec(args[0]).toDouble());
+        if (name == QLatin1String("str"))
+          return args.isEmpty() ? QString() : evalRec(args[0]).toString();
+        if (name == QLatin1String("abs"))
+          return args.isEmpty() ? 0 : std::fabs(evalRec(args[0]).toDouble());
+        if (name == QLatin1String("min") || name == QLatin1String("max")) {
+          if (args.isEmpty()) return 0;
+          double acc = evalRec(args[0]).toDouble();
+          for (int i = 1; i < args.size(); ++i) {
+            const double v = evalRec(args[i]).toDouble();
+            acc = name == QLatin1String("min") ? std::min(acc, v) : std::max(acc, v);
+          }
+          return acc;
+        }
+      }
     }
 
     // unary +/-
@@ -303,6 +418,56 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     if (error) *error = QStringLiteral("求值异常");
     return 0;
   }
+}
+
+QStringList exprSelfTest() {
+  QStringList fails;
+  auto check = [&](const QString& label, const QVariant& got, const QString& expect) {
+    if (got.toString() != expect)
+      fails << QStringLiteral("%1 → %2 (期望 %3)").arg(label, got.toString(), expect);
+  };
+  StepSnap snap;
+  snap.count = 2;
+  snap.ok = true;
+  snap.score = 0.8;
+  snap.confidence = 0.66;
+  snap.text = QStringLiteral("HELLO");
+  snap.matches = 3;
+  snap.texts = {QStringLiteral("HELLO"), QStringLiteral("WORLD")};
+  const QString id = QStringLiteral("b2c3d4e5f6071829");
+  QHash<QString, StepSnap> steps;
+  steps.insert(id, snap);
+  ExprEval ev;
+  ev.setSteps(steps);
+  ev.setVars({{QStringLiteral("passGate"), 1}, {QStringLiteral("barcodeCount"), 2}});
+
+  const QString sid = QStringLiteral("steps[\"%1\"]").arg(id);
+  check(QStringLiteral("count"), ev.eval(QStringLiteral("(%1.count or 0)").arg(sid)),
+        QStringLiteral("2"));
+  check(QStringLiteral("gate"),
+        ev.eval(QStringLiteral("(%1.count or 0) >= 1").arg(sid)), QStringLiteral("1"));
+  check(QStringLiteral("item0"),
+        ev.eval(QStringLiteral("(%1.items[0].text if (%1.items) else \"\")").arg(sid)),
+        QStringLiteral("HELLO"));
+  check(QStringLiteral("join"),
+        ev.eval(QStringLiteral("(\"\\n\".join(i.text for i in (%1.items or [])))").arg(sid)),
+        QStringLiteral("HELLO\nWORLD"));
+  check(QStringLiteral("len"),
+        ev.eval(QStringLiteral("len(%1.matches or %1.items or [])").arg(sid)),
+        QStringLiteral("3"));
+  check(QStringLiteral("score"),
+        ev.eval(QStringLiteral("(%1.score or 0) >= 0.55").arg(sid)), QStringLiteral("1"));
+  check(QStringLiteral("text"), ev.eval(QStringLiteral("(%1.text or \"\")").arg(sid)),
+        QStringLiteral("HELLO"));
+  check(QStringLiteral("flow"), ev.eval(QStringLiteral("flow.passGate")), QStringLiteral("1"));
+  check(QStringLiteral("not"), ev.eval(QStringLiteral("not (0)")), QStringLiteral("1"));
+  check(QStringLiteral("mod"), ev.eval(QStringLiteral("10 % 4")), QStringLiteral("2"));
+  check(QStringLiteral("floordiv"), ev.eval(QStringLiteral("7 // 2")), QStringLiteral("3"));
+  check(QStringLiteral("and"),
+        ev.eval(QStringLiteral("((%1.count or 0) >= 1) and ((%1.confidence or 0) > 0.5)")
+                    .arg(sid)),
+        QStringLiteral("1"));
+  return fails;
 }
 
 }  // namespace sieans_qt

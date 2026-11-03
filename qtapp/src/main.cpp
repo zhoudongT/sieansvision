@@ -1,3 +1,4 @@
+#include "ExprEval.hpp"
 #include "MainWindow.hpp"
 #include "Theme.hpp"
 
@@ -5,7 +6,21 @@
 #include <QFont>
 #include <QStyleFactory>
 
+#include <cstdio>
+
 int main(int argc, char* argv[]) {
+  if (qEnvironmentVariable("SIEANS_QT_EXPR_SELFTEST") == QLatin1String("1") &&
+      qEnvironmentVariable("SIEANS_QT_EXPR_SELFTEST_QUIT") == QLatin1String("1")) {
+    const QStringList fails = sieans_qt::exprSelfTest();
+    if (fails.isEmpty()) {
+      std::fprintf(stdout, "expr-selftest ok\n");
+      return 0;
+    }
+    for (const QString& line : fails)
+      std::fprintf(stderr, "expr-selftest FAIL %s\n", line.toUtf8().constData());
+    return 1;
+  }
+
   QApplication app(argc, argv);
   QApplication::setApplicationName(QStringLiteral("SIEANS Vision Qt"));
   QApplication::setOrganizationName(QStringLiteral("SIEANS"));

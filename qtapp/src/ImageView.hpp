@@ -7,6 +7,8 @@
 #include <QVector>
 #include <QPolygonF>
 
+class QLabel;
+
 namespace sieans_qt {
 
 struct OverlayHit {
@@ -34,9 +36,11 @@ class ImageView : public QGraphicsView {
  protected:
   void resizeEvent(QResizeEvent* event) override;
   void wheelEvent(QWheelEvent* event) override;
+  void mouseMoveEvent(QMouseEvent* event) override;
 
  private:
   void redrawOverlays();
+  void updateProbe(int x, int y);
 
   QGraphicsScene scene_;
   QGraphicsPixmapItem* pixmap_item_ = nullptr;
@@ -44,6 +48,7 @@ class ImageView : public QGraphicsView {
   QImage image_;
   QVector<OverlayHit> hits_;
   bool userZoomed_ = false;
+  QLabel* probe_ = nullptr;
 };
 
 }  // namespace sieans_qt

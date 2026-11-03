@@ -60,13 +60,18 @@ class SieansDocument {
   QVariantMap& commManagerMut() { return commManager_; }
   void setCommManager(const QVariantMap& c) { commManager_ = c; }
 
+  QVariantMap flowIo() const { return flowIo_; }
+  QVariantMap& flowIoMut() { return flowIo_; }
+  void setFlowIo(const QVariantMap& io) { flowIo_ = io; }
+
   QStringList hostWatchKeys() const;
 
   QString cameraDeviceId() const;
-  QString cameraBackend() const;  // gentl | uvc
+  QString cameraBackend() const;  // gentl | uvc | soft
   bool continuousLive() const;
   double acquisitionFps() const;
   double exposureUs() const;
+  double gainDb() const;
 
   /** Seed a GenTL→QR open-and-run graph if no file loaded. */
   void seedGentlQrDemo();
@@ -81,6 +86,7 @@ class SieansDocument {
   int runIntervalMs_ = 0;
   QVariantMap variables_;
   QVariantMap commManager_;
+  QVariantMap flowIo_;
   QJsonObject raw_;
 };
 

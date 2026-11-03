@@ -1,6 +1,8 @@
 #pragma once
 #include "PropertyPanel.hpp"
 #include <QDialog>
+#include <QPoint>
+#include <QVariantMap>
 
 class QLabel;
 class QPushButton;
@@ -24,12 +26,26 @@ class PropertyFloat : public QDialog {
   void runModule();
   void runModuleContinuous();
   void acceptedCommit();
+  /** ✕ / 取消：把打开浮窗时的参数快照交还，由主窗口写回。 */
+  void paramsReverted(const QString& nodeId, const QVariantMap& snapshot);
+
+ protected:
+  void mousePressEvent(QMouseEvent* event) override;
+  void mouseMoveEvent(QMouseEvent* event) override;
+  void mouseReleaseEvent(QMouseEvent* event) override;
 
  private:
+  void revertAndHide();
+
   PropertyPanel* panel_ = nullptr;
   QLabel* title_ = nullptr;
   QLabel* subtitle_ = nullptr;
+  QFrame* titleBar_ = nullptr;
+  QPushButton* closeBtn_ = nullptr;
   QString nodeId_;
+  QVariantMap baseline_;
+  QPoint dragOffset_;
+  bool dragging_ = false;
 };
 
 }  // namespace sieans_qt

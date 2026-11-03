@@ -7,6 +7,7 @@
 #include <QPushButton>
 #include <QFrame>
 #include <QMouseEvent>
+#include <QVariantMap>
 
 namespace sieans_qt {
 
@@ -21,9 +22,9 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   root->setContentsMargins(0, 0, 0, 0);
   root->setSpacing(0);
 
-  auto* titleBar = new QFrame;
-  titleBar->setObjectName(QStringLiteral("propertyFloatTitle"));
-  auto* titleLay = new QHBoxLayout(titleBar);
+  titleBar_ = new QFrame;
+  titleBar_->setObjectName(QStringLiteral("propertyFloatTitle"));
+  auto* titleLay = new QHBoxLayout(titleBar_);
   titleLay->setContentsMargins(12, 6, 6, 6);
   auto* titleCol = new QVBoxLayout;
   titleCol->setContentsMargins(0, 0, 0, 0);
@@ -36,14 +37,15 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   titleCol->addWidget(title_);
   titleCol->addWidget(subtitle_);
   titleLay->addLayout(titleCol, 1);
-  auto* closeBtn = new QPushButton(QStringLiteral("✕"));
-  closeBtn->setObjectName(QStringLiteral("propertyFloatClose"));
-  closeBtn->setFixedSize(28, 28);
-  closeBtn->setCursor(Qt::PointingHandCursor);
-  closeBtn->setFocusPolicy(Qt::NoFocus);
-  connect(closeBtn, &QPushButton::clicked, this, &QWidget::hide);
-  titleLay->addWidget(closeBtn, 0, Qt::AlignTop);
-  root->addWidget(titleBar);
+  closeBtn_ = new QPushButton(QStringLiteral("✕"));
+  closeBtn_->setObjectName(QStringLiteral("propertyFloatClose"));
+  closeBtn_->setFixedSize(28, 28);
+  closeBtn_->setCursor(Qt::PointingHandCursor);
+  closeBtn_->setFocusPolicy(Qt::NoFocus);
+  closeBtn_->setToolTip(QStringLiteral("关闭并放弃本次修改"));
+  connect(closeBtn_, &QPushButton::clicked, this, &PropertyFloat::revertAndHide);
+  titleLay->addWidget(closeBtn_, 0, Qt::AlignTop);
+  root->addWidget(titleBar_);
 
   auto* body = new QWidget;
   body->setObjectName(QStringLiteral("propertyFloatBody"));
@@ -62,20 +64,60 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   cont->setObjectName(QStringLiteral("propertyFloatRunContinuous"));
   auto* exec = new QPushButton(QStringLiteral("执行"));
   exec->setObjectName(QStringLiteral("propertyFloatRun"));
+  auto* cancel = new QPushButton(QStringLiteral("取消"));
+  cancel->setObjectName(QStringLiteral("propertyFloatRun"));
   auto* ok = new QPushButton(QStringLiteral("确定"));
   ok->setObjectName(QStringLiteral("propertyFloatOk"));
   foot->addWidget(cont);
   foot->addWidget(exec);
   foot->addStretch(1);
+  foot->addWidget(cancel);
   foot->addWidget(ok);
   root->addWidget(footer);
 
   connect(cont, &QPushButton::clicked, this, &PropertyFloat::runModuleContinuous);
   connect(exec, &QPushButton::clicked, this, &PropertyFloat::runModule);
+  connect(cancel, &QPushButton::clicked, this, &PropertyFloat::revertAndHide);
   connect(ok, &QPushButton::clicked, this, [this]() {
     emit acceptedCommit();
     hide();
   });
+}
+
+void PropertyFloat::revertAndHide() {
+  emit paramsReverted(nodeId_, baseline_);
+  hide();
+}
+
+void PropertyFloat::mousePressEvent(QMouseEvent* event) {
+  if (event->button() == Qt::LeftButton && titleBar_ &&
+      titleBar_->geometry().contains(event->position().toPoint())) {
+    const QPoint local = titleBar_->mapFrom(this, event->position().toPoint());
+    if (closeBtn_ && closeBtn_->geometry().contains(local)) {
+      revertAndHide();
+      event->accept();
+      return;
+    }
+    dragging_ = true;
+    dragOffset_ = event->globalPosition().toPoint() - frameGeometry().topLeft();
+    event->accept();
+    return;
+  }
+  QDialog::mousePressEvent(event);
+}
+
+void PropertyFloat::mouseMoveEvent(QMouseEvent* event) {
+  if (dragging_ && (event->buttons() & Qt::LeftButton)) {
+    move(event->globalPosition().toPoint() - dragOffset_);
+    event->accept();
+    return;
+  }
+  QDialog::mouseMoveEvent(event);
+}
+
+void PropertyFloat::mouseReleaseEvent(QMouseEvent* event) {
+  dragging_ = false;
+  QDialog::mouseReleaseEvent(event);
 }
 
 void PropertyFloat::setNodeTitle(const QString& title, const QString& subtitle) {
@@ -91,6 +133,7 @@ void PropertyFloat::setNodeTitle(const QString& title, const QString& subtitle) 
 
 void PropertyFloat::showForSource(const QVariantMap& sourceConfig) {
   nodeId_ = QStringLiteral("source");
+  baseline_ = sourceConfig;
   setNodeTitle(QStringLiteral("属性 · 图像源"), QStringLiteral("sourceConfig"));
   panel_->showSource(sourceConfig);
   show();
@@ -100,6 +143,7 @@ void PropertyFloat::showForSource(const QVariantMap& sourceConfig) {
 
 void PropertyFloat::showForStep(const FlowStep& step) {
   nodeId_ = step.id;
+  baseline_ = step.params;
   setNodeTitle(QStringLiteral("属性 · %1").arg(step.name),
                QStringLiteral("%1 · %2").arg(step.operation, step.runState));
   panel_->showStep(step);
