@@ -151,7 +151,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   history_ = new QListWidget;
   history_->setObjectName(QStringLiteral("alarmHistory"));
   history_->setMinimumHeight(72);
-  history_->setToolTip(QStringLiteral("报警历史 · 双击/中键复制 · 右键/Ctrl+L 清空 · Del 删行 · Ctrl+Shift+J JSON · 最近 40 条"));
+  history_->setToolTip(QStringLiteral("报警历史 · 双击/中键复制 · 右键/Ctrl+L 清空 · Del 删行 · Ctrl+Shift+J/V JSON导出/粘贴 · 最近 40 条"));
   history_->setStatusTip(QStringLiteral("Host · 报警历史 · Ctrl+L/Del/双击/中键"));
   history_->installEventFilter(this);
   history_->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -189,6 +189,9 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
       if (modeHint_)
         modeHint_->setText(QStringLiteral("已导出报警JSON %1 · Ctrl+Shift+J").arg(arr.size()));
     });
+    auto* scV = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+V")), history_);
+    connect(scV, &QShortcut::activated, this, [this]() { pasteAlarmHistoryFromClipboard(); });
+
     connect(history_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* it) {
       if (!it) return;
       if (auto* clip = QGuiApplication::clipboard()) {
@@ -574,6 +577,45 @@ void HostStatePanel::setAlarmHistoryLines(const QStringList& lines) {
     if (!t.isEmpty()) history_->addItem(t);
   }
   while (history_->count() > 40) delete history_->takeItem(history_->count() - 1);
+}
+
+
+void HostStatePanel::pasteAlarmHistoryFromClipboard() {
+  const QString raw = QGuiApplication::clipboard()
+                          ? QGuiApplication::clipboard()->text().trimmed()
+                          : QString();
+  if (raw.isEmpty() || !history_) {
+    if (modeHint_) modeHint_->setText(QStringLiteral("剪贴板空 · Ctrl+Shift+V"));
+    return;
+  }
+  QStringList lines;
+  // Prefer JSON {"alarms":[...]} from Ctrl+Shift+J export
+  QJsonParseError err;
+  const QJsonDocument doc = QJsonDocument::fromJson(raw.toUtf8(), &err);
+  if (err.error == QJsonParseError::NoError && doc.isObject()) {
+    const QJsonArray arr = doc.object().value(QStringLiteral("alarms")).toArray();
+    for (const QJsonValue& v : arr) {
+      const QString t = v.toString().trimmed();
+      if (!t.isEmpty()) lines << t;
+    }
+  }
+  if (lines.isEmpty()) {
+    for (QString line : raw.split(QLatin1Char('\n'))) {
+      line = line.trimmed();
+      if (!line.isEmpty()) lines << line;
+    }
+  }
+  if (lines.isEmpty()) {
+    if (modeHint_) modeHint_->setText(QStringLiteral("无报警行 · Ctrl+Shift+V"));
+    return;
+  }
+  // Prepend (newest first), cap 40
+  for (int i = lines.size() - 1; i >= 0; --i)
+    history_->insertItem(0, lines.at(i));
+  while (history_->count() > 40) delete history_->takeItem(history_->count() - 1);
+  emit alarmHistoryChanged(alarmHistoryLines());
+  if (modeHint_)
+    modeHint_->setText(QStringLiteral("已粘贴报警 %1 · Ctrl+Shift+V").arg(lines.size()));
 }
 
 }  // namespace sieans_qt
