@@ -184,6 +184,7 @@ OperatorDef OperatorLibrary::findDef(const QString& key) {
 }
 
 OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
+  setStatusTip(QStringLiteral("Toolbox · / 或 Ctrl+F 搜索 · Enter 添加 · Home/End"));
   setObjectName(QStringLiteral("libraryPane"));
   auto* lay = new QVBoxLayout(this);
   lay->setContentsMargins(0, 0, 0, 0);

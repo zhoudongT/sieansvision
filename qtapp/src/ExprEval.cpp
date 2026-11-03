@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -512,6 +512,28 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
           const bool empty = evalRec(args[0]).toString().isEmpty();
           if (name == QLatin1String("isempty")) return empty ? 1 : 0;
           return empty ? 0 : 1;
+        }
+        if (name == QLatin1String("zfill")) {
+          if (args.isEmpty()) return QString();
+          QString hay = evalRec(args[0]).toString();
+          const int width = args.size() > 1 ? int(evalRec(args[1]).toDouble()) : hay.size();
+          if (width <= hay.size()) return hay;
+          return QString(width - hay.size(), QLatin1Char('0')) + hay;
+        }
+        if (name == QLatin1String("count")) {
+          if (args.size() < 2) return 0;
+          const QString hay = evalRec(args[0]).toString();
+          const QString needle = evalRec(args[1]).toString();
+          if (needle.isEmpty()) return 0;
+          int n = 0;
+          int from = 0;
+          while (true) {
+            const int at = hay.indexOf(needle, from);
+            if (at < 0) break;
+            ++n;
+            from = at + needle.size();
+          }
+          return n;
         }
       }
     }
@@ -688,6 +710,12 @@ QStringList exprSelfTest() {
   check(QStringLiteral("notempty"),
         ev.eval(QStringLiteral("notempty(%1.text)").arg(sid)),
         QStringLiteral("1"));
+  check(QStringLiteral("zfill"),
+        ev.eval(QStringLiteral("zfill('7', 3)")),
+        QStringLiteral("007"));
+  check(QStringLiteral("count"),
+        ev.eval(QStringLiteral("count(%1.text, 'L')").arg(sid)),
+        QStringLiteral("2"));
   return fails;
 }
 

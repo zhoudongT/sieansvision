@@ -1671,6 +1671,10 @@ void MainWindow::onRunOnce() {
     setBusy(false);
     return;
   }
+  if (backend == QLatin1String("soft")) {
+    showStatus(QStringLiteral("Soft 帧 %1×%2 · GenTL→QR").arg(frame.width()).arg(frame.height()),
+               1800);
+  }
 
   image_view_->setLiveImage(frame);
   if (filmstrip_ && document_.cameraBackend() == QLatin1String("soft")) {
