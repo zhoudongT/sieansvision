@@ -56,7 +56,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   next->setToolTip(QStringLiteral("下一张 · →"));
   next->setFixedWidth(28);
   auto* del = new QPushButton(QStringLiteral("删除"));
-  del->setToolTip(QStringLiteral("删除选中 · Del · Ctrl+Del 清空"));
+  del->setToolTip(QStringLiteral("删除选中 · Del · Ctrl+Del 清空 · 不可撤销"));
   head->addWidget(countLabel_);
   head->addWidget(status_, 1);
   head->addWidget(autoSwitch_);
