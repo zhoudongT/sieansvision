@@ -387,7 +387,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper|nvl|lstrip|rstrip|iff|bool|oct|fabs|fmod|cbrt|log10|frac|log2|isfinite|atan2|copysign|bitand|bitor|bitxor|gcd|lcm|clamp01|lerp|invlerp|smoothstep|step|saturate|fract|isnan|isinf|mix|exp2|fma|sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|log1p|expm1|fdim|nearbyint|bitshl|bitshr|remainder|scalbn|nextafter|tgamma|lgamma|erf|erfc|asinh|acosh|atanh|rint|logb|ilogb|signbit|isnormal|fmax|fmin|bitnot|between|approxeq|inrange|nan|inf|reverse|join|cmp|eq|ne|gt|lt|ge|le)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper|nvl|lstrip|rstrip|iff|bool|oct|fabs|fmod|cbrt|log10|frac|log2|isfinite|atan2|copysign|bitand|bitor|bitxor|gcd|lcm|clamp01|lerp|invlerp|smoothstep|step|saturate|fract|isnan|isinf|mix|exp2|fma|sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|log1p|expm1|fdim|nearbyint|bitshl|bitshr|remainder|scalbn|nextafter|tgamma|lgamma|erf|erfc|asinh|acosh|atanh|rint|logb|ilogb|signbit|isnormal|fmax|fmin|bitnot|between|approxeq|inrange|nan|inf|reverse|join|cmp|eq|ne|gt|lt|ge|le|choose)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -965,6 +965,12 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
           if (args.size() < 2) return 0;
           return evalRec(args[0]).toDouble() <= evalRec(args[1]).toDouble() ? 1 : 0;
         }
+        if (name == QLatin1String("choose")) {
+          if (args.size() < 2) return 0;
+          const int idx = evalRec(args[0]).toInt();
+          if (idx < 0 || idx + 1 >= args.size()) return QString();
+          return evalRec(args[idx + 1]);
+        }
         if (name == QLatin1String("isalnum")) {
           if (args.isEmpty()) return 0;
           const QString s = evalRec(args[0]).toString();
@@ -1118,6 +1124,9 @@ QStringList exprSelfTest() {
   check(QStringLiteral("le"),
         ev.eval(QStringLiteral("le(1, 3)")),
         QStringLiteral("1"));
+  check(QStringLiteral("choose"),
+        ev.eval(QStringLiteral("choose(1, 'a', 'b', 'c')")),
+        QStringLiteral("b"));
   check(QStringLiteral("len"),
         ev.eval(QStringLiteral("len(%1.matches or %1.items or [])").arg(sid)),
         QStringLiteral("3"));

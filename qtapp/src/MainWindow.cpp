@@ -606,7 +606,7 @@ void MainWindow::buildToolbar() {
   act_preview_->setStatusTip(QStringLiteral("预览 · 连续采集"));
   act_preview_stop_ =
       tb->addAction(QStringLiteral("停预览"), this, &MainWindow::onStopContinuousPreview);
-  act_preview_stop_->setToolTip(QStringLiteral("停止连续采集预览"));
+  act_preview_stop_->setToolTip(QStringLiteral("停止连续采集预览 · 不影响流程运行态"));
   act_preview_stop_->setStatusTip(QStringLiteral("预览 · 停止"));
   tb->addSeparator();
   act_run_ = tb->addAction(QStringLiteral("▶ 运行"), this, &MainWindow::onRunOnce);
