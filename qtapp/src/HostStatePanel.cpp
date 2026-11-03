@@ -116,11 +116,11 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   modeRow->addWidget(new QLabel(QStringLiteral("模式")));
   modeRow->addWidget(mode_, 1);
   mode_->installEventFilter(this);
-  mode_->setToolTip(QStringLiteral("标定模式 · 滚轮切换 · 开始仍跑当前视觉流程 · 非标定=生产"));
+  mode_->setToolTip(QStringLiteral("标定模式 · 滚轮切换 · Alt+1/2/3 → 生产/九点/旋转 · 开始仍跑当前视觉流程 · 非标定=生产"));
   modeRow->addWidget(new QLabel(QStringLiteral("报警清除")));
   modeRow->addWidget(policy_, 1);
   policy_->installEventFilter(this);
-  policy_->setToolTip(QStringLiteral("报警清除策略 · 滚轮切换 · on_ok/手动"));
+  policy_->setToolTip(QStringLiteral("报警清除策略 · 滚轮切换 · Alt+1/2 → on_ok/手动"));
   root->addLayout(modeRow);
 
   auto* ivRow = new QHBoxLayout;
@@ -521,15 +521,35 @@ bool HostStatePanel::eventFilter(QObject* obj, QEvent* event) {
       }
       return true;
     }
-    if ((ke->modifiers() & Qt::AltModifier) && intervalSpin_ &&
-        ke->key() >= Qt::Key_1 && ke->key() <= Qt::Key_4 &&
-        !(ke->modifiers() & Qt::ControlModifier)) {
-      static const int kPresets[] = {50, 100, 200, 500};
-      const int next = kPresets[ke->key() - Qt::Key_1];
-      if (next != intervalSpin_->value()) intervalSpin_->setValue(next);
-      if (modeHint_)
-        modeHint_->setText(QStringLiteral("节拍 %1 ms · Alt+%2").arg(next).arg(ke->key() - Qt::Key_0));
-      return true;
+    if ((ke->modifiers() & Qt::AltModifier) && !(ke->modifiers() & Qt::ControlModifier) &&
+        ke->key() >= Qt::Key_1 && ke->key() <= Qt::Key_4) {
+      if (obj == mode_ && mode_) {
+        const int idx = ke->key() - Qt::Key_1;
+        if (idx < mode_->count()) {
+          mode_->setCurrentIndex(idx);
+          if (modeHint_)
+            modeHint_->setText(QStringLiteral("模式 %1 · Alt+%2").arg(mode_->currentText()).arg(idx + 1));
+        }
+        return true;
+      }
+      if (obj == policy_ && policy_) {
+        const int idx = ke->key() - Qt::Key_1;
+        if (idx < policy_->count()) {
+          policy_->setCurrentIndex(idx);
+          if (modeHint_)
+            modeHint_->setText(
+                QStringLiteral("报警策略 %1 · Alt+%2").arg(policy_->currentText()).arg(idx + 1));
+        }
+        return true;
+      }
+      if (intervalSpin_) {
+        static const int kPresets[] = {50, 100, 200, 500};
+        const int next = kPresets[ke->key() - Qt::Key_1];
+        if (next != intervalSpin_->value()) intervalSpin_->setValue(next);
+        if (modeHint_)
+          modeHint_->setText(QStringLiteral("节拍 %1 ms · Alt+%2").arg(next).arg(ke->key() - Qt::Key_0));
+        return true;
+      }
     }
 
   }

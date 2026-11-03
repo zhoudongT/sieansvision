@@ -41,7 +41,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   lay->addWidget(title);
 
   status_ = new QLabel(QStringLiteral("TCP: idle"));
-  setStatusTip(QStringLiteral("通信面板 · LocalBus/TCP · peers/framing · Ctrl+T 启停 · Ctrl+[ / ] 切帧 · Ctrl+Shift+H 端点 · Ctrl+Shift+P 粘贴端点 · Ctrl+Shift+R 末 RX · 状态双击启停/右键装RX · 端口滚轮 · ACK中键快选 · 抄本双击/右键装入 · 设备中键端点/右键复制 · Alt+↑↓ 历史 · ${flow.x}"));
+  setStatusTip(QStringLiteral("通信面板 · LocalBus/TCP · peers/framing · Ctrl+T 启停 · Ctrl+[ / ] 切帧 · Ctrl+Shift+H 端点 · Ctrl+Shift+P 粘贴端点 · Ctrl+Shift+R 末 RX · 状态双击启停/右键装RX · 端口滚轮 · ACK中键快选 · 报文 Alt+Del 删历史 · 抄本双击/右键装入 · 设备中键端点/右键复制 · Alt+↑↓ 历史 · ${flow.x}"));
   status_->setObjectName(QStringLiteral("muted"));
   lay->addWidget(status_);
 
@@ -188,7 +188,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   payloadEdit_ = new QLineEdit(
       QStringLiteral("BARCODE ok=${flow.passGate} text=${flow.barcodeText}"));
   payloadEdit_->setToolTip(
-      QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · 下方芯片插入 · Enter/Ctrl+Enter 试发 · Alt+↑↓ 历史 · LocalBus echo"));
+      QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · 下方芯片插入 · Enter/Ctrl+Enter 试发 · Alt+↑↓ 历史 · Alt+Del 删当前历史 · LocalBus echo"));
   form->addRow(QStringLiteral("报文"), payloadEdit_);
   payloadEdit_->installEventFilter(this);
   lay->addLayout(form);
@@ -653,6 +653,10 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
         recallPayloadHistory(+1);
         return true;
       }
+      if (ke->key() == Qt::Key_Delete || ke->key() == Qt::Key_Backspace) {
+        removeCurrentPayloadHistory();
+        return true;
+      }
     }
   }
   if (obj == framingCombo_ && event->type() == QEvent::Wheel) {
@@ -1027,6 +1031,43 @@ void CommPanel::recallPayloadHistory(int delta) {
                             .arg(payloadHistory_.size()));
 }
 
+
+
+void CommPanel::removeCurrentPayloadHistory() {
+  if (!payloadEdit_ || payloadHistory_.isEmpty()) {
+    if (status_) status_->setToolTip(QStringLiteral("报文历史空 · Alt+Del"));
+    return;
+  }
+  if (payloadHistoryIdx_ < 0 || payloadHistoryIdx_ >= payloadHistory_.size())
+    payloadHistoryIdx_ = 0;
+  payloadHistory_.removeAt(payloadHistoryIdx_);
+  if (payloadHistory_.isEmpty()) {
+    payloadHistoryIdx_ = -1;
+    payloadEdit_->clear();
+    if (hub_) {
+      QVariantMap cm = hub_->commManager();
+      cm.insert(QStringLiteral("payloadHistory"), QVariantList{});
+      hub_->loadFromCommManager(cm);
+      emit requestSaveComm(cm);
+    }
+    if (status_) status_->setToolTip(QStringLiteral("报文历史已清空 · Alt+Del"));
+    return;
+  }
+  if (payloadHistoryIdx_ >= payloadHistory_.size())
+    payloadHistoryIdx_ = payloadHistory_.size() - 1;
+  payloadEdit_->setText(payloadHistory_.at(payloadHistoryIdx_));
+  if (hub_) {
+    QVariantMap cm = hub_->commManager();
+    QVariantList hist;
+    for (const QString& s : payloadHistory_) hist << s;
+    cm.insert(QStringLiteral("payloadHistory"), hist);
+    hub_->loadFromCommManager(cm);
+    emit requestSaveComm(cm);
+  }
+  if (status_)
+    status_->setToolTip(QStringLiteral("已删报文历史 · 剩 %1 · Alt+Del · Alt+↑↓")
+                            .arg(payloadHistory_.size()));
+}
 
 void CommPanel::cycleFraming(int delta) {
   if (!framingCombo_ || framingCombo_->count() <= 0) return;
