@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -494,11 +494,18 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
           }
           return QString();
         }
-        if (name == QLatin1String("indexof")) {
+        if (name == QLatin1String("indexof") || name == QLatin1String("find")) {
           if (args.size() < 2) return -1;
           const QString hay = evalRec(args[0]).toString();
           const QString needle = evalRec(args[1]).toString();
           return hay.indexOf(needle);
+        }
+        if (name == QLatin1String("left") || name == QLatin1String("right")) {
+          if (args.isEmpty()) return QString();
+          const QString hay = evalRec(args[0]).toString();
+          int n = args.size() > 1 ? int(evalRec(args[1]).toDouble()) : hay.size();
+          if (n < 0) n = 0;
+          return name == QLatin1String("left") ? hay.left(n) : hay.right(n);
         }
       }
     }
@@ -657,6 +664,15 @@ QStringList exprSelfTest() {
   check(QStringLiteral("indexof-miss"),
         ev.eval(QStringLiteral("indexof(%1.text, 'ZZ')").arg(sid)),
         QStringLiteral("-1"));
+  check(QStringLiteral("find"),
+        ev.eval(QStringLiteral("find(%1.text, 'EL')").arg(sid)),
+        QStringLiteral("1"));
+  check(QStringLiteral("left"),
+        ev.eval(QStringLiteral("left(%1.text, 2)").arg(sid)),
+        QStringLiteral("HE"));
+  check(QStringLiteral("right"),
+        ev.eval(QStringLiteral("right(%1.text, 2)").arg(sid)),
+        QStringLiteral("LO"));
   return fails;
 }
 

@@ -264,7 +264,19 @@ void GenTLWorker::startPreview() {
   const int period =
       paced ? qBound(30, int(1000.0 / (fps_ > 0 ? fps_ : 15.0)), 1000) : 1;
   previewTimer_->start(period);
-  emit statusChanged(QStringLiteral("连续预览中…"));
+  if (backend_ == QLatin1String("soft")) {
+    QImage soft;
+    {
+      QMutexLocker lock(&frameMutex_);
+      soft = latest_;
+    }
+    emit statusChanged(QStringLiteral("连续预览中… Soft %1×%2 @%3fps")
+                           .arg(soft.isNull() ? 1280 : soft.width())
+                           .arg(soft.isNull() ? 1024 : soft.height())
+                           .arg(fps_, 0, 'f', 1));
+  } else {
+    emit statusChanged(QStringLiteral("连续预览中…"));
+  }
   grabPreviewFrame();
 }
 

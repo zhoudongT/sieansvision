@@ -11,6 +11,8 @@
 #include <QApplication>
 #include <QToolTip>
 #include <QCursor>
+#include <QShortcut>
+#include <QKeySequence>
 
 namespace sieans_qt {
 
@@ -45,11 +47,30 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
                                  table_);
             }
           });
-  table_->setToolTip(QStringLiteral("双击单元格复制变量值"));
+  table_->setToolTip(QStringLiteral("双击或 Ctrl+C 复制变量值"));
+  setStatusTip(QStringLiteral("变量监视 · 双击/Ctrl+C 复制 · passGate/urlOk/lastRecv 高亮"));
   keys_ = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
-           QStringLiteral("passGate"), QStringLiteral("formatted"),
+           QStringLiteral("passGate"), QStringLiteral("urlOk"),
+           QStringLiteral("formatted"),
            QStringLiteral("commPayload"), QStringLiteral("lastRecv")};
+  auto copySel = [this]() {
+    if (!table_) return;
+    const int row = table_->currentRow();
+    if (row < 0) return;
+    auto* val = table_->item(row, 1);
+    auto* key = table_->item(row, 0);
+    if (!val) return;
+    const QString raw = key ? vars_.value(key->text()).toString() : val->text();
+    if (auto* clip = QApplication::clipboard()) {
+      clip->setText(raw.isEmpty() ? val->text() : raw);
+      QToolTip::showText(QCursor::pos(),
+                         QStringLiteral("已复制 %1").arg(key ? key->text() : QStringLiteral("值")),
+                         table_);
+    }
+  };
+  auto* sc = new QShortcut(QKeySequence::Copy, this);
+  connect(sc, &QShortcut::activated, this, copySel);
   rebuild();
 }
 
