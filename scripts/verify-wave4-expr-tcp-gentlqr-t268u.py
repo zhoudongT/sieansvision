@@ -38,6 +38,11 @@ checks = [
     (QT / "PropertyPanel.cpp", ["emptyDefault", "expr: in / and / or", "{{name}}"]),
     (QT / "FlowIoDialog.cpp", ["{{name}}"]),
     (QT / "SieansDocument.cpp", ["emptyDefault", "BARCODE empty"]),
+    (QT / "FlowCanvas.cpp", ["Right-edge run-state", "状态：%2", "theme::WARN"]),
+    (QT / "HostStatePanel.cpp", ["tickPulse", "pulseTimer_", "outline:1px solid"]),
+    (QT / "CommHub.cpp", ["reconnectAttempts_", "reconnect #%1"]),
+    (QT / "FilmstripBar.cpp", ["InternalMove", "已重排", "拖拽缩略图重排"]),
+    (QT / "PropertyFloat.cpp", ["focusNextPrevChild", "Key_Backtab"]),
 ]
 
 for path, needles in checks:

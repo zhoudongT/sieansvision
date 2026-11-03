@@ -3,6 +3,8 @@
 #include <QWidget>
 #include <QString>
 
+class QTimer;
+
 class QLabel;
 class QListWidget;
 class QComboBox;
@@ -38,6 +40,7 @@ class HostStatePanel : public QWidget {
   void paintBadge();
   void appendAlarm(const QString& reason, bool cleared);
   void setButtons();
+  void tickPulse();
 
   QString state_ = QStringLiteral("Idle");
   QString latchedRun_ = QStringLiteral("Idle");
@@ -53,6 +56,8 @@ class HostStatePanel : public QWidget {
   QPushButton* btnResume_ = nullptr;
   QPushButton* btnStop_ = nullptr;
   QPushButton* btnClear_ = nullptr;
+  QTimer* pulseTimer_ = nullptr;
+  int pulsePhase_ = 0;
   int alarmCount_ = 0;
 };
 

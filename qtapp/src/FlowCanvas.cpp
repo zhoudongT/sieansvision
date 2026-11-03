@@ -129,6 +129,7 @@ void FlowNodeItem::setRunState(const QString& state, const QColor& badge) {
     badgeColor_ = QColor(theme::WARN);
   else
     badgeColor_ = QColor(theme::ACCENT);
+  setToolTip(QStringLiteral("%1\n状态：%2").arg(label_, runState_));
   update();
 }
 
@@ -183,6 +184,12 @@ void FlowNodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*,
       textRect, Qt::AlignVCenter | Qt::AlignLeft,
       painter->fontMetrics().elidedText(label_, Qt::ElideRight,
                                         int(textRect.width())));
+  // Right-edge run-state chrome
+  QColor strip = badgeColor_;
+  strip.setAlpha(210);
+  painter->setPen(Qt::NoPen);
+  painter->setBrush(strip);
+  painter->drawRoundedRect(QRectF(kWidth - 5, 3, 3, kHeight - 6), 1, 1);
   if (runState_.contains(QStringLiteral("未配置"))) {
     painter->setPen(QColor(QStringLiteral("#e53935")));
     QFont bang = font;
@@ -191,6 +198,14 @@ void FlowNodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*,
     painter->setFont(bang);
     painter->drawText(QRectF(kWidth - 16, 0, 14, kHeight), Qt::AlignCenter,
                       QStringLiteral("!"));
+  } else if (runState_.contains(QStringLiteral("运行"))) {
+    painter->setPen(QColor(theme::WARN));
+    painter->setBrush(Qt::NoBrush);
+    painter->setPen(QPen(QColor(theme::WARN), 1.6));
+    painter->drawRoundedRect(QRectF(1.5, 1.5, kWidth - 3, kHeight - 3), 3, 3);
+  } else if (runState_.startsWith(QStringLiteral("OK")) ||
+             runState_ == QStringLiteral("完成")) {
+    // tiny OK tick in badge already colored; keep strip
   }
 }
 

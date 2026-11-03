@@ -172,6 +172,15 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
+  if (event->key() == Qt::Key_Tab ||
+      (event->key() == Qt::Key_Backtab) ||
+      (event->key() == Qt::Key_Tab && event->modifiers() & Qt::ShiftModifier)) {
+    // Cycle editable line edits inside the float (VM property sheet feel).
+    focusNextPrevChild(!(event->key() == Qt::Key_Backtab ||
+                         (event->modifiers() & Qt::ShiftModifier)));
+    event->accept();
+    return;
+  }
   if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
     // Enter: keep float open (edits already flushed via editingFinished).
     // Ctrl+Enter: commit baseline + hide (VM-ish apply).

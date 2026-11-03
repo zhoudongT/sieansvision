@@ -7,6 +7,7 @@
 #include <QListWidget>
 #include <QPushButton>
 #include <QVBoxLayout>
+#include <QTimer>
 
 namespace sieans_qt {
 namespace {
@@ -128,10 +129,22 @@ void HostStatePanel::bindFlow(const QString& name, int steps) {
 void HostStatePanel::paintBadge() {
   const BadgeStyle s = styleFor(state_);
   badge_->setText(QString::fromUtf8(s.zh));
+  QString extra;
+  if (state_ == QLatin1String("Running") && (pulsePhase_ & 1))
+    extra = QStringLiteral("outline:1px solid %1;").arg(QString::fromUtf8(s.fg));
   badge_->setStyleSheet(
       QStringLiteral("background:%1;color:%2;border-radius:3px;font-weight:700;"
-                     "padding:4px 8px;")
-          .arg(QString::fromUtf8(s.bg), QString::fromUtf8(s.fg)));
+                     "padding:4px 8px;%3")
+          .arg(QString::fromUtf8(s.bg), QString::fromUtf8(s.fg), extra));
+}
+
+void HostStatePanel::tickPulse() {
+  if (state_ != QLatin1String("Running")) {
+    if (pulseTimer_) pulseTimer_->stop();
+    return;
+  }
+  ++pulsePhase_;
+  paintBadge();
 }
 
 void HostStatePanel::setButtons() {
@@ -148,6 +161,18 @@ void HostStatePanel::setButtons() {
 void HostStatePanel::applyState(const QString& state) {
   state_ = state;
   if (state != QLatin1String("Alarm")) latchedRun_ = state;
+  if (state == QLatin1String("Running")) {
+    if (!pulseTimer_) {
+      pulseTimer_ = new QTimer(this);
+      pulseTimer_->setInterval(550);
+      connect(pulseTimer_, &QTimer::timeout, this, &HostStatePanel::tickPulse);
+    }
+    pulsePhase_ = 0;
+    if (!pulseTimer_->isActive()) pulseTimer_->start();
+  } else if (pulseTimer_) {
+    pulseTimer_->stop();
+    pulsePhase_ = 0;
+  }
   paintBadge();
   setButtons();
 }

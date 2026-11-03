@@ -309,11 +309,14 @@ void CommHub::tryReconnect() {
   if (client_ && (client_->state() == QAbstractSocket::ConnectingState ||
                   client_->state() == QAbstractSocket::HostLookupState))
     return;
+  ++reconnectAttempts_;
   appendTranscript(QStringLiteral("SYS"),
-                   QStringLiteral("reconnect %1:%2")
+                   QStringLiteral("reconnect #%1 %2:%3")
+                       .arg(reconnectAttempts_)
                        .arg(reconnectHost_)
                        .arg(reconnectPort_));
-  tcpStatus_ = QStringLiteral("reconnecting %1:%2")
+  tcpStatus_ = QStringLiteral("reconnecting #%1 %2:%3")
+                   .arg(reconnectAttempts_)
                    .arg(reconnectHost_)
                    .arg(reconnectPort_);
   emit statusChanged(tcpStatus_);

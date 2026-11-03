@@ -75,6 +75,7 @@ class CommHub : public QObject {
   QString reconnectHost_;
   quint16 reconnectPort_ = 0;
   QTimer* reconnectTimer_ = nullptr;
+  int reconnectAttempts_ = 0;
 };
 
 }  // namespace sieans_qt

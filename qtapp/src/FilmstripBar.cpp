@@ -34,6 +34,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   head->setSpacing(6);
   countLabel_ = new QLabel(QStringLiteral("图像源 (0/0)"));
   countLabel_->setStyleSheet(QStringLiteral("color:#e8e8e8;font-weight:600;"));
+  countLabel_->setToolTip(QStringLiteral("←→/滚轮切换 · Del 删除 · 拖拽缩略图重排"));
   status_ = new QLabel(QStringLiteral("本地图像"));
   status_->setObjectName(QStringLiteral("muted"));
   autoSwitch_ = new QCheckBox(QStringLiteral("自动切换"));
@@ -68,7 +69,9 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   list_->setViewMode(QListView::IconMode);
   list_->setFlow(QListView::LeftToRight);
   list_->setWrapping(false);
-  list_->setMovement(QListView::Static);
+  list_->setMovement(QListView::Snap);  // drag-reorder thumbs
+  list_->setDragDropMode(QAbstractItemView::InternalMove);
+  list_->setDefaultDropAction(Qt::MoveAction);
   list_->setResizeMode(QListView::Adjust);
   list_->setIconSize(QSize(kThumbW, kThumbH));
   list_->setGridSize(QSize(kThumbW + 14, kThumbH + 18));
@@ -101,6 +104,22 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
     refreshCount();
     emit imageSelected(paths_.at(row));
   });
+  connect(list_->model(), &QAbstractItemModel::rowsMoved, this,
+          [this](const QModelIndex&, int, int, const QModelIndex&, int) {
+            if (rebuilding_) return;
+            QStringList next;
+            next.reserve(list_->count());
+            for (int i = 0; i < list_->count(); ++i) {
+              auto* it = list_->item(i);
+              if (it) next.push_back(it->data(Qt::UserRole).toString());
+            }
+            if (next.size() == paths_.size()) {
+              paths_ = next;
+              index_ = list_->currentRow();
+              refreshCount();
+              setStatus(QStringLiteral("已重排 %1 张").arg(paths_.size()));
+            }
+          });
 
   setStyleSheet(QStringLiteral(
       "QWidget#filmstripBar{background:#232528;border-top:1px solid #4a4e54;}"
