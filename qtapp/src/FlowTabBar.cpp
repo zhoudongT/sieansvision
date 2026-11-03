@@ -9,7 +9,7 @@ namespace sieans_qt {
 
 FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   setObjectName(QStringLiteral("flowTabBar"));
-  setStatusTip(QStringLiteral("流程条 · ▶一次 F5/F9 / ↻连续 F6 / ■停止 Esc · F/G/A/R 适应"));
+  setStatusTip(QStringLiteral("流程条 · ▶一次 F5/F9 / ↻连续 F6 / ■停止 Esc · F/G/A/Space/R 适应"));
   setFixedHeight(28);
   auto* lay = new QHBoxLayout(this);
   lay->setContentsMargins(4, 2, 4, 2);
@@ -37,7 +37,7 @@ FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   stop->setStatusTip(QStringLiteral("流程 · 停止"));
   auto* fit = new QPushButton(QStringLiteral("适应"));
   fit->setFixedWidth(40);
-  fit->setToolTip(QStringLiteral("适应流程画布 · F/G/A/Home/0/R"));
+  fit->setToolTip(QStringLiteral("适应流程画布 · F/G/A/Space/Home/0/R"));
   fit->setStatusTip(QStringLiteral("流程 · 适应画布"));
   auto* hint = new QLabel(QStringLiteral("F5 一次 · F6 连续 · F/R 适应 · Esc 取消连线 · Del 删连线"));
   hint->setObjectName(QStringLiteral("muted"));
