@@ -31,7 +31,7 @@ namespace sieans_qt {
 FlowIoDialog::FlowIoDialog(const QVariantMap& io, QWidget* parent)
     : QDialog(parent), io_(io) {
   setWindowTitle(QStringLiteral("流程参数 · I/O 绑定"));
-  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 按名排序 · Ctrl+Shift+D 复制到另一表 · Ctrl+Home/End 置顶/底 · Ctrl+Shift+U 去重 · Ctrl+D 复制行 · Ctrl+A 全选 · Ctrl+E 补默认 · Ctrl+Shift+E 清默认 · Ctrl+Tab 切换表 · Ctrl+Shift+C 复制CSV · Ctrl+X 剪切 · Ctrl+Shift+V 粘贴 · Ctrl+Shift+L 清空空行 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果 · Ctrl+Shift+J/O 导出/导入JSON"));
+  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 按名排序 · Ctrl+Shift+D 复制到另一表 · Ctrl+Home/End 置顶/底 · Ctrl+Shift+U 去重 · Ctrl+D 复制行 · Ctrl+A 全选 · Ctrl+E 补默认 · Ctrl+Shift+E 清默认 · Ctrl+Tab 切换表 · Ctrl+Shift+C 复制CSV · Ctrl+Shift+I ${flow} · Ctrl+X 剪切 · Ctrl+Shift+V 粘贴 · Ctrl+Shift+L 清空空行 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果 · Ctrl+Shift+J/O 导出/导入JSON"));
   resize(560, 440);
   setStyleSheet(theme::workbenchStyleSheet());
   auto* root = new QVBoxLayout(this);
@@ -309,6 +309,8 @@ void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
   connect(scA, &QShortcut::activated, this, [this, table]() { selectAllRows(table); });
   auto* scCopy = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+C")), table);
   connect(scCopy, &QShortcut::activated, this, [this, table]() { copySelectedRows(table); });
+  auto* scTok = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+I")), table);
+  connect(scTok, &QShortcut::activated, this, [this, table]() { copySelectedAsFlowTokens(table); });
   auto* scCut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+X")), table);
   connect(scCut, &QShortcut::activated, this, [this, table]() { cutSelectedRows(table); });
   auto* scOther = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+Tab")), table);
@@ -462,6 +464,34 @@ void FlowIoDialog::copySelectedRows(QTableWidget* table) {
   }
   if (auto* clip = QGuiApplication::clipboard()) clip->setText(lines.join(QLatin1Char('\n')));
 }
+
+void FlowIoDialog::copySelectedAsFlowTokens(QTableWidget* table) {
+  if (!table) return;
+  const auto ranges = table->selectionModel() ? table->selectionModel()->selectedRows()
+                                              : QModelIndexList{};
+  QList<int> rows;
+  for (const QModelIndex& ix : ranges) rows.push_back(ix.row());
+  if (rows.isEmpty() && table->currentRow() >= 0) rows.push_back(table->currentRow());
+  if (rows.isEmpty()) {
+    table->setToolTip(QStringLiteral("未选行 · Ctrl+Shift+I"));
+    return;
+  }
+  std::sort(rows.begin(), rows.end());
+  QStringList toks;
+  for (int r : rows) {
+    QTableWidgetItem* it = table->item(r, 0);
+    const QString name = it ? it->text().trimmed() : QString();
+    if (name.isEmpty()) continue;
+    toks << QStringLiteral("${flow.%1}").arg(name);
+  }
+  if (toks.isEmpty()) {
+    table->setToolTip(QStringLiteral("无有效 name · Ctrl+Shift+I"));
+    return;
+  }
+  if (auto* clip = QGuiApplication::clipboard()) clip->setText(toks.join(QLatin1Char('\n')));
+  table->setToolTip(QStringLiteral("已复制 ${flow} %1 · Ctrl+Shift+I").arg(toks.size()));
+}
+
 
 void FlowIoDialog::cutSelectedRows(QTableWidget* table) {
   if (!table) return;

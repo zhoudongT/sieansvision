@@ -26,6 +26,7 @@ class FlowIoDialog : public QDialog {
   void duplicateSelectedRows(QTableWidget* table);
   void pasteRows(QTableWidget* table);
   void copySelectedRows(QTableWidget* table);
+  void copySelectedAsFlowTokens(QTableWidget* table);
   void cutSelectedRows(QTableWidget* table);
   void clearEmptyRows(QTableWidget* table);
   void fillEmptyDefaults(QTableWidget* table);

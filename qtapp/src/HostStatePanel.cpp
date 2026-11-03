@@ -116,7 +116,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   modeRow->addWidget(new QLabel(QStringLiteral("模式")));
   modeRow->addWidget(mode_, 1);
   mode_->installEventFilter(this);
-  mode_->setToolTip(QStringLiteral("标定模式 · 滚轮切换 · Alt+1/2/3 → 生产/九点/旋转 · 开始仍跑当前视觉流程 · 非标定=生产 · F8 循环"));
+  mode_->setToolTip(QStringLiteral("标定模式 · 滚轮切换 · Alt+1/2/3 → 生产/九点/旋转 · 开始仍跑当前视觉流程 · 非标定=生产 · F8/Shift+F8 循环"));
   modeRow->addWidget(new QLabel(QStringLiteral("报警清除")));
   modeRow->addWidget(policy_, 1);
   policy_->installEventFilter(this);
@@ -153,7 +153,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   history_ = new QListWidget;
   history_->setObjectName(QStringLiteral("alarmHistory"));
   history_->setMinimumHeight(72);
-  history_->setToolTip(QStringLiteral("报警历史 · Esc停止 · Space/F5/F9 启停 · F6/F7 暂停续 · F8 切模式 · 双击/中键复制 · 右键/Ctrl+L 清空 · Del 删行 · Ctrl+A 全选 · Ctrl+D 复制行 · Ctrl+X 剪切 · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/底 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Ctrl+Shift+J/V JSON导出/粘贴 · 最近 40 条"));
+  history_->setToolTip(QStringLiteral("报警历史 · Esc停止 · Space/F5/F9 启停 · F6/F7 暂停续 · F8/Shift+F8 切模式 · 双击/中键复制 · 右键/Ctrl+L 清空 · Del 删行 · Ctrl+A 全选 · Ctrl+D 复制行 · Ctrl+X 剪切 · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/底 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Ctrl+Shift+J/V JSON导出/粘贴 · 最近 40 条"));
   history_->setStatusTip(QStringLiteral("Host · 报警历史 · Ctrl+L/Del/双击/中键"));
   history_->installEventFilter(this);
   history_->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -274,6 +274,10 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
       else if (state_ == QLatin1String("Paused")) emit resumeRequested();
       else emit startRequested();
     });
+    auto* scF8 = new QShortcut(QKeySequence(Qt::Key_F8), this);
+    connect(scF8, &QShortcut::activated, this, [this]() { cycleHostMode(+1); });
+    auto* scF8b = new QShortcut(QKeySequence(QStringLiteral("Shift+F8")), this);
+    connect(scF8b, &QShortcut::activated, this, [this]() { cycleHostMode(-1); });
     auto* scCopyHist = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+C")), this);
     connect(scCopyHist, &QShortcut::activated, this, [this]() {
       if (!history_) return;
@@ -511,7 +515,7 @@ bool HostStatePanel::eventFilter(QObject* obj, QEvent* event) {
       return true;
     }
     if (ke->key() == Qt::Key_F8) {
-      cycleHostMode(+1);
+      cycleHostMode((ke->modifiers() & Qt::ShiftModifier) ? -1 : +1);
       return true;
     }
   }
