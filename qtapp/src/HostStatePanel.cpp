@@ -153,7 +153,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   history_ = new QListWidget;
   history_->setObjectName(QStringLiteral("alarmHistory"));
   history_->setMinimumHeight(72);
-  history_->setToolTip(QStringLiteral("报警历史 · 双击/中键复制 · 右键/Ctrl+L 清空 · Del 删行 · Ctrl+X 剪切 · Ctrl+Shift+J/V JSON导出/粘贴 · 最近 40 条"));
+  history_->setToolTip(QStringLiteral("报警历史 · 双击/中键复制 · 右键/Ctrl+L 清空 · Del 删行 · Ctrl+X 剪切 · Ctrl+Shift+Y 反序 · Ctrl+Shift+J/V JSON导出/粘贴 · 最近 40 条"));
   history_->setStatusTip(QStringLiteral("Host · 报警历史 · Ctrl+L/Del/双击/中键"));
   history_->installEventFilter(this);
   history_->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -195,6 +195,8 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
     connect(scV, &QShortcut::activated, this, [this]() { pasteAlarmHistoryFromClipboard(); });
     auto* scX = new QShortcut(QKeySequence(QStringLiteral("Ctrl+X")), history_);
     connect(scX, &QShortcut::activated, this, [this]() { cutSelectedAlarmHistory(); });
+    auto* scY = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+Y")), history_);
+    connect(scY, &QShortcut::activated, this, [this]() { reverseAlarmHistory(); });
 
     connect(history_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* it) {
       if (!it) return;
@@ -683,5 +685,20 @@ void HostStatePanel::pasteAlarmHistoryFromClipboard() {
   if (modeHint_)
     modeHint_->setText(QStringLiteral("已粘贴报警 %1 · Ctrl+Shift+V").arg(lines.size()));
 }
+
+void HostStatePanel::reverseAlarmHistory() {
+  if (!history_ || history_->count() < 2) {
+    if (modeHint_) modeHint_->setText(QStringLiteral("报警不足 · Ctrl+Shift+Y"));
+    return;
+  }
+  QStringList lines = alarmHistoryLines();
+  std::reverse(lines.begin(), lines.end());
+  history_->clear();
+  for (const QString& line : lines) history_->addItem(line);
+  emit alarmHistoryChanged(alarmHistoryLines());
+  if (modeHint_)
+    modeHint_->setText(QStringLiteral("报警已反序 %1 · Ctrl+Shift+Y").arg(lines.size()));
+}
+
 
 }  // namespace sieans_qt

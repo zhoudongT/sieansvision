@@ -43,6 +43,7 @@ class HostStatePanel : public QWidget {
   void setAlarmHistoryLines(const QStringList& lines);
   void pasteAlarmHistoryFromClipboard();
   void cutSelectedAlarmHistory();
+  void reverseAlarmHistory();
 
  signals:
   void startRequested();
