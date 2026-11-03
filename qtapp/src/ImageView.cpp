@@ -21,7 +21,7 @@ namespace sieans_qt {
 
 ImageView::ImageView(QWidget* parent) : QGraphicsView(parent) {
   setFocusPolicy(Qt::StrongFocus);
-  setToolTip(QStringLiteral("F/G/A/Space/Home/0/R 适应 · +/- 缩放 · Alt+/- 微调 · 1=1:1 · 2=200% · 3=50% · O 叠显 · P 探针 · Ctrl+C 复制图像 · Ctrl+V 粘贴到胶片 · Ctrl+Shift+C 探针 · Ctrl+H 叠显 · 中键适应 · Esc/C/Del 清叠加 · 滚轮缩放"));
+  setToolTip(QStringLiteral("F/G/A/Space/Home/0/R 适应 · +/- 缩放 · Alt+/- 微调 · 1=1:1 · 2=200% · 3=50% · O 叠显 · P 探针 · S/Ctrl+Shift+F 存胶片 · Ctrl+C 复制图像 · Ctrl+V 粘贴到胶片 · Ctrl+Shift+C 探针 · Ctrl+H 叠显 · 中键适应 · Esc/C/Del 清叠加 · 滚轮缩放"));
   setStatusTip(QStringLiteral("图像视图 · F/G/A/Space/Home/0/R 适应 · +/- 缩放 · 1=1:1 · 2=200% · O 叠显 · P 探针 · Ctrl+Shift+C 探针 · 中键适应 · Esc/C/Del/Backspace 清叠加 · 码框 hits · 拖拽平移 · 滚轮缩放"));
   setScene(&scene_);
   setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
@@ -143,10 +143,11 @@ void ImageView::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
-  if (event->key() == Qt::Key_F || event->key() == Qt::Key_Home ||
-      event->key() == Qt::Key_0 || event->key() == Qt::Key_R ||
-      event->key() == Qt::Key_G || event->key() == Qt::Key_A ||
-      event->key() == Qt::Key_Space) {
+  if (((event->key() == Qt::Key_F || event->key() == Qt::Key_Home ||
+        event->key() == Qt::Key_0 || event->key() == Qt::Key_R ||
+        event->key() == Qt::Key_G || event->key() == Qt::Key_A ||
+        event->key() == Qt::Key_Space) &&
+       !(event->modifiers() & Qt::ControlModifier))) {
     userZoomed_ = false;
     fitToView();
     event->accept();
@@ -203,6 +204,21 @@ void ImageView::keyPressEvent(QKeyEvent* event) {
     scale(2.0, 2.0);
     userZoomed_ = true;
     QToolTip::showText(QCursor::pos(), QStringLiteral("缩放 200%"), this);
+    event->accept();
+    return;
+  }
+  if ((event->key() == Qt::Key_S && !(event->modifiers() & Qt::ControlModifier) &&
+       !(event->modifiers() & Qt::AltModifier)) ||
+      (event->key() == Qt::Key_F && (event->modifiers() & Qt::ControlModifier) &&
+       (event->modifiers() & Qt::ShiftModifier))) {
+    if (!image_.isNull()) {
+      emit imageSaveToFilmstripRequested(image_);
+      QToolTip::showText(QCursor::pos(),
+                         QStringLiteral("存胶片 %1×%2 · S").arg(image_.width()).arg(image_.height()),
+                         this);
+    } else {
+      QToolTip::showText(QCursor::pos(), QStringLiteral("无图像可存 · S"), this);
+    }
     event->accept();
     return;
   }

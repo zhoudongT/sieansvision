@@ -455,6 +455,22 @@ void MainWindow::buildUi() {
     loadImagePath(path, true);
     showStatus(QStringLiteral("已粘贴图像 %1×%2 → 胶片").arg(img.width()).arg(img.height()));
   });
+  auto saveViewToFilmstrip = [this](const QImage& img) {
+    if (img.isNull()) return;
+    const QString dir = QDir::temp().filePath(QStringLiteral("sieans_snap"));
+    QDir().mkpath(dir);
+    const QString path = QDir(dir).filePath(
+        QStringLiteral("snap_%1.png")
+            .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_hhmmss_zzz"))));
+    if (!img.save(path, "PNG")) {
+      showStatus(QStringLiteral("存胶片失败"));
+      return;
+    }
+    loadImagePath(path, true);
+    showStatus(QStringLiteral("已存胶片 %1×%2").arg(img.width()).arg(img.height()));
+  };
+  connect(image_view_, &ImageView::imageSaveToFilmstripRequested, this, saveViewToFilmstrip);
+  connect(output_view_, &ImageView::imageSaveToFilmstripRequested, this, saveViewToFilmstrip);
   image_tabs_->addTab(image_view_, QStringLiteral("全局图像"));
   image_tabs_->addTab(output_view_, QStringLiteral("模块结果"));
   imgLay->addWidget(image_tabs_, 1);

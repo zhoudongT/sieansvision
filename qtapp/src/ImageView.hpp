@@ -33,6 +33,7 @@ class ImageView : public QGraphicsView {
 
  signals:
   void imagePasted(const QImage& image);
+  void imageSaveToFilmstripRequested(const QImage& image);
 
  public slots:
   void fitToView();
