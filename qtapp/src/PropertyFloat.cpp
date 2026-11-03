@@ -192,6 +192,10 @@ void PropertyFloat::showForSource(const QVariantMap& sourceConfig) {
   show();
   raise();
   activateWindow();
+  if (pinned_) {
+    setWindowFlag(Qt::WindowStaysOnTopHint, true);
+    show();
+  }
   if (QLineEdit* le = findChild<QLineEdit*>()) {
     le->setFocus(Qt::OtherFocusReason);
     le->selectAll();
@@ -208,6 +212,10 @@ void PropertyFloat::showForStep(const FlowStep& step) {
   show();
   raise();
   activateWindow();
+  if (pinned_) {
+    setWindowFlag(Qt::WindowStaysOnTopHint, true);
+    show();
+  }
   if (QLineEdit* le = findChild<QLineEdit*>()) {
     le->setFocus(Qt::OtherFocusReason);
     le->selectAll();

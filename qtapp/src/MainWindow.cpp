@@ -728,7 +728,20 @@ void MainWindow::buildUi() {
       if (resultLogFilter_)
         resultLogFilter_->setToolTip(QStringLiteral("已复制历史 %1 字 · Ctrl+Shift+C").arg(text.size()));
     });
-    result_log_->setToolTip(QStringLiteral("历史结果 · Ctrl+Shift+C 复制可见过滤 · Ctrl+Alt+F 过滤"));
+    {
+      auto* scLogJson = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+J")), result_log_);
+      connect(scLogJson, &QShortcut::activated, this, [this]() {
+        if (!result_log_) return;
+        const QString text = result_log_->toPlainText();
+        QStringList lines = text.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        QJsonArray arr;
+        for (const QString& line : lines) arr.append(line);
+        if (auto* clip = QGuiApplication::clipboard())
+          clip->setText(QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact)));
+        result_log_->setToolTip(QStringLiteral("已复制历史JSON %1 · Ctrl+Shift+J").arg(arr.size()));
+      });
+    }
+    result_log_->setToolTip(QStringLiteral("历史结果 · Ctrl+Shift+C 复制 · Ctrl+Shift+J JSON · Ctrl+Alt+F 过滤"));
   }
   bottom->addTab(logHost, QStringLiteral("历史结果"));
 
@@ -968,8 +981,8 @@ void MainWindow::buildToolbar() {
   tb->addSeparator();
   mode_badge_ = new QLabel(QStringLiteral("设计态"));
   mode_badge_->setObjectName(QStringLiteral("modeBadge"));
-  mode_badge_->setToolTip(QStringLiteral("设计态可编辑 · 运行态锁定画布 · 单击切换 · 中键运行一次 · 右键连续/暂停 · 双击停连续"));
-  mode_badge_->setStatusTip(QStringLiteral("模式徽章 · 设计/运行 · 中键一次 · 右键连续 · 双击停"));
+  mode_badge_->setToolTip(QStringLiteral("设计态可编辑 · 运行态锁定画布 · 单击切换 · Alt暂停/继续 · 中键运行一次 · 右键连续/暂停 · 双击停连续"));
+  mode_badge_->setStatusTip(QStringLiteral("模式徽章 · 设计/运行 · Alt暂停 · 中键一次 · 右键连续 · 双击停"));
   mode_badge_->setProperty("runMode", false);
   mode_badge_->setCursor(Qt::PointingHandCursor);
   mode_badge_->installEventFilter(this);
@@ -1814,6 +1827,18 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
   if (obj == mode_badge_ && event->type() == QEvent::MouseButtonRelease) {
     auto* me = static_cast<QMouseEvent*>(event);
     if (me->button() == Qt::LeftButton) {
+      if (me->modifiers() & Qt::AltModifier) {
+        if (continuous_run_ && !run_paused_) {
+          onPauseRun();
+          showStatus(QStringLiteral("已暂停 · Alt+模式"));
+        } else if (run_paused_) {
+          onResumeRun();
+          showStatus(QStringLiteral("已继续 · Alt+模式"));
+        } else {
+          showStatus(QStringLiteral("无连续可暂停 · Alt+模式"));
+        }
+        return true;
+      }
       if (act_mode_) act_mode_->toggle();
       return true;
     }

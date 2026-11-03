@@ -311,6 +311,20 @@ void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
   connect(scCopy, &QShortcut::activated, this, [this, table]() { copySelectedRows(table); });
   auto* scOther = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+Tab")), table);
   connect(scOther, &QShortcut::activated, this, [this, table]() { moveSelectedToOtherTable(table); });
+  {
+    const char* toks[] = {"${flow.passGate}", "${flow.barcodeText}", "${flow.formatted}",
+                          "${flow.io.Result}"};
+    for (int i = 0; i < 4; ++i) {
+      auto* sc = new QShortcut(QKeySequence(Qt::ALT | static_cast<int>(Qt::Key_1 + i)), table);
+      const QString tok = QString::fromUtf8(toks[i]);
+      connect(sc, &QShortcut::activated, this, [this, table, tok]() {
+        const int row = table->currentRow();
+        if (row < 0) return;
+        table->setItem(row, 2, new QTableWidgetItem(tok));
+        table->setToolTip(QStringLiteral("binding %1 · Alt+1..4").arg(tok));
+      });
+    }
+  }
 }
 
 void FlowIoDialog::moveSelectedRows(QTableWidget* table, int delta) {
