@@ -54,7 +54,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   deviceTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
   deviceTable_->setSelectionMode(QAbstractItemView::SingleSelection);
   deviceTable_->setMaximumHeight(120);
-  deviceTable_->setToolTip(QStringLiteral("设备表 · F2 改名 · Insert/Ctrl+N 增 · Ctrl+D 复制 · Shift+Del 删 · Enter 写回 · Space/Alt 启停 · Ctrl+Shift+J/O JSON · 中键端点 · 右键复制 · 双击备注"));
+  deviceTable_->setToolTip(QStringLiteral("设备表 · F2 改名 · Insert/Ctrl+N 增 · Ctrl+D 复制 · Shift+Del 删 · Alt+↑↓ 调序 · Enter 写回 · Space/Alt 启停 · Ctrl+Shift+J/O JSON · 中键端点 · 右键复制 · 双击备注"));
   deviceTable_->setStatusTip(QStringLiteral("通信 · 设备表 · LocalBus/TCP · 中键端点"));
   deviceTable_->installEventFilter(this);
   lay->addWidget(deviceTable_);
@@ -567,6 +567,11 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
     if (ke->key() == Qt::Key_O && (ke->modifiers() & Qt::ControlModifier) &&
         (ke->modifiers() & Qt::ShiftModifier)) {
       importDevicesJson();
+      return true;
+    }
+    if ((ke->key() == Qt::Key_Up || ke->key() == Qt::Key_Down) &&
+        (ke->modifiers() & Qt::AltModifier)) {
+      moveSelectedDevice(ke->key() == Qt::Key_Up ? -1 : +1);
       return true;
     }
   }
@@ -1267,6 +1272,46 @@ void CommPanel::importDevicesJson() {
   refreshDevices();
   if (status_)
     status_->setToolTip(QStringLiteral("已导入设备 %1 · Ctrl+Shift+O").arg(devices.size()));
+}
+
+
+void CommPanel::moveSelectedDevice(int delta) {
+  if (!hub_ || !deviceTable_ || delta == 0) return;
+  const auto items = deviceTable_->selectedItems();
+  if (items.isEmpty()) return;
+  const int row = items.first()->row();
+  auto* nameItem = deviceTable_->item(row, 0);
+  if (!nameItem) return;
+  const QString name = nameItem->text();
+  QVariantMap cm = hub_->commManager();
+  QVariantList devices = cm.value(QStringLiteral("devices")).toList();
+  int idx = -1;
+  for (int i = 0; i < devices.size(); ++i) {
+    if (devices[i].toMap().value(QStringLiteral("name")).toString() == name) {
+      idx = i;
+      break;
+    }
+  }
+  if (idx < 0) return;
+  const int dest = idx + delta;
+  if (dest < 0 || dest >= devices.size()) {
+    if (status_) status_->setToolTip(QStringLiteral("已到边界 · Alt+↑↓"));
+    return;
+  }
+  devices.swapItemsAt(idx, dest);
+  cm.insert(QStringLiteral("devices"), devices);
+  hub_->loadFromCommManager(cm);
+  emit requestSaveComm(cm);
+  refreshDevices();
+  for (int r = 0; r < deviceTable_->rowCount(); ++r) {
+    auto* it = deviceTable_->item(r, 0);
+    if (it && it->text() == name) {
+      deviceTable_->selectRow(r);
+      break;
+    }
+  }
+  if (status_)
+    status_->setToolTip(QStringLiteral("设备调序 %1 → #%2 · Alt+↑↓").arg(name).arg(dest + 1));
 }
 
 }  // namespace sieans_qt
