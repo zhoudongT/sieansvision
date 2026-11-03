@@ -209,7 +209,7 @@ OperatorDef OperatorLibrary::findDef(const QString& key) {
 }
 
 OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
-  setStatusTip(QStringLiteral("Toolbox · / 或 Ctrl+F/L 搜索 · 最近 · Ctrl+1-9 最近项 · Ctrl+0 清过滤 · Ctrl+C 复制算子 · Ctrl+Shift+Del 清最近 · 分类芯片 · Enter 添加(列表/搜索) · Enter/中键 添加 · Home/End/PgUp/PgDn · Esc 清空"));
+  setStatusTip(QStringLiteral("Toolbox · / 或 Ctrl+F/L 搜索 · 最近 · Ctrl+1-9 最近项 · Ctrl+0 清过滤 · Ctrl+C 复制算子 · Ctrl+Shift+Del 清最近 · 分类芯片 · Enter 添加(列表/搜索) · Enter/中键 添加 · Home/End/PgUp/PgDn · Esc 清空 · 右键复制 · Ctrl+Shift+C 可见键 · 中键分类芯片"));
   setObjectName(QStringLiteral("libraryPane"));
   auto* lay = new QVBoxLayout(this);
   lay->setContentsMargins(0, 0, 0, 0);
@@ -239,7 +239,7 @@ OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
   list_->setIconSize(QSize(32, 24));
   list_->setUniformItemSizes(true);
   list_->setObjectName(QStringLiteral("operatorTiles"));
-  list_->setToolTip(QStringLiteral("双击/Enter 添加算子 · 中键添加 · ↑↓/Home/End/Pg · Esc 清空搜索 · Ctrl+C 复制"));
+  list_->setToolTip(QStringLiteral("双击/Enter 添加算子 · 中键添加 · 右键复制 · ↑↓/Home/End/Pg · Esc 清空搜索 · Ctrl+C 复制 · Ctrl+Shift+C 可见键"));
   list_->setStatusTip(QStringLiteral("Toolbox 列表 · 双击或 Enter 添加 · / 聚焦搜索"));
   lay->addWidget(list_, 1);
   connect(list_, &QListWidget::itemDoubleClicked, this,
@@ -421,6 +421,11 @@ void OperatorLibrary::rebuildCategoryChips() {
     connect(b, &QPushButton::clicked, this, [this, c]() {
       setCategoryFilter(c == QLatin1String("全部") ? QString() : c);
     });
+    b->setProperty("sieansCat", c);
+    b->setToolTip(c == QLatin1String("全部")
+                      ? QStringLiteral("全部分类 · 中键同单击")
+                      : QStringLiteral("分类 %1 · 单击/中键过滤").arg(c));
+    b->installEventFilter(this);
     catChipLay_->addWidget(b);
   }
     {
@@ -448,6 +453,19 @@ void OperatorLibrary::focusSearch() {
 }
 
 bool OperatorLibrary::eventFilter(QObject* obj, QEvent* event) {
+  if (event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::MiddleButton) {
+      const QVariant cat = obj->property("sieansCat");
+      if (cat.isValid()) {
+        const QString c = cat.toString();
+        setCategoryFilter(c == QLatin1String("全部") ? QString() : c);
+        if (list_) list_->setFocus(Qt::OtherFocusReason);
+        if (search_) search_->setToolTip(QStringLiteral("分类 · 中键芯片 · %1").arg(c));
+        return true;
+      }
+    }
+  }
   if (obj == list_ && event->type() == QEvent::MouseButtonRelease) {
     auto* me = static_cast<QMouseEvent*>(event);
     if (me->button() == Qt::MiddleButton) {
@@ -463,6 +481,18 @@ bool OperatorLibrary::eventFilter(QObject* obj, QEvent* event) {
       }
       return true;
     }
+    if (me->button() == Qt::RightButton) {
+      QListWidgetItem* hit = list_->itemAt(me->position().toPoint());
+      if (!hit) hit = list_->currentItem();
+      if (hit) {
+        const QString k = hit->data(Qt::UserRole).toString();
+        const QString tip = hit->toolTip().isEmpty() ? hit->text() : hit->toolTip();
+        if (auto* clip = QGuiApplication::clipboard())
+          clip->setText(k.isEmpty() ? tip : k + QLatin1Char('\t') + tip);
+        if (search_) search_->setToolTip(QStringLiteral("已复制算子 · 右键"));
+      }
+      return true;
+    }
   }
   if (event->type() == QEvent::KeyPress) {
     auto* ke = static_cast<QKeyEvent*>(event);
@@ -472,6 +502,21 @@ bool OperatorLibrary::eventFilter(QObject* obj, QEvent* event) {
       return true;
     }
     if ((ke->modifiers() & Qt::ControlModifier) && ke->key() == Qt::Key_C && list_) {
+      if (ke->modifiers() & Qt::ShiftModifier) {
+        QStringList lines;
+        for (int i = 0; i < list_->count(); ++i) {
+          auto* it = list_->item(i);
+          if (!it) continue;
+          const QString key = it->data(Qt::UserRole).toString();
+          if (key.isEmpty()) continue;
+          lines << key;
+        }
+        if (auto* clip = QGuiApplication::clipboard())
+          clip->setText(lines.join(QLatin1Char('\n')));
+        if (search_)
+          search_->setToolTip(QStringLiteral("已复制可见算子 %1 · Ctrl+Shift+C").arg(lines.size()));
+        return true;
+      }
       QListWidgetItem* it = list_->currentItem();
       if (it) {
         const QString tip = it->toolTip().isEmpty() ? it->text() : it->toolTip();

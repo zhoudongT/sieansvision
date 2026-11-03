@@ -38,7 +38,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   lay->addWidget(title);
 
   status_ = new QLabel(QStringLiteral("TCP: idle"));
-  setStatusTip(QStringLiteral("通信面板 · LocalBus/TCP · peers/framing(lf/crlf/raw/len4) · 快选芯片 · 模板预设 · Ctrl+T 启停 · Ctrl+[ / ] 切帧 · Ctrl+Shift+R 装入末 RX · 右键摘要粘贴端点 · Alt+↑↓ 报文历史 · 中键状态复制 TX/RX · 双击抄本行装入报文 · ${flow.x} · AUTO_TCP bump"));
+  setStatusTip(QStringLiteral("通信面板 · LocalBus/TCP · peers/framing · Ctrl+T 启停 · Ctrl+[ / ] 切帧 · Ctrl+Shift+H 端点 · Ctrl+Shift+P 粘贴端点 · Ctrl+Shift+R 末 RX · 状态双击启停/右键装RX · 端口滚轮 · ACK中键快选 · 抄本双击/右键装入 · Alt+↑↓ 历史 · ${flow.x}"));
   status_->setObjectName(QStringLiteral("muted"));
   lay->addWidget(status_);
 
@@ -227,8 +227,20 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   transcript_->installEventFilter(this);
   if (status_) {
     status_->setCursor(Qt::PointingHandCursor);
-    status_->setToolTip(QStringLiteral("TCP 状态 · 单击/中键复制 TX/RX · framing/peers 见行内"));
+    status_->setToolTip(QStringLiteral("TCP 状态 · 单击/中键复制 TX/RX · 双击启停 · 右键装入末次RX · framing/peers 见行内"));
     status_->installEventFilter(this);
+  }
+  if (hostEdit_) hostEdit_->installEventFilter(this);
+  if (portEdit_) {
+    portEdit_->installEventFilter(this);
+    portEdit_->setToolTip(QStringLiteral("TCP port · 滚轮 ±1 · listen/connect · AUTO_TCP 可 bump · 1-65535"));
+  }
+  if (ackEdit_) {
+    ackEdit_->installEventFilter(this);
+    ackEdit_->setToolTip(QStringLiteral("ACK · 中键快选 OK/NG/空 · 写入 tcpReal.ack · 空则不回"));
+  }
+  if (transcript_) {
+    transcript_->setToolTip(QStringLiteral("通信抄本 · Ctrl+Shift+C 复制过滤 · 双击/右键行→报文框 · 中键清空过滤"));
   }
   lay->addWidget(transcript_, 1);
 
@@ -262,6 +274,10 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
     connect(scFrL, &QShortcut::activated, this, [this]() { cycleFraming(-1); });
     auto* scFrR = new QShortcut(QKeySequence(QStringLiteral("Ctrl+]")), this);
     connect(scFrR, &QShortcut::activated, this, [this]() { cycleFraming(+1); });
+    auto* scHost = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+H")), this);
+    connect(scHost, &QShortcut::activated, this, [this]() { copyEndpoint(); });
+    auto* scPasteEp = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+P")), this);
+    connect(scPasteEp, &QShortcut::activated, this, [this]() { pasteEndpointFromClipboard(); });
     auto* scRx = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+R")), this);
     connect(scRx, &QShortcut::activated, this, &CommPanel::loadLastRxToPayload);
   }
@@ -493,10 +509,47 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
     cycleFraming(we->angleDelta().y() > 0 ? -1 : +1);
     return true;
   }
+  if (obj == status_ && event->type() == QEvent::MouseButtonDblClick) {
+    toggleTcp();
+    return true;
+  }
   if (obj == status_ && event->type() == QEvent::MouseButtonRelease) {
     auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::RightButton) {
+      loadLastRxToPayload();
+      return true;
+    }
     if (me->button() == Qt::LeftButton || me->button() == Qt::MiddleButton) {
       copyLastTxRx();
+      return true;
+    }
+  }
+  if ((obj == hostEdit_ || obj == portEdit_) && event->type() == QEvent::Wheel) {
+    auto* we = static_cast<QWheelEvent*>(event);
+    if (!portEdit_) return true;
+    bool ok = false;
+    int p = portEdit_->text().trimmed().toInt(&ok);
+    if (!ok) p = 19956;
+    p += (we->angleDelta().y() > 0 ? 1 : -1);
+    if (p < 1) p = 1;
+    if (p > 65535) p = 65535;
+    portEdit_->setText(QString::number(p));
+    pushTcpEndpoint(true);
+    if (status_) status_->setToolTip(QStringLiteral("端口 %1 · 滚轮").arg(p));
+    return true;
+  }
+  if (obj == ackEdit_ && event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::MiddleButton && ackEdit_) {
+      const QString cur = ackEdit_->text().trimmed();
+      QString next;
+      if (cur.isEmpty()) next = QStringLiteral("OK");
+      else if (cur == QLatin1String("OK")) next = QStringLiteral("NG");
+      else next = QString();
+      ackEdit_->setText(next);
+      pushTcpEndpoint(true);
+      if (status_)
+        status_->setToolTip(QStringLiteral("ACK=%1 · 中键快选").arg(next.isEmpty() ? QStringLiteral("空") : next));
       return true;
     }
   }
@@ -515,6 +568,17 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
   }
   if (obj == transcript_ && event->type() == QEvent::MouseButtonRelease) {
     auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::RightButton && transcript_ && payloadEdit_) {
+      QTextCursor cur = transcript_->cursorForPosition(me->position().toPoint());
+      cur.select(QTextCursor::LineUnderCursor);
+      const QString line = cur.selectedText().trimmed();
+      if (!line.isEmpty()) {
+        payloadEdit_->setText(line);
+        payloadEdit_->setFocus(Qt::OtherFocusReason);
+        if (status_) status_->setToolTip(QStringLiteral("已装入抄本行 · 右键"));
+      }
+      return true;
+    }
     if (me->button() == Qt::MiddleButton && txFilter_) {
       txFilter_->clear();
       if (status_) status_->setToolTip(QStringLiteral("已清空抄本过滤 · 中键"));
@@ -805,6 +869,16 @@ void CommPanel::copyLastTxRx() {
                                 hub_->lastRx().isEmpty() ? QStringLiteral("—") : hub_->lastRx());
   if (auto* clip = QGuiApplication::clipboard()) clip->setText(line);
   if (status_) status_->setToolTip(QStringLiteral("已复制 TX/RX · 状态单击/中键"));
+}
+
+void CommPanel::copyEndpoint() {
+  const QString host = hostEdit_ ? hostEdit_->text().trimmed() : QString();
+  const QString port = portEdit_ ? portEdit_->text().trimmed() : QString();
+  const QString ep = QStringLiteral("%1:%2").arg(host.isEmpty() ? QStringLiteral("127.0.0.1") : host,
+                                                 port.isEmpty() ? QStringLiteral("19956") : port);
+  if (auto* clip = QGuiApplication::clipboard()) clip->setText(ep);
+  if (status_) status_->setToolTip(QStringLiteral("已复制端点 %1 · Ctrl+Shift+H").arg(ep));
+  if (bindSummary_) bindSummary_->setToolTip(QStringLiteral("已复制端点 %1 · Ctrl+Shift+H").arg(ep));
 }
 
 }  // namespace sieans_qt

@@ -54,6 +54,7 @@ class CommPanel : public QWidget {
   void cycleFraming(int delta);
   void loadLastRxToPayload();
   void copyLastTxRx();
+  void copyEndpoint();
 
   CommHub* hub_ = nullptr;
   QTableWidget* deviceTable_ = nullptr;

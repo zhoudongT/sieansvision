@@ -18,7 +18,7 @@
 namespace sieans_qt {
 
 PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
-  setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · F2 首字段 · Tab/Home/End/PgUp/PgDn/滚轮 · Alt+滚轮透明度 · Ctrl+0 透明度重置 · Ctrl+[ / ] 宽度 · Ctrl+Shift+[ / ] 高度 · Ctrl+Shift+0 复位尺寸 · Ctrl+R 还原 · Ctrl+Shift+C 复制可见 · 双击/中键标题钉住 · 右键标题复制节点 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续 · Ctrl+S 同确定"));
+  setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · F2 首字段 · Tab/Home/End/PgUp/PgDn/滚轮 · Alt+滚轮透明度 · Ctrl+0 透明度重置 · Ctrl+[ / ] 宽度 · Ctrl+Shift+[ / ] 高度 · Ctrl+Shift+0 复位尺寸 · Ctrl+R 还原 · Ctrl+Shift+C 复制可见 · 双击/中键标题钉住 · 右键标题复制节点 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续 · Ctrl+S 同确定 · F4 末字段 · Alt+1/2/3 透明度 · Ctrl+Shift+方向吸附"));
   setWhatsThis(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End/PgUp/PgDn · Ctrl/Alt/Shift+Enter/Ctrl+S 确定 · F5/F9 单次 · F6 连续"));
   setObjectName(QStringLiteral("propertyFloat"));
   setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
@@ -310,6 +310,51 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
       (event->modifiers() & Qt::ShiftModifier)) {
     if (panel_) panel_->pasteKeyValueParams();
     if (subtitle_) subtitle_->setText(QStringLiteral("已粘贴参数 · Ctrl+Shift+V"));
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_F4) {
+    const auto kids = findChildren<QWidget*>();
+    QWidget* last = nullptr;
+    for (QWidget* w : kids) {
+      if (!w->isVisible() || !w->isEnabled() || w->focusPolicy() == Qt::NoFocus)
+        continue;
+      if (w == this || w == titleBar_ || w == closeBtn_ || w == pinBtn_ || w == title_ || w == subtitle_)
+        continue;
+      last = w;
+    }
+    if (last) {
+      last->setFocus(Qt::ShortcutFocusReason);
+      if (subtitle_) subtitle_->setText(QStringLiteral("末字段 · F4"));
+    }
+    event->accept();
+    return;
+  }
+  if ((event->modifiers() & Qt::AltModifier) &&
+      (event->key() == Qt::Key_1 || event->key() == Qt::Key_2 || event->key() == Qt::Key_3)) {
+    if (event->key() == Qt::Key_1) opacity_ = 1.0;
+    else if (event->key() == Qt::Key_2) opacity_ = 0.85;
+    else opacity_ = 0.7;
+    setWindowOpacity(opacity_);
+    if (subtitle_)
+      subtitle_->setText(QStringLiteral("透明度 %1% · Alt+%2")
+                             .arg(int(opacity_ * 100))
+                             .arg(event->key() - Qt::Key_0));
+    event->accept();
+    return;
+  }
+  if ((event->modifiers() & Qt::ControlModifier) && (event->modifiers() & Qt::ShiftModifier) &&
+      (event->key() == Qt::Key_Left || event->key() == Qt::Key_Right ||
+       event->key() == Qt::Key_Up || event->key() == Qt::Key_Down)) {
+    QWidget* host = parentWidget() ? parentWidget()->window() : nullptr;
+    const QRect area = host ? host->geometry() : screen()->availableGeometry();
+    QRect g = geometry();
+    if (event->key() == Qt::Key_Left) g.moveLeft(area.left() + 8);
+    else if (event->key() == Qt::Key_Right) g.moveRight(area.right() - 8);
+    else if (event->key() == Qt::Key_Up) g.moveTop(area.top() + 8);
+    else g.moveBottom(area.bottom() - 8);
+    setGeometry(g);
+    if (subtitle_) subtitle_->setText(QStringLiteral("已吸附 · Ctrl+Shift+方向"));
     event->accept();
     return;
   }

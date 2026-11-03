@@ -16,6 +16,7 @@
 #include <QGuiApplication>
 #include <QEvent>
 #include <QMouseEvent>
+#include <QKeyEvent>
 
 namespace sieans_qt {
 namespace {
@@ -62,12 +63,12 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   flowLabel_ = new QLabel(QStringLiteral("绑定流程：—"));
   flowLabel_->setObjectName(QStringLiteral("muted"));
   flowLabel_->setCursor(Qt::PointingHandCursor);
-  flowLabel_->setToolTip(QStringLiteral("绑定流程 · 双击复制名称"));
+  flowLabel_->setToolTip(QStringLiteral("流程绑定 · 双击复制 · 中键启动 · 右键停止"));
   flowLabel_->installEventFilter(this);
   root->addWidget(flowLabel_);
   statsLabel_ = new QLabel(QStringLiteral("连OK 0 · NG 0 · — ms"));
   statsLabel_->setObjectName(QStringLiteral("hostRunStats"));
-  statsLabel_->setToolTip(QStringLiteral("运行统计 · 连OK/NG/上次周期 ms · 来自 Host 条 · 单击/Ctrl+Shift+S 复制"));
+  statsLabel_->setToolTip(QStringLiteral("运行统计 · 连OK/NG/上次周期 ms · 来自 Host 条 · 单击/Ctrl+Shift+S 复制 · 中键JSON · 右键清报警 · Ctrl+Shift+C"));
   statsLabel_->setCursor(Qt::PointingHandCursor);
   statsLabel_->installEventFilter(this);
   root->addWidget(statsLabel_);
@@ -348,11 +349,46 @@ bool HostStatePanel::eventFilter(QObject* obj, QEvent* event) {
     }
     return true;
   }
+  if (obj == flowLabel_ && event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::MiddleButton) {
+      emit startRequested();
+      if (modeHint_) modeHint_->setText(QStringLiteral("启动 · 中键流程名"));
+      return true;
+    }
+    if (me->button() == Qt::RightButton) {
+      emit stopRequested();
+      if (modeHint_) modeHint_->setText(QStringLiteral("停止 · 右键流程名"));
+      return true;
+    }
+  }
   if (obj == statsLabel_ && event->type() == QEvent::MouseButtonRelease) {
     auto* me = static_cast<QMouseEvent*>(event);
     if (me->button() == Qt::LeftButton && statsLabel_) {
       if (auto* clip = QGuiApplication::clipboard()) clip->setText(statsLabel_->text());
       if (modeHint_) modeHint_->setText(QStringLiteral("已复制运行统计 · 单击"));
+      return true;
+    }
+    if (me->button() == Qt::MiddleButton && statsLabel_) {
+      const QString raw = statsLabel_->text();
+      if (auto* clip = QGuiApplication::clipboard())
+        clip->setText(QStringLiteral("{\"stats\":\"%1\",\"state\":\"%2\"}")
+                          .arg(raw, state_));
+      if (modeHint_) modeHint_->setText(QStringLiteral("已复制统计JSON · 中键"));
+      return true;
+    }
+    if (me->button() == Qt::RightButton) {
+      emit clearAlarmRequested();
+      if (modeHint_) modeHint_->setText(QStringLiteral("清报警 · 右键统计"));
+      return true;
+    }
+  }
+  if (event->type() == QEvent::KeyPress) {
+    auto* ke = static_cast<QKeyEvent*>(event);
+    if (ke->key() == Qt::Key_C && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier) && statsLabel_) {
+      if (auto* clip = QGuiApplication::clipboard()) clip->setText(statsLabel_->text());
+      if (modeHint_) modeHint_->setText(QStringLiteral("已复制运行统计 · Ctrl+Shift+C"));
       return true;
     }
   }

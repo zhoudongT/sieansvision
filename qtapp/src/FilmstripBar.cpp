@@ -14,6 +14,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QKeyEvent>
+#include <QInputDialog>
 #include <QMouseEvent>
 #include <QClipboard>
 #include <QGuiApplication>
@@ -34,7 +35,7 @@ constexpr int kThumbH = 52;
 
 FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   setObjectName(QStringLiteral("filmstripBar"));
-  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→/Alt+←→ Home/End/PgUp/PgDn · 0/A/1-9 跳转 · Space 自动切换 · Ctrl+C 路径 · Ctrl+Shift+C 文件名 · Ctrl+D 复制 · Ctrl+Shift+I 反选 · Ctrl+Shift+S 排序 · Ctrl+Shift+M 剔缺失 · Ctrl+Shift+R 乱序 · Ctrl+E 导出 · Ctrl+Shift+E 导出选中 · 右键复制路径 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Del"));
+  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→/Alt+←→ Home/End/PgUp/PgDn · 0/A/1-9 跳转 · Space 自动切换 · Ctrl+C 路径 · Ctrl+Shift+C 文件名 · Ctrl+D 复制 · Ctrl+Shift+I 反选 · Ctrl+Shift+S 排序 · Ctrl+Shift+M 剔缺失 · Ctrl+Shift+R 乱序 · Ctrl+E 导出 · Ctrl+Shift+E 导出选中 · 右键复制路径 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Ctrl+G 跳转 · Ctrl+Shift+B 全名 · 计数双击跳转/中键乱序/右键全名 · Del"));
   setFocusPolicy(Qt::StrongFocus);
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(6, 2, 6, 4);
@@ -45,6 +46,8 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   countLabel_ = new QLabel(QStringLiteral("图像源 (0/0)"));
   countLabel_->setStyleSheet(QStringLiteral("color:#e8e8e8;font-weight:600;"));
   countLabel_->setToolTip(QStringLiteral("←→/Ctrl+←→ Home/End/PgUp/PgDn/滚轮 · 0/A/1-9 跳转 · Del 删除 · Ctrl+A 全选 · 拖拽重排"));
+  countLabel_->setCursor(Qt::PointingHandCursor);
+  countLabel_->installEventFilter(this);
   status_ = new QLabel(QStringLiteral("本地图像"));
   status_->setObjectName(QStringLiteral("muted"));
   autoSwitch_ = new QCheckBox(QStringLiteral("自动切换"));
@@ -405,6 +408,17 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
+  if (event->key() == Qt::Key_G && (event->modifiers() & Qt::ControlModifier)) {
+    gotoIndexDialog();
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_B && (event->modifiers() & Qt::ControlModifier) &&
+      (event->modifiers() & Qt::ShiftModifier)) {
+    copyAllBasenames();
+    event->accept();
+    return;
+  }
   if (event->key() == Qt::Key_A && (event->modifiers() & Qt::ControlModifier)) {
     if (list_ && list_->count() > 0) {
       list_->selectAll();
@@ -509,6 +523,25 @@ bool FilmstripBar::eventFilter(QObject* obj, QEvent* event) {
       // synthesize Delete key path
       QKeyEvent del(QEvent::KeyPress, Qt::Key_Delete, Qt::NoModifier);
       keyPressEvent(&del);
+      return true;
+    }
+  }
+  if (obj == countLabel_ && event->type() == QEvent::MouseButtonDblClick) {
+    gotoIndexDialog();
+    return true;
+  }
+  if (obj == countLabel_ && event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::MiddleButton) {
+      shufflePaths();
+      return true;
+    }
+    if (me->button() == Qt::RightButton) {
+      copyAllBasenames();
+      return true;
+    }
+    if (me->button() == Qt::LeftButton) {
+      exportPathList();
       return true;
     }
   }
@@ -670,6 +703,28 @@ void FilmstripBar::exportSelectedPathList() {
   if (auto* clip = QGuiApplication::clipboard())
     clip->setText(lines.join(QLatin1Char('\n')));
   if (status_) status_->setText(QStringLiteral("已导出选中 %1 · Ctrl+Shift+E").arg(lines.size()));
+}
+
+void FilmstripBar::gotoIndexDialog() {
+  if (paths_.isEmpty()) {
+    setStatus(QStringLiteral("胶片空 · Ctrl+G"));
+    return;
+  }
+  bool ok = false;
+  const int cur = index_ >= 0 ? index_ + 1 : 1;
+  const int want = QInputDialog::getInt(this, QStringLiteral("跳转胶片"),
+                                        QStringLiteral("序号 1-%1").arg(paths_.size()),
+                                        cur, 1, paths_.size(), 1, &ok);
+  if (!ok) return;
+  selectIndex(want - 1, true);
+  setStatus(QStringLiteral("跳到 #%1 · Ctrl+G").arg(want));
+}
+
+void FilmstripBar::copyAllBasenames() {
+  QStringList names;
+  for (const QString& p : paths_) names << QFileInfo(p).fileName();
+  if (auto* clip = QGuiApplication::clipboard()) clip->setText(names.join(QLatin1Char('\n')));
+  setStatus(QStringLiteral("已复制全部文件名 %1 · Ctrl+Shift+B").arg(names.size()));
 }
 
 }  // namespace sieans_qt

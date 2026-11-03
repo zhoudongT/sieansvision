@@ -17,6 +17,9 @@
 #include <QShortcut>
 #include <QKeySequence>
 #include <QClipboard>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 #include <QGuiApplication>
 #include <QApplication>
 #include <QInputDialog>
@@ -28,7 +31,7 @@ namespace sieans_qt {
 FlowIoDialog::FlowIoDialog(const QVariantMap& io, QWidget* parent)
     : QDialog(parent), io_(io) {
   setWindowTitle(QStringLiteral("流程参数 · I/O 绑定"));
-  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+D 复制行 · Ctrl+A 全选 · Ctrl+E 补默认 · Ctrl+Shift+E 清默认 · Ctrl+Tab 切换表 · Ctrl+Shift+C 复制CSV · Ctrl+Shift+V 粘贴 · 清空行 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果"));
+  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+D 复制行 · Ctrl+A 全选 · Ctrl+E 补默认 · Ctrl+Shift+E 清默认 · Ctrl+Tab 切换表 · Ctrl+Shift+C 复制CSV · Ctrl+Shift+V 粘贴 · 清空行 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果 · Ctrl+Shift+J 导出JSON"));
   resize(560, 440);
   setStyleSheet(theme::workbenchStyleSheet());
   auto* root = new QVBoxLayout(this);
@@ -126,6 +129,8 @@ FlowIoDialog::FlowIoDialog(const QVariantMap& io, QWidget* parent)
         outTable_->setFocus(Qt::ShortcutFocusReason);
       }
     });
+    auto* scJson = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+J")), this);
+    connect(scJson, &QShortcut::activated, this, [this]() { exportBindingsJson(); });
   }
 }
 
@@ -453,6 +458,34 @@ void FlowIoDialog::clearEmptyDefaults(QTableWidget* table) {
     ++n;
   }
   table->setToolTip(QStringLiteral("已清 emptyDefault %1 行 · Ctrl+Shift+E").arg(n));
+}
+
+void FlowIoDialog::exportBindingsJson() {
+  QJsonObject root;
+  auto pack = [](QTableWidget* table) {
+    QJsonArray arr;
+    if (!table) return arr;
+    for (int r = 0; r < table->rowCount(); ++r) {
+      const QString name = table->item(r, 0) ? table->item(r, 0)->text().trimmed() : QString();
+      if (name.isEmpty()) continue;
+      QJsonObject o;
+      o.insert(QStringLiteral("name"), name);
+      o.insert(QStringLiteral("type"),
+               table->item(r, 1) ? table->item(r, 1)->text().trimmed() : QStringLiteral("ANY"));
+      o.insert(QStringLiteral("binding"),
+               table->item(r, 2) ? table->item(r, 2)->text().trimmed() : QString());
+      const QString ed = table->item(r, 3) ? table->item(r, 3)->text().trimmed() : QString();
+      if (!ed.isEmpty()) o.insert(QStringLiteral("emptyDefault"), ed);
+      arr.append(o);
+    }
+    return arr;
+  };
+  root.insert(QStringLiteral("inputs"), pack(inTable_));
+  root.insert(QStringLiteral("outputs"), pack(outTable_));
+  const QByteArray bytes = QJsonDocument(root).toJson(QJsonDocument::Compact);
+  if (auto* clip = QGuiApplication::clipboard()) clip->setText(QString::fromUtf8(bytes));
+  if (inTable_)
+    inTable_->setToolTip(QStringLiteral("已导出 I/O JSON · Ctrl+Shift+J"));
 }
 
 }  // namespace sieans_qt

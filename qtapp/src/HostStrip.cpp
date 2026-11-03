@@ -348,6 +348,21 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       resetStreak();
       return true;
     }
+    if (ke->key() == Qt::Key_J && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier)) {
+      const int total = okStreak_ + ngCount_;
+      const double yld = total > 0 ? (100.0 * okStreak_ / total) : 0.0;
+      const QString js = QStringLiteral(
+          "{\"cycle\":%1,\"lastMs\":%2,\"okStreak\":%3,\"ng\":%4,\"yield\":%5}")
+          .arg(cycle_)
+          .arg(lastCycleMs_, 0, 'f', 1)
+          .arg(okStreak_)
+          .arg(ngCount_)
+          .arg(yld, 0, 'f', 1);
+      if (auto* clip = QGuiApplication::clipboard()) clip->setText(js);
+      if (detail_) detail_->setToolTip(QStringLiteral("已复制良率JSON · Ctrl+Shift+J"));
+      return true;
+    }
   }
   return QWidget::eventFilter(obj, event);
 }
