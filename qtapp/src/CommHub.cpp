@@ -296,7 +296,10 @@ void CommHub::onNewConnection() {
     connect(s, &QTcpSocket::disconnected, this, [this, s]() {
       peers_.removeAll(s);
       s->deleteLater();
-      appendTranscript(QStringLiteral("SYS"), QStringLiteral("peer disconnected"));
+      appendTranscript(QStringLiteral("SYS"),
+                       QStringLiteral("peer disconnected · %1")
+                           .arg(framing_.isEmpty() ? QStringLiteral("lf")
+                                                   : framing_));
       refreshListenStatus();
     });
     appendTranscript(QStringLiteral("SYS"),
