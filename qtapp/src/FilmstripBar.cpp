@@ -3,6 +3,8 @@
 #include <algorithm>
 
 #include <QCheckBox>
+#include <QRegularExpression>
+#include <QChar>
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QIcon>
@@ -21,6 +23,8 @@
 #include <QClipboard>
 #include <QGuiApplication>
 #include <QApplication>
+#include <QRegularExpression>
+#include <QChar>
 #include <QFileInfo>
 #include <QEvent>
 #include <QApplication>
@@ -416,6 +420,12 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
     } else {
       copySelectedPaths();
     }
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_V && (event->modifiers() & Qt::ControlModifier) &&
+      (event->modifiers() & Qt::ShiftModifier)) {
+    pastePathsFromClipboard();
     event->accept();
     return;
   }
@@ -922,6 +932,40 @@ void FilmstripBar::moveSelectedToEnd() {
   }
   notifyPathsChanged();
   setStatus(QStringLiteral("已置底 %1 · Ctrl+Shift+End").arg(moved.size()));
+}
+
+
+void FilmstripBar::pastePathsFromClipboard() {
+  const QString clip = QApplication::clipboard() ? QApplication::clipboard()->text() : QString();
+  if (clip.trimmed().isEmpty()) {
+    setStatus(QStringLiteral("剪贴板无路径 · Ctrl+Shift+V"));
+    return;
+  }
+  QStringList add;
+  for (QString line : clip.split(QRegularExpression(QStringLiteral("[\n;]+")))) {
+    line = line.trimmed();
+    if (line.isEmpty()) continue;
+    if (line.startsWith(QLatin1String("file://"))) {
+      const QUrl u(line);
+      if (u.isLocalFile()) line = u.toLocalFile();
+    }
+    if (line.size() >= 2) {
+      const QChar a = line.front();
+      const QChar b = line.back();
+      if ((a == QLatin1Char('"') && b == QLatin1Char('"')) ||
+          (a == QLatin1Char('\'') && b == QLatin1Char('\'')))
+        line = line.mid(1, line.size() - 2);
+    }
+    if (!QFileInfo::exists(line) || !QFileInfo(line).isFile()) continue;
+    add << line;
+  }
+  if (add.isEmpty()) {
+    setStatus(QStringLiteral("无有效本地文件路径 · Ctrl+Shift+V"));
+    return;
+  }
+  const int before = paths_.size();
+  addPaths(add);
+  setStatus(QStringLiteral("已粘贴路径 +%1 · Ctrl+Shift+V").arg(paths_.size() - before));
 }
 
 }  // namespace sieans_qt
