@@ -72,7 +72,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   transcript_ = new QPlainTextEdit;
   transcript_->setReadOnly(true);
   transcript_->setPlaceholderText(
-      QStringLiteral("TX/RX 抄本 · LocalBus 软总线 + 真 TCP"));
+      QStringLiteral("TX/RX 抄本 · LocalBus 软总线 + 真 TCP · peers 见状态行"));
   lay->addWidget(transcript_, 1);
 
   btnTcp->setToolTip(QStringLiteral("启动 tcpReal（server 监听 / client 连接+重连）"));

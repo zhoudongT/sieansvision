@@ -212,9 +212,15 @@ OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
             emit operatorActivated(item->data(Qt::UserRole).toString(),
                                    item->data(Qt::UserRole + 1).toString());
           });
+  connect(list_, &QListWidget::itemActivated, this,
+          [this](QListWidgetItem* item) {
+            if (!item || item->data(Qt::UserRole).toString().isEmpty()) return;
+            emit operatorActivated(item->data(Qt::UserRole).toString(),
+                                   item->data(Qt::UserRole + 1).toString());
+          });
   connect(search_, &QLineEdit::textChanged, this, [this](const QString&) { rebuild(); });
   search_->setPlaceholderText(QStringLiteral("搜索… / 或 Ctrl+F · Esc 清空"));
-  search_->setToolTip(QStringLiteral("Toolbox 搜索 · Esc 清空 · / 或 Ctrl+F 聚焦"));
+  search_->setToolTip(QStringLiteral("Toolbox 搜索 · Esc 清空 · / 或 Ctrl+F 聚焦 · Enter 添加首个匹配"));
   search_->installEventFilter(this);
   list_->installEventFilter(this);
   installEventFilter(this);
@@ -315,6 +321,18 @@ bool OperatorLibrary::eventFilter(QObject* obj, QEvent* event) {
         !(ke->modifiers() & (Qt::ControlModifier | Qt::AltModifier))) {
       focusSearch();
       return true;
+    }
+    if ((ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) &&
+        obj == search_ && list_) {
+      for (int i = 0; i < list_->count(); ++i) {
+        auto* it = list_->item(i);
+        if (it && !it->data(Qt::UserRole).toString().isEmpty()) {
+          list_->setCurrentItem(it);
+          emit operatorActivated(it->data(Qt::UserRole).toString(),
+                                 it->data(Qt::UserRole + 1).toString());
+          return true;
+        }
+      }
     }
   }
   return QWidget::eventFilter(obj, event);

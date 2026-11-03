@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -478,6 +478,13 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
           const int n = width - hay.size();
           const QString pad = QString(n, ch);
           return name == QLatin1String("lpad") ? pad + hay : hay + pad;
+        }
+        if (name == QLatin1String("repeat")) {
+          if (args.isEmpty()) return QString();
+          const QString hay = evalRec(args[0]).toString();
+          int n = args.size() > 1 ? int(evalRec(args[1]).toDouble()) : 1;
+          n = qBound(0, n, 256);
+          return hay.repeated(n);
         }
       }
     }
@@ -615,6 +622,9 @@ QStringList exprSelfTest() {
   check(QStringLiteral("rpad"),
         ev.eval(QStringLiteral("rpad('x', 3, '-')")),
         QStringLiteral("x--"));
+  check(QStringLiteral("repeat"),
+        ev.eval(QStringLiteral("repeat('ab', 3)")),
+        QStringLiteral("ababab"));
   return fails;
 }
 
