@@ -79,6 +79,8 @@ class SieansDocument {
   void setAlarmPolicy(const QString& policy);
   QStringList varWatchKeys() const;
   void setVarWatchKeys(const QStringList& keys);
+  QStringList alarmHistory() const;
+  void setAlarmHistory(const QStringList& lines);
 
   QString cameraDeviceId() const;
   QString cameraBackend() const;  // gentl | uvc | soft

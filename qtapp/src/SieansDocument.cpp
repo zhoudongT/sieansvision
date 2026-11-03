@@ -484,4 +484,26 @@ void SieansDocument::setFilmstripIndex(int index) {
   raw_.insert(QStringLiteral("filmstripIndex"), index);
 }
 
+
+QStringList SieansDocument::alarmHistory() const {
+  QStringList out;
+  for (const QVariant& v : raw_.value(QStringLiteral("alarmHistory")).toArray().toVariantList()) {
+    const QString t = v.toString().trimmed();
+    if (!t.isEmpty()) out << t;
+  }
+  return out;
+}
+
+void SieansDocument::setAlarmHistory(const QStringList& lines) {
+  QJsonArray arr;
+  int n = 0;
+  for (const QString& line : lines) {
+    const QString t = line.trimmed();
+    if (t.isEmpty()) continue;
+    arr.append(t);
+    if (++n >= 40) break;
+  }
+  raw_.insert(QStringLiteral("alarmHistory"), arr);
+}
+
 }  // namespace sieans_qt

@@ -2,6 +2,7 @@
 
 #include <QWidget>
 #include <QString>
+#include <QStringList>
 
 class QTimer;
 
@@ -38,6 +39,8 @@ class HostStatePanel : public QWidget {
   QString hostMode() const;
   void setAlarmPolicy(const QString& policy);
   QString alarmPolicy() const;
+  QStringList alarmHistoryLines() const;
+  void setAlarmHistoryLines(const QStringList& lines);
 
  signals:
   void startRequested();
@@ -48,6 +51,7 @@ class HostStatePanel : public QWidget {
   void intervalChanged(int ms);
   void hostModeChanged(const QString& mode);
   void alarmPolicyChanged(const QString& policy);
+  void alarmHistoryChanged(const QStringList& lines);
 
  protected:
   bool eventFilter(QObject* obj, QEvent* event) override;

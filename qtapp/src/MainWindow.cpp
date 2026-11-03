@@ -840,6 +840,9 @@ void MainWindow::buildUi() {
   connect(host_sm_, &HostStatePanel::alarmPolicyChanged, this, [this](const QString& pol) {
     document_.setAlarmPolicy(pol);
   });
+  connect(host_sm_, &HostStatePanel::alarmHistoryChanged, this, [this](const QStringList& lines) {
+    document_.setAlarmHistory(lines);
+  });
   connect(host_sm_, &HostStatePanel::clearAlarmRequested, this, [this]() {
     if (host_strip_) host_strip_->setAlarm(false);
     if (!host_sm_) return;
@@ -1106,6 +1109,8 @@ void MainWindow::applyDocumentToUi() {
     if (host_sm_) {
       host_sm_->setHostMode(document_.hostMode());
       host_sm_->setAlarmPolicy(document_.alarmPolicy());
+      const QStringList ah = document_.alarmHistory();
+      if (!ah.isEmpty()) host_sm_->setAlarmHistoryLines(ah);
     }
   }
   if (filmstrip_) {

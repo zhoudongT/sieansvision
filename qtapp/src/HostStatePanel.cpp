@@ -161,6 +161,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
     connect(scL, &QShortcut::activated, this, [this]() {
       if (!history_) return;
       history_->clear();
+      emit alarmHistoryChanged(alarmHistoryLines());
       if (modeHint_)
         modeHint_->setText(QStringLiteral("报警历史已清空 · Ctrl+L"));
     });
@@ -168,6 +169,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
     connect(scDel, &QShortcut::activated, this, [this]() {
       if (!history_) return;
       for (auto* it : history_->selectedItems()) delete history_->takeItem(history_->row(it));
+      emit alarmHistoryChanged(alarmHistoryLines());
     });
     auto* scJ = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+J")), history_);
     connect(scJ, &QShortcut::activated, this, [this]() {
@@ -339,6 +341,7 @@ void HostStatePanel::appendAlarm(const QString& reason, bool cleared) {
   history_->insertItem(0, line);
   while (history_->count() > 40) delete history_->takeItem(history_->count() - 1);
   if (!cleared) ++alarmCount_;
+  emit alarmHistoryChanged(alarmHistoryLines());
 }
 
 void HostStatePanel::raiseAlarm(const QString& reason) {
@@ -460,6 +463,7 @@ bool HostStatePanel::eventFilter(QObject* obj, QEvent* event) {
     }
     if (me->button() == Qt::RightButton && history_) {
       history_->clear();
+      emit alarmHistoryChanged(alarmHistoryLines());
       if (modeHint_) modeHint_->setText(QStringLiteral("报警历史已清空 · 右键"));
       return true;
     }
@@ -550,6 +554,26 @@ void HostStatePanel::setAlarmPolicy(const QString& policy) {
 
 QString HostStatePanel::alarmPolicy() const {
   return alarmPolicy_;
+}
+
+
+QStringList HostStatePanel::alarmHistoryLines() const {
+  QStringList out;
+  if (!history_) return out;
+  for (int i = 0; i < history_->count(); ++i) {
+    if (auto* it = history_->item(i)) out << it->text();
+  }
+  return out;
+}
+
+void HostStatePanel::setAlarmHistoryLines(const QStringList& lines) {
+  if (!history_) return;
+  history_->clear();
+  for (const QString& line : lines) {
+    const QString t = line.trimmed();
+    if (!t.isEmpty()) history_->addItem(t);
+  }
+  while (history_->count() > 40) delete history_->takeItem(history_->count() - 1);
 }
 
 }  // namespace sieans_qt
