@@ -223,7 +223,7 @@ OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
           });
   connect(search_, &QLineEdit::textChanged, this, [this](const QString&) { rebuild(); });
   search_->setPlaceholderText(QStringLiteral("搜索… / 或 Ctrl+F · Esc 清空"));
-  search_->setToolTip(QStringLiteral("Toolbox 搜索 · Esc 清空(搜索/列表) · / 或 Ctrl+F/L 聚焦 · Enter 添加"));
+  search_->setToolTip(QStringLiteral("Toolbox 搜索 · Esc/Del 清空(搜索/列表) · / 或 Ctrl+F/L 聚焦 · Enter 添加"));
   search_->installEventFilter(this);
   list_->installEventFilter(this);
   installEventFilter(this);
@@ -316,7 +316,9 @@ bool OperatorLibrary::eventFilter(QObject* obj, QEvent* event) {
       focusSearch();
       return true;
     }
-    if (ke->key() == Qt::Key_Escape && search_ && !search_->text().isEmpty() &&
+    if ((ke->key() == Qt::Key_Escape ||
+         (ke->key() == Qt::Key_Delete && obj == search_)) &&
+        search_ && !search_->text().isEmpty() &&
         (obj == search_ || obj == list_)) {
       search_->clear();
       if (obj == list_) list_->setFocus(Qt::OtherFocusReason);

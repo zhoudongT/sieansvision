@@ -12,6 +12,7 @@
 namespace sieans_qt {
 
 QString g_softQrOverride;
+QString g_softQrLoadedPath;
 
 namespace {
 
@@ -32,15 +33,18 @@ QImage loadSoftQrSample() {
   if (!g_softQrOverride.isEmpty()) {
     QImage img(g_softQrOverride);
     if (!img.isNull()) {
+      g_softQrLoadedPath = g_softQrOverride;
       return img.convertToFormat(QImage::Format_RGB888);
     }
   }
   // Env override (open-and-run / CI) before built-in candidate scan.
   const QByteArray envSample = qgetenv("SIEANS_QT_SAMPLE_QR");
   if (!envSample.isEmpty()) {
-    QImage img(QString::fromLocal8Bit(envSample));
+    const QString envPath = QString::fromLocal8Bit(envSample);
+    QImage img(envPath);
     if (!img.isNull()) {
       cached = img.convertToFormat(QImage::Format_RGB888);
+      g_softQrLoadedPath = envPath;
       tried = true;
       return cached;
     }
@@ -63,6 +67,7 @@ QImage loadSoftQrSample() {
     QImage img(p);
     if (!img.isNull()) {
       cached = img.convertToFormat(QImage::Format_RGB888);
+      g_softQrLoadedPath = p;
       break;
     }
   }
@@ -71,6 +76,8 @@ QImage loadSoftQrSample() {
 }  // namespace
 
 void setSoftQrSamplePath(const QString& path) { g_softQrOverride = path; }
+
+QString softQrSampleLoadedPath() { return g_softQrLoadedPath; }
 
 int clampExposureUs(double v) {
   if (!qIsFinite(v)) v = 10000.0;

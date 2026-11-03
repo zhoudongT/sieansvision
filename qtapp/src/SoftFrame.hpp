@@ -33,4 +33,7 @@ QImage applySoftTone(const QImage& src, int exposureUs, double gainDb, int seq,
 /** Optional override path for the embedded QR (tests / packaging). */
 void setSoftQrSamplePath(const QString& path);
 
+/** Last path that successfully loaded for soft·QR (empty if synthetic). */
+QString softQrSampleLoadedPath();
+
 }  // namespace sieans_qt

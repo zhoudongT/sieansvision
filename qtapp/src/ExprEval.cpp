@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper|nvl|lstrip|rstrip|iff|bool|oct|fabs|fmod|cbrt|log10|frac|log2|isfinite|atan2|copysign|bitand|bitor|bitxor|gcd|lcm)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper|nvl|lstrip|rstrip|iff|bool|oct|fabs|fmod|cbrt|log10|frac|log2|isfinite|atan2|copysign|bitand|bitor|bitxor|gcd|lcm|clamp01)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -473,6 +473,11 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
             y = t;
           }
           return (a / x) * b;
+        }
+        if (name == QLatin1String("clamp01")) {
+          if (args.isEmpty()) return 0;
+          const double v = evalRec(args[0]).toDouble();
+          return v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v);
         }
         if (name == QLatin1String("min") || name == QLatin1String("max")) {
           if (args.isEmpty()) return 0;
@@ -1044,6 +1049,9 @@ QStringList exprSelfTest() {
   check(QStringLiteral("lcm"),
         ev.eval(QStringLiteral("lcm(4, 6)")),
         QStringLiteral("12"));
+  check(QStringLiteral("clamp01"),
+        ev.eval(QStringLiteral("clamp01(1.5)")),
+        QStringLiteral("1"));
   check(QStringLiteral("islower"),
         ev.eval(QStringLiteral("islower('abc')")),
         QStringLiteral("1"));

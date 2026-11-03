@@ -1,5 +1,6 @@
 #include "GenTLWorker.hpp"
 #include "SoftFrame.hpp"
+#include <QFileInfo>
 #include "UvcCapture.hpp"
 
 #include <sieans/gentl_capture.hpp>
@@ -129,16 +130,20 @@ void GenTLWorker::openSoft(const QString& deviceId) {
   }
   emit opened(deviceId_);
   emit frameReady(img, ++frameCounter_);
+  const QString qrPath = softQrSampleLoadedPath();
   const QByteArray sampleEnv = qgetenv("SIEANS_QT_SAMPLE_QR");
+  QString qrNote;
+  if (!qrPath.isEmpty())
+    qrNote = QStringLiteral(" · QR:%1").arg(QFileInfo(qrPath).fileName());
+  else if (!sampleEnv.isEmpty())
+    qrNote = QStringLiteral(" · SAMPLE_QR");
   emit statusChanged(QStringLiteral("Soft 仿真相机已打开 %1 · %2×%3 · exp=%4µs gain=%5dB%6")
                          .arg(deviceId_)
                          .arg(img.width())
                          .arg(img.height())
                          .arg(exposureUs())
                          .arg(gainDb(), 0, 'f', 1)
-                         .arg(sampleEnv.isEmpty()
-                                  ? QString()
-                                  : QStringLiteral(" · SAMPLE_QR")));
+                         .arg(qrNote));
 }
 
 void GenTLWorker::openUvc(const QString& deviceId) {
