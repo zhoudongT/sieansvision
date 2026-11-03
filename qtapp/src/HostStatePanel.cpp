@@ -66,7 +66,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   btnStart_->setStatusTip(QStringLiteral("Host · 开始运行"));
   btnPause_->setToolTip(QStringLiteral("暂停连续运行 · 连续中可暂停 · 单次运行无效"));
   btnPause_->setStatusTip(QStringLiteral("Host · 暂停"));
-  btnResume_->setToolTip(QStringLiteral("从暂停/报警继续"));
+  btnResume_->setToolTip(QStringLiteral("从暂停/报警继续 · Idle 时无效"));
   btnResume_->setStatusTip(QStringLiteral("Host · 继续"));
   btnStop_->setToolTip(QStringLiteral("停止运行并回 Idle · Esc"));
   btnStop_->setStatusTip(QStringLiteral("Host · 停止 · Esc"));
