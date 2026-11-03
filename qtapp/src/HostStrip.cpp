@@ -77,7 +77,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   chips_->setObjectName(QStringLiteral("muted"));
   chips_->setWordWrap(true);
   chips_->setCursor(Qt::PointingHandCursor);
-  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+K/V 复制/粘贴键(JSON) · Ctrl+Shift+E JSON导出 · Alt+←→ 调序 · Ctrl+Home/End 置顶末/置底首 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Del/Bksp 删首 · Ctrl+Shift+Bksp 清空 · 单击复制全文"));
+  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+K/V 复制/粘贴键(JSON) · Ctrl+Shift+E JSON导出 · Alt+←→ 调序 · Ctrl+Home/End 置顶末/置底首 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Del/Bksp 删首 · Shift+Del 删末 · Ctrl+Shift+Bksp 清空 · 单击复制全文"));
   chips_->installEventFilter(this);
   root->addWidget(chips_);
   setStyleSheet(QStringLiteral("background:#232528;border-top:1px solid #4a4e54;"));
@@ -506,7 +506,14 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       return true;
     }
     if ((ke->key() == Qt::Key_Delete || ke->key() == Qt::Key_Backspace) &&
+        (ke->modifiers() & Qt::ShiftModifier) &&
         !(ke->modifiers() & Qt::ControlModifier) && !(ke->modifiers() & Qt::AltModifier)) {
+      removeTailWatchKey();
+      return true;
+    }
+    if ((ke->key() == Qt::Key_Delete || ke->key() == Qt::Key_Backspace) &&
+        !(ke->modifiers() & Qt::ControlModifier) && !(ke->modifiers() & Qt::AltModifier) &&
+        !(ke->modifiers() & Qt::ShiftModifier)) {
       removeHeadWatchKey();
       return true;
     }
@@ -748,6 +755,19 @@ void HostStrip::removeHeadWatchKey() {
                            .arg(gone)
                            .arg(watchKeys_.size()));
 }
+
+void HostStrip::removeTailWatchKey() {
+  if (watchKeys_.isEmpty()) {
+    if (chips_) chips_->setToolTip(QStringLiteral("监视键空 · Shift+Del"));
+    return;
+  }
+  const QString gone = watchKeys_.takeLast();
+  emit watchKeysChanged(watchKeys_);
+  refreshChips({});
+  if (chips_)
+    chips_->setToolTip(QStringLiteral("已删末键 %1 · Shift+Del · 余 %2").arg(gone).arg(watchKeys_.size()));
+}
+
 
 void HostStrip::clearWatchKeys() {
   if (watchKeys_.isEmpty()) {

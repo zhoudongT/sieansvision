@@ -67,6 +67,8 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
     connect(scJson, &QShortcut::activated, this, &VarWatchPanel::exportJsonFiltered);
     auto* scKeys = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+E")), this);
     connect(scKeys, &QShortcut::activated, this, &VarWatchPanel::exportKeysJson);
+    auto* scRep = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+O")), this);
+    connect(scRep, &QShortcut::activated, this, &VarWatchPanel::replaceKeysFromClipboard);
     auto* scAdd = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+V")), this);
     connect(scAdd, &QShortcut::activated, this, &VarWatchPanel::addKeysFromClipboard);
     auto* scIns = new QShortcut(QKeySequence(Qt::Key_Insert), this);
@@ -120,10 +122,10 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
                                  table_);
             }
           });
-  table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · 中键 ${flow} · 右键键=值 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/置底 · Esc 取消选中 · F2 聚焦表 · Ctrl+Shift+J JSON · Ctrl+Shift+E 键JSON"));
+  table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · 中键 ${flow} · 右键键=值 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/置底 · Esc 取消选中 · F2 聚焦表 · Ctrl+Shift+J JSON · Ctrl+Shift+E 键JSON · Ctrl+Shift+O 替换键"));
   table_->installEventFilter(this);
   if (filterEdit_) filterEdit_->installEventFilter(this);
-  setStatusTip(QStringLiteral("变量监视 · ★=Host条 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · Ctrl+Shift+E 键JSON · 中键token/右键键=值 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/置底 · Ctrl+Shift+Space 批量★ · Ctrl+Shift+Bksp 清空 · Ctrl+X 剪切 · Ctrl+Shift+H ★键 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
+  setStatusTip(QStringLiteral("变量监视 · ★=Host条 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · Ctrl+Shift+E 键JSON · Ctrl+Shift+O 替换键 · 中键token/右键键=值 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/置底 · Ctrl+Shift+Space 批量★ · Ctrl+Shift+Bksp 清空 · Ctrl+X 剪切 · Ctrl+Shift+H ★键 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
   keys_ = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
            QStringLiteral("passGate"), QStringLiteral("urlOk"),
@@ -520,6 +522,58 @@ void VarWatchPanel::addKeysFromClipboard() {
                        QStringLiteral("已加入监视 %1 · Insert/Ctrl+Shift+V").arg(added), table_);
   }
 }
+
+void VarWatchPanel::replaceKeysFromClipboard() {
+  const QString clip = QApplication::clipboard() ? QApplication::clipboard()->text() : QString();
+  if (clip.trimmed().isEmpty()) {
+    QToolTip::showText(QCursor::pos(), QStringLiteral("剪贴板空 · Ctrl+Shift+O"), table_);
+    return;
+  }
+  QStringList neu;
+  {
+    QJsonParseError err;
+    const QJsonDocument doc = QJsonDocument::fromJson(clip.trimmed().toUtf8(), &err);
+    if (err.error == QJsonParseError::NoError) {
+      if (doc.isObject()) {
+        const QJsonObject o = doc.object();
+        QJsonArray arr = o.value(QStringLiteral("keys")).toArray();
+        if (arr.isEmpty()) arr = o.value(QStringLiteral("varWatchKeys")).toArray();
+        if (arr.isEmpty()) arr = o.value(QStringLiteral("watchKeys")).toArray();
+        for (const QJsonValue& v : arr) {
+          const QString k = v.toString().trimmed();
+          if (!k.isEmpty() && !neu.contains(k)) neu << k;
+        }
+      } else if (doc.isArray()) {
+        for (const QJsonValue& v : doc.array()) {
+          const QString k = v.toString().trimmed();
+          if (!k.isEmpty() && !neu.contains(k)) neu << k;
+        }
+      }
+    }
+  }
+  if (neu.isEmpty()) {
+    for (QString line : clip.split(QRegularExpression(QStringLiteral("[\n,;]+")))) {
+      line = line.trimmed();
+      if (line.isEmpty()) continue;
+      if (line.startsWith(QLatin1String("${flow.")) && line.endsWith(QLatin1Char('}')))
+        line = line.mid(7, line.size() - 8);
+      const int eq = line.indexOf(QLatin1Char('='));
+      if (eq > 0) line = line.left(eq).trimmed();
+      if (line.isEmpty() || neu.contains(line)) continue;
+      neu << line;
+    }
+  }
+  if (neu.isEmpty()) {
+    QToolTip::showText(QCursor::pos(), QStringLiteral("无有效键 · Ctrl+Shift+O"), table_);
+    return;
+  }
+  keys_ = neu;
+  rebuild();
+  emit watchListChanged(keys_);
+  QToolTip::showText(QCursor::pos(),
+                     QStringLiteral("已替换监视键 %1 · Ctrl+Shift+O").arg(keys_.size()), table_);
+}
+
 
 void VarWatchPanel::removeSelectedKeys() {
   if (!table_) return;

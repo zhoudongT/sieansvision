@@ -24,6 +24,7 @@ class VarWatchPanel : public QWidget {
   void exportJsonFiltered();
   void exportKeysJson();
   void addKeysFromClipboard();
+  void replaceKeysFromClipboard();
   void removeSelectedKeys();
   void moveSelectedKey(int delta);
   void cutSelectedKeys();
