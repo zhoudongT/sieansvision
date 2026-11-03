@@ -21,10 +21,12 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
       QStringLiteral("background:#3a3d42;color:#a8a8a8;border-radius:3px;"
                      "font-weight:700;font-size:14px;padding:4px;"));
   modeChip_ = new QLabel(QStringLiteral("设计态"));
+  modeChip_->setToolTip(QStringLiteral("运行模式 · 设计态/运行/连续/暂停"));
   modeChip_->setStyleSheet(
       QStringLiteral("background:#3a3d42;color:#a8a8a8;border-radius:3px;"
                      "padding:3px 8px;font-size:11px;font-weight:600;"));
   cycleChip_ = new QLabel(QStringLiteral("周期 0"));
+  cycleChip_->setToolTip(QStringLiteral("运行周期计数"));
   cycleChip_->setStyleSheet(
       QStringLiteral("background:#32353a;color:#a8a8a8;border-radius:3px;"
                      "padding:3px 8px;font-size:11px;"));

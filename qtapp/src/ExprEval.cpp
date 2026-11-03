@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -563,6 +563,36 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
         if (name == QLatin1String("pow")) {
           if (args.size() < 2) return args.isEmpty() ? 0 : evalRec(args[0]).toDouble();
           return std::pow(evalRec(args[0]).toDouble(), evalRec(args[1]).toDouble());
+        }
+        if (name == QLatin1String("sqrt")) {
+          if (args.isEmpty()) return 0;
+          const double v = evalRec(args[0]).toDouble();
+          return v < 0 ? 0 : std::sqrt(v);
+        }
+        if (name == QLatin1String("trunc")) {
+          if (args.isEmpty()) return 0;
+          return std::trunc(evalRec(args[0]).toDouble());
+        }
+        if (name == QLatin1String("title") || name == QLatin1String("capitalize")) {
+          if (args.isEmpty()) return QString();
+          QString s = evalRec(args[0]).toString();
+          if (name == QLatin1String("capitalize")) {
+            if (s.isEmpty()) return s;
+            s[0] = s[0].toUpper();
+            return s;
+          }
+          bool up = true;
+          for (int i = 0; i < s.size(); ++i) {
+            if (s[i].isSpace()) {
+              up = true;
+            } else if (up) {
+              s[i] = s[i].toUpper();
+              up = false;
+            } else {
+              s[i] = s[i].toLower();
+            }
+          }
+          return s;
         }
       }
     }
@@ -763,6 +793,18 @@ QStringList exprSelfTest() {
   check(QStringLiteral("pow"),
         ev.eval(QStringLiteral("pow(2, 3)")),
         QStringLiteral("8"));
+  check(QStringLiteral("sqrt"),
+        ev.eval(QStringLiteral("sqrt(9)")),
+        QStringLiteral("3"));
+  check(QStringLiteral("trunc"),
+        ev.eval(QStringLiteral("trunc(3.9)")),
+        QStringLiteral("3"));
+  check(QStringLiteral("title"),
+        ev.eval(QStringLiteral("title('hello world')")),
+        QStringLiteral("Hello World"));
+  check(QStringLiteral("capitalize"),
+        ev.eval(QStringLiteral("capitalize('hello')")),
+        QStringLiteral("Hello"));
   return fails;
 }
 

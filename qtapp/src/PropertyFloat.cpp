@@ -14,7 +14,8 @@
 namespace sieans_qt {
 
 PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
-  setStatusTip(QStringLiteral("属性浮窗 · Esc 放弃 · Enter 保留 · Ctrl/Alt+Enter 确定 · F5 执行 · F6 连续"));
+  setStatusTip(QStringLiteral("属性浮窗 · Esc 放弃 · Enter 保留 · Ctrl/Alt/Shift+Enter 确定 · F5 执行 · F6 连续"));
+  setWhatsThis(QStringLiteral("属性浮窗 · Esc 放弃 · Enter 保留 · Ctrl/Alt/Shift+Enter 确定 · F5 单次 · F6 连续"));
   setObjectName(QStringLiteral("propertyFloat"));
   setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
   setModal(false);
@@ -74,8 +75,8 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   cancel->setToolTip(QStringLiteral("放弃修改并关闭 · Esc"));
   auto* ok = new QPushButton(QStringLiteral("确定"));
   ok->setObjectName(QStringLiteral("propertyFloatOk"));
-  ok->setToolTip(QStringLiteral("保留修改并关闭 · Ctrl+Enter"));
-  auto* hint = new QLabel(QStringLiteral("Esc 放弃 · Enter 保留 · Tab 切换 · Ctrl/Alt+Enter 确定 · F5 执行 · F6 连续"));
+  ok->setToolTip(QStringLiteral("保留修改并关闭 · Ctrl/Alt/Shift+Enter"));
+  auto* hint = new QLabel(QStringLiteral("Esc 放弃 · Enter 保留 · Tab 切换 · Ctrl/Alt/Shift+Enter 确定 · F5 执行 · F6 连续"));
   hint->setObjectName(QStringLiteral("propertyFloatHint"));
   hint->setStyleSheet(QStringLiteral("color:#8a9098;font-size:11px;"));
   foot->addWidget(cont);
@@ -201,7 +202,8 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
     // Enter: keep float open (edits already flushed via editingFinished).
     // Ctrl+Enter: commit baseline + hide (VM-ish apply).
     if ((event->modifiers() & Qt::ControlModifier) ||
-        (event->modifiers() & Qt::AltModifier)) {
+        (event->modifiers() & Qt::AltModifier) ||
+        (event->modifiers() & Qt::ShiftModifier)) {
       if (panel_) baseline_ = panel_->currentParams();
       emit acceptedCommit();
       hide();

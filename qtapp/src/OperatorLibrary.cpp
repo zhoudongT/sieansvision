@@ -184,7 +184,7 @@ OperatorDef OperatorLibrary::findDef(const QString& key) {
 }
 
 OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
-  setStatusTip(QStringLiteral("Toolbox · / 或 Ctrl+F 搜索 · Enter 添加 · Home/End"));
+  setStatusTip(QStringLiteral("Toolbox · / 或 Ctrl+F 搜索 · Enter 添加 · Home/End/PgUp/PgDn"));
   setObjectName(QStringLiteral("libraryPane"));
   auto* lay = new QVBoxLayout(this);
   lay->setContentsMargins(0, 0, 0, 0);
@@ -327,6 +327,17 @@ bool OperatorLibrary::eventFilter(QObject* obj, QEvent* event) {
         (obj == list_ || obj == search_)) {
       if (list_->count() <= 0) return true;
       const int row = ke->key() == Qt::Key_Home ? 0 : list_->count() - 1;
+      list_->setCurrentRow(row);
+      if (auto* it = list_->item(row)) list_->scrollToItem(it);
+      return true;
+    }
+    if ((ke->key() == Qt::Key_PageUp || ke->key() == Qt::Key_PageDown) && list_ &&
+        (obj == list_ || obj == search_)) {
+      if (list_->count() <= 0) return true;
+      const int cur = list_->currentRow() < 0 ? 0 : list_->currentRow();
+      const int step = 8;
+      int row = ke->key() == Qt::Key_PageUp ? cur - step : cur + step;
+      row = qBound(0, row, list_->count() - 1);
       list_->setCurrentRow(row);
       if (auto* it = list_->item(row)) list_->scrollToItem(it);
       return true;

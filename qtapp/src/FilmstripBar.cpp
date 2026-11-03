@@ -26,7 +26,7 @@ constexpr int kThumbH = 52;
 
 FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   setObjectName(QStringLiteral("filmstripBar"));
-  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→ Home/End/PgUp/PgDn · Space 自动切换 · Del 删除"));
+  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→ Home/End/PgUp/PgDn · Space 自动切换 · F5 运行全部 · Del 删除"));
   setFocusPolicy(Qt::StrongFocus);
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(6, 2, 6, 4);
@@ -42,6 +42,8 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   autoSwitch_ = new QCheckBox(QStringLiteral("自动切换"));
   autoSwitch_->setToolTip(QStringLiteral("连续运行时切到下一张本地图"));
   auto* runAll = new QPushButton(QStringLiteral("运行全部"));
+  runAll->setToolTip(QStringLiteral("运行全部本地图 · F5"));
+  runAll->setStatusTip(QStringLiteral("胶片 · 运行全部 · F5"));
   auto* add = new QPushButton(QStringLiteral("+"));
   add->setToolTip(QStringLiteral("添加图像"));
   add->setFixedWidth(28);
@@ -300,11 +302,13 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
     return;
   }
   if (event->key() == Qt::Key_Home) {
+    // Home / Ctrl+Home → first thumb
     if (!paths_.isEmpty()) selectIndex(0, true);
     event->accept();
     return;
   }
   if (event->key() == Qt::Key_End) {
+    // End / Ctrl+End → last thumb
     if (!paths_.isEmpty()) selectIndex(paths_.size() - 1, true);
     event->accept();
     return;
