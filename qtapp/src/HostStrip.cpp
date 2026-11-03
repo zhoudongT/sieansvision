@@ -16,7 +16,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   badge_ = new QLabel(QStringLiteral("—"));
   badge_->setFixedWidth(72);
   badge_->setAlignment(Qt::AlignCenter);
-  badge_->setToolTip(QStringLiteral("OK/NG/ALARM · passGate 判定"));
+  badge_->setToolTip(QStringLiteral("OK/NG/ALARM · passGate 判定 · tcp= 见明细"));
   badge_->setStyleSheet(
       QStringLiteral("background:#3a3d42;color:#a8a8a8;border-radius:3px;"
                      "font-weight:700;font-size:14px;padding:4px;"));
