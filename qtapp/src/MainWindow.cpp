@@ -611,7 +611,7 @@ void MainWindow::buildToolbar() {
   tb->addSeparator();
   act_run_ = tb->addAction(QStringLiteral("▶ 运行"), this, &MainWindow::onRunOnce);
   act_run_->setShortcut(QKeySequence(Qt::Key_F5));
-  act_run_->setToolTip(QStringLiteral("运行当前流程一次 · F5"));
+  act_run_->setToolTip(QStringLiteral("运行当前流程一次 · F5 · F9 同效"));
   act_run_->setStatusTip(QStringLiteral("运行 · F5"));
   act_cont_ =
       tb->addAction(QStringLiteral("↻ 连续"), this, &MainWindow::onRunContinuous);
