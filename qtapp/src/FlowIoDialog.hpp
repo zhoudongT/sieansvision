@@ -5,6 +5,7 @@
 
 class QTableWidget;
 class QCheckBox;
+class QHBoxLayout;
 
 namespace sieans_qt {
 
@@ -20,6 +21,9 @@ class FlowIoDialog : public QDialog {
   QVariantList readTable(QTableWidget* table) const;
   void addRow(QTableWidget* table);
   void removeSelectedRows(QTableWidget* table);
+  void moveSelectedRows(QTableWidget* table, int delta);
+  void duplicateSelectedRows(QTableWidget* table);
+  void wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns);
 
   QTableWidget* inTable_ = nullptr;
   QTableWidget* outTable_ = nullptr;

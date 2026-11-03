@@ -25,7 +25,7 @@ namespace sieans_qt {
 FlowIoDialog::FlowIoDialog(const QVariantMap& io, QWidget* parent)
     : QDialog(parent), io_(io) {
   setWindowTitle(QStringLiteral("流程参数 · I/O 绑定"));
-  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果"));
+  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+D 复制 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果"));
   resize(560, 440);
   setStyleSheet(theme::workbenchStyleSheet());
   auto* root = new QVBoxLayout(this);
@@ -51,6 +51,7 @@ FlowIoDialog::FlowIoDialog(const QVariantMap& io, QWidget* parent)
     rem->setToolTip(QStringLiteral("删除选中行 · Del"));
     rowBtns->addWidget(add);
     rowBtns->addWidget(rem);
+    wireRowOps(inTable_, rowBtns);
     rowBtns->addStretch(1);
     inLay->addLayout(rowBtns);
     connect(add, &QPushButton::clicked, this, [this]() { addRow(inTable_); });
@@ -75,6 +76,7 @@ FlowIoDialog::FlowIoDialog(const QVariantMap& io, QWidget* parent)
     rem->setToolTip(QStringLiteral("删除选中行 · Del"));
     rowBtns->addWidget(add);
     rowBtns->addWidget(rem);
+    wireRowOps(outTable_, rowBtns);
     rowBtns->addStretch(1);
     outLay->addLayout(rowBtns);
     connect(add, &QPushButton::clicked, this, [this]() { addRow(outTable_); });
@@ -126,7 +128,7 @@ QTableWidget* FlowIoDialog::makeTable(const QVariantList& rows, const QString& k
   table->setSelectionBehavior(QAbstractItemView::SelectRows);
   table->setSelectionMode(QAbstractItemView::ExtendedSelection);
   table->setToolTip(
-      QStringLiteral("I/O 绑定 · Insert/Ctrl+N 增行 · Del 删行 · emptyDefault 空结果占位 · {name}/${flow.x}/{{name}}"));
+      QStringLiteral("I/O 绑定 · Insert/Ctrl+N 增行 · Del 删行 · Alt+↑↓ 移行 · Ctrl+D 复制 · emptyDefault 空结果占位 · {name}/${flow.x}/{{name}}"));
   table->setStatusTip(QStringLiteral("流程 I/O 表 · emptyDefault"));
   if (rows.isEmpty()) {
     const QList<QStringList> demo =
@@ -210,4 +212,74 @@ void FlowIoDialog::removeSelectedRows(QTableWidget* table) {
   for (int r : rows) table->removeRow(r);
 }
 
+
+void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
+  auto* up = new QPushButton(QStringLiteral("↑"));
+  auto* down = new QPushButton(QStringLiteral("↓"));
+  auto* dup = new QPushButton(QStringLiteral("复制"));
+  up->setFixedWidth(28);
+  down->setFixedWidth(28);
+  up->setToolTip(QStringLiteral("上移选中行 · Alt+↑"));
+  down->setToolTip(QStringLiteral("下移选中行 · Alt+↓"));
+  dup->setToolTip(QStringLiteral("复制选中行 · Ctrl+D"));
+  rowBtns->addWidget(up);
+  rowBtns->addWidget(down);
+  rowBtns->addWidget(dup);
+  connect(up, &QPushButton::clicked, this, [this, table]() { moveSelectedRows(table, -1); });
+  connect(down, &QPushButton::clicked, this, [this, table]() { moveSelectedRows(table, +1); });
+  connect(dup, &QPushButton::clicked, this, [this, table]() { duplicateSelectedRows(table); });
+  auto* scUp = new QShortcut(QKeySequence(QStringLiteral("Alt+Up")), table);
+  connect(scUp, &QShortcut::activated, this, [this, table]() { moveSelectedRows(table, -1); });
+  auto* scDn = new QShortcut(QKeySequence(QStringLiteral("Alt+Down")), table);
+  connect(scDn, &QShortcut::activated, this, [this, table]() { moveSelectedRows(table, +1); });
+  auto* scDup = new QShortcut(QKeySequence(QStringLiteral("Ctrl+D")), table);
+  connect(scDup, &QShortcut::activated, this, [this, table]() { duplicateSelectedRows(table); });
+}
+
+void FlowIoDialog::moveSelectedRows(QTableWidget* table, int delta) {
+  if (!table || delta == 0) return;
+  const auto ranges = table->selectionModel() ? table->selectionModel()->selectedRows() : QModelIndexList{};
+  if (ranges.isEmpty()) return;
+  QList<int> rows;
+  for (const QModelIndex& ix : ranges) rows.push_back(ix.row());
+  std::sort(rows.begin(), rows.end());
+  if (delta > 0) std::reverse(rows.begin(), rows.end());
+  table->blockSignals(true);
+  for (int r : rows) {
+    const int dest = r + delta;
+    if (dest < 0 || dest >= table->rowCount()) continue;
+    for (int c = 0; c < table->columnCount(); ++c) {
+      QTableWidgetItem* a = table->takeItem(r, c);
+      QTableWidgetItem* b = table->takeItem(dest, c);
+      table->setItem(r, c, b);
+      table->setItem(dest, c, a);
+    }
+  }
+  table->blockSignals(false);
+  table->clearSelection();
+  for (int r : rows) {
+    const int dest = qBound(0, r + delta, table->rowCount() - 1);
+    table->selectRow(dest);
+  }
+}
+
+void FlowIoDialog::duplicateSelectedRows(QTableWidget* table) {
+  if (!table) return;
+  const auto ranges = table->selectionModel() ? table->selectionModel()->selectedRows() : QModelIndexList{};
+  if (ranges.isEmpty()) {
+    addRow(table);
+    return;
+  }
+  QList<int> rows;
+  for (const QModelIndex& ix : ranges) rows.push_back(ix.row());
+  std::sort(rows.begin(), rows.end());
+  for (int r : rows) {
+    const int dest = table->rowCount();
+    table->insertRow(dest);
+    for (int c = 0; c < table->columnCount(); ++c) {
+      QTableWidgetItem* src = table->item(r, c);
+      table->setItem(dest, c, new QTableWidgetItem(src ? src->text() : QString()));
+    }
+  }
+}
 }  // namespace sieans_qt

@@ -44,6 +44,8 @@ class PropertyFloat : public QDialog {
   QLabel* subtitle_ = nullptr;
   QFrame* titleBar_ = nullptr;
   QPushButton* closeBtn_ = nullptr;
+  QPushButton* pinBtn_ = nullptr;
+  bool pinned_ = false;
   QString nodeId_;
   QVariantMap baseline_;
   QPoint dragOffset_;

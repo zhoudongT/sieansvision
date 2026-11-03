@@ -42,6 +42,26 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   titleCol->addWidget(title_);
   titleCol->addWidget(subtitle_);
   titleLay->addLayout(titleCol, 1);
+  pinBtn_ = new QPushButton(QStringLiteral("📌"));
+  pinBtn_->setObjectName(QStringLiteral("propertyFloatPin"));
+  pinBtn_->setFixedSize(28, 28);
+  pinBtn_->setCheckable(true);
+  pinBtn_->setCursor(Qt::PointingHandCursor);
+  pinBtn_->setFocusPolicy(Qt::NoFocus);
+  pinBtn_->setToolTip(QStringLiteral("钉住浮窗 · 置顶 · Ctrl+P"));
+  titleLay->addWidget(pinBtn_, 0, Qt::AlignTop);
+  connect(pinBtn_, &QPushButton::toggled, this, [this](bool on) {
+    pinned_ = on;
+    setWindowFlag(Qt::WindowStaysOnTopHint, on);
+    // re-show to apply flag
+    const bool vis = isVisible();
+    if (vis) {
+      hide();
+      show();
+    }
+    pinBtn_->setText(on ? QStringLiteral("📍") : QStringLiteral("📌"));
+    pinBtn_->setToolTip(on ? QStringLiteral("取消钉住 · Ctrl+P") : QStringLiteral("钉住浮窗 · 置顶 · Ctrl+P"));
+  });
   closeBtn_ = new QPushButton(QStringLiteral("✕"));
   closeBtn_->setObjectName(QStringLiteral("propertyFloatClose"));
   closeBtn_->setFixedSize(28, 28);
@@ -182,6 +202,11 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
+  if (event->key() == Qt::Key_P && (event->modifiers() & Qt::ControlModifier)) {
+    if (pinBtn_) pinBtn_->toggle();
+    event->accept();
+    return;
+  }
   if ((event->key() == Qt::Key_F && (event->modifiers() & Qt::ControlModifier)) ||
       event->key() == Qt::Key_F3) {
     if (panel_) panel_->focusFilter();
@@ -194,7 +219,7 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
     for (QWidget* w : kids) {
       if (!w->isVisible() || !w->isEnabled() || w->focusPolicy() == Qt::NoFocus)
         continue;
-      if (w == this || w == titleBar_ || w == closeBtn_ || w == title_ || w == subtitle_)
+      if (w == this || w == titleBar_ || w == closeBtn_ || w == pinBtn_ || w == title_ || w == subtitle_)
         continue;
       w->setFocus(Qt::ShortcutFocusReason);
       event->accept();

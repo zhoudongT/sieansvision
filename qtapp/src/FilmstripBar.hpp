@@ -28,6 +28,8 @@ class FilmstripBar : public QWidget {
   QStringList paths() const { return paths_; }
   void selectPrev();
   void selectNext();
+  void copySelectedPaths();
+  void duplicateSelected();
 
  protected:
   void keyPressEvent(QKeyEvent* event) override;

@@ -57,7 +57,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   detail_->setCursor(Qt::PointingHandCursor);
   badge_->setToolTip(QStringLiteral("OK/NG/ALARM · passGate 判定 · 单击打开 Host 面板 · tcp= 见明细"));
   modeChip_->setToolTip(QStringLiteral("运行模式 · 设计态/运行/连续/暂停 · 单击切换设计/运行态 · 运行态锁画布 · F5/F9 仍可单次"));
-  cycleChip_->setToolTip(QStringLiteral("运行周期计数 · 每次流程完成 +1 · Ctrl+单击清零"));
+  cycleChip_->setToolTip(QStringLiteral("运行周期计数 · 每次流程完成 +1 · Ctrl+单击/双击清零 · 周期 chip 见右侧"));
   detail_->setToolTip(QStringLiteral("count/text/RX/urlOk/tcp 摘要 · framing lf/crlf/raw/len4 见 tcp= · 双击复制全文 · 悬停看全文"));
   badge_->installEventFilter(this);
   modeChip_->installEventFilter(this);
@@ -192,6 +192,10 @@ void HostStrip::updateFromVars(const QVariantMap& vars, int codeCount, bool eval
 bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
   if (event->type() == QEvent::MouseButtonDblClick) {
     auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::LeftButton && obj == cycleChip_) {
+      emit cycleResetRequested();
+      return true;
+    }
     if (me->button() == Qt::LeftButton && obj == detail_ && detail_) {
       if (auto* clip = QGuiApplication::clipboard()) {
         clip->setText(detail_->text());

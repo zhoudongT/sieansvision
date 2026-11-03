@@ -14,6 +14,9 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QKeyEvent>
+#include <QClipboard>
+#include <QApplication>
+#include <QFileInfo>
 #include <QEvent>
 #include <QApplication>
 #include <QWidget>
@@ -28,7 +31,7 @@ constexpr int kThumbH = 52;
 
 FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   setObjectName(QStringLiteral("filmstripBar"));
-  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→ Home/End/PgUp/PgDn · 0/A/1-9 跳转 · Space 自动切换 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Del"));
+  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→ Home/End/PgUp/PgDn · 0/A/1-9 跳转 · Space 自动切换 · Ctrl+C 路径 · Ctrl+D 复制 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Del"));
   setFocusPolicy(Qt::StrongFocus);
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(6, 2, 6, 4);
@@ -84,7 +87,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   list_->setFixedHeight(kThumbH + 22);
   list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
   list_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  list_->setStatusTip(QStringLiteral("胶片 · ←→ Home/End/PgUp/PgDn · 0/A/1-9 · Ctrl+A 全选 · Space/F6 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Del 多选删除"));
+  list_->setStatusTip(QStringLiteral("胶片 · ←→ Home/End/PgUp/PgDn · 0/A/1-9 · Ctrl+A 全选 · Ctrl+C 路径 · Ctrl+D 复制 · Space/F6 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Del 多选删除"));
   list_->setSpacing(2);
   list_->setSelectionMode(QAbstractItemView::ExtendedSelection);
   root->addWidget(list_);
@@ -340,6 +343,16 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
+  if (event->key() == Qt::Key_C && (event->modifiers() & Qt::ControlModifier)) {
+    copySelectedPaths();
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_D && (event->modifiers() & Qt::ControlModifier)) {
+    duplicateSelected();
+    event->accept();
+    return;
+  }
   if (event->key() == Qt::Key_A && (event->modifiers() & Qt::ControlModifier)) {
     if (list_ && list_->count() > 0) {
       list_->selectAll();
@@ -433,4 +446,40 @@ bool FilmstripBar::eventFilter(QObject* obj, QEvent* event) {
   return QWidget::eventFilter(obj, event);
 }
 
+
+void FilmstripBar::copySelectedPaths() {
+  if (!list_) return;
+  QStringList lines;
+  const auto selected = list_->selectedItems();
+  if (!selected.isEmpty()) {
+    for (auto* it : selected) {
+      const int r = list_->row(it);
+      if (r >= 0 && r < paths_.size()) lines << paths_.at(r);
+    }
+  } else if (index_ >= 0 && index_ < paths_.size()) {
+    lines << paths_.at(index_);
+  }
+  if (lines.isEmpty()) return;
+  if (auto* clip = QApplication::clipboard())
+    clip->setText(lines.join(QLatin1Char('\n')));
+  setStatus(QStringLiteral("已复制 %1 路径").arg(lines.size()));
+}
+
+void FilmstripBar::duplicateSelected() {
+  if (!list_) return;
+  QList<int> rows;
+  for (auto* it : list_->selectedItems()) rows.push_back(list_->row(it));
+  if (rows.isEmpty() && index_ >= 0) rows.push_back(index_);
+  if (rows.isEmpty()) return;
+  std::sort(rows.begin(), rows.end());
+  QStringList add;
+  for (int r : rows) {
+    if (r >= 0 && r < paths_.size()) add << paths_.at(r);
+  }
+  if (add.isEmpty()) return;
+  const int at = paths_.size();
+  addPaths(add);
+  selectIndex(at, true);
+  setStatus(QStringLiteral("已复制插入 %1 张").arg(add.size()));
+}
 }  // namespace sieans_qt
