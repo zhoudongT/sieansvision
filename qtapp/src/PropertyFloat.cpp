@@ -64,12 +64,16 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   foot->setContentsMargins(10, 6, 10, 8);
   auto* cont = new QPushButton(QStringLiteral("连续执行"));
   cont->setObjectName(QStringLiteral("propertyFloatRunContinuous"));
+  cont->setToolTip(QStringLiteral("连续运行本模块 · 保持浮窗"));
   auto* exec = new QPushButton(QStringLiteral("执行"));
   exec->setObjectName(QStringLiteral("propertyFloatRun"));
+  exec->setToolTip(QStringLiteral("单次运行本模块"));
   auto* cancel = new QPushButton(QStringLiteral("取消"));
   cancel->setObjectName(QStringLiteral("propertyFloatRun"));
+  cancel->setToolTip(QStringLiteral("放弃修改并关闭 · Esc"));
   auto* ok = new QPushButton(QStringLiteral("确定"));
   ok->setObjectName(QStringLiteral("propertyFloatOk"));
+  ok->setToolTip(QStringLiteral("保留修改并关闭 · Ctrl+Enter"));
   auto* hint = new QLabel(QStringLiteral("Esc 放弃 · Enter 保留 · Tab 切换 · Ctrl+Enter 确定"));
   hint->setObjectName(QStringLiteral("propertyFloatHint"));
   hint->setStyleSheet(QStringLiteral("color:#8a9098;font-size:11px;"));

@@ -34,7 +34,7 @@ FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   auto* fit = new QPushButton(QStringLiteral("适应"));
   fit->setFixedWidth(40);
   fit->setToolTip(QStringLiteral("适应流程画布"));
-  auto* hint = new QLabel(QStringLiteral("自动排列 · 撤销 · 重做"));
+  auto* hint = new QLabel(QStringLiteral("F 适应 · Esc 取消连线 · Del 删连线"));
   hint->setObjectName(QStringLiteral("muted"));
   lay->addWidget(allBtn_);
   lay->addWidget(flowBtn_);

@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -453,6 +453,19 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
           b = qBound(0, b, hay.size());
           if (b < a) return QString();
           return hay.mid(a, b - a);
+        }
+        if (name == QLatin1String("isdigit") || name == QLatin1String("isalpha")) {
+          if (args.isEmpty()) return 0;
+          const QString hay = evalRec(args[0]).toString();
+          if (hay.isEmpty()) return 0;
+          bool ok = true;
+          for (const QChar ch : hay) {
+            if (name == QLatin1String("isdigit") ? !ch.isDigit() : !ch.isLetter()) {
+              ok = false;
+              break;
+            }
+          }
+          return ok ? 1 : 0;
         }
       }
     }
@@ -575,6 +588,15 @@ QStringList exprSelfTest() {
   check(QStringLiteral("slice"),
         ev.eval(QStringLiteral("slice(%1.text, 0, 2)").arg(sid)),
         QStringLiteral("HE"));
+  check(QStringLiteral("isdigit"),
+        ev.eval(QStringLiteral("isdigit('123')")),
+        QStringLiteral("1"));
+  check(QStringLiteral("isdigit-miss"),
+        ev.eval(QStringLiteral("isdigit('12a')")),
+        QStringLiteral("0"));
+  check(QStringLiteral("isalpha"),
+        ev.eval(QStringLiteral("isalpha('AbC')")),
+        QStringLiteral("1"));
   return fails;
 }
 

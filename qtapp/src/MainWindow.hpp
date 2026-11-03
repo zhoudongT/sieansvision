@@ -17,6 +17,7 @@
 #include "HostStatePanel.hpp"
 
 #include <QMainWindow>
+#include <QEvent>
 #include <QPlainTextEdit>
 #include <QLabel>
 #include <QTableWidget>
@@ -32,6 +33,7 @@ class MainWindow : public QMainWindow {
  public:
   explicit MainWindow(QWidget* parent = nullptr);
   ~MainWindow() override;
+  bool eventFilter(QObject* obj, QEvent* event) override;
 
  private slots:
   void onNewProject();

@@ -129,8 +129,10 @@ void GenTLWorker::openSoft(const QString& deviceId) {
   }
   emit opened(deviceId_);
   emit frameReady(img, ++frameCounter_);
-  emit statusChanged(QStringLiteral("Soft 仿真相机已打开 %1 · exp=%2µs gain=%3dB")
+  emit statusChanged(QStringLiteral("Soft 仿真相机已打开 %1 · %2×%3 · exp=%4µs gain=%5dB")
                          .arg(deviceId_)
+                         .arg(img.width())
+                         .arg(img.height())
                          .arg(exposureUs())
                          .arg(gainDb(), 0, 'f', 1));
 }

@@ -34,7 +34,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   head->setSpacing(6);
   countLabel_ = new QLabel(QStringLiteral("图像源 (0/0)"));
   countLabel_->setStyleSheet(QStringLiteral("color:#e8e8e8;font-weight:600;"));
-  countLabel_->setToolTip(QStringLiteral("←→/滚轮切换 · Del 删除 · 拖拽缩略图重排"));
+  countLabel_->setToolTip(QStringLiteral("←→ Home/End/滚轮切换 · Del 删除 · 拖拽缩略图重排"));
   status_ = new QLabel(QStringLiteral("本地图像"));
   status_->setObjectName(QStringLiteral("muted"));
   autoSwitch_ = new QCheckBox(QStringLiteral("自动切换"));
@@ -100,16 +100,8 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   });
   connect(list_, &QListWidget::currentRowChanged, this, [this](int row) {
     if (rebuilding_ || row < 0 || row >= paths_.size()) return;
-    index_ = row;
-    refreshCount();
-    const QString path = paths_.at(row);
-    QImage img(path);
-    if (!img.isNull())
-      setStatus(QStringLiteral("%1×%2 · %3")
-                    .arg(img.width())
-                    .arg(img.height())
-                    .arg(QFileInfo(path).fileName()));
-    emit imageSelected(path);
+    // Keep N/M · WxH · name via selectIndex (rebuilding_ guards recursion)
+    selectIndex(row, true);
   });
   connect(list_->model(), &QAbstractItemModel::rowsMoved, this,
           [this](const QModelIndex&, int, int, const QModelIndex&, int) {
@@ -279,6 +271,16 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
   }
   if (event->key() == Qt::Key_Right) {
     selectNext();
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_Home) {
+    if (!paths_.isEmpty()) selectIndex(0, true);
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_End) {
+    if (!paths_.isEmpty()) selectIndex(paths_.size() - 1, true);
     event->accept();
     return;
   }

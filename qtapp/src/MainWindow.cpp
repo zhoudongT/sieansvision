@@ -11,6 +11,8 @@
 #include <sieans/gentl_capture.hpp>
 
 #include <QAction>
+#include <QEvent>
+#include <QMouseEvent>
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDateTime>
@@ -614,6 +616,7 @@ void MainWindow::buildToolbar() {
   listen_badge_->setStyleSheet(
       QStringLiteral("padding:2px 8px;border-radius:3px;background:#3a3d42;color:#a8a8a8;"));
   tb->addWidget(listen_badge_);
+  listen_badge_->installEventFilter(this);
   if (comm_hub_) {
     connect(comm_hub_, &CommHub::statusChanged, this, [this](const QString& s) {
       if (!listen_badge_) return;
@@ -1386,6 +1389,17 @@ void MainWindow::onEnumerateGenTL() {
     if (uvs.isEmpty()) logResult(QStringLiteral("  (未发现 /dev/video*)"));
     showStatus(QStringLiteral("枚举完成 · UVC %1").arg(uvs.size()));
   }
+}
+
+bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
+  if (obj == listen_badge_ && event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::LeftButton) {
+      onOpenCommManager();
+      return true;
+    }
+  }
+  return QMainWindow::eventFilter(obj, event);
 }
 
 void MainWindow::onOpenCommManager() {
