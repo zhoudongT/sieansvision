@@ -25,6 +25,7 @@ class HostStrip : public QWidget {
   void modeToggleRequested();
   void cycleResetRequested();
   void openHostRequested();
+  void watchKeysChanged(const QStringList& keys);
 
  protected:
   bool eventFilter(QObject* obj, QEvent* event) override;

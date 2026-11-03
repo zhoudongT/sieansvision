@@ -1,4 +1,6 @@
 #include "HostStrip.hpp"
+#include <QInputDialog>
+#include <QLineEdit>
 #include "Theme.hpp"
 
 #include <QVBoxLayout>
@@ -66,6 +68,9 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   chips_ = new QLabel;
   chips_->setObjectName(QStringLiteral("muted"));
   chips_->setWordWrap(true);
+  chips_->setCursor(Qt::PointingHandCursor);
+  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑键列表 · 单击复制全文"));
+  chips_->installEventFilter(this);
   root->addWidget(chips_);
   setStyleSheet(QStringLiteral("background:#232528;border-top:1px solid #4a4e54;"));
   setMinimumHeight(52);
@@ -192,6 +197,24 @@ void HostStrip::updateFromVars(const QVariantMap& vars, int codeCount, bool eval
 bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
   if (event->type() == QEvent::MouseButtonDblClick) {
     auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::LeftButton && obj == chips_) {
+      bool ok = false;
+      const QString cur = watchKeys_.join(QLatin1Char(','));
+      const QString neu = QInputDialog::getText(
+          this, QStringLiteral("监视变量"), QStringLiteral("逗号分隔变量名"),
+          QLineEdit::Normal, cur, &ok);
+      if (ok) {
+        QStringList keys;
+        for (const QString& p : neu.split(QLatin1Char(','))) {
+          const QString k = p.trimmed();
+          if (!k.isEmpty()) keys << k;
+        }
+        watchKeys_ = keys;
+        emit watchKeysChanged(watchKeys_);
+        refreshChips({});
+      }
+      return true;
+    }
     if (me->button() == Qt::LeftButton && obj == cycleChip_) {
       emit cycleResetRequested();
       return true;
@@ -216,6 +239,13 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
         emit cycleResetRequested();
         return true;
       }
+    }
+    if (obj == chips_ && chips_) {
+      if (auto* clip = QGuiApplication::clipboard()) {
+        clip->setText(chips_->text());
+        chips_->setToolTip(QStringLiteral("已复制监视芯片 · 双击编辑键列表"));
+      }
+      return true;
     }
     if (obj == badge_ || obj == alarmLabel_) {
       emit openHostRequested();

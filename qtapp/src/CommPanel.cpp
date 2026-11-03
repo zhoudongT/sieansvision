@@ -111,10 +111,29 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   row->addWidget(btnClear);
   lay->addLayout(row);
 
+  txFilter_ = new QLineEdit;
+  txFilter_->setObjectName(QStringLiteral("commTxFilter"));
+  txFilter_->setPlaceholderText(QStringLiteral("过滤抄本 · Ctrl+F · Esc 清空"));
+  txFilter_->setClearButtonEnabled(true);
+  txFilter_->setToolTip(QStringLiteral("通信抄本过滤 · TX/RX/状态行 · Ctrl+F 聚焦"));
+  lay->addWidget(txFilter_);
+  connect(txFilter_, &QLineEdit::textChanged, this, [this](const QString&) { refreshTranscript(); });
+  {
+    auto* scF = new QShortcut(QKeySequence(QStringLiteral("Ctrl+F")), this);
+    connect(scF, &QShortcut::activated, this, [this]() {
+      if (!txFilter_) return;
+      txFilter_->setFocus(Qt::ShortcutFocusReason);
+      txFilter_->selectAll();
+    });
+    auto* scEsc = new QShortcut(QKeySequence(Qt::Key_Escape), txFilter_);
+    connect(scEsc, &QShortcut::activated, this, [this]() {
+      if (txFilter_ && !txFilter_->text().isEmpty()) txFilter_->clear();
+    });
+  }
   transcript_ = new QPlainTextEdit;
   transcript_->setReadOnly(true);
   transcript_->setPlaceholderText(
-      QStringLiteral("TX/RX 抄本 · LocalBus 软总线 + 真 TCP · peers 见状态行"));
+      QStringLiteral("TX/RX 抄本 · LocalBus 软总线 + 真 TCP · peers 见状态行 · 过滤见上方"));
   lay->addWidget(transcript_, 1);
 
   btnTcp->setToolTip(QStringLiteral("启动 tcpReal（server 监听 / client 连接+重连）· framing lf/crlf/raw/len4 · framing 见启动 tip · 状态见徽章"));
@@ -258,8 +277,24 @@ void CommPanel::onDeviceRowChanged() {
 void CommPanel::setFlowVars(const QVariantMap& vars) { vars_ = vars; }
 
 void CommPanel::refreshTranscript() {
-  if (!hub_) return;
-  transcript_->setPlainText(hub_->transcript().join(QLatin1Char('\n')));
+  if (!hub_ || !transcript_) return;
+  transcriptAll_ = hub_->transcript();
+  const QString f = txFilter_ ? txFilter_->text().trimmed() : QString();
+  QStringList lines;
+  if (f.isEmpty()) {
+    lines = transcriptAll_;
+  } else {
+    for (const QString& line : transcriptAll_) {
+      if (line.contains(f, Qt::CaseInsensitive)) lines << line;
+    }
+  }
+  transcript_->setPlainText(lines.join(QLatin1Char('\n')));
+  if (txFilter_) {
+    txFilter_->setToolTip(
+        QStringLiteral("通信抄本过滤 · 显示 %1/%2 · Ctrl+F")
+            .arg(lines.size())
+            .arg(transcriptAll_.size()));
+  }
   auto* bar = transcript_->verticalScrollBar();
   if (bar) bar->setValue(bar->maximum());
   // Keep status line aware of last TX/RX even when TCP idle (LocalBus path).

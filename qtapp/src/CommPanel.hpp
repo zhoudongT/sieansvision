@@ -48,6 +48,8 @@ class CommPanel : public QWidget {
   QCheckBox* reconnectCheck_ = nullptr;
   QLabel* bindSummary_ = nullptr;
   QPlainTextEdit* transcript_ = nullptr;
+  QLineEdit* txFilter_ = nullptr;
+  QStringList transcriptAll_;
   QLabel* status_ = nullptr;
   QLabel* detail_ = nullptr;
   QVariantMap vars_;

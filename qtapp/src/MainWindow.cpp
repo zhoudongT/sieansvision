@@ -418,6 +418,11 @@ void MainWindow::buildUi() {
     updateRunChrome();
     showStatus(QStringLiteral("周期已清零"));
   });
+  connect(host_strip_, &HostStrip::watchKeysChanged, this, [this](const QStringList& keys) {
+    if (host_strip_) host_strip_->setWatchKeys(keys);
+    showStatus(QStringLiteral("监视键 %1").arg(keys.join(QLatin1Char(','))));
+    logResult(QStringLiteral("Host 监视键 → %1").arg(keys.join(QLatin1Char(','))));
+  });
   connect(host_strip_, &HostStrip::openHostRequested, this, [this]() {
     if (host_sm_) {
       host_sm_->setFocus(Qt::OtherFocusReason);
