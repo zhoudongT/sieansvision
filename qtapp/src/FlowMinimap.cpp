@@ -16,7 +16,7 @@ FlowMinimap::FlowMinimap(QGraphicsScene* scene, QGraphicsView* view, QWidget* pa
   setFixedSize(180, 120);
   setCursor(Qt::OpenHandCursor);
   setToolTip(QStringLiteral("流程概览 · 拖拽平移视口 · 橙框=当前视野"));
-  setStatusTip(QStringLiteral("Minimap · 拖拽平移 · 点击定位"));
+  setStatusTip(QStringLiteral("Minimap · 拖拽平移 · 点击定位 · 橙框=当前视野"));
   setAttribute(Qt::WA_TransparentForMouseEvents, false);
   setMouseTracking(true);
   if (scene_) connect(scene_, &QGraphicsScene::changed, this, [this](const QList<QRectF>&) { update(); });
