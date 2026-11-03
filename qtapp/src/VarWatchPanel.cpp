@@ -95,10 +95,10 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
                                  table_);
             }
           });
-  table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · 中键 ${flow} · 右键键=值 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Esc 取消选中 · F2 聚焦表 · Ctrl+Shift+J JSON"));
+  table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · 中键 ${flow} · 右键键=值 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Esc 取消选中 · F2 聚焦表 · Ctrl+Shift+J JSON"));
   table_->installEventFilter(this);
   if (filterEdit_) filterEdit_->installEventFilter(this);
-  setStatusTip(QStringLiteral("变量监视 · ★=Host条 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · 中键token/右键键=值 · Home/End/PgUp/PgDn · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
+  setStatusTip(QStringLiteral("变量监视 · ★=Host条 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · 中键token/右键键=值 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
   keys_ = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
            QStringLiteral("passGate"), QStringLiteral("urlOk"),
@@ -207,6 +207,11 @@ bool VarWatchPanel::eventFilter(QObject* obj, QEvent* event) {
         emit hostWatchToggleRequested(rawKey.isEmpty() ? it->text() : rawKey);
         return true;
       }
+    }
+    if ((ke->key() == Qt::Key_Up || ke->key() == Qt::Key_Down) &&
+        (ke->modifiers() & Qt::AltModifier)) {
+      moveSelectedKey(ke->key() == Qt::Key_Up ? -1 : +1);
+      return true;
     }
     if (ke->key() == Qt::Key_Home || ke->key() == Qt::Key_End ||
         ke->key() == Qt::Key_PageUp || ke->key() == Qt::Key_PageDown) {
@@ -447,5 +452,45 @@ void VarWatchPanel::removeSelectedKeys() {
                        QStringLiteral("已移除监视 %1 · Del").arg(n), table_);
   }
 }
+
+void VarWatchPanel::moveSelectedKey(int delta) {
+  if (!table_ || keys_.isEmpty() || delta == 0) return;
+  const int row = table_->currentRow();
+  if (row < 0) return;
+  auto* keyItem = table_->item(row, 0);
+  if (!keyItem) return;
+  QString kn = keyItem->data(Qt::UserRole).toString();
+  if (kn.isEmpty()) kn = keyItem->text().trimmed();
+  if (kn.startsWith(QStringLiteral("★ "))) kn = kn.mid(2).trimmed();
+  const int idx = keys_.indexOf(kn);
+  if (idx < 0) {
+    QToolTip::showText(QCursor::pos(), QStringLiteral("非监视列表键 · 无法调序"), table_);
+    return;
+  }
+  const int dest = idx + delta;
+  if (dest < 0 || dest >= keys_.size()) {
+    QToolTip::showText(QCursor::pos(), QStringLiteral("已到边界 · Alt+↑↓"), table_);
+    return;
+  }
+  keys_.swapItemsAt(idx, dest);
+  rebuild();
+  for (int r = 0; r < table_->rowCount(); ++r) {
+    auto* it = table_->item(r, 0);
+    if (!it) continue;
+    QString raw = it->data(Qt::UserRole).toString();
+    if (raw.isEmpty()) raw = it->text().trimmed();
+    if (raw.startsWith(QStringLiteral("★ "))) raw = raw.mid(2).trimmed();
+    if (raw == kn) {
+      table_->setCurrentCell(r, 0);
+      table_->scrollToItem(it);
+      break;
+    }
+  }
+  emit watchListChanged(keys_);
+  QToolTip::showText(QCursor::pos(),
+                     QStringLiteral("监视调序 %1 → #%2 · Alt+↑↓").arg(kn).arg(dest + 1),
+                     table_);
+}
+
 
 }  // namespace sieans_qt
