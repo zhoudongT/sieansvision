@@ -38,7 +38,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   lay->addWidget(title);
 
   status_ = new QLabel(QStringLiteral("TCP: idle"));
-  setStatusTip(QStringLiteral("通信面板 · LocalBus/TCP · peers/framing · Ctrl+T 启停 · Ctrl+[ / ] 切帧 · Ctrl+Shift+H 端点 · Ctrl+Shift+P 粘贴端点 · Ctrl+Shift+R 末 RX · 状态双击启停/右键装RX · 端口滚轮 · ACK中键快选 · 抄本双击/右键装入 · Alt+↑↓ 历史 · ${flow.x}"));
+  setStatusTip(QStringLiteral("通信面板 · LocalBus/TCP · peers/framing · Ctrl+T 启停 · Ctrl+[ / ] 切帧 · Ctrl+Shift+H 端点 · Ctrl+Shift+P 粘贴端点 · Ctrl+Shift+R 末 RX · 状态双击启停/右键装RX · 端口滚轮 · ACK中键快选 · 抄本双击/右键装入 · 设备中键端点/右键复制 · Alt+↑↓ 历史 · ${flow.x}"));
   status_->setObjectName(QStringLiteral("muted"));
   lay->addWidget(status_);
 
@@ -51,8 +51,9 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   deviceTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
   deviceTable_->setSelectionMode(QAbstractItemView::SingleSelection);
   deviceTable_->setMaximumHeight(120);
-  deviceTable_->setToolTip(QStringLiteral("通信设备表 · 选中后试发 / 查看备注 · framing 见启动 tip · 帧分隔见 framing 下拉 · 双击编辑备注"));
-  deviceTable_->setStatusTip(QStringLiteral("通信 · 设备表 · LocalBus/TCP"));
+  deviceTable_->setToolTip(QStringLiteral("通信设备表 · 选中后试发 / 查看备注 · 中键装入端点 · 右键复制 host:port · 双击编辑备注 · framing 见下拉"));
+  deviceTable_->setStatusTip(QStringLiteral("通信 · 设备表 · LocalBus/TCP · 中键端点"));
+  deviceTable_->installEventFilter(this);
   lay->addWidget(deviceTable_);
   connect(deviceTable_, &QTableWidget::itemSelectionChanged, this,
           &CommPanel::onDeviceRowChanged);
@@ -469,6 +470,35 @@ void CommPanel::copyTranscriptFiltered() {
 }
 
 bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
+  if (obj == deviceTable_ && event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (!deviceTable_) return true;
+    const QPoint pos = me->position().toPoint();
+    QTableWidgetItem* hit = deviceTable_->itemAt(pos);
+    if (!hit) return false;
+    const int row = hit->row();
+    deviceTable_->selectRow(row);
+    const QString host = deviceTable_->item(row, 2) ? deviceTable_->item(row, 2)->text().trimmed() : QString();
+    const QString port = deviceTable_->item(row, 3) ? deviceTable_->item(row, 3)->text().trimmed() : QString();
+    if (me->button() == Qt::MiddleButton) {
+      if (hostEdit_ && !host.isEmpty()) hostEdit_->setText(host);
+      if (portEdit_ && !port.isEmpty()) portEdit_->setText(port);
+      pushTcpEndpoint(true);
+      if (status_)
+        status_->setToolTip(QStringLiteral("已装入设备端点 %1:%2 · 中键行").arg(
+            host.isEmpty() ? QStringLiteral("—") : host,
+            port.isEmpty() ? QStringLiteral("—") : port));
+      return true;
+    }
+    if (me->button() == Qt::RightButton) {
+      const QString ep = QStringLiteral("%1:%2")
+                             .arg(host.isEmpty() ? QStringLiteral("127.0.0.1") : host,
+                                  port.isEmpty() ? QStringLiteral("19956") : port);
+      if (auto* clip = QGuiApplication::clipboard()) clip->setText(ep);
+      if (status_) status_->setToolTip(QStringLiteral("已复制设备端点 %1 · 右键行").arg(ep));
+      return true;
+    }
+  }
   if (obj == bindSummary_ && event->type() == QEvent::MouseButtonRelease) {
     auto* me = static_cast<QMouseEvent*>(event);
     if (me->button() == Qt::LeftButton && bindSummary_) {

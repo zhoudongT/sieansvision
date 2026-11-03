@@ -848,16 +848,16 @@ void MainWindow::buildToolbar() {
   tb->addSeparator();
   mode_badge_ = new QLabel(QStringLiteral("设计态"));
   mode_badge_->setObjectName(QStringLiteral("modeBadge"));
-  mode_badge_->setToolTip(QStringLiteral("设计态可编辑 · 运行态锁定画布 · 点击可切换模式 · 右键连续/暂停"));
-  mode_badge_->setStatusTip(QStringLiteral("模式徽章 · 设计态/运行态 · 右键连续"));
+  mode_badge_->setToolTip(QStringLiteral("设计态可编辑 · 运行态锁定画布 · 单击切换 · 中键运行一次 · 右键连续/暂停 · 双击停连续"));
+  mode_badge_->setStatusTip(QStringLiteral("模式徽章 · 设计/运行 · 中键一次 · 右键连续 · 双击停"));
   mode_badge_->setProperty("runMode", false);
   mode_badge_->setCursor(Qt::PointingHandCursor);
   mode_badge_->installEventFilter(this);
   tb->addWidget(mode_badge_);
   listen_badge_ = new QLabel(QStringLiteral("监听·—"));
   listen_badge_->setObjectName(QStringLiteral("commListenBadge"));
-  listen_badge_->setToolTip(QStringLiteral("通信监听/连接状态 — 点击打开通信管理 · framing lf/crlf/raw/len4"));
-  listen_badge_->setStatusTip(QStringLiteral("通信徽章 · 点击打开通信管理 · tcp=/listen/reconnect · framing 见 tip"));
+  listen_badge_->setToolTip(QStringLiteral("通信监听/连接状态 — 单击/中键/右键打开通信管理 · framing lf/crlf/raw/len4"));
+  listen_badge_->setStatusTip(QStringLiteral("通信徽章 · 单击/中键/右键打开通信管理 · tcp=/listen/reconnect · framing 见 tip"));
   listen_badge_->setCursor(Qt::PointingHandCursor);
   listen_badge_->setStyleSheet(
       QStringLiteral("padding:2px 8px;border-radius:3px;background:#3a3d42;color:#a8a8a8;"));
@@ -1664,15 +1664,30 @@ void MainWindow::onEnumerateGenTL() {
 bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
   if (obj == listen_badge_ && event->type() == QEvent::MouseButtonRelease) {
     auto* me = static_cast<QMouseEvent*>(event);
-    if (me->button() == Qt::LeftButton) {
+    if (me->button() == Qt::LeftButton || me->button() == Qt::MiddleButton ||
+        me->button() == Qt::RightButton) {
       onOpenCommManager();
       return true;
     }
+  }
+  if (obj == mode_badge_ && event->type() == QEvent::MouseButtonDblClick) {
+    if (continuous_run_) {
+      onStopRun();
+      showStatus(QStringLiteral("已停连续 · 模式双击"));
+    } else if (act_mode_) {
+      act_mode_->toggle();
+    }
+    return true;
   }
   if (obj == mode_badge_ && event->type() == QEvent::MouseButtonRelease) {
     auto* me = static_cast<QMouseEvent*>(event);
     if (me->button() == Qt::LeftButton) {
       if (act_mode_) act_mode_->toggle();
+      return true;
+    }
+    if (me->button() == Qt::MiddleButton) {
+      onRunOnce();
+      showStatus(QStringLiteral("运行一次 · 模式中键"));
       return true;
     }
     if (me->button() == Qt::RightButton) {

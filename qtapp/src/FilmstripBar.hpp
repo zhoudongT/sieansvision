@@ -40,6 +40,8 @@ class FilmstripBar : public QWidget {
   void exportSelectedPathList();
   void gotoIndexDialog();
   void copyAllBasenames();
+  void revealCurrent();
+  void removeDuplicatePaths();
 
  protected:
   void keyPressEvent(QKeyEvent* event) override;

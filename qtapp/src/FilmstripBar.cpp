@@ -15,6 +15,8 @@
 #include <QVBoxLayout>
 #include <QKeyEvent>
 #include <QInputDialog>
+#include <QDesktopServices>
+#include <QUrl>
 #include <QMouseEvent>
 #include <QClipboard>
 #include <QGuiApplication>
@@ -35,7 +37,7 @@ constexpr int kThumbH = 52;
 
 FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   setObjectName(QStringLiteral("filmstripBar"));
-  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→/Alt+←→ Home/End/PgUp/PgDn · 0/A/1-9 跳转 · Space 自动切换 · Ctrl+C 路径 · Ctrl+Shift+C 文件名 · Ctrl+D 复制 · Ctrl+Shift+I 反选 · Ctrl+Shift+S 排序 · Ctrl+Shift+M 剔缺失 · Ctrl+Shift+R 乱序 · Ctrl+E 导出 · Ctrl+Shift+E 导出选中 · 右键复制路径 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Ctrl+G 跳转 · Ctrl+Shift+B 全名 · 计数双击跳转/中键乱序/右键全名 · Del"));
+  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→/Alt+←→ Home/End/PgUp/PgDn · 0/A/1-9 跳转 · Space 自动切换 · Ctrl+C 路径 · Ctrl+Shift+C 文件名 · Ctrl+D 复制 · Ctrl+Shift+I 反选 · Ctrl+Shift+S 排序 · Ctrl+Shift+M 剔缺失 · Ctrl+Shift+R 乱序 · Ctrl+E 导出 · Ctrl+Shift+E 导出选中 · 右键复制路径 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Ctrl+G 跳转 · Ctrl+Shift+B 全名 · Ctrl+Shift+O 打开目录 · Ctrl+Shift+U 剔重 · 计数双击跳转/中键乱序/右键全名 · Del"));
   setFocusPolicy(Qt::StrongFocus);
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(6, 2, 6, 4);
@@ -50,6 +52,9 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   countLabel_->installEventFilter(this);
   status_ = new QLabel(QStringLiteral("本地图像"));
   status_->setObjectName(QStringLiteral("muted"));
+  status_->setCursor(Qt::PointingHandCursor);
+  status_->setToolTip(QStringLiteral("中键打开当前目录 · 右键剔重 · Ctrl+Shift+O/U"));
+  status_->installEventFilter(this);
   autoSwitch_ = new QCheckBox(QStringLiteral("自动切换"));
   autoSwitch_->setToolTip(QStringLiteral("连续运行时切到下一张本地图 · Space/F6 · 勾选后连续自动翻帧"));
   auto* runAll = new QPushButton(QStringLiteral("运行全部"));
@@ -419,6 +424,18 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
+  if (event->key() == Qt::Key_O && (event->modifiers() & Qt::ControlModifier) &&
+      (event->modifiers() & Qt::ShiftModifier)) {
+    revealCurrent();
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_U && (event->modifiers() & Qt::ControlModifier) &&
+      (event->modifiers() & Qt::ShiftModifier)) {
+    removeDuplicatePaths();
+    event->accept();
+    return;
+  }
   if (event->key() == Qt::Key_A && (event->modifiers() & Qt::ControlModifier)) {
     if (list_ && list_->count() > 0) {
       list_->selectAll();
@@ -542,6 +559,17 @@ bool FilmstripBar::eventFilter(QObject* obj, QEvent* event) {
     }
     if (me->button() == Qt::LeftButton) {
       exportPathList();
+      return true;
+    }
+  }
+  if (obj == status_ && event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::MiddleButton) {
+      revealCurrent();
+      return true;
+    }
+    if (me->button() == Qt::RightButton) {
+      removeDuplicatePaths();
       return true;
     }
   }
@@ -726,5 +754,49 @@ void FilmstripBar::copyAllBasenames() {
   if (auto* clip = QGuiApplication::clipboard()) clip->setText(names.join(QLatin1Char('\n')));
   setStatus(QStringLiteral("已复制全部文件名 %1 · Ctrl+Shift+B").arg(names.size()));
 }
+
+void FilmstripBar::revealCurrent() {
+  const QString path = currentPath();
+  if (path.isEmpty()) {
+    setStatus(QStringLiteral("无当前图 · Ctrl+Shift+O"));
+    return;
+  }
+  const QFileInfo fi(path);
+  const QString dir = fi.exists() ? fi.absolutePath() : QFileInfo(path).absolutePath();
+  if (dir.isEmpty()) {
+    setStatus(QStringLiteral("目录无效 · Ctrl+Shift+O"));
+    return;
+  }
+  QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+  setStatus(QStringLiteral("已打开目录 · %1").arg(QFileInfo(dir).fileName()));
+}
+
+void FilmstripBar::removeDuplicatePaths() {
+  if (paths_.isEmpty()) {
+    setStatus(QStringLiteral("胶片空 · Ctrl+Shift+U"));
+    return;
+  }
+  QStringList uniq;
+  QSet<QString> seen;
+  const QString cur = currentPath();
+  for (const QString& p : paths_) {
+    const QString key = QFileInfo(p).absoluteFilePath();
+    if (seen.contains(key)) continue;
+    seen.insert(key);
+    uniq << p;
+  }
+  const int removed = paths_.size() - uniq.size();
+  if (removed <= 0) {
+    setStatus(QStringLiteral("无重复 · Ctrl+Shift+U"));
+    return;
+  }
+  paths_ = uniq;
+  rebuildThumbs();
+  int want = uniq.indexOf(cur);
+  if (want < 0) want = 0;
+  selectIndex(want, true);
+  setStatus(QStringLiteral("已剔重 %1 · 剩 %2 · Ctrl+Shift+U").arg(removed).arg(paths_.size()));
+}
+
 
 }  // namespace sieans_qt

@@ -2,6 +2,7 @@
 
 #include <QDialog>
 #include <QVariantMap>
+#include <QJsonArray>
 
 class QTableWidget;
 class QCheckBox;
@@ -29,6 +30,8 @@ class FlowIoDialog : public QDialog {
   void fillEmptyDefaults(QTableWidget* table);
   void clearEmptyDefaults(QTableWidget* table);
   void exportBindingsJson();
+  void importBindingsJson();
+  void applyJsonArray(QTableWidget* table, const QJsonArray& arr);
   void selectAllRows(QTableWidget* table);
   void insertBindingToken(QTableWidget* table, const QString& token);
   void wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns);
