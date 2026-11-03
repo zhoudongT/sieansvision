@@ -53,7 +53,7 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   prev->setToolTip(QStringLiteral("上一张 · ← · Home 到首张"));
   prev->setFixedWidth(28);
   auto* next = new QPushButton(QStringLiteral("▶"));
-  next->setToolTip(QStringLiteral("下一张 · →"));
+  next->setToolTip(QStringLiteral("下一张 · → · End 到末张"));
   next->setFixedWidth(28);
   auto* del = new QPushButton(QStringLiteral("删除"));
   del->setToolTip(QStringLiteral("删除选中 · Del · Ctrl+Del 清空 · 不可撤销"));
