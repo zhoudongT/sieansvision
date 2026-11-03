@@ -153,7 +153,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   history_ = new QListWidget;
   history_->setObjectName(QStringLiteral("alarmHistory"));
   history_->setMinimumHeight(72);
-  history_->setToolTip(QStringLiteral("报警历史 · 双击/中键复制 · 右键/Ctrl+L 清空 · Del 删行 · Ctrl+A 全选 · Ctrl+D 复制行 · Ctrl+X 剪切 · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/底 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Ctrl+Shift+J/V JSON导出/粘贴 · 最近 40 条"));
+  history_->setToolTip(QStringLiteral("报警历史 · Esc停止 · 双击/中键复制 · 右键/Ctrl+L 清空 · Del 删行 · Ctrl+A 全选 · Ctrl+D 复制行 · Ctrl+X 剪切 · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/底 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Ctrl+Shift+J/V JSON导出/粘贴 · 最近 40 条"));
   history_->setStatusTip(QStringLiteral("Host · 报警历史 · Ctrl+L/Del/双击/中键"));
   history_->installEventFilter(this);
   history_->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -488,6 +488,11 @@ bool HostStatePanel::eventFilter(QObject* obj, QEvent* event) {
       else if (state_ == QLatin1String("Paused")) emit resumeRequested();
       else emit startRequested();
       if (modeHint_) modeHint_->setText(QStringLiteral("Space · 开始/暂停"));
+      return true;
+    }
+    if (ke->key() == Qt::Key_Escape) {
+      emit stopRequested();
+      if (modeHint_) modeHint_->setText(QStringLiteral("停止 · Esc"));
       return true;
     }
   }

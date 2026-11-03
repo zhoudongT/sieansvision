@@ -97,6 +97,7 @@ void HostStrip::setAlarm(bool on, const QString& reason) {
 void HostStrip::setRunChrome(const QString& mode, const QString& hostState, int cycle) {
   cycle_ = cycle;
   hostState_ = hostState.isEmpty() ? QStringLiteral("Idle") : hostState;
+  continuous_ = mode.contains(QStringLiteral("连续")) || mode.contains(QStringLiteral("暂停"));
   const bool run = mode.contains(QStringLiteral("运行")) || mode.contains(QStringLiteral("连续")) ||
                    mode.contains(QStringLiteral("暂停"));
   modeChip_->setText(QStringLiteral("%1 · %2").arg(mode, hostState_));
@@ -469,7 +470,11 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       return true;
     }
     if (ke->key() == Qt::Key_F6) {
-      emit runContinuousRequested();
+      if (continuous_ && (hostState_ == QLatin1String("Running") ||
+                          hostState_ == QLatin1String("Paused")))
+        emit pauseRequested();
+      else
+        emit runContinuousRequested();
       return true;
     }
     if (ke->key() == Qt::Key_F7) {

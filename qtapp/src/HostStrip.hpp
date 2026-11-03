@@ -74,6 +74,7 @@ class HostStrip : public QWidget {
   QString alarmReason_;
   QString tcpStatus_;
   QString hostState_ = QStringLiteral("Idle");
+  bool continuous_ = false;
   int cycle_ = 0;
   double lastCycleMs_ = -1;
   int intervalMs_ = 200;

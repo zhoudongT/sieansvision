@@ -492,13 +492,22 @@ void FlowIoDialog::cutSelectedRows(QTableWidget* table) {
 
 void FlowIoDialog::clearEmptyRows(QTableWidget* table) {
   if (!table) return;
+  int removed = 0;
   for (int r = table->rowCount() - 1; r >= 0; --r) {
     auto* n = table->item(r, 0);
     auto* b = table->item(r, 2);
     const QString name = n ? n->text().trimmed() : QString();
     const QString bind = b ? b->text().trimmed() : QString();
-    if (name.isEmpty() && bind.isEmpty()) table->removeRow(r);
+    if (name.isEmpty() && bind.isEmpty()) {
+      table->removeRow(r);
+      ++removed;
+    }
   }
+  table->setToolTip(removed > 0
+                        ? QStringLiteral("已清空行 %1 · Ctrl+Shift+L · 剩 %2")
+                              .arg(removed)
+                              .arg(table->rowCount())
+                        : QStringLiteral("无空行 · Ctrl+Shift+L"));
 }
 
 

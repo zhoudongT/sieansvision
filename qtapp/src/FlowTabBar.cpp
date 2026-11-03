@@ -232,7 +232,10 @@ bool FlowTabBar::eventFilter(QObject* obj, QEvent* event) {
       return true;
     }
     if (ke->key() == Qt::Key_F6) {
-      emit runContinuousRequested();
+      if (continuous_ || paused_)
+        emit pauseRequested();
+      else
+        emit runContinuousRequested();
       return true;
     }
     if (ke->key() == Qt::Key_F7) {

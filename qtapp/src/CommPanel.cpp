@@ -189,7 +189,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   payloadEdit_ = new QLineEdit(
       QStringLiteral("BARCODE ok=${flow.passGate} text=${flow.barcodeText}"));
   payloadEdit_->setToolTip(
-      QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · 下方芯片插入 · Enter/Ctrl+Enter 试发 · Alt+↑↓ 历史 · Alt+Del 删当前 · Alt+Shift+Del 清空 · Alt+Shift+Y 反序 · Alt+Shift+S 排序 · Alt+Shift+U 去重 · Alt+Shift+J/O JSON导出/导入 · LocalBus echo"));
+      QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · 下方芯片插入 · Enter/Ctrl+Enter 试发 · Alt+↑↓ 历史 · Alt+Del 删当前 · Alt+Shift+Del 清空 · Alt+Shift+D 收录当前 · Alt+Shift+Y 反序 · Alt+Shift+S 排序 · Alt+Shift+U 去重 · Alt+Shift+J/O JSON导出/导入 · LocalBus echo"));
   form->addRow(QStringLiteral("报文"), payloadEdit_);
   payloadEdit_->installEventFilter(this);
   lay->addLayout(form);
@@ -714,6 +714,13 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
       }
       if (ke->key() == Qt::Key_O && (ke->modifiers() & Qt::ShiftModifier)) {
         importPayloadHistoryJson();
+        return true;
+      }
+      if (ke->key() == Qt::Key_D && (ke->modifiers() & Qt::ShiftModifier)) {
+        pushPayloadHistory();
+        if (status_)
+          status_->setToolTip(QStringLiteral("已收录报文 · Alt+Shift+D · 历史 %1")
+                                  .arg(payloadHistory_.size()));
         return true;
       }
     }
