@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper|nvl|lstrip|rstrip|iff|bool|oct|fabs|fmod|cbrt|log10|frac|log2|isfinite)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil|sign|pow|sqrt|trunc|title|capitalize|hypot|log|exp|isalnum|swapcase|radians|degrees|ord|chr|bin|hex|islower|isupper|nvl|lstrip|rstrip|iff|bool|oct|fabs|fmod|cbrt|log10|frac|log2|isfinite|atan2|copysign)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -431,6 +431,15 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
         if (name == QLatin1String("isfinite")) {
           if (args.isEmpty()) return 0;
           return std::isfinite(evalRec(args[0]).toDouble()) ? 1 : 0;
+        }
+        if (name == QLatin1String("atan2")) {
+          if (args.size() < 2) return 0;
+          return std::atan2(evalRec(args[0]).toDouble(), evalRec(args[1]).toDouble());
+        }
+        if (name == QLatin1String("copysign")) {
+          if (args.size() < 2) return 0;
+          return std::copysign(evalRec(args[0]).toDouble(),
+                               evalRec(args[1]).toDouble());
         }
         if (name == QLatin1String("min") || name == QLatin1String("max")) {
           if (args.isEmpty()) return 0;
@@ -981,6 +990,12 @@ QStringList exprSelfTest() {
   check(QStringLiteral("isfinite"),
         ev.eval(QStringLiteral("isfinite(1)")),
         QStringLiteral("1"));
+  check(QStringLiteral("atan2"),
+        ev.eval(QStringLiteral("atan2(0, 1)")),
+        QStringLiteral("0"));
+  check(QStringLiteral("copysign"),
+        ev.eval(QStringLiteral("copysign(3, -1)")),
+        QStringLiteral("-3"));
   check(QStringLiteral("islower"),
         ev.eval(QStringLiteral("islower('abc')")),
         QStringLiteral("1"));

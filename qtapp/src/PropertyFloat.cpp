@@ -15,7 +15,7 @@ namespace sieans_qt {
 
 PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续"));
-  setWhatsThis(QStringLiteral("属性浮窗 · Esc 放弃 · Enter 保留 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 单次 · F6 连续"));
+  setWhatsThis(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · Ctrl/Alt/Shift+Enter/Ctrl+S 确定 · F5/F9 单次 · F6 连续"));
   setObjectName(QStringLiteral("propertyFloat"));
   setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
   setModal(false);
