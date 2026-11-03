@@ -1,5 +1,7 @@
 #include "HostStatePanel.hpp"
 
+#include <algorithm>
+
 #include <QComboBox>
 #include <QSpinBox>
 #include <QDateTime>
@@ -151,7 +153,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   history_ = new QListWidget;
   history_->setObjectName(QStringLiteral("alarmHistory"));
   history_->setMinimumHeight(72);
-  history_->setToolTip(QStringLiteral("报警历史 · 双击/中键复制 · 右键/Ctrl+L 清空 · Del 删行 · Ctrl+Shift+J/V JSON导出/粘贴 · 最近 40 条"));
+  history_->setToolTip(QStringLiteral("报警历史 · 双击/中键复制 · 右键/Ctrl+L 清空 · Del 删行 · Ctrl+X 剪切 · Ctrl+Shift+J/V JSON导出/粘贴 · 最近 40 条"));
   history_->setStatusTip(QStringLiteral("Host · 报警历史 · Ctrl+L/Del/双击/中键"));
   history_->installEventFilter(this);
   history_->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -191,6 +193,8 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
     });
     auto* scV = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+V")), history_);
     connect(scV, &QShortcut::activated, this, [this]() { pasteAlarmHistoryFromClipboard(); });
+    auto* scX = new QShortcut(QKeySequence(QStringLiteral("Ctrl+X")), history_);
+    connect(scX, &QShortcut::activated, this, [this]() { cutSelectedAlarmHistory(); });
 
     connect(history_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* it) {
       if (!it) return;
@@ -579,6 +583,32 @@ void HostStatePanel::setAlarmHistoryLines(const QStringList& lines) {
   while (history_->count() > 40) delete history_->takeItem(history_->count() - 1);
 }
 
+
+
+void HostStatePanel::cutSelectedAlarmHistory() {
+  if (!history_) return;
+  QList<QListWidgetItem*> selected = history_->selectedItems();
+  if (selected.isEmpty()) {
+    if (modeHint_) modeHint_->setText(QStringLiteral("无选中报警行 · Ctrl+X"));
+    return;
+  }
+  QStringList lines;
+  QList<int> rows;
+  for (auto* it : selected) {
+    if (!it) continue;
+    lines << it->text();
+    rows << history_->row(it);
+  }
+  if (auto* clip = QGuiApplication::clipboard())
+    clip->setText(lines.join(QLatin1Char('\n')));
+  std::sort(rows.begin(), rows.end(), std::greater<int>());
+  for (int r : rows) {
+    if (r >= 0) delete history_->takeItem(r);
+  }
+  emit alarmHistoryChanged(alarmHistoryLines());
+  if (modeHint_)
+    modeHint_->setText(QStringLiteral("已剪切报警 %1 · Ctrl+X · Ctrl+Shift+V 粘贴").arg(lines.size()));
+}
 
 void HostStatePanel::pasteAlarmHistoryFromClipboard() {
   const QString raw = QGuiApplication::clipboard()
