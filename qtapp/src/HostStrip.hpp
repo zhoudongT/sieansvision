@@ -22,6 +22,9 @@ class HostStrip : public QWidget {
   void setTcpStatus(const QString& status);
   /** Last completed-cycle wall time (ms) — shown on cycle chip. */
   void setCycleTiming(double lastMs);
+  void resetStreak();
+  int okStreak() const { return okStreak_; }
+  int ngCount() const { return ngCount_; }
 
  signals:
   void modeToggleRequested();

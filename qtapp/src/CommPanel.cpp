@@ -17,6 +17,9 @@
 #include <QGuiApplication>
 #include <QEvent>
 #include <QMouseEvent>
+#include <QRegularExpression>
+#include <initializer_list>
+#include <utility>
 #include <QPushButton>
 #include <QScrollArea>
 
@@ -32,7 +35,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   lay->addWidget(title);
 
   status_ = new QLabel(QStringLiteral("TCP: idle"));
-  setStatusTip(QStringLiteral("通信面板 · LocalBus/TCP · peers/framing(lf/crlf/raw/len4) · 模板 ${flow.x}/{name}/{{name}} · AUTO_TCP bump"));
+  setStatusTip(QStringLiteral("通信面板 · LocalBus/TCP · peers/framing(lf/crlf/raw/len4) · 快选芯片 · 模板预设 · Ctrl+T 启停 · 右键摘要粘贴端点 · ${flow.x} · AUTO_TCP bump"));
   status_->setObjectName(QStringLiteral("muted"));
   lay->addWidget(status_);
 
@@ -83,6 +86,27 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   form->addRow(QStringLiteral("帧分隔"), framingCombo_);
   connect(framingCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
           [this](int) { pushTcpEndpoint(true); });
+  {
+    auto* frChips = new QHBoxLayout;
+    frChips->setSpacing(4);
+    for (const auto& pair : std::initializer_list<std::pair<const char*, const char*>>{
+             {"LF", "lf"}, {"CRLF", "crlf"}, {"Raw", "raw"}, {"Len4", "len4"}}) {
+      auto* b = new QPushButton(QString::fromUtf8(pair.first));
+      b->setFlat(true);
+      b->setCursor(Qt::PointingHandCursor);
+      b->setObjectName(QStringLiteral("commFramingChip"));
+      b->setStyleSheet(
+          QStringLiteral("QPushButton{background:#32353a;color:#c8cdd4;border-radius:3px;"
+                         "padding:2px 8px;font-size:11px;}"
+                         "QPushButton:hover{background:#64b5f6;color:#102018;}"));
+      const QString fr = QString::fromUtf8(pair.second);
+      b->setToolTip(QStringLiteral("快速帧分隔 · %1").arg(fr));
+      connect(b, &QPushButton::clicked, this, [this, fr]() { applyFraming(fr); });
+      frChips->addWidget(b);
+    }
+    frChips->addStretch(1);
+    form->addRow(QStringLiteral("快选"), frChips);
+  }
   ackEdit_ = new QLineEdit;
   ackEdit_->setPlaceholderText(QStringLiteral("ACK 应答 · 空=不回"));
   ackEdit_->setToolTip(QStringLiteral("收到报文后自动回 ACK · 写入 tcpReal.ack · 空则不回 · 随 framing 附加换行"));
@@ -97,7 +121,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   bindSummary_->setObjectName(QStringLiteral("commBindSummary"));
   bindSummary_->setWordWrap(true);
   bindSummary_->setCursor(Qt::PointingHandCursor);
-  bindSummary_->setToolTip(QStringLiteral("tcpReal 绑定摘要 · host:port · framing · ack · reconnect · 单击复制"));
+  bindSummary_->setToolTip(QStringLiteral("tcpReal 绑定摘要 · host:port · framing · ack · reconnect · 单击复制 · 右键从剪贴板粘贴 host:port"));
   bindSummary_->installEventFilter(this);
   form->addRow(QStringLiteral("摘要"), bindSummary_);
   payloadEdit_ = new QLineEdit(
@@ -115,6 +139,27 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   varChipLay_->addWidget(new QLabel(QStringLiteral("插入")));
   varChipLay_->addStretch(1);
   lay->addWidget(varChipHost_);
+  {
+    auto* presetRow = new QHBoxLayout;
+    presetRow->setSpacing(4);
+    presetRow->addWidget(new QLabel(QStringLiteral("模板")));
+    for (const auto& pair : std::initializer_list<std::pair<const char*, const char*>>{
+             {"OK", "ok"}, {"NG", "ng"}, {"Echo", "echo"}, {"RawText", "raw"}}) {
+      auto* b = new QPushButton(QString::fromUtf8(pair.first));
+      b->setFlat(true);
+      b->setCursor(Qt::PointingHandCursor);
+      b->setStyleSheet(
+          QStringLiteral("QPushButton{background:#2a3340;color:#c8cdd4;border-radius:3px;"
+                         "padding:2px 8px;font-size:11px;}"
+                         "QPushButton:hover{background:#3ecf8e;color:#102018;}"));
+      const QString kind = QString::fromUtf8(pair.second);
+      b->setToolTip(QStringLiteral("报文预设 · %1").arg(kind));
+      connect(b, &QPushButton::clicked, this, [this, kind]() { applyPayloadPreset(kind); });
+      presetRow->addWidget(b);
+    }
+    presetRow->addStretch(1);
+    lay->addLayout(presetRow);
+  }
 
   auto* row = new QHBoxLayout;
   auto* btnTcp = new QPushButton(QStringLiteral("启动 TCP"));
@@ -177,6 +222,8 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
     });
     auto* scCopy = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+C")), this);
     connect(scCopy, &QShortcut::activated, this, &CommPanel::copyTranscriptFiltered);
+    auto* scT = new QShortcut(QKeySequence(QStringLiteral("Ctrl+T")), this);
+    connect(scT, &QShortcut::activated, this, &CommPanel::toggleTcp);
   }
   if (hub_) {
     connect(hub_, &CommHub::transcriptChanged, this, &CommPanel::refreshTranscript);
@@ -375,6 +422,10 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
       }
       return true;
     }
+    if (me->button() == Qt::RightButton) {
+      pasteEndpointFromClipboard();
+      return true;
+    }
   }
   return QWidget::eventFilter(obj, event);
 }
@@ -432,6 +483,88 @@ void CommPanel::onStopTcp() {
   if (hub_) hub_->stopTcp();
 }
 
+
+
+void CommPanel::toggleTcp() {
+  if (!hub_) return;
+  const QString st = hub_->tcpStatus();
+  if (st.contains(QStringLiteral("listening")) ||
+      st.contains(QStringLiteral("connected")) ||
+      st.contains(QStringLiteral("connecting")) ||
+      st.contains(QStringLiteral("peer"))) {
+    onStopTcp();
+    if (status_) status_->setToolTip(QStringLiteral("TCP 已停 · Ctrl+T"));
+  } else {
+    onStartTcp();
+    if (status_) status_->setToolTip(QStringLiteral("TCP 启动 · Ctrl+T"));
+  }
+}
+
+void CommPanel::applyFraming(const QString& framing) {
+  if (!framingCombo_ || framing.isEmpty()) return;
+  const int idx = framingCombo_->findData(framing);
+  if (idx < 0) return;
+  framingCombo_->setCurrentIndex(idx);
+  if (status_)
+    status_->setToolTip(QStringLiteral("帧分隔=%1 · 快选").arg(framing));
+}
+
+void CommPanel::applyPayloadPreset(const QString& kind) {
+  if (!payloadEdit_) return;
+  QString tpl;
+  if (kind == QLatin1String("ok"))
+    tpl = QStringLiteral("OK passGate=${flow.passGate} text=${flow.barcodeText}");
+  else if (kind == QLatin1String("ng"))
+    tpl = QStringLiteral("NG passGate=${flow.passGate} text=${flow.barcodeText}");
+  else if (kind == QLatin1String("echo"))
+    tpl = QStringLiteral("ECHO count=${flow.barcodeCount} formatted=${flow.formatted}");
+  else
+    tpl = QStringLiteral("${flow.barcodeText}");
+  payloadEdit_->setText(tpl);
+  payloadEdit_->setFocus(Qt::OtherFocusReason);
+  if (status_)
+    status_->setToolTip(QStringLiteral("报文预设 · %1").arg(kind));
+}
+
+void CommPanel::pasteEndpointFromClipboard() {
+  const QClipboard* clip = QGuiApplication::clipboard();
+  if (!clip) return;
+  QString text = clip->text().trimmed();
+  // Accept "host:port" or "绑定 · host:port · ..."
+  if (text.contains(QLatin1Char(' '))) {
+    const QStringList toks = text.split(QRegularExpression(QStringLiteral("[· ]+")), Qt::SkipEmptyParts);
+    for (const QString& tok : toks) {
+      if (tok.contains(QLatin1Char(':')) && tok.count(QLatin1Char('.')) >= 1) {
+        text = tok;
+        break;
+      }
+      if (tok.contains(QLatin1Char(':')) && !tok.contains(QLatin1Char(' '))) {
+        text = tok;
+        break;
+      }
+    }
+  }
+  const int colon = text.lastIndexOf(QLatin1Char(':'));
+  if (colon <= 0) {
+    if (status_) status_->setToolTip(QStringLiteral("剪贴板无 host:port · 右键摘要"));
+    return;
+  }
+  const QString host = text.left(colon).trimmed();
+  const QString port = text.mid(colon + 1).trimmed();
+  bool ok = false;
+  const int p = port.toInt(&ok);
+  if (host.isEmpty() || !ok || p <= 0 || p > 65535) {
+    if (status_) status_->setToolTip(QStringLiteral("端点解析失败 · 右键摘要"));
+    return;
+  }
+  if (hostEdit_) hostEdit_->setText(host);
+  if (portEdit_) portEdit_->setText(QString::number(p));
+  pushTcpEndpoint(true);
+  if (bindSummary_)
+    bindSummary_->setToolTip(QStringLiteral("已粘贴端点 %1:%2 · 右键").arg(host).arg(p));
+  if (status_)
+    status_->setToolTip(QStringLiteral("端点 %1:%2 · 右键摘要").arg(host).arg(p));
+}
 
 void CommPanel::syncFramingFromDoc(const QVariantMap& tcp) {
   if (!framingCombo_) return;

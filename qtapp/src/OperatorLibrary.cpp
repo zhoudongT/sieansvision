@@ -206,7 +206,7 @@ OperatorDef OperatorLibrary::findDef(const QString& key) {
 }
 
 OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
-  setStatusTip(QStringLiteral("Toolbox · / 或 Ctrl+F/L 搜索 · 最近 · Ctrl+1-9 最近项 · 分类芯片 · Enter 添加(列表/搜索) · Home/End/PgUp/PgDn · Esc 清空"));
+  setStatusTip(QStringLiteral("Toolbox · / 或 Ctrl+F/L 搜索 · 最近 · Ctrl+1-9 最近项 · Ctrl+0 清过滤 · Ctrl+Shift+Del 清最近 · 分类芯片 · Enter 添加(列表/搜索) · Home/End/PgUp/PgDn · Esc 清空"));
   setObjectName(QStringLiteral("libraryPane"));
   auto* lay = new QVBoxLayout(this);
   lay->setContentsMargins(0, 0, 0, 0);
@@ -420,6 +420,21 @@ void OperatorLibrary::rebuildCategoryChips() {
     });
     catChipLay_->addWidget(b);
   }
+    {
+    auto* clr = new QPushButton(QStringLiteral("清最近"));
+    clr->setFlat(true);
+    clr->setCursor(Qt::PointingHandCursor);
+    clr->setToolTip(QStringLiteral("清空最近算子 · Ctrl+Shift+Del"));
+    clr->setStyleSheet(
+        QStringLiteral("QPushButton{background:#3a2a2a;color:#e0a0a0;border-radius:3px;"
+                       "padding:2px 6px;font-size:10px;}"
+                       "QPushButton:hover{background:#e53935;color:#fff;}"));
+    connect(clr, &QPushButton::clicked, this, [this]() {
+      recentKeys_.clear();
+      rebuild();
+    });
+    catChipLay_->addWidget(clr);
+  }
   catChipLay_->addStretch(1);
 }
 
@@ -435,6 +450,18 @@ bool OperatorLibrary::eventFilter(QObject* obj, QEvent* event) {
     if ((ke->modifiers() & Qt::ControlModifier) &&
         ke->key() >= Qt::Key_1 && ke->key() <= Qt::Key_9) {
       activateRecentAt(ke->key() - Qt::Key_1);
+      return true;
+    }
+    if ((ke->modifiers() & Qt::ControlModifier) && ke->key() == Qt::Key_0) {
+      setCategoryFilter(QString());
+      if (search_) search_->clear();
+      return true;
+    }
+    if ((ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier) &&
+        (ke->key() == Qt::Key_Delete || ke->key() == Qt::Key_Backspace)) {
+      recentKeys_.clear();
+      rebuild();
       return true;
     }
     if ((ke->modifiers() & Qt::ControlModifier) &&

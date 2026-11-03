@@ -869,6 +869,8 @@ void MainWindow::syncVarsToUi() {
   if (host_strip_)
     host_strip_->updateFromVars(
         flow_vars_, flow_vars_.value(QStringLiteral("barcodeCount")).toInt(), true);
+  if (host_sm_ && host_strip_)
+    host_sm_->setRunStats(host_strip_->okStreak(), host_strip_->ngCount(), last_cycle_ms_);
 }
 
 void MainWindow::logResult(const QString& line) {
@@ -1512,6 +1514,8 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
   const double toolMs = qMax(0.0, flowMs - algoMs);
   last_cycle_ms_ = flowMs;
   if (host_strip_) host_strip_->setCycleTiming(flowMs);
+  if (host_sm_ && host_strip_)
+    host_sm_->setRunStats(host_strip_->okStreak(), host_strip_->ngCount(), flowMs);
   if (status_timing_) {
     status_timing_->setText(QStringLiteral("流程 %1 ms · 工具 %2 ms · 算法 %3 ms")
                                 .arg(flowMs, 0, 'f', 2)

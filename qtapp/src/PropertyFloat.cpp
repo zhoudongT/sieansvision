@@ -16,7 +16,7 @@
 namespace sieans_qt {
 
 PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
-  setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · F2 首字段 · Tab/Home/End/PgUp/PgDn/滚轮 · Alt+滚轮透明度 · Ctrl+R 还原 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续 · Ctrl+S 同确定"));
+  setStatusTip(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · F2 首字段 · Tab/Home/End/PgUp/PgDn/滚轮 · Alt+滚轮透明度 · Ctrl+0 透明度重置 · Ctrl+R 还原 · 双击标题钉住 · Ctrl/Alt/Shift+Enter 确定 · F5/F9 执行 · F6 连续 · Ctrl+S 同确定"));
   setWhatsThis(QStringLiteral("属性浮窗 · Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End/PgUp/PgDn · Ctrl/Alt/Shift+Enter/Ctrl+S 确定 · F5/F9 单次 · F6 连续"));
   setObjectName(QStringLiteral("propertyFloat"));
   setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
@@ -197,6 +197,16 @@ void PropertyFloat::showForStep(const FlowStep& step) {
   }
 }
 
+void PropertyFloat::mouseDoubleClickEvent(QMouseEvent* event) {
+  if (event->button() == Qt::LeftButton && titleBar_ &&
+      titleBar_->geometry().contains(event->position().toPoint())) {
+    if (pinBtn_) pinBtn_->toggle();
+    event->accept();
+    return;
+  }
+  QDialog::mouseDoubleClickEvent(event);
+}
+
 void PropertyFloat::keyPressEvent(QKeyEvent* event) {
   if (event->key() == Qt::Key_R && (event->modifiers() & Qt::ControlModifier)) {
     // Restore baseline into editors without closing (VM-ish revert).
@@ -206,6 +216,17 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
       const QString s = subtitle_->text();
       if (!s.contains(QStringLiteral("已还原")))
         subtitle_->setText(s + QStringLiteral(" · 已还原"));
+    }
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_0 && (event->modifiers() & Qt::ControlModifier)) {
+    opacity_ = 1.0;
+    setWindowOpacity(opacity_);
+    if (subtitle_) {
+      const QString s = subtitle_->text();
+      if (!s.contains(QStringLiteral("透明度")))
+        subtitle_->setText(s + QStringLiteral(" · 透明度 100%"));
     }
     event->accept();
     return;
@@ -311,6 +332,9 @@ void PropertyFloat::wheelEvent(QWheelEvent* event) {
     const qreal delta = event->angleDelta().y() > 0 ? 0.05 : -0.05;
     opacity_ = qBound(0.45, opacity_ + delta, 1.0);
     setWindowOpacity(opacity_);
+    if (subtitle_)
+      subtitle_->setText(QStringLiteral("透明度 %1% · Ctrl+0 重置")
+                             .arg(int(opacity_ * 100 + 0.5)));
     event->accept();
     return;
   }

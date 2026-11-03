@@ -23,6 +23,7 @@
 #include <QWidget>
 #include <QWheelEvent>
 #include <QScrollBar>
+#include <QRandomGenerator>
 
 namespace sieans_qt {
 namespace {
@@ -32,7 +33,7 @@ constexpr int kThumbH = 52;
 
 FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   setObjectName(QStringLiteral("filmstripBar"));
-  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→ Home/End/PgUp/PgDn · 0/A/1-9 跳转 · Space 自动切换 · Ctrl+C 路径 · Ctrl+Shift+C 文件名 · Ctrl+D 复制 · Ctrl+Shift+I 反选 · Ctrl+Shift+S 排序 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Del"));
+  setStatusTip(QStringLiteral("胶片条 · ←→/Ctrl+←→ Home/End/PgUp/PgDn · 0/A/1-9 跳转 · Space 自动切换 · Ctrl+C 路径 · Ctrl+Shift+C 文件名 · Ctrl+D 复制 · Ctrl+Shift+I 反选 · Ctrl+Shift+S 排序 · Ctrl+Shift+M 剔缺失 · Ctrl+Shift+R 乱序 · F5/F9 运行全部 · Insert 添加 · F7 文件夹 · Del"));
   setFocusPolicy(Qt::StrongFocus);
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(6, 2, 6, 4);
@@ -365,6 +366,18 @@ void FilmstripBar::keyPressEvent(QKeyEvent* event) {
     event->accept();
     return;
   }
+  if (event->key() == Qt::Key_M && (event->modifiers() & Qt::ControlModifier) &&
+      (event->modifiers() & Qt::ShiftModifier)) {
+    removeMissing();
+    event->accept();
+    return;
+  }
+  if (event->key() == Qt::Key_R && (event->modifiers() & Qt::ControlModifier) &&
+      (event->modifiers() & Qt::ShiftModifier)) {
+    shufflePaths();
+    event->accept();
+    return;
+  }
   if (event->key() == Qt::Key_D && (event->modifiers() & Qt::ControlModifier)) {
     duplicateSelected();
     event->accept();
@@ -553,6 +566,37 @@ void FilmstripBar::sortByName() {
   if (idx < 0) idx = 0;
   selectIndex(idx, true);
   setStatus(QStringLiteral("已按文件名排序 · %1").arg(paths_.size()));
+}
+
+void FilmstripBar::removeMissing() {
+  const QString cur = currentPath();
+  const int before = paths_.size();
+  QStringList keep;
+  for (const QString& p : paths_) {
+    if (QFileInfo::exists(p)) keep << p;
+  }
+  paths_ = keep;
+  rebuildThumbs();
+  int idx = paths_.indexOf(cur);
+  if (idx < 0) idx = paths_.isEmpty() ? -1 : 0;
+  if (idx >= 0) selectIndex(idx, true);
+  else { index_ = -1; refreshCount(); }
+  setStatus(QStringLiteral("已剔除缺失 %1 · 剩 %2 · Ctrl+Shift+M")
+                .arg(before - paths_.size()).arg(paths_.size()));
+}
+
+void FilmstripBar::shufflePaths() {
+  if (paths_.size() < 2) return;
+  const QString cur = currentPath();
+  for (int i = paths_.size() - 1; i > 0; --i) {
+    const int j = QRandomGenerator::global()->bounded(i + 1);
+    paths_.swapItemsAt(i, j);
+  }
+  rebuildThumbs();
+  int idx = paths_.indexOf(cur);
+  if (idx < 0) idx = 0;
+  selectIndex(idx, true);
+  setStatus(QStringLiteral("已乱序 · %1 · Ctrl+Shift+R").arg(paths_.size()));
 }
 
 }  // namespace sieans_qt

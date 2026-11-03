@@ -45,6 +45,10 @@ class CommPanel : public QWidget {
   void rebuildVarChips();
   void insertFlowToken(const QString& key);
   void copyTranscriptFiltered();
+  void toggleTcp();
+  void applyFraming(const QString& framing);
+  void applyPayloadPreset(const QString& kind);
+  void pasteEndpointFromClipboard();
 
   CommHub* hub_ = nullptr;
   QTableWidget* deviceTable_ = nullptr;

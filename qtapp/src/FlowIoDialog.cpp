@@ -28,7 +28,7 @@ namespace sieans_qt {
 FlowIoDialog::FlowIoDialog(const QVariantMap& io, QWidget* parent)
     : QDialog(parent), io_(io) {
   setWindowTitle(QStringLiteral("流程参数 · I/O 绑定"));
-  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+D 复制 · Ctrl+Shift+V 粘贴 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果"));
+  setStatusTip(QStringLiteral("流程 I/O · {name}/${flow.x}/{{name}} · Alt+↑↓ 移行 · Ctrl+D 复制行 · Ctrl+Shift+C 复制CSV · Ctrl+Shift+V 粘贴 · 清空行 · binding 芯片 · Esc 取消 · Enter/Ctrl+Enter 确定 · emptyDefault 空结果"));
   resize(560, 440);
   setStyleSheet(theme::workbenchStyleSheet());
   auto* root = new QVBoxLayout(this);
@@ -221,33 +221,53 @@ void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
   auto* down = new QPushButton(QStringLiteral("↓"));
   auto* dup = new QPushButton(QStringLiteral("复制"));
   auto* paste = new QPushButton(QStringLiteral("粘贴行"));
+  auto* copyClip = new QPushButton(QStringLiteral("复制行"));
+  auto* clearEmpty = new QPushButton(QStringLiteral("清空行"));
   auto* tokPass = new QPushButton(QStringLiteral("${flow.passGate}"));
   auto* tokText = new QPushButton(QStringLiteral("${flow.barcodeText}"));
+  auto* tokFmt = new QPushButton(QStringLiteral("${flow.formatted}"));
+  auto* tokIo = new QPushButton(QStringLiteral("io.Result"));
   up->setFixedWidth(28);
   down->setFixedWidth(28);
   up->setToolTip(QStringLiteral("上移选中行 · Alt+↑"));
   down->setToolTip(QStringLiteral("下移选中行 · Alt+↓"));
   dup->setToolTip(QStringLiteral("复制选中行 · Ctrl+D"));
   paste->setToolTip(QStringLiteral("从剪贴板粘贴多行绑定 · Ctrl+Shift+V · 每行 name,type,binding,emptyDefault"));
+  copyClip->setToolTip(QStringLiteral("复制选中行到剪贴板 · Ctrl+Shift+C · CSV"));
+  clearEmpty->setToolTip(QStringLiteral("删除 name/binding 皆空的行"));
   tokPass->setToolTip(QStringLiteral("写入当前行 binding · ${flow.passGate}"));
   tokText->setToolTip(QStringLiteral("写入当前行 binding · ${flow.barcodeText}"));
-  tokPass->setStyleSheet(QStringLiteral("font-size:11px;"));
-  tokText->setStyleSheet(QStringLiteral("font-size:11px;"));
+  tokFmt->setToolTip(QStringLiteral("写入当前行 binding · ${flow.formatted}"));
+  tokIo->setToolTip(QStringLiteral("写入当前行 binding · ${flow.io.Result}"));
+  for (auto* b : {tokPass, tokText, tokFmt, tokIo, copyClip, clearEmpty})
+    b->setStyleSheet(QStringLiteral("font-size:11px;"));
   rowBtns->addWidget(up);
   rowBtns->addWidget(down);
   rowBtns->addWidget(dup);
+  rowBtns->addWidget(copyClip);
   rowBtns->addWidget(paste);
+  rowBtns->addWidget(clearEmpty);
   rowBtns->addWidget(tokPass);
   rowBtns->addWidget(tokText);
+  rowBtns->addWidget(tokFmt);
+  rowBtns->addWidget(tokIo);
   connect(up, &QPushButton::clicked, this, [this, table]() { moveSelectedRows(table, -1); });
   connect(down, &QPushButton::clicked, this, [this, table]() { moveSelectedRows(table, +1); });
   connect(dup, &QPushButton::clicked, this, [this, table]() { duplicateSelectedRows(table); });
   connect(paste, &QPushButton::clicked, this, [this, table]() { pasteRows(table); });
+  connect(copyClip, &QPushButton::clicked, this, [this, table]() { copySelectedRows(table); });
+  connect(clearEmpty, &QPushButton::clicked, this, [this, table]() { clearEmptyRows(table); });
   connect(tokPass, &QPushButton::clicked, this, [this, table]() {
     insertBindingToken(table, QStringLiteral("${flow.passGate}"));
   });
   connect(tokText, &QPushButton::clicked, this, [this, table]() {
     insertBindingToken(table, QStringLiteral("${flow.barcodeText}"));
+  });
+  connect(tokFmt, &QPushButton::clicked, this, [this, table]() {
+    insertBindingToken(table, QStringLiteral("${flow.formatted}"));
+  });
+  connect(tokIo, &QPushButton::clicked, this, [this, table]() {
+    insertBindingToken(table, QStringLiteral("${flow.io.Result}"));
   });
   auto* scUp = new QShortcut(QKeySequence(QStringLiteral("Alt+Up")), table);
   connect(scUp, &QShortcut::activated, this, [this, table]() { moveSelectedRows(table, -1); });
@@ -257,6 +277,8 @@ void FlowIoDialog::wireRowOps(QTableWidget* table, QHBoxLayout* rowBtns) {
   connect(scDup, &QShortcut::activated, this, [this, table]() { duplicateSelectedRows(table); });
   auto* scPaste = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+V")), table);
   connect(scPaste, &QShortcut::activated, this, [this, table]() { pasteRows(table); });
+  auto* scCopy = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+C")), table);
+  connect(scCopy, &QShortcut::activated, this, [this, table]() { copySelectedRows(table); });
 }
 
 void FlowIoDialog::moveSelectedRows(QTableWidget* table, int delta) {
@@ -340,6 +362,39 @@ void FlowIoDialog::pasteRows(QTableWidget* table) {
     ++added;
   }
   if (added > 0) table->selectRow(table->rowCount() - 1);
+}
+
+
+void FlowIoDialog::copySelectedRows(QTableWidget* table) {
+  if (!table) return;
+  const auto ranges = table->selectionModel() ? table->selectionModel()->selectedRows()
+                                              : QModelIndexList{};
+  QList<int> rows;
+  for (const QModelIndex& ix : ranges) rows.push_back(ix.row());
+  if (rows.isEmpty() && table->currentRow() >= 0) rows.push_back(table->currentRow());
+  if (rows.isEmpty()) return;
+  std::sort(rows.begin(), rows.end());
+  QStringList lines;
+  for (int r : rows) {
+    QStringList cols;
+    for (int c = 0; c < table->columnCount(); ++c) {
+      QTableWidgetItem* it = table->item(r, c);
+      cols << (it ? it->text() : QString());
+    }
+    lines << cols.join(QLatin1Char(','));
+  }
+  if (auto* clip = QGuiApplication::clipboard()) clip->setText(lines.join(QLatin1Char('\n')));
+}
+
+void FlowIoDialog::clearEmptyRows(QTableWidget* table) {
+  if (!table) return;
+  for (int r = table->rowCount() - 1; r >= 0; --r) {
+    auto* n = table->item(r, 0);
+    auto* b = table->item(r, 2);
+    const QString name = n ? n->text().trimmed() : QString();
+    const QString bind = b ? b->text().trimmed() : QString();
+    if (name.isEmpty() && bind.isEmpty()) table->removeRow(r);
+  }
 }
 
 }  // namespace sieans_qt

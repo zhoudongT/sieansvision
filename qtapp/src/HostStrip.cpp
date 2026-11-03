@@ -57,10 +57,10 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   modeChip_->setCursor(Qt::PointingHandCursor);
   cycleChip_->setCursor(Qt::PointingHandCursor);
   detail_->setCursor(Qt::PointingHandCursor);
-  badge_->setToolTip(QStringLiteral("OK/NG/ALARM · passGate 判定 · 单击打开 Host 面板 · tcp= 见明细"));
+  badge_->setToolTip(QStringLiteral("OK/NG/ALARM · passGate 判定 · 单击打开 Host 面板 · Alt+单击清连OK/NG · tcp= 见明细"));
   modeChip_->setToolTip(QStringLiteral("运行模式 · 设计态/运行/连续/暂停 · 单击切换设计/运行态 · 右键切换连续 · 运行态锁画布 · F5/F9 仍可单次"));
-  cycleChip_->setToolTip(QStringLiteral("运行周期计数 · 每次流程完成 +1 · 显示上次 ms · Ctrl+单击清零 · 双击清零 · 周期 chip 见右侧"));
-  detail_->setToolTip(QStringLiteral("count/text/RX/urlOk/tcp 摘要 · framing lf/crlf/raw/len4 见 tcp= · 双击复制全文 · 悬停看全文"));
+  cycleChip_->setToolTip(QStringLiteral("运行周期计数 · 每次流程完成 +1 · 显示上次 ms · Ctrl+单击/双击清零 · 右键/Alt+单击清连OK · 周期 chip 见右侧"));
+  detail_->setToolTip(QStringLiteral("count/text/RX/urlOk/tcp/良率 摘要 · framing lf/crlf/raw/len4 见 tcp= · 双击复制全文 · 中键复制连OK/NG · 悬停看全文"));
   badge_->installEventFilter(this);
   modeChip_->installEventFilter(this);
   cycleChip_->installEventFilter(this);
@@ -213,14 +213,30 @@ void HostStrip::updateFromVars(const QVariantMap& vars, int codeCount, bool eval
   if (!ioOut.isEmpty()) detail += QStringLiteral(" · I/O.Result=%1").arg(ioOut.left(24));
   if (!tcpStatus_.isEmpty())
     detail += QStringLiteral(" · tcp=%1").arg(tcpStatus_.left(36));
-  if (ran)
-    detail += QStringLiteral(" · 连OK %1 · NG %2").arg(okStreak_).arg(ngCount_);
+  if (ran) {
+    const int total = okStreak_ + ngCount_;
+    const double yld = total > 0 ? (100.0 * okStreak_ / total) : 0.0;
+    detail += QStringLiteral(" · 连OK %1 · NG %2 · 良率 %3%")
+                  .arg(okStreak_).arg(ngCount_).arg(yld, 0, 'f', 1);
+  }
   if (lastCycleMs_ >= 0)
     detail += QStringLiteral(" · %1 ms").arg(lastCycleMs_, 0, 'f', 1);
   detail_->setText(detail);
   refreshChips(vars);
 }
 
+
+void HostStrip::resetStreak() {
+  okStreak_ = 0;
+  ngCount_ = 0;
+  if (detail_) {
+    QString d = detail_->text();
+    const int at = d.indexOf(QStringLiteral(" · 连OK"));
+    if (at >= 0) d = d.left(at);
+    detail_->setText(d + QStringLiteral(" · 连OK 0 · NG 0 · 良率 0.0%"));
+    detail_->setToolTip(QStringLiteral("连OK/NG 已清零 · Alt+单击徽章 / 右键周期"));
+  }
+}
 
 bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
   if (event->type() == QEvent::MouseButtonDblClick) {
@@ -261,6 +277,17 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       emit continuousToggleRequested();
       return true;
     }
+    if (me->button() == Qt::RightButton && obj == cycleChip_) {
+      resetStreak();
+      return true;
+    }
+    if (me->button() == Qt::MiddleButton && obj == detail_ && detail_) {
+      if (auto* clip = QGuiApplication::clipboard()) {
+        clip->setText(QStringLiteral("连OK=%1 NG=%2").arg(okStreak_).arg(ngCount_));
+        detail_->setToolTip(QStringLiteral("已复制良率摘要 · 中键"));
+      }
+      return true;
+    }
     if (me->button() != Qt::LeftButton) return QWidget::eventFilter(obj, event);
     if (obj == modeChip_) {
       emit modeToggleRequested();
@@ -271,6 +298,10 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
         emit cycleResetRequested();
         return true;
       }
+      if (me->modifiers() & Qt::AltModifier) {
+        resetStreak();
+        return true;
+      }
     }
     if (obj == chips_ && chips_) {
       if (auto* clip = QGuiApplication::clipboard()) {
@@ -279,7 +310,15 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       }
       return true;
     }
-    if (obj == badge_ || obj == alarmLabel_) {
+    if (obj == badge_) {
+      if (me->modifiers() & Qt::AltModifier) {
+        resetStreak();
+        return true;
+      }
+      emit openHostRequested();
+      return true;
+    }
+    if (obj == alarmLabel_) {
       emit openHostRequested();
       return true;
     }

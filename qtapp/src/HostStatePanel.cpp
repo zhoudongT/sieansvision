@@ -61,7 +61,14 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
 
   flowLabel_ = new QLabel(QStringLiteral("绑定流程：—"));
   flowLabel_->setObjectName(QStringLiteral("muted"));
+  flowLabel_->setCursor(Qt::PointingHandCursor);
+  flowLabel_->setToolTip(QStringLiteral("绑定流程 · 双击复制名称"));
+  flowLabel_->installEventFilter(this);
   root->addWidget(flowLabel_);
+  statsLabel_ = new QLabel(QStringLiteral("连OK 0 · NG 0 · — ms"));
+  statsLabel_->setObjectName(QStringLiteral("hostRunStats"));
+  statsLabel_->setToolTip(QStringLiteral("运行统计 · 连OK/NG/上次周期 ms · 来自 Host 条"));
+  root->addWidget(statsLabel_);
 
   auto* quick = new QHBoxLayout;
   quick->setSpacing(4);
@@ -81,7 +88,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   btnStop_->setStatusTip(QStringLiteral("Host · 停止 · Esc"));
   btnClear_->setToolTip(QStringLiteral("清除报警锁存 · 不清运行状态 · Alarm→可继续"));
   btnClear_->setStatusTip(QStringLiteral("Host · 清除报警"));
-  setStatusTip(QStringLiteral("上位机控制 · F5/F9 开始 · F6 连续 · Space 开始/暂停 · 暂停/继续 · Esc 停止 · 清报警 · 双击徽章清报警"));
+  setStatusTip(QStringLiteral("上位机控制 · F5/F9 开始 · F6 连续 · Space 开始/暂停 · 暂停/继续 · Esc 停止 · 清报警 · 双击徽章清报警 · 右键徽章清除 · Ctrl+Shift+C 复制历史"));
   for (QPushButton* b : {btnStart_, btnPause_, btnResume_, btnStop_, btnClear_}) {
     b->setMinimumHeight(28);
     quick->addWidget(b);
@@ -180,6 +187,16 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
       else if (state_ == QLatin1String("Paused")) emit resumeRequested();
       else emit startRequested();
     });
+    auto* scCopyHist = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+C")), this);
+    connect(scCopyHist, &QShortcut::activated, this, [this]() {
+      if (!history_) return;
+      QStringList lines;
+      for (int i = 0; i < history_->count(); ++i)
+        if (auto* it = history_->item(i)) lines << it->text();
+      if (auto* clip = QGuiApplication::clipboard()) clip->setText(lines.join(QLatin1Char('\n')));
+      if (modeHint_)
+        modeHint_->setText(QStringLiteral("已复制报警历史 %1 行 · Ctrl+Shift+C").arg(lines.size()));
+    });
   }
   if (badge_) {
     badge_->setCursor(Qt::PointingHandCursor);
@@ -188,6 +205,17 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   }
 
   applyState(QStringLiteral("Idle"));
+}
+
+void HostStatePanel::setRunStats(int okStreak, int ngCount, double lastMs) {
+  if (!statsLabel_) return;
+  const int total = okStreak + ngCount;
+  const double yld = total > 0 ? (100.0 * okStreak / total) : 0.0;
+  QString ms = lastMs >= 0 ? QStringLiteral("%1 ms").arg(lastMs, 0, 'f', 1)
+                          : QStringLiteral("— ms");
+  statsLabel_->setText(
+      QStringLiteral("连OK %1 · NG %2 · 良率 %3% · %4")
+          .arg(okStreak).arg(ngCount).arg(yld, 0, 'f', 1).arg(ms));
 }
 
 void HostStatePanel::bindFlow(const QString& name, int steps) {
@@ -285,6 +313,27 @@ bool HostStatePanel::eventFilter(QObject* obj, QEvent* event) {
     emit clearAlarmRequested();
     if (modeHint_)
       modeHint_->setText(QStringLiteral("报警已清除 · 双击徽章"));
+    return true;
+  }
+  if (obj == badge_ && event->type() == QEvent::MouseButtonRelease) {
+    auto* me = static_cast<QMouseEvent*>(event);
+    if (me->button() == Qt::RightButton) {
+      appendAlarm(QStringLiteral("右键徽章清除"), true);
+      applyState(QStringLiteral("Idle"));
+      emit clearAlarmRequested();
+      if (modeHint_)
+        modeHint_->setText(QStringLiteral("报警已清除 · 右键徽章"));
+      return true;
+    }
+  }
+  if (obj == flowLabel_ && event->type() == QEvent::MouseButtonDblClick) {
+    if (flowLabel_) {
+      if (auto* clip = QGuiApplication::clipboard()) {
+        clip->setText(flowLabel_->text());
+        if (modeHint_)
+          modeHint_->setText(QStringLiteral("已复制流程绑定 · 双击"));
+      }
+    }
     return true;
   }
   return QWidget::eventFilter(obj, event);

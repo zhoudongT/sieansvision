@@ -29,6 +29,8 @@ class HostStatePanel : public QWidget {
   /** Next OK clears a latched alarm when policy is "下次运行成功清除". */
   void notifyOk();
   void bindFlow(const QString& name, int steps);
+  /** Sync OK/NG/ms from HostStrip into HMI chrome. */
+  void setRunStats(int okStreak, int ngCount, double lastMs = -1);
 
  signals:
   void startRequested();
@@ -52,6 +54,7 @@ class HostStatePanel : public QWidget {
   QLabel* badge_ = nullptr;
   QLabel* flowLabel_ = nullptr;
   QLabel* modeHint_ = nullptr;
+  QLabel* statsLabel_ = nullptr;
   QListWidget* history_ = nullptr;
   QComboBox* mode_ = nullptr;
   QComboBox* policy_ = nullptr;
