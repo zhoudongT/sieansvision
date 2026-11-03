@@ -8,6 +8,7 @@ class QTimer;
 class QLabel;
 class QListWidget;
 class QComboBox;
+class QSpinBox;
 class QPushButton;
 class QEvent;
 
@@ -31,6 +32,8 @@ class HostStatePanel : public QWidget {
   void bindFlow(const QString& name, int steps);
   /** Sync OK/NG/ms from HostStrip into HMI chrome. */
   void setRunStats(int okStreak, int ngCount, double lastMs = -1);
+  void setRunIntervalMs(int ms);
+  int runIntervalMs() const;
 
  signals:
   void startRequested();
@@ -38,6 +41,7 @@ class HostStatePanel : public QWidget {
   void resumeRequested();
   void stopRequested();
   void clearAlarmRequested();
+  void intervalChanged(int ms);
 
  protected:
   bool eventFilter(QObject* obj, QEvent* event) override;
@@ -58,6 +62,7 @@ class HostStatePanel : public QWidget {
   QListWidget* history_ = nullptr;
   QComboBox* mode_ = nullptr;
   QComboBox* policy_ = nullptr;
+  QSpinBox* intervalSpin_ = nullptr;
   QPushButton* btnStart_ = nullptr;
   QPushButton* btnPause_ = nullptr;
   QPushButton* btnResume_ = nullptr;

@@ -51,6 +51,7 @@ class SieansDocument {
   QPointF sourcePosition() const { return sourcePosition_; }
   void setSourcePosition(const QPointF& p) { sourcePosition_ = p; }
   int runIntervalMs() const { return runIntervalMs_; }
+  void setRunIntervalMs(int ms);
 
   QVariantMap variables() const { return variables_; }
   QVariantMap& variablesMut() { return variables_; }

@@ -375,6 +375,13 @@ void SieansDocument::seedGentlQrDemo() {
 }
 
 
+void SieansDocument::setRunIntervalMs(int ms) {
+  if (ms < 0) ms = 0;
+  if (ms > 60000) ms = 60000;
+  runIntervalMs_ = ms;
+  raw_.insert(QStringLiteral("runIntervalMs"), runIntervalMs_);
+}
+
 void SieansDocument::setHostWatchKeys(const QStringList& keys) {
   QJsonObject hw = raw_.value(QStringLiteral("hostWatch")).toObject();
   QJsonArray arr;

@@ -780,6 +780,13 @@ void MainWindow::buildUi() {
   connect(host_sm_, &HostStatePanel::pauseRequested, this, &MainWindow::onPauseRun);
   connect(host_sm_, &HostStatePanel::resumeRequested, this, &MainWindow::onResumeRun);
   connect(host_sm_, &HostStatePanel::stopRequested, this, &MainWindow::onStopRun);
+  connect(host_sm_, &HostStatePanel::intervalChanged, this, [this](int ms) {
+    document_.setRunIntervalMs(ms);
+    if (continuous_run_ && !run_paused_) {
+      continuous_timer_.setInterval(ms > 0 ? ms : 200);
+    }
+    showStatus(QStringLiteral("连续间隔 %1 ms").arg(ms > 0 ? ms : 200));
+  });
   connect(host_sm_, &HostStatePanel::clearAlarmRequested, this, [this]() {
     if (host_strip_) host_strip_->setAlarm(false);
     if (!host_sm_) return;
@@ -1034,6 +1041,9 @@ void MainWindow::applyDocumentToUi() {
     var_watch_->setVariables(flow_vars_);
   }
   if (host_strip_) host_strip_->setWatchKeys(document_.hostWatchKeys());
+  if (host_sm_) host_sm_->setRunIntervalMs(document_.runIntervalMs() > 0
+                                               ? document_.runIntervalMs()
+                                               : 200);
   if (comm_panel_) comm_panel_->bindDocument(document_.commManager());
   if (comm_hub_) {
     comm_hub_->loadFromCommManager(document_.commManager());

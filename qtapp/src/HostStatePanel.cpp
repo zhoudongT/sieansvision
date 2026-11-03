@@ -1,6 +1,7 @@
 #include "HostStatePanel.hpp"
 
 #include <QComboBox>
+#include <QSpinBox>
 #include <QDateTime>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -116,6 +117,25 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   policy_->installEventFilter(this);
   policy_->setToolTip(QStringLiteral("报警清除策略 · 滚轮切换 · on_ok/手动"));
   root->addLayout(modeRow);
+
+  auto* ivRow = new QHBoxLayout;
+  ivRow->addWidget(new QLabel(QStringLiteral("连续间隔")));
+  intervalSpin_ = new QSpinBox;
+  intervalSpin_->setRange(20, 60000);
+  intervalSpin_->setSingleStep(50);
+  intervalSpin_->setSuffix(QStringLiteral(" ms"));
+  intervalSpin_->setValue(200);
+  intervalSpin_->setToolTip(QStringLiteral("连续运行节拍 · 写入方案 runIntervalMs · 滚轮 ±50 · 运行中即时生效"));
+  intervalSpin_->setStatusTip(QStringLiteral("Host · 连续间隔 ms"));
+  intervalSpin_->installEventFilter(this);
+  ivRow->addWidget(intervalSpin_, 1);
+  ivRow->addStretch(1);
+  root->addLayout(ivRow);
+  connect(intervalSpin_, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int v) {
+    emit intervalChanged(v);
+    if (modeHint_)
+      modeHint_->setText(QStringLiteral("连续间隔 %1 ms").arg(v));
+  });
 
   modeHint_ = new QLabel;
   modeHint_->setObjectName(QStringLiteral("muted"));
@@ -313,6 +333,18 @@ void HostStatePanel::notifyOk() {
                            ? latchedRun_
                            : QStringLiteral("Idle");
   applyState(back);
+}
+
+void HostStatePanel::setRunIntervalMs(int ms) {
+  if (!intervalSpin_) return;
+  const int v = qBound(20, ms > 0 ? ms : 200, 60000);
+  const bool blocked = intervalSpin_->blockSignals(true);
+  intervalSpin_->setValue(v);
+  intervalSpin_->blockSignals(blocked);
+}
+
+int HostStatePanel::runIntervalMs() const {
+  return intervalSpin_ ? intervalSpin_->value() : 200;
 }
 
 bool HostStatePanel::eventFilter(QObject* obj, QEvent* event) {
