@@ -89,7 +89,8 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
     return {S("scope", "作用域", kChoice, "flow|流程;global|全局")};
   }
   if (op == QLatin1String("format_data")) {
-    return {S("template", "模板", kLine, ""), S("args", "参数变量", kLine, ""),
+    return {S("template", "模板 {name}/${flow.x}", kLine, ""),
+            S("args", "参数变量 CSV", kLine, ""),
             S("targetVar", "目标变量", kLine, "")};
   }
   if (op == QLatin1String("result_gate")) {
@@ -98,10 +99,12 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("passVar", "输出变量", kLine, "")};
   }
   if (op == QLatin1String("send_data")) {
-    return {S("device", "设备", kLine, ""), S("message", "报文", kLine, "")};
+    return {S("device", "设备 LocalLoop/TCP", kLine, ""),
+            S("message", "报文 ${flow.x}", kLine, "")};
   }
   if (op == QLatin1String("receive_data")) {
-    return {S("device", "设备", kLine, ""), S("targetVar", "目标变量", kLine, ""),
+    return {S("device", "设备 LocalLoop/TCP", kLine, ""),
+            S("targetVar", "目标变量", kLine, ""),
             S("timeoutMs", "超时 ms", kInt, "")};
   }
   if (op == QLatin1String("save_image")) {
@@ -314,7 +317,15 @@ void PropertyPanel::showSource(const QVariantMap& sourceConfig) {
 }
 
 void PropertyPanel::showStep(const FlowStep& step) {
-  meta_->setText(QStringLiteral("算子 %1 · %2").arg(step.operation, step.runState));
+  QString hint = QStringLiteral("算子 %1 · %2").arg(step.operation, step.runState);
+  if (step.operation == QLatin1String("format_data"))
+    hint += QStringLiteral(" · 支持 {name} / ${flow.x}");
+  else if (step.operation == QLatin1String("send_data") ||
+           step.operation == QLatin1String("receive_data"))
+    hint += QStringLiteral(" · LocalLoop 回环 / TCP");
+  else if (step.operation == QLatin1String("result_gate"))
+    hint += QStringLiteral(" · sourceVar → passVar");
+  meta_->setText(hint);
   rebuildForm(QStringLiteral("属性 · %1").arg(step.name), step.id, step.operation,
               step.params);
 }

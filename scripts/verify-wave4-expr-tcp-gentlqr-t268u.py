@@ -91,6 +91,25 @@ if r3.returncode == 0 and "passGate=1" in body and "codes=" in body and "lastRec
 else:
     bad(f"soft AUTO_RUN rc={r3.returncode} body={body!r} err={r3.stderr[-300:]}")
 
+
+# TCP listen smoke (server role from seed tcpReal)
+env4 = os.environ.copy()
+env4["QT_QPA_PLATFORM"] = "offscreen"
+env4["SIEANS_QT_FORCE_SEED"] = "1"
+env4["SIEANS_QT_AUTO_TCP"] = "1"
+env4["SIEANS_QT_AUTO_SOFT"] = "1"
+env4["SIEANS_QT_AUTO_RUN"] = "1"
+smoke4 = ROOT / "artifacts" / "verify-wave4-tcp-run.txt"
+env4["SIEANS_QT_SMOKE_REPORT"] = str(smoke4)
+env4["SIEANS_QT_SCREENSHOT"] = str(ROOT / "artifacts" / "verify-wave4-tcp-run.png")
+env4["SIEANS_QT_SCREENSHOT_QUIT"] = "1"
+r4 = subprocess.run([str(BIN)], env=env4, capture_output=True, text=True, timeout=45)
+body4 = smoke4.read_text(encoding="utf-8", errors="replace") if smoke4.exists() else ""
+if r4.returncode == 0 and "passGate=1" in body4:
+    ok(f"AUTO_TCP+soft run: {body4.strip()[:140]}")
+else:
+    bad(f"AUTO_TCP rc={r4.returncode} body={body4!r}")
+
 print("---")
 print("FAILS", fail)
 sys.exit(1 if fail else 0)

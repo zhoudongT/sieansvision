@@ -1144,6 +1144,10 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
       }
       flow_vars_.insert(QStringLiteral("barcodeOk"), gate ? 1 : 0);
       flow_vars_.insert(QStringLiteral("passGate"), gate ? 1 : 0);
+      const QString passVar =
+          step->params.value(QStringLiteral("passVar"), QStringLiteral("passGate"))
+              .toString();
+      if (!passVar.isEmpty()) flow_vars_.insert(passVar, gate ? 1 : 0);
       ok = gate;
       note = QStringLiteral("passGate=%1 src=%2=%3 min=%4")
                  .arg(gate ? 1 : 0)
@@ -1572,6 +1576,13 @@ void MainWindow::onRunOnce() {
   }
 
   image_view_->setLiveImage(frame);
+  if (filmstrip_ && document_.cameraBackend() == QLatin1String("soft")) {
+    const QString snap =
+        QStringLiteral("/home/allen/文档/sieansvision/artifacts/soft-live-%1.png")
+            .arg(run_cycle_ % 8);
+    QDir().mkpath(QFileInfo(snap).absolutePath());
+    if (frame.save(snap)) filmstrip_->addPaths({snap});
+  }
   runPipeline(frame, true);
   setBusy(false);
 }
