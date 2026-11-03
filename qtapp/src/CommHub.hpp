@@ -6,6 +6,7 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QHash>
+#include <QByteArray>
 #include <QVariantMap>
 #include <QTimer>
 
@@ -76,6 +77,7 @@ class CommHub : public QObject {
   quint16 reconnectPort_ = 0;
   QTimer* reconnectTimer_ = nullptr;
   int reconnectAttempts_ = 0;
+  QHash<QTcpSocket*, QByteArray> len4Buf_;  // incomplete len4 frames
   QString listenHost_;
   quint16 listenPort_ = 0;
   void refreshListenStatus();

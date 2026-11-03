@@ -230,7 +230,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
       if (qgetenv("SIEANS_QT_AUTO_SOFT") == "1" && cam_worker_) {
         QMetaObject::invokeMethod(cam_worker_, "grabOne",
                                   Qt::BlockingQueuedConnection);
-        logResult(QStringLiteral("AUTO_RUN · soft warm-up grab"));
+        // Second warm-up grab improves GenTL→QR open-and-run reliability.
+        QMetaObject::invokeMethod(cam_worker_, "grabOne",
+                                  Qt::BlockingQueuedConnection);
+        logResult(QStringLiteral("AUTO_RUN · soft warm-up grab×2"));
       }
       onRunOnce();
     });

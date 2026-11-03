@@ -184,7 +184,7 @@ OperatorDef OperatorLibrary::findDef(const QString& key) {
 }
 
 OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
-  setStatusTip(QStringLiteral("Toolbox · / 或 Ctrl+F 搜索 · Enter 添加(列表/搜索) · Home/End/PgUp/PgDn"));
+  setStatusTip(QStringLiteral("Toolbox · / 或 Ctrl+F/L 搜索 · Enter 添加(列表/搜索) · Home/End/PgUp/PgDn"));
   setObjectName(QStringLiteral("libraryPane"));
   auto* lay = new QVBoxLayout(this);
   lay->setContentsMargins(0, 0, 0, 0);
@@ -223,7 +223,7 @@ OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
           });
   connect(search_, &QLineEdit::textChanged, this, [this](const QString&) { rebuild(); });
   search_->setPlaceholderText(QStringLiteral("搜索… / 或 Ctrl+F · Esc 清空"));
-  search_->setToolTip(QStringLiteral("Toolbox 搜索 · Esc 清空(搜索/列表) · / 或 Ctrl+F 聚焦 · Enter 添加"));
+  search_->setToolTip(QStringLiteral("Toolbox 搜索 · Esc 清空(搜索/列表) · / 或 Ctrl+F/L 聚焦 · Enter 添加"));
   search_->installEventFilter(this);
   list_->installEventFilter(this);
   installEventFilter(this);
@@ -294,7 +294,7 @@ void OperatorLibrary::rebuild() {
                              ? QStringLiteral("全部")
                              : categoryFilter_;
     search_->setToolTip(
-        QStringLiteral("Toolbox 搜索 · %1 · 匹配 %2 个 · Esc 清空 · / 或 Ctrl+F 聚焦")
+        QStringLiteral("Toolbox 搜索 · %1 · 匹配 %2 个 · Esc 清空 · / 或 Ctrl+F/L 聚焦")
             .arg(filt)
             .arg(ops));
     if (auto* title = findChild<QLabel*>(QStringLiteral("libraryTitle")))
@@ -311,7 +311,8 @@ void OperatorLibrary::focusSearch() {
 bool OperatorLibrary::eventFilter(QObject* obj, QEvent* event) {
   if (event->type() == QEvent::KeyPress) {
     auto* ke = static_cast<QKeyEvent*>(event);
-    if ((ke->modifiers() & Qt::ControlModifier) && ke->key() == Qt::Key_F) {
+    if ((ke->modifiers() & Qt::ControlModifier) &&
+        (ke->key() == Qt::Key_F || ke->key() == Qt::Key_L)) {
       focusSearch();
       return true;
     }

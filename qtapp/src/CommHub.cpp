@@ -250,6 +250,7 @@ void CommHub::stopTcp() {
     }
   }
   peers_.clear();
+  len4Buf_.clear();
   if (client_) {
     client_->disconnectFromHost();
     client_->deleteLater();
@@ -310,29 +311,46 @@ void CommHub::onClientReadyRead() {
   QTcpSocket* s = qobject_cast<QTcpSocket*>(src);
   if (!s) return;
   const QByteArray raw = s->readAll();
-  QString text;
-  if (framing_ == QLatin1String("len4") && raw.size() >= 4) {
-    const quint32 n = qFromBigEndian<quint32>(
-        reinterpret_cast<const uchar*>(raw.constData()));
-    const int take = qMin(int(n), raw.size() - 4);
-    text = QString::fromUtf8(raw.constData() + 4, take).trimmed();
-  } else {
-    text = QString::fromUtf8(raw).trimmed();
+  if (framing_ == QLatin1String("len4")) {
+    // Accumulate so split TCP segments still decode (BE u32 length prefix).
+    QByteArray& buf = len4Buf_[s];
+    buf.append(raw);
+    while (buf.size() >= 4) {
+      const quint32 n = qFromBigEndian<quint32>(
+          reinterpret_cast<const uchar*>(buf.constData()));
+      if (buf.size() < int(4 + n)) break;  // incomplete payload — wait
+      const QString text = QString::fromUtf8(buf.constData() + 4, int(n)).trimmed();
+      buf.remove(0, 4 + int(n));
+      if (text.isEmpty()) continue;
+      lastRx_ = text;
+      appendTranscript(QStringLiteral("RX"), text.left(240));
+      emit payloadReceived(QStringLiteral("TCP"), text);
+      if (!ack_.isEmpty() && s->state() == QAbstractSocket::ConnectedState) {
+        QByteArray a = ack_.toUtf8();
+        QByteArray framed;
+        const quint32 an = quint32(a.size());
+        framed.resize(4);
+        qToBigEndian(an, reinterpret_cast<uchar*>(framed.data()));
+        framed.append(a);
+        s->write(framed);
+        s->flush();
+      }
+    }
+    // Cap runaway buffer (malformed peer)
+    if (buf.size() > 1 << 20) {
+      buf.clear();
+      appendTranscript(QStringLiteral("ERR"), QStringLiteral("len4 buf overflow — cleared"));
+    }
+    return;
   }
+  const QString text = QString::fromUtf8(raw).trimmed();
   if (text.isEmpty()) return;
   lastRx_ = text;
   appendTranscript(QStringLiteral("RX"), text.left(240));
   emit payloadReceived(QStringLiteral("TCP"), text);
   if (!ack_.isEmpty() && s->state() == QAbstractSocket::ConnectedState) {
     QByteArray a = ack_.toUtf8();
-    if (framing_ == QLatin1String("len4")) {
-      QByteArray framed;
-      const quint32 n = quint32(a.size());
-      framed.resize(4);
-      qToBigEndian(n, reinterpret_cast<uchar*>(framed.data()));
-      framed.append(a);
-      a = framed;
-    } else if (framing_ == QLatin1String("crlf")) a.append("\r\n");
+    if (framing_ == QLatin1String("crlf")) a.append("\r\n");
     else if (framing_ != QLatin1String("raw")) a.append('\n');
     s->write(a);
     s->flush();
@@ -351,6 +369,7 @@ void CommHub::onSocketError() {
 }
 
 void CommHub::onClientDisconnected() {
+  if (client_) len4Buf_.remove(client_);
   appendTranscript(QStringLiteral("SYS"), QStringLiteral("client disconnected"));
   tcpStatus_ = QStringLiteral("disconnected");
   emit statusChanged(tcpStatus_);
