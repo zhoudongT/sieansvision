@@ -16,6 +16,7 @@
 #include <QTableWidget>
 #include <QShortcut>
 #include <QClipboard>
+#include <QApplication>
 #include <QGuiApplication>
 #include <QKeySequence>
 #include <QFrame>
@@ -320,6 +321,7 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
     case 0:
     default: {
       auto* edit = new QLineEdit(stringify(value));
+      edit->setProperty("propKey", key);
       if (!tip.isEmpty()) edit->setToolTip(tip);
       connect(edit, &QLineEdit::editingFinished, this, [this, key, edit]() {
         emitEdit(key, edit->text());
@@ -615,6 +617,27 @@ void PropertyPanel::importParamsJson() {
   }
   if (filterEdit_)
     filterEdit_->setToolTip(QStringLiteral("已导入参数JSON %1 · Ctrl+Shift+O").arg(n));
+}
+
+
+void PropertyPanel::flushPendingEdits() {
+  if (!form_) return;
+  // Clear focus so editingFinished fires on the active QLineEdit first.
+  if (QWidget* fw = QApplication::focusWidget()) {
+    if (isAncestorOf(fw)) fw->clearFocus();
+  }
+  for (int r = 0; r < form_->rowCount(); ++r) {
+    QWidget* labW = nullptr;
+    QWidget* fieldW = nullptr;
+    if (auto* li = form_->itemAt(r, QFormLayout::LabelRole)) labW = li->widget();
+    if (auto* fi = form_->itemAt(r, QFormLayout::FieldRole)) fieldW = fi->widget();
+    QString key = labW ? labW->property("propKey").toString() : QString();
+    if (key.isEmpty() && fieldW) key = fieldW->property("propKey").toString();
+    if (key.isEmpty()) continue;
+    if (auto* le = qobject_cast<QLineEdit*>(fieldW)) {
+      if (params_.value(key).toString() != le->text()) emitEdit(key, le->text());
+    }
+  }
 }
 
 }  // namespace sieans_qt

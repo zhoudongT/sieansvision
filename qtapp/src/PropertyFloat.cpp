@@ -116,7 +116,10 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   connect(exec, &QPushButton::clicked, this, &PropertyFloat::runModule);
   connect(cancel, &QPushButton::clicked, this, &PropertyFloat::revertAndHide);
   connect(ok, &QPushButton::clicked, this, [this]() {
-    if (panel_) baseline_ = panel_->currentParams();
+    if (panel_) {
+      panel_->flushPendingEdits();
+      baseline_ = panel_->currentParams();
+    }
     emit acceptedCommit();
     hide();
   });
@@ -290,7 +293,10 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
     return;
   }
   if (event->key() == Qt::Key_S && (event->modifiers() & Qt::ControlModifier)) {
-    if (panel_) baseline_ = panel_->currentParams();
+    if (panel_) {
+      panel_->flushPendingEdits();
+      baseline_ = panel_->currentParams();
+    }
     emit acceptedCommit();
     if (event->modifiers() & Qt::ShiftModifier) {
       if (subtitle_) subtitle_->setText(QStringLiteral("已应用 · 保持浮窗 · Ctrl+Shift+S"));
@@ -435,7 +441,10 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
     if ((event->modifiers() & Qt::ControlModifier) ||
         (event->modifiers() & Qt::AltModifier) ||
         (event->modifiers() & Qt::ShiftModifier)) {
-      if (panel_) baseline_ = panel_->currentParams();
+      if (panel_) {
+        panel_->flushPendingEdits();
+        baseline_ = panel_->currentParams();
+      }
       emit acceptedCommit();
       hide();
     }

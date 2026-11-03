@@ -30,6 +30,8 @@ class PropertyPanel : public QWidget {
   void importParamsJson();
   /** Re-apply a param snapshot into live editors (PF Ctrl+R). */
   void applySnapshot(const QVariantMap& snap);
+  /** Force QLineEdit editingFinished before OK / Ctrl+S. */
+  void flushPendingEdits();
 
  signals:
   void paramEdited(const QString& nodeId, const QString& key, const QString& value);
