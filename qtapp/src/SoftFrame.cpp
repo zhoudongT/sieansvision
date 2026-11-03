@@ -9,7 +9,7 @@
 
 namespace sieans_qt {
 
-QString g_softQrOverride;  // file-local via anon below + setter
+QString g_softQrOverride;
 
 namespace {
 
@@ -28,7 +28,9 @@ QImage loadSoftQrSample() {
   static bool tried = false;
   if (!g_softQrOverride.isEmpty()) {
     QImage img(g_softQrOverride);
-    if (!img.isNull()) return img;
+    if (!img.isNull()) {
+      return img.convertToFormat(QImage::Format_RGB888);
+    }
   }
   if (tried) return cached;
   tried = true;
@@ -49,7 +51,6 @@ QImage loadSoftQrSample() {
   }
   return cached;
 }
-
 }  // namespace
 
 void setSoftQrSamplePath(const QString& path) { g_softQrOverride = path; }
@@ -109,22 +110,21 @@ QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gain
   QImage img(w, h, QImage::Format_RGB888);
   img.fill(QColor(236, 236, 236));
   QPainter p(&img);
-  p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+  p.setRenderHint(QPainter::SmoothPixmapTransform, false);
 
-  // Prefer a real sample QR so soft/GenTL-fallback → barcode is reliable.
+  // Letterbox the FULL sample scene so embedded QRs stay decodable at soft sizes.
   const QImage qr = loadSoftQrSample();
   bool drewQr = false;
   if (!qr.isNull()) {
-    const int side = qMin(w, h) * 3 / 5;
+    // Prefer FastTransformation — Smooth blurs finder patterns at 640×400.
     const QImage scaled =
-        qr.scaled(side, side, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        qr.scaled(w - 4, h - 4, Qt::KeepAspectRatio, Qt::FastTransformation);
     const int x = (w - scaled.width()) / 2;
-    const int y = (h - scaled.height()) / 2 - h / 20;
-    p.fillRect(QRect(x - 6, y - 6, scaled.width() + 12, scaled.height() + 12), Qt::white);
+    const int y = (h - scaled.height()) / 2;
+    p.fillRect(QRect(0, 0, w, h), Qt::white);
     p.drawImage(x, y, scaled);
     drewQr = true;
   } else {
-    // Geometric QR-ish fallback when sample missing
     p.setPen(Qt::NoPen);
     p.setBrush(Qt::white);
     const QRect plate(w / 8, h / 10, w * 3 / 4, h * 3 / 5);
@@ -138,16 +138,13 @@ QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gain
   p.setPen(QColor(40, 40, 40));
   QFont font(QStringLiteral("DejaVu Sans Mono"), 10);
   font.setBold(true);
-  font.setPixelSize(qBound(10, qMin(w, h) / 22, 16));
+  font.setPixelSize(qBound(9, qMin(w, h) / 28, 14));
   p.setFont(font);
-  p.drawText(QRect(0, h - h / 7, w, h / 8), Qt::AlignCenter,
+  // Keep label in a thin bottom strip so it does not cover QR modules.
+  p.fillRect(0, h - 18, w, 18, QColor(236, 236, 236, 220));
+  p.drawText(QRect(0, h - 18, w, 18), Qt::AlignCenter,
              drewQr ? QStringLiteral("SIEANS- soft·QR #%1").arg(seq % 1000)
                     : QStringLiteral("SIEANS- soft #%1").arg(seq % 1000));
-
-  p.setPen(QPen(QColor(200, 40, 40), qMax(1, h / 80)));
-  const int x = (seq * 17) % qMax(1, w - 20) + 10;
-  const int y = h * 11 / 12;
-  p.drawLine(x, y, qMin(w - 10, x + 40), y);
   p.end();
   return applySoftTone(img, exposureUs, gainDb, seq, true);
 }

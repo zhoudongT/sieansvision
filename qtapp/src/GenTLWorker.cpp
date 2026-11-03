@@ -98,7 +98,7 @@ void GenTLWorker::setSoftControls(double exposureUs, double gainDb) {
 }
 
 QImage GenTLWorker::renderSoftFrame() {
-  return makeSoftFrame(640, 400, softSeq_++, exposureUs(), gainDb());
+  return makeSoftFrame(1280, 1024, softSeq_++, exposureUs(), gainDb());
 }
 
 QImage GenTLWorker::toneIfNeeded(const QImage& src) {

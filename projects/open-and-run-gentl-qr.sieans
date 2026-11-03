@@ -1,7 +1,7 @@
 {
   "version": 2,
   "id": "open-and-run-gentl-qr-t238",
-  "name": "打开即跑 · GenTL相机→二维码",
+  "name": "打开即跑 · GenTL/Soft→二维码→TCP",
   "meta": {
     "openAndRun": true,
     "wave": 246,
@@ -10,7 +10,7 @@
     "hangSafeContinuous": true,
     "hangFix": "t246u"
   },
-  "notes": "t246u：连续 GenTL→QR UI 线程 JPEG 解码改线程池 + 节流 show_results/config；t245u idle pace（无 consumer 心跳）；t244u drop-old。Hikrobot MV-CB013。",
+  "notes": "wave4: soft letterbox sample-qr; LocalBus echo; receive roundtrip; TCP autoStart",
   "sourcePosition": {
     "x": 300,
     "y": 40
@@ -47,7 +47,8 @@
       "continuousLive": true,
       "sessionPersist": true,
       "exposureTime": 2000,
-      "acquisitionFrameRate": 15
+      "acquisitionFrameRate": 15,
+      "gainDb": 0
     },
     "exposure": 0.0,
     "gain": 0.0,
@@ -88,7 +89,7 @@
       "operation": "barcode",
       "name": "二维码/条码识别",
       "params": {
-        "maxCodes": 8,
+        "maxCodes": 16,
         "types": "QRCode",
         "showOverlay": true,
         "showBoxes": true,
@@ -112,33 +113,18 @@
     {
       "id": "c3d4e5f60718293a",
       "operation": "var_calc",
-      "name": "二维码结果·OK/NG",
+      "name": "变量计算 · OK/NG",
       "params": {
         "scope": "flow",
         "expressions": [
           {
-            "name": "barcodeCount",
-            "expr": "(steps[\"b2c3d4e5f6071829\"].count or 0)",
-            "enabled": true
-          },
-          {
-            "name": "barcodeText",
-            "expr": "(steps[\"b2c3d4e5f6071829\"].items[0].text if (steps[\"b2c3d4e5f6071829\"].items) else \"\")",
-            "enabled": true
-          },
-          {
-            "name": "barcodeAll",
-            "expr": "(\"\\n\".join(i.text for i in (steps[\"b2c3d4e5f6071829\"].items or [])))",
+            "name": "passGate",
+            "expr": "barcodeCount >= 1",
             "enabled": true
           },
           {
             "name": "barcodeOk",
-            "expr": "(steps[\"b2c3d4e5f6071829\"].count or 0) >= 1",
-            "enabled": true
-          },
-          {
-            "name": "passGate",
-            "expr": "(steps[\"b2c3d4e5f6071829\"].count or 0) >= 1",
+            "expr": "barcodeCount >= 1",
             "enabled": true
           }
         ]
@@ -155,7 +141,7 @@
       "operation": "format_data",
       "name": "格式化二维码报文",
       "params": {
-        "template": "BARCODE ok={0} count={1} text={2}",
+        "template": "BARCODE ok={passGate} count={barcodeCount} text={barcodeText}",
         "args": "passGate,barcodeCount,barcodeText",
         "targetVar": "formatted",
         "scope": "flow",
@@ -192,6 +178,22 @@
       },
       "imageFrom": "d4e5f60718293a4b",
       "variables": {}
+    },
+    {
+      "id": "f6a708293a4b5c6d",
+      "name": "接收回环",
+      "operation": "receive_data",
+      "position": {
+        "x": 300,
+        "y": 800
+      },
+      "imageFrom": "e5f60718293a4b5c",
+      "runState": "等待执行",
+      "params": {
+        "device": "LocalLoop",
+        "targetVar": "lastRecv",
+        "timeoutMs": 200
+      }
     }
   ],
   "edges": [
@@ -229,6 +231,13 @@
       "to": "e5f60718293a4b5c",
       "fromPort": "bottom",
       "toPort": "top"
+    },
+    {
+      "id": "e6",
+      "from": "e5f60718293a4b5c",
+      "to": "f6a708293a4b5c6d",
+      "fromPort": "bottom",
+      "toPort": "top"
     }
   ],
   "variables": {
@@ -238,7 +247,8 @@
     "barcodeOk": 0,
     "passGate": 0,
     "formatted": "",
-    "commPayload": ""
+    "commPayload": "",
+    "lastRecv": ""
   },
   "hostWatch": {
     "watchKeys": [
@@ -416,8 +426,39 @@
       "reconnect": true,
       "role": "server",
       "ack": "OK",
+      "autoStart": true,
       "payload": "BARCODE ok=${flow.passGate} text=${flow.barcodeText}"
     }
   },
-  "runIntervalMs": 200
+  "runIntervalMs": 200,
+  "flowIo": {
+    "inputs": [
+      {
+        "name": "ImageData",
+        "type": "IMAGE",
+        "binding": "source.image"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "ImageData",
+        "type": "IMAGE",
+        "binding": "source.image"
+      },
+      {
+        "name": "Result",
+        "type": "JSON",
+        "binding": "flow.formatted"
+      },
+      {
+        "name": "PassGate",
+        "type": "INT",
+        "binding": "flow.passGate"
+      }
+    ],
+    "display": {
+      "globalImage": true,
+      "note": "Qt VM I/O 绑定"
+    }
+  }
 }

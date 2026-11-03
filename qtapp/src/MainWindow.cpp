@@ -149,7 +149,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   const QString proj =
       defaultProjectsDir() + QStringLiteral("/open-and-run-gentl-qr.sieans");
   QString err;
-  if (QFileInfo::exists(proj) && document_.loadFromFile(proj, &err)) {
+  if (qgetenv("SIEANS_QT_FORCE_SEED") == "1") {
+    document_.seedGentlQrDemo();
+    applyDocumentToUi();
+    logResult(QStringLiteral("FORCE_SEED · GenTL→QR 演示流程"));
+  } else if (QFileInfo::exists(proj) && document_.loadFromFile(proj, &err)) {
     applyDocumentToUi();
     logResult(QStringLiteral("已加载方案: %1").arg(document_.name()));
   } else {
@@ -194,13 +198,20 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
       comm_hub_->startTcp(&e);
     });
   }
+  // Soft/open-and-run: grab one soft frame + full pipeline (GenTL→QR→TCP chain).
+  if (qgetenv("SIEANS_QT_AUTO_RUN") == "1") {
+    QTimer::singleShot(1400, this, [this]() {
+      onRunOnce();
+    });
+  }
   const QByteArray shot = qgetenv("SIEANS_QT_SCREENSHOT");
   if (!shot.isEmpty()) {
     const int shotDelay =
         (qgetenv("SIEANS_QT_AUTO_PREVIEW") == "1" ||
          qgetenv("SIEANS_QT_AUTO_SOFT") == "1" ||
-         qgetenv("SIEANS_QT_AUTO_MATCH") == "1")
-            ? 2800
+         qgetenv("SIEANS_QT_AUTO_MATCH") == "1" ||
+         qgetenv("SIEANS_QT_AUTO_RUN") == "1")
+            ? 3200
             : 1100;
     QTimer::singleShot(shotDelay, this, [this, shot]() {
       const QPixmap px = grab();
@@ -587,7 +598,17 @@ void MainWindow::applyDocumentToUi() {
     var_watch_->setVariables(flow_vars_);
   }
   if (comm_panel_) comm_panel_->bindDocument(document_.commManager());
-  if (comm_hub_) comm_hub_->loadFromCommManager(document_.commManager());
+  if (comm_hub_) {
+    comm_hub_->loadFromCommManager(document_.commManager());
+    const QVariantMap tcp = document_.commManager().value(QStringLiteral("tcpReal")).toMap();
+    if (tcp.value(QStringLiteral("autoStart")).toBool() && !comm_hub_->tcpActive()) {
+      QString e;
+      if (comm_hub_->startTcp(&e))
+        logResult(QStringLiteral("TCP autoStart: %1").arg(comm_hub_->tcpStatus()));
+      else if (!e.isEmpty())
+        logResult(QStringLiteral("TCP autoStart 失败: %1").arg(e));
+    }
+  }
   if (host_strip_) host_strip_->updateFromVars(flow_vars_);
   if (host_sm_) host_sm_->bindFlow(document_.name(), document_.steps().size());
   applyFlowIoBindings();
@@ -1239,12 +1260,20 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
     QFile f(QString::fromUtf8(smoke));
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
       const QString line =
-          QStringLiteral("codes=%1 ms=%2 w=%3 h=%4 passGate=%5\n")
+          QStringLiteral(
+              "codes=%1 ms=%2 w=%3 h=%4 passGate=%5 barcodeText=%6 "
+              "formatted=%7 lastRecv=%8\n")
               .arg(hits.size())
               .arg(decodeMs, 0, 'f', 2)
               .arg(src.width())
               .arg(src.height())
-              .arg(flow_vars_.value(QStringLiteral("passGate")).toString());
+              .arg(flow_vars_.value(QStringLiteral("passGate")).toString())
+              .arg(flow_vars_.value(QStringLiteral("barcodeText")).toString()
+                       .left(80).replace(QLatin1Char('\n'), QLatin1Char('|')))
+              .arg(flow_vars_.value(QStringLiteral("formatted")).toString()
+                       .left(120).replace(QLatin1Char('\n'), QLatin1Char('|')))
+              .arg(flow_vars_.value(QStringLiteral("lastRecv")).toString()
+                       .left(120).replace(QLatin1Char('\n'), QLatin1Char('|')));
       f.write(line.toUtf8());
     }
   }
