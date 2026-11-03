@@ -51,7 +51,7 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
           });
   table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Esc 取消选中 · F2 聚焦表"));
   table_->installEventFilter(this);
-  setStatusTip(QStringLiteral("变量监视 · 双击/Ctrl+C/C 复制 · Home/End/PgUp/PgDn · Esc 取消选中 · F2 聚焦 · passGate/urlOk/lastRecv 高亮"));
+  setStatusTip(QStringLiteral("变量监视 · 双击/Ctrl+C/C 复制 · Home/End/PgUp/PgDn · Esc 取消选中 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
   keys_ = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
            QStringLiteral("passGate"), QStringLiteral("urlOk"),
