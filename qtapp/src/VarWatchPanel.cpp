@@ -413,7 +413,18 @@ void VarWatchPanel::exportJsonFiltered() {
     esc.replace(QLatin1Char('"'), QStringLiteral("\\\""));
     parts << QStringLiteral("\"%1\": \"%2\"").arg(key, esc);
   }
-  const QString body = QStringLiteral("{ %1 }").arg(parts.join(QStringLiteral(", ")));
+  QStringList keyArr;
+  for (int r = 0; r < table_->rowCount(); ++r) {
+    if (table_->isRowHidden(r)) continue;
+    auto* k = table_->item(r, 0);
+    if (!k) continue;
+    QString key = k->data(Qt::UserRole).toString();
+    if (key.isEmpty()) key = k->text();
+    if (key.startsWith(QStringLiteral("★ "))) key = key.mid(2);
+    if (!key.isEmpty()) keyArr << QStringLiteral("\"%1\"").arg(key);
+  }
+  const QString body = QStringLiteral("{\"keys\":[%1], %2}")
+                           .arg(keyArr.join(QLatin1Char(',')), parts.join(QStringLiteral(", ")));
   if (auto* clip = QApplication::clipboard()) clip->setText(body);
   QToolTip::showText(QCursor::pos(),
                      QStringLiteral("已导出 JSON %1 · Ctrl+Shift+J").arg(parts.size()), table_);
@@ -436,6 +447,15 @@ void VarWatchPanel::addKeysFromClipboard() {
         for (const QJsonValue& v : arr) {
           const QString k = v.toString().trimmed();
           if (!k.isEmpty()) fromJson << k;
+        }
+        if (fromJson.isEmpty()) {
+          for (auto it = o.begin(); it != o.end(); ++it) {
+            const QString k = it.key().trimmed();
+            if (k == QLatin1String("keys") || k == QLatin1String("varWatchKeys") ||
+                k == QLatin1String("watchKeys") || k == QLatin1String("count"))
+              continue;
+            if (!k.isEmpty()) fromJson << k;
+          }
         }
       } else if (doc.isArray()) {
         for (const QJsonValue& v : doc.array()) {

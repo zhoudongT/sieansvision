@@ -14,6 +14,9 @@
 #include <QKeyEvent>
 #include <QEvent>
 #include <algorithm>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 namespace sieans_qt {
 
@@ -74,7 +77,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   chips_->setObjectName(QStringLiteral("muted"));
   chips_->setWordWrap(true);
   chips_->setCursor(Qt::PointingHandCursor);
-  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+K/V 复制/粘贴键 · Alt+←→ 调序 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Del/Bksp 删首 · Ctrl+Shift+Bksp 清空 · 单击复制全文"));
+  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+K/V 复制/粘贴键(JSON) · Ctrl+Shift+E JSON导出 · Alt+←→ 调序 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Del/Bksp 删首 · Ctrl+Shift+Bksp 清空 · 单击复制全文"));
   chips_->installEventFilter(this);
   root->addWidget(chips_);
   setStyleSheet(QStringLiteral("background:#232528;border-top:1px solid #4a4e54;"));
@@ -437,6 +440,11 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       copyWatchKeys();
       return true;
     }
+    if (ke->key() == Qt::Key_E && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier)) {
+      exportWatchKeysJson();
+      return true;
+    }
     if (ke->key() == Qt::Key_Escape) {
       emit stopRequested();
       return true;
@@ -560,12 +568,44 @@ void HostStrip::pasteWatchKeysFromClipboard() {
     return;
   }
   QStringList keys;
-  const QString norm = QString(raw).replace(QLatin1Char('\n'), QLatin1Char(','))
-                           .replace(QLatin1Char(';'), QLatin1Char(','))
-                           .replace(QLatin1Char('\t'), QLatin1Char(','));
-  for (const QString& p : norm.split(QLatin1Char(','))) {
-    const QString k = p.trimmed();
-    if (!k.isEmpty() && !keys.contains(k)) keys << k;
+  {
+    QJsonParseError err;
+    const QJsonDocument doc = QJsonDocument::fromJson(raw.toUtf8(), &err);
+    if (err.error == QJsonParseError::NoError) {
+      if (doc.isObject()) {
+        const QJsonObject o = doc.object();
+        QJsonArray arr = o.value(QStringLiteral("keys")).toArray();
+        if (arr.isEmpty()) arr = o.value(QStringLiteral("watchKeys")).toArray();
+        if (arr.isEmpty()) arr = o.value(QStringLiteral("varWatchKeys")).toArray();
+        for (const QJsonValue& v : arr) {
+          const QString k = v.toString().trimmed();
+          if (!k.isEmpty() && !keys.contains(k)) keys << k;
+        }
+        if (keys.isEmpty()) {
+          for (auto it = o.begin(); it != o.end(); ++it) {
+            const QString k = it.key().trimmed();
+            if (k == QLatin1String("keys") || k == QLatin1String("watchKeys") ||
+                k == QLatin1String("varWatchKeys") || k == QLatin1String("count"))
+              continue;
+            if (!k.isEmpty() && !keys.contains(k)) keys << k;
+          }
+        }
+      } else if (doc.isArray()) {
+        for (const QJsonValue& v : doc.array()) {
+          const QString k = v.toString().trimmed();
+          if (!k.isEmpty() && !keys.contains(k)) keys << k;
+        }
+      }
+    }
+  }
+  if (keys.isEmpty()) {
+    const QString norm = QString(raw).replace(QLatin1Char('\n'), QLatin1Char(','))
+                             .replace(QLatin1Char(';'), QLatin1Char(','))
+                             .replace(QLatin1Char('\t'), QLatin1Char(','));
+    for (const QString& p : norm.split(QLatin1Char(','))) {
+      const QString k = p.trimmed();
+      if (!k.isEmpty() && !keys.contains(k)) keys << k;
+    }
   }
   if (keys.isEmpty()) {
     if (chips_) chips_->setToolTip(QStringLiteral("无有效监视键 · Ctrl+Shift+V"));
@@ -692,6 +732,24 @@ void HostStrip::copyWatchKeys() {
                        : QStringLiteral("已复制监视键 %1 · Ctrl+Shift+K").arg(watchKeys_.size()));
 }
 
+
+void HostStrip::exportWatchKeysJson() {
+  if (watchKeys_.isEmpty()) {
+    if (chips_) chips_->setToolTip(QStringLiteral("监视键空 · Ctrl+Shift+E"));
+    return;
+  }
+  QJsonArray arr;
+  for (const QString& k : watchKeys_) arr.append(k);
+  QJsonObject root;
+  root.insert(QStringLiteral("watchKeys"), arr);
+  root.insert(QStringLiteral("keys"), arr);
+  root.insert(QStringLiteral("count"), arr.size());
+  const QByteArray bytes = QJsonDocument(root).toJson(QJsonDocument::Compact);
+  if (auto* clip = QGuiApplication::clipboard())
+    clip->setText(QString::fromUtf8(bytes));
+  if (chips_)
+    chips_->setToolTip(QStringLiteral("已导出监视键JSON %1 · Ctrl+Shift+E").arg(watchKeys_.size()));
+}
 
 void HostStrip::keyPressEvent(QKeyEvent* event) {
   if (event && eventFilter(this, event)) return;
