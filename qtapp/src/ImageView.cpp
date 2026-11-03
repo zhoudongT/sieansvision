@@ -15,8 +15,8 @@ namespace sieans_qt {
 
 ImageView::ImageView(QWidget* parent) : QGraphicsView(parent) {
   setFocusPolicy(Qt::StrongFocus);
-  setToolTip(QStringLiteral("F/G/A/Space/Home/0/R 适应 · 1 像素1:1 · O 叠显 · P 探针 · +/- 缩放 · Esc/C/Del 清叠加 · 拖拽/滚轮"));
-  setStatusTip(QStringLiteral("图像视图 · F/0/R 适应 · 1=1:1 · O 叠显 · P 探针 · +/- 缩放 · Esc 清叠加 · 拖拽/滚轮"));
+  setToolTip(QStringLiteral("F/G/A/Space/Home/0/R 适应 · +/- 缩放 · 1 像素1:1 · O 叠显 · P 探针 · Esc/C/Del/Backspace 清叠加 · 拖拽平移 · 滚轮缩放"));
+  setStatusTip(QStringLiteral("图像视图 · F/G/A/Space/Home/0/R 适应 · +/- 缩放 · 1=1:1 · O 叠显 · P 探针 · Esc/C/Del/Backspace 清叠加 · 码框 hits · 拖拽平移 · 滚轮缩放"));
   setScene(&scene_);
   setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
   setDragMode(QGraphicsView::ScrollHandDrag);
