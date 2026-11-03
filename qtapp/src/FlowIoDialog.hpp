@@ -39,6 +39,7 @@ class FlowIoDialog : public QDialog {
   void moveSelectedToOtherTable(QTableWidget* from);
   void reverseRows(QTableWidget* table);
   void sortRowsByName(QTableWidget* table);
+  void duplicateSelectedToOtherTable(QTableWidget* from);
 
   QTableWidget* inTable_ = nullptr;
   QTableWidget* outTable_ = nullptr;
