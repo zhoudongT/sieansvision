@@ -64,7 +64,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   detail_->setCursor(Qt::PointingHandCursor);
   badge_->setToolTip(QStringLiteral("OK/NG/ALARM · passGate 判定 · 单击打开 Host 面板 · Alt+单击清连OK/NG · 中键复制运行统计 · tcp= 见明细"));
   modeChip_->setToolTip(QStringLiteral("运行模式 · 单击设计/运行 · Alt 暂停/继续 · 右键/中键连续"));
-  cycleChip_->setToolTip(QStringLiteral("周期 · 上次 ms · 节拍 · 滚轮±50 · Ctrl+滚轮±200 · Alt+1/2/3/4→50/100/200/500 · Ctrl+单击/双击清零 · 右键/Alt+单击清连OK · 中键良率"));
+  cycleChip_->setToolTip(QStringLiteral("周期 · 上次 ms · 节拍 · 滚轮±50 · Ctrl+滚轮±200 · Alt+1/2/3/4→50/100/200/500 · Ctrl+单击/双击清零 · 右键/Alt+单击/Ctrl+Shift+0 清连OK · 中键良率"));
   detail_->setToolTip(QStringLiteral("count/text/RX/urlOk/tcp/良率 摘要 · framing lf/crlf/raw/len4 见 tcp= · 双击复制全文 · 中键复制连OK/NG · 右键/Ctrl+Shift+C 运行统计 · 悬停看全文"));
   badge_->installEventFilter(this);
   modeChip_->installEventFilter(this);
@@ -470,6 +470,12 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       }
       if (cycleChip_)
         cycleChip_->setToolTip(QStringLiteral("节拍 %1 ms · Ctrl+↑↓/[]").arg(next));
+      return true;
+    }
+    if (ke->key() == Qt::Key_0 && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier)) {
+      resetStreak();
+      if (cycleChip_) cycleChip_->setToolTip(QStringLiteral("连OK/NG 已清零 · Ctrl+Shift+0"));
       return true;
     }
     if ((ke->key() == Qt::Key_Left || ke->key() == Qt::Key_Right) &&

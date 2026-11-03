@@ -55,7 +55,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   deviceTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
   deviceTable_->setSelectionMode(QAbstractItemView::SingleSelection);
   deviceTable_->setMaximumHeight(120);
-  deviceTable_->setToolTip(QStringLiteral("设备表 · F2 改名 · Insert/Ctrl+N 增 · Ctrl+D 复制 · Shift+Del 删 · Ctrl+X 剪切 · Ctrl+Shift+V 合并粘贴 · Alt+↑↓ 调序 · Ctrl+Shift+Y 反序 · Enter 写回 · Space/Alt 启停 · Ctrl+Shift+J/O JSON · 中键端点 · 右键复制 · 双击备注"));
+  deviceTable_->setToolTip(QStringLiteral("设备表 · F2 改名 · Insert/Ctrl+N 增 · Ctrl+D 复制 · Shift+Del 删 · Ctrl+X 剪切 · Ctrl+Shift+V 合并粘贴 · Alt+↑↓ 调序 · Ctrl+Shift+Y 反序 · Alt+Shift+E/D 全启/全停 · Enter 写回 · Space/Alt 启停 · Ctrl+Shift+J/O JSON · 中键端点 · 右键复制 · 双击备注"));
   deviceTable_->setStatusTip(QStringLiteral("通信 · 设备表 · LocalBus/TCP · 中键端点"));
   deviceTable_->installEventFilter(this);
   lay->addWidget(deviceTable_);
@@ -590,6 +590,17 @@ bool CommPanel::eventFilter(QObject* obj, QEvent* event) {
         (ke->modifiers() & Qt::ShiftModifier)) {
       reverseDeviceOrder();
       return true;
+    }
+    if ((ke->modifiers() & Qt::AltModifier) && (ke->modifiers() & Qt::ShiftModifier) &&
+        !(ke->modifiers() & Qt::ControlModifier)) {
+      if (ke->key() == Qt::Key_E) {
+        setAllDevicesEnabled(true);
+        return true;
+      }
+      if (ke->key() == Qt::Key_D) {
+        setAllDevicesEnabled(false);
+        return true;
+      }
     }
   }
   if (obj == deviceTable_ && event->type() == QEvent::MouseButtonRelease) {
@@ -1222,6 +1233,36 @@ void CommPanel::writeBackSelectedDeviceEndpoint() {
                          .arg(proto, name, host, port,
                               remark.isEmpty() ? QStringLiteral("(无备注)") : remark));
   }
+}
+
+
+void CommPanel::setAllDevicesEnabled(bool on) {
+  if (!hub_ || !deviceTable_ || deviceTable_->rowCount() <= 0) {
+    if (status_) status_->setToolTip(QStringLiteral("无设备 · Alt+Shift+E/D"));
+    return;
+  }
+  QVariantMap cm = hub_->commManager();
+  QVariantList devices = cm.value(QStringLiteral("devices")).toList();
+  int n = 0;
+  for (int i = 0; i < devices.size(); ++i) {
+    QVariantMap d = devices[i].toMap();
+    if (d.value(QStringLiteral("enabled"), true).toBool() == on) continue;
+    d.insert(QStringLiteral("enabled"), on);
+    devices[i] = d;
+    ++n;
+  }
+  for (int r = 0; r < deviceTable_->rowCount(); ++r) {
+    if (auto* en = deviceTable_->item(r, 4))
+      en->setText(on ? QStringLiteral("是") : QStringLiteral("否"));
+  }
+  cm.insert(QStringLiteral("devices"), devices);
+  hub_->loadFromCommManager(cm);
+  emit requestSaveComm(cm);
+  if (status_)
+    status_->setToolTip(QStringLiteral("设备已全部%1 %2 · Alt+Shift+%3")
+                            .arg(on ? QStringLiteral("启用") : QStringLiteral("禁用"))
+                            .arg(deviceTable_->rowCount())
+                            .arg(on ? QStringLiteral("E") : QStringLiteral("D")));
 }
 
 void CommPanel::toggleSelectedDeviceEnabled() {

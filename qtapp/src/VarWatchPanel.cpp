@@ -78,6 +78,8 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
     connect(scHome, &QShortcut::activated, this, [this]() { moveSelectedToEdge(-1); });
     auto* scEnd = new QShortcut(QKeySequence(QStringLiteral("Ctrl+End")), this);
     connect(scEnd, &QShortcut::activated, this, [this]() { moveSelectedToEdge(+1); });
+    auto* scStar = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+Space")), this);
+    connect(scStar, &QShortcut::activated, this, &VarWatchPanel::toggleSelectedHostWatch);
   }
   table_ = new QTableWidget(0, 2);
   table_->setHorizontalHeaderLabels(
@@ -110,7 +112,7 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
   table_->setToolTip(QStringLiteral("双击或 Ctrl+C/C 复制 · 中键 ${flow} · 右键键=值 · Ctrl+A 全选 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/置底 · Esc 取消选中 · F2 聚焦表 · Ctrl+Shift+J JSON"));
   table_->installEventFilter(this);
   if (filterEdit_) filterEdit_->installEventFilter(this);
-  setStatusTip(QStringLiteral("变量监视 · ★=Host条 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · 中键token/右键键=值 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/置底 · Ctrl+X 剪切 · Ctrl+Shift+H ★键 · Ctrl+Shift+Y 反序 · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
+  setStatusTip(QStringLiteral("变量监视 · ★=Host条 · 过滤 Ctrl+F · 双击/Ctrl+C/C 复制 · Ctrl+Shift+C 导出 · Ctrl+Shift+K键=值 · Ctrl+I ${flow.x} · Ctrl+Shift+J JSON · 中键token/右键键=值 · Home/End/PgUp/PgDn · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/置底 · Ctrl+Shift+Space 批量★ · Ctrl+X 剪切 · Ctrl+Shift+H ★键 · Ctrl+Shift+Y 反序 · Esc 取消选中/清过滤 · F2 聚焦 · Ctrl+A 全选 · passGate/urlOk/lastRecv 高亮"));
   keys_ = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
            QStringLiteral("passGate"), QStringLiteral("urlOk"),
@@ -624,6 +626,40 @@ void VarWatchPanel::moveSelectedToEdge(int edge) {
   QToolTip::showText(QCursor::pos(),
                      edge < 0 ? QStringLiteral("已置顶 %1 · Ctrl+Home").arg(kn)
                               : QStringLiteral("已置底 %1 · Ctrl+End").arg(kn),
+                     table_);
+}
+
+
+void VarWatchPanel::toggleSelectedHostWatch() {
+  if (!table_) return;
+  const auto ranges = table_->selectionModel() ? table_->selectionModel()->selectedRows() : QModelIndexList{};
+  QStringList keys;
+  if (ranges.isEmpty()) {
+    const int row = table_->currentRow();
+    if (row < 0) {
+      QToolTip::showText(QCursor::pos(), QStringLiteral("未选中 · Ctrl+Shift+Space"), table_);
+      return;
+    }
+    auto* it = table_->item(row, 0);
+    if (!it) return;
+    QString kn = it->data(Qt::UserRole).toString();
+    if (kn.isEmpty()) kn = it->text().trimmed();
+    if (kn.startsWith(QStringLiteral("★ "))) kn = kn.mid(2).trimmed();
+    if (!kn.isEmpty()) keys << kn;
+  } else {
+    for (const QModelIndex& idx : ranges) {
+      auto* it = table_->item(idx.row(), 0);
+      if (!it) continue;
+      QString kn = it->data(Qt::UserRole).toString();
+      if (kn.isEmpty()) kn = it->text().trimmed();
+      if (kn.startsWith(QStringLiteral("★ "))) kn = kn.mid(2).trimmed();
+      if (!kn.isEmpty() && !keys.contains(kn)) keys << kn;
+    }
+  }
+  if (keys.isEmpty()) return;
+  for (const QString& kn : keys) emit hostWatchToggleRequested(kn);
+  QToolTip::showText(QCursor::pos(),
+                     QStringLiteral("已切换 Host★ %1 · Ctrl+Shift+Space").arg(keys.size()),
                      table_);
 }
 
