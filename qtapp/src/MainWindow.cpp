@@ -223,7 +223,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   }
   // Soft/open-and-run: grab one soft frame + full pipeline (GenTL→QR→TCP chain).
   if (qgetenv("SIEANS_QT_AUTO_RUN") == "1") {
-    QTimer::singleShot(1400, this, [this]() {
+    const int runDelay = (qgetenv("SIEANS_QT_AUTO_SOFT") == "1") ? 900 : 1400;
+    QTimer::singleShot(runDelay, this, [this]() {
+      logResult(QStringLiteral("AUTO_RUN · GenTL→QR open-and-run"));
       onRunOnce();
     });
   }

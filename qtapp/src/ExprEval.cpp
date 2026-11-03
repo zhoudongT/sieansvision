@@ -386,7 +386,7 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
     // len / int / str / abs / min / max wrapping the whole atom
     {
       static QRegularExpression callRe(
-          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round)\((.*)\)$)re"));
+          QStringLiteral(R"re(^(len|int|str|abs|min|max|startswith|endswith|contains|lower|upper|trim|strip|replace|slice|isdigit|isalpha|lpad|rpad|repeat|substr|default|coalesce|indexof|ifempty|find|left|right|mid|isempty|notempty|zfill|count|clamp|round|floor|ceil)\((.*)\)$)re"));
       const auto cm = callRe.match(s);
       if (cm.hasMatch()) {
         const QString name = cm.captured(1);
@@ -549,6 +549,11 @@ QVariant ExprEval::eval(const QString& raw, QString* error) const {
           if (places <= 0) return std::round(v);
           const double f = std::pow(10.0, places);
           return std::round(v * f) / f;
+        }
+        if (name == QLatin1String("floor") || name == QLatin1String("ceil")) {
+          if (args.isEmpty()) return 0;
+          const double v = evalRec(args[0]).toDouble();
+          return name == QLatin1String("floor") ? std::floor(v) : std::ceil(v);
         }
       }
     }
@@ -736,6 +741,12 @@ QStringList exprSelfTest() {
         QStringLiteral("3"));
   check(QStringLiteral("round"),
         ev.eval(QStringLiteral("round(3.7)")),
+        QStringLiteral("4"));
+  check(QStringLiteral("floor"),
+        ev.eval(QStringLiteral("floor(3.9)")),
+        QStringLiteral("3"));
+  check(QStringLiteral("ceil"),
+        ev.eval(QStringLiteral("ceil(3.1)")),
         QStringLiteral("4"));
   return fails;
 }
