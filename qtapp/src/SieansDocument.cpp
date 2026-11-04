@@ -541,6 +541,33 @@ void SieansDocument::setAlarmHistory(const QStringList& lines) {
   raw_.insert(QStringLiteral("alarmHistory"), arr);
 }
 
+bool SieansDocument::recipeLocked() const {
+  return raw_.value(QStringLiteral("recipeLocked")).toBool(false);
+}
+
+void SieansDocument::setRecipeLocked(bool on) {
+  raw_.insert(QStringLiteral("recipeLocked"), on);
+}
+
+bool SieansDocument::alarmLatched() const {
+  return raw_.value(QStringLiteral("alarmLatched")).toBool(false);
+}
+
+QString SieansDocument::alarmLatchReason() const {
+  return raw_.value(QStringLiteral("alarmLatchReason")).toString();
+}
+
+void SieansDocument::setAlarmLatched(bool on, const QString& reason) {
+  raw_.insert(QStringLiteral("alarmLatched"), on);
+  if (on) {
+    const QString t = reason.trimmed();
+    if (!t.isEmpty())
+      raw_.insert(QStringLiteral("alarmLatchReason"), t.left(120));
+  } else {
+    raw_.insert(QStringLiteral("alarmLatchReason"), QString());
+  }
+}
+
 
 QRect SieansDocument::propertyFloatGeometry() const {
   const QJsonObject o = raw_.value(QStringLiteral("propertyFloatGeometry")).toObject();

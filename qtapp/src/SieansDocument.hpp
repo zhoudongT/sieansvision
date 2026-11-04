@@ -82,6 +82,11 @@ class SieansDocument {
   void setVarWatchKeys(const QStringList& keys);
   QStringList alarmHistory() const;
   void setAlarmHistory(const QStringList& lines);
+  bool recipeLocked() const;
+  void setRecipeLocked(bool on);
+  bool alarmLatched() const;
+  QString alarmLatchReason() const;
+  void setAlarmLatched(bool on, const QString& reason = QString());
   QRect propertyFloatGeometry() const;
   void setPropertyFloatGeometry(const QRect& r);
 

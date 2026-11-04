@@ -148,9 +148,22 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   modeHint_->setWordWrap(true);
   root->addWidget(modeHint_);
 
+  auto* histHead = new QHBoxLayout;
   auto* histTitle = new QLabel(QStringLiteral("报警历史"));
   histTitle->setStyleSheet(QStringLiteral("font-weight:600;"));
-  root->addWidget(histTitle);
+  histHead->addWidget(histTitle);
+  histMeta_ = new QLabel(QStringLiteral("0 条"));
+  histMeta_->setObjectName(QStringLiteral("muted"));
+  histHead->addWidget(histMeta_);
+  histHead->addStretch(1);
+  lockChip_ = new QLabel(QStringLiteral("配方锁"));
+  lockChip_->setVisible(false);
+  lockChip_->setStyleSheet(
+      QStringLiteral("padding:1px 6px;border-radius:3px;background:#3a3420;"
+                     "color:#e0b84a;font-weight:600;font-size:11px;"));
+  lockChip_->setToolTip(QStringLiteral("运行态 · 画布/算子库已锁定 · 报警历史随方案写回"));
+  histHead->addWidget(lockChip_);
+  root->addLayout(histHead);
   history_ = new QListWidget;
   history_->setObjectName(QStringLiteral("alarmHistory"));
   history_->setMinimumHeight(72);
@@ -164,6 +177,8 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
     connect(scL, &QShortcut::activated, this, [this]() {
       if (!history_) return;
       history_->clear();
+      alarmCount_ = 0;
+      refreshAlarmHistChrome();
       emit alarmHistoryChanged(alarmHistoryLines());
       if (modeHint_)
         modeHint_->setText(QStringLiteral("报警历史已清空 · Ctrl+L"));
@@ -172,6 +187,12 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
     connect(scDel, &QShortcut::activated, this, [this]() {
       if (!history_) return;
       for (auto* it : history_->selectedItems()) delete history_->takeItem(history_->row(it));
+      alarmCount_ = 0;
+      for (int i = 0; i < history_->count(); ++i) {
+        if (auto* it = history_->item(i))
+          if (it->text().contains(QStringLiteral("  ALARM  "))) ++alarmCount_;
+      }
+      refreshAlarmHistChrome();
       emit alarmHistoryChanged(alarmHistoryLines());
     });
     auto* scJ = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+J")), history_);
@@ -384,6 +405,7 @@ void HostStatePanel::appendAlarm(const QString& reason, bool cleared) {
   history_->insertItem(0, line);
   while (history_->count() > 40) delete history_->takeItem(history_->count() - 1);
   if (!cleared) ++alarmCount_;
+  refreshAlarmHistChrome();
   emit alarmHistoryChanged(alarmHistoryLines());
 }
 
@@ -562,6 +584,7 @@ bool HostStatePanel::eventFilter(QObject* obj, QEvent* event) {
     }
     if (me->button() == Qt::RightButton && history_) {
       history_->clear();
+      refreshAlarmHistChrome();
       emit alarmHistoryChanged(alarmHistoryLines());
       if (modeHint_) modeHint_->setText(QStringLiteral("报警历史已清空 · 右键"));
       return true;
@@ -727,14 +750,67 @@ QStringList HostStatePanel::alarmHistoryLines() const {
 void HostStatePanel::setAlarmHistoryLines(const QStringList& lines) {
   if (!history_) return;
   history_->clear();
+  alarmCount_ = 0;
   for (const QString& line : lines) {
     const QString t = line.trimmed();
-    if (!t.isEmpty()) history_->addItem(t);
+    if (t.isEmpty()) continue;
+    history_->addItem(t);
+    if (t.contains(QStringLiteral("  ALARM  "))) ++alarmCount_;
   }
   while (history_->count() > 40) delete history_->takeItem(history_->count() - 1);
+  refreshAlarmHistChrome();
 }
 
+QString HostStatePanel::lastAlarmReason() const {
+  if (!history_) return {};
+  for (int i = 0; i < history_->count(); ++i) {
+    auto* it = history_->item(i);
+    if (!it) continue;
+    const QString t = it->text();
+    const int p = t.indexOf(QStringLiteral("  ALARM  "));
+    if (p >= 0) return t.mid(p + 9).trimmed();
+    if (t.contains(QStringLiteral("  清除  "))) break;
+  }
+  return {};
+}
 
+void HostStatePanel::setRecipeLocked(bool locked) {
+  const bool changed = recipeLocked_ != locked;
+  recipeLocked_ = locked;
+  if (lockChip_) lockChip_->setVisible(locked);
+  if (mode_) mode_->setEnabled(!locked);
+  refreshAlarmHistChrome();
+  if (changed && modeHint_) {
+    modeHint_->setText(locked ? QStringLiteral("运行态 · 配方已锁定 · 报警历史写回方案")
+                              : QStringLiteral("设计态 · 配方可编辑"));
+  }
+}
+
+void HostStatePanel::refreshAlarmHistChrome() {
+  if (!histMeta_) return;
+  const int n = history_ ? history_->count() : 0;
+  // Recount ALARM lines so paste/sort/dedupe stay accurate.
+  alarmCount_ = 0;
+  if (history_) {
+    for (int i = 0; i < history_->count(); ++i) {
+      if (auto* it = history_->item(i))
+        if (it->text().contains(QStringLiteral("  ALARM  "))) ++alarmCount_;
+    }
+  }
+  QString meta = QStringLiteral("%1 条").arg(n);
+  if (alarmCount_ > 0) meta += QStringLiteral(" · ALARM×%1").arg(alarmCount_);
+  if (recipeLocked_) meta += QStringLiteral(" · 锁");
+  const QString reason = lastAlarmReason();
+  if (!reason.isEmpty() && state_ == QLatin1String("Alarm"))
+    meta += QStringLiteral(" · %1").arg(reason.left(24));
+  histMeta_->setText(meta);
+  histMeta_->setToolTip(
+      QStringLiteral("报警历史 %1 · 累计 ALARM %2 · 配方锁 %3 · 末因 %4")
+          .arg(n)
+          .arg(alarmCount_)
+          .arg(recipeLocked_ ? QStringLiteral("开") : QStringLiteral("关"))
+          .arg(reason.isEmpty() ? QStringLiteral("—") : reason));
+}
 
 void HostStatePanel::cutSelectedAlarmHistory() {
   if (!history_) return;
@@ -756,6 +832,7 @@ void HostStatePanel::cutSelectedAlarmHistory() {
   for (int r : rows) {
     if (r >= 0) delete history_->takeItem(r);
   }
+  refreshAlarmHistChrome();
   emit alarmHistoryChanged(alarmHistoryLines());
   if (modeHint_)
     modeHint_->setText(QStringLiteral("已剪切报警 %1 · Ctrl+X · Ctrl+Shift+V 粘贴").arg(lines.size()));
@@ -874,6 +951,7 @@ void HostStatePanel::pasteAlarmHistoryFromClipboard() {
   for (int i = lines.size() - 1; i >= 0; --i)
     history_->insertItem(0, lines.at(i));
   while (history_->count() > 40) delete history_->takeItem(history_->count() - 1);
+  refreshAlarmHistChrome();
   emit alarmHistoryChanged(alarmHistoryLines());
   if (modeHint_)
     modeHint_->setText(QStringLiteral("已粘贴报警 %1 · Ctrl+Shift+V").arg(lines.size()));
@@ -888,6 +966,7 @@ void HostStatePanel::reverseAlarmHistory() {
   std::reverse(lines.begin(), lines.end());
   history_->clear();
   for (const QString& line : lines) history_->addItem(line);
+  refreshAlarmHistChrome();
   emit alarmHistoryChanged(alarmHistoryLines());
   if (modeHint_)
     modeHint_->setText(QStringLiteral("报警已反序 %1 · Ctrl+Shift+Y").arg(lines.size()));
@@ -906,6 +985,7 @@ void HostStatePanel::sortAlarmHistory() {
             });
   history_->clear();
   for (const QString& line : lines) history_->addItem(line);
+  refreshAlarmHistChrome();
   emit alarmHistoryChanged(alarmHistoryLines());
   if (modeHint_)
     modeHint_->setText(QStringLiteral("报警已排序 %1 · Ctrl+Shift+S").arg(lines.size()));
@@ -930,6 +1010,7 @@ void HostStatePanel::dedupeAlarmHistory() {
   }
   history_->clear();
   for (const QString& line : uniq) history_->addItem(line);
+  refreshAlarmHistChrome();
   emit alarmHistoryChanged(alarmHistoryLines());
   if (modeHint_)
     modeHint_->setText(QStringLiteral("报警去重 −%1 · 剩 %2 · Ctrl+Shift+U")
@@ -975,6 +1056,7 @@ void HostStatePanel::moveSelectedAlarm(int delta) {
       it->setSelected(true);
     }
   }
+  refreshAlarmHistChrome();
   emit alarmHistoryChanged(alarmHistoryLines());
   if (modeHint_)
     modeHint_->setText(QStringLiteral("报警调序 %1 行 · Alt+↑↓").arg(rows.size()));
@@ -1010,6 +1092,7 @@ void HostStatePanel::moveSelectedAlarmToEdge(int edge) {
     }
     if (modeHint_) modeHint_->setText(QStringLiteral("报警已置底 %1 · Ctrl+End").arg(texts.size()));
   }
+  refreshAlarmHistChrome();
   emit alarmHistoryChanged(alarmHistoryLines());
 }
 
@@ -1045,6 +1128,7 @@ void HostStatePanel::duplicateSelectedAlarmHistory() {
   }
   // Cap at 40
   while (history_->count() > 40) delete history_->takeItem(history_->count() - 1);
+  refreshAlarmHistChrome();
   emit alarmHistoryChanged(alarmHistoryLines());
   if (modeHint_)
     modeHint_->setText(QStringLiteral("已复制报警 %1 · Ctrl+D").arg(added));

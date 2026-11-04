@@ -41,6 +41,10 @@ class HostStatePanel : public QWidget {
   QString alarmPolicy() const;
   QStringList alarmHistoryLines() const;
   void setAlarmHistoryLines(const QStringList& lines);
+  int alarmCount() const { return alarmCount_; }
+  QString lastAlarmReason() const;
+  void setRecipeLocked(bool locked);
+  bool recipeLocked() const { return recipeLocked_; }
   void pasteAlarmHistoryFromClipboard();
   void cutSelectedAlarmHistory();
   void reverseAlarmHistory();
@@ -82,6 +86,8 @@ class HostStatePanel : public QWidget {
   QLabel* flowLabel_ = nullptr;
   QLabel* modeHint_ = nullptr;
   QLabel* statsLabel_ = nullptr;
+  QLabel* lockChip_ = nullptr;
+  QLabel* histMeta_ = nullptr;
   QListWidget* history_ = nullptr;
   QComboBox* mode_ = nullptr;
   QComboBox* policy_ = nullptr;
@@ -94,6 +100,8 @@ class HostStatePanel : public QWidget {
   QTimer* pulseTimer_ = nullptr;
   int pulsePhase_ = 0;
   int alarmCount_ = 0;
+  bool recipeLocked_ = false;
+  void refreshAlarmHistChrome();
 };
 
 }  // namespace sieans_qt

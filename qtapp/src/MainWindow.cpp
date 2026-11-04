@@ -883,12 +883,45 @@ void MainWindow::buildUi() {
   });
   connect(host_sm_, &HostStatePanel::alarmPolicyChanged, this, [this](const QString& pol) {
     document_.setAlarmPolicy(pol);
+    // Policy change co-writes with recipe-lock snapshot.
+    document_.setRecipeLocked(run_mode_);
+    if (host_sm_) document_.setAlarmHistory(host_sm_->alarmHistoryLines());
+    publishHostToFlowVars();
+    applyFlowIoBindings();
+    syncVarsToUi(false);
   });
   connect(host_sm_, &HostStatePanel::alarmHistoryChanged, this, [this](const QStringList& lines) {
     document_.setAlarmHistory(lines);
+    document_.setRecipeLocked(run_mode_);
+    // Derive latch from newest hist line (ALARM vs 清除).
+    bool latched = false;
+    QString reason;
+    for (const QString& line : lines) {
+      if (line.contains(QStringLiteral("  清除  "))) break;
+      const int p = line.indexOf(QStringLiteral("  ALARM  "));
+      if (p >= 0) {
+        latched = true;
+        reason = line.mid(p + 9).trimmed();
+        break;
+      }
+    }
+    if (host_sm_ && host_sm_->state() == QLatin1String("Alarm")) latched = true;
+    if (!latched && host_strip_ && host_strip_->alarmOn()) latched = true;
+    document_.setAlarmLatched(latched, reason);
+    publishHostToFlowVars();
+    applyFlowIoBindings();
+    if (var_watch_) var_watch_->setVariables(flow_vars_);
+    if (comm_panel_) comm_panel_->setFlowVars(flow_vars_);
   });
   connect(host_sm_, &HostStatePanel::clearAlarmRequested, this, [this]() {
     if (host_strip_) host_strip_->setAlarm(false);
+    document_.setAlarmLatched(false);
+    if (host_sm_) {
+      document_.setAlarmHistory(host_sm_->alarmHistoryLines());
+      document_.setRecipeLocked(run_mode_);
+    }
+    publishHostToFlowVars();
+    applyFlowIoBindings();
     if (!host_sm_) return;
     if (continuous_run_ && !run_paused_)
       host_sm_->applyState(QStringLiteral("Running"));
@@ -1137,9 +1170,13 @@ void MainWindow::buildToolbar() {
 
 void MainWindow::applyDocumentToUi() {
   flow_scene_->loadDocument(&document_);
-  if (run_mode_) flow_scene_->setEditingLocked(true);
+  run_mode_ = document_.recipeLocked();
+  if (flow_scene_) flow_scene_->setEditingLocked(run_mode_);
   project_label_->setText(QStringLiteral("方案: %1").arg(document_.name()));
-  setWindowTitle(QStringLiteral("%1 — SIEANS Vision · 设计态").arg(document_.name()));
+  setWindowTitle(QStringLiteral("%1 — SIEANS Vision · %2")
+                     .arg(document_.name(),
+                          run_mode_ ? QStringLiteral("运行态")
+                                    : QStringLiteral("设计态")));
   if (flow_tabs_) flow_tabs_->setFlowName(QStringLiteral("流程1"));
   QTimer::singleShot(0, flow_view_, &FlowView::fitAll);
   if (prop_float_) prop_float_->hide();
@@ -1164,6 +1201,14 @@ void MainWindow::applyDocumentToUi() {
       host_sm_->setAlarmPolicy(document_.alarmPolicy());
       const QStringList ah = document_.alarmHistory();
       if (!ah.isEmpty()) host_sm_->setAlarmHistoryLines(ah);
+      host_sm_->setRecipeLocked(run_mode_);
+      if (document_.alarmLatched()) {
+        QString why = document_.alarmLatchReason();
+        if (why.isEmpty()) why = host_sm_->lastAlarmReason();
+        if (why.isEmpty()) why = QStringLiteral("方案锁存报警");
+        host_sm_->applyState(QStringLiteral("Alarm"));
+        if (host_strip_) host_strip_->setAlarm(true, why);
+      }
     }
   }
   if (filmstrip_) {
@@ -1273,6 +1318,20 @@ void MainWindow::publishHostToFlowVars() {
   flow_vars_.insert(QStringLiteral("hostAlarm"), alarm ? 1 : 0);
   flow_vars_.insert(QStringLiteral("hostLastMs"), last_cycle_ms_);
   flow_vars_.insert(QStringLiteral("hostCycle"), run_cycle_);
+  const int histN = host_sm_ ? host_sm_->alarmCount() : 0;
+  const QString alarmLast =
+      host_sm_ ? host_sm_->lastAlarmReason()
+               : document_.alarmLatchReason();
+  const bool latched = alarm || document_.alarmLatched() ||
+                       (host_sm_ && host_sm_->state() == QLatin1String("Alarm"));
+  flow_vars_.insert(QStringLiteral("recipeLocked"), run_mode_ ? 1 : 0);
+  flow_vars_.insert(QStringLiteral("host.recipeLocked"), run_mode_ ? 1 : 0);
+  flow_vars_.insert(QStringLiteral("alarmHistCount"), histN);
+  flow_vars_.insert(QStringLiteral("host.alarmHistCount"), histN);
+  flow_vars_.insert(QStringLiteral("alarmLast"), alarmLast);
+  flow_vars_.insert(QStringLiteral("host.alarmLast"), alarmLast);
+  flow_vars_.insert(QStringLiteral("alarmLatched"), latched ? 1 : 0);
+  flow_vars_.insert(QStringLiteral("host.alarmLatched"), latched ? 1 : 0);
 }
 
 void MainWindow::fireHostCommEvents(const QString& resultTag) {
@@ -1454,6 +1513,7 @@ void MainWindow::updateRunChrome() {
   if (op_rail_) op_rail_->setEnabled(!run_mode_);
   if (flow_tabs_) flow_tabs_->setDesignLocked(run_mode_);
   if (act_mode_) act_mode_->setChecked(run_mode_);
+  if (host_sm_) host_sm_->setRecipeLocked(run_mode_);
   const QString hostState = host_sm_ ? host_sm_->state() : QStringLiteral("Idle");
   if (host_strip_) {
     host_strip_->setIntervalMs(document_.runIntervalMs() > 0 ? document_.runIntervalMs() : 200);
@@ -1482,6 +1542,10 @@ void MainWindow::noteHostResult(bool ok, const QString& detail) {
   if (ok) {
     host_sm_->notifyOk();
     if (host_strip_) host_strip_->setAlarm(false);
+    if (host_sm_->state() != QLatin1String("Alarm"))
+      document_.setAlarmLatched(false);
+    document_.setAlarmHistory(host_sm_->alarmHistoryLines());
+    document_.setRecipeLocked(run_mode_);
     if (continuous_run_ && !run_paused_ && host_sm_->state() != QLatin1String("Alarm"))
       host_sm_->applyState(QStringLiteral("Running"));
     publishHostToFlowVars();
@@ -1489,6 +1553,9 @@ void MainWindow::noteHostResult(bool ok, const QString& detail) {
   } else {
     host_sm_->raiseAlarm(detail);
     if (host_strip_) host_strip_->setAlarm(true, detail);
+    document_.setAlarmLatched(true, detail);
+    document_.setAlarmHistory(host_sm_->alarmHistoryLines());
+    document_.setRecipeLocked(run_mode_);
     publishHostToFlowVars();
     applyFlowIoBindings();
     // Worker/alarm path may not go through syncVarsToUi(true)
@@ -2044,7 +2111,8 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
               "formatted=%7 lastRecv=%8 urlOk=%9 tcp=%10 "
               "hostResult=%11 hostMode=%12 hostState=%13 "
               "hostLastTx=%14 ioHostResult=%15 lastTxDevice=%16 "
-              "deviceTx=%17\n")
+              "deviceTx=%17 recipeLocked=%18 alarmHist=%19 "
+              "alarmLatched=%20 alarmLast=%21\n")
               .arg(hits.size())
               .arg(decodeMs, 0, 'f', 2)
               .arg(src.width())
@@ -2065,7 +2133,17 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                        .left(100).replace(QLatin1Char('\n'), QLatin1Char('|')))
               .arg(flow_vars_.value(QStringLiteral("io.HostResult")).toString())
               .arg(comm_hub_ ? comm_hub_->lastTxDevice() : QString())
-              .arg(txDevSummary.left(120));
+              .arg(txDevSummary.left(120))
+              .arg(run_mode_ ? 1 : 0)
+              .arg(host_sm_ ? host_sm_->alarmCount() : 0)
+              .arg((host_strip_ && host_strip_->alarmOn()) ||
+                           document_.alarmLatched()
+                       ? 1
+                       : 0)
+              .arg((host_sm_ ? host_sm_->lastAlarmReason()
+                             : document_.alarmLatchReason())
+                       .left(80)
+                       .replace(QLatin1Char('\n'), QLatin1Char('|')));
       f.write(line.toUtf8());
     }
   }
@@ -2544,14 +2622,22 @@ void MainWindow::onContinuousTick() {
 void MainWindow::onToggleRunMode(bool on) {
   run_mode_ = on;
   if (flow_scene_) flow_scene_->setEditingLocked(on);
-  if (host_sm_ && !continuous_run_) {
-    host_sm_->applyState(on ? QStringLiteral("Running") : QStringLiteral("Idle"));
+  document_.setRecipeLocked(on);
+  if (host_sm_) {
+    host_sm_->setRecipeLocked(on);
+    document_.setAlarmHistory(host_sm_->alarmHistoryLines());
+    const bool latched = host_sm_->state() == QLatin1String("Alarm") ||
+                         (host_strip_ && host_strip_->alarmOn());
+    document_.setAlarmLatched(latched, host_sm_->lastAlarmReason());
+    if (!continuous_run_ && host_sm_->state() != QLatin1String("Alarm")) {
+      host_sm_->applyState(on ? QStringLiteral("Running") : QStringLiteral("Idle"));
+    }
   }
   if (prop_float_ && on) prop_float_->hide();
   updateRunChrome();
-  logResult(on ? QStringLiteral("运行模式：画布/算子库已锁定")
-               : QStringLiteral("设计态：画布可编辑"));
-  showStatus(on ? QStringLiteral("运行模式") : QStringLiteral("设计态"));
+  logResult(on ? QStringLiteral("运行模式：画布/算子库已锁定 · 报警历史已写回")
+               : QStringLiteral("设计态：画布可编辑 · 配方锁已解除写回"));
+  showStatus(on ? QStringLiteral("运行模式 · 配方锁") : QStringLiteral("设计态"));
 }
 
 void MainWindow::onRunAllImages() {
