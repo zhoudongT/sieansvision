@@ -90,10 +90,14 @@ class MainWindow : public QMainWindow {
   QString samplePathCandidates() const;
   void setBusy(bool busy);
   void updateRunChrome();
-  void syncVarsToUi();
+  void syncVarsToUi(bool hostEvaluated = false);
   void pushSoftControls();
   void noteHostResult(bool ok, const QString& detail);
   void applyFlowIoBindings();
+  /** Mirror Host mode/state/OK-NG-ALARM/stats into flow_vars for I/O + Comm. */
+  void publishHostToFlowVars();
+  /** Fire commManager.sendEvents filtered by on=ok|ng|alarm|always. */
+  void fireHostCommEvents(const QString& resultTag);
   QVariant resolveIoBinding(const QString& binding) const;
   QStringList topologicalStepIds() const;
   void addOperatorAt(const QString& key, const QString& name,

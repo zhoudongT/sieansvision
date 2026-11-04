@@ -348,6 +348,29 @@ void SieansDocument::seedGentlQrDemo() {
                    {QStringLiteral("ack"), QStringLiteral("OK")},
                    {QStringLiteral("autoStart"), true},
                    {QStringLiteral("reconnect"), true}}},
+      {QStringLiteral("sendEvents"),
+       QVariantList{
+           QVariantMap{{QStringLiteral("device"), QStringLiteral("LocalLoop")},
+                       {QStringLiteral("on"), QStringLiteral("ok")},
+                       {QStringLiteral("message"),
+                        QStringLiteral("HOST OK result=${flow.hostResult} "
+                                       "pass=${flow.passGate} "
+                                       "count=${flow.barcodeCount} "
+                                       "mode=${flow.hostMode}")}},
+           QVariantMap{{QStringLiteral("device"), QStringLiteral("LocalLoop")},
+                       {QStringLiteral("on"), QStringLiteral("ng")},
+                       {QStringLiteral("message"),
+                        QStringLiteral("HOST NG result=${flow.hostResult} "
+                                       "pass=${flow.passGate} "
+                                       "mode=${flow.hostMode} "
+                                       "streak=${flow.hostOkStreak}")}},
+           QVariantMap{{QStringLiteral("device"), QStringLiteral("TcpRealLoopback")},
+                       {QStringLiteral("on"), QStringLiteral("alarm")},
+                       {QStringLiteral("message"),
+                        QStringLiteral("HOST ALARM state=${flow.hostState} "
+                                       "mode=${flow.hostMode} "
+                                       "result=${flow.hostResult}")}},
+       }},
   };
   flowIo_ = {
       {QStringLiteral("inputs"),
@@ -370,6 +393,15 @@ void SieansDocument::seedGentlQrDemo() {
            QVariantMap{{QStringLiteral("name"), QStringLiteral("PassGate")},
                        {QStringLiteral("type"), QStringLiteral("INT")},
                        {QStringLiteral("binding"), QStringLiteral("flow.passGate")}},
+           QVariantMap{{QStringLiteral("name"), QStringLiteral("HostResult")},
+                       {QStringLiteral("type"), QStringLiteral("STRING")},
+                       {QStringLiteral("binding"), QStringLiteral("flow.hostResult")}},
+           QVariantMap{{QStringLiteral("name"), QStringLiteral("HostMode")},
+                       {QStringLiteral("type"), QStringLiteral("STRING")},
+                       {QStringLiteral("binding"), QStringLiteral("flow.hostMode")}},
+           QVariantMap{{QStringLiteral("name"), QStringLiteral("HostState")},
+                       {QStringLiteral("type"), QStringLiteral("STRING")},
+                       {QStringLiteral("binding"), QStringLiteral("flow.hostState")}},
        }},
       {QStringLiteral("display"),
        QVariantMap{{QStringLiteral("globalImage"), true},
@@ -406,7 +438,9 @@ QStringList SieansDocument::hostWatchKeys() const {
             QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
             QStringLiteral("passGate"), QStringLiteral("urlOk"),
             QStringLiteral("formatted"), QStringLiteral("lastRecv"),
-            QStringLiteral("commPayload")};
+            QStringLiteral("commPayload"), QStringLiteral("hostResult"),
+            QStringLiteral("hostMode"), QStringLiteral("hostState"),
+            QStringLiteral("hostOkStreak"), QStringLiteral("hostNgCount")};
   }
   return keys;
 }

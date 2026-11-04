@@ -876,6 +876,10 @@ void MainWindow::buildUi() {
   });
   connect(host_sm_, &HostStatePanel::hostModeChanged, this, [this](const QString& mode) {
     document_.setHostMode(mode);
+    publishHostToFlowVars();
+    applyFlowIoBindings();
+    syncVarsToUi(false);
+    showStatus(QStringLiteral("上位机模式 → %1 · I/O/vars 已共更").arg(mode), 2500);
   });
   connect(host_sm_, &HostStatePanel::alarmPolicyChanged, this, [this](const QString& pol) {
     document_.setAlarmPolicy(pol);
@@ -1207,15 +1211,117 @@ void MainWindow::applyDocumentToUi() {
   refreshConfigStatus();
 }
 
-void MainWindow::syncVarsToUi() {
+void MainWindow::syncVarsToUi(bool hostEvaluated) {
+  if (host_strip_) {
+    if (hostEvaluated) {
+      host_strip_->updateFromVars(
+          flow_vars_, flow_vars_.value(QStringLiteral("barcodeCount")).toInt(), true);
+    } else {
+      host_strip_->updateFromVars(flow_vars_);
+    }
+  }
+  publishHostToFlowVars();
+  applyFlowIoBindings();
   document_.setVariables(flow_vars_);
   if (var_watch_) var_watch_->setVariables(flow_vars_);
   if (comm_panel_) comm_panel_->setFlowVars(flow_vars_);
-  if (host_strip_)
-    host_strip_->updateFromVars(
-        flow_vars_, flow_vars_.value(QStringLiteral("barcodeCount")).toInt(), true);
   if (host_sm_ && host_strip_)
     host_sm_->setRunStats(host_strip_->okStreak(), host_strip_->ngCount(), last_cycle_ms_);
+  if (hostEvaluated && host_strip_) {
+    const QString tag = host_strip_->lastResult();
+    if (tag == QLatin1String("OK") || tag == QLatin1String("NG") ||
+        tag == QLatin1String("ALARM"))
+      fireHostCommEvents(tag);
+  }
+}
+
+void MainWindow::publishHostToFlowVars() {
+  const QString mode =
+      host_sm_ ? host_sm_->hostMode() : document_.hostMode();
+  QString state = QStringLiteral("Idle");
+  if (host_sm_ && !host_sm_->state().isEmpty())
+    state = host_sm_->state();
+  else if (host_strip_)
+    state = host_strip_->hostState();
+  const int ok = host_strip_ ? host_strip_->okStreak() : 0;
+  const int ng = host_strip_ ? host_strip_->ngCount() : 0;
+  const int total = ok + ng;
+  const double yld = total > 0 ? (100.0 * ok / total) : 0.0;
+  const bool alarm = host_strip_ && host_strip_->alarmOn();
+  QString result = QStringLiteral("—");
+  if (alarm)
+    result = QStringLiteral("ALARM");
+  else if (host_strip_)
+    result = host_strip_->lastResult();
+
+  flow_vars_.insert(QStringLiteral("host.mode"), mode);
+  flow_vars_.insert(QStringLiteral("host.state"), state);
+  flow_vars_.insert(QStringLiteral("host.result"), result);
+  flow_vars_.insert(QStringLiteral("host.okStreak"), ok);
+  flow_vars_.insert(QStringLiteral("host.ngCount"), ng);
+  flow_vars_.insert(QStringLiteral("host.yield"), yld);
+  flow_vars_.insert(QStringLiteral("host.lastMs"), last_cycle_ms_);
+  flow_vars_.insert(QStringLiteral("host.alarm"), alarm ? 1 : 0);
+  flow_vars_.insert(QStringLiteral("host.cycle"), run_cycle_);
+  // Flat aliases — Comm ${flow.hostResult} / I/O binding tokens
+  flow_vars_.insert(QStringLiteral("hostMode"), mode);
+  flow_vars_.insert(QStringLiteral("hostState"), state);
+  flow_vars_.insert(QStringLiteral("hostResult"), result);
+  flow_vars_.insert(QStringLiteral("hostOkStreak"), ok);
+  flow_vars_.insert(QStringLiteral("hostNgCount"), ng);
+  flow_vars_.insert(QStringLiteral("hostYield"), yld);
+  flow_vars_.insert(QStringLiteral("hostAlarm"), alarm ? 1 : 0);
+  flow_vars_.insert(QStringLiteral("hostLastMs"), last_cycle_ms_);
+  flow_vars_.insert(QStringLiteral("hostCycle"), run_cycle_);
+}
+
+void MainWindow::fireHostCommEvents(const QString& resultTag) {
+  if (!comm_hub_ || resultTag.isEmpty() || resultTag == QLatin1String("—")) return;
+  const QVariantList events =
+      document_.commManager().value(QStringLiteral("sendEvents")).toList();
+  if (events.isEmpty()) return;
+  int n = 0;
+  for (const QVariant& evV : events) {
+    const QVariantMap ev = evV.toMap();
+    const QString onRaw =
+        ev.value(QStringLiteral("on"),
+                 ev.value(QStringLiteral("when"), QStringLiteral("always")))
+            .toString();
+    const QString on = onRaw.trimmed().toLower();
+    bool match = on.isEmpty() || on == QLatin1String("always");
+    if (!match) {
+      if (resultTag == QLatin1String("OK") &&
+          (on == QLatin1String("ok") || on == QLatin1String("pass")))
+        match = true;
+      else if (resultTag == QLatin1String("NG") &&
+               (on == QLatin1String("ng") || on == QLatin1String("fail")))
+        match = true;
+      else if (resultTag == QLatin1String("ALARM") && on == QLatin1String("alarm"))
+        match = true;
+    }
+    if (!match) continue;
+    QString device = ev.value(QStringLiteral("device")).toString().trimmed();
+    if (device.isEmpty()) device = QStringLiteral("LocalLoop");
+    QString msg = ev.value(QStringLiteral("message")).toString();
+    if (msg.isEmpty()) msg = ev.value(QStringLiteral("payload")).toString();
+    if (msg.isEmpty()) continue;
+    msg = CommHub::expandTemplate(msg, flow_vars_);
+    QString err;
+    if (!comm_hub_->sendPayload(device, msg, &err)) {
+      if (!err.isEmpty())
+        logResult(QStringLiteral("Host→Comm 失败 %1: %2").arg(device, err));
+      continue;
+    }
+    ++n;
+    flow_vars_.insert(QStringLiteral("commPayload"), msg);
+    flow_vars_.insert(QStringLiteral("host.lastTx"), msg);
+    flow_vars_.insert(QStringLiteral("hostLastTx"), msg);
+  }
+  if (n > 0) {
+    logResult(QStringLiteral("Host→Comm sendEvents ×%1 · %2").arg(n).arg(resultTag));
+    if (comm_panel_) comm_panel_->setFlowVars(flow_vars_);
+    if (var_watch_) var_watch_->setVariables(flow_vars_);
+  }
 }
 
 void MainWindow::logResult(const QString& line) {
@@ -1249,7 +1355,25 @@ QVariant MainWindow::resolveIoBinding(const QString& binding) const {
   if (b.startsWith(QStringLiteral("flow."))) {
     const QString key = b.mid(5);
     if (key == QLatin1String("vars")) return flow_vars_;
+    if (flow_vars_.contains(key)) return flow_vars_.value(key);
+    // dotted flow.host.result / flow.io.Result already stored as flat keys
     return flow_vars_.value(key);
+  }
+  if (b.startsWith(QStringLiteral("host."))) {
+    // host.result → dotted key or camel alias hostResult
+    if (flow_vars_.contains(b)) return flow_vars_.value(b);
+    QString camel = QStringLiteral("host");
+    const QString rest = b.mid(5);
+    for (int i = 0; i < rest.size(); ++i) {
+      if (rest[i] == QLatin1Char('.') && i + 1 < rest.size()) {
+        camel += rest[i + 1].toUpper();
+        ++i;
+      } else if (rest[i] != QLatin1Char('.')) {
+        camel += rest[i];
+      }
+    }
+    if (flow_vars_.contains(camel)) return flow_vars_.value(camel);
+    return flow_vars_.value(b);
   }
   if (b.startsWith(QStringLiteral("source."))) {
     const QString key = b.mid(7);
@@ -1340,6 +1464,12 @@ void MainWindow::updateRunChrome() {
     flow_tabs_->setRunChrome(modeText, run_cycle_, last_cycle_ms_, continuous_run_,
                              run_paused_);
   }
+  // Host run-mode co-update → flow_vars / I/O outputs (HostResult/HostState…)
+  publishHostToFlowVars();
+  applyFlowIoBindings();
+  document_.setVariables(flow_vars_);
+  if (var_watch_) var_watch_->setVariables(flow_vars_);
+  if (comm_panel_) comm_panel_->setFlowVars(flow_vars_);
 }
 
 void MainWindow::pushSoftControls() {
@@ -1354,9 +1484,18 @@ void MainWindow::noteHostResult(bool ok, const QString& detail) {
     if (host_strip_) host_strip_->setAlarm(false);
     if (continuous_run_ && !run_paused_ && host_sm_->state() != QLatin1String("Alarm"))
       host_sm_->applyState(QStringLiteral("Running"));
+    publishHostToFlowVars();
+    applyFlowIoBindings();
   } else {
     host_sm_->raiseAlarm(detail);
     if (host_strip_) host_strip_->setAlarm(true, detail);
+    publishHostToFlowVars();
+    applyFlowIoBindings();
+    // Worker/alarm path may not go through syncVarsToUi(true)
+    fireHostCommEvents(QStringLiteral("ALARM"));
+    document_.setVariables(flow_vars_);
+    if (var_watch_) var_watch_->setVariables(flow_vars_);
+    if (comm_panel_) comm_panel_->setFlowVars(flow_vars_);
   }
 }
 
@@ -1862,8 +2001,7 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
       host_strip_->setAlarm(false);
   }
   ++run_cycle_;
-  applyFlowIoBindings();
-  syncVarsToUi();
+  syncVarsToUi(true);
   updateRunChrome();
   const double flowMs = std::chrono::duration<double, std::milli>(
                             std::chrono::steady_clock::now() - flowT0)
@@ -1891,7 +2029,9 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
       const QString line =
           QStringLiteral(
               "codes=%1 ms=%2 w=%3 h=%4 passGate=%5 barcodeText=%6 "
-              "formatted=%7 lastRecv=%8 urlOk=%9 tcp=%10\n")
+              "formatted=%7 lastRecv=%8 urlOk=%9 tcp=%10 "
+              "hostResult=%11 hostMode=%12 hostState=%13 "
+              "hostLastTx=%14 ioHostResult=%15\n")
               .arg(hits.size())
               .arg(decodeMs, 0, 'f', 2)
               .arg(src.width())
@@ -1904,7 +2044,13 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
               .arg(flow_vars_.value(QStringLiteral("lastRecv")).toString()
                        .left(120).replace(QLatin1Char('\n'), QLatin1Char('|')))
               .arg(flow_vars_.value(QStringLiteral("urlOk")).toString())
-              .arg(comm_hub_ ? comm_hub_->tcpStatus() : QStringLiteral("n/a"));
+              .arg(comm_hub_ ? comm_hub_->tcpStatus() : QStringLiteral("n/a"))
+              .arg(flow_vars_.value(QStringLiteral("hostResult")).toString())
+              .arg(flow_vars_.value(QStringLiteral("hostMode")).toString())
+              .arg(flow_vars_.value(QStringLiteral("hostState")).toString())
+              .arg(flow_vars_.value(QStringLiteral("hostLastTx")).toString()
+                       .left(100).replace(QLatin1Char('\n'), QLatin1Char('|')))
+              .arg(flow_vars_.value(QStringLiteral("io.HostResult")).toString());
       f.write(line.toUtf8());
     }
   }
@@ -2630,8 +2776,8 @@ void MainWindow::onOpenFlowIo() {
   FlowIoDialog dlg(document_.flowIo(), this);
   if (dlg.exec() != QDialog::Accepted) return;
   document_.setFlowIo(dlg.resultIo());
-  applyFlowIoBindings();
-  syncVarsToUi();
+  publishHostToFlowVars();
+  syncVarsToUi(false);
   const int nin = document_.flowIo().value(QStringLiteral("inputs")).toList().size();
   const int nout = document_.flowIo().value(QStringLiteral("outputs")).toList().size();
   logResult(QStringLiteral("流程 I/O 已更新 · 输入 %1 · 输出 %2").arg(nin).arg(nout));

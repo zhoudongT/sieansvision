@@ -484,7 +484,9 @@ void CommPanel::rebuildVarChips() {
   QStringList prefer{QStringLiteral("passGate"), QStringLiteral("barcodeText"),
                      QStringLiteral("barcodeCount"), QStringLiteral("formatted"),
                      QStringLiteral("lastRecv"), QStringLiteral("urlOk"),
-                     QStringLiteral("locateScore")};
+                     QStringLiteral("locateScore"), QStringLiteral("hostResult"),
+                     QStringLiteral("hostMode"), QStringLiteral("hostState"),
+                     QStringLiteral("hostOkStreak"), QStringLiteral("hostLastTx")};
   QStringList keys;
   for (const QString& k : prefer) {
     if (vars_.contains(k)) keys << k;
@@ -493,7 +495,7 @@ void CommPanel::rebuildVarChips() {
     if (keys.contains(it.key())) continue;
     if (it.key().startsWith(QStringLiteral("io."))) continue;
     keys << it.key();
-    if (keys.size() >= 10) break;
+    if (keys.size() >= 14) break;
   }
   if (keys.isEmpty()) {
     auto* empty = new QLabel(QStringLiteral("（无 flow 变量）"));

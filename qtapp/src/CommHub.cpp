@@ -72,12 +72,12 @@ QString CommHub::expandTemplate(const QString& tmpl, const QVariantMap& vars) {
       out.replace(reps[i].start, reps[i].len, reps[i].val);
   };
   // ${flow.x} / ${x}
-  applyRe(QRegularExpression(QStringLiteral(R"(\$\{(?:flow\.)?([A-Za-z_][A-Za-z0-9_]*)\})")),
+  applyRe(QRegularExpression(QStringLiteral(R"(\$\{(?:flow\.)?([A-Za-z_][A-Za-z0-9_.]*)\})")),
           false);
   // {{name}} mustache — before single braces so {{x}} is not eaten as {x}
-  applyRe(QRegularExpression(QStringLiteral(R"(\{\{([A-Za-z_][A-Za-z0-9_]*)\}\})")), true);
+  applyRe(QRegularExpression(QStringLiteral(R"(\{\{([A-Za-z_][A-Za-z0-9_.]*)\}\})")), true);
   // Named braces {barcodeText} — skip pure numeric {0}/{1} (format_data indices).
-  applyRe(QRegularExpression(QStringLiteral(R"(\{([A-Za-z_][A-Za-z0-9_]*)\})")), true);
+  applyRe(QRegularExpression(QStringLiteral(R"(\{([A-Za-z_][A-Za-z0-9_.]*)\})")), true);
   return out;
 }
 

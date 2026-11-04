@@ -44,6 +44,10 @@ class HostStrip : public QWidget {
   void dedupeWatchKeys();
   int okStreak() const { return okStreak_; }
   int ngCount() const { return ngCount_; }
+  bool alarmOn() const { return alarmOn_; }
+  QString hostState() const { return hostState_; }
+  /** Last evaluated Host badge: OK / NG / ALARM / — */
+  QString lastResult() const { return lastResult_; }
 
  signals:
   void modeToggleRequested();
@@ -84,6 +88,7 @@ class HostStrip : public QWidget {
   int intervalMs_ = 200;
   int okStreak_ = 0;
   int ngCount_ = 0;
+  QString lastResult_ = QStringLiteral("—");
 };
 
 }  // namespace sieans_qt

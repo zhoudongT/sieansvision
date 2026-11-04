@@ -89,6 +89,7 @@ void HostStrip::setWatchKeys(const QStringList& keys) { watchKeys_ = keys; }
 
 void HostStrip::setAlarm(bool on, const QString& reason) {
   alarmOn_ = on;
+  if (on) lastResult_ = QStringLiteral("ALARM");
   alarmReason_ = reason;
   alarmLabel_->setVisible(on);
   alarmLabel_->setText(on ? QStringLiteral("ALARM %1").arg(reason.left(40))
@@ -197,22 +198,26 @@ void HostStrip::updateFromVars(const QVariantMap& vars, int codeCount, bool eval
   }
 
   if (alarmOn_) {
-    badge_->setText(QStringLiteral("ALARM"));
+    lastResult_ = QStringLiteral("ALARM");
+    badge_->setText(lastResult_);
     badge_->setStyleSheet(
         QStringLiteral("background:#c62828;color:#fff;border-radius:3px;"
                        "font-weight:700;font-size:14px;padding:4px;"));
   } else if (!ran) {
-    badge_->setText(QStringLiteral("—"));
+    lastResult_ = QStringLiteral("—");
+    badge_->setText(lastResult_);
     badge_->setStyleSheet(
         QStringLiteral("background:#3a3d42;color:#a8a8a8;border-radius:3px;"
                        "font-weight:700;font-size:14px;padding:4px;"));
   } else if (ok) {
-    badge_->setText(QStringLiteral("OK"));
+    lastResult_ = QStringLiteral("OK");
+    badge_->setText(lastResult_);
     badge_->setStyleSheet(
         QStringLiteral("background:#2d9b6c;color:#fff;border-radius:3px;"
                        "font-weight:700;font-size:14px;padding:4px;"));
   } else {
-    badge_->setText(QStringLiteral("NG"));
+    lastResult_ = QStringLiteral("NG");
+    badge_->setText(lastResult_);
     badge_->setStyleSheet(
         QStringLiteral("background:#e53935;color:#fff;border-radius:3px;"
                        "font-weight:700;font-size:14px;padding:4px;"));
