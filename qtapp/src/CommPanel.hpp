@@ -43,6 +43,8 @@ class CommPanel : public QWidget {
   void pushTcpEndpoint(bool emitSave);
   void syncFramingFromDoc(const QVariantMap& tcp);
   void rebuildVarChips();
+  void refreshDeviceTxChrome();
+  void refreshHostResultStrip();
   void insertFlowToken(const QString& key);
   void copyTranscriptFiltered();
   void toggleTcp();
@@ -99,6 +101,7 @@ class CommPanel : public QWidget {
   QLineEdit* txFilter_ = nullptr;
   QStringList transcriptAll_;
   QLabel* status_ = nullptr;
+  QLabel* hostResultStrip_ = nullptr;
   QLabel* detail_ = nullptr;
   QVariantMap vars_;
   QStringList payloadHistory_;

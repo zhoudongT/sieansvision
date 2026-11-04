@@ -98,6 +98,7 @@ bool CommHub::sendPayload(const QString& deviceName, const QString& payload,
                           QString* error) {
   Q_UNUSED(error);
   lastTx_ = payload;
+  lastTxDevice_ = deviceName;
   const QString proto = deviceProtocol(deviceName);
   appendTranscript(QStringLiteral("TX"),
                    QStringLiteral("%1 (%2): %3")
@@ -113,6 +114,8 @@ bool CommHub::sendPayload(const QString& deviceName, const QString& payload,
     appendTranscript(QStringLiteral("RX"),
                      QStringLiteral("%1 (echo): %2").arg(deviceName, payload.left(240)));
     emit payloadReceived(deviceName, payload);
+    noteDeviceTx(deviceName, payload, QStringLiteral("TX+echo"));
+    if (!ack_.isEmpty()) noteDeviceAck(deviceName, ack_);
   }
 
   // If TCP device or tcpReal active, also push on wire
@@ -121,6 +124,7 @@ bool CommHub::sendPayload(const QString& deviceName, const QString& payload,
       deviceName.contains(QStringLiteral("Tcp"), Qt::CaseInsensitive);
   if (wantTcp && tcpActive()) {
     sendTcpRaw(payload);
+    if (!local) noteDeviceTx(deviceName, payload, QStringLiteral("TX"));
   } else if (wantTcp && !tcpActive()) {
     // Soft TCP mirror when server not up: still echo so RX step is not empty.
     if (lastRx_.isEmpty()) {
@@ -129,8 +133,39 @@ bool CommHub::sendPayload(const QString& deviceName, const QString& payload,
                        QStringLiteral("%1 (soft-echo): %2").arg(deviceName, payload.left(240)));
       emit payloadReceived(deviceName, payload);
     }
+    if (!local) noteDeviceTx(deviceName, payload, QStringLiteral("TX soft"));
+  } else if (!local) {
+    noteDeviceTx(deviceName, payload, QStringLiteral("TX"));
   }
   return true;
+}
+
+CommHub::DeviceTxStatus CommHub::deviceTxStatus(const QString& name) const {
+  return deviceTx_.value(name);
+}
+
+void CommHub::noteDeviceTx(const QString& device, const QString& payload,
+                           const QString& status) {
+  if (device.isEmpty()) return;
+  DeviceTxStatus& st = deviceTx_[device];
+  st.lastTx = payload;
+  st.status = status;
+  st.txCount += 1;
+  st.lastMs = QDateTime::currentMSecsSinceEpoch();
+  emit deviceTxChanged(device);
+}
+
+void CommHub::noteDeviceAck(const QString& device, const QString& ack) {
+  if (device.isEmpty() || ack.isEmpty()) return;
+  DeviceTxStatus& st = deviceTx_[device];
+  st.lastAck = ack;
+  st.ackCount += 1;
+  st.lastMs = QDateTime::currentMSecsSinceEpoch();
+  if (st.status.startsWith(QLatin1String("TX")))
+    st.status = QStringLiteral("TX+ACK");
+  else
+    st.status = QStringLiteral("ACK");
+  emit deviceTxChanged(device);
 }
 
 void CommHub::sendTcpRaw(const QString& payload) {
@@ -338,6 +373,10 @@ void CommHub::onClientReadyRead() {
         framed.append(a);
         s->write(framed);
         s->flush();
+        const QString ackDev = lastTxDevice_.isEmpty()
+                                   ? QStringLiteral("TCP")
+                                   : lastTxDevice_;
+        noteDeviceAck(ackDev, ack_);
       }
     }
     // Cap runaway buffer (malformed peer)
@@ -358,6 +397,10 @@ void CommHub::onClientReadyRead() {
     else if (framing_ != QLatin1String("raw")) a.append('\n');
     s->write(a);
     s->flush();
+    const QString ackDev = lastTxDevice_.isEmpty()
+                               ? QStringLiteral("TCP")
+                               : lastTxDevice_;
+    noteDeviceAck(ackDev, ack_);
   }
 }
 

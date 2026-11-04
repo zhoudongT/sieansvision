@@ -18,6 +18,7 @@
 #include <QAbstractItemView>
 #include <QClipboard>
 #include <QGuiApplication>
+#include <QColor>
 #include <QEvent>
 #include <QMouseEvent>
 #include <QWheelEvent>
@@ -46,15 +47,23 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   status_->setObjectName(QStringLiteral("muted"));
   lay->addWidget(status_);
 
-  deviceTable_ = new QTableWidget(0, 5);
+  hostResultStrip_ = new QLabel(QStringLiteral("Host→Comm · —"));
+  hostResultStrip_->setObjectName(QStringLiteral("muted"));
+  hostResultStrip_->setWordWrap(true);
+  hostResultStrip_->setToolTip(
+      QStringLiteral("Host 判定结果与末次 TX · 来自 flow.hostResult / hostLastTx"));
+  lay->addWidget(hostResultStrip_);
+
+  deviceTable_ = new QTableWidget(0, 7);
   deviceTable_->setHorizontalHeaderLabels(
       {QStringLiteral("名称"), QStringLiteral("协议"), QStringLiteral("主机"),
-       QStringLiteral("端口"), QStringLiteral("启用")});
+       QStringLiteral("端口"), QStringLiteral("启用"), QStringLiteral("末次TX"),
+       QStringLiteral("状态")});
   deviceTable_->horizontalHeader()->setStretchLastSection(true);
   deviceTable_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
   deviceTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
   deviceTable_->setSelectionMode(QAbstractItemView::SingleSelection);
-  deviceTable_->setMaximumHeight(120);
+  deviceTable_->setMaximumHeight(140);
   deviceTable_->setToolTip(QStringLiteral("设备表 · F2 改名 · Insert/Ctrl+N 增 · Ctrl+D 复制 · Shift+Del 删 · Ctrl+X 剪切 · Ctrl+Shift+V 合并粘贴 · Alt+↑↓ 调序 · Ctrl+Home/End 置顶/底 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 按名排序 · Ctrl+Shift+U 按名去重 · Ctrl+A 全选 · Alt+Shift+E/D 全启/全停 · Enter 写回 · Space/Alt 启停 · Ctrl+Shift+J/O JSON · 中键端点 · 右键复制 · 双击备注"));
   deviceTable_->setStatusTip(QStringLiteral("通信 · 设备表 · LocalBus/TCP · 中键端点"));
   deviceTable_->installEventFilter(this);
@@ -339,6 +348,9 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
       else
         status_->setStyleSheet(QString());
     });
+    connect(hub_, &CommHub::deviceTxChanged, this, [this](const QString&) {
+      refreshDeviceTxChrome();
+    });
   }
 }
 
@@ -419,6 +431,8 @@ void CommPanel::refreshDevices() {
         new QTableWidgetItem(d.value(QStringLiteral("enabled"), true).toBool()
                                  ? QStringLiteral("是")
                                  : QStringLiteral("否")));
+    deviceTable_->setItem(row, 5, new QTableWidgetItem(QStringLiteral("—")));
+    deviceTable_->setItem(row, 6, new QTableWidgetItem(QStringLiteral("—")));
     deviceTable_->item(row, 0)->setData(Qt::UserRole, d.value(QStringLiteral("remark")));
   }
   if (deviceCombo_->count() == 0) {
@@ -426,8 +440,11 @@ void CommPanel::refreshDevices() {
     deviceTable_->insertRow(0);
     deviceTable_->setItem(0, 0, new QTableWidgetItem(QStringLiteral("LocalLoop")));
     deviceTable_->setItem(0, 1, new QTableWidgetItem(QStringLiteral("Local Bus")));
+    deviceTable_->setItem(0, 5, new QTableWidgetItem(QStringLiteral("—")));
+    deviceTable_->setItem(0, 6, new QTableWidgetItem(QStringLiteral("—")));
   }
-    if (deviceTable_) deviceTable_->blockSignals(blocked);
+  if (deviceTable_) deviceTable_->blockSignals(blocked);
+  refreshDeviceTxChrome();
   if (deviceTable_->rowCount() > 0) deviceTable_->selectRow(0);
 }
 
@@ -447,9 +464,21 @@ void CommPanel::onDeviceRowChanged() {
       deviceTable_->item(row, 2) ? deviceTable_->item(row, 2)->text() : QString();
   const QString port =
       deviceTable_->item(row, 3) ? deviceTable_->item(row, 3)->text() : QString();
-  detail_->setText(QStringLiteral("[%1] %2 · %3:%4 · %5")
+  QString txBits = QStringLiteral("TX —");
+  if (hub_) {
+    const auto st = hub_->deviceTxStatus(name);
+    if (!st.lastTx.isEmpty() || !st.status.isEmpty()) {
+      txBits = QStringLiteral("%1 · ×%2")
+                   .arg(st.status.isEmpty() ? QStringLiteral("TX") : st.status)
+                   .arg(st.txCount);
+      if (!st.lastAck.isEmpty())
+        txBits += QStringLiteral(" · ACK %1").arg(st.lastAck.left(24));
+    }
+  }
+  detail_->setText(QStringLiteral("[%1] %2 · %3:%4 · %5 · %6")
                        .arg(proto, name, host, port,
-                            remark.isEmpty() ? QStringLiteral("(无备注)") : remark));
+                            remark.isEmpty() ? QStringLiteral("(无备注)") : remark,
+                            txBits));
   if (!host.isEmpty()) hostEdit_->setText(host);
   if (!port.isEmpty() && port != QLatin1String("0")) portEdit_->setText(port);
 }
@@ -457,6 +486,87 @@ void CommPanel::onDeviceRowChanged() {
 void CommPanel::setFlowVars(const QVariantMap& vars) {
   vars_ = vars;
   rebuildVarChips();
+  refreshHostResultStrip();
+  refreshDeviceTxChrome();
+}
+
+void CommPanel::refreshHostResultStrip() {
+  if (!hostResultStrip_) return;
+  const QString result = vars_.value(QStringLiteral("hostResult")).toString();
+  const QString mode = vars_.value(QStringLiteral("hostMode")).toString();
+  const QString state = vars_.value(QStringLiteral("hostState")).toString();
+  const QString lastTx = vars_.value(QStringLiteral("hostLastTx")).toString();
+  const QString txDev = hub_ ? hub_->lastTxDevice() : QString();
+  QString line = QStringLiteral("Host→Comm · %1")
+                     .arg(result.isEmpty() ? QStringLiteral("—") : result);
+  if (!mode.isEmpty() || !state.isEmpty())
+    line += QStringLiteral(" · %1/%2")
+                .arg(mode.isEmpty() ? QStringLiteral("—") : mode,
+                     state.isEmpty() ? QStringLiteral("—") : state);
+  if (!txDev.isEmpty())
+    line += QStringLiteral(" · →%1").arg(txDev);
+  if (!lastTx.isEmpty())
+    line += QStringLiteral(" · %1").arg(lastTx.left(72));
+  hostResultStrip_->setText(line);
+  hostResultStrip_->setToolTip(
+      QStringLiteral("hostResult=%1 · hostMode=%2 · hostState=%3 · lastTxDevice=%4 · hostLastTx=%5")
+          .arg(result, mode, state, txDev, lastTx.left(200)));
+  if (result == QLatin1String("OK"))
+    hostResultStrip_->setStyleSheet(QStringLiteral("color:#3ecf8e;font-weight:600;"));
+  else if (result == QLatin1String("NG"))
+    hostResultStrip_->setStyleSheet(QStringLiteral("color:#e53935;font-weight:600;"));
+  else if (result == QLatin1String("ALARM"))
+    hostResultStrip_->setStyleSheet(QStringLiteral("color:#e0b84a;font-weight:600;"));
+  else
+    hostResultStrip_->setStyleSheet(QString());
+}
+
+void CommPanel::refreshDeviceTxChrome() {
+  if (!deviceTable_ || !hub_) return;
+  const bool blocked = deviceTable_->blockSignals(true);
+  for (int r = 0; r < deviceTable_->rowCount(); ++r) {
+    auto* nameItem = deviceTable_->item(r, 0);
+    if (!nameItem) continue;
+    const auto st = hub_->deviceTxStatus(nameItem->text());
+    const QString txSnippet =
+        st.lastTx.isEmpty() ? QStringLiteral("—") : st.lastTx.left(28);
+    QString status = st.status.isEmpty() ? QStringLiteral("—") : st.status;
+    if (st.ackCount > 0 && !st.lastAck.isEmpty() &&
+        !status.contains(QLatin1String("ACK")))
+      status = QStringLiteral("%1·ACK").arg(status);
+    auto* txItem = deviceTable_->item(r, 5);
+    if (!txItem) {
+      txItem = new QTableWidgetItem;
+      deviceTable_->setItem(r, 5, txItem);
+    }
+    txItem->setText(txSnippet);
+    txItem->setToolTip(st.lastTx.left(240));
+    auto* stItem = deviceTable_->item(r, 6);
+    if (!stItem) {
+      stItem = new QTableWidgetItem;
+      deviceTable_->setItem(r, 6, stItem);
+    }
+    const QString cell =
+        st.txCount > 0
+            ? QStringLiteral("%1 ×%2").arg(status).arg(st.txCount)
+            : status;
+    stItem->setText(cell);
+    QString tip = QStringLiteral("tx=%1 ack=%2 · ACK「%3」")
+                      .arg(st.txCount)
+                      .arg(st.ackCount)
+                      .arg(st.lastAck.left(80));
+    stItem->setToolTip(tip);
+    QColor fg(0x9e, 0x9e, 0x9e);
+    if (status.contains(QLatin1String("ACK")) ||
+        status.contains(QLatin1String("echo")))
+      fg = QColor(0x3e, 0xcf, 0x8e);
+    else if (status.contains(QLatin1String("soft")))
+      fg = QColor(0xe0, 0xb8, 0x4a);
+    else if (status.startsWith(QLatin1String("TX")))
+      fg = QColor(0x64, 0xb5, 0xf6);
+    stItem->setForeground(fg);
+  }
+  deviceTable_->blockSignals(blocked);
 }
 
 void CommPanel::insertFlowToken(const QString& key) {
@@ -1521,7 +1631,8 @@ void CommPanel::copySelectedDeviceEndpoint() {
   }
   const int row = items.first()->row();
   QStringList parts;
-  for (int c = 0; c < deviceTable_->columnCount(); ++c) {
+  const int copyCols = qMin(5, deviceTable_->columnCount());
+  for (int c = 0; c < copyCols; ++c) {
     auto* it = deviceTable_->item(row, c);
     parts << (it ? it->text().trimmed() : QString());
   }

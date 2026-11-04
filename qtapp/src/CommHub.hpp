@@ -41,6 +41,19 @@ class CommHub : public QObject {
   void clearTranscript();
   QString lastTx() const { return lastTx_; }
   QString lastRx() const { return lastRx_; }
+  QString lastTxDevice() const { return lastTxDevice_; }
+
+  /** Per-device last TX / ACK chrome (wave222). */
+  struct DeviceTxStatus {
+    QString lastTx;
+    QString lastAck;
+    QString status;  // TX | TX+echo | TX soft | TX+ACK | ACK
+    int txCount = 0;
+    int ackCount = 0;
+    qint64 lastMs = 0;
+  };
+  DeviceTxStatus deviceTxStatus(const QString& name) const;
+  QHash<QString, DeviceTxStatus> deviceTxMap() const { return deviceTx_; }
 
   /** Expand ${flow.x} / ${x} / {name} / {{name}} placeholders from vars map. */
   static QString expandTemplate(const QString& tmpl, const QVariantMap& vars);
@@ -49,6 +62,7 @@ class CommHub : public QObject {
   void transcriptChanged();
   void statusChanged(const QString& status);
   void payloadReceived(const QString& device, const QString& payload);
+  void deviceTxChanged(const QString& device);
 
  private slots:
   void onNewConnection();
@@ -60,11 +74,16 @@ class CommHub : public QObject {
  private:
   void appendTranscript(const QString& tag, const QString& line);
   void sendTcpRaw(const QString& payload);
+  void noteDeviceTx(const QString& device, const QString& payload,
+                    const QString& status);
+  void noteDeviceAck(const QString& device, const QString& ack);
 
   QVariantMap cm_;
   QStringList transcript_;
   QString lastTx_;
   QString lastRx_;
+  QString lastTxDevice_;
+  QHash<QString, DeviceTxStatus> deviceTx_;
   QString tcpStatus_ = QStringLiteral("idle");
   QString framing_ = QStringLiteral("lf");
   QString ack_;

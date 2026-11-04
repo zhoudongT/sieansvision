@@ -2026,12 +2026,25 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
   if (!smoke.isEmpty()) {
     QFile f(QString::fromUtf8(smoke));
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+      QString txDevSummary;
+      if (comm_hub_) {
+        const auto map = comm_hub_->deviceTxMap();
+        QStringList bits;
+        for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
+          bits << QStringLiteral("%1:%2x%3")
+                      .arg(it.key(), it.value().status)
+                      .arg(it.value().txCount);
+          if (bits.size() >= 4) break;
+        }
+        txDevSummary = bits.join(QLatin1Char(','));
+      }
       const QString line =
           QStringLiteral(
               "codes=%1 ms=%2 w=%3 h=%4 passGate=%5 barcodeText=%6 "
               "formatted=%7 lastRecv=%8 urlOk=%9 tcp=%10 "
               "hostResult=%11 hostMode=%12 hostState=%13 "
-              "hostLastTx=%14 ioHostResult=%15\n")
+              "hostLastTx=%14 ioHostResult=%15 lastTxDevice=%16 "
+              "deviceTx=%17\n")
               .arg(hits.size())
               .arg(decodeMs, 0, 'f', 2)
               .arg(src.width())
@@ -2050,7 +2063,9 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
               .arg(flow_vars_.value(QStringLiteral("hostState")).toString())
               .arg(flow_vars_.value(QStringLiteral("hostLastTx")).toString()
                        .left(100).replace(QLatin1Char('\n'), QLatin1Char('|')))
-              .arg(flow_vars_.value(QStringLiteral("io.HostResult")).toString());
+              .arg(flow_vars_.value(QStringLiteral("io.HostResult")).toString())
+              .arg(comm_hub_ ? comm_hub_->lastTxDevice() : QString())
+              .arg(txDevSummary.left(120));
       f.write(line.toUtf8());
     }
   }
