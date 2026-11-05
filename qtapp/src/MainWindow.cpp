@@ -524,7 +524,10 @@ void MainWindow::buildUi() {
       connect(host_strip_, &HostStrip::stopRequested, this, &MainWindow::onStopRun);
   connect(host_strip_, &HostStrip::clearAlarmRequested, this, [this]() {
     if (host_strip_) host_strip_->setAlarm(false);
+    document_.setAlarmLatched(false);
     if (host_sm_) {
+      document_.setAlarmHistory(host_sm_->alarmHistoryLines());
+      document_.setRecipeLocked(run_mode_);
       if (continuous_run_ && !run_paused_)
         host_sm_->applyState(QStringLiteral("Running"));
       else if (run_paused_)
@@ -532,7 +535,11 @@ void MainWindow::buildUi() {
       else
         host_sm_->applyState(QStringLiteral("Idle"));
     }
-    showStatus(QStringLiteral("报警已清除 · Host Esc"));
+    publishHostToFlowVars();
+    applyFlowIoBindings();
+    if (var_watch_) var_watch_->setVariables(flow_vars_);
+    if (comm_panel_) comm_panel_->setFlowVars(flow_vars_);
+    showStatus(QStringLiteral("报警已清除 · 锁存已写回"));
   });
   connect(host_strip_, &HostStrip::runOnceRequested, this, [this]() {
     onRunOnce();
@@ -1202,6 +1209,7 @@ void MainWindow::applyDocumentToUi() {
       const QStringList ah = document_.alarmHistory();
       if (!ah.isEmpty()) host_sm_->setAlarmHistoryLines(ah);
       host_sm_->setRecipeLocked(run_mode_);
+      if (host_strip_) host_strip_->setRecipeLocked(run_mode_);
       if (document_.alarmLatched()) {
         QString why = document_.alarmLatchReason();
         if (why.isEmpty()) why = host_sm_->lastAlarmReason();
@@ -1340,6 +1348,7 @@ void MainWindow::fireHostCommEvents(const QString& resultTag) {
       document_.commManager().value(QStringLiteral("sendEvents")).toList();
   if (events.isEmpty()) return;
   int n = 0;
+  QStringList txDevices;
   for (const QVariant& evV : events) {
     const QVariantMap ev = evV.toMap();
     const QString onRaw =
@@ -1372,12 +1381,21 @@ void MainWindow::fireHostCommEvents(const QString& resultTag) {
       continue;
     }
     ++n;
+    if (!txDevices.contains(device)) txDevices << device;
     flow_vars_.insert(QStringLiteral("commPayload"), msg);
     flow_vars_.insert(QStringLiteral("host.lastTx"), msg);
     flow_vars_.insert(QStringLiteral("hostLastTx"), msg);
+    flow_vars_.insert(QStringLiteral("hostLastTxDevice"), device);
   }
   if (n > 0) {
-    logResult(QStringLiteral("Host→Comm sendEvents ×%1 · %2").arg(n).arg(resultTag));
+    flow_vars_.insert(QStringLiteral("hostTxDevices"),
+                      txDevices.join(QLatin1Char(',')));
+    flow_vars_.insert(QStringLiteral("host.txDevices"),
+                      txDevices.join(QLatin1Char(',')));
+    logResult(QStringLiteral("Host→Comm sendEvents ×%1 · %2 · %3")
+                  .arg(n)
+                  .arg(resultTag)
+                  .arg(txDevices.join(QLatin1Char('+'))));
     if (comm_panel_) comm_panel_->setFlowVars(flow_vars_);
     if (var_watch_) var_watch_->setVariables(flow_vars_);
   }
@@ -1516,6 +1534,7 @@ void MainWindow::updateRunChrome() {
   if (host_sm_) host_sm_->setRecipeLocked(run_mode_);
   const QString hostState = host_sm_ ? host_sm_->state() : QStringLiteral("Idle");
   if (host_strip_) {
+    host_strip_->setRecipeLocked(run_mode_);
     host_strip_->setIntervalMs(document_.runIntervalMs() > 0 ? document_.runIntervalMs() : 200);
     host_strip_->setRunChrome(modeText, hostState, run_cycle_);
   }
@@ -2094,16 +2113,32 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
     QFile f(QString::fromUtf8(smoke));
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
       QString peerProbe = QStringLiteral("skipped");
+      QString okPeerTx = QStringLiteral("skipped");
       int peerAck = 0;
+      int stripLock = host_strip_ && host_strip_->recipeLocked() ? 1 : 0;
       QString peerEp;
+      QString hostTxDevs =
+          flow_vars_.value(QStringLiteral("hostTxDevices")).toString();
       if (comm_hub_) {
         QString detail;
         const bool ok = comm_hub_->probeLocalPeerAck(&detail);
         peerProbe = ok ? QStringLiteral("ok:%1").arg(detail)
                        : QStringLiteral("fail:%1").arg(detail);
+        QString txDetail;
+        const QString okPayload =
+            QStringLiteral("HOST OK result=%1 pass=%2 lock=%3 smoke=1")
+                .arg(flow_vars_.value(QStringLiteral("hostResult")).toString())
+                .arg(flow_vars_.value(QStringLiteral("passGate")).toString())
+                .arg(flow_vars_.value(QStringLiteral("recipeLocked")).toString());
+        const bool txOk = comm_hub_->smokePeerHostTx(okPayload, &txDetail);
+        okPeerTx = txOk ? QStringLiteral("ok:%1").arg(txDetail)
+                        : QStringLiteral("fail:%1").arg(txDetail);
         const QString tcpDev = comm_hub_->primaryTcpDevice();
         peerAck = comm_hub_->deviceTxStatus(tcpDev).peerAckCount;
         peerEp = comm_hub_->lastPeerEndpoint();
+        if (hostTxDevs.isEmpty())
+          hostTxDevs =
+              flow_vars_.value(QStringLiteral("hostTxDevices")).toString();
       }
       QString txDevSummary;
       if (comm_hub_) {
@@ -2126,7 +2161,8 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
               "hostLastTx=%14 ioHostResult=%15 lastTxDevice=%16 "
               "deviceTx=%17 recipeLocked=%18 alarmHist=%19 "
               "alarmLatched=%20 alarmLast=%21 "
-              "peerAck=%22 peerProbe=%23 lastPeer=%24\n")
+              "peerAck=%22 peerProbe=%23 lastPeer=%24 "
+              "okPeerTx=%25 hostTxDevices=%26 stripLock=%27\n")
               .arg(hits.size())
               .arg(decodeMs, 0, 'f', 2)
               .arg(src.width())
@@ -2161,7 +2197,11 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
               .arg(peerAck)
               .arg(peerProbe.left(120).replace(QLatin1Char('\n'),
                                                QLatin1Char('|')))
-              .arg(peerEp.left(64));
+              .arg(peerEp.left(64))
+              .arg(okPeerTx.left(140).replace(QLatin1Char('\n'),
+                                              QLatin1Char('|')))
+              .arg(hostTxDevs.left(80))
+              .arg(stripLock);
       f.write(line.toUtf8());
     }
   }

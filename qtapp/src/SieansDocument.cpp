@@ -357,6 +357,14 @@ void SieansDocument::seedGentlQrDemo() {
                                        "pass=${flow.passGate} "
                                        "count=${flow.barcodeCount} "
                                        "mode=${flow.hostMode}")}},
+           QVariantMap{{QStringLiteral("device"), QStringLiteral("TcpRealLoopback")},
+                       {QStringLiteral("on"), QStringLiteral("ok")},
+                       {QStringLiteral("message"),
+                        QStringLiteral("HOST OK result=${flow.hostResult} "
+                                       "pass=${flow.passGate} "
+                                       "count=${flow.barcodeCount} "
+                                       "lock=${flow.recipeLocked} "
+                                       "mode=${flow.hostMode}")}},
            QVariantMap{{QStringLiteral("device"), QStringLiteral("LocalLoop")},
                        {QStringLiteral("on"), QStringLiteral("ng")},
                        {QStringLiteral("message"),
@@ -365,10 +373,20 @@ void SieansDocument::seedGentlQrDemo() {
                                        "mode=${flow.hostMode} "
                                        "streak=${flow.hostOkStreak}")}},
            QVariantMap{{QStringLiteral("device"), QStringLiteral("TcpRealLoopback")},
+                       {QStringLiteral("on"), QStringLiteral("ng")},
+                       {QStringLiteral("message"),
+                        QStringLiteral("HOST NG result=${flow.hostResult} "
+                                       "pass=${flow.passGate} "
+                                       "lock=${flow.recipeLocked} "
+                                       "mode=${flow.hostMode} "
+                                       "streak=${flow.hostOkStreak}")}},
+           QVariantMap{{QStringLiteral("device"), QStringLiteral("TcpRealLoopback")},
                        {QStringLiteral("on"), QStringLiteral("alarm")},
                        {QStringLiteral("message"),
                         QStringLiteral("HOST ALARM state=${flow.hostState} "
                                        "mode=${flow.hostMode} "
+                                       "lock=${flow.recipeLocked} "
+                                       "latched=${flow.alarmLatched} "
                                        "result=${flow.hostResult}")}},
        }},
   };

@@ -557,6 +557,68 @@ bool CommHub::probeLocalPeerAck(QString* detail) {
   return acked;
 }
 
+bool CommHub::smokePeerHostTx(const QString& payload, QString* detail) {
+  if (!server_ || !server_->isListening() || listenPort_ == 0) {
+    if (detail) *detail = QStringLiteral("no-listen");
+    return false;
+  }
+  if (payload.isEmpty()) {
+    if (detail) *detail = QStringLiteral("empty-payload");
+    return false;
+  }
+  const QString tcpDev = primaryTcpDevice();
+  const int txBefore = deviceTx_.value(tcpDev).txCount;
+  const int peersBefore = livePeerCount();
+  QTcpSocket sock;
+  const QString host =
+      listenHost_.isEmpty() ? QStringLiteral("127.0.0.1") : listenHost_;
+  sock.connectToHost(QHostAddress(host), listenPort_);
+  if (!sock.waitForConnected(800)) {
+    if (detail)
+      *detail = QStringLiteral("connect-fail:%1").arg(sock.errorString());
+    return false;
+  }
+  // Let onNewConnection register peer before TX.
+  for (int i = 0; i < 20; ++i) {
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    if (livePeerCount() > peersBefore) break;
+  }
+  QString err;
+  const bool sent = sendPayload(tcpDev, payload, &err);
+  QByteArray got;
+  for (int i = 0; i < 40; ++i) {
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 25);
+    if (sock.waitForReadyRead(50)) {
+      got.append(sock.readAll());
+      if (!got.isEmpty()) break;
+    }
+  }
+  sock.disconnectFromHost();
+  if (sock.state() != QAbstractSocket::UnconnectedState)
+    sock.waitForDisconnected(300);
+  for (int i = 0; i < 10; ++i)
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+
+  const auto st = deviceTx_.value(tcpDev);
+  const bool ok = sent && st.txCount > txBefore &&
+                  (st.status.contains(QLatin1String("peers")) ||
+                   st.status.contains(QLatin1String("TX")) ||
+                   st.peerAckCount > 0);
+  if (detail) {
+    *detail =
+        QStringLiteral("%1 dev=%2 tx=%3→%4 status=%5 peer=%6 rx=%7 err=%8")
+            .arg(ok ? QStringLiteral("ok") : QStringLiteral("fail"), tcpDev)
+            .arg(txBefore)
+            .arg(st.txCount)
+            .arg(st.status.isEmpty() ? QStringLiteral("-") : st.status)
+            .arg(lastPeerEndpoint_.isEmpty() ? QStringLiteral("-")
+                                             : lastPeerEndpoint_)
+            .arg(QString::fromUtf8(got).trimmed().left(40))
+            .arg(err.isEmpty() ? QStringLiteral("-") : err);
+  }
+  return ok;
+}
+
 void CommHub::onSocketError() {
   QTcpSocket* s = qobject_cast<QTcpSocket*>(sender());
   const QString err = s ? s->errorString() : QStringLiteral("socket error");

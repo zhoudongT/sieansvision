@@ -62,6 +62,8 @@ class CommHub : public QObject {
   QString lastPeerEndpoint() const { return lastPeerEndpoint_; }
   /** Smoke/helper: connect loopback peer, send probe, expect tcpReal.ack reply. */
   bool probeLocalPeerAck(QString* detail = nullptr);
+  /** Smoke/helper: hold loopback peer, TX payload via primaryTcpDevice (OK path). */
+  bool smokePeerHostTx(const QString& payload, QString* detail = nullptr);
 
   /** Expand ${flow.x} / ${x} / {name} / {{name}} placeholders from vars map. */
   static QString expandTemplate(const QString& tmpl, const QVariantMap& vars);

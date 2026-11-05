@@ -18,6 +18,9 @@ class HostStrip : public QWidget {
   void updateFromVars(const QVariantMap& vars, int codeCount = -1, bool evaluated = false);
   void setWatchKeys(const QStringList& keys);
   void setAlarm(bool on, const QString& reason = {});
+  /** Co-bind recipeLocked (run mode) onto Host strip lock chip. */
+  void setRecipeLocked(bool locked);
+  bool recipeLocked() const { return recipeLocked_; }
   /** 设计态 / 运行态 / 连续 / 暂停 — thin HMI chrome. */
   void setRunChrome(const QString& mode, const QString& hostState, int cycle = 0);
   void setTcpStatus(const QString& status);
@@ -69,16 +72,19 @@ class HostStrip : public QWidget {
  private:
   void refreshChips(const QVariantMap& vars);
   void refreshCycleChip();
+  void refreshAlarmLockChrome();
 
   QLabel* badge_ = nullptr;
   QLabel* detail_ = nullptr;
   QLabel* chips_ = nullptr;
   QLabel* alarmLabel_ = nullptr;
   QLabel* modeChip_ = nullptr;
+  QLabel* lockChip_ = nullptr;
   QLabel* cycleChip_ = nullptr;
   QStringList watchKeys_;
   QVariantMap lastVars_;
   bool alarmOn_ = false;
+  bool recipeLocked_ = false;
   QString alarmReason_;
   QString tcpStatus_;
   QString hostState_ = QStringLiteral("Idle");

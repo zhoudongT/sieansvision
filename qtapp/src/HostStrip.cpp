@@ -55,8 +55,16 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   alarmLabel_->setStyleSheet(
       QStringLiteral("background:#c62828;color:#fff;border-radius:3px;"
                      "font-weight:700;padding:2px 8px;"));
+  lockChip_ = new QLabel(QStringLiteral("锁"));
+  lockChip_->setVisible(false);
+  lockChip_->setStyleSheet(
+      QStringLiteral("background:#e67a2e;color:#fff;border-radius:3px;"
+                     "padding:3px 8px;font-size:11px;font-weight:700;"));
+  lockChip_->setToolTip(QStringLiteral("配方锁 · 运行态 · 单击切换设计/运行"));
+  lockChip_->setCursor(Qt::PointingHandCursor);
   row->addWidget(badge_);
   row->addWidget(modeChip_);
+  row->addWidget(lockChip_);
   row->addWidget(cycleChip_);
   row->addWidget(detail_, 1);
   row->addWidget(alarmLabel_);
@@ -72,6 +80,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   detail_->setToolTip(QStringLiteral("count/text/RX/urlOk/tcp/良率 摘要 · framing lf/crlf/raw/len4 见 tcp= · 双击复制全文 · 中键复制连OK/NG · 右键/Ctrl+Shift+C 运行统计 · 悬停看全文"));
   badge_->installEventFilter(this);
   modeChip_->installEventFilter(this);
+  if (lockChip_) lockChip_->installEventFilter(this);
   cycleChip_->installEventFilter(this);
   detail_->installEventFilter(this);
   chips_ = new QLabel;
@@ -91,9 +100,45 @@ void HostStrip::setAlarm(bool on, const QString& reason) {
   alarmOn_ = on;
   if (on) lastResult_ = QStringLiteral("ALARM");
   alarmReason_ = reason;
-  alarmLabel_->setVisible(on);
-  alarmLabel_->setText(on ? QStringLiteral("ALARM %1").arg(reason.left(40))
-                          : QString());
+  refreshAlarmLockChrome();
+}
+
+void HostStrip::setRecipeLocked(bool locked) {
+  recipeLocked_ = locked;
+  if (lockChip_) {
+    lockChip_->setVisible(locked);
+    lockChip_->setText(locked ? QStringLiteral("锁") : QString());
+  }
+  refreshAlarmLockChrome();
+}
+
+void HostStrip::refreshAlarmLockChrome() {
+  if (!alarmLabel_) return;
+  alarmLabel_->setVisible(alarmOn_);
+  if (!alarmOn_) {
+    alarmLabel_->setText({});
+    alarmLabel_->setStyleSheet(
+        QStringLiteral("background:#c62828;color:#fff;border-radius:3px;"
+                       "font-weight:700;padding:2px 8px;"));
+    return;
+  }
+  QString text = QStringLiteral("ALARM");
+  if (recipeLocked_) text += QStringLiteral(" · 锁");
+  if (!alarmReason_.isEmpty())
+    text += QStringLiteral(" %1").arg(alarmReason_.left(28));
+  alarmLabel_->setText(text);
+  // Locked+alarm: amber-red to show co-bind without new tip spam.
+  alarmLabel_->setStyleSheet(
+      recipeLocked_
+          ? QStringLiteral("background:#b71c1c;color:#ffe082;border-radius:3px;"
+                           "font-weight:700;padding:2px 8px;"
+                           "border:1px solid #e67a2e;")
+          : QStringLiteral("background:#c62828;color:#fff;border-radius:3px;"
+                           "font-weight:700;padding:2px 8px;"));
+  alarmLabel_->setToolTip(
+      recipeLocked_
+          ? QStringLiteral("报警锁存 · 配方锁开 · Host 清报警 / F8 解锁")
+          : QStringLiteral("报警锁存 · Host 清报警解除"));
 }
 
 void HostStrip::setRunChrome(const QString& mode, const QString& hostState, int cycle) {
@@ -241,6 +286,16 @@ void HostStrip::updateFromVars(const QVariantMap& vars, int codeCount, bool eval
   if (!ioOut.isEmpty()) detail += QStringLiteral(" · I/O.Result=%1").arg(ioOut.left(24));
   if (!tcpStatus_.isEmpty())
     detail += QStringLiteral(" · tcp=%1").arg(tcpStatus_.left(36));
+  const bool vLock =
+      recipeLocked_ ||
+      vars.value(QStringLiteral("recipeLocked")).toInt() != 0 ||
+      vars.value(QStringLiteral("host.recipeLocked")).toInt() != 0;
+  const bool vLatch =
+      alarmOn_ ||
+      vars.value(QStringLiteral("alarmLatched")).toInt() != 0 ||
+      vars.value(QStringLiteral("host.alarmLatched")).toInt() != 0;
+  if (vLock) detail += QStringLiteral(" · 锁");
+  if (vLatch) detail += QStringLiteral(" · 锁存");
   if (ran) {
     const int total = okStreak_ + ngCount_;
     const double yld = total > 0 ? (100.0 * okStreak_ / total) : 0.0;
@@ -354,6 +409,10 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       return true;
     }
     if (me->button() != Qt::LeftButton) return QWidget::eventFilter(obj, event);
+    if (obj == lockChip_) {
+      emit modeToggleRequested();
+      return true;
+    }
     if (obj == modeChip_) {
       if (me->modifiers() & Qt::AltModifier) {
         emit pauseRequested();
