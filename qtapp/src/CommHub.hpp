@@ -43,17 +43,25 @@ class CommHub : public QObject {
   QString lastRx() const { return lastRx_; }
   QString lastTxDevice() const { return lastTxDevice_; }
 
-  /** Per-device last TX / ACK chrome (wave222). */
+  /** Per-device last TX / ACK chrome (wave222+224 peer ACK). */
   struct DeviceTxStatus {
     QString lastTx;
     QString lastAck;
-    QString status;  // TX | TX+echo | TX soft | TX+ACK | ACK
+    QString lastPeer;   // live TCP peer endpoint ip:port
+    QString lastPeerRx; // last RX attributed to this device from a peer
+    QString status;  // TX | TX+echo | TX soft | TX+ACK | peerACK | ACK
     int txCount = 0;
     int ackCount = 0;
+    int peerAckCount = 0;
     qint64 lastMs = 0;
   };
   DeviceTxStatus deviceTxStatus(const QString& name) const;
   QHash<QString, DeviceTxStatus> deviceTxMap() const { return deviceTx_; }
+  QString primaryTcpDevice() const;
+  int livePeerCount() const;
+  QString lastPeerEndpoint() const { return lastPeerEndpoint_; }
+  /** Smoke/helper: connect loopback peer, send probe, expect tcpReal.ack reply. */
+  bool probeLocalPeerAck(QString* detail = nullptr);
 
   /** Expand ${flow.x} / ${x} / {name} / {{name}} placeholders from vars map. */
   static QString expandTemplate(const QString& tmpl, const QVariantMap& vars);
@@ -76,14 +84,20 @@ class CommHub : public QObject {
   void sendTcpRaw(const QString& payload);
   void noteDeviceTx(const QString& device, const QString& payload,
                     const QString& status);
-  void noteDeviceAck(const QString& device, const QString& ack);
+  void noteDeviceAck(const QString& device, const QString& ack,
+                     const QString& peer = QString());
+  void handleFramedPayload(QTcpSocket* s, const QString& text);
+  QString peerEndpointOf(QTcpSocket* s) const;
+  QByteArray framePayload(const QString& payload) const;
 
   QVariantMap cm_;
   QStringList transcript_;
   QString lastTx_;
   QString lastRx_;
   QString lastTxDevice_;
+  QString lastPeerEndpoint_;
   QHash<QString, DeviceTxStatus> deviceTx_;
+  QHash<QTcpSocket*, QString> peerKeys_;
   QString tcpStatus_ = QStringLiteral("idle");
   QString framing_ = QStringLiteral("lf");
   QString ack_;

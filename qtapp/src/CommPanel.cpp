@@ -467,12 +467,16 @@ void CommPanel::onDeviceRowChanged() {
   QString txBits = QStringLiteral("TX —");
   if (hub_) {
     const auto st = hub_->deviceTxStatus(name);
-    if (!st.lastTx.isEmpty() || !st.status.isEmpty()) {
+    if (!st.lastTx.isEmpty() || !st.status.isEmpty() || st.peerAckCount > 0) {
       txBits = QStringLiteral("%1 · ×%2")
                    .arg(st.status.isEmpty() ? QStringLiteral("TX") : st.status)
                    .arg(st.txCount);
       if (!st.lastAck.isEmpty())
         txBits += QStringLiteral(" · ACK %1").arg(st.lastAck.left(24));
+      if (st.peerAckCount > 0)
+        txBits += QStringLiteral(" · peerACK×%1").arg(st.peerAckCount);
+      if (!st.lastPeer.isEmpty())
+        txBits += QStringLiteral(" @%1").arg(st.lastPeer);
     }
   }
   detail_->setText(QStringLiteral("[%1] %2 · %3:%4 · %5 · %6")
@@ -507,10 +511,25 @@ void CommPanel::refreshHostResultStrip() {
     line += QStringLiteral(" · →%1").arg(txDev);
   if (!lastTx.isEmpty())
     line += QStringLiteral(" · %1").arg(lastTx.left(72));
+  if (hub_) {
+    const int peers = hub_->livePeerCount();
+    const QString peerEp = hub_->lastPeerEndpoint();
+    if (peers > 0)
+      line += QStringLiteral(" · peers %1").arg(peers);
+    if (!peerEp.isEmpty())
+      line += QStringLiteral(" · peer %1").arg(peerEp);
+    const QString tcpDev = hub_->primaryTcpDevice();
+    const auto pst = hub_->deviceTxStatus(tcpDev);
+    if (pst.peerAckCount > 0)
+      line += QStringLiteral(" · peerACK×%1").arg(pst.peerAckCount);
+  }
   hostResultStrip_->setText(line);
   hostResultStrip_->setToolTip(
-      QStringLiteral("hostResult=%1 · hostMode=%2 · hostState=%3 · lastTxDevice=%4 · hostLastTx=%5")
-          .arg(result, mode, state, txDev, lastTx.left(200)));
+      QStringLiteral("hostResult=%1 · hostMode=%2 · hostState=%3 · lastTxDevice=%4 · "
+                     "hostLastTx=%5 · peers=%6 · lastPeer=%7")
+          .arg(result, mode, state, txDev, lastTx.left(200))
+          .arg(hub_ ? hub_->livePeerCount() : 0)
+          .arg(hub_ ? hub_->lastPeerEndpoint() : QString()));
   if (result == QLatin1String("OK"))
     hostResultStrip_->setStyleSheet(QStringLiteral("color:#3ecf8e;font-weight:600;"));
   else if (result == QLatin1String("NG"))
@@ -546,19 +565,28 @@ void CommPanel::refreshDeviceTxChrome() {
       stItem = new QTableWidgetItem;
       deviceTable_->setItem(r, 6, stItem);
     }
-    const QString cell =
+    QString cell =
         st.txCount > 0
             ? QStringLiteral("%1 ×%2").arg(status).arg(st.txCount)
             : status;
+    if (st.peerAckCount > 0)
+      cell += QStringLiteral(" ·p%1").arg(st.peerAckCount);
     stItem->setText(cell);
-    QString tip = QStringLiteral("tx=%1 ack=%2 · ACK「%3」")
+    QString tip = QStringLiteral("tx=%1 ack=%2 peerAck=%3 · ACK「%4」")
                       .arg(st.txCount)
                       .arg(st.ackCount)
+                      .arg(st.peerAckCount)
                       .arg(st.lastAck.left(80));
+    if (!st.lastPeer.isEmpty())
+      tip += QStringLiteral(" · peer %1").arg(st.lastPeer);
+    if (!st.lastPeerRx.isEmpty())
+      tip += QStringLiteral(" · rx「%1」").arg(st.lastPeerRx.left(60));
     stItem->setToolTip(tip);
     QColor fg(0x9e, 0x9e, 0x9e);
-    if (status.contains(QLatin1String("ACK")) ||
-        status.contains(QLatin1String("echo")))
+    if (st.peerAckCount > 0 || status.contains(QLatin1String("peerACK")))
+      fg = QColor(0x26, 0xa6, 0x9a);
+    else if (status.contains(QLatin1String("ACK")) ||
+             status.contains(QLatin1String("echo")))
       fg = QColor(0x3e, 0xcf, 0x8e);
     else if (status.contains(QLatin1String("soft")))
       fg = QColor(0xe0, 0xb8, 0x4a);

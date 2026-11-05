@@ -2093,14 +2093,27 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
   if (!smoke.isEmpty()) {
     QFile f(QString::fromUtf8(smoke));
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+      QString peerProbe = QStringLiteral("skipped");
+      int peerAck = 0;
+      QString peerEp;
+      if (comm_hub_) {
+        QString detail;
+        const bool ok = comm_hub_->probeLocalPeerAck(&detail);
+        peerProbe = ok ? QStringLiteral("ok:%1").arg(detail)
+                       : QStringLiteral("fail:%1").arg(detail);
+        const QString tcpDev = comm_hub_->primaryTcpDevice();
+        peerAck = comm_hub_->deviceTxStatus(tcpDev).peerAckCount;
+        peerEp = comm_hub_->lastPeerEndpoint();
+      }
       QString txDevSummary;
       if (comm_hub_) {
         const auto map = comm_hub_->deviceTxMap();
         QStringList bits;
         for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
-          bits << QStringLiteral("%1:%2x%3")
+          bits << QStringLiteral("%1:%2x%3p%4")
                       .arg(it.key(), it.value().status)
-                      .arg(it.value().txCount);
+                      .arg(it.value().txCount)
+                      .arg(it.value().peerAckCount);
           if (bits.size() >= 4) break;
         }
         txDevSummary = bits.join(QLatin1Char(','));
@@ -2112,7 +2125,8 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
               "hostResult=%11 hostMode=%12 hostState=%13 "
               "hostLastTx=%14 ioHostResult=%15 lastTxDevice=%16 "
               "deviceTx=%17 recipeLocked=%18 alarmHist=%19 "
-              "alarmLatched=%20 alarmLast=%21\n")
+              "alarmLatched=%20 alarmLast=%21 "
+              "peerAck=%22 peerProbe=%23 lastPeer=%24\n")
               .arg(hits.size())
               .arg(decodeMs, 0, 'f', 2)
               .arg(src.width())
@@ -2143,7 +2157,11 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
               .arg((host_sm_ ? host_sm_->lastAlarmReason()
                              : document_.alarmLatchReason())
                        .left(80)
-                       .replace(QLatin1Char('\n'), QLatin1Char('|')));
+                       .replace(QLatin1Char('\n'), QLatin1Char('|')))
+              .arg(peerAck)
+              .arg(peerProbe.left(120).replace(QLatin1Char('\n'),
+                                               QLatin1Char('|')))
+              .arg(peerEp.left(64));
       f.write(line.toUtf8());
     }
   }
