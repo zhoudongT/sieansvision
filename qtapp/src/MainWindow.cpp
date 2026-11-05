@@ -2,6 +2,7 @@
 #include "Theme.hpp"
 #include "ExprEval.hpp"
 #include "TemplateMatch.hpp"
+#include "CaliperMeasure.hpp"
 #include "FlowIoDialog.hpp"
 #include <QInputDialog>
 #include <QShortcut>
@@ -2003,6 +2004,84 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
         result_table_->setItem(row, 2, new QTableWidgetItem(QStringLiteral("OCR")));
         ++i;
       }
+    } else if (op == QLatin1String("caliper") ||
+               op == QLatin1String("measure")) {
+      const auto t0 = std::chrono::steady_clock::now();
+      const CaliperResult cr = runCaliper(working, step->params);
+      const double calMs = std::chrono::duration<double, std::milli>(
+                               std::chrono::steady_clock::now() - t0)
+                               .count();
+      algoMs += calMs;
+      flow_vars_.insert(QStringLiteral("caliperDist"), cr.distPx);
+      flow_vars_.insert(QStringLiteral("caliperEdge0"), cr.edge0);
+      flow_vars_.insert(QStringLiteral("caliperEdge1"), cr.edge1);
+      flow_vars_.insert(QStringLiteral("measureMm"), cr.distMm);
+      flow_vars_.insert(QStringLiteral("caliperMm"), cr.distMm);
+      const double minPx =
+          step->params.value(QStringLiteral("judgeMinPx"), 1.0).toDouble();
+      const double maxPx =
+          step->params.value(QStringLiteral("judgeMaxPx"), 1e9).toDouble();
+      const bool inRange = cr.ok && cr.distPx >= minPx && cr.distPx <= maxPx;
+      const bool gate = inRange;
+      flow_vars_.insert(QStringLiteral("caliperOk"), gate ? 1 : 0);
+      {
+        StepSnap snap;
+        snap.count = cr.ok ? 2 : 0;
+        snap.ok = gate;
+        snap.matches = cr.ok ? 1 : 0;
+        snap.score = cr.distPx;
+        snap.confidence = (cr.strength0 + cr.strength1) * 0.5;
+        snap.text = QStringLiteral("%1 px").arg(cr.distPx, 0, 'f', 1);
+        snap.fields.insert(QStringLiteral("distPx"), cr.distPx);
+        snap.fields.insert(QStringLiteral("distMm"), cr.distMm);
+        step_snaps.insert(id, snap);
+      }
+      ok = gate || !step->params.value(QStringLiteral("judgeEnable"), true).toBool();
+      note = QStringLiteral("卡尺 %1 px · %2 mm · %3 ms · %4")
+                 .arg(cr.distPx, 0, 'f', 1)
+                 .arg(cr.distMm, 0, 'f', 3)
+                 .arg(calMs, 0, 'f', 1)
+                 .arg(cr.note);
+      if (step->params.value(QStringLiteral("showOverlay"), true).toBool() &&
+          cr.ok) {
+        OverlayHit o;
+        o.text = QStringLiteral("%1px").arg(cr.distPx, 0, 'f', 1);
+        o.format = QStringLiteral("CALIPER");
+        // box around the two edge points + scan line
+        const qreal pad = 6.0;
+        const qreal x0 = qMin(cr.p0.x(), cr.p1.x()) - pad;
+        const qreal y0 = qMin(cr.p0.y(), cr.p1.y()) - pad;
+        const qreal x1 = qMax(cr.p0.x(), cr.p1.x()) + pad;
+        const qreal y1 = qMax(cr.p0.y(), cr.p1.y()) + pad;
+        o.polygon << QPointF(x0, y0) << QPointF(x1, y0) << QPointF(x1, y1)
+                  << QPointF(x0, y1);
+        overlays.push_back(o);
+        OverlayHit line;
+        line.text = o.text;
+        line.format = QStringLiteral("CALIPER");
+        line.polygon << cr.p0 << cr.p1 << cr.p1 << cr.p0;
+        overlays.push_back(line);
+      }
+      {
+        const int row = result_table_->rowCount();
+        result_table_->insertRow(row);
+        result_table_->setItem(row, 0, new QTableWidgetItem(QStringLiteral("caliperDist")));
+        result_table_->setItem(
+            row, 1, new QTableWidgetItem(QString::number(cr.distPx, 'f', 2)));
+        result_table_->setItem(row, 2, new QTableWidgetItem(QStringLiteral("px")));
+        const int row2 = result_table_->rowCount();
+        result_table_->insertRow(row2);
+        result_table_->setItem(row2, 0, new QTableWidgetItem(QStringLiteral("measureMm")));
+        result_table_->setItem(
+            row2, 1, new QTableWidgetItem(QString::number(cr.distMm, 'f', 4)));
+        result_table_->setItem(row2, 2, new QTableWidgetItem(QStringLiteral("mm")));
+        const int row3 = result_table_->rowCount();
+        result_table_->insertRow(row3);
+        result_table_->setItem(row3, 0, new QTableWidgetItem(QStringLiteral("caliperOk")));
+        result_table_->setItem(row3, 1, new QTableWidgetItem(gate ? QStringLiteral("1")
+                                                                  : QStringLiteral("0")));
+        result_table_->setItem(row3, 2, new QTableWidgetItem(QStringLiteral("gate")));
+      }
     } else if (op == QLatin1String("var_calc")) {
       ExprEval ev;
       ev.setVars(flow_vars_);
@@ -2299,6 +2378,11 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                   .arg(flow_vars_.value(QStringLiteral("ocrCount")).toString())
                   .arg(flow_vars_.value(QStringLiteral("ocrOk")).toString())
                   .arg(sieans::ocr_available() ? 1 : 0);
+      line += QLatin1Char(' ');
+      line += QStringLiteral("caliperDist=%1 caliperOk=%2 measureMm=%3")
+                  .arg(flow_vars_.value(QStringLiteral("caliperDist")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("caliperOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("measureMm")).toString());
       line += QLatin1Char('\n');
       f.write(line.toUtf8());
     }
@@ -2911,6 +2995,17 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("judgeEnable"), true},
                 {QStringLiteral("judgeMinCount"), 1},
                 {QStringLiteral("minConfidence"), 0},
+                {QStringLiteral("showOverlay"), true}};
+  } else if (key == QLatin1String("caliper") || key == QLatin1String("measure")) {
+    s.params = {{QStringLiteral("direction"), QStringLiteral("horizontal")},
+                {QStringLiteral("target"), QStringLiteral("soft_bars")},
+                {QStringLiteral("threshold"), 18},
+                {QStringLiteral("polarity"), QStringLiteral("any")},
+                {QStringLiteral("pxPerMm"), 0},
+                {QStringLiteral("bandHalf"), 4},
+                {QStringLiteral("judgeEnable"), true},
+                {QStringLiteral("judgeMinPx"), 50},
+                {QStringLiteral("judgeMaxPx"), 400},
                 {QStringLiteral("showOverlay"), true}};
   } else if (key == QLatin1String("camera_capture")) {
     s.params = {{QStringLiteral("driver"), QStringLiteral("gentl")},

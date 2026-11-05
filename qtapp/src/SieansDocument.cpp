@@ -267,6 +267,18 @@ void SieansDocument::seedGentlQrDemo() {
        {QStringLiteral("judgeEnable"), true},
        {QStringLiteral("judgeMinCount"), 1},
        {QStringLiteral("minConfidence"), 0}});
+  add(QStringLiteral("cal1"), QStringLiteral("卡尺测量"),
+      QStringLiteral("caliper"), 620, 260, QStringLiteral("cam1"),
+      {{QStringLiteral("direction"), QStringLiteral("horizontal")},
+       {QStringLiteral("target"), QStringLiteral("soft_bars")},
+       {QStringLiteral("threshold"), 18},
+       {QStringLiteral("polarity"), QStringLiteral("any")},
+       {QStringLiteral("pxPerMm"), 10},
+       {QStringLiteral("bandHalf"), 6},
+       {QStringLiteral("judgeEnable"), true},
+       {QStringLiteral("judgeMinPx"), 150},
+       {QStringLiteral("judgeMaxPx"), 250},
+       {QStringLiteral("showOverlay"), true}});
   add(QStringLiteral("var1"), QStringLiteral("变量计算 · OK/NG"),
       QStringLiteral("var_calc"), 300, 380, QStringLiteral("qr1"),
       {{QStringLiteral("scope"), QStringLiteral("flow")},
@@ -319,6 +331,7 @@ void SieansDocument::seedGentlQrDemo() {
   link(QStringLiteral("source"), QStringLiteral("cam1"));
   link(QStringLiteral("cam1"), QStringLiteral("qr1"));
   link(QStringLiteral("cam1"), QStringLiteral("ocr1"));
+  link(QStringLiteral("cam1"), QStringLiteral("cal1"));
   link(QStringLiteral("qr1"), QStringLiteral("var1"));
   link(QStringLiteral("var1"), QStringLiteral("gate1"));
   link(QStringLiteral("gate1"), QStringLiteral("fmt1"));
@@ -334,6 +347,10 @@ void SieansDocument::seedGentlQrDemo() {
       {QStringLiteral("ocrText"), QString()},
       {QStringLiteral("ocrAll"), QString()},
       {QStringLiteral("ocrOk"), 0},
+      {QStringLiteral("caliperDist"), 0},
+      {QStringLiteral("caliperOk"), 0},
+      {QStringLiteral("measureMm"), 0},
+      {QStringLiteral("caliperMm"), 0},
       {QStringLiteral("passGate"), 0},
       {QStringLiteral("formatted"), QString()},
       {QStringLiteral("commPayload"), QString()},
@@ -469,6 +486,8 @@ QStringList SieansDocument::hostWatchKeys() const {
             QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
             QStringLiteral("ocrCount"), QStringLiteral("ocrText"),
             QStringLiteral("ocrAll"), QStringLiteral("ocrOk"),
+            QStringLiteral("caliperDist"), QStringLiteral("caliperOk"),
+            QStringLiteral("measureMm"), QStringLiteral("caliperMm"),
             QStringLiteral("passGate"), QStringLiteral("urlOk"),
             QStringLiteral("formatted"), QStringLiteral("lastRecv"),
             QStringLiteral("commPayload"), QStringLiteral("hostResult"),

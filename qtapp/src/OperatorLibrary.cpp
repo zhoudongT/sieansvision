@@ -69,6 +69,7 @@ const char* glyphKindFor(const QString& key, const QString& category) {
   if (key == QLatin1String("preprocess")) return "image";
   if (key == QLatin1String("save_image")) return "save";
   if (key == QLatin1String("locate")) return "locate";
+  if (key == QLatin1String("caliper") || key == QLatin1String("measure")) return "caliper";
   if (key == QLatin1String("barcode") || key == QLatin1String("qr_decode")) return "barcode";
   if (key == QLatin1String("ocr")) return "ocr";
   if (key == QLatin1String("send_data")) return "tx";
@@ -113,6 +114,14 @@ QIcon opGlyph(const char* kind, const QColor& accent) {
     p.drawEllipse(QRectF(cx - 7, cy - 7, 14, 14));
     p.drawLine(QPointF(cx, 3), QPointF(cx, h - 3));
     p.drawLine(QPointF(6, cy), QPointF(w - 3, cy));
+  } else if (std::strcmp(kind, "caliper") == 0) {
+    p.drawLine(QPointF(10, 6), QPointF(10, 18));
+    p.drawLine(QPointF(24, 6), QPointF(24, 18));
+    p.drawLine(QPointF(10, cy), QPointF(24, cy));
+    p.drawLine(QPointF(12, cy - 2), QPointF(10, cy));
+    p.drawLine(QPointF(12, cy + 2), QPointF(10, cy));
+    p.drawLine(QPointF(22, cy - 2), QPointF(24, cy));
+    p.drawLine(QPointF(22, cy + 2), QPointF(24, cy));
   } else if (std::strcmp(kind, "barcode") == 0) {
     for (int i = 0; i < 7; ++i) {
       const qreal x = 10 + i * 2.4;
@@ -184,6 +193,8 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
        QStringLiteral("图像处理"), QStringLiteral("灰度 / 反色 / 阈值（QImage）")},
       {QStringLiteral("locate"), QStringLiteral("快速匹配"),
        QStringLiteral("定位与测量"), QStringLiteral("从当前图中心建模板并搜索")},
+      {QStringLiteral("caliper"), QStringLiteral("卡尺测量"),
+       QStringLiteral("定位与测量"), QStringLiteral("QImage 边缘间距（px/mm）")},
       {QStringLiteral("save_image"), QStringLiteral("保存图像"),
        QStringLiteral("图像处理"), QStringLiteral("运行时落盘（可选）")},
       {QStringLiteral("barcode"), QStringLiteral("条码 / 二维码"),

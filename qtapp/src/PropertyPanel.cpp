@@ -99,6 +99,22 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("minConfidence", "最低置信度", kInt, ""),
             S("showOverlay", "显示文本框", kBool, "")};
   }
+  if (op == QLatin1String("caliper") || op == QLatin1String("measure")) {
+    return {S("direction", "方向", kChoice, "horizontal|水平;vertical|垂直"),
+            S("target", "目标", kLine, "soft_bars|软靶 / 空=ROI"),
+            S("roiX", "ROI X", kInt, ""),
+            S("roiY", "ROI Y", kInt, ""),
+            S("roiW", "ROI 宽", kInt, ""),
+            S("roiH", "ROI 高", kInt, ""),
+            S("threshold", "边缘阈值", kInt, ""),
+            S("polarity", "极性", kChoice, "any|任意;dark_to_light|暗→亮;light_to_dark|亮→暗"),
+            S("pxPerMm", "像素/毫米", kReal, "0=仅像素"),
+            S("bandHalf", "扫描半宽", kInt, ""),
+            S("judgeEnable", "启用判定", kBool, ""),
+            S("judgeMinPx", "最小间距 px", kReal, ""),
+            S("judgeMaxPx", "最大间距 px", kReal, ""),
+            S("showOverlay", "显示卡尺", kBool, "")};
+  }
   if (op == QLatin1String("var_calc")) {
     return {S("scope", "作用域", kChoice, "flow|流程;global|全局")};
   }
@@ -407,6 +423,9 @@ void PropertyPanel::showStep(const FlowStep& step) {
     hint += QStringLiteral(" · ZXing 多码 · 判定 judgeMinCount");
   else if (step.operation == QLatin1String("ocr"))
     hint += QStringLiteral(" · Tesseract · lang/psm · ocrText");
+  else if (step.operation == QLatin1String("caliper") ||
+           step.operation == QLatin1String("measure"))
+    hint += QStringLiteral(" · QImage 边缘卡尺 · caliperDist/measureMm");
   meta_->setText(hint);
   rebuildForm(QStringLiteral("属性 · %1").arg(step.name), step.id, step.operation,
               step.params);

@@ -69,6 +69,8 @@ add_executable(sieans_qt
   src/HostStatePanel.cpp
   src/TemplateMatch.hpp
   src/TemplateMatch.cpp
+  src/CaliperMeasure.hpp
+  src/CaliperMeasure.cpp
   src/FlowMinimap.hpp
   src/FlowMinimap.cpp
   src/FlowIoDialog.hpp

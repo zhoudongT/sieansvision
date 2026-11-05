@@ -185,6 +185,20 @@ QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gain
       p.setPen(QColor(20, 20, 20));
       p.drawText(QRectF(ox, oy, tw, th), Qt::AlignCenter, plate);
     }
+    // Caliper target: two vertical bars, 200px gap (soft smoke → caliperDist≈200)
+    {
+      const int gap = 200;
+      const int barW = 6;
+      const int barH = qBound(28, h / 28, 48);
+      const int baseY = h - 18 - barH - 6;
+      const int x0 = 24;
+      p.setPen(Qt::NoPen);
+      p.setBrush(QColor(255, 255, 255, 220));
+      p.drawRect(QRect(x0 - 8, baseY - 4, gap + barW + 16, barH + 8));
+      p.setBrush(QColor(15, 15, 15));
+      p.drawRect(QRect(x0, baseY, barW, barH));
+      p.drawRect(QRect(x0 + gap, baseY, barW, barH));
+    }
     drewQr = true;
   } else {
     p.setPen(Qt::NoPen);
