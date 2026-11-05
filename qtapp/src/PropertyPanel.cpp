@@ -91,6 +91,14 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("judgeMinCount", "最少码数", kInt, ""),
             S("showOverlay", "显示码框", kBool, "")};
   }
+  if (op == QLatin1String("ocr")) {
+    return {S("lang", "语言", kLine, "eng"),
+            S("psm", "PSM", kInt, "6=块 7=行"),
+            S("judgeEnable", "启用判定", kBool, ""),
+            S("judgeMinCount", "最少行数", kInt, ""),
+            S("minConfidence", "最低置信度", kInt, ""),
+            S("showOverlay", "显示文本框", kBool, "")};
+  }
   if (op == QLatin1String("var_calc")) {
     return {S("scope", "作用域", kChoice, "flow|流程;global|全局")};
   }
@@ -397,6 +405,8 @@ void PropertyPanel::showStep(const FlowStep& step) {
   else if (step.operation == QLatin1String("barcode") ||
            step.operation == QLatin1String("qr_decode"))
     hint += QStringLiteral(" · ZXing 多码 · 判定 judgeMinCount");
+  else if (step.operation == QLatin1String("ocr"))
+    hint += QStringLiteral(" · Tesseract · lang/psm · ocrText");
   meta_->setText(hint);
   rebuildForm(QStringLiteral("属性 · %1").arg(step.name), step.id, step.operation,
               step.params);

@@ -14,6 +14,7 @@
 #include <QJsonObject>
 
 #include <sieans/barcode.hpp>
+#include <sieans/ocr.hpp>
 #include <sieans/gentl_capture.hpp>
 
 #include <QAction>
@@ -1915,6 +1916,93 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
         result_table_->setItem(row, 2, new QTableWidgetItem(o.format));
         ++i;
       }
+    } else if (op == QLatin1String("ocr")) {
+      QImage rgb = toRgb888(working);
+      sieans::OcrOptions opts;
+      opts.lang =
+          step->params.value(QStringLiteral("lang"), QStringLiteral("eng"))
+              .toString()
+              .toStdString();
+      opts.psm = step->params.value(QStringLiteral("psm"), 6).toInt();
+      opts.min_confidence =
+          step->params.value(QStringLiteral("minConfidence"), 0).toInt();
+      std::vector<sieans::OcrHit> ocrHits;
+      const auto t0 = std::chrono::steady_clock::now();
+      try {
+        ocrHits = sieans::recognize_text(
+            rgb.constBits(), rgb.width(), rgb.height(), rgb.bytesPerLine(),
+            sieans::PixelFormat::RGB24, opts);
+      } catch (const std::exception& ex) {
+        ok = false;
+        note = QString::fromUtf8(ex.what());
+        ocrHits.clear();
+      }
+      const double ocrMs = std::chrono::duration<double, std::milli>(
+                               std::chrono::steady_clock::now() - t0)
+                               .count();
+      algoMs += ocrMs;
+      decodeMs = ocrMs;
+      QStringList texts;
+      for (const auto& h : ocrHits) {
+        const QString tx = QString::fromStdString(h.text).trimmed();
+        if (!tx.isEmpty()) texts << tx;
+      }
+      // Prefer a line containing SIEANS when soft plate is present
+      QString best;
+      for (const QString& tx : texts) {
+        if (tx.contains(QStringLiteral("SIEANS"), Qt::CaseInsensitive)) {
+          best = tx;
+          break;
+        }
+      }
+      if (best.isEmpty() && !texts.isEmpty()) best = texts.first();
+      flow_vars_.insert(QStringLiteral("ocrCount"), texts.size());
+      flow_vars_.insert(QStringLiteral("ocrText"), best);
+      flow_vars_.insert(QStringLiteral("ocrAll"), texts.join(QLatin1Char('\n')));
+      const int minC = step->params.value(QStringLiteral("judgeMinCount"), 1).toInt();
+      const bool gate = texts.size() >= minC && !best.isEmpty();
+      flow_vars_.insert(QStringLiteral("ocrOk"), gate ? 1 : 0);
+      if (!flow_vars_.contains(QStringLiteral("passGate")))
+        flow_vars_.insert(QStringLiteral("passGate"), gate ? 1 : 0);
+      {
+        StepSnap snap;
+        snap.count = texts.size();
+        snap.ok = gate;
+        snap.matches = texts.size();
+        snap.text = best;
+        snap.score = gate ? 1.0 : 0.0;
+        snap.confidence = snap.score;
+        snap.fields.insert(QStringLiteral("text"), best);
+        for (const QString& tx : texts) snap.texts << tx;
+        step_snaps.insert(id, snap);
+      }
+      ok = gate || !step->params.value(QStringLiteral("judgeEnable"), true).toBool();
+      note = QStringLiteral("OCR %1 行 · %2 ms · %3")
+                 .arg(texts.size())
+                 .arg(ocrMs, 0, 'f', 1)
+                 .arg(best.left(40));
+      if (step->params.value(QStringLiteral("showOverlay"), true).toBool() &&
+          !best.isEmpty()) {
+        OverlayHit o;
+        o.text = best;
+        o.format = QStringLiteral("OCR");
+        const int bw = qMin(working.width() / 3, 160);
+        const int bh = 36;
+        const int ox = qMax(0, working.width() - bw - 8);
+        o.polygon << QPointF(ox, 6) << QPointF(ox + bw, 6)
+                  << QPointF(ox + bw, 6 + bh) << QPointF(ox, 6 + bh);
+        overlays.push_back(o);
+      }
+      int i = 0;
+      for (const QString& tx : texts) {
+        const int row = result_table_->rowCount();
+        result_table_->insertRow(row);
+        result_table_->setItem(
+            row, 0, new QTableWidgetItem(QStringLiteral("ocr[%1].text").arg(i)));
+        result_table_->setItem(row, 1, new QTableWidgetItem(tx));
+        result_table_->setItem(row, 2, new QTableWidgetItem(QStringLiteral("OCR")));
+        ++i;
+      }
     } else if (op == QLatin1String("var_calc")) {
       ExprEval ev;
       ev.setVars(flow_vars_);
@@ -2153,7 +2241,7 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
         }
         txDevSummary = bits.join(QLatin1Char(','));
       }
-      const QString line =
+      QString line =
           QStringLiteral(
               "codes=%1 ms=%2 w=%3 h=%4 passGate=%5 barcodeText=%6 "
               "formatted=%7 lastRecv=%8 urlOk=%9 tcp=%10 "
@@ -2202,6 +2290,16 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                                               QLatin1Char('|')))
               .arg(hostTxDevs.left(80))
               .arg(stripLock);
+      if (line.endsWith(QLatin1Char('\n'))) line.chop(1);
+      line += QLatin1Char(' ');
+      line += QStringLiteral("ocrText=%1 ocrCount=%2 ocrOk=%3 ocrAvail=%4")
+                  .arg(flow_vars_.value(QStringLiteral("ocrText")).toString()
+                           .left(80)
+                           .replace(QLatin1Char('\n'), QLatin1Char('|')))
+                  .arg(flow_vars_.value(QStringLiteral("ocrCount")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("ocrOk")).toString())
+                  .arg(sieans::ocr_available() ? 1 : 0);
+      line += QLatin1Char('\n');
       f.write(line.toUtf8());
     }
   }
@@ -2807,6 +2905,13 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("maxCodes"), 16},
                 {QStringLiteral("showOverlay"), true},
                 {QStringLiteral("judgeMinCount"), 1}};
+  } else if (key == QLatin1String("ocr")) {
+    s.params = {{QStringLiteral("lang"), QStringLiteral("eng")},
+                {QStringLiteral("psm"), 6},
+                {QStringLiteral("judgeEnable"), true},
+                {QStringLiteral("judgeMinCount"), 1},
+                {QStringLiteral("minConfidence"), 0},
+                {QStringLiteral("showOverlay"), true}};
   } else if (key == QLatin1String("camera_capture")) {
     s.params = {{QStringLiteral("driver"), QStringLiteral("gentl")},
                 {QStringLiteral("backendKind"), QStringLiteral("gentl")},

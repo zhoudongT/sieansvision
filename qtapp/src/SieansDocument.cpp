@@ -259,6 +259,14 @@ void SieansDocument::seedGentlQrDemo() {
        {QStringLiteral("showOverlay"), true},
        {QStringLiteral("judgeEnable"), true},
        {QStringLiteral("judgeMinCount"), 1}});
+  add(QStringLiteral("ocr1"), QStringLiteral("OCR 文字识别"),
+      QStringLiteral("ocr"), 460, 260, QStringLiteral("cam1"),
+      {{QStringLiteral("lang"), QStringLiteral("eng")},
+       {QStringLiteral("psm"), 6},
+       {QStringLiteral("showOverlay"), true},
+       {QStringLiteral("judgeEnable"), true},
+       {QStringLiteral("judgeMinCount"), 1},
+       {QStringLiteral("minConfidence"), 0}});
   add(QStringLiteral("var1"), QStringLiteral("变量计算 · OK/NG"),
       QStringLiteral("var_calc"), 300, 380, QStringLiteral("qr1"),
       {{QStringLiteral("scope"), QStringLiteral("flow")},
@@ -310,6 +318,7 @@ void SieansDocument::seedGentlQrDemo() {
   };
   link(QStringLiteral("source"), QStringLiteral("cam1"));
   link(QStringLiteral("cam1"), QStringLiteral("qr1"));
+  link(QStringLiteral("cam1"), QStringLiteral("ocr1"));
   link(QStringLiteral("qr1"), QStringLiteral("var1"));
   link(QStringLiteral("var1"), QStringLiteral("gate1"));
   link(QStringLiteral("gate1"), QStringLiteral("fmt1"));
@@ -321,6 +330,10 @@ void SieansDocument::seedGentlQrDemo() {
       {QStringLiteral("barcodeText"), QString()},
       {QStringLiteral("barcodeAll"), QString()},
       {QStringLiteral("barcodeOk"), 0},
+      {QStringLiteral("ocrCount"), 0},
+      {QStringLiteral("ocrText"), QString()},
+      {QStringLiteral("ocrAll"), QString()},
+      {QStringLiteral("ocrOk"), 0},
       {QStringLiteral("passGate"), 0},
       {QStringLiteral("formatted"), QString()},
       {QStringLiteral("commPayload"), QString()},
@@ -454,6 +467,8 @@ QStringList SieansDocument::hostWatchKeys() const {
   if (keys.isEmpty()) {
     keys = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
             QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
+            QStringLiteral("ocrCount"), QStringLiteral("ocrText"),
+            QStringLiteral("ocrAll"), QStringLiteral("ocrOk"),
             QStringLiteral("passGate"), QStringLiteral("urlOk"),
             QStringLiteral("formatted"), QStringLiteral("lastRecv"),
             QStringLiteral("commPayload"), QStringLiteral("hostResult"),

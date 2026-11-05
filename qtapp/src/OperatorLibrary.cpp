@@ -70,6 +70,7 @@ const char* glyphKindFor(const QString& key, const QString& category) {
   if (key == QLatin1String("save_image")) return "save";
   if (key == QLatin1String("locate")) return "locate";
   if (key == QLatin1String("barcode") || key == QLatin1String("qr_decode")) return "barcode";
+  if (key == QLatin1String("ocr")) return "ocr";
   if (key == QLatin1String("send_data")) return "tx";
   if (key == QLatin1String("receive_data")) return "rx";
   if (key == QLatin1String("result_gate")) return "gate";
@@ -187,6 +188,8 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
        QStringLiteral("图像处理"), QStringLiteral("运行时落盘（可选）")},
       {QStringLiteral("barcode"), QStringLiteral("条码 / 二维码"),
        QStringLiteral("识别"), QStringLiteral("C++ zxing 解码")},
+      {QStringLiteral("ocr"), QStringLiteral("OCR 文字识别"),
+       QStringLiteral("识别"), QStringLiteral("Tesseract OCR（CLI）")},
       {QStringLiteral("var_calc"), QStringLiteral("变量计算"),
        QStringLiteral("变量与数据"),
        QStringLiteral("expr: in / startswith / endswith / contains")},

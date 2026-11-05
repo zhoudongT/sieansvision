@@ -2,6 +2,7 @@
 
 #include <QPainter>
 #include <QFont>
+#include <QFontMetrics>
 #include <QFileInfo>
 #include <QDir>
 #include <QCoreApplication>
@@ -166,6 +167,24 @@ QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gain
     bf.setBold(true);
     p.setFont(bf);
     p.drawText(QRectF(6, 6, 52, 18), Qt::AlignCenter, QStringLiteral("SOFT"));
+    // OCR plate (top-right, outside QR letterbox) — soft smoke readable by tesseract
+    {
+      const QString plate = QStringLiteral("SIEANS");
+      QFont of(QStringLiteral("DejaVu Sans Mono"), 18);
+      of.setBold(true);
+      of.setPixelSize(qBound(16, qMin(w, h) / 18, 28));
+      p.setFont(of);
+      const QFontMetrics fm(of);
+      const int tw = fm.horizontalAdvance(plate) + 16;
+      const int th = fm.height() + 8;
+      const int ox = qMax(6, w - tw - 8);
+      const int oy = 6;
+      p.setPen(Qt::NoPen);
+      p.setBrush(QColor(255, 255, 255, 230));
+      p.drawRoundedRect(QRectF(ox, oy, tw, th), 3, 3);
+      p.setPen(QColor(20, 20, 20));
+      p.drawText(QRectF(ox, oy, tw, th), Qt::AlignCenter, plate);
+    }
     drewQr = true;
   } else {
     p.setPen(Qt::NoPen);

@@ -20,6 +20,7 @@ add_subdirectory(third_party/zxing-cpp EXCLUDE_FROM_ALL)
 
 add_library(sieans_algo STATIC
   src/barcode.cpp
+  src/ocr.cpp
   src/gentl_capture.cpp
 )
 target_include_directories(sieans_algo
