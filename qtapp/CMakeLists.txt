@@ -69,6 +69,8 @@ add_executable(sieans_qt
   src/HostStatePanel.cpp
   src/TemplateMatch.hpp
   src/TemplateMatch.cpp
+  src/LocateMatchPanel.hpp
+  src/LocateMatchPanel.cpp
   src/CaliperMeasure.hpp
   src/CaliperMeasure.cpp
   src/DefectDetect.hpp

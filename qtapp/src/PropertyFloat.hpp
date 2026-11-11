@@ -1,5 +1,6 @@
 #pragma once
 #include "PropertyPanel.hpp"
+#include "LocateMatchPanel.hpp"
 #include <QDialog>
 #include <QPoint>
 #include <QRect>
@@ -18,6 +19,9 @@ class PropertyFloat : public QDialog {
   explicit PropertyFloat(QWidget* parent = nullptr);
 
   PropertyPanel* panel() const { return panel_; }
+  LocateMatchPanel* locatePanel() const { return locatePanel_; }
+  /** 把最近一次 locate 运行结果刷进四 Tab 的结果显示页。 */
+  void setLocateLastResult(const QVariantMap& vars);
   void setNodeTitle(const QString& title, const QString& subtitle = {});
   void showForSource(const QVariantMap& sourceConfig);
   void showForStep(const FlowStep& step);
@@ -43,8 +47,14 @@ class PropertyFloat : public QDialog {
 
  private:
   void revertAndHide();
+  /** 提交当前可见属性页（通用或 locate 四 Tab）的未完成编辑。 */
+  void flushActiveEditors();
+  /** 当前可见属性页的参数快照。 */
+  QVariantMap activeParams() const;
+  bool showingLocatePanel() const;
 
   PropertyPanel* panel_ = nullptr;
+  LocateMatchPanel* locatePanel_ = nullptr;
   QLabel* title_ = nullptr;
   QLabel* subtitle_ = nullptr;
   QFrame* titleBar_ = nullptr;

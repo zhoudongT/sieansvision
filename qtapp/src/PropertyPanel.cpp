@@ -79,6 +79,7 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
   if (op == QLatin1String("locate")) {
     return {S("templateSource", "模板来源", kChoice,
               "file|文件路径;soft_plate|软场景标牌;capture|从当前图截取"),
+            S("matchMode", "匹配模式", kChoice, "fast|快速匹配;gray|灰度模板匹配"),
             S("templatePath", "模板文件", kLine, ""),
             S("templateW", "截取宽", kInt, ""),
             S("templateH", "截取高", kInt, ""),
@@ -88,7 +89,10 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("angleEnable", "搜索旋转", kBool, ""),
             S("angleStart", "起始角度", kReal, ""),
             S("angleEnd", "终止角度", kReal, ""),
-            S("angleStep", "角度步长", kReal, "")};
+            S("angleStep", "角度步长", kReal, ""),
+            S("showOverlay", "显示匹配框", kBool, ""),
+            S("showOrigin", "显示模板原点", kBool, ""),
+            S("showAngleDeg", "显示角度标注", kBool, "")};
   }
   if (op == QLatin1String("pose_correct")) {
     return {S("fixtureSource", "位姿来源", kChoice,

@@ -84,9 +84,13 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   auto* bodyLay = new QVBoxLayout(body);
   bodyLay->setContentsMargins(0, 0, 0, 0);
   panel_ = new PropertyPanel;
+  locatePanel_ = new LocateMatchPanel;
+  locatePanel_->hide();
   bodyLay->addWidget(panel_, 1);
+  bodyLay->addWidget(locatePanel_, 1);
   root->addWidget(body, 1);
   connect(panel_, &PropertyPanel::paramEdited, this, &PropertyFloat::paramEdited);
+  connect(locatePanel_, &LocateMatchPanel::paramEdited, this, &PropertyFloat::paramEdited);
 
   auto* footer = new QFrame;
   footer->setObjectName(QStringLiteral("propertyFloatFooter"));
@@ -119,8 +123,8 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   connect(cancel, &QPushButton::clicked, this, &PropertyFloat::revertAndHide);
   connect(ok, &QPushButton::clicked, this, [this]() {
     if (panel_) {
-      panel_->flushPendingEdits();
-      baseline_ = panel_->currentParams();
+      flushActiveEditors();
+      baseline_ = activeParams();
     }
     emit acceptedCommit();
     hide();
@@ -195,7 +199,11 @@ void PropertyFloat::showForSource(const QVariantMap& sourceConfig) {
   nodeId_ = QStringLiteral("source");
   baseline_ = QVariantMap(sourceConfig);  // deep-ish snapshot for ✕/Esc
   setNodeTitle(QStringLiteral("属性 · 图像源"), QStringLiteral("sourceConfig"));
-  panel_->showSource(sourceConfig);
+  if (locatePanel_) locatePanel_->hide();
+  if (panel_) {
+    panel_->show();
+    panel_->showSource(sourceConfig);
+  }
   show();
   raise();
   activateWindow();
@@ -215,7 +223,13 @@ void PropertyFloat::showForStep(const FlowStep& step) {
   setNodeTitle(QStringLiteral("属性 · %1").arg(step.name),
                QStringLiteral("%1 · %2 · %3")
                    .arg(step.operation, step.runState, step.id.left(8)));
-  panel_->showStep(step);
+  const bool locate = step.operation == QLatin1String("locate");
+  if (locatePanel_) locatePanel_->setVisible(locate);
+  if (panel_) panel_->setVisible(!locate);
+  if (locate && locatePanel_)
+    locatePanel_->bindStep(step);
+  else if (panel_)
+    panel_->showStep(step);
   show();
   raise();
   activateWindow();
@@ -242,7 +256,10 @@ void PropertyFloat::mouseDoubleClickEvent(QMouseEvent* event) {
 void PropertyFloat::keyPressEvent(QKeyEvent* event) {
   if (event->key() == Qt::Key_R && (event->modifiers() & Qt::ControlModifier)) {
     // Restore baseline into editors without closing (VM-ish revert).
-    if (panel_) panel_->applySnapshot(baseline_);
+    if (showingLocatePanel() && locatePanel_)
+      locatePanel_->applySnapshot(baseline_);
+    else if (panel_)
+      panel_->applySnapshot(baseline_);
     emit paramsReverted(nodeId_, baseline_);
     if (subtitle_) {
       const QString s = subtitle_->text();
@@ -303,8 +320,8 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
   }
   if (event->key() == Qt::Key_S && (event->modifiers() & Qt::ControlModifier)) {
     if (panel_) {
-      panel_->flushPendingEdits();
-      baseline_ = panel_->currentParams();
+      flushActiveEditors();
+      baseline_ = activeParams();
     }
     emit acceptedCommit();
     if (event->modifiers() & Qt::ShiftModifier) {
@@ -496,8 +513,8 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
         (event->modifiers() & Qt::AltModifier) ||
         (event->modifiers() & Qt::ShiftModifier)) {
       if (panel_) {
-        panel_->flushPendingEdits();
-        baseline_ = panel_->currentParams();
+        flushActiveEditors();
+        baseline_ = activeParams();
       }
       emit acceptedCommit();
       hide();
@@ -536,6 +553,28 @@ void PropertyFloat::notifyChromeGeometry() {
 void PropertyFloat::applyChromeGeometry(const QRect& geom) {
   if (!geom.isValid() || geom.width() < 200 || geom.height() < 200) return;
   setGeometry(geom);
+}
+
+
+void PropertyFloat::setLocateLastResult(const QVariantMap& vars) {
+  if (locatePanel_ && showingLocatePanel()) locatePanel_->setLastResult(vars);
+}
+
+void PropertyFloat::flushActiveEditors() {
+  if (showingLocatePanel() && locatePanel_)
+    locatePanel_->flushPendingEdits();
+  else if (panel_)
+    panel_->flushPendingEdits();
+}
+
+QVariantMap PropertyFloat::activeParams() const {
+  if (showingLocatePanel() && locatePanel_) return locatePanel_->currentParams();
+  if (panel_) return panel_->currentParams();
+  return {};
+}
+
+bool PropertyFloat::showingLocatePanel() const {
+  return locatePanel_ && locatePanel_->isVisible();
 }
 
 }  // namespace sieans_qt

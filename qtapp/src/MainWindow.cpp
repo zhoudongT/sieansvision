@@ -1,5 +1,6 @@
 #include "MainWindow.hpp"
 #include "WorkbenchPaths.hpp"
+#include "LocateMatchPanel.hpp"
 #include "Theme.hpp"
 #include "ExprEval.hpp"
 #include "TemplateMatch.hpp"
@@ -577,6 +578,20 @@ void MainWindow::buildUi() {
           [this](const QRect& g) { document_.setPropertyFloatGeometry(g); });
   connect(prop_float_, &PropertyFloat::paramsReverted, this,
           &MainWindow::onParamsReverted);
+  if (prop_float_ && prop_float_->locatePanel()) {
+    connect(prop_float_->locatePanel(), &LocateMatchPanel::createTemplateRequested, this,
+            [this]() {
+              if (!prop_float_ || !prop_float_->locatePanel()) return;
+              QImage frame = image_view_ ? image_view_->currentImage() : QImage();
+              if (frame.isNull() && cam_worker_) frame = cam_worker_->latestFrame();
+              QString err;
+              if (!prop_float_->locatePanel()->createTemplateFromImage(frame, &err)) {
+                showStatus(err.isEmpty() ? QStringLiteral("创建模板失败") : err, 2500);
+                return;
+              }
+              showStatus(QStringLiteral("已创建模板"), 2000);
+            });
+  }
 
   // —— Right: image tabs + host strip + filmstrip ——
   auto* imagePane = new QWidget;
@@ -2153,19 +2168,34 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                          found.isEmpty() ? 0 : found.first().angleDeg);
       step_snaps.insert(id, snap);
       int hi = 0;
+      const bool showBox = !step->params.contains(QStringLiteral("showOverlay")) ||
+                           step->params.value(QStringLiteral("showOverlay")).toBool();
+      const bool showOrigin = step->params.value(QStringLiteral("showOrigin")).toBool();
+      const bool showAng = !step->params.contains(QStringLiteral("showAngleDeg")) ||
+                           step->params.value(QStringLiteral("showAngleDeg")).toBool();
       for (const TemplateHit& hit : found) {
         OverlayHit o;
         o.format = QStringLiteral("定位");
-        o.text = QStringLiteral("分数 %1  角度 %2")
-                     .arg(hit.score, 0, 'f', 2)
-                     .arg(hit.angleDeg, 0, 'f', 1);
+        o.text = showAng ? QStringLiteral("分数 %1  角度 %2")
+                               .arg(hit.score, 0, 'f', 2)
+                               .arg(hit.angleDeg, 0, 'f', 1)
+                         : QStringLiteral("分数 %1").arg(hit.score, 0, 'f', 2);
         if (!hit.corners.isEmpty())
           o.polygon = hit.corners;
         else {
           const QRect r = hit.rect;
           o.polygon << r.topLeft() << r.topRight() << r.bottomRight() << r.bottomLeft();
         }
-        overlays.push_back(o);
+        if (showBox) overlays.push_back(o);
+        if (showOrigin) {
+          OverlayHit org;
+          org.format = QStringLiteral("原点");
+          org.text = QStringLiteral("原点");
+          const QPointF c = hit.center;
+          org.polygon << QPointF(c.x() - 6, c.y()) << QPointF(c.x() + 6, c.y())
+                      << QPointF(c.x(), c.y() - 6) << QPointF(c.x(), c.y() + 6);
+          overlays.push_back(org);
+        }
         if (result_table_) {
           const int row = result_table_->rowCount();
           result_table_->insertRow(row);
@@ -2178,6 +2208,7 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
         ++hi;
       }
       if (output_view_) output_view_->setLiveImage(working);
+      if (prop_float_) prop_float_->setLocateLastResult(flow_vars_);
       note = lr.templateCreated
                  ? QStringLiteral("已创建模板 · %1 · %2 ms").arg(lr.note).arg(matchMs, 0, 'f', 1)
                  : (lr.ok ? QStringLiteral("%1 · %2 ms").arg(lr.note).arg(matchMs, 0, 'f', 1)
@@ -4127,6 +4158,31 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                   .arg(flow_vars_.value(QStringLiteral("defectsMaxArea")).toString())
                   .arg(flow_vars_.value(QStringLiteral("defectsPassed")).toString());
       line += QLatin1Char(' ');
+      {
+        const QStringList locFails = LocateMatchPanel::selfTest();
+        const FlowStep* locStep = document_.findStep(QStringLiteral("loc1"));
+        QVariantMap lp = locStep ? LocateMatchPanel::normalizeParams(locStep->params)
+                                 : LocateMatchPanel::normalizeParams({});
+        LocateMatchPanel probe;
+        if (locStep) probe.bindStep(*locStep);
+        else {
+          FlowStep tmp;
+          tmp.id = QStringLiteral("loc1");
+          tmp.operation = QStringLiteral("locate");
+          tmp.params = lp;
+          probe.bindStep(tmp);
+        }
+        line += QStringLiteral(
+                    "locatePanelOk=%1 locateTabs=%2 locateTplReady=%3 "
+                    "locateMatchMode=%4 locateAngleEnable=%5 locatePanelFails=%6 ")
+                    .arg(locFails.isEmpty() ? 1 : 0)
+                    .arg(probe.tabCount())
+                    .arg(probe.templateReady() ? 1 : 0)
+                    .arg(lp.value(QStringLiteral("matchMode")).toString())
+                    .arg(lp.value(QStringLiteral("angleEnable")).toBool() ? 1 : 0)
+                    .arg(locFails.isEmpty() ? QStringLiteral("0")
+                                            : locFails.join(QLatin1Char('|')).left(80));
+      }
       line += QStringLiteral(
                   "locateOk=%1 locateScore=%2 locateX=%3 locateY=%4 locateAngle=%5 "
                   "locateCount=%6 fixtureOk=%7 fixtureX=%8 fixtureY=%9")
@@ -5089,6 +5145,7 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("templateH"), 64},
                 {QStringLiteral("templatePath"), QString()},
                 {QStringLiteral("templateSource"), QStringLiteral("file")},
+                {QStringLiteral("matchMode"), QStringLiteral("fast")},
                 {QStringLiteral("overlapThreshold"), 0.3},
                 {QStringLiteral("angleEnable"), true},
                 {QStringLiteral("angleStart"), 0},
