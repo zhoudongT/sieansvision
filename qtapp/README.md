@@ -66,6 +66,8 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx`）放�
 
 **已落地（wave256）：** 对比缩略条锁序 / 撤销 / 重排（对齐 PySide `CompareThumbStrip` 余下抛光）：锁后禁止拖拽与编程重排，复位回进入序，撤销栈（最多 16）；仅运行期，不写方案。无界面自测仍走 `SIEANS_QT_COMPARE_STRIP_SELFTEST=1`。
 
+**已落地（wave257）：** 对比条锁序 `QSettings` 偏好（`SIEANS/VisionDesktop`：`film/compareOrderLocked`、`film/undoClearLongMs`）、锁徽章单击切换并持久化、双击复位到进入序并解锁（撤销可按进入时锁态重新上锁）、⊘ 长按清空撤销栈（短按仅提示）。构造时不自动读用户偏好，由主窗 `loadComparePrefs()` 加载；无界面自测注入临时 ini，不写用户仓库。`SIEANS_QT_COMPARE_STRIP_SELFTEST=1`。
+
 **NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。
 
 ## VM chrome (2026-11-03)

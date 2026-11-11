@@ -803,6 +803,7 @@ void MainWindow::buildUi() {
   imgLay->addWidget(filmstrip_);
   imgRow->addWidget(imageCol, 1);
   compare_strip_ = new CompareStrip;
+  compare_strip_->loadComparePrefs();
   imgRow->addWidget(compare_strip_, 0);
   connect(compare_strip_, &CompareStrip::pathActivated, this, [this](const QString& path) {
     if (!filmstrip_ || path.isEmpty()) return;
