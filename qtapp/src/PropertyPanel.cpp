@@ -401,6 +401,26 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
     specs << S("resultVar", "结果变量前缀", kLine, "opcRead / opcWrite / opcBrowse / opcWait");
     return specs;
   }
+  if (op == QLatin1String("mqtt_publish") || op == QLatin1String("mqtt_receive")) {
+    QVector<Spec> specs;
+    specs << S("connection", "消息服务器", kChoice, "simulator|模拟器;broker|真实代理 / 软代理");
+    specs << S("host", "服务器 IP / 主机名", kLine, "127.0.0.1");
+    specs << S("port", "MQTT 端口", kInt, "软代理默认 1883");
+    specs << S("security", "连接安全", kChoice, "plain|明文;tls|TLS");
+    specs << S("clientId", "客户端标识（空白自动生成）", kLine, "");
+    specs << S("topic", "消息主题", kLine, "sieans/inspection");
+    specs << S("encoding", "消息内容格式", kChoice, "structured|结构化;text|文本;bytes|字节数组");
+    specs << S("qos", "QoS 等级", kInt, "0–2");
+    specs << S("timeoutMs", "操作总超时 (ms)", kInt, "100–60000");
+    if (op == QLatin1String("mqtt_publish")) {
+      specs << S("retain", "服务器保留最后一条消息", kChoice, "true|是;false|否");
+      specs << S("value", "发布内容", kLine, "文本 / JSON / 或绑定变量");
+    }
+    if (op == QLatin1String("mqtt_receive"))
+      specs << S("acceptRetained", "允许读取服务器保留消息", kChoice, "true|是;false|否");
+    specs << S("resultVar", "结果变量前缀", kLine, "mqttPub / mqttRecv");
+    return specs;
+  }
   if (op == QLatin1String("subflow") || op == QLatin1String("loop")) {
     QVector<Spec> specs;
     specs << S("subflowId", "子流程", kChoice, "");
@@ -1063,6 +1083,9 @@ void PropertyPanel::showStep(const FlowStep& step) {
            step.operation == QLatin1String("opcua_browse") ||
            step.operation == QLatin1String("opcua_wait"))
     hint += QStringLiteral(" · 模拟器 / opc.tcp 软从站 Security=None · opcRead/opcWrite");
+  else if (step.operation == QLatin1String("mqtt_publish") ||
+           step.operation == QLatin1String("mqtt_receive"))
+    hint += QStringLiteral(" · 模拟器 / MQTT 3.1.1 软代理 · mqttPub/mqttRecv");
   else if (step.operation == QLatin1String("result_gate"))
     hint += QStringLiteral(" · sourceVar → passVar");
   else if (step.operation == QLatin1String("var_calc"))

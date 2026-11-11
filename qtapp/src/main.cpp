@@ -9,6 +9,7 @@
 #include "ModbusClient.hpp"
 #include "S7Client.hpp"
 #include "OpcUaClient.hpp"
+#include "MqttClient.hpp"
 #include "SoftFrame.hpp"
 #include "MainWindow.hpp"
 #include "Theme.hpp"
@@ -151,6 +152,18 @@ int main(int argc, char* argv[]) {
     }
     for (const QString& line : fails)
       std::fprintf(stderr, "opcua-selftest FAIL %s\n", line.toUtf8().constData());
+    return 1;
+  }
+
+  if (qEnvironmentVariable("SIEANS_QT_MQTT_SELFTEST") == QLatin1String("1") &&
+      qEnvironmentVariable("SIEANS_QT_MQTT_SELFTEST_QUIT") == QLatin1String("1")) {
+    const QStringList fails = sieans_qt::mqttSelfTest();
+    if (fails.isEmpty()) {
+      std::fprintf(stdout, "mqtt-selftest ok\n");
+      return 0;
+    }
+    for (const QString& line : fails)
+      std::fprintf(stderr, "mqtt-selftest FAIL %s\n", line.toUtf8().constData());
     return 1;
   }
 

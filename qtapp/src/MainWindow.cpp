@@ -11,6 +11,7 @@
 #include "ModbusClient.hpp"
 #include "S7Client.hpp"
 #include "OpcUaClient.hpp"
+#include "MqttClient.hpp"
 #include "ConditionEval.hpp"
 #include "SubflowExec.hpp"
 #include "SubflowDialog.hpp"
@@ -278,6 +279,29 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         opcErr = e;
       }
       if (!ok) logResult(QStringLiteral("OpcUaLoopback 启动失败: %1").arg(opcErr));
+    }
+  }
+
+  {
+    const QVariantMap mqtt =
+        document_.commManager().value(QStringLiteral("mqttReal")).toMap();
+    const bool want = mqtt.value(QStringLiteral("autoStart"), true).toBool() ||
+                      qgetenv("SIEANS_QT_FORCE_SEED") == "1";
+    if (want) {
+      int base = mqtt.value(QStringLiteral("port"), 1883).toInt();
+      if (base <= 0) base = 1883;
+      QString mqttErr;
+      bool ok = false;
+      for (int d = 0; d <= 4; ++d) {
+        QString e;
+        if (mqttSoftBroker().start(quint16(base + d), &e)) {
+          logResult(QStringLiteral("MqttLoopback: %1").arg(mqttSoftBroker().endpoint()));
+          ok = true;
+          break;
+        }
+        mqttErr = e;
+      }
+      if (!ok) logResult(QStringLiteral("MqttLoopback 启动失败: %1").arg(mqttErr));
     }
   }
 
@@ -3355,6 +3379,52 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                  QStringLiteral("refs"));
         addRow(prefix + QStringLiteral("NodeId"), orr.nodeId, QStringLiteral("addr"));
       }
+    } else if (op == QLatin1String("mqtt_publish") ||
+               op == QLatin1String("mqtt_receive")) {
+      QVariantMap mp = step->params;
+      if (mp.contains(QStringLiteral("value")) &&
+          mp.value(QStringLiteral("value")).typeId() == QMetaType::QString) {
+        const QString expanded = CommHub::expandTemplate(
+            mp.value(QStringLiteral("value")).toString(), flow_vars_);
+        mp.insert(QStringLiteral("value"), expanded);
+      }
+      const MqttResult mr = (op == QLatin1String("mqtt_publish")) ? runMqttPublish(mp)
+                                                                 : runMqttReceive(mp);
+      QString prefix = step->params.value(QStringLiteral("resultVar")).toString().trimmed();
+      if (prefix.isEmpty())
+        prefix = (op == QLatin1String("mqtt_publish")) ? QStringLiteral("mqttPub")
+                                                       : QStringLiteral("mqttRecv");
+      auto put = [&](const QString& suffix, const QVariant& v) {
+        flow_vars_.insert(prefix + suffix, v);
+      };
+      const int okI = mr.ok ? 1 : 0;
+      put(QStringLiteral("Ok"), okI);
+      put(QStringLiteral("Value"), mr.value);
+      put(QStringLiteral("Ack"), mr.acknowledged ? 1 : 0);
+      put(QStringLiteral("Topic"), mr.topic);
+      put(QStringLiteral("Qos"), mr.qos);
+      put(QStringLiteral("Retained"), mr.retained ? 1 : 0);
+      put(QStringLiteral("Delivery"), mr.delivery);
+      put(QStringLiteral("Bytes"), mr.byteLength);
+      put(QStringLiteral("Error"), mr.error);
+      put(QStringLiteral("Elapsed"), mr.elapsedMs);
+      ok = mr.ok;
+      note = mr.ok ? mr.note : mr.error;
+      if (result_table_) {
+        auto addRow = [&](const QString& k, const QString& v, const QString& unit) {
+          const int row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(k));
+          result_table_->setItem(row, 1, new QTableWidgetItem(v));
+          result_table_->setItem(row, 2, new QTableWidgetItem(unit));
+        };
+        addRow(prefix + QStringLiteral("Ok"), QString::number(okI), QStringLiteral("gate"));
+        addRow(prefix + QStringLiteral("Value"), mr.value.toString(), mr.encoding);
+        if (op == QLatin1String("mqtt_publish"))
+          addRow(prefix + QStringLiteral("Ack"), QString::number(mr.acknowledged ? 1 : 0),
+                 QStringLiteral("ack"));
+        addRow(prefix + QStringLiteral("Topic"), mr.topic, QStringLiteral("topic"));
+      }
     } else {
       note = QStringLiteral("透传 / 未实现执行体");
       ok = true;
@@ -3697,6 +3767,20 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                   .arg(flow_vars_.value(QStringLiteral("opcTcpWriteValue")).toString())
                   .arg(flow_vars_.value(QStringLiteral("opcTcpReadOk")).toString())
                   .arg(flow_vars_.value(QStringLiteral("opcTcpReadValue")).toString());
+      line += QChar(' ');
+      line += QStringLiteral(
+                  "mqttPubOk=%1 mqttPubValue=%2 mqttPubAck=%3 "
+                  "mqttRecvOk=%4 mqttRecvValue=%5 "
+                  "mqttTcpPubOk=%6 mqttTcpPubValue=%7 mqttTcpRecvOk=%8 mqttTcpRecvValue=%9")
+                  .arg(flow_vars_.value(QStringLiteral("mqttPubOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mqttPubValue")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mqttPubAck")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mqttRecvOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mqttRecvValue")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mqttTcpPubOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mqttTcpPubValue")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mqttTcpRecvOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mqttTcpRecvValue")).toString());
 
 line += QLatin1Char('\n');
       f.write(line.toUtf8());
@@ -4585,6 +4669,29 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("onTimeout"), QStringLiteral("error")},
                 {QStringLiteral("timeoutMs"), 3000},
                 {QStringLiteral("resultVar"), QStringLiteral("opcWait")}};
+  } else if (key == QLatin1String("mqtt_publish")) {
+    s.params = {{QStringLiteral("connection"), QStringLiteral("simulator")},
+                {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+                {QStringLiteral("port"), 1883},
+                {QStringLiteral("security"), QStringLiteral("plain")},
+                {QStringLiteral("topic"), QStringLiteral("sieans/inspection")},
+                {QStringLiteral("encoding"), QStringLiteral("structured")},
+                {QStringLiteral("qos"), 1},
+                {QStringLiteral("retain"), true},
+                {QStringLiteral("timeoutMs"), 5000},
+                {QStringLiteral("value"), 0},
+                {QStringLiteral("resultVar"), QStringLiteral("mqttPub")}};
+  } else if (key == QLatin1String("mqtt_receive")) {
+    s.params = {{QStringLiteral("connection"), QStringLiteral("simulator")},
+                {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+                {QStringLiteral("port"), 1883},
+                {QStringLiteral("security"), QStringLiteral("plain")},
+                {QStringLiteral("topic"), QStringLiteral("sieans/inspection")},
+                {QStringLiteral("encoding"), QStringLiteral("structured")},
+                {QStringLiteral("qos"), 1},
+                {QStringLiteral("acceptRetained"), true},
+                {QStringLiteral("timeoutMs"), 5000},
+                {QStringLiteral("resultVar"), QStringLiteral("mqttRecv")}};
 } else if (key == QLatin1String("result_gate")) {
     s.params = {{QStringLiteral("minCount"), 1},
                 {QStringLiteral("sourceVar"), QStringLiteral("barcodeCount")},

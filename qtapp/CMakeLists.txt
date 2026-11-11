@@ -87,6 +87,8 @@ add_executable(sieans_qt
   src/S7Client.cpp
   src/OpcUaClient.hpp
   src/OpcUaClient.cpp
+  src/MqttClient.hpp
+  src/MqttClient.cpp
   src/ConditionEval.hpp
   src/ConditionEval.cpp
   src/SubflowExec.hpp

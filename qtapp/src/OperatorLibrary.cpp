@@ -83,6 +83,8 @@ const char* glyphKindFor(const QString& key, const QString& category) {
   if (key == QLatin1String("opcua_read") || key == QLatin1String("opcua_write") ||
       key == QLatin1String("opcua_browse") || key == QLatin1String("opcua_wait"))
     return "opcua";
+  if (key == QLatin1String("mqtt_publish") || key == QLatin1String("mqtt_receive"))
+    return "mqtt";
   if (key == QLatin1String("result_gate")) return "gate";
   if (key == QLatin1String("format_data")) return "format";
   if (key == QLatin1String("var_calc")) return "var";
@@ -244,6 +246,13 @@ QIcon opGlyph(const char* kind, const QColor& accent) {
     f.setBold(true);
     p.setFont(f);
     p.drawText(QRectF(6, 5, 22, 14), Qt::AlignCenter, QStringLiteral("UA"));
+  } else if (std::strcmp(kind, "mqtt") == 0) {
+    p.drawRoundedRect(QRectF(6, 5, 22, 14), 2, 2);
+    QFont f = p.font();
+    f.setPointSize(6);
+    f.setBold(true);
+    p.setFont(f);
+    p.drawText(QRectF(6, 5, 22, 14), Qt::AlignCenter, QStringLiteral("MQ"));
   } else {
     p.drawEllipse(QRectF(cx - 6, cy - 6, 12, 12));
     p.drawPoint(QPointF(cx, cy));
@@ -325,6 +334,12 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
       {QStringLiteral("opcua_wait"), QStringLiteral("等待 OPC UA 信号"),
        QStringLiteral("工业通信"),
        QStringLiteral("订阅 · 条件 / 边沿触发")},
+      {QStringLiteral("mqtt_publish"), QStringLiteral("MQTT 发布"),
+       QStringLiteral("工业通信"),
+       QStringLiteral("检测结果 · 消息输出")},
+      {QStringLiteral("mqtt_receive"), QStringLiteral("MQTT 接收"),
+       QStringLiteral("工业通信"),
+       QStringLiteral("限时接收 · 主题筛选")},
       {QStringLiteral("condition"), QStringLiteral("条件判断"),
        QStringLiteral("流程控制"),
        QStringLiteral("数值 / 文本 / 开关分支 · 真/假出边 when=true/false")},

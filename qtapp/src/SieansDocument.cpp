@@ -774,6 +774,52 @@ void SieansDocument::seedGentlQrDemo() {
        {QStringLiteral("requireGood"), true},
        {QStringLiteral("timeoutMs"), 3000},
        {QStringLiteral("resultVar"), QStringLiteral("opcTcpRead")}});
+  add(QStringLiteral("mqttW"), QStringLiteral("MQTT 发布 · 模拟器"),
+      QStringLiteral("mqtt_publish"), 80, 3140, QStringLiteral("opcTcpR"),
+      {{QStringLiteral("connection"), QStringLiteral("simulator")},
+       {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+       {QStringLiteral("port"), 1883},
+       {QStringLiteral("topic"), QStringLiteral("sieans/inspection")},
+       {QStringLiteral("encoding"), QStringLiteral("text")},
+       {QStringLiteral("qos"), 1},
+       {QStringLiteral("retain"), true},
+       {QStringLiteral("value"), QStringLiteral("4242")},
+       {QStringLiteral("timeoutMs"), 5000},
+       {QStringLiteral("resultVar"), QStringLiteral("mqttPub")}});
+  add(QStringLiteral("mqttR"), QStringLiteral("MQTT 接收 · 模拟器"),
+      QStringLiteral("mqtt_receive"), 80, 3260, QStringLiteral("mqttW"),
+      {{QStringLiteral("connection"), QStringLiteral("simulator")},
+       {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+       {QStringLiteral("port"), 1883},
+       {QStringLiteral("topic"), QStringLiteral("sieans/inspection")},
+       {QStringLiteral("encoding"), QStringLiteral("text")},
+       {QStringLiteral("qos"), 1},
+       {QStringLiteral("acceptRetained"), true},
+       {QStringLiteral("timeoutMs"), 5000},
+       {QStringLiteral("resultVar"), QStringLiteral("mqttRecv")}});
+  add(QStringLiteral("mqttTcpW"), QStringLiteral("MQTT 发布 · TCP 回环"),
+      QStringLiteral("mqtt_publish"), 80, 3380, QStringLiteral("mqttR"),
+      {{QStringLiteral("connection"), QStringLiteral("broker")},
+       {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+       {QStringLiteral("port"), 1883},
+       {QStringLiteral("topic"), QStringLiteral("sieans/inspection")},
+       {QStringLiteral("encoding"), QStringLiteral("text")},
+       {QStringLiteral("qos"), 1},
+       {QStringLiteral("retain"), true},
+       {QStringLiteral("value"), QStringLiteral("9001")},
+       {QStringLiteral("timeoutMs"), 5000},
+       {QStringLiteral("resultVar"), QStringLiteral("mqttTcpPub")}});
+  add(QStringLiteral("mqttTcpR"), QStringLiteral("MQTT 接收 · TCP 回环"),
+      QStringLiteral("mqtt_receive"), 80, 3500, QStringLiteral("mqttTcpW"),
+      {{QStringLiteral("connection"), QStringLiteral("broker")},
+       {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+       {QStringLiteral("port"), 1883},
+       {QStringLiteral("topic"), QStringLiteral("sieans/inspection")},
+       {QStringLiteral("encoding"), QStringLiteral("text")},
+       {QStringLiteral("qos"), 1},
+       {QStringLiteral("acceptRetained"), true},
+       {QStringLiteral("timeoutMs"), 5000},
+       {QStringLiteral("resultVar"), QStringLiteral("mqttTcpRecv")}});
 
   auto link = [&](const QString& a, const QString& b,
                   const QString& when = QStringLiteral("always")) {
@@ -831,6 +877,10 @@ void SieansDocument::seedGentlQrDemo() {
   link(QStringLiteral("opcWait"), QStringLiteral("opcBrowse"));
   link(QStringLiteral("opcBrowse"), QStringLiteral("opcTcpW"));
   link(QStringLiteral("opcTcpW"), QStringLiteral("opcTcpR"));
+  link(QStringLiteral("opcTcpR"), QStringLiteral("mqttW"));
+  link(QStringLiteral("mqttW"), QStringLiteral("mqttR"));
+  link(QStringLiteral("mqttR"), QStringLiteral("mqttTcpW"));
+  link(QStringLiteral("mqttTcpW"), QStringLiteral("mqttTcpR"));
 
   variables_ = {
       {QStringLiteral("barcodeCount"), 0},
@@ -959,6 +1009,15 @@ void SieansDocument::seedGentlQrDemo() {
       {QStringLiteral("opcTcpWriteValue"), 0},
       {QStringLiteral("opcTcpReadOk"), 0},
       {QStringLiteral("opcTcpReadValue"), 0},
+      {QStringLiteral("mqttPubOk"), 0},
+      {QStringLiteral("mqttPubValue"), 0},
+      {QStringLiteral("mqttPubAck"), 0},
+      {QStringLiteral("mqttRecvOk"), 0},
+      {QStringLiteral("mqttRecvValue"), 0},
+      {QStringLiteral("mqttTcpPubOk"), 0},
+      {QStringLiteral("mqttTcpPubValue"), 0},
+      {QStringLiteral("mqttTcpRecvOk"), 0},
+      {QStringLiteral("mqttTcpRecvValue"), 0},
   };
   subflows_.clear();
   subflows_.push_back(makeCounterSubflow());
@@ -1001,6 +1060,12 @@ void SieansDocument::seedGentlQrDemo() {
                        {QStringLiteral("enabled"), true},
                        {QStringLiteral("endpoint"),
                         QStringLiteral("opc.tcp://127.0.0.1:4840/sieans/")}},
+           QVariantMap{{QStringLiteral("id"), QStringLiteral("mqtt-loopback")},
+                       {QStringLiteral("name"), QStringLiteral("MqttLoopback")},
+                       {QStringLiteral("protocol"), QStringLiteral("MQTT")},
+                       {QStringLiteral("enabled"), true},
+                       {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+                       {QStringLiteral("port"), 1883}},
        }},
       {QStringLiteral("tcpReal"),
        QVariantMap{{QStringLiteral("host"), QStringLiteral("127.0.0.1")},
@@ -1029,6 +1094,10 @@ void SieansDocument::seedGentlQrDemo() {
                    {QStringLiteral("endpoint"),
                     QStringLiteral("opc.tcp://127.0.0.1:4840/sieans/")},
                    {QStringLiteral("port"), 4840}}},
+      {QStringLiteral("mqttReal"),
+       QVariantMap{{QStringLiteral("autoStart"), true},
+                   {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+                   {QStringLiteral("port"), 1883}}},
       {QStringLiteral("sendEvents"),
        QVariantList{
            QVariantMap{{QStringLiteral("device"), QStringLiteral("LocalLoop")},
