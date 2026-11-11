@@ -811,9 +811,11 @@ void MainWindow::buildUi() {
     const QVariantMap hit = FilmstripBar::seekFromSparkJump(filmstrip_, bag, true);
     if (hit.value(QStringLiteral("ok")).toBool())
       showStatus(QStringLiteral("对比焦点 · %1").arg(QFileInfo(path).fileName()));
+    refreshGeomCompareOverlays();
   });
   connect(compare_strip_, &CompareStrip::clearRequested, this, [this]() {
     result_compare_paths_.clear();
+    refreshGeomCompareOverlays();
     showStatus(QStringLiteral("对比已清除"));
   });
   connect(filmstrip_, &FilmstripBar::addImagesRequested, this, [this]() {
@@ -845,6 +847,7 @@ void MainWindow::buildUi() {
             loadImagePath(path, false);
             if (filmstrip_) document_.setFilmstripIndex(filmstrip_->index());
             if (!applying_document_) focusFilmstripResult(path);
+            refreshGeomCompareOverlays();
           });
   connect(filmstrip_, &FilmstripBar::runAllRequested, this, &MainWindow::onRunAllImages);
   connect(filmstrip_, &FilmstripBar::pathsChanged, this, [this]() {
@@ -1527,6 +1530,10 @@ void MainWindow::applyDocumentToUi() {
   syncHostPinGroups();
   result_compare_paths_.clear();
   if (compare_strip_) compare_strip_->clear();
+  filmstrip_geom_cache_.clear();
+  last_run_film_path_.clear();
+  if (output_view_) output_view_->clearGeomOverlays();
+  if (image_view_) image_view_->clearGeomOverlays();
   {
     const int iv = document_.runIntervalMs() > 0 ? document_.runIntervalMs() : 200;
     if (host_sm_) host_sm_->setRunIntervalMs(iv);
@@ -2013,6 +2020,7 @@ void MainWindow::applyResultCompare(const QString& path) {
   if (result_compare_paths_.size() == 1 && samePath(result_compare_paths_.first(), p)) {
     result_compare_paths_.clear();
     if (compare_strip_) compare_strip_->clear();
+    refreshGeomCompareOverlays();
     showStatus(QStringLiteral("再点清除对比 · %1").arg(QFileInfo(p).fileName()));
     return;
   }
@@ -2025,6 +2033,7 @@ void MainWindow::applyResultCompare(const QString& path) {
   }
   if (have >= 0) {
     if (compare_strip_) compare_strip_->activatePath(result_compare_paths_.at(have), false);
+    refreshGeomCompareOverlays();
     showStatus(QStringLiteral("对比焦点 · %1").arg(QFileInfo(p).fileName()));
     return;
   }
@@ -2039,6 +2048,65 @@ void MainWindow::applyResultCompare(const QString& path) {
   showStatus(QStringLiteral("结果表双击对比 · %1 · %2 帧")
                  .arg(QFileInfo(p).fileName())
                  .arg(result_compare_paths_.size()));
+  refreshGeomCompareOverlays();
+}
+
+void MainWindow::cacheFilmstripGeomOverlays(const QVector<OverlayHit>& hits) {
+  const QString path = filmstrip_ ? filmstrip_->currentPath().trimmed() : QString();
+  last_run_film_path_ = path;
+  if (path.isEmpty()) return;
+  const QVector<GeomPickable> pks = pickablesFromOverlayHits(hits);
+  if (pks.isEmpty()) {
+    filmstrip_geom_cache_.remove(path);
+    return;
+  }
+  filmstrip_geom_cache_.insert(path, pks);
+  while (filmstrip_geom_cache_.size() > 32) {
+    const QString first = filmstrip_geom_cache_.constBegin().key();
+    if (first == path) {
+      // evict some other key
+      bool evicted = false;
+      for (auto it = filmstrip_geom_cache_.constBegin(); it != filmstrip_geom_cache_.constEnd();
+           ++it) {
+        if (it.key() != path) {
+          filmstrip_geom_cache_.remove(it.key());
+          evicted = true;
+          break;
+        }
+      }
+      if (!evicted) break;
+    } else {
+      filmstrip_geom_cache_.remove(first);
+    }
+  }
+}
+
+void MainWindow::refreshGeomCompareOverlays() {
+  if (!output_view_) return;
+  QStringList order;
+  if (compare_strip_ && compare_strip_->count() >= 2)
+    order = compare_strip_->paths();
+  else if (filmstrip_ && !filmstrip_->currentPath().isEmpty())
+    order << filmstrip_->currentPath();
+  QString hi;
+  if (compare_strip_ && order.contains(compare_strip_->activePath()))
+    hi = compare_strip_->activePath();
+  else if (!order.isEmpty())
+    hi = order.first();
+  QVector<QPair<QString, QVector<GeomPickable>>> frames;
+  for (const QString& p : order) {
+    const auto it = filmstrip_geom_cache_.constFind(p);
+    if (it == filmstrip_geom_cache_.constEnd() || it->isEmpty()) continue;
+    frames.push_back({p, *it});
+  }
+  const bool multi = order.size() >= 2;
+  const bool review = frames.size() == 1 && !last_run_film_path_.isEmpty() &&
+                      frames.first().first != last_run_film_path_;
+  if ((multi && !frames.isEmpty()) || review) {
+    output_view_->setGeomOverlays(overlaySpecsForMultiframe(frames, hi));
+  } else {
+    output_view_->clearGeomOverlays();
+  }
 }
 
 void MainWindow::markProjectDirty() {
@@ -4226,6 +4294,8 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
 
   image_view_->setOverlays(overlays);
   if (output_view_) output_view_->setOverlays(overlays);
+  cacheFilmstripGeomOverlays(overlays);
+  refreshGeomCompareOverlays();
   if (flow_vars_.contains(QStringLiteral("passGate"))) {
     const bool gateOk = flow_vars_.value(QStringLiteral("passGate")).toInt() != 0 ||
                         flow_vars_.value(QStringLiteral("passGate")).toBool();
@@ -4504,6 +4574,19 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                       .arg(cf.isEmpty() ? 2 : 0)
                       .arg(cf.isEmpty() ? 6 : 0)
                       .arg(compare_strip_ ? compare_strip_->count() : 0);
+        }
+        {
+          const QStringList gf = geomOverlaySelfTest();
+          line += QStringLiteral(
+                      "geomOverlayOk=%1 geomOverlayFails=%2 geomOverlayFrames=%3 "
+                      "geomOverlayHi=%4 geomOverlayCached=%5 geomOverlayLive=%6 ")
+                      .arg(gf.isEmpty() ? 1 : 0)
+                      .arg(gf.isEmpty() ? QStringLiteral("0")
+                                         : gf.join(QLatin1Char('|')).left(160))
+                      .arg(gf.isEmpty() ? 2 : 0)
+                      .arg(gf.isEmpty() ? 1 : 0)
+                      .arg(filmstrip_geom_cache_.size())
+                      .arg(output_view_ ? output_view_->geomOverlayCount() : 0);
         }
       }
       line += QStringLiteral(

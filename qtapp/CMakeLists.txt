@@ -32,6 +32,8 @@ add_executable(sieans_qt
   src/MainWindow.hpp
   src/ImageView.cpp
   src/ImageView.hpp
+  src/GeomOverlay.hpp
+  src/GeomOverlay.cpp
   src/Theme.hpp
   src/SieansDocument.cpp
   src/SieansDocument.hpp

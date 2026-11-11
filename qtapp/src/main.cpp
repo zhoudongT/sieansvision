@@ -280,6 +280,19 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
+  if (qEnvironmentVariable("SIEANS_QT_GEOM_OVERLAY_SELFTEST") == QLatin1String("1") &&
+      qEnvironmentVariable("SIEANS_QT_GEOM_OVERLAY_SELFTEST_QUIT") == QLatin1String("1")) {
+    QApplication app(argc, argv);
+    const QStringList fails = sieans_qt::geomOverlaySelfTest();
+    if (fails.isEmpty()) {
+      std::fprintf(stdout, "geom-overlay-selftest ok\n");
+      return 0;
+    }
+    for (const QString& line : fails)
+      std::fprintf(stderr, "geom-overlay-selftest FAIL %s\n", line.toUtf8().constData());
+    return 1;
+  }
+
   if (qEnvironmentVariable("SIEANS_QT_FILMSTRIP_JUMP_SELFTEST") == QLatin1String("1") &&
       qEnvironmentVariable("SIEANS_QT_FILMSTRIP_JUMP_SELFTEST_QUIT") == QLatin1String("1")) {
     QApplication app(argc, argv);

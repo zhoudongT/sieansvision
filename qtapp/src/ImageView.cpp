@@ -4,6 +4,9 @@
 #include <QPainter>
 #include <QGraphicsSimpleTextItem>
 #include <QGraphicsRectItem>
+#include <QGraphicsEllipseItem>
+#include <QGraphicsLineItem>
+#include <QPen>
 #include <QPainterPath>
 #include <QWheelEvent>
 #include <QMouseEvent>
@@ -73,6 +76,17 @@ void ImageView::setOverlays(const QVector<OverlayHit>& hits) {
   redrawOverlays();
 }
 
+void ImageView::setGeomOverlays(const QVector<GeomOverlaySpec>& specs) {
+  geom_specs_ = specs;
+  redrawOverlays();
+}
+
+void ImageView::clearGeomOverlays() {
+  if (geom_specs_.isEmpty()) return;
+  geom_specs_.clear();
+  redrawOverlays();
+}
+
 void ImageView::clearOverlays() {
   for (auto* it : overlay_items_) {
     scene_.removeItem(it);
@@ -80,6 +94,7 @@ void ImageView::clearOverlays() {
   }
   overlay_items_.clear();
   hits_.clear();
+  geom_specs_.clear();
 }
 
 void ImageView::fitToView() {
@@ -349,6 +364,27 @@ void ImageView::redrawOverlays() {
       bg->setPos(br.topLeft() + QPointF(0, -lr.height() - 6));
       label->setPos(br.topLeft() + QPointF(4, -lr.height() - 4));
       overlay_items_.push_back(bg);
+      overlay_items_.push_back(label);
+    }
+  }
+  for (const GeomOverlaySpec& s : geom_specs_) {
+    const QColor col(s.color.isEmpty() ? QStringLiteral("#e87722") : s.color);
+    QPen pen(col, s.width > 0 ? s.width : 1.5);
+    if (s.type == QLatin1String("line")) {
+      auto* ln = scene_.addLine(s.x1, s.y1, s.x2, s.y2, pen);
+      overlay_items_.push_back(ln);
+    } else if (s.type == QLatin1String("point")) {
+      const qreal r = s.r > 0 ? s.r : 6.0;
+      auto* el = scene_.addEllipse(s.x - r, s.y - r, r * 2, r * 2, pen, Qt::NoBrush);
+      overlay_items_.push_back(el);
+    } else if (s.type == QLatin1String("label") && !s.text.isEmpty()) {
+      auto* label = scene_.addSimpleText(s.text);
+      QFont f = label->font();
+      f.setPointSize(10);
+      f.setBold(true);
+      label->setFont(f);
+      label->setBrush(col);
+      label->setPos(s.x, s.y);
       overlay_items_.push_back(label);
     }
   }

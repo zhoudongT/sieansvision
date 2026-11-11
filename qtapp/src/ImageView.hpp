@@ -6,6 +6,7 @@
 #include <QImage>
 #include <QVector>
 #include <QPolygonF>
+#include "GeomOverlay.hpp"
 
 class QLabel;
 class QKeyEvent;
@@ -18,6 +19,9 @@ struct OverlayHit {
   QPolygonF polygon;
 };
 
+/** GEOM / MEASURE / CALIPER OverlayHit rows to pickable lines and points. */
+QVector<GeomPickable> pickablesFromOverlayHits(const QVector<OverlayHit>& hits);
+
 /** Center pane: image + barcode overlays (VisionMaster-style viewer). */
 class ImageView : public QGraphicsView {
   Q_OBJECT
@@ -29,6 +33,12 @@ class ImageView : public QGraphicsView {
   void setLiveImage(const QImage& image);
   void setOverlays(const QVector<OverlayHit>& hits);
   void clearOverlays();
+  /** Color-cycled geom/measure compare overlays (separate from barcode hits). */
+  void setGeomOverlays(const QVector<GeomOverlaySpec>& specs);
+  /** Drop only the compare geom layer and redraw remaining hits. */
+  void clearGeomOverlays();
+  int geomOverlayCount() const { return geom_specs_.size(); }
+  QVector<GeomOverlaySpec> geomOverlays() const { return geom_specs_; }
   QImage currentImage() const { return image_; }
 
  signals:
@@ -54,6 +64,7 @@ class ImageView : public QGraphicsView {
   QVector<QGraphicsItem*> overlay_items_;
   QImage image_;
   QVector<OverlayHit> hits_;
+  QVector<GeomOverlaySpec> geom_specs_;
   bool userZoomed_ = false;
   bool overlaysHidden_ = false;
   bool probeHidden_ = false;
