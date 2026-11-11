@@ -1370,6 +1370,7 @@ void MainWindow::buildMenus() {
 
   auto* work = menuBar()->addMenu(QStringLiteral("工程管理"));
   work->addAction(QStringLiteral("产线配方 / 换型…"), this, &MainWindow::onOpenRecipeSwitch);
+  work->addAction(QStringLiteral("工程库换型…"), this, &MainWindow::onLoadRecipeLibrary);
   work->addAction(QStringLiteral("变量监视"), this, [this]() {
     if (bottom_tabs_ && var_watch_) {
       bottom_tabs_->setCurrentWidget(var_watch_);
@@ -1462,6 +1463,15 @@ void MainWindow::buildToolbar() {
     auto* a = tb->addAction(QStringLiteral("子流程"), this, &MainWindow::onOpenSubflowManager);
     a->setToolTip(QStringLiteral("子流程管理 · 定义可复用流程并给循环调用"));
   }
+  variant_chip_ = new QComboBox;
+  variant_chip_->setObjectName(QStringLiteral("recipeVariantChip"));
+  variant_chip_->setMinimumWidth(88);
+  variant_chip_->setMaximumWidth(140);
+  variant_chip_->setToolTip(QStringLiteral("按产品变体一键套用本方案配方（带回滚）"));
+  variant_chip_->addItem(QStringLiteral("变体·—"), QString());
+  connect(variant_chip_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+          &MainWindow::onVariantChipChanged);
+  tb->addWidget(variant_chip_);
   act_preview_ = tb->addAction(QStringLiteral("连续预览"), this,
                                &MainWindow::onStartContinuousPreview);
   act_preview_->setToolTip(QStringLiteral("连续采集预览 · Soft/UVC/GenTL · 不跑流程"));
@@ -1649,6 +1659,7 @@ void MainWindow::applyDocumentToUi() {
   refreshProjectTitle();
   syncCanvasRoiFromSelection();
   updateCanvasUndoActions();
+  refreshVariantChip();
 }
 
 void MainWindow::syncVarsToUi(bool hostEvaluated) {
@@ -5029,6 +5040,19 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                                          : hf.join(QLatin1Char('|')).left(160))
                       .arg(inspection_history_.count());
         }
+        {
+          const QStringList cf = SieansDocument::recipeChangeoverSelfTest();
+          line += QChar(' ');
+          line += QStringLiteral(
+                      "recipeRollbackOk=%1 recipeRollbackFails=%2 recipeRollbackLive=%3 "
+                      "recipeLibOk=%4 recipeVariantLive=%5")
+                      .arg(cf.isEmpty() ? 1 : 0)
+                      .arg(cf.isEmpty() ? QStringLiteral("0")
+                                         : cf.join(QLatin1Char('|')).left(160))
+                      .arg(document_.recipeRollbackDepth())
+                      .arg(cf.isEmpty() ? 1 : 0)
+                      .arg(document_.recipeVariants().size());
+        }
       }
 
 
@@ -6590,10 +6614,17 @@ void MainWindow::onOpenRecipeSwitch() {
   auto* btns = new QHBoxLayout;
   auto* saveBtn = new QPushButton(QStringLiteral("保存当前为配方"));
   auto* applyBtn = new QPushButton(QStringLiteral("套用"));
+  auto* rollbackBtn = new QPushButton(QStringLiteral("一键回滚"));
+  auto* libBtn = new QPushButton(QStringLiteral("工程库换型…"));
   auto* delBtn = new QPushButton(QStringLiteral("删除"));
   auto* closeBtn = new QPushButton(QStringLiteral("关闭"));
+  auto* depthLab = new QLabel;
+  depthLab->setStyleSheet(QStringLiteral("color:#b9a;font-size:11px;"));
   btns->addWidget(saveBtn);
   btns->addWidget(applyBtn);
+  btns->addWidget(rollbackBtn);
+  btns->addWidget(depthLab);
+  btns->addWidget(libBtn);
   btns->addWidget(delBtn);
   btns->addStretch();
   btns->addWidget(closeBtn);
@@ -6623,6 +6654,13 @@ void MainWindow::onOpenRecipeSwitch() {
     return item ? item->data(Qt::UserRole).toString() : QString();
   };
 
+  auto refreshRollback = [this, rollbackBtn, depthLab]() {
+    const int d = document_.recipeRollbackDepth();
+    rollbackBtn->setEnabled(d > 0);
+    depthLab->setText(d > 0 ? QStringLiteral("回滚栈 %1").arg(d) : QString());
+  };
+  refreshRollback();
+
   QDialog* box = &dlg;
   QObject::connect(saveBtn, &QPushButton::clicked, box, [this, box, nameEdit, noteEdit, varEdit, reload]() {
     QString name = nameEdit->text().trimmed();
@@ -6635,6 +6673,7 @@ void MainWindow::onOpenRecipeSwitch() {
         document_.captureRecipe(name, noteEdit->text(), varEdit->text());
     document_.syncActiveIntoFlows();
     markProjectDirty();
+    refreshVariantChip();
     reload();
     logResult(QStringLiteral("已保存配方 · %1 · %2 步")
                   .arg(entry.value(QStringLiteral("name")).toString())
@@ -6648,13 +6687,14 @@ void MainWindow::onOpenRecipeSwitch() {
       return;
     }
     QString err;
-    const QVariantMap st = document_.applyRecipe(id, &err);
+    const QVariantMap st = document_.applyRecipeWithRollback(id, &err);
     if (!err.isEmpty()) {
       QMessageBox::warning(box, QStringLiteral("产线配方"), err);
       return;
     }
     document_.syncActiveIntoFlows();
     markProjectDirty();
+    refreshVariantChip();
     reload();
     logResult(QStringLiteral("已套用配方 · %1 · 步骤 %2 · 跳过 %3")
                   .arg(st.value(QStringLiteral("name")).toString())
@@ -6663,15 +6703,40 @@ void MainWindow::onOpenRecipeSwitch() {
     commitCanvasUndo(QStringLiteral("套用配方"));
     showStatus(QStringLiteral("已套用配方 %1").arg(st.value(QStringLiteral("name")).toString()));
   });
-  QObject::connect(delBtn, &QPushButton::clicked, box, [this, selectedId, reload]() {
+  QObject::connect(delBtn, &QPushButton::clicked, box, [this, selectedId, reload, refreshRollback]() {
     const QString id = selectedId();
     if (id.isEmpty()) return;
     if (!document_.deleteRecipe(id)) return;
     document_.syncActiveIntoFlows();
     markProjectDirty();
+    refreshVariantChip();
     reload();
+    refreshRollback();
     logResult(QStringLiteral("已删除配方"));
   });
+  QObject::connect(rollbackBtn, &QPushButton::clicked, box, [this, box, reload, refreshRollback]() {
+    QString err;
+    const QVariantMap st = document_.rollbackLastRecipe(&err);
+    if (!st.value(QStringLiteral("ok")).toBool()) {
+      QMessageBox::information(box, QStringLiteral("产线配方"),
+                               err.isEmpty() ? QStringLiteral("没有可回滚的配方快照") : err);
+      return;
+    }
+    document_.syncActiveIntoFlows();
+    markProjectDirty();
+    commitCanvasUndo(QStringLiteral("回滚配方"));
+    refreshVariantChip();
+    reload();
+    refreshRollback();
+    logResult(QStringLiteral("已回滚配方 · %1").arg(st.value(QStringLiteral("rolledBack")).toString()));
+    showStatus(QStringLiteral("已回滚配方"));
+  });
+  QObject::connect(libBtn, &QPushButton::clicked, box, [this, &dlg]() {
+    dlg.accept();
+    onLoadRecipeLibrary();
+  });
+  QObject::connect(applyBtn, &QPushButton::clicked, box, [refreshRollback]() { refreshRollback(); });
+  // applyBtn already has a previous connect; this extra one just refreshes depth
   QObject::connect(closeBtn, &QPushButton::clicked, &dlg, &QDialog::accept);
   dlg.exec();
 }
@@ -6886,6 +6951,100 @@ void MainWindow::onOpenInspectionHistory() {
   QObject::connect(close, &QPushButton::clicked, &dlg, &QDialog::accept);
   lay->addWidget(close, 0, Qt::AlignRight);
   dlg.exec();
+}
+
+void MainWindow::refreshVariantChip() {
+  if (!variant_chip_) return;
+  refreshing_variant_chip_ = true;
+  const QString current = variant_chip_->currentData().toString();
+  const QString active = document_.activeRecipeVariant();
+  variant_chip_->clear();
+  variant_chip_->addItem(QStringLiteral("变体·—"), QString());
+  const QStringList vars = document_.recipeVariants();
+  int select = 0;
+  const QString prefer = active.isEmpty() ? current : active;
+  for (const QString& v : vars) {
+    variant_chip_->addItem(QStringLiteral("变体·%1").arg(v), v);
+    if (!prefer.isEmpty() && v == prefer) select = variant_chip_->count() - 1;
+  }
+  variant_chip_->setCurrentIndex(select);
+  QString tip = QStringLiteral("按产品变体一键套用本方案配方（带回滚）");
+  if (!vars.isEmpty()) tip += QStringLiteral("\n已登记：%1").arg(vars.join(QStringLiteral("、")));
+  variant_chip_->setToolTip(tip);
+  refreshing_variant_chip_ = false;
+}
+
+void MainWindow::onVariantChipChanged(int) {
+  if (refreshing_variant_chip_ || applying_document_ || !variant_chip_) return;
+  const QString variant = variant_chip_->currentData().toString().trimmed();
+  if (variant.isEmpty()) return;
+  QString err;
+  const QVariantMap st = document_.applyRecipeVariant(variant, &err);
+  if (st.isEmpty()) {
+    showStatus(err.isEmpty() ? QStringLiteral("变体套用失败") : err);
+    logResult(QStringLiteral("变体套用失败：%1").arg(err));
+    refreshVariantChip();
+    return;
+  }
+  document_.syncActiveIntoFlows();
+  markProjectDirty();
+  commitCanvasUndo(QStringLiteral("变体换型"));
+  refreshVariantChip();
+  logResult(QStringLiteral("变体快切「%1」→ 配方 %2 · 写入%3 跳过%4")
+                .arg(variant, st.value(QStringLiteral("name")).toString())
+                .arg(st.value(QStringLiteral("applied")).toInt())
+                .arg(st.value(QStringLiteral("skipped")).toInt()));
+  showStatus(QStringLiteral("已套用变体 %1").arg(variant));
+}
+
+void MainWindow::onLoadRecipeLibrary() {
+  if (workbenchIsHeadless()) return;
+  const auto libs = SieansDocument::discoverRecipeLibrary();
+  if (libs.isEmpty()) {
+    QMessageBox::information(this, QStringLiteral("工程库换型"),
+                             QStringLiteral("未发现本机 .sieans 工程库文件"));
+    return;
+  }
+  QDialog dlg(this);
+  dlg.setWindowTitle(QStringLiteral("工程库换型"));
+  dlg.resize(560, 420);
+  auto* lay = new QVBoxLayout(&dlg);
+  lay->addWidget(new QLabel(QStringLiteral("从本机工程库加载整案（替换当前方案）：")));
+  auto* list = new QListWidget;
+  for (const auto& s : libs) {
+    auto* item = new QListWidgetItem(QStringLiteral("%1  ·  %2").arg(s.name, s.kind));
+    item->setData(Qt::UserRole, s.path);
+    item->setToolTip(s.path);
+    list->addItem(item);
+  }
+  list->setCurrentRow(0);
+  lay->addWidget(list);
+  auto* btns = new QHBoxLayout;
+  auto* ok = new QPushButton(QStringLiteral("加载"));
+  auto* cancel = new QPushButton(QStringLiteral("取消"));
+  btns->addStretch();
+  btns->addWidget(ok);
+  btns->addWidget(cancel);
+  lay->addLayout(btns);
+  QObject::connect(ok, &QPushButton::clicked, &dlg, &QDialog::accept);
+  QObject::connect(cancel, &QPushButton::clicked, &dlg, &QDialog::reject);
+  QObject::connect(list, &QListWidget::itemDoubleClicked, &dlg,
+                   [&dlg](QListWidgetItem*) { dlg.accept(); });
+  if (dlg.exec() != QDialog::Accepted) return;
+  auto* item = list->currentItem();
+  if (!item) return;
+  const QString path = item->data(Qt::UserRole).toString();
+  if (path.isEmpty()) return;
+  if (!confirmDiscardOrSave()) return;
+  QString err;
+  if (!document_.loadFromFile(path, &err)) {
+    QMessageBox::warning(this, QStringLiteral("工程库换型"), err);
+    return;
+  }
+  applyDocumentToUi();
+  markProjectClean();
+  logResult(QStringLiteral("工程库换型已加载 · %1").arg(document_.name()));
+  showStatus(QStringLiteral("工程库换型 · %1").arg(document_.name()));
 }
 
 

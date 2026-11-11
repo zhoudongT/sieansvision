@@ -174,6 +174,29 @@ class SieansDocument {
   /** Isolated capture/apply/delete/save-load recipe checks. Empty list = pass. */
   static QStringList recipeSelfTest();
 
+  QString activeRecipeVariant() const;
+  /** Unique product-variant labels on recipes, in first-seen order. */
+  QStringList recipeVariants() const;
+  /** First recipe id registered under variant; empty if none. */
+  QString firstRecipeIdForVariant(const QString& variant) const;
+  /** Apply and push a rollback snapshot (cap 16), matching PySide. */
+  QVariantMap applyRecipeWithRollback(const QString& recipeId, QString* error = nullptr);
+  /** Pop one rollback snapshot and restore steps/vars/active recipe. */
+  QVariantMap rollbackLastRecipe(QString* error = nullptr);
+  int recipeRollbackDepth() const;
+  /** Apply the first recipe under a variant, with rollback. */
+  QVariantMap applyRecipeVariant(const QString& variant, QString* error = nullptr);
+  /** Isolated rollback / variant / library-load checks on scratch documents. */
+  static QStringList recipeChangeoverSelfTest();
+
+  struct RecipeLibrarySource {
+    QString path;
+    QString name;
+    QString kind;
+  };
+  /** List .sieans under projects/, projects/templates/, data/native-desktop/projects. */
+  static QVector<RecipeLibrarySource> discoverRecipeLibrary(const QString& root = QString());
+
   /** PySide project["globalTriggers"] bag (events + strings). */
   QVariantMap globalTriggers() const;
   void setGlobalTriggers(const QVariantMap& bag);

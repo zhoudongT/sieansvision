@@ -1,4 +1,5 @@
 #include "SieansDocument.hpp"
+#include "WorkbenchPaths.hpp"
 #include "SubflowExec.hpp"
 
 #include <QFile>
@@ -2858,6 +2859,291 @@ QStringList SieansDocument::recipeSelfTest() {
   check("delete-missing", !doc.deleteRecipe(b.value(QStringLiteral("id")).toString()));
   check("delete-a", doc.deleteRecipe(a.value(QStringLiteral("id")).toString()) &&
                         doc.recipeCount() == 0 && doc.activeRecipeId().isEmpty());
+  return fails;
+}
+
+
+QString SieansDocument::activeRecipeVariant() const {
+  return raw_.value(QStringLiteral("activeRecipeVariant")).toString();
+}
+
+QStringList SieansDocument::recipeVariants() const {
+  QStringList out;
+  for (const QJsonValue& v : recipesJson()) {
+    const QString var = v.toObject().value(QStringLiteral("variant")).toString().trimmed();
+    if (!var.isEmpty() && !out.contains(var)) out.append(var);
+  }
+  return out;
+}
+
+QString SieansDocument::firstRecipeIdForVariant(const QString& variant) const {
+  const QString want = variant.trimmed();
+  if (want.isEmpty()) return {};
+  for (const QJsonValue& v : recipesJson()) {
+    const QJsonObject o = v.toObject();
+    if (o.value(QStringLiteral("variant")).toString().trimmed() == want)
+      return o.value(QStringLiteral("id")).toString();
+  }
+  return {};
+}
+
+namespace {
+const char kRollbackStack[] = "_recipeRollbackStack";
+const char kRollbackSnap[] = "_recipeRollbackSnap";
+constexpr int kRollbackCap = 16;
+
+QJsonObject captureRecipeRollbackSnap(const SieansDocument& doc) {
+  QJsonArray steps;
+  for (const FlowStep& s : doc.steps()) steps.append(SieansDocument::stepToJson(s));
+  QJsonObject o;
+  o.insert(QStringLiteral("steps"), steps);
+  o.insert(QStringLiteral("variables"), QJsonObject::fromVariantMap(doc.variables()));
+  o.insert(QStringLiteral("activeRecipeId"), doc.activeRecipeId());
+  o.insert(QStringLiteral("activeRecipeVariant"), doc.activeRecipeVariant());
+  return o;
+}
+}  // namespace
+
+
+QVariantMap SieansDocument::applyRecipeWithRollback(const QString& recipeId, QString* error) {
+  const QJsonObject snap = captureRecipeRollbackSnap(*this);
+  const QString beforeId = activeRecipeId();
+  const QString beforeVar = activeRecipeVariant();
+  const QVariantMap stats = applyRecipe(recipeId, error);
+  if (stats.isEmpty()) return stats;
+  QJsonObject entry;
+  entry.insert(QStringLiteral("snapshot"), snap);
+  entry.insert(QStringLiteral("recipeId"), recipeId);
+  entry.insert(QStringLiteral("name"), stats.value(QStringLiteral("name")).toString());
+  entry.insert(QStringLiteral("appliedAt"),
+               QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")));
+  entry.insert(QStringLiteral("beforeId"), beforeId);
+  entry.insert(QStringLiteral("beforeVariant"), beforeVar);
+  QJsonObject st;
+  st.insert(QStringLiteral("applied"), stats.value(QStringLiteral("applied")).toInt());
+  st.insert(QStringLiteral("skipped"), stats.value(QStringLiteral("skipped")).toInt());
+  st.insert(QStringLiteral("varsApplied"), stats.value(QStringLiteral("varsApplied")).toInt());
+  entry.insert(QStringLiteral("stats"), st);
+  QJsonArray stack = raw_.value(QLatin1String(kRollbackStack)).toArray();
+  if (stack.isEmpty()) {
+    const QJsonObject legacy = raw_.value(QLatin1String(kRollbackSnap)).toObject();
+    if (legacy.contains(QStringLiteral("snapshot"))) stack.append(legacy);
+  }
+  stack.append(entry);
+  while (stack.size() > kRollbackCap) stack.removeAt(0);
+  raw_.insert(QLatin1String(kRollbackStack), stack);
+  raw_.insert(QLatin1String(kRollbackSnap), entry);
+  QVariantMap out = stats;
+  out.insert(QStringLiteral("rollbackReady"), true);
+  out.insert(QStringLiteral("rollbackDepth"), stack.size());
+  return out;
+}
+
+int SieansDocument::recipeRollbackDepth() const {
+  const QJsonArray stack = raw_.value(QLatin1String(kRollbackStack)).toArray();
+  int n = 0;
+  for (const QJsonValue& v : stack) {
+    if (v.toObject().value(QStringLiteral("snapshot")).isObject()) ++n;
+  }
+  if (n == 0) {
+    const QJsonObject legacy = raw_.value(QLatin1String(kRollbackSnap)).toObject();
+    if (legacy.value(QStringLiteral("snapshot")).isObject()) return 1;
+  }
+  return n;
+}
+
+QVariantMap SieansDocument::rollbackLastRecipe(QString* error) {
+  QVariantMap stats;
+  QJsonArray stack = raw_.value(QLatin1String(kRollbackStack)).toArray();
+  QJsonObject bag;
+  if (!stack.isEmpty()) {
+    bag = stack.last().toObject();
+    stack.removeLast();
+    if (stack.isEmpty()) {
+      raw_.remove(QLatin1String(kRollbackStack));
+      raw_.remove(QLatin1String(kRollbackSnap));
+    } else {
+      raw_.insert(QLatin1String(kRollbackStack), stack);
+      raw_.insert(QLatin1String(kRollbackSnap), stack.last());
+    }
+  } else {
+    bag = raw_.value(QLatin1String(kRollbackSnap)).toObject();
+    raw_.remove(QLatin1String(kRollbackSnap));
+    raw_.remove(QLatin1String(kRollbackStack));
+  }
+  const QJsonObject snap = bag.value(QStringLiteral("snapshot")).toObject();
+  if (snap.isEmpty()) {
+    if (error) *error = QStringLiteral("没有可回滚的配方快照");
+    stats.insert(QStringLiteral("ok"), false);
+    return stats;
+  }
+  QVector<FlowStep> steps;
+  for (const QJsonValue& v : snap.value(QStringLiteral("steps")).toArray()) {
+    FlowStep s = stepFromJson(v.toObject());
+    if (s.id.isEmpty()) continue;
+    if (s.runState.isEmpty()) s.runState = QStringLiteral("等待执行");
+    steps.push_back(s);
+  }
+  steps_ = steps;
+  if (snap.contains(QStringLiteral("variables")))
+    variables_ = snap.value(QStringLiteral("variables")).toObject().toVariantMap();
+  raw_.insert(QStringLiteral("activeRecipeId"),
+              snap.value(QStringLiteral("activeRecipeId")).toString());
+  raw_.insert(QStringLiteral("activeRecipeVariant"),
+              snap.value(QStringLiteral("activeRecipeVariant")).toString());
+  syncActiveIntoFlows();
+  stats.insert(QStringLiteral("ok"), true);
+  stats.insert(QStringLiteral("rolledBack"), bag.value(QStringLiteral("name")).toString());
+  stats.insert(QStringLiteral("recipeId"), bag.value(QStringLiteral("recipeId")).toString());
+  stats.insert(QStringLiteral("rollbackDepth"), recipeRollbackDepth());
+  stats.insert(QStringLiteral("remaining"), recipeRollbackDepth());
+  stats.insert(QStringLiteral("steps"), steps_.size());
+  return stats;
+}
+
+QVariantMap SieansDocument::applyRecipeVariant(const QString& variant, QString* error) {
+  const QString id = firstRecipeIdForVariant(variant);
+  if (id.isEmpty()) {
+    if (error) *error = QStringLiteral("变体「%1」下无配方").arg(variant.trimmed());
+    return {};
+  }
+  return applyRecipeWithRollback(id, error);
+}
+
+QVector<SieansDocument::RecipeLibrarySource> SieansDocument::discoverRecipeLibrary(
+    const QString& root) {
+  QVector<RecipeLibrarySource> out;
+  QString base = root.trimmed();
+  if (base.isEmpty()) base = workbenchRepoRoot();
+  if (base.isEmpty()) return out;
+  QStringList seen;
+  auto addDir = [&](const QString& dir, const QString& kind, bool recursive) {
+    if (!QDir(dir).exists()) return;
+    QDir d(dir);
+    const QFileInfoList files =
+        recursive ? d.entryInfoList({QStringLiteral("*.sieans")}, QDir::Files, QDir::Name)
+                  : d.entryInfoList({QStringLiteral("*.sieans")}, QDir::Files, QDir::Name);
+    QFileInfoList all = files;
+    if (recursive) {
+      all = QDir(dir).entryInfoList({QStringLiteral("*.sieans")},
+                                    QDir::Files, QDir::Name);
+      // walk one extra level of subdirs, cap 40
+      const QFileInfoList sub = QDir(dir).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+      for (const QFileInfo& sd : sub)
+        all += QDir(sd.absoluteFilePath())
+                   .entryInfoList({QStringLiteral("*.sieans")}, QDir::Files, QDir::Name);
+    }
+    int added = 0;
+    for (const QFileInfo& fi : all) {
+      const QString rp = fi.canonicalFilePath();
+      if (rp.isEmpty() || seen.contains(rp)) continue;
+      seen.append(rp);
+      RecipeLibrarySource s;
+      s.path = rp;
+      s.name = fi.completeBaseName();
+      s.kind = (kind == QStringLiteral("工程") && fi.fileName().startsWith(QLatin1String("open-and-run")))
+                   ? QStringLiteral("打开即跑")
+                   : kind;
+      out.append(s);
+      ++added;
+      if (recursive && added >= 40) break;
+    }
+  };
+  addDir(base + QStringLiteral("/projects"), QStringLiteral("工程"), false);
+  addDir(base + QStringLiteral("/projects/templates"), QStringLiteral("模板"), false);
+  addDir(base + QStringLiteral("/data/native-desktop/projects"), QStringLiteral("本机库"), true);
+  return out;
+}
+
+QStringList SieansDocument::recipeChangeoverSelfTest() {
+  QStringList fails;
+  auto check = [&](const char* name, bool ok, const QString& detail = QString()) {
+    if (!ok)
+      fails << (detail.isEmpty() ? QString::fromUtf8(name)
+                                 : QStringLiteral("%1: %2").arg(QString::fromUtf8(name), detail));
+  };
+  SieansDocument doc;
+  FlowStep loc;
+  loc.id = QStringLiteral("loc-1");
+  loc.name = QStringLiteral("定位");
+  loc.operation = QStringLiteral("locate");
+  loc.params.insert(QStringLiteral("threshold"), 80);
+  FlowStep meas;
+  meas.id = QStringLiteral("meas-1");
+  meas.name = QStringLiteral("测量");
+  meas.operation = QStringLiteral("measure");
+  meas.params.insert(QStringLiteral("minMm"), 10);
+  doc.stepsMut() << loc << meas;
+  QVariantMap vars;
+  vars.insert(QStringLiteral("limit"), 3);
+  doc.setVariables(vars);
+  const QVariantMap a = doc.captureRecipe(QStringLiteral("A型"), QString(), QStringLiteral("A"));
+  doc.stepsMut()[0].params.insert(QStringLiteral("threshold"), 40);
+  doc.variablesMut().insert(QStringLiteral("limit"), 9);
+  const QVariantMap b = doc.captureRecipe(QStringLiteral("B型"), QString(), QStringLiteral("B"));
+  check("variants", doc.recipeVariants() == QStringList({QStringLiteral("A"), QStringLiteral("B")}),
+        doc.recipeVariants().join(QLatin1Char(',')));
+  check("first-a", doc.firstRecipeIdForVariant(QStringLiteral("A")) ==
+                       a.value(QStringLiteral("id")).toString());
+  check("empty-var", doc.firstRecipeIdForVariant(QStringLiteral("Z")).isEmpty());
+  check("depth0", doc.recipeRollbackDepth() == 0);
+
+  QString err;
+  const QVariantMap appliedA = doc.applyRecipeWithRollback(a.value(QStringLiteral("id")).toString(),
+                                                           &err);
+  check("apply-a", err.isEmpty() && appliedA.value(QStringLiteral("applied")).toInt() == 2, err);
+  check("apply-a-params",
+        doc.steps().at(0).params.value(QStringLiteral("threshold")).toInt() == 80);
+  check("depth1", doc.recipeRollbackDepth() == 1, QString::number(doc.recipeRollbackDepth()));
+  check("active-a", doc.activeRecipeVariant() == QLatin1String("A"));
+
+  err.clear();
+  const QVariantMap appliedB = doc.applyRecipeVariant(QStringLiteral("B"), &err);
+  check("apply-b-var", err.isEmpty() && appliedB.value(QStringLiteral("name")).toString() ==
+                                             QStringLiteral("B型"),
+        err);
+  check("apply-b-params",
+        doc.steps().at(0).params.value(QStringLiteral("threshold")).toInt() == 40);
+  check("depth2", doc.recipeRollbackDepth() == 2);
+
+  err.clear();
+  const QVariantMap rb1 = doc.rollbackLastRecipe(&err);
+  check("rollback1", err.isEmpty() && rb1.value(QStringLiteral("ok")).toBool(), err);
+  check("rollback1-params",
+        doc.steps().at(0).params.value(QStringLiteral("threshold")).toInt() == 80 &&
+            doc.activeRecipeVariant() == QLatin1String("A"));
+  check("depth-after1", doc.recipeRollbackDepth() == 1);
+
+  err.clear();
+  const QVariantMap rb2 = doc.rollbackLastRecipe(&err);
+  check("rollback2", err.isEmpty() && rb2.value(QStringLiteral("ok")).toBool(), err);
+  check("rollback2-params",
+        doc.steps().at(0).params.value(QStringLiteral("threshold")).toInt() == 40 &&
+            doc.variables().value(QStringLiteral("limit")).toInt() == 9 &&
+            doc.activeRecipeVariant() == QLatin1String("B"));
+  check("depth0-again", doc.recipeRollbackDepth() == 0);
+  err.clear();
+  const QVariantMap rb3 = doc.rollbackLastRecipe(&err);
+  check("rollback-empty", !rb3.value(QStringLiteral("ok")).toBool() && !err.isEmpty());
+
+  // isolation: a second seeded document is not mutated
+  SieansDocument live;
+  live.seedGentlQrDemo();
+  const int liveN = live.steps().size();
+  const int liveR = live.recipeCount();
+  check("live-untouched", live.steps().size() == liveN && live.recipeRollbackDepth() == 0 &&
+                              live.recipeCount() == liveR);
+
+  const auto libs = discoverRecipeLibrary();
+  check("library-scan", !libs.isEmpty(), QString::number(libs.size()));
+  if (!libs.isEmpty()) {
+    SieansDocument loaded;
+    QString le;
+    check("library-load", loaded.loadFromFile(libs.first().path, &le), le);
+    check("library-has-steps", loaded.steps().size() > 0,
+          QString::number(loaded.steps().size()));
+    check("live-after-lib", live.steps().size() == liveN && live.recipeRollbackDepth() == 0);
+  }
   return fails;
 }
 

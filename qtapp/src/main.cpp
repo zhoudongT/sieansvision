@@ -386,6 +386,18 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
+  if (qEnvironmentVariable("SIEANS_QT_RECIPE_CHANGE_SELFTEST") == QLatin1String("1") &&
+      qEnvironmentVariable("SIEANS_QT_RECIPE_CHANGE_SELFTEST_QUIT") == QLatin1String("1")) {
+    QCoreApplication app(argc, argv);
+    const QStringList fails = sieans_qt::SieansDocument::recipeChangeoverSelfTest();
+    if (fails.isEmpty()) {
+      std::fprintf(stdout, "recipe-change-selftest ok\n");
+      return 0;
+    }
+    for (const QString& line : fails)
+      std::fprintf(stderr, "recipe-change-selftest FAIL %s\n", line.toUtf8().constData());
+    return 1;
+  }
 
   if (qEnvironmentVariable("SIEANS_QT_RECIPE_SELFTEST") == QLatin1String("1") &&
       qEnvironmentVariable("SIEANS_QT_RECIPE_SELFTEST_QUIT") == QLatin1String("1")) {

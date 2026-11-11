@@ -58,6 +58,8 @@ class MainWindow : public QMainWindow {
   void onOpenRecipeSwitch();
   /** Show the local inspection-history table (headless no-op). */
   void onOpenInspectionHistory();
+  /** Load a .sieans from the project library as the current document. */
+  void onLoadRecipeLibrary();
   /** Edit project globalTriggers string rows (headless no-op). */
   void onOpenGlobalTriggers();
   /** Match a comm/inject payload against string triggers and dispatch run/stop. */
@@ -148,6 +150,10 @@ class MainWindow : public QMainWindow {
   void refreshProjectTitle();
   /** Append one OK/NG row to the local inspection history after a finished run. */
   void appendInspectionHistory();
+  /** Rebuild the toolbar variant chip from project recipes (no dirty). */
+  void refreshVariantChip();
+  /** Apply the first recipe under the chip's current variant (with rollback). */
+  void onVariantChipChanged(int index);
   /** 有未保存修改时询问保存/放弃/取消；无界面冒烟直接视为放弃。取消则返回 false。 */
   bool confirmDiscardOrSave();
   void logResult(const QString& line);
@@ -245,6 +251,8 @@ class MainWindow : public QMainWindow {
   bool applying_document_ = false;
   bool restoring_canvas_undo_ = false;
   InspectionHistory inspection_history_;
+  class QComboBox* variant_chip_ = nullptr;
+  bool refreshing_variant_chip_ = false;
   QAction* act_undo_ = nullptr;
   QAction* act_redo_ = nullptr;
   QString imported_cloud_path_;
