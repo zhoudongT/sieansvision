@@ -318,6 +318,60 @@
         "stopValue": true,
         "arguments": {}
       }
+    },
+    {
+      "id": "defOk",
+      "name": "参考图缺陷 · 清洁",
+      "operation": "defects",
+      "imageFrom": "a1b2c3d4e5f60718",
+      "position": {
+        "x": 780,
+        "y": 260
+      },
+      "runState": "等待执行",
+      "params": {
+        "differenceThreshold": 30,
+        "minArea": 20,
+        "maxCount": 200,
+        "blur": 3,
+        "ignoreBottomPx": 36,
+        "scaleReference": true,
+        "judgeEnable": true,
+        "judgeMaxCount": 0,
+        "judgeMaxRatio": 0.05,
+        "writePassGate": false,
+        "showOverlay": true,
+        "showLabels": true,
+        "referenceSource": "soft_scene",
+        "resultVar": "defectsClean"
+      }
+    },
+    {
+      "id": "defNg",
+      "name": "参考图缺陷 · 斑块",
+      "operation": "defects",
+      "imageFrom": "a1b2c3d4e5f60718",
+      "position": {
+        "x": 940,
+        "y": 260
+      },
+      "runState": "等待执行",
+      "params": {
+        "differenceThreshold": 30,
+        "minArea": 20,
+        "maxCount": 200,
+        "blur": 3,
+        "ignoreBottomPx": 36,
+        "scaleReference": true,
+        "judgeEnable": true,
+        "judgeMaxCount": 0,
+        "judgeMaxRatio": 0.05,
+        "writePassGate": false,
+        "showOverlay": true,
+        "showLabels": true,
+        "referenceSource": "soft_scene_blemish",
+        "resultVar": "defects"
+      }
     }
   ],
   "edges": [
@@ -421,6 +475,18 @@
       "from": "sf1",
       "to": "loop1",
       "when": "always"
+    },
+    {
+      "id": "e-cam-defOk",
+      "from": "a1b2c3d4e5f60718",
+      "to": "defOk",
+      "when": "always"
+    },
+    {
+      "id": "e-cam-defNg",
+      "from": "a1b2c3d4e5f60718",
+      "to": "defNg",
+      "when": "always"
     }
   ],
   "variables": {
@@ -443,7 +509,16 @@
     "loopCompleted": 0,
     "loopStoppedEarly": 0,
     "loopCount": 0,
-    "loopPassed": 0
+    "loopPassed": 0,
+    "defectsCount": 0,
+    "defectsRatio": 0,
+    "defectsOk": 0,
+    "defectsPassed": 0,
+    "defectsMaxArea": 0,
+    "defectsTotalArea": 0,
+    "defectsCleanCount": 0,
+    "defectsCleanOk": 0,
+    "defectsCleanRatio": 0
   },
   "hostWatch": {
     "watchKeys": [
@@ -465,7 +540,14 @@
       "loopCompleted",
       "loopStoppedEarly",
       "loopCount",
-      "loopPassed"
+      "loopPassed",
+      "defectsCount",
+      "defectsRatio",
+      "defectsOk",
+      "defectsPassed",
+      "defectsMaxArea",
+      "defectsCleanCount",
+      "defectsCleanOk"
     ],
     "active": "二维码链",
     "pinGroups": {

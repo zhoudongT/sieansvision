@@ -132,7 +132,7 @@ QImage applySoftTone(const QImage& src, int exposureUs, double gainDb, int seq,
   return img;
 }
 
-QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gainDb) {
+QImage makeSoftScene(int width, int height) {
   // Force even canvas so letterbox origin & finder stay on integer grid.
   const int w = qMax(16, width) & ~1;
   const int h = qMax(16, height) & ~1;
@@ -143,7 +143,6 @@ QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gain
 
   // Letterbox the FULL sample scene so embedded QRs stay decodable at soft sizes.
   const QImage qr = loadSoftQrSample();
-  bool drewQr = false;
   if (!qr.isNull()) {
     // Prefer FastTransformation — Smooth blurs finder patterns at 640×400.
     const QImage scaled =
@@ -199,7 +198,6 @@ QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gain
       p.drawRect(QRect(x0, baseY, barW, barH));
       p.drawRect(QRect(x0 + gap, baseY, barW, barH));
     }
-    drewQr = true;
   } else {
     p.setPen(Qt::NoPen);
     p.setBrush(Qt::white);
@@ -210,7 +208,30 @@ QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gain
     drawFinder(p, QRect(plate.right() - fs - 8, plate.top() + 8, fs, fs));
     drawFinder(p, QRect(plate.left() + 8, plate.bottom() - fs - 8, fs, fs));
   }
+  p.end();
+  return img;
+}
 
+QImage makeSoftSceneBlemish(int width, int height) {
+  QImage img = makeSoftScene(width, height);
+  if (img.isNull()) return img;
+  const int bw = qBound(32, img.width() / 20, 80);
+  const int bh = qBound(24, img.height() / 24, 64);
+  const int x = qMax(8, img.width() - bw - 48);
+  const int y = qBound(80, img.height() / 2 - bh / 2, img.height() - bh - 48);
+  QPainter p(&img);
+  p.setPen(Qt::NoPen);
+  p.setBrush(QColor(18, 18, 18));
+  p.drawRect(QRect(x, y, bw, bh));
+  p.end();
+  return img;
+}
+
+QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gainDb) {
+  const int w = qMax(16, width) & ~1;
+  const int h = qMax(16, height) & ~1;
+  QImage img = makeSoftScene(w, h);
+  QPainter p(&img);
   p.setPen(QColor(40, 40, 40));
   QFont font(QStringLiteral("DejaVu Sans Mono"), 10);
   font.setBold(true);
@@ -220,7 +241,8 @@ QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gain
   p.fillRect(0, h - 18, w, 18, QColor(236, 236, 236, 220));
   {
     QString hud;
-    if (drewQr) {
+    const QImage qr = loadSoftQrSample();
+    if (!qr.isNull()) {
       const QString leaf = QFileInfo(g_softQrLoadedPath).fileName();
       hud = leaf.isEmpty()
                 ? QStringLiteral("SIEANS- soft·QR %1×%2 #%3 even·letterbox · Soft").arg(w).arg(h).arg(seq % 1000)
@@ -237,5 +259,6 @@ QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gain
   p.end();
   return applySoftTone(img, exposureUs, gainDb, seq, true);
 }
+
 
 }  // namespace sieans_qt

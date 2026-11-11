@@ -102,6 +102,29 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("minConfidence", "最低置信度", kInt, ""),
             S("showOverlay", "显示文本框", kBool, "")};
   }
+  if (op == QLatin1String("defects")) {
+    return {S("referenceSource", "参考来源", kChoice,
+              "file|文件路径;soft_scene|软仿真场景;soft_scene_blemish|软场景+斑块"),
+            S("referencePath", "参考图路径", kLine, "同尺寸良品图"),
+            S("scaleReference", "尺寸不一致时缩放", kBool, ""),
+            S("differenceThreshold", "灰度差异阈值", kInt, "1–255"),
+            S("minArea", "最小区域面积", kInt, ""),
+            S("maxCount", "最多缺陷数", kInt, ""),
+            S("blur", "模糊核", kInt, "0=无，默认 3"),
+            S("ignoreBottomPx", "忽略底部像素", kInt, "避开 soft HUD"),
+            S("roiX", "ROI X", kInt, ""),
+            S("roiY", "ROI Y", kInt, ""),
+            S("roiW", "ROI 宽", kInt, ""),
+            S("roiH", "ROI 高", kInt, ""),
+            S("judgeEnable", "启用判定", kBool, ""),
+            S("judgeMaxCount", "允许最大个数", kInt, "0=有缺陷即 NG"),
+            S("judgeMaxRatio", "允许最大比例", kReal, ""),
+            S("maxDefectRatio", "关闭判定时允许比例", kReal, ""),
+            S("resultVar", "结果前缀", kLine, "defects → defectsCount"),
+            S("writePassGate", "写入 passGate", kBool, ""),
+            S("showOverlay", "显示缺陷框", kBool, ""),
+            S("showLabels", "显示面积标签", kBool, "")};
+  }
   if (op == QLatin1String("caliper") || op == QLatin1String("measure")) {
     return {S("direction", "方向", kChoice, "horizontal|水平;vertical|垂直"),
             S("target", "目标", kLine, "soft_bars|软靶 / 空=ROI"),
@@ -821,6 +844,8 @@ void PropertyPanel::showStep(const FlowStep& step) {
   else if (step.operation == QLatin1String("caliper") ||
            step.operation == QLatin1String("measure"))
     hint += QStringLiteral(" · QImage 边缘卡尺 · caliperDist/measureMm");
+  else if (step.operation == QLatin1String("defects"))
+    hint += QStringLiteral(" · 灰度差影+连通域 · defectsCount/defectsRatio/defectsOk");
   else if (step.operation == QLatin1String("subflow"))
     hint += QStringLiteral(" · 调用子流程 · 结果 subflowPassed/subflowCount");
   else if (step.operation == QLatin1String("loop"))

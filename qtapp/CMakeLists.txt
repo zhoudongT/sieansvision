@@ -71,6 +71,8 @@ add_executable(sieans_qt
   src/TemplateMatch.cpp
   src/CaliperMeasure.hpp
   src/CaliperMeasure.cpp
+  src/DefectDetect.hpp
+  src/DefectDetect.cpp
   src/ConditionEval.hpp
   src/ConditionEval.cpp
   src/SubflowExec.hpp

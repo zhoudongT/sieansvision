@@ -3,6 +3,7 @@
 #include "ExprEval.hpp"
 #include "TemplateMatch.hpp"
 #include "CaliperMeasure.hpp"
+#include "DefectDetect.hpp"
 #include "ConditionEval.hpp"
 #include "SubflowExec.hpp"
 #include "SubflowDialog.hpp"
@@ -2192,6 +2193,85 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                                                                   : QStringLiteral("0")));
         result_table_->setItem(row3, 2, new QTableWidgetItem(QStringLiteral("gate")));
       }
+    } else if (op == QLatin1String("defects")) {
+      const auto t0 = std::chrono::steady_clock::now();
+      QString refErr;
+      const QImage ref = resolveDefectsReference(working, step->params, &refErr);
+      DefectResult dr = runDefects(working, ref, step->params);
+      if (!dr.ok && dr.error.isEmpty()) dr.error = refErr;
+      const double defMs = std::chrono::duration<double, std::milli>(
+                               std::chrono::steady_clock::now() - t0)
+                               .count();
+      algoMs += defMs;
+      QString prefix =
+          step->params.value(QStringLiteral("resultVar"), QStringLiteral("defects"))
+              .toString()
+              .trimmed();
+      if (prefix.isEmpty()) prefix = QStringLiteral("defects");
+      auto put = [&](const QString& suffix, const QVariant& v) {
+        flow_vars_.insert(prefix + suffix, v);
+      };
+      const int okI = (dr.ok && dr.passed) ? 1 : 0;
+      put(QStringLiteral("Count"), dr.count);
+      put(QStringLiteral("Ratio"), dr.defectRatio);
+      put(QStringLiteral("Passed"), okI);
+      put(QStringLiteral("Ok"), okI);
+      put(QStringLiteral("MaxArea"), dr.maxArea);
+      put(QStringLiteral("TotalArea"), dr.totalArea);
+      if (prefix == QLatin1String("defects")) {
+        flow_vars_.insert(QStringLiteral("defects_count"), dr.count);
+        flow_vars_.insert(QStringLiteral("defects_ratio"), dr.defectRatio);
+        flow_vars_.insert(QStringLiteral("defects_passed"), okI);
+      }
+      const bool writeGate = step->params.value(QStringLiteral("writePassGate")).toBool();
+      if (writeGate) flow_vars_.insert(QStringLiteral("passGate"), okI);
+      {
+        StepSnap snap;
+        snap.count = dr.count;
+        snap.ok = dr.ok && dr.passed;
+        snap.matches = dr.count;
+        snap.score = dr.defectRatio;
+        snap.text = dr.note;
+        snap.fields.insert(QStringLiteral("count"), dr.count);
+        snap.fields.insert(QStringLiteral("ratio"), dr.defectRatio);
+        step_snaps.insert(id, snap);
+      }
+      ok = dr.ok && (dr.passed || !dr.judgeEnable);
+      // algo failure (no ref) is NG even if judge is off
+      if (!dr.ok) ok = false;
+      note = dr.ok ? QStringLiteral("%1 · %2 ms").arg(dr.note).arg(defMs, 0, 'f', 1)
+                   : dr.error;
+      if (step->params.value(QStringLiteral("showOverlay"), true).toBool()) {
+        const bool showLab =
+            !step->params.contains(QStringLiteral("showLabels")) ||
+            step->params.value(QStringLiteral("showLabels")).toBool();
+        for (const DefectItem& it : dr.items) {
+          OverlayHit o;
+          o.text = showLab ? QStringLiteral("A%1").arg(it.areaPixels) : QString();
+          o.format = QStringLiteral("DEFECT");
+          const QRect rct = it.bbox;
+          o.polygon << rct.topLeft() << rct.topRight() << rct.bottomRight()
+                    << rct.bottomLeft();
+          overlays.push_back(o);
+        }
+      }
+      if (result_table_) {
+        auto addRow = [&](const QString& k, const QString& v, const QString& unit) {
+          const int row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(k));
+          result_table_->setItem(row, 1, new QTableWidgetItem(v));
+          result_table_->setItem(row, 2, new QTableWidgetItem(unit));
+        };
+        addRow(prefix + QStringLiteral("Count"), QString::number(dr.count),
+               QStringLiteral("count"));
+        addRow(prefix + QStringLiteral("Ratio"),
+               QString::number(dr.defectRatio, 'f', 5), QStringLiteral("ratio"));
+        addRow(prefix + QStringLiteral("Ok"), QString::number(okI),
+               QStringLiteral("gate"));
+        addRow(prefix + QStringLiteral("MaxArea"), QString::number(dr.maxArea),
+               QStringLiteral("px"));
+      }
     } else if (op == QLatin1String("var_calc")) {
       ExprEval ev;
       ev.setVars(flow_vars_);
@@ -2692,6 +2772,19 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                   .arg(flow_vars_.value(QStringLiteral("loopStoppedEarly")).toString())
                   .arg(flow_vars_.value(QStringLiteral("loopCount")).toString())
                   .arg(flow_vars_.value(QStringLiteral("loopPassed")).toString());
+      line += QLatin1Char(' ');
+      line += QStringLiteral(
+                  "defectsCleanCount=%1 defectsCleanOk=%2 defectsCleanRatio=%3 "
+                  "defectsCount=%4 defectsOk=%5 defectsRatio=%6 defectsMaxArea=%7 "
+                  "defectsPassed=%8")
+                  .arg(flow_vars_.value(QStringLiteral("defectsCleanCount")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("defectsCleanOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("defectsCleanRatio")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("defectsCount")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("defectsOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("defectsRatio")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("defectsMaxArea")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("defectsPassed")).toString());
       line += QLatin1Char('\n');
       f.write(line.toUtf8());
     }
@@ -3338,6 +3431,23 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("judgeMinPx"), 50},
                 {QStringLiteral("judgeMaxPx"), 400},
                 {QStringLiteral("showOverlay"), true}};
+  } else if (key == QLatin1String("defects")) {
+    s.params = {{QStringLiteral("referenceSource"), QStringLiteral("file")},
+                {QStringLiteral("referencePath"), QString()},
+                {QStringLiteral("differenceThreshold"), 30},
+                {QStringLiteral("minArea"), 20},
+                {QStringLiteral("maxCount"), 200},
+                {QStringLiteral("blur"), 3},
+                {QStringLiteral("ignoreBottomPx"), 0},
+                {QStringLiteral("scaleReference"), true},
+                {QStringLiteral("judgeEnable"), true},
+                {QStringLiteral("judgeMaxCount"), 0},
+                {QStringLiteral("judgeMaxRatio"), 0.05},
+                {QStringLiteral("maxDefectRatio"), 1},
+                {QStringLiteral("resultVar"), QStringLiteral("defects")},
+                {QStringLiteral("writePassGate"), false},
+                {QStringLiteral("showOverlay"), true},
+                {QStringLiteral("showLabels"), true}};
   } else if (key == QLatin1String("camera_capture")) {
     s.params = {{QStringLiteral("driver"), QStringLiteral("gentl")},
                 {QStringLiteral("backendKind"), QStringLiteral("gentl")},

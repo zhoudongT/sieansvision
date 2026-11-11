@@ -294,6 +294,38 @@ void SieansDocument::seedGentlQrDemo() {
        {QStringLiteral("judgeMinPx"), 150},
        {QStringLiteral("judgeMaxPx"), 250},
        {QStringLiteral("showOverlay"), true}});
+  add(QStringLiteral("defOk"), QStringLiteral("参考图缺陷 · 清洁"),
+      QStringLiteral("defects"), 780, 260, QStringLiteral("cam1"),
+      {{QStringLiteral("referenceSource"), QStringLiteral("soft_scene")},
+       {QStringLiteral("differenceThreshold"), 30},
+       {QStringLiteral("minArea"), 20},
+       {QStringLiteral("maxCount"), 200},
+       {QStringLiteral("blur"), 3},
+       {QStringLiteral("ignoreBottomPx"), 36},
+       {QStringLiteral("scaleReference"), true},
+       {QStringLiteral("judgeEnable"), true},
+       {QStringLiteral("judgeMaxCount"), 0},
+       {QStringLiteral("judgeMaxRatio"), 0.05},
+       {QStringLiteral("resultVar"), QStringLiteral("defectsClean")},
+       {QStringLiteral("writePassGate"), false},
+       {QStringLiteral("showOverlay"), true},
+       {QStringLiteral("showLabels"), true}});
+  add(QStringLiteral("defNg"), QStringLiteral("参考图缺陷 · 斑块"),
+      QStringLiteral("defects"), 940, 260, QStringLiteral("cam1"),
+      {{QStringLiteral("referenceSource"), QStringLiteral("soft_scene_blemish")},
+       {QStringLiteral("differenceThreshold"), 30},
+       {QStringLiteral("minArea"), 20},
+       {QStringLiteral("maxCount"), 200},
+       {QStringLiteral("blur"), 3},
+       {QStringLiteral("ignoreBottomPx"), 36},
+       {QStringLiteral("scaleReference"), true},
+       {QStringLiteral("judgeEnable"), true},
+       {QStringLiteral("judgeMaxCount"), 0},
+       {QStringLiteral("judgeMaxRatio"), 0.05},
+       {QStringLiteral("resultVar"), QStringLiteral("defects")},
+       {QStringLiteral("writePassGate"), false},
+       {QStringLiteral("showOverlay"), true},
+       {QStringLiteral("showLabels"), true}});
   add(QStringLiteral("var1"), QStringLiteral("变量计算 · OK/NG"),
       QStringLiteral("var_calc"), 300, 380, QStringLiteral("qr1"),
       {{QStringLiteral("scope"), QStringLiteral("flow")},
@@ -389,6 +421,8 @@ void SieansDocument::seedGentlQrDemo() {
   link(QStringLiteral("cam1"), QStringLiteral("qr1"));
   link(QStringLiteral("cam1"), QStringLiteral("ocr1"));
   link(QStringLiteral("cam1"), QStringLiteral("cal1"));
+  link(QStringLiteral("cam1"), QStringLiteral("defOk"));
+  link(QStringLiteral("cam1"), QStringLiteral("defNg"));
   link(QStringLiteral("qr1"), QStringLiteral("var1"));
   link(QStringLiteral("var1"), QStringLiteral("gate1"));
   link(QStringLiteral("gate1"), QStringLiteral("fmt1"));
@@ -431,6 +465,15 @@ void SieansDocument::seedGentlQrDemo() {
       {QStringLiteral("loopStoppedEarly"), 0},
       {QStringLiteral("loopCount"), 0},
       {QStringLiteral("loopPassed"), 0},
+      {QStringLiteral("defectsCount"), 0},
+      {QStringLiteral("defectsRatio"), 0},
+      {QStringLiteral("defectsOk"), 0},
+      {QStringLiteral("defectsPassed"), 0},
+      {QStringLiteral("defectsMaxArea"), 0},
+      {QStringLiteral("defectsTotalArea"), 0},
+      {QStringLiteral("defectsCleanCount"), 0},
+      {QStringLiteral("defectsCleanOk"), 0},
+      {QStringLiteral("defectsCleanRatio"), 0},
   };
   subflows_.clear();
   subflows_.push_back(makeCounterSubflow());
@@ -576,7 +619,10 @@ QStringList SieansDocument::hostWatchKeys() const {
             QStringLiteral("skippedCount"), QStringLiteral("subflowPassed"),
             QStringLiteral("subflowCount"), QStringLiteral("loopCompleted"),
             QStringLiteral("loopStoppedEarly"), QStringLiteral("loopCount"),
-            QStringLiteral("loopPassed")};
+            QStringLiteral("loopPassed"), QStringLiteral("defectsCount"),
+            QStringLiteral("defectsRatio"), QStringLiteral("defectsOk"),
+            QStringLiteral("defectsPassed"), QStringLiteral("defectsMaxArea"),
+            QStringLiteral("defectsCleanCount"), QStringLiteral("defectsCleanOk")};
   }
   return keys;
 }
