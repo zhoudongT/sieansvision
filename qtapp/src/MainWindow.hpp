@@ -19,6 +19,7 @@
 
 #include <QMainWindow>
 #include <QEvent>
+#include <QCloseEvent>
 #include <QPlainTextEdit>
 #include <QLabel>
 #include <QTableWidget>
@@ -36,6 +37,8 @@ class MainWindow : public QMainWindow {
   explicit MainWindow(QWidget* parent = nullptr);
   ~MainWindow() override;
   bool eventFilter(QObject* obj, QEvent* event) override;
+  /** 关闭前提示未保存修改（无界面冒烟跳过对话框）。 */
+  void closeEvent(QCloseEvent* event) override;
 
  private slots:
   void onNewProject();
@@ -81,6 +84,14 @@ class MainWindow : public QMainWindow {
   void buildMenus();
   void buildToolbar();
   void applyDocumentToUi();
+  /** 方案已被用户改过，标题加 *。加载/应用文档期间忽略。 */
+  void markProjectDirty();
+  /** 保存或重新加载成功后清除脏标记。 */
+  void markProjectClean();
+  /** 按方案名、设计/运行态和脏标记刷新窗口标题与方案标签。 */
+  void refreshProjectTitle();
+  /** 有未保存修改时询问保存/放弃/取消；无界面冒烟直接视为放弃。取消则返回 false。 */
+  bool confirmDiscardOrSave();
   void logResult(const QString& line);
   void showStatus(const QString& msg, int timeout_ms = 5000);
   bool loadImagePath(const QString& path, bool addToStrip = true);
@@ -166,6 +177,8 @@ class MainWindow : public QMainWindow {
   int run_cycle_ = 0;
   double last_cycle_ms_ = -1;
   bool preview_active_ = false;
+  bool project_dirty_ = false;
+  bool applying_document_ = false;
   qint64 preview_frames_ = 0;
 };
 

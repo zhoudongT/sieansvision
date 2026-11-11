@@ -1,4 +1,5 @@
 #include "MainWindow.hpp"
+#include "WorkbenchPaths.hpp"
 #include "Theme.hpp"
 #include "ExprEval.hpp"
 #include "TemplateMatch.hpp"
@@ -142,7 +143,7 @@ bool isExposureKey(const QString& key) {
 }  // namespace
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
-  setWindowTitle(QStringLiteral("SIEANS Vision · 设计态"));
+  setWindowTitle(QStringLiteral("[*]SIEANS Vision · 设计态"));
   resize(1600, 940);
 
   cam_thread_ = new QThread(this);
@@ -192,6 +193,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     applyDocumentToUi();
     logResult(QStringLiteral("已种子 GenTL→QR 演示流程"));
   }
+  markProjectClean();
 
   {
     const QVariantMap serialReal =
@@ -438,20 +440,14 @@ MainWindow::~MainWindow() {
 }
 
 QString MainWindow::defaultProjectsDir() const {
-  return QStringLiteral("/home/allen/文档/sieansvision/projects");
+  return workbenchProjectsDir();
 }
 
 QString MainWindow::samplePathCandidates() const {
-  const QStringList cands = {
-      QCoreApplication::applicationDirPath() + QStringLiteral("/resources/sample-qr.png"),
-      QDir(QCoreApplication::applicationDirPath())
-          .absoluteFilePath(QStringLiteral("../resources/sample-qr.png")),
-      QStringLiteral("/home/allen/文档/sieansvision/qtapp/resources/sample-qr.png"),
-      QStringLiteral("/home/allen/文档/sieansvision/artifacts/qr-t238-grab0.png"),
-  };
-  for (const auto& p : cands) {
-    if (QFileInfo::exists(p)) return p;
-  }
+  const QString hit = workbenchFirstExistingSampleQr();
+  if (!hit.isEmpty()) return hit;
+  const QString art = workbenchArtifactsDir() + QStringLiteral("/qr-t238-grab0.png");
+  if (QFileInfo::exists(art)) return art;
   return {};
 }
 
@@ -543,6 +539,12 @@ void MainWindow::buildUi() {
   connect(flow_scene_, &FlowScene::nodeSelected, this, &MainWindow::onNodeSelected);
   connect(flow_scene_, &FlowScene::edgeConnected, this, &MainWindow::onEdgeConnected);
   connect(flow_scene_, &FlowScene::edgeWhenChanged, this, &MainWindow::onEdgeWhenChanged);
+  connect(flow_scene_, &FlowScene::nodeMoved, this, [this](const QString&, const QPointF&) {
+    markProjectDirty();
+  });
+  connect(flow_scene_, &FlowScene::edgeRemoved, this, [this](const QString&) {
+    markProjectDirty();
+  });
   connect(flow_scene_, &FlowScene::linkNotice, this, &MainWindow::onLinkNotice);
   connect(flow_scene_, &FlowScene::duplicateRequested, this, &MainWindow::onDuplicateNode);
   connect(flow_scene_, &FlowScene::renameRequested, this, [this](const QString& nodeId) {
@@ -561,6 +563,7 @@ void MainWindow::buildUi() {
       prop_float_->setNodeTitle(name, step->operation);
     showStatus(QStringLiteral("已重命名 · %1").arg(name));
     logResult(QStringLiteral("重命名模块 %1 → %2").arg(nodeId, name));
+    markProjectDirty();
   });
 
   // Property float (VM light panel) — created lazily-ish but keep ready
@@ -711,14 +714,14 @@ void MainWindow::buildUi() {
   connect(filmstrip_, &FilmstripBar::addImagesRequested, this, [this]() {
     const QString path = QFileDialog::getOpenFileName(
         this, QStringLiteral("添加图像"),
-        QStringLiteral("/home/allen/文档/sieansvision/artifacts"),
+        workbenchArtifactsDir(),
         QStringLiteral("图像文件 (*.bmp *.jpeg *.jpg *.png *.tif *.tiff)"));
     if (!path.isEmpty() && filmstrip_) filmstrip_->addPaths({path});
   });
   connect(filmstrip_, &FilmstripBar::addFolderRequested, this, [this]() {
     const QString dir = QFileDialog::getExistingDirectory(
         this, QStringLiteral("添加图像文件夹"),
-        QStringLiteral("/home/allen/文档/sieansvision/artifacts"));
+        workbenchArtifactsDir());
     if (dir.isEmpty() || !filmstrip_) return;
     QDir folder(dir);
     const QStringList names = folder.entryList(
@@ -739,12 +742,15 @@ void MainWindow::buildUi() {
           });
   connect(filmstrip_, &FilmstripBar::runAllRequested, this, &MainWindow::onRunAllImages);
   connect(filmstrip_, &FilmstripBar::pathsChanged, this, [this]() {
-    if (!filmstrip_) return;
+    if (!filmstrip_ || applying_document_) return;
     document_.setFilmstripPaths(filmstrip_->paths());
     document_.setFilmstripIndex(filmstrip_->index());
+    markProjectDirty();
   });
   connect(filmstrip_, &FilmstripBar::autoSwitchChanged, this, [this](bool on) {
+    if (applying_document_) return;
     document_.setFilmstripAutoSwitch(on);
+    markProjectDirty();
   });
   horizontal->addWidget(imagePane);
 
@@ -1146,6 +1152,7 @@ void MainWindow::buildMenus() {
                                }),
                 edges.end());
     applyDocumentToUi();
+    markProjectDirty();
   });
   edit->addAction(QStringLiteral("删除选中连线"), this, [this]() {
     flow_scene_->removeSelectedEdge();
@@ -1322,14 +1329,11 @@ void MainWindow::buildToolbar() {
 }
 
 void MainWindow::applyDocumentToUi() {
+  applying_document_ = true;
   flow_scene_->loadDocument(&document_);
   run_mode_ = document_.recipeLocked();
   if (flow_scene_) flow_scene_->setEditingLocked(run_mode_);
-  project_label_->setText(QStringLiteral("方案: %1").arg(document_.name()));
-  setWindowTitle(QStringLiteral("%1 — SIEANS Vision · %2")
-                     .arg(document_.name(),
-                          run_mode_ ? QStringLiteral("运行态")
-                                    : QStringLiteral("设计态")));
+  refreshProjectTitle();
   if (flow_tabs_) flow_tabs_->setFlowName(QStringLiteral("流程1"));
   QTimer::singleShot(0, flow_view_, &FlowView::fitAll);
   if (prop_float_) prop_float_->hide();
@@ -1408,6 +1412,8 @@ void MainWindow::applyDocumentToUi() {
   syncVarsToUi();
   updateRunChrome();
   refreshConfigStatus();
+  applying_document_ = false;
+  refreshProjectTitle();
 }
 
 void MainWindow::syncVarsToUi(bool hostEvaluated) {
@@ -1695,6 +1701,7 @@ void MainWindow::updateRunChrome() {
   document_.setVariables(flow_vars_);
   if (var_watch_) var_watch_->setVariables(flow_vars_);
   if (comm_panel_) comm_panel_->setFlowVars(flow_vars_);
+  refreshProjectTitle();
 }
 
 void MainWindow::pushSoftControls() {
@@ -1823,13 +1830,71 @@ QStringList MainWindow::topologicalStepIds() const {
   return ordered;
 }
 
+void MainWindow::markProjectDirty() {
+  if (applying_document_) return;
+  if (project_dirty_) {
+    refreshProjectTitle();
+    return;
+  }
+  project_dirty_ = true;
+  refreshProjectTitle();
+}
+
+void MainWindow::markProjectClean() {
+  project_dirty_ = false;
+  refreshProjectTitle();
+}
+
+void MainWindow::refreshProjectTitle() {
+  QString name = document_.name().trimmed();
+  if (name.isEmpty()) name = QStringLiteral("未命名方案");
+  const QString mode = run_mode_ ? QStringLiteral("运行态") : QStringLiteral("设计态");
+  const QString star = project_dirty_ ? QStringLiteral("*") : QString();
+  // [*] is required by QWidget::setWindowModified.
+  setWindowTitle(QStringLiteral("[*]%1 — SIEANS Vision · %2").arg(name, mode));
+  setWindowModified(project_dirty_);
+  if (project_label_) {
+    const QString path = document_.path();
+    const QString hint = path.isEmpty()
+                             ? QStringLiteral("未保存")
+                             : QFileInfo(path).fileName();
+    project_label_->setText(QStringLiteral("方案: %1%2 · %3")
+                                .arg(star, name, hint));
+  }
+}
+
+bool MainWindow::confirmDiscardOrSave() {
+  if (!project_dirty_) return true;
+  if (workbenchIsHeadless()) return true;
+  const QMessageBox::StandardButton ret = QMessageBox::question(
+      this, QStringLiteral("方案已修改"),
+      QStringLiteral("当前方案有未保存的修改。是否保存？"),
+      QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel,
+      QMessageBox::Save);
+  if (ret == QMessageBox::Cancel) return false;
+  if (ret == QMessageBox::Discard) return true;
+  onSaveProject();
+  return !project_dirty_;
+}
+
+void MainWindow::closeEvent(QCloseEvent* event) {
+  if (!confirmDiscardOrSave()) {
+    event->ignore();
+    return;
+  }
+  QMainWindow::closeEvent(event);
+}
+
 void MainWindow::onNewProject() {
+  if (!confirmDiscardOrSave()) return;
   document_.seedGentlQrDemo();
   applyDocumentToUi();
+  markProjectClean();
   logResult(QStringLiteral("新建 GenTL→QR 方案"));
 }
 
 void MainWindow::onOpenProject() {
+  if (!confirmDiscardOrSave()) return;
   const QString path = QFileDialog::getOpenFileName(
       this, QStringLiteral("打开方案"), defaultProjectsDir(),
       QStringLiteral("SIEANS 工程 (*.sieans *.json *.sol);;全部 (*.*)"));
@@ -1840,6 +1905,7 @@ void MainWindow::onOpenProject() {
     return;
   }
   applyDocumentToUi();
+  markProjectClean();
   logResult(QStringLiteral("已打开方案：%1 · %2 步")
                 .arg(path)
                 .arg(document_.steps().size()));
@@ -1857,6 +1923,7 @@ void MainWindow::onSaveProject() {
     QMessageBox::warning(this, QStringLiteral("保存失败"), err);
     return;
   }
+  markProjectClean();
   logResult(QStringLiteral("方案已保存：%1").arg(path));
 }
 
@@ -1874,13 +1941,14 @@ void MainWindow::onSaveProjectAs() {
     return;
   }
   document_.loadFromFile(path);
+  markProjectClean();
   logResult(QStringLiteral("方案已保存：%1").arg(path));
 }
 
 void MainWindow::onOpenImage() {
   const QString path = QFileDialog::getOpenFileName(
       this, QStringLiteral("打开图像"),
-      QStringLiteral("/home/allen/文档/sieansvision/artifacts"),
+      workbenchArtifactsDir(),
       QStringLiteral("Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff)"));
   if (path.isEmpty()) return;
   if (loadImagePath(path)) runPipeline(image_view_->currentImage(), true);
@@ -2039,7 +2107,7 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
       LocateResult lr = runLocate(working, lp);
       if (lr.templateCreated && !lr.templateUsed.isNull()) {
         const QString dir =
-            QStringLiteral("/home/allen/文档/sieansvision/artifacts/qt-templates");
+            workbenchTemplatesDir();
         QDir().mkpath(dir);
         const QString tplPath = dir + QLatin1Char('/') + id + QStringLiteral(".png");
         lr.templateUsed.save(tplPath);
@@ -2948,11 +3016,10 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
       ok = !rx.isEmpty();
       note = rx.isEmpty() ? QStringLiteral("(空 RX)") : rx.left(60);
     } else if (op == QLatin1String("save_image")) {
-      const QString dir =
+      const QString dir = workbenchResolveArtifactsDir(
           step->params
-              .value(QStringLiteral("dir"),
-                     QStringLiteral("/home/allen/文档/sieansvision/artifacts"))
-              .toString();
+              .value(QStringLiteral("dir"), workbenchArtifactsDir())
+              .toString());
       QDir().mkpath(dir);
       const QString path =
           dir + QStringLiteral("/sieans-qt-run-%1.png")
@@ -4013,6 +4080,13 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                   .arg(flow_vars_.value(QStringLiteral("ocrOk")).toString())
                   .arg(sieans::ocr_available() ? 1 : 0);
       line += QLatin1Char(' ');
+      line += QStringLiteral("projectDirty=%1 projectSaved=%2 projectName=%3 projectsDirOk=%4")
+                  .arg(project_dirty_ ? 1 : 0)
+                  .arg(document_.path().isEmpty() ? 0 : 1)
+                  .arg(document_.name().left(80).replace(QLatin1Char('\n'), QLatin1Char('|')))
+                  .arg(QFileInfo::exists(workbenchProjectsDir()) ? 1 : 0);
+
+      line += QLatin1Char(' ');
       line += QStringLiteral("caliperDist=%1 caliperOk=%2 measureMm=%3")
                   .arg(flow_vars_.value(QStringLiteral("caliperDist")).toString())
                   .arg(flow_vars_.value(QStringLiteral("caliperOk")).toString())
@@ -4691,10 +4765,15 @@ void MainWindow::onRunOnce() {
   image_view_->setLiveImage(frame);
   if (filmstrip_ && document_.cameraBackend() == QLatin1String("soft")) {
     const QString snap =
-        QStringLiteral("/home/allen/文档/sieansvision/artifacts/soft-live-%1.png")
+        workbenchArtifactsDir() + QStringLiteral("/soft-live-%1.png")
             .arg(run_cycle_ % 8);
     QDir().mkpath(QFileInfo(snap).absolutePath());
-    if (frame.save(snap)) filmstrip_->addPaths({snap});
+    if (frame.save(snap)) {
+      // Runtime soft snapshots are preview chrome, not a user recipe edit.
+      applying_document_ = true;
+      filmstrip_->addPaths({snap});
+      applying_document_ = false;
+    }
   }
   runPipeline(frame, true);
   if (filmstrip_ && document_.cameraBackend() == QLatin1String("soft")) {
@@ -4844,6 +4923,7 @@ void MainWindow::onNodeSelected(const QString& nodeId) {
 void MainWindow::onEdgeConnected(const QString&, const QString&, const QString&,
                                  const QString&) {
   // document already updated by FlowScene
+  markProjectDirty();
 }
 
 void MainWindow::onEdgeWhenChanged(const QString& edgeId, const QString& when) {
@@ -4858,6 +4938,7 @@ void MainWindow::onEdgeWhenChanged(const QString& edgeId, const QString& when) {
     logResult(QStringLiteral("连线条件: %1 → %2  when=%3")
                   .arg(e.from, e.to, label));
     showStatus(QStringLiteral("连线触发条件：%1").arg(label), 2500);
+    markProjectDirty();
     return;
   }
 }
@@ -4892,6 +4973,7 @@ void MainWindow::onDuplicateNode(const QString& nodeId) {
   applyDocumentToUi();
   logResult(QStringLiteral("已复制模块: %1 → %2").arg(src->name, s.name));
   showStatus(QStringLiteral("已复制模块 · Ctrl+D · %1").arg(s.name));
+  markProjectDirty();
 }
 
 void MainWindow::onAddOperator(const QString& key, const QString& name) {
@@ -5326,7 +5408,7 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("passVar"), QStringLiteral("passGate")}};
   } else if (key == QLatin1String("save_image")) {
     s.params = {{QStringLiteral("dir"),
-                 QStringLiteral("/home/allen/文档/sieansvision/artifacts")}};
+                 workbenchArtifactsDir()}};
   } else if (key == QLatin1String("condition")) {
     s.params = {
         {QStringLiteral("logic"), QStringLiteral("and")},
@@ -5415,6 +5497,7 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 .arg(int(pos.x()))
                 .arg(int(pos.y()))
                 .arg(autoWire ? QStringLiteral(" · 已串线") : QStringLiteral(" · 拖放")));
+  markProjectDirty();
 }
 
 void MainWindow::onParamEdited(const QString& nodeId, const QString& key,
@@ -5486,6 +5569,7 @@ void MainWindow::onParamEdited(const QString& nodeId, const QString& key,
     }
     if (key == QLatin1String("templatePath")) refreshConfigStatus();
   }
+  markProjectDirty();
 }
 
 void MainWindow::onParamsReverted(const QString& nodeId, const QVariantMap& snapshot) {
@@ -5496,6 +5580,7 @@ void MainWindow::onParamsReverted(const QString& nodeId, const QVariantMap& snap
   }
   pushSoftControls();
   logResult(QStringLiteral("已放弃属性修改: %1").arg(nodeId));
+  markProjectDirty();
 }
 
 void MainWindow::onOpenSubflowManager() {

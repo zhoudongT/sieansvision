@@ -93,6 +93,8 @@ add_executable(sieans_qt
   src/YoloInfer.cpp
   src/YoloOnnx.hpp
   src/YoloOnnx.cpp
+  src/WorkbenchPaths.hpp
+  src/WorkbenchPaths.cpp
   src/CloudOps.hpp
   src/CloudOps.cpp
   src/SocketExchange.hpp

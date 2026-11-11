@@ -1,4 +1,5 @@
 #include "SoftFrame.hpp"
+#include "WorkbenchPaths.hpp"
 
 #include <QPainter>
 #include <QPen>
@@ -55,17 +56,7 @@ QImage loadSoftQrSample() {
   }
   if (tried) return cached;
   tried = true;
-  const QStringList cands = {
-      QCoreApplication::applicationDirPath() + QStringLiteral("/resources/sample-qr.png"),
-      QCoreApplication::applicationDirPath() + QStringLiteral("/sample-qr.png"),
-      QDir(QCoreApplication::applicationDirPath())
-          .absoluteFilePath(QStringLiteral("../resources/sample-qr.png")),
-      QDir::currentPath() + QStringLiteral("/resources/sample-qr.png"),
-      QDir::currentPath() + QStringLiteral("/sample-qr.png"),
-      QStringLiteral("/home/allen/文档/sieansvision/qtapp/resources/sample-qr.png"),
-      QStringLiteral("/home/allen/文档/sieansvision/qtapp/build/resources/sample-qr.png"),
-      QStringLiteral("/home/allen/文档/sieansvision/qtapp/build/sample-qr.png"),
-  };
+  const QStringList cands = workbenchSampleQrCandidates();
   for (const QString& p : cands) {
     if (!QFileInfo::exists(p)) continue;
     QImage img(p);
