@@ -175,6 +175,52 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
     }
     return f;
   }
+  if (op == QLatin1String("cloud_filter") || op == QLatin1String("cloud_plane") ||
+      op == QLatin1String("cloud_cluster") || op == QLatin1String("cloud_measure") ||
+      op == QLatin1String("cloud_height") || op == QLatin1String("cloud_register")) {
+    QVector<Spec> f = {
+        S("inputSource", "输入点云", kChoice,
+          "upstream|上游点云;soft_fixture|软仿真场景;soft_part|软标准件;soft_surface|软顶面;soft_register|软配准件"),
+        S("inputShiftX", "输入平移 X", kReal, "可选，叠加在输入上"),
+        S("inputShiftY", "输入平移 Y", kReal, ""),
+        S("inputShiftZ", "输入平移 Z", kReal, ""),
+        S("resultVar", "结果前缀", kLine, "cloudFilt / cloudPlane / …")};
+    if (op == QLatin1String("cloud_filter")) {
+      f.append(S("method", "处理方式", kChoice, "voxel|体素降采样;crop|裁剪;statistical|统计去噪;radius|半径去噪"));
+      f.append(S("voxelSize", "体素边长", kReal, "默认 1，与点云同单位"));
+      f.append(S("minX", "裁剪最小 X", kReal, ""));
+      f.append(S("minY", "裁剪最小 Y", kReal, ""));
+      f.append(S("minZ", "裁剪最小 Z", kReal, ""));
+      f.append(S("maxX", "裁剪最大 X", kReal, ""));
+      f.append(S("maxY", "裁剪最大 Y", kReal, ""));
+      f.append(S("maxZ", "裁剪最大 Z", kReal, ""));
+      f.append(S("neighbors", "统计邻域点数", kInt, "默认 20"));
+      f.append(S("stdRatio", "标准差倍数", kReal, "默认 2"));
+      f.append(S("radius", "邻域半径", kReal, "半径去噪"));
+      f.append(S("minPoints", "最少邻域点数", kInt, "半径去噪"));
+    } else if (op == QLatin1String("cloud_plane")) {
+      f.append(S("distanceThreshold", "距离阈值", kReal, "默认 0.5"));
+      f.append(S("iterations", "迭代次数", kInt, "默认 500"));
+      f.append(S("output", "输出点云", kChoice, "inliers|平面内点;outliers|平面外点;all|保留全部"));
+    } else if (op == QLatin1String("cloud_cluster")) {
+      f.append(S("eps", "邻域半径", kReal, "默认 3"));
+      f.append(S("minPoints", "最小邻域点数", kInt, "默认 8"));
+    } else if (op == QLatin1String("cloud_height")) {
+      f.append(S("baselineZ", "基准 Z", kReal, "默认 0"));
+      f.append(S("cellSize", "网格边长", kReal, "默认 1"));
+    } else if (op == QLatin1String("cloud_register")) {
+      f.append(S("targetSource", "参考点云", kChoice,
+                 "soft_register|软配准件;soft_part|软标准件;soft_fixture|软仿真场景;soft_surface|软顶面"));
+      f.append(S("method", "配准方式", kChoice, "icp|局部 ICP;global|PCA 全局 + ICP"));
+      f.append(S("maxDistance", "最大对应距离", kReal, "默认 5"));
+      f.append(S("iterations", "精配准迭代次数", kInt, "默认 50"));
+      f.append(S("voxelSize", "特征体素边长", kReal, "全局模式记录规格"));
+      f.append(S("minFitness", "输入最低覆盖比例", kReal, "可选门限，0–1"));
+      f.append(S("minTargetFitness", "参考最低覆盖比例", kReal, "可选门限，0–1"));
+      f.append(S("maxRmsError", "最大均方根误差", kReal, "可选门限"));
+    }
+    return f;
+  }
   if (op == QLatin1String("geometry")) {
     return {S("feature", "特征类型", kChoice,
               "contours|轮廓;lines|直线;circles|圆;rects|矩形;edges|边缘"),
@@ -1134,6 +1180,18 @@ void PropertyPanel::showStep(const FlowStep& step) {
     hint += QStringLiteral(" · YOLO 检测 · yoloCount/yoloScore/yoloLabel · backend=software");
   else if (step.operation == QLatin1String("yolo_segment"))
     hint += QStringLiteral(" · YOLO 分割 · yoloSegCount/yoloSegArea/yoloSegScore · 轮廓/孔洞");
+  else if (step.operation == QLatin1String("cloud_filter"))
+    hint += QStringLiteral(" · 点云滤波 · cloudFiltCount/cloudFiltOk · voxel/crop/statistical/radius");
+  else if (step.operation == QLatin1String("cloud_plane"))
+    hint += QStringLiteral(" · 平面分割 · cloudPlaneInliers/cloudPlaneRms · 法向 ax+by+cz+d=0");
+  else if (step.operation == QLatin1String("cloud_cluster"))
+    hint += QStringLiteral(" · DBSCAN 聚类 · cloudClustCount/cloudClustNoise · 最多 3 万点/100 组");
+  else if (step.operation == QLatin1String("cloud_measure"))
+    hint += QStringLiteral(" · 轴对齐包围盒 · cloudMeasSizeX/Y/Z · 体积不是实体体积");
+  else if (step.operation == QLatin1String("cloud_height"))
+    hint += QStringLiteral(" · 高度/体积 · cloudHgtVolume/cloudHgtMax · 缺失格不补齐");
+  else if (step.operation == QLatin1String("cloud_register"))
+    hint += QStringLiteral(" · 点云配准 · cloudRegDx/Dy/Dz / fitness · ICP 或 PCA 全局");
   else if (step.operation == QLatin1String("locate"))
     hint += QStringLiteral(" · 模板 SAD + 旋转搜索 · locateX/Y/Angle/Score");
   else if (step.operation == QLatin1String("pose_correct"))

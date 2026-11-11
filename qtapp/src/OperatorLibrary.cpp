@@ -87,6 +87,10 @@ const char* glyphKindFor(const QString& key, const QString& category) {
     return "mqtt";
   if (key == QLatin1String("yolo") || key == QLatin1String("yolo_segment"))
     return "yolo";
+  if (key == QLatin1String("cloud_filter") || key == QLatin1String("cloud_plane") ||
+      key == QLatin1String("cloud_cluster") || key == QLatin1String("cloud_measure") ||
+      key == QLatin1String("cloud_height") || key == QLatin1String("cloud_register"))
+    return "cloud";
   if (key == QLatin1String("result_gate")) return "gate";
   if (key == QLatin1String("format_data")) return "format";
   if (key == QLatin1String("var_calc")) return "var";
@@ -303,6 +307,24 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
       {QStringLiteral("yolo_segment"), QStringLiteral("YOLO 实例分割"),
        QStringLiteral("识别"),
        QStringLiteral("软件检测器 · 掩膜轮廓 / 面积 / 孔洞")},
+      {QStringLiteral("cloud_filter"), QStringLiteral("点云滤波"),
+       QStringLiteral("3D 点云"),
+       QStringLiteral("裁剪 · 体素降采样 · 统计/半径去噪")},
+      {QStringLiteral("cloud_plane"), QStringLiteral("3D 平面分割"),
+       QStringLiteral("3D 点云"),
+       QStringLiteral("RANSAC 主平面 · 法向 / 残差 / 内外点")},
+      {QStringLiteral("cloud_cluster"), QStringLiteral("3D 目标聚类"),
+       QStringLiteral("3D 点云"),
+       QStringLiteral("DBSCAN · 数量 / 尺寸（不推断类别）")},
+      {QStringLiteral("cloud_measure"), QStringLiteral("3D 尺寸测量"),
+       QStringLiteral("3D 点云"),
+       QStringLiteral("轴对齐包围盒 · 三轴尺寸 / 中心 / 体积")},
+      {QStringLiteral("cloud_height"), QStringLiteral("高度与体积估计"),
+       QStringLiteral("3D 点云"),
+       QStringLiteral("相对 +Z 基准 · 可见表面网格体积")},
+      {QStringLiteral("cloud_register"), QStringLiteral("3D 点云配准"),
+       QStringLiteral("3D 点云"),
+       QStringLiteral("点到点 ICP · PCA 全局粗对齐")},
       {QStringLiteral("var_calc"), QStringLiteral("变量计算"),
        QStringLiteral("变量与数据"),
        QStringLiteral("expr: in / startswith / endswith / contains")},

@@ -847,6 +847,53 @@ void SieansDocument::seedGentlQrDemo() {
        {QStringLiteral("showLabels"), true},
        {QStringLiteral("resultVar"), QStringLiteral("yoloSeg")}});
 
+  add(QStringLiteral("cloudFilt"), QStringLiteral("点云滤波 · 软场景裁剪"),
+      QStringLiteral("cloud_filter"), 80, 3860, QStringLiteral("yoloSeg1"),
+      {{QStringLiteral("inputSource"), QStringLiteral("soft_fixture")},
+       {QStringLiteral("method"), QStringLiteral("crop")},
+       {QStringLiteral("minX"), -50},
+       {QStringLiteral("minY"), -50},
+       {QStringLiteral("minZ"), -50},
+       {QStringLiteral("maxX"), 50},
+       {QStringLiteral("maxY"), 50},
+       {QStringLiteral("maxZ"), 50},
+       {QStringLiteral("resultVar"), QStringLiteral("cloudFilt")}});
+  add(QStringLiteral("cloudPlane"), QStringLiteral("3D 平面分割 · 去地面"),
+      QStringLiteral("cloud_plane"), 80, 3980, QStringLiteral("cloudFilt"),
+      {{QStringLiteral("inputSource"), QStringLiteral("upstream")},
+       {QStringLiteral("distanceThreshold"), 0.5},
+       {QStringLiteral("iterations"), 500},
+       {QStringLiteral("output"), QStringLiteral("outliers")},
+       {QStringLiteral("resultVar"), QStringLiteral("cloudPlane")}});
+  add(QStringLiteral("cloudClust"), QStringLiteral("3D 目标聚类"),
+      QStringLiteral("cloud_cluster"), 80, 4100, QStringLiteral("cloudPlane"),
+      {{QStringLiteral("inputSource"), QStringLiteral("upstream")},
+       {QStringLiteral("eps"), 3},
+       {QStringLiteral("minPoints"), 8},
+       {QStringLiteral("resultVar"), QStringLiteral("cloudClust")}});
+  add(QStringLiteral("cloudMeas"), QStringLiteral("3D 尺寸测量 · 标准件"),
+      QStringLiteral("cloud_measure"), 80, 4220, QStringLiteral("cloudClust"),
+      {{QStringLiteral("inputSource"), QStringLiteral("soft_part")},
+       {QStringLiteral("resultVar"), QStringLiteral("cloudMeas")}});
+  add(QStringLiteral("cloudHgt"), QStringLiteral("高度与体积估计"),
+      QStringLiteral("cloud_height"), 80, 4340, QStringLiteral("cloudMeas"),
+      {{QStringLiteral("inputSource"), QStringLiteral("soft_surface")},
+       {QStringLiteral("baselineZ"), 0},
+       {QStringLiteral("cellSize"), 1},
+       {QStringLiteral("resultVar"), QStringLiteral("cloudHgt")}});
+  add(QStringLiteral("cloudReg"), QStringLiteral("3D 点云配准 · 已知平移"),
+      QStringLiteral("cloud_register"), 80, 4460, QStringLiteral("cloudHgt"),
+      {{QStringLiteral("inputSource"), QStringLiteral("soft_register")},
+       {QStringLiteral("inputShiftX"), 5},
+       {QStringLiteral("inputShiftY"), -3},
+       {QStringLiteral("inputShiftZ"), 2},
+       {QStringLiteral("targetSource"), QStringLiteral("soft_register")},
+       {QStringLiteral("method"), QStringLiteral("icp")},
+       {QStringLiteral("maxDistance"), 10},
+       {QStringLiteral("iterations"), 40},
+       {QStringLiteral("resultVar"), QStringLiteral("cloudReg")}});
+
+
 
   auto link = [&](const QString& a, const QString& b,
                   const QString& when = QStringLiteral("always")) {
@@ -910,6 +957,12 @@ void SieansDocument::seedGentlQrDemo() {
   link(QStringLiteral("mqttTcpW"), QStringLiteral("mqttTcpR"));
   link(QStringLiteral("mqttTcpR"), QStringLiteral("yolo1"));
   link(QStringLiteral("yolo1"), QStringLiteral("yoloSeg1"));
+  link(QStringLiteral("yoloSeg1"), QStringLiteral("cloudFilt"));
+  link(QStringLiteral("cloudFilt"), QStringLiteral("cloudPlane"));
+  link(QStringLiteral("cloudPlane"), QStringLiteral("cloudClust"));
+  link(QStringLiteral("cloudClust"), QStringLiteral("cloudMeas"));
+  link(QStringLiteral("cloudMeas"), QStringLiteral("cloudHgt"));
+  link(QStringLiteral("cloudHgt"), QStringLiteral("cloudReg"));
 
   variables_ = {
       {QStringLiteral("barcodeCount"), 0},
@@ -1056,6 +1109,28 @@ void SieansDocument::seedGentlQrDemo() {
       {QStringLiteral("yoloSegScore"), 0},
       {QStringLiteral("yoloSegArea"), 0},
       {QStringLiteral("yoloSegLabel"), QString()},
+      {QStringLiteral("cloudFiltOk"), 0},
+      {QStringLiteral("cloudFiltCount"), 0},
+      {QStringLiteral("cloudPlaneOk"), 0},
+      {QStringLiteral("cloudPlaneInliers"), 0},
+      {QStringLiteral("cloudPlaneRms"), 0},
+      {QStringLiteral("cloudClustOk"), 0},
+      {QStringLiteral("cloudClustCount"), 0},
+      {QStringLiteral("cloudClustNoise"), 0},
+      {QStringLiteral("cloudMeasOk"), 0},
+      {QStringLiteral("cloudMeasSizeX"), 0},
+      {QStringLiteral("cloudMeasSizeY"), 0},
+      {QStringLiteral("cloudMeasSizeZ"), 0},
+      {QStringLiteral("cloudHgtOk"), 0},
+      {QStringLiteral("cloudHgtVolume"), 0},
+      {QStringLiteral("cloudHgtMax"), 0},
+      {QStringLiteral("cloudRegOk"), 0},
+      {QStringLiteral("cloudRegFound"), 0},
+      {QStringLiteral("cloudRegDx"), 0},
+      {QStringLiteral("cloudRegDy"), 0},
+      {QStringLiteral("cloudRegDz"), 0},
+      {QStringLiteral("cloudRegFitness"), 0},
+      {QStringLiteral("cloudRegRms"), 0},
   };
   subflows_.clear();
   subflows_.push_back(makeCounterSubflow());

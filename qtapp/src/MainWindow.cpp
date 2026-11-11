@@ -13,6 +13,7 @@
 #include "OpcUaClient.hpp"
 #include "MqttClient.hpp"
 #include "YoloInfer.hpp"
+#include "CloudOps.hpp"
 #include "ConditionEval.hpp"
 #include "SubflowExec.hpp"
 #include "SubflowDialog.hpp"
@@ -1907,6 +1908,7 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
   }
 
   QImage working = src;
+  PointCloud workingCloud;
   image_view_->setLiveImage(working);
   std::vector<sieans::BarcodeHit> hits;
   double decodeMs = 0;
@@ -3550,6 +3552,142 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                    QString::number(it.areaPixels), QStringLiteral("px"));
         }
       }
+    } else if (op == QLatin1String("cloud_filter") || op == QLatin1String("cloud_plane") ||
+               op == QLatin1String("cloud_cluster") || op == QLatin1String("cloud_measure") ||
+               op == QLatin1String("cloud_height") || op == QLatin1String("cloud_register")) {
+      const auto t0 = std::chrono::steady_clock::now();
+      QVariantMap cp = step->params;
+      QString inErr;
+      PointCloud inCloud = resolveCloudInput(workingCloud, cp, &inErr);
+      CloudResult cr = runCloudOp(op, inCloud, cp);
+      if (!cr.ok && cr.error.isEmpty()) cr.error = inErr;
+      const double cloudMs = std::chrono::duration<double, std::milli>(
+                                 std::chrono::steady_clock::now() - t0)
+                                 .count();
+      algoMs += cloudMs;
+      QString prefix = step->params.value(QStringLiteral("resultVar")).toString().trimmed();
+      if (prefix.isEmpty()) {
+        if (op == QLatin1String("cloud_filter")) prefix = QStringLiteral("cloudFilt");
+        else if (op == QLatin1String("cloud_plane")) prefix = QStringLiteral("cloudPlane");
+        else if (op == QLatin1String("cloud_cluster")) prefix = QStringLiteral("cloudClust");
+        else if (op == QLatin1String("cloud_measure")) prefix = QStringLiteral("cloudMeas");
+        else if (op == QLatin1String("cloud_height")) prefix = QStringLiteral("cloudHgt");
+        else prefix = QStringLiteral("cloudReg");
+      }
+      auto put = [&](const QString& suffix, const QVariant& v) {
+        flow_vars_.insert(prefix + suffix, v);
+      };
+      const int okI = cr.ok ? 1 : 0;
+      put(QStringLiteral("Ok"), okI);
+      put(QStringLiteral("Count"), cr.pointCount);
+      put(QStringLiteral("InputCount"), cr.inputCount);
+      put(QStringLiteral("Backend"), cr.backend);
+      put(QStringLiteral("Error"), cr.error);
+      put(QStringLiteral("Unit"), cr.cloud.unit.isEmpty() ? QString() : cr.cloud.unit);
+      if (op == QLatin1String("cloud_filter")) {
+        put(QStringLiteral("Method"), cr.method);
+      } else if (op == QLatin1String("cloud_plane")) {
+        put(QStringLiteral("Inliers"), cr.inlierCount);
+        put(QStringLiteral("InlierRatio"), cr.inlierRatio);
+        put(QStringLiteral("Rms"), cr.rmsError);
+        put(QStringLiteral("Nx"), cr.nx);
+        put(QStringLiteral("Ny"), cr.ny);
+        put(QStringLiteral("Nz"), cr.nz);
+        put(QStringLiteral("D"), cr.d);
+        put(QStringLiteral("Output"), cr.output);
+      } else if (op == QLatin1String("cloud_cluster")) {
+        put(QStringLiteral("Count"), cr.clusterCount);
+        put(QStringLiteral("Noise"), cr.noiseCount);
+        put(QStringLiteral("PointCount"), cr.pointCount);
+      } else if (op == QLatin1String("cloud_measure")) {
+        put(QStringLiteral("SizeX"), cr.bounds.sizeX);
+        put(QStringLiteral("SizeY"), cr.bounds.sizeY);
+        put(QStringLiteral("SizeZ"), cr.bounds.sizeZ);
+        put(QStringLiteral("Volume"), cr.bounds.boundingBoxVolume);
+        put(QStringLiteral("CenterX"), cr.bounds.centerX);
+        put(QStringLiteral("CenterY"), cr.bounds.centerY);
+        put(QStringLiteral("CenterZ"), cr.bounds.centerZ);
+        put(QStringLiteral("MinX"), cr.bounds.minX);
+        put(QStringLiteral("MinY"), cr.bounds.minY);
+        put(QStringLiteral("MinZ"), cr.bounds.minZ);
+        put(QStringLiteral("MaxX"), cr.bounds.maxX);
+        put(QStringLiteral("MaxY"), cr.bounds.maxY);
+        put(QStringLiteral("MaxZ"), cr.bounds.maxZ);
+      } else if (op == QLatin1String("cloud_height")) {
+        put(QStringLiteral("Volume"), cr.estimatedVolume);
+        put(QStringLiteral("Max"), cr.maxHeight);
+        put(QStringLiteral("Min"), cr.minHeight);
+        put(QStringLiteral("Mean"), cr.meanHeight);
+        put(QStringLiteral("Cells"), cr.occupiedCells);
+        put(QStringLiteral("Area"), cr.sampledArea);
+        put(QStringLiteral("BaselineZ"), cr.baselineZ);
+        put(QStringLiteral("CellSize"), cr.cellSize);
+      } else if (op == QLatin1String("cloud_register")) {
+        put(QStringLiteral("Found"), cr.found ? 1 : 0);
+        put(QStringLiteral("Dx"), cr.dx);
+        put(QStringLiteral("Dy"), cr.dy);
+        put(QStringLiteral("Dz"), cr.dz);
+        put(QStringLiteral("Fitness"), cr.fitness);
+        put(QStringLiteral("Rms"), cr.rmsError);
+        put(QStringLiteral("TargetFitness"), cr.targetFitness);
+        put(QStringLiteral("Method"), cr.method);
+      }
+      if (cr.ok) workingCloud = cr.cloud;
+      ok = cr.ok;
+      note = cr.ok ? QStringLiteral("%1 · %2 ms").arg(cr.note).arg(cloudMs, 0, 'f', 1)
+                   : cr.error;
+      if (result_table_) {
+        auto addRow = [&](const QString& k, const QString& v, const QString& unit) {
+          const int row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(k));
+          result_table_->setItem(row, 1, new QTableWidgetItem(v));
+          result_table_->setItem(row, 2, new QTableWidgetItem(unit));
+        };
+        addRow(prefix + QStringLiteral("Ok"), QString::number(okI), QStringLiteral("gate"));
+        addRow(prefix + QStringLiteral("Count"), QString::number(cr.pointCount),
+               QStringLiteral("pts"));
+        if (op == QLatin1String("cloud_plane")) {
+          addRow(prefix + QStringLiteral("Inliers"), QString::number(cr.inlierCount),
+                 QStringLiteral("pts"));
+          addRow(prefix + QStringLiteral("Rms"), QString::number(cr.rmsError, 'g', 6),
+                 QStringLiteral("rms"));
+        } else if (op == QLatin1String("cloud_cluster")) {
+          addRow(prefix + QStringLiteral("Count"), QString::number(cr.clusterCount),
+                 QStringLiteral("clusters"));
+          addRow(prefix + QStringLiteral("Noise"), QString::number(cr.noiseCount),
+                 QStringLiteral("pts"));
+        } else if (op == QLatin1String("cloud_measure")) {
+          addRow(prefix + QStringLiteral("SizeX"), QString::number(cr.bounds.sizeX, 'f', 4),
+                 cr.cloud.unit);
+          addRow(prefix + QStringLiteral("SizeY"), QString::number(cr.bounds.sizeY, 'f', 4),
+                 cr.cloud.unit);
+          addRow(prefix + QStringLiteral("SizeZ"), QString::number(cr.bounds.sizeZ, 'f', 4),
+                 cr.cloud.unit);
+          addRow(prefix + QStringLiteral("Volume"),
+                 QString::number(cr.bounds.boundingBoxVolume, 'f', 4),
+                 cr.cloud.unit + QStringLiteral("³"));
+        } else if (op == QLatin1String("cloud_height")) {
+          addRow(prefix + QStringLiteral("Volume"),
+                 QString::number(cr.estimatedVolume, 'f', 4), cr.volumeUnit);
+          addRow(prefix + QStringLiteral("Max"), QString::number(cr.maxHeight, 'f', 4),
+                 cr.cloud.unit);
+          addRow(prefix + QStringLiteral("Cells"), QString::number(cr.occupiedCells),
+                 QStringLiteral("cells"));
+        } else if (op == QLatin1String("cloud_register")) {
+          addRow(prefix + QStringLiteral("Found"), QString::number(cr.found ? 1 : 0),
+                 QStringLiteral("gate"));
+          addRow(prefix + QStringLiteral("Dx"), QString::number(cr.dx, 'f', 4), cr.cloud.unit);
+          addRow(prefix + QStringLiteral("Dy"), QString::number(cr.dy, 'f', 4), cr.cloud.unit);
+          addRow(prefix + QStringLiteral("Dz"), QString::number(cr.dz, 'f', 4), cr.cloud.unit);
+          addRow(prefix + QStringLiteral("Fitness"), QString::number(cr.fitness, 'f', 4),
+                 QStringLiteral("ratio"));
+          addRow(prefix + QStringLiteral("Rms"), QString::number(cr.rmsError, 'g', 6),
+                 QStringLiteral("rms"));
+        } else {
+          addRow(prefix + QStringLiteral("Method"), cr.method, QStringLiteral("method"));
+        }
+      }
     } else {
       note = QStringLiteral("透传 / 未实现执行体");
       ok = true;
@@ -3919,6 +4057,41 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                   .arg(flow_vars_.value(QStringLiteral("yoloSegScore")).toString())
                   .arg(flow_vars_.value(QStringLiteral("yoloSegArea")).toString())
                   .arg(flow_vars_.value(QStringLiteral("yoloSegLabel")).toString());
+      line += QChar(' ');
+      line += QStringLiteral(
+                  "cloudFiltOk=%1 cloudFiltCount=%2 "
+                  "cloudPlaneOk=%3 cloudPlaneInliers=%4 cloudPlaneRms=%5 "
+                  "cloudClustOk=%6 cloudClustCount=%7 cloudClustNoise=%8")
+                  .arg(flow_vars_.value(QStringLiteral("cloudFiltOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("cloudFiltCount")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("cloudPlaneOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("cloudPlaneInliers")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("cloudPlaneRms")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("cloudClustOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("cloudClustCount")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("cloudClustNoise")).toString());
+      line += QChar(' ');
+      line += QStringLiteral(
+                  "cloudMeasOk=%1 cloudMeasSizeX=%2 cloudMeasSizeY=%3 cloudMeasSizeZ=%4 "
+                  "cloudHgtOk=%5 cloudHgtVolume=%6 cloudHgtMax=%7 "
+                  "cloudRegOk=%8 cloudRegFound=%9")
+                  .arg(flow_vars_.value(QStringLiteral("cloudMeasOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("cloudMeasSizeX")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("cloudMeasSizeY")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("cloudMeasSizeZ")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("cloudHgtOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("cloudHgtVolume")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("cloudHgtMax")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("cloudRegOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("cloudRegFound")).toString());
+      line += QChar(' ');
+      line += QStringLiteral(
+                  "cloudRegDx=%1 cloudRegDy=%2 cloudRegDz=%3 cloudRegFitness=%4 cloudRegRms=%5")
+                  .arg(flow_vars_.value(QStringLiteral("cloudRegDx")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("cloudRegDy")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("cloudRegDz")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("cloudRegFitness")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("cloudRegRms")).toString());
 
 line += QLatin1Char('\n');
       f.write(line.toUtf8());
@@ -4857,6 +5030,47 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("showOverlay"), true},
                 {QStringLiteral("showLabels"), true},
                 {QStringLiteral("resultVar"), QStringLiteral("yoloSeg")}};
+  } else if (key == QLatin1String("cloud_filter")) {
+    s.params = {{QStringLiteral("inputSource"), QStringLiteral("soft_fixture")},
+                {QStringLiteral("method"), QStringLiteral("voxel")},
+                {QStringLiteral("voxelSize"), 1},
+                {QStringLiteral("minX"), -100},
+                {QStringLiteral("minY"), -100},
+                {QStringLiteral("minZ"), -100},
+                {QStringLiteral("maxX"), 100},
+                {QStringLiteral("maxY"), 100},
+                {QStringLiteral("maxZ"), 100},
+                {QStringLiteral("neighbors"), 20},
+                {QStringLiteral("stdRatio"), 2},
+                {QStringLiteral("radius"), 3},
+                {QStringLiteral("minPoints"), 6},
+                {QStringLiteral("resultVar"), QStringLiteral("cloudFilt")}};
+  } else if (key == QLatin1String("cloud_plane")) {
+    s.params = {{QStringLiteral("inputSource"), QStringLiteral("upstream")},
+                {QStringLiteral("distanceThreshold"), 0.5},
+                {QStringLiteral("iterations"), 500},
+                {QStringLiteral("output"), QStringLiteral("inliers")},
+                {QStringLiteral("resultVar"), QStringLiteral("cloudPlane")}};
+  } else if (key == QLatin1String("cloud_cluster")) {
+    s.params = {{QStringLiteral("inputSource"), QStringLiteral("upstream")},
+                {QStringLiteral("eps"), 3},
+                {QStringLiteral("minPoints"), 8},
+                {QStringLiteral("resultVar"), QStringLiteral("cloudClust")}};
+  } else if (key == QLatin1String("cloud_measure")) {
+    s.params = {{QStringLiteral("inputSource"), QStringLiteral("upstream")},
+                {QStringLiteral("resultVar"), QStringLiteral("cloudMeas")}};
+  } else if (key == QLatin1String("cloud_height")) {
+    s.params = {{QStringLiteral("inputSource"), QStringLiteral("upstream")},
+                {QStringLiteral("baselineZ"), 0},
+                {QStringLiteral("cellSize"), 1},
+                {QStringLiteral("resultVar"), QStringLiteral("cloudHgt")}};
+  } else if (key == QLatin1String("cloud_register")) {
+    s.params = {{QStringLiteral("inputSource"), QStringLiteral("upstream")},
+                {QStringLiteral("targetSource"), QStringLiteral("soft_register")},
+                {QStringLiteral("method"), QStringLiteral("icp")},
+                {QStringLiteral("maxDistance"), 5},
+                {QStringLiteral("iterations"), 50},
+                {QStringLiteral("resultVar"), QStringLiteral("cloudReg")}};
   } else if (key == QLatin1String("result_gate")) {
     s.params = {{QStringLiteral("minCount"), 1},
                 {QStringLiteral("sourceVar"), QStringLiteral("barcodeCount")},

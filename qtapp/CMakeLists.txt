@@ -91,6 +91,8 @@ add_executable(sieans_qt
   src/MqttClient.cpp
   src/YoloInfer.hpp
   src/YoloInfer.cpp
+  src/CloudOps.hpp
+  src/CloudOps.cpp
   src/ConditionEval.hpp
   src/ConditionEval.cpp
   src/SubflowExec.hpp
