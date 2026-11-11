@@ -23,6 +23,8 @@
 #include <QMainWindow>
 #include <QEvent>
 #include <QCloseEvent>
+#include <QShowEvent>
+#include <QSplitter>
 #include <QPlainTextEdit>
 #include <QLabel>
 #include <QTableWidget>
@@ -42,6 +44,8 @@ class MainWindow : public QMainWindow {
   bool eventFilter(QObject* obj, QEvent* event) override;
   /** 关闭前提示未保存修改（无界面冒烟跳过对话框）。 */
   void closeEvent(QCloseEvent* event) override;
+  /** 首次显示时落实分割条比例并适应画布，避免未 show 时 setSizes 被忽略。 */
+  void showEvent(QShowEvent* event) override;
 
  private slots:
   void onNewProject();
@@ -134,6 +138,10 @@ class MainWindow : public QMainWindow {
   void applyDocumentToUi();
   /** Restore Host/VarWatch pin-group chrome from the document without dirtying. */
   void syncHostPinGroups();
+  /** 按当前窗口高度重设工作区/底栏分割，并 fit 流程画布（不写方案）。 */
+  void applyWorkbenchLayout();
+  /** 打开即跑且无胶片时加载示例 QR，不脏污方案、不自动跑流程。 */
+  void maybeLoadOpenAndRunSample();
   /** Activate a named pin group and refresh chips; marks dirty unless applying. */
   void applyHostPinGroup(const QString& name);
   /** Result-table double-click: jump film and accumulate compare-strip paths (runtime only). */
@@ -262,6 +270,8 @@ class MainWindow : public QMainWindow {
   bool project_dirty_ = false;
   bool applying_document_ = false;
   bool restoring_canvas_undo_ = false;
+  QSplitter* root_split_ = nullptr;
+  bool layout_applied_ = false;
   InspectionHistory inspection_history_;
   RecentFiles recent_files_;
   class QMenu* recent_menu_ = nullptr;

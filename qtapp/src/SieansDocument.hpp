@@ -67,6 +67,8 @@ class SieansDocument {
   bool saveToFile(const QString& path, QString* error = nullptr) const;
 
   QString path() const { return path_; }
+  /** 默认打开即跑演示（路径或 meta.openAndRun），用于示例图预载。 */
+  bool openAndRunDemo() const;
   QString name() const { return name_; }
   void setName(const QString& n) { name_ = n; }
 

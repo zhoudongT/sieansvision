@@ -20,7 +20,7 @@
 sudo apt-get install -y build-essential cmake curl python3
 ```
 
-若没有 sudo，这些工具必须已经在 PATH 上；其余依赖都可以装到 `$HOME` 下。图形会话下一般已有 Qt 运行所需的 X11/Wayland 库（如 `libxcb-cursor0`、`libgl1`）。无界面冒烟用 `QT_QPA_PLATFORM=offscreen`，不依赖显示器。
+若没有 sudo，这些工具必须已经在 PATH 上；其余依赖都可以装到 `$HOME` 下。图形会话下一般已有 Qt 运行所需的 X11/Wayland 库（如 `libgl1`）。Qt 6.5+ 的 xcb 插件还需要 `libxcb-cursor0`；没有系统包时运行 `scripts/install-xcb-cursor-user.sh` 解压到 `$HOME/.local/opt/xcb-cursor`（Ubuntu 官方 deb，SHA-256 校验，无需 sudo）。不要用整套 FreeCAD 库充当 Qt 运行依赖。Wayland 会话下启动脚本默认走 wayland 平台。无界面冒烟用 `QT_QPA_PLATFORM=offscreen`，不依赖显示器。
 
 把 `$HOME/.local/bin` 放进 PATH（未加时用户级 `tesseract` 包装可能找不到）：
 
@@ -51,6 +51,7 @@ python3 -m aqt install-qt linux desktop 6.7.3 gcc_64 --outputdir "$HOME/Qt"
 |------|----------|----------|--------------|
 | OCR（Tesseract，eng + chi_sim） | `scripts/install-tesseract-user.sh` | 包装 `$HOME/.local/bin/tesseract`，前缀 `$HOME/.local/opt/tesseract` | OCR 算子报告不可用，其他流程可跑 |
 | YOLO ONNX Runtime（官方 CPU v1.31.1，安装时校验 SHA-256） | `scripts/install-onnxruntime-user.sh` | `$HOME/.local/opt/onnxruntime` | 检测算子回退 `backend=software`，算子仍成功 |
+| Qt xcb 光标库（libxcb-cursor0，安装时校验 SHA-256） | `scripts/install-xcb-cursor-user.sh` | `$HOME/.local/opt/xcb-cursor` | xcb 平台插件无法加载；Wayland / offscreen 不受影响 |
 
 Tesseract 脚本通过已配置 apt 源的 `apt-get download` 拉取 **Ubuntu 官方 deb**（不需要 sudo），解压到用户前缀。本机 Ubuntu 5.3.4 要求 `TESSDATA_PREFIX` 指向 **tessdata 目录本身**（包装脚本已处理）。
 
@@ -69,7 +70,7 @@ export SIEANS_QT_PREFIX="${SIEANS_QT_PREFIX:-$HOME/Qt/6.7.3/gcc_64}"
 # 或前台：./scripts/run-sieans-qt.sh
 ```
 
-`launch-sieans-qt.sh` 会把用户级 Qt 与 `$HOME/.local/opt/onnxruntime/lib` 加进 `LD_LIBRARY_PATH`。方案、产物、示例图按检出根目录解析（`SIEANS_REPO` 可覆盖），不再写死某一台机器的路径。
+`launch-sieans-qt.sh` 会把用户级 Qt、`$HOME/.local/opt/onnxruntime/lib` 与可选的 `$HOME/.local/opt/xcb-cursor` 加进 `LD_LIBRARY_PATH`。Wayland 会话默认 `QT_QPA_PLATFORM=wayland`，并把 `QT_QPA_PLATFORMTHEME` 设为 `xdgdesktopportal`（避免 GNOME 上 gtk3 主题刷屏 `gdk_monitor_get_scale_factor`）。可用 `SIEANS_QT_WINDOW_SIZE=WxH` 仅用于验证窗口尺寸。方案、产物、示例图按检出根目录解析（`SIEANS_REPO` 可覆盖），不再写死某一台机器的路径。
 
 无界面打开即跑冒烟（跑完退出，不要把 App 留在后台）：
 

@@ -635,40 +635,8 @@
       "barcodeAll",
       "barcodeOk",
       "passGate",
-      "formatted",
       "urlOk",
-      "lastRecv",
-      "conditionPassed",
-      "branchTaken",
-      "branchRoute",
-      "mergeFrom",
-      "skippedCount",
-      "subflowPassed",
-      "subflowCount",
-      "loopCompleted",
-      "loopStoppedEarly",
-      "loopCount",
-      "loopPassed",
-      "defectsCount",
-      "defectsRatio",
-      "defectsOk",
-      "defectsPassed",
-      "defectsMaxArea",
-      "defectsCleanCount",
-      "defectsCleanOk",
-      "locateOk",
-      "locateScore",
-      "locateX",
-      "locateY",
-      "locateAngle",
-      "fixtureOk",
-      "fixtureX",
-      "fixtureY",
-      "fixtureAngle",
-      "defectsFollowCount",
-      "defectsFollowOk",
-      "defectsFollowRoiX",
-      "defectsFollowRoiY"
+      "formatted"
     ],
     "active": "二维码链",
     "pinGroups": {
@@ -693,7 +661,8 @@
         "lastRecv",
         "urlOk"
       ]
-    }
+    },
+    "activePinGroup": "二维码链"
   },
   "runUi": {
     "split": "4",

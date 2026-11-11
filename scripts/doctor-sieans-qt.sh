@@ -143,6 +143,18 @@ else
 fi
 
 echo
+echo "Qt xcb cursor (optional, xcb platform plugin)"
+XCB_PREFIX="${SIEANS_XCB_CURSOR_DIR:-$HOME/.local/opt/xcb-cursor}"
+XCB_LIB="$XCB_PREFIX/usr/lib/x86_64-linux-gnu/libxcb-cursor.so.0"
+if [[ -e "$XCB_LIB" ]]; then
+  ok "libxcb-cursor $XCB_LIB"
+elif ldconfig -p 2>/dev/null | grep -q 'libxcb-cursor.so.0'; then
+  ok "libxcb-cursor from system (libxcb-cursor0)"
+else
+  warn "libxcb-cursor0 missing — xcb plugin needs it (Qt 6.5+). Run scripts/install-xcb-cursor-user.sh (no sudo). Wayland sessions do not require it."
+fi
+
+echo
 echo "hardware (optional)"
 if [[ -f /opt/MVS/include/MvCameraControl.h ]]; then
   ok "Hikrobot /opt/MVS present"
@@ -205,6 +217,28 @@ if [[ "$WANT_PROVE" == 1 ]]; then
       fi
     else
       fail "install-onnxruntime-user.sh failed in temp prefix"
+    fi
+    rm -rf "$tmp"
+  fi
+  if ! command -v dpkg-deb >/dev/null || ! command -v curl >/dev/null; then
+    warn "skip libxcb-cursor prove — curl or dpkg-deb missing"
+  else
+    tmp="$(mktemp -d "${TMPDIR:-/tmp}/sieans-doctor-xcb-XXXXXX")"
+    cache_args=()
+    live_cache="${SIEANS_XCB_CURSOR_CACHE:-$HOME/.local/src/xcb-cursor}"
+    live_deb="$live_cache/libxcb-cursor0_0.1.4-1build1_amd64.deb"
+    if [[ -f "$live_deb" ]]; then
+      mkdir -p "$tmp/cache"
+      cp -a "$live_deb" "$tmp/cache/"
+    fi
+    if SIEANS_XCB_CURSOR_DIR="$tmp/opt"        SIEANS_XCB_CURSOR_CACHE="$tmp/cache"        "$ROOT/scripts/install-xcb-cursor-user.sh"; then
+      if [[ -e "$tmp/opt/usr/lib/x86_64-linux-gnu/libxcb-cursor.so.0" ]]; then
+        ok "install-xcb-cursor-user.sh works in $tmp"
+      else
+        fail "install-xcb-cursor-user.sh finished but lib missing"
+      fi
+    else
+      fail "install-xcb-cursor-user.sh failed in temp prefix"
     fi
     rm -rf "$tmp"
   fi

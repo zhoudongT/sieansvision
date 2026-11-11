@@ -203,7 +203,7 @@ CaliperResult runCaliper(const QImage& src, const QVariantMap& params) {
     r.p1 = QPointF(x, roiY + e1.idx);
   }
   r.ok = r.distPx >= 1.0;
-  r.note = QStringLiteral("d=%.1fpx").arg(r.distPx);
+  r.note = QStringLiteral("d=%1px").arg(r.distPx, 0, 'f', 1);
   return r;
 }
 

@@ -152,6 +152,16 @@ bool isExposureKey(const QString& key) {
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   setWindowTitle(QStringLiteral("[*]SIEANS Vision · 设计态"));
   resize(1600, 940);
+  {
+    const QByteArray sz = qgetenv("SIEANS_QT_WINDOW_SIZE");
+    if (!sz.isEmpty()) {
+      const QString s = QString::fromUtf8(sz);
+      const int x = s.indexOf(QLatin1Char('x'));
+      const int w = x > 0 ? s.left(x).toInt() : 0;
+      const int h = x > 0 ? s.mid(x + 1).toInt() : 0;
+      if (w >= 800 && h >= 600) resize(w, h);
+    }
+  }
 
   cam_thread_ = new QThread(this);
   cam_worker_ = new GenTLWorker();
@@ -205,11 +215,12 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     logResult(QStringLiteral("已种子 GenTL→QR 演示流程"));
   }
   markProjectClean();
+  maybeLoadOpenAndRunSample();
 
   {
     const QVariantMap serialReal =
         document_.commManager().value(QStringLiteral("serialReal")).toMap();
-    const bool wantPty = serialReal.value(QStringLiteral("autoStart"), true).toBool() ||
+    const bool wantPty = serialReal.value(QStringLiteral("autoStart"), false).toBool() ||
                          qgetenv("SIEANS_QT_FORCE_SEED") == "1";
     if (wantPty) {
       QString ptyErr;
@@ -225,7 +236,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   {
     const QVariantMap mb =
         document_.commManager().value(QStringLiteral("modbusReal")).toMap();
-    const bool want = mb.value(QStringLiteral("autoStart"), true).toBool() ||
+    const bool want = mb.value(QStringLiteral("autoStart"), false).toBool() ||
                       qgetenv("SIEANS_QT_FORCE_SEED") == "1";
     if (want) {
       int base = mb.value(QStringLiteral("port"), 1502).toInt();
@@ -257,7 +268,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   {
     const QVariantMap s7 =
         document_.commManager().value(QStringLiteral("s7Real")).toMap();
-    const bool want = s7.value(QStringLiteral("autoStart"), true).toBool() ||
+    const bool want = s7.value(QStringLiteral("autoStart"), false).toBool() ||
                       qgetenv("SIEANS_QT_FORCE_SEED") == "1";
     if (want) {
       int base = s7.value(QStringLiteral("port"), 1102).toInt();
@@ -280,7 +291,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   {
     const QVariantMap opc =
         document_.commManager().value(QStringLiteral("opcuaReal")).toMap();
-    const bool want = opc.value(QStringLiteral("autoStart"), true).toBool() ||
+    const bool want = opc.value(QStringLiteral("autoStart"), false).toBool() ||
                       qgetenv("SIEANS_QT_FORCE_SEED") == "1";
     if (want) {
       int base = opc.value(QStringLiteral("port"), 4840).toInt();
@@ -303,7 +314,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   {
     const QVariantMap mqtt =
         document_.commManager().value(QStringLiteral("mqttReal")).toMap();
-    const bool want = mqtt.value(QStringLiteral("autoStart"), true).toBool() ||
+    const bool want = mqtt.value(QStringLiteral("autoStart"), false).toBool() ||
                       qgetenv("SIEANS_QT_FORCE_SEED") == "1";
     if (want) {
       int base = mqtt.value(QStringLiteral("port"), 1883).toInt();
@@ -469,6 +480,8 @@ void MainWindow::buildUi() {
   // property = light float (VM 属性浮窗), not embedded under canvas
   auto* central = new QWidget(this);
   auto* rootSplit = new QSplitter(Qt::Vertical);
+  rootSplit->setObjectName(QStringLiteral("rootSplit"));
+  root_split_ = rootSplit;
   auto* rootLay = new QVBoxLayout(central);
   rootLay->setContentsMargins(0, 0, 0, 0);
   rootLay->setSpacing(0);
@@ -1591,7 +1604,15 @@ void MainWindow::applyDocumentToUi() {
     }
     var_watch_->setVariables(flow_vars_);
   }
-  if (host_strip_) host_strip_->setWatchKeys(document_.hostWatchKeys());
+  if (host_strip_) {
+    const QString act = document_.activePinGroup();
+    const QStringList groupKeys =
+        act.isEmpty() ? QStringList() : document_.pinGroupKeys(act);
+    // 打开方案时优先显示当前钉组，避免历史膨胀的 watchKeys 淹没 Host 条。
+    host_strip_->setWatchKeys(!groupKeys.isEmpty() ? groupKeys
+                                                   : document_.hostWatchKeys());
+    host_strip_->updateFromVars(flow_vars_);
+  }
   syncHostPinGroups();
   result_compare_paths_.clear();
   if (compare_strip_) compare_strip_->clear();
@@ -2264,6 +2285,45 @@ bool MainWindow::confirmDiscardOrSave() {
   if (ret == QMessageBox::Discard) return true;
   onSaveProject();
   return !project_dirty_;
+}
+
+void MainWindow::applyWorkbenchLayout() {
+  if (root_split_) {
+    const int h = root_split_->height();
+    if (h >= 200) {
+      // 底栏保持约 1/5，最多 220px，避免空结果表占掉半个工作区。
+      const int bottom = qBound(140, h / 5, 220);
+      const int top = qMax(160, h - bottom);
+      root_split_->setSizes({top, bottom});
+    }
+  }
+  if (flow_view_) flow_view_->fitAll();
+}
+
+void MainWindow::showEvent(QShowEvent* event) {
+  QMainWindow::showEvent(event);
+  if (layout_applied_) return;
+  layout_applied_ = true;
+  applyWorkbenchLayout();
+  QTimer::singleShot(0, this, &MainWindow::applyWorkbenchLayout);
+}
+
+void MainWindow::maybeLoadOpenAndRunSample() {
+  // 仅跳过真正无界面（offscreen / HEADLESS）。SIEANS_QT_SCREENSHOT_QUIT 仍算可见启动，
+  // 需要预载示例图以便验证普通打开即跑路径；workbenchIsHeadless() 会把 QUIT 当无界面以避开模态框。
+  const QByteArray plat = qgetenv("QT_QPA_PLATFORM");
+  if (plat == "offscreen" || plat == "minimal" || plat == "minimalegl") return;
+  if (qgetenv("SIEANS_QT_HEADLESS") == "1") return;
+  if (image_view_ && !image_view_->currentImage().isNull()) return;
+  if (filmstrip_ && filmstrip_->count() > 0) return;
+  if (!document_.openAndRunDemo()) return;
+  const QString sample = samplePathCandidates();
+  if (sample.isEmpty()) return;
+  applying_document_ = true;
+  loadImagePath(sample, true);
+  applying_document_ = false;
+  markProjectClean();
+  logResult(QStringLiteral("打开即跑：已加载示例 QR（未自动运行）"));
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
@@ -4049,7 +4109,7 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
           const YoloItem& it = yr.items[i];
           OverlayHit box;
           box.format = isSeg ? QStringLiteral("YOLOSEG") : QStringLiteral("YOLO");
-          box.text = showLab ? QStringLiteral("%1 %.2f").arg(it.label).arg(it.confidence)
+          box.text = showLab ? QStringLiteral("%1 %2").arg(it.label).arg(it.confidence, 0, 'f', 2)
                              : QString();
           const QRectF rct = it.bbox;
           box.polygon << rct.topLeft() << rct.topRight() << rct.bottomRight()

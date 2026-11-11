@@ -92,6 +92,8 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx` / `yol
 
 **已落地（wave269）：** `yolo_segment` 接入与检测相同的本机 ONNX Runtime 掩膜路径（dlopen，用户前缀 `$HOME/.local/opt/onnxruntime`）。YOLOv8/11-seg 双输出（preds + proto）还原到工作图；失败或无 `.onnx` 回退 software，不自动下载。无界面自测在存在 `sieans-yolo-seg-smoke.onnx` 且运行时可用时证明 `backend=onnx`；FORCE_SEED 默认权重仍走 `yoloSegBackend=software`。
 
+**已落地（wave270）：** 普通启动可用性收尾：显示后重设垂直分割（底栏约 1/5，避免空结果表占半屏）再 `fitAll`；打开即跑演示预载示例 QR（不自动运行、不脏污方案）；Host 条优先当前钉组（识别历史 `hostWatch.active`，避免膨胀 watchKeys 刷屏）；通信 `autoStart` 缺省改为 false（官方演示仍显式 loopback TCP）；用户级 `install-xcb-cursor-user.sh` + 启动脚本统一 Wayland/xcb，GNOME 上默认 portal 主题以减少 gdk 警告。无界面自测仍走既有 pin-group / protocol-robust。验证截图用 `SIEANS_QT_SCREENSHOT`（应用自身 grab），不要绕过 OS 截屏控制。
+
 **NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。操作员账号（PySide 走独立 RPC/部署凭据，未在本机落地）。云 SaaS / 模板市场。真机硬件（`/opt/MVS`、真实 PLC）。官方 YOLO 权重需自行放入上述模型目录。
 
 ## VM chrome (2026-11-03)

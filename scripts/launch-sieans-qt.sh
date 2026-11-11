@@ -9,6 +9,8 @@ export MVCAM_COMMON_RUNENV="${MVCAM_COMMON_RUNENV:-/opt/MVS/lib}"
 EXTRA_LIBS="$HOME/Qt/extra-libs"
 export LD_LIBRARY_PATH="/opt/MVS/lib/64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 [[ -d "$EXTRA_LIBS" ]] && export LD_LIBRARY_PATH="$EXTRA_LIBS:$LD_LIBRARY_PATH"
+XCB_CURSOR_LIB="${SIEANS_XCB_CURSOR_DIR:-$HOME/.local/opt/xcb-cursor}/usr/lib/x86_64-linux-gnu"
+[[ -d "$XCB_CURSOR_LIB" ]] && export LD_LIBRARY_PATH="$XCB_CURSOR_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 ORT_LIB="${SIEANS_ONNXRUNTIME_DIR:-$HOME/.local/opt/onnxruntime}/lib"
 [[ -d "$ORT_LIB" ]] && export LD_LIBRARY_PATH="$ORT_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export DISPLAY="${DISPLAY:-:0}"
@@ -25,12 +27,18 @@ for cand in \
   fi
 done
 
+
+# Prefer Wayland in a Wayland session; otherwise xcb. Allow callers to override.
 if [[ -z "${QT_QPA_PLATFORM:-}" ]]; then
   if [[ "${XDG_SESSION_TYPE:-}" == "wayland" || -n "${WAYLAND_DISPLAY:-}" ]]; then
     export QT_QPA_PLATFORM=wayland
   else
     export QT_QPA_PLATFORM=xcb
   fi
+fi
+# GNOME Wayland + Qt gtk3 theme spams gdk_monitor_get_scale_factor; portal theme avoids it.
+if [[ "${QT_QPA_PLATFORM}" == "wayland" && -z "${QT_QPA_PLATFORMTHEME:-}" ]]; then
+  export QT_QPA_PLATFORMTHEME=xdgdesktopportal
 fi
 
 if [[ ! -x "$BIN" ]]; then

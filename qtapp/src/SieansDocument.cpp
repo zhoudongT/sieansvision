@@ -1598,6 +1598,8 @@ QString SieansDocument::activePinGroup() const {
   const QJsonObject hw = hostWatchObject(raw_);
   QString a = hw.value(QStringLiteral("activePinGroup")).toString().trimmed();
   if (a.isEmpty()) a = hw.value(QStringLiteral("active_pin_group")).toString().trimmed();
+  // PySide / 早期方案把当前钉组写在 hostWatch.active。
+  if (a.isEmpty()) a = hw.value(QStringLiteral("active")).toString().trimmed();
   const QStringList names = pinGroupNames();
   if (names.isEmpty()) return {};
   if (!a.isEmpty()) {
@@ -1683,6 +1685,13 @@ QString SieansDocument::activatePinGroup(const QString& name) {
   if (!groups.contains(n)) groups.insert(n, QStringList());
   setPinGroups(groups, n, true);
   return n;
+}
+
+bool SieansDocument::openAndRunDemo() const {
+  if (path_.endsWith(QStringLiteral("open-and-run-gentl-qr.sieans"))) return true;
+  const QJsonObject meta = raw_.value(QStringLiteral("meta")).toObject();
+  if (meta.value(QStringLiteral("openAndRun")).toBool()) return true;
+  return name() == QStringLiteral("打开即跑 · GenTL/Soft→二维码→TCP");
 }
 
 QStringList SieansDocument::filmstripPaths() const {
@@ -2542,6 +2551,38 @@ QStringList SieansDocument::pinGroupSelfTest() {
   check("snake-keys-fallback",
         snake.hostWatchKeys() == QStringList{QStringLiteral("locateOk")},
         snake.hostWatchKeys().join(QLatin1Char(',')));
+
+  const QString aliasPath = tmp.filePath(QStringLiteral("active-alias.sieans"));
+  {
+    QJsonObject bag;
+    bag.insert(QStringLiteral("name"), QStringLiteral("alias"));
+    QJsonObject hw;
+    QJsonObject pg;
+    pg.insert(QStringLiteral("二维码链"),
+              QJsonArray{QStringLiteral("barcodeOk"), QStringLiteral("passGate")});
+    pg.insert(QStringLiteral("门限"), QJsonArray{QStringLiteral("passGate")});
+    hw.insert(QStringLiteral("pinGroups"), pg);
+    hw.insert(QStringLiteral("active"), QStringLiteral("二维码链"));
+    QJsonArray bloated;
+    bloated.append(QStringLiteral("barcodeOk"));
+    bloated.append(QStringLiteral("passGate"));
+    bloated.append(QStringLiteral("locateOk"));
+    bloated.append(QStringLiteral("defectsCount"));
+    hw.insert(QStringLiteral("watchKeys"), bloated);
+    bag.insert(QStringLiteral("hostWatch"), hw);
+    QFile f(aliasPath);
+    const bool ok = f.open(QIODevice::WriteOnly | QIODevice::Truncate);
+    check("alias-write", ok);
+    if (ok) f.write(QJsonDocument(bag).toJson(QJsonDocument::Indented));
+  }
+  SieansDocument alias;
+  check("alias-load", alias.loadFromFile(aliasPath, &err), err);
+  check("alias-active", alias.activePinGroup() == QStringLiteral("二维码链"),
+        alias.activePinGroup());
+  check("alias-group-keys",
+        alias.pinGroupKeys(QStringLiteral("二维码链")) ==
+            (QStringList{QStringLiteral("barcodeOk"), QStringLiteral("passGate")}),
+        alias.pinGroupKeys(QStringLiteral("二维码链")).join(QLatin1Char(',')));
 
   const QString created = loaded.activatePinGroup(QStringLiteral("备用"));
   check("missing-creates", created == QStringLiteral("备用"), created);
