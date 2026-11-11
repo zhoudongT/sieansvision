@@ -7,6 +7,7 @@
 #include "PropertyPanel.hpp"
 #include "SieansDocument.hpp"
 #include "InspectionHistory.hpp"
+#include "RecentFiles.hpp"
 #include "CommHub.hpp"
 #include "CommPanel.hpp"
 #include "VarWatchPanel.hpp"
@@ -66,6 +67,12 @@ class MainWindow : public QMainWindow {
   bool fireStringTrigger(const QString& text, const QString& reason = QString());
   /** Execute a list of trigger command maps (type/config). */
   void dispatchGlobalTriggers(const QVector<QVariantMap>& cmds);
+  /** Remember a successfully opened or saved .sieans / .prc path. */
+  void rememberRecentFile(const QString& path);
+  /** Rebuild 文件→最近打开 from the isolated or user recent list. */
+  void rebuildRecentMenu();
+  /** Open a recent path; drop it if missing. */
+  void openRecentFile(const QString& path);
   /** Toggle on-canvas ROI draw/move/resize for the selected operator. */
   void onToggleRoiMode();
   /** Clear ROI params on the selected operator. */
@@ -251,6 +258,8 @@ class MainWindow : public QMainWindow {
   bool applying_document_ = false;
   bool restoring_canvas_undo_ = false;
   InspectionHistory inspection_history_;
+  RecentFiles recent_files_;
+  class QMenu* recent_menu_ = nullptr;
   class QComboBox* variant_chip_ = nullptr;
   bool refreshing_variant_chip_ = false;
   QAction* act_undo_ = nullptr;

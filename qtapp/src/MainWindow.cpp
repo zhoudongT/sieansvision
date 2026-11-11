@@ -1,4 +1,5 @@
 #include "MainWindow.hpp"
+#include "RecentFiles.hpp"
 #include "WorkbenchPaths.hpp"
 #include "LocateMatchPanel.hpp"
 #include "ProtocolNet.hpp"
@@ -1301,6 +1302,8 @@ void MainWindow::buildMenus() {
   files->addAction(QStringLiteral("保存方案"), this, &MainWindow::onSaveProject,
                    QKeySequence::Save);
   files->addAction(QStringLiteral("方案另存为…"), this, &MainWindow::onSaveProjectAs);
+  recent_menu_ = files->addMenu(QStringLiteral("最近打开"));
+  rebuildRecentMenu();
   files->addAction(QStringLiteral("导出当前流程（.prc）…"), this,
                    &MainWindow::onExportCurrentFlow);
   files->addAction(QStringLiteral("导入流程（.prc）…"), this, &MainWindow::onImportFlow);
@@ -2285,6 +2288,7 @@ void MainWindow::onOpenProject() {
   }
   applyDocumentToUi();
   markProjectClean();
+  rememberRecentFile(path);
   logResult(QStringLiteral("已打开方案：%1 · %2 步")
                 .arg(path)
                 .arg(document_.steps().size()));
@@ -2303,6 +2307,7 @@ void MainWindow::onSaveProject() {
     return;
   }
   markProjectClean();
+  rememberRecentFile(path);
   logResult(QStringLiteral("方案已保存：%1").arg(path));
 }
 
@@ -2321,6 +2326,7 @@ void MainWindow::onSaveProjectAs() {
   }
   document_.loadFromFile(path);
   markProjectClean();
+  rememberRecentFile(path);
   logResult(QStringLiteral("方案已保存：%1").arg(path));
 }
 
@@ -2346,6 +2352,7 @@ void MainWindow::onExportCurrentFlow() {
     logResult(QStringLiteral("导出流程失败：%1").arg(err));
     return;
   }
+  rememberRecentFile(path);
   logResult(QStringLiteral("已导出流程：%1").arg(path));
 }
 
@@ -2365,6 +2372,7 @@ void MainWindow::onImportFlow() {
   document_.activateFlow(imported.id);
   applyDocumentToUi();
   markProjectDirty();
+  rememberRecentFile(path);
   logResult(QStringLiteral("已导入流程：%1").arg(imported.name));
 }
 
@@ -2400,7 +2408,6 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
     showStatus(QStringLiteral("请先加载图像或开启预览"));
     return;
   }
-
   QImage working = src;
   PointCloud workingCloud;
   if (!imported_cloud_path_.isEmpty()) {
@@ -5053,6 +5060,15 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                       .arg(cf.isEmpty() ? 1 : 0)
                       .arg(document_.recipeVariants().size());
         }
+        {
+          const QStringList rf = RecentFiles::recentFilesSelfTest();
+          line += QChar(' ');
+          line += QStringLiteral("recentOk=%1 recentFails=%2 recentLive=%3")
+                      .arg(rf.isEmpty() ? 1 : 0)
+                      .arg(rf.isEmpty() ? QStringLiteral("0")
+                                         : rf.join(QLatin1Char('|')).left(160))
+                      .arg(recent_files_.paths().size());
+        }
       }
 
 
@@ -6469,6 +6485,76 @@ bool MainWindow::fireStringTrigger(const QString& text, const QString& reason) {
   return true;
 }
 
+void MainWindow::rememberRecentFile(const QString& path) {
+  if (path.trimmed().isEmpty()) return;
+  recent_files_.remember(path);
+  rebuildRecentMenu();
+}
+
+void MainWindow::rebuildRecentMenu() {
+  if (!recent_menu_) return;
+  recent_menu_->clear();
+  int shown = 0;
+  for (const QString& raw : recent_files_.paths()) {
+    const QFileInfo fi(raw);
+    if (!fi.exists()) continue;
+    auto* act = recent_menu_->addAction(fi.fileName());
+    act->setToolTip(fi.absoluteFilePath());
+    const QString abs = fi.absoluteFilePath();
+    QObject::connect(act, &QAction::triggered, this, [this, abs]() { openRecentFile(abs); });
+    ++shown;
+  }
+  if (shown == 0) {
+    auto* empty = recent_menu_->addAction(QStringLiteral("（无最近方案）"));
+    empty->setEnabled(false);
+  }
+  recent_menu_->addSeparator();
+  auto* clr = recent_menu_->addAction(QStringLiteral("清除最近记录"));
+  QObject::connect(clr, &QAction::triggered, this, [this]() {
+    recent_files_.clear();
+    rebuildRecentMenu();
+  });
+}
+
+void MainWindow::openRecentFile(const QString& path) {
+  const QFileInfo fi(path);
+  if (!fi.exists()) {
+    recent_files_.remove(path);
+    rebuildRecentMenu();
+    showStatus(QStringLiteral("最近方案已缺失，已从列表移除"));
+    return;
+  }
+  if (!confirmDiscardOrSave()) return;
+  const QString abs = fi.absoluteFilePath();
+  const QString suffix = fi.suffix().toLower();
+  QString err;
+  if (suffix == QLatin1String("prc")) {
+    const FlowDef imported = document_.importPrcFromFile(abs, &err);
+    if (imported.id.isEmpty()) {
+      if (!workbenchIsHeadless())
+        QMessageBox::warning(this, QStringLiteral("打开失败"), err);
+      logResult(QStringLiteral("打开最近流程失败：%1").arg(err));
+      return;
+    }
+    document_.activateFlow(imported.id);
+    applyDocumentToUi();
+    markProjectDirty();
+    rememberRecentFile(abs);
+    logResult(QStringLiteral("已从最近列表导入流程：%1").arg(imported.name));
+    return;
+  }
+  if (!document_.loadFromFile(abs, &err)) {
+    if (!workbenchIsHeadless())
+      QMessageBox::warning(this, QStringLiteral("打开失败"), err);
+    logResult(QStringLiteral("打开最近方案失败：%1").arg(err));
+    return;
+  }
+  applyDocumentToUi();
+  markProjectClean();
+  rememberRecentFile(abs);
+  logResult(QStringLiteral("已打开最近方案：%1 · %2 步").arg(abs).arg(document_.steps().size()));
+}
+
 void MainWindow::dispatchGlobalTriggers(const QVector<QVariantMap>& cmds) {
   for (const QVariantMap& cmd : cmds) {
     const QString typ = cmd.value(QStringLiteral("type")).toString();
@@ -7043,6 +7129,7 @@ void MainWindow::onLoadRecipeLibrary() {
   }
   applyDocumentToUi();
   markProjectClean();
+  rememberRecentFile(path);
   logResult(QStringLiteral("工程库换型已加载 · %1").arg(document_.name()));
   showStatus(QStringLiteral("工程库换型 · %1").arg(document_.name()));
 }

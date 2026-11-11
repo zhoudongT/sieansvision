@@ -13,6 +13,7 @@
 #include "YoloInfer.hpp"
 #include "CloudOps.hpp"
 #include "InspectionHistory.hpp"
+#include "RecentFiles.hpp"
 #include "SocketExchange.hpp"
 #include "FlowExtras.hpp"
 #include "PythonExt.hpp"
@@ -383,6 +384,19 @@ int main(int argc, char* argv[]) {
     }
     for (const QString& line : fails)
       std::fprintf(stderr, "history-selftest FAIL %s\n", line.toUtf8().constData());
+    return 1;
+  }
+
+  if (qEnvironmentVariable("SIEANS_QT_RECENT_SELFTEST") == QLatin1String("1") &&
+      qEnvironmentVariable("SIEANS_QT_RECENT_SELFTEST_QUIT") == QLatin1String("1")) {
+    QCoreApplication app(argc, argv);
+    const QStringList fails = sieans_qt::RecentFiles::recentFilesSelfTest();
+    if (fails.isEmpty()) {
+      std::fprintf(stdout, "recent-selftest ok\n");
+      return 0;
+    }
+    for (const QString& line : fails)
+      std::fprintf(stderr, "recent-selftest FAIL %s\n", line.toUtf8().constData());
     return 1;
   }
 

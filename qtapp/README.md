@@ -86,7 +86,9 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx`）放�
 
 **已落地（wave266）：** 配方换型余下子集：套用带回滚栈（最多 16，对齐 PySide `_recipeRollbackStack`）、工具条变体芯片一键套用、本机工程库 `.sieans` 整案换型（projects/ 及模板，无界面跳过对话框）。无界面自测 `SIEANS_QT_RECIPE_CHANGE_SELFTEST=1`，不脏污现场种子。
 
-**NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。操作员账号（PySide 走独立 RPC/部署凭据，未在本机落地），最近文件菜单，触发事件行（流程开始/结束/NG）及注入工具条按钮。
+**已落地（wave267）：** 最近打开菜单（对齐 PySide `recentSchemes`，最多 12 条）：成功打开/保存 `.sieans` 以及导入/导出/工程库换型的 `.prc`/`.sieans` 后写入列表，文件菜单「最近打开」可再开，缺失项跳过。FORCE_SEED / 无界面 / `SIEANS_QT_RECENT_PATH` 走临时或注入 ini，不写用户 `SIEANS/VisionDesktop` 仓库。无界面自测 `SIEANS_QT_RECENT_SELFTEST=1`，不脏污现场种子。
+
+**NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。操作员账号（PySide 走独立 RPC/部署凭据，未在本机落地），触发事件行（流程开始/结束/NG）及注入工具条按钮。云 SaaS / 模板市场。真机硬件（`/opt/MVS`、真实 PLC）。
 
 ## VM chrome (2026-11-03)
 
