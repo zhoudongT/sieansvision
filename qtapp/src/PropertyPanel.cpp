@@ -184,7 +184,9 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
       op == QLatin1String("cloud_height") || op == QLatin1String("cloud_register")) {
     QVector<Spec> f = {
         S("inputSource", "输入点云", kChoice,
-          "upstream|上游点云;soft_fixture|软仿真场景;soft_part|软标准件;soft_surface|软顶面;soft_register|软配准件"),
+          "upstream|上游点云;file|本地文件;soft_fixture|软仿真场景;soft_part|软标准件;soft_surface|软顶面;soft_register|软配准件"),
+        S("cloudPath", "点云文件", kLine, "PLY/PCD/XYZ/TXT/CSV，inputSource=file 时使用"),
+        S("cloudUnit", "文件单位", kChoice, "mm|毫米;m|米（读入后换算为毫米）"),
         S("inputShiftX", "输入平移 X", kReal, "可选，叠加在输入上"),
         S("inputShiftY", "输入平移 Y", kReal, ""),
         S("inputShiftZ", "输入平移 Z", kReal, ""),
@@ -214,7 +216,8 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
       f.append(S("cellSize", "网格边长", kReal, "默认 1"));
     } else if (op == QLatin1String("cloud_register")) {
       f.append(S("targetSource", "参考点云", kChoice,
-                 "soft_register|软配准件;soft_part|软标准件;soft_fixture|软仿真场景;soft_surface|软顶面"));
+                 "soft_register|软配准件;file|本地文件;soft_part|软标准件;soft_fixture|软仿真场景;soft_surface|软顶面"));
+      f.append(S("targetPath", "参考点云文件", kLine, "targetSource=file 时使用"));
       f.append(S("method", "配准方式", kChoice, "icp|局部 ICP;global|PCA 全局 + ICP"));
       f.append(S("maxDistance", "最大对应距离", kReal, "默认 5"));
       f.append(S("iterations", "精配准迭代次数", kInt, "默认 50"));

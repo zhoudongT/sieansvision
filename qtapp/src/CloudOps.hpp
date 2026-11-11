@@ -87,11 +87,16 @@ PointCloud makeSoftCloudSurface();
 PointCloud makeSoftCloudRegisterSet();
 
 /**
- * 按 inputSource 解析输入点云（upstream / soft_fixture / soft_part /
+ * 按 inputSource 解析输入点云（upstream / file / soft_fixture / soft_part /
  * soft_surface / soft_register），并可叠加 inputShiftX/Y/Z。
  */
 PointCloud resolveCloudInput(const PointCloud& upstream, const QVariantMap& params,
                              QString* error = nullptr);
+
+/** Load an ASCII PLY / PCD / XYZ / TXT / CSV point cloud (no third-party deps). */
+PointCloud loadPointCloudFile(const QString& path, QString* error = nullptr);
+/** Isolated parse + resolveCloudInput checks against a tiny generated file. */
+QStringList cloudFileSelfTest();
 
 /** catalog: cloud_filter（voxel / crop / statistical / radius）。 */
 CloudResult runCloudFilter(const PointCloud& input, const QVariantMap& params);

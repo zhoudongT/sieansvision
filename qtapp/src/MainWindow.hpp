@@ -73,6 +73,10 @@ class MainWindow : public QMainWindow {
   void undoCanvasEdit();
   /** Redo a canvas edit (Ctrl+Shift+Z / Ctrl+Y). */
   void redoCanvasEdit();
+  /** Import a local PLY/PCD/XYZ/TXT/CSV point cloud into a cloud_* step or the session. */
+  void onImportPointCloud();
+  /** Import a local file as the selected cloud_register target (设置参考点云). */
+  void onImportCloudTarget();
   void onOpenCommManager();
   void onOpenFlowIo();
   void onOpenSubflowManager();
@@ -135,6 +139,8 @@ class MainWindow : public QMainWindow {
   void updateCanvasUndoActions();
   /** Reload only the flow canvas from the document (used by undo/redo). */
   void reloadCanvasFromDocument();
+  /** Load a local point-cloud file; asTarget writes cloud_register targetPath. */
+  bool importPointCloudPath(const QString& path, bool asTarget);
   /** 按方案名、设计/运行态和脏标记刷新窗口标题与方案标签。 */
   void refreshProjectTitle();
   /** 有未保存修改时询问保存/放弃/取消；无界面冒烟直接视为放弃。取消则返回 false。 */
@@ -235,6 +241,7 @@ class MainWindow : public QMainWindow {
   bool restoring_canvas_undo_ = false;
   QAction* act_undo_ = nullptr;
   QAction* act_redo_ = nullptr;
+  QString imported_cloud_path_;
   qint64 preview_frames_ = 0;
 };
 

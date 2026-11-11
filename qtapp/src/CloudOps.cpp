@@ -5,6 +5,11 @@
 #include <QVariantList>
 #include <QtGlobal>
 #include <QtMath>
+#include <QFile>
+#include <QFileInfo>
+#include <QTextStream>
+#include <QTemporaryDir>
+#include <QDir>
 
 #include <algorithm>
 #include <cmath>
@@ -762,6 +767,300 @@ PointCloud makeSoftCloudFixture() {
   return c;
 }
 
+
+namespace {
+
+constexpr qint64 kMaxCloudFileBytes = 12 * 1024 * 1024;
+
+QStringList cloudFileLines(const QString& path, QString* error) {
+  QFile f(path);
+  if (!f.exists()) {
+    if (error) *error = QStringLiteral("点云文件不存在: %1").arg(path);
+    return {};
+  }
+  if (f.size() > kMaxCloudFileBytes) {
+    if (error) *error = QStringLiteral("点云文件超过 12MB 上限");
+    return {};
+  }
+  if (!f.open(QIODevice::ReadOnly)) {
+    if (error) *error = QStringLiteral("无法打开点云文件: %1").arg(path);
+    return {};
+  }
+  const QByteArray raw = f.readAll();
+  QString text = QString::fromUtf8(raw);
+  if (text.contains(QChar('\0'))) {
+    if (error) *error = QStringLiteral("点云文件含二进制数据，仅支持 ASCII");
+    return {};
+  }
+  text.replace(QLatin1Char('\r'), QLatin1Char('\n'));
+  return text.split(QLatin1Char('\n'), Qt::KeepEmptyParts);
+}
+
+QVector<double> splitNumbers(const QString& line) {
+  QVector<double> out;
+  const QString t = line.trimmed();
+  if (t.isEmpty() || t.startsWith(QLatin1Char('#')) || t.startsWith(QLatin1String("//")))
+    return out;
+  const QString norm = QString(t).replace(QLatin1Char(','), QLatin1Char(' '));
+  const QStringList parts = norm.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+  bool ok = true;
+  for (const QString& p : parts) {
+    const double v = p.toDouble(&ok);
+    if (!ok) return {};
+    out.push_back(v);
+  }
+  return out;
+}
+
+void applyCloudUnit(PointCloud* cloud, const QString& unit) {
+  if (!cloud) return;
+  const QString u = unit.trimmed().toLower();
+  if (u == QLatin1String("m") || u == QLatin1String("meter") || u == QLatin1String("metres") ||
+      u == QLatin1String("meters")) {
+    for (CloudPoint& p : cloud->points) {
+      p.x *= 1000.0;
+      p.y *= 1000.0;
+      p.z *= 1000.0;
+    }
+    cloud->unit = QStringLiteral("mm");
+  } else if (!u.isEmpty()) {
+    cloud->unit = u;
+  }
+}
+
+PointCloud parseXyzLines(const QStringList& lines, int start, QString* error) {
+  PointCloud cloud;
+  cloud.unit = QStringLiteral("mm");
+  cloud.frame = QStringLiteral("file");
+  for (int i = start; i < lines.size(); ++i) {
+    const QVector<double> n = splitNumbers(lines[i]);
+    if (n.isEmpty()) continue;
+    if (n.size() < 3) {
+      if (error) *error = QStringLiteral("点云行列不足 3 个数（第 %1 行）").arg(i + 1);
+      return {};
+    }
+    CloudPoint p;
+    p.x = n[0];
+    p.y = n[1];
+    p.z = n[2];
+    if (n.size() >= 6) {
+      p.r = n[3] > 1.0 ? n[3] / 255.0 : n[3];
+      p.g = n[4] > 1.0 ? n[4] / 255.0 : n[4];
+      p.b = n[5] > 1.0 ? n[5] / 255.0 : n[5];
+      p.hasColor = true;
+    }
+    cloud.points.push_back(p);
+    if (cloud.points.size() > kMaxPoints) {
+      if (error) *error = QStringLiteral("点云点数超过上限");
+      return {};
+    }
+  }
+  if (cloud.points.isEmpty()) {
+    if (error) *error = QStringLiteral("点云文件没有有效点");
+    return {};
+  }
+  return cloud;
+}
+
+PointCloud parsePlyAscii(const QStringList& lines, QString* error) {
+  if (lines.isEmpty() || lines.first().trimmed().toLower() != QLatin1String("ply")) {
+    if (error) *error = QStringLiteral("不是有效的 PLY 文件");
+    return {};
+  }
+  int vertexCount = -1;
+  int endHeader = -1;
+  int ix = -1, iy = -1, iz = -1, ir = -1, ig = -1, ib = -1;
+  int prop = 0;
+  bool ascii = false;
+  for (int i = 1; i < lines.size(); ++i) {
+    const QString line = lines[i].trimmed();
+    const QString lower = line.toLower();
+    if (lower.startsWith(QLatin1String("comment")) || lower.startsWith(QLatin1String("obj_info")))
+      continue;
+    if (lower.startsWith(QLatin1String("format"))) {
+      if (!lower.contains(QLatin1String("ascii"))) {
+        if (error) *error = QStringLiteral("仅支持 ASCII PLY");
+        return {};
+      }
+      ascii = true;
+      continue;
+    }
+    if (lower.startsWith(QLatin1String("element vertex"))) {
+      const QStringList parts = line.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+      if (parts.size() >= 3) vertexCount = parts[2].toInt();
+      prop = 0;
+      continue;
+    }
+    if (lower.startsWith(QLatin1String("element ")) && vertexCount >= 0 && endHeader < 0) {
+      // later elements after vertex — properties stop counting
+      continue;
+    }
+    if (lower.startsWith(QLatin1String("property")) && vertexCount >= 0 && endHeader < 0) {
+      const QStringList parts = lower.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+      if (parts.size() >= 2 && parts[1] == QLatin1String("list")) {
+        if (error) *error = QStringLiteral("不支持带 list 属性的 PLY");
+        return {};
+      }
+      const QString name = parts.isEmpty() ? QString() : parts.last();
+      if (name == QLatin1String("x")) ix = prop;
+      else if (name == QLatin1String("y")) iy = prop;
+      else if (name == QLatin1String("z")) iz = prop;
+      else if (name == QLatin1String("red") || name == QLatin1String("r") ||
+               name == QLatin1String("diffuse_red"))
+        ir = prop;
+      else if (name == QLatin1String("green") || name == QLatin1String("g") ||
+               name == QLatin1String("diffuse_green"))
+        ig = prop;
+      else if (name == QLatin1String("blue") || name == QLatin1String("b") ||
+               name == QLatin1String("diffuse_blue"))
+        ib = prop;
+      ++prop;
+      continue;
+    }
+    if (lower == QLatin1String("end_header")) {
+      endHeader = i;
+      break;
+    }
+  }
+  if (!ascii || endHeader < 0 || vertexCount < 0 || ix < 0 || iy < 0 || iz < 0) {
+    if (error) *error = QStringLiteral("PLY 头缺少 ASCII 顶点 x/y/z");
+    return {};
+  }
+  PointCloud cloud;
+  cloud.unit = QStringLiteral("mm");
+  cloud.frame = QStringLiteral("file");
+  for (int i = endHeader + 1; i < lines.size() && cloud.points.size() < vertexCount; ++i) {
+    const QVector<double> n = splitNumbers(lines[i]);
+    if (n.isEmpty()) continue;
+    if (n.size() <= ix || n.size() <= iy || n.size() <= iz) {
+      if (error) *error = QStringLiteral("PLY 顶点列不足");
+      return {};
+    }
+    CloudPoint p;
+    p.x = n[ix];
+    p.y = n[iy];
+    p.z = n[iz];
+    if (ir >= 0 && ig >= 0 && ib >= 0 && n.size() > ib) {
+      p.r = n[ir] > 1.0 ? n[ir] / 255.0 : n[ir];
+      p.g = n[ig] > 1.0 ? n[ig] / 255.0 : n[ig];
+      p.b = n[ib] > 1.0 ? n[ib] / 255.0 : n[ib];
+      p.hasColor = true;
+    }
+    cloud.points.push_back(p);
+  }
+  if (cloud.points.size() != vertexCount) {
+    if (error)
+      *error = QStringLiteral("PLY 顶点数不足（%1 / %2）")
+                   .arg(cloud.points.size())
+                   .arg(vertexCount);
+    return {};
+  }
+  return cloud;
+}
+
+PointCloud parsePcdAscii(const QStringList& lines, QString* error) {
+  int ix = -1, iy = -1, iz = -1, ir = -1, ig = -1, ib = -1;
+  int points = -1;
+  int dataLine = -1;
+  bool ascii = false;
+  for (int i = 0; i < lines.size(); ++i) {
+    const QString line = lines[i].trimmed();
+    if (line.isEmpty() || line.startsWith(QLatin1Char('#'))) continue;
+    const QString lower = line.toLower();
+    if (lower.startsWith(QLatin1String("fields"))) {
+      const QStringList parts = lower.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+      for (int k = 1; k < parts.size(); ++k) {
+        if (parts[k] == QLatin1String("x")) ix = k - 1;
+        else if (parts[k] == QLatin1String("y")) iy = k - 1;
+        else if (parts[k] == QLatin1String("z")) iz = k - 1;
+        else if (parts[k] == QLatin1String("r") || parts[k] == QLatin1String("red"))
+          ir = k - 1;
+        else if (parts[k] == QLatin1String("g") || parts[k] == QLatin1String("green"))
+          ig = k - 1;
+        else if (parts[k] == QLatin1String("b") || parts[k] == QLatin1String("blue"))
+          ib = k - 1;
+      }
+    } else if (lower.startsWith(QLatin1String("points"))) {
+      const QStringList parts = line.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+      if (parts.size() >= 2) points = parts[1].toInt();
+    } else if (lower.startsWith(QLatin1String("data"))) {
+      if (!lower.contains(QLatin1String("ascii"))) {
+        if (error) *error = QStringLiteral("仅支持 ASCII PCD");
+        return {};
+      }
+      ascii = true;
+      dataLine = i;
+      break;
+    }
+  }
+  if (!ascii || dataLine < 0 || ix < 0 || iy < 0 || iz < 0) {
+    if (error) *error = QStringLiteral("PCD 头缺少 ASCII 字段 x/y/z");
+    return {};
+  }
+  PointCloud cloud = parseXyzLines(QStringList(), 0, nullptr);  // dummy, rebuild
+  Q_UNUSED(cloud);
+  PointCloud out = parseXyzLines(lines, dataLine + 1, error);
+  if (out.isEmpty()) return {};
+  // parseXyzLines uses sequential xyz; honour FIELDS order if not x y z first
+  if (ix != 0 || iy != 1 || iz != 2 || ir >= 0) {
+    out.points.clear();
+    for (int i = dataLine + 1; i < lines.size(); ++i) {
+      const QVector<double> n = splitNumbers(lines[i]);
+      if (n.isEmpty()) continue;
+      if (n.size() <= ix || n.size() <= iy || n.size() <= iz) {
+        if (error) *error = QStringLiteral("PCD 数据列不足");
+        return {};
+      }
+      CloudPoint p;
+      p.x = n[ix];
+      p.y = n[iy];
+      p.z = n[iz];
+      if (ir >= 0 && ig >= 0 && ib >= 0 && n.size() > ib) {
+        p.r = n[ir] > 1.0 ? n[ir] / 255.0 : n[ir];
+        p.g = n[ig] > 1.0 ? n[ig] / 255.0 : n[ig];
+        p.b = n[ib] > 1.0 ? n[ib] / 255.0 : n[ib];
+        p.hasColor = true;
+      }
+      out.points.push_back(p);
+    }
+  }
+  if (points >= 0 && out.points.size() != points) {
+    // tolerate trailing blanks; require at least declared or exact
+    if (out.points.size() < points) {
+      if (error)
+        *error = QStringLiteral("PCD 点数不足（%1 / %2）")
+                     .arg(out.points.size())
+                     .arg(points);
+      return {};
+    }
+  }
+  if (out.points.isEmpty()) {
+    if (error) *error = QStringLiteral("PCD 没有有效点");
+    return {};
+  }
+  return out;
+}
+
+}  // namespace
+
+PointCloud loadPointCloudFile(const QString& path, QString* error) {
+  if (path.trimmed().isEmpty()) {
+    if (error) *error = QStringLiteral("未指定点云文件路径");
+    return {};
+  }
+  const QStringList lines = cloudFileLines(path, error);
+  if (lines.isEmpty()) return {};
+  const QString suf = QFileInfo(path).suffix().toLower();
+  PointCloud cloud;
+  if (suf == QLatin1String("ply"))
+    cloud = parsePlyAscii(lines, error);
+  else if (suf == QLatin1String("pcd"))
+    cloud = parsePcdAscii(lines, error);
+  else
+    cloud = parseXyzLines(lines, 0, error);
+  return cloud;
+}
+
 PointCloud resolveCloudInput(const PointCloud& upstream, const QVariantMap& params,
                              QString* error) {
   const QString src =
@@ -778,7 +1077,16 @@ PointCloud resolveCloudInput(const PointCloud& upstream, const QVariantMap& para
     out = makeSoftCloudSurface();
   else if (src == QLatin1String("soft_register") || src == QLatin1String("soft_shifted"))
     out = makeSoftCloudRegisterSet();
-  else if (src == QLatin1String("upstream") || src.isEmpty()) {
+  else if (src == QLatin1String("file") || src == QLatin1String("path") ||
+             src == QLatin1String("local")) {
+    QString path = params.value(QStringLiteral("cloudPath")).toString().trimmed();
+    if (path.isEmpty()) path = params.value(QStringLiteral("inputPath")).toString().trimmed();
+    if (path.isEmpty()) path = params.value(QStringLiteral("filePath")).toString().trimmed();
+    if (path.isEmpty()) path = params.value(QStringLiteral("targetPath")).toString().trimmed();
+    out = loadPointCloudFile(path, error);
+    if (out.isEmpty()) return {};
+    applyCloudUnit(&out, params.value(QStringLiteral("cloudUnit")).toString());
+  } else if (src == QLatin1String("upstream") || src.isEmpty()) {
     if (upstream.isEmpty()) {
       if (error) *error = QStringLiteral("没有上游点云，请设置 inputSource 或先运行滤波节点");
       return {};
@@ -1682,5 +1990,113 @@ QStringList cloudSelfTest() {
 
   return fails;
 }
+
+
+QStringList cloudFileSelfTest() {
+  QStringList fails;
+  auto check = [&](const QString& name, bool ok, const QString& detail = QString()) {
+    if (!ok)
+      fails << (detail.isEmpty() ? name : QStringLiteral("%1: %2").arg(name, detail));
+  };
+  QTemporaryDir tmp;
+  check(QStringLiteral("tmpdir"), tmp.isValid());
+  if (!tmp.isValid()) return fails;
+
+  const QString xyzPath = tmp.filePath(QStringLiteral("tiny.xyz"));
+  {
+    QFile f(xyzPath);
+    check(QStringLiteral("write-xyz"), f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write("0 0 0\n1 0 0\n0 2 0\n0 0 3\n# comment\n");
+  }
+  QString err;
+  PointCloud xyz = loadPointCloudFile(xyzPath, &err);
+  check(QStringLiteral("xyz-ok"), !xyz.isEmpty() && xyz.points.size() == 4, err);
+  check(QStringLiteral("xyz-z"), !xyz.isEmpty() && xyz.points[3].z == 3.0,
+        xyz.isEmpty() ? err : QString::number(xyz.points.value(3).z));
+
+  const QString plyPath = tmp.filePath(QStringLiteral("tiny.ply"));
+  {
+    QFile f(plyPath);
+    check(QStringLiteral("write-ply"), f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write("ply\nformat ascii 1.0\nelement vertex 3\nproperty float x\n"
+            "property float y\nproperty float z\nproperty uchar red\n"
+            "property uchar green\nproperty uchar blue\nend_header\n"
+            "0 0 0 255 0 0\n1 0 0 0 255 0\n0 1 5 0 0 255\n");
+  }
+  err.clear();
+  PointCloud ply = loadPointCloudFile(plyPath, &err);
+  check(QStringLiteral("ply-ok"), ply.points.size() == 3, err);
+  check(QStringLiteral("ply-color"), !ply.isEmpty() && ply.points[0].hasColor &&
+                                         ply.points[0].r > 0.9,
+        err);
+  check(QStringLiteral("ply-z"), !ply.isEmpty() && ply.points[2].z == 5.0,
+        ply.isEmpty() ? err : QString::number(ply.points.value(2).z));
+
+  const QString pcdPath = tmp.filePath(QStringLiteral("tiny.pcd"));
+  {
+    QFile f(pcdPath);
+    check(QStringLiteral("write-pcd"), f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write("# .PCD v0.7\nVERSION 0.7\nFIELDS x y z\nSIZE 4 4 4\nTYPE F F F\n"
+            "COUNT 1 1 1\nWIDTH 2\nHEIGHT 1\nPOINTS 2\nDATA ascii\n"
+            "10 20 30\n11 21 31\n");
+  }
+  err.clear();
+  PointCloud pcd = loadPointCloudFile(pcdPath, &err);
+  check(QStringLiteral("pcd-ok"), pcd.points.size() == 2, err);
+  check(QStringLiteral("pcd-x"), !pcd.isEmpty() && pcd.points[1].x == 11.0,
+        pcd.isEmpty() ? err : QString::number(pcd.points.value(1).x));
+
+  const QString csvPath = tmp.filePath(QStringLiteral("tiny.csv"));
+  {
+    QFile f(csvPath);
+    check(QStringLiteral("write-csv"), f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write("0,0,0\n2,0,0\n");
+  }
+  err.clear();
+  PointCloud csv = loadPointCloudFile(csvPath, &err);
+  check(QStringLiteral("csv-ok"), csv.points.size() == 2, err);
+
+  // metres -> mm
+  const QString mPath = tmp.filePath(QStringLiteral("meters.xyz"));
+  {
+    QFile f(mPath);
+    check(QStringLiteral("write-m"), f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write("0.001 0 0\n0 0.002 0\n0 0 0.003\n");
+  }
+  QVariantMap p;
+  p.insert(QStringLiteral("inputSource"), QStringLiteral("file"));
+  p.insert(QStringLiteral("cloudPath"), mPath);
+  p.insert(QStringLiteral("cloudUnit"), QStringLiteral("m"));
+  err.clear();
+  PointCloud meters = resolveCloudInput(PointCloud{}, p, &err);
+  check(QStringLiteral("resolve-file"), meters.points.size() == 3, err);
+  check(QStringLiteral("unit-mm"), meters.unit == QLatin1String("mm"), meters.unit);
+  check(QStringLiteral("scale-x"), !meters.isEmpty() && qAbs(meters.points[0].x - 1.0) < 1e-9,
+        meters.isEmpty() ? err : QString::number(meters.points.value(0).x));
+
+  const CloudResult meas = runCloudMeasure(meters, {});
+  check(QStringLiteral("measure-ok"), meas.ok, meas.error);
+  check(QStringLiteral("measure-size"), meas.ok && qAbs(meas.bounds.sizeX - 1.0) < 1e-9 &&
+                                            qAbs(meas.bounds.sizeY - 2.0) < 1e-9 &&
+                                            qAbs(meas.bounds.sizeZ - 3.0) < 1e-9,
+        QStringLiteral("sx=%1 sy=%2 sz=%3")
+            .arg(meas.bounds.sizeX)
+            .arg(meas.bounds.sizeY)
+            .arg(meas.bounds.sizeZ));
+
+  // missing path
+  err.clear();
+  const PointCloud miss = loadPointCloudFile(tmp.filePath(QStringLiteral("no-such.xyz")), &err);
+  check(QStringLiteral("missing"), miss.isEmpty() && !err.isEmpty());
+
+  // unknown inputSource still fails
+  err.clear();
+  QVariantMap bad;
+  bad.insert(QStringLiteral("inputSource"), QStringLiteral("camera"));
+  const PointCloud unk = resolveCloudInput(PointCloud{}, bad, &err);
+  check(QStringLiteral("unknown-src"), unk.isEmpty() && !err.isEmpty());
+  return fails;
+}
+
 
 }  // namespace sieans_qt

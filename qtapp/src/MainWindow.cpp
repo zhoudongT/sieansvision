@@ -1388,6 +1388,8 @@ void MainWindow::buildMenus() {
     if (bottom_tabs_ && host_sm_)
       bottom_tabs_->setCurrentWidget(host_sm_);
   });
+  devices->addAction(QStringLiteral("导入点云…"), this, &MainWindow::onImportPointCloud);
+  devices->addAction(QStringLiteral("设置参考点云…"), this, &MainWindow::onImportCloudTarget);
 
   auto* records = menuBar()->addMenu(QStringLiteral("记录与账号"));
   records->addAction(QStringLiteral("当前结果…"), this, [this]() {
@@ -2389,6 +2391,11 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
 
   QImage working = src;
   PointCloud workingCloud;
+  if (!imported_cloud_path_.isEmpty()) {
+    QString impErr;
+    const PointCloud imported = loadPointCloudFile(imported_cloud_path_, &impErr);
+    if (!imported.isEmpty()) workingCloud = imported;
+  }
   pipeline_cancel_.store(false);
   image_view_->setLiveImage(working);
   std::vector<sieans::BarcodeHit> hits;
@@ -5002,6 +5009,15 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                                          : uf.join(QLatin1Char('|')).left(160))
                       .arg(document_.canvasUndoDepth());
         }
+        {
+          const QStringList cf = cloudFileSelfTest();
+          line += QChar(' ');
+          line += QStringLiteral("cloudFileOk=%1 cloudFileFails=%2 cloudFileLive=%3")
+                      .arg(cf.isEmpty() ? 1 : 0)
+                      .arg(cf.isEmpty() ? QStringLiteral("0")
+                                         : cf.join(QLatin1Char('|')).left(160))
+                      .arg(imported_cloud_path_.isEmpty() ? 0 : 1);
+        }
       }
 
 
@@ -6734,6 +6750,60 @@ void MainWindow::redoCanvasEdit() {
   updateCanvasUndoActions();
   showStatus(QStringLiteral("已重做画布编辑"));
   logResult(QStringLiteral("画布重做"));
+}
+
+bool MainWindow::importPointCloudPath(const QString& path, bool asTarget) {
+  if (path.isEmpty()) return false;
+  QString err;
+  const PointCloud cloud = loadPointCloudFile(path, &err);
+  if (cloud.isEmpty()) {
+    showStatus(err.isEmpty() ? QStringLiteral("点云导入失败") : err);
+    logResult(QStringLiteral("点云导入失败: %1").arg(err));
+    return false;
+  }
+  imported_cloud_path_ = path;
+  const QString id = flow_scene_ ? flow_scene_->selectedNodeId() : QString();
+  if (FlowStep* s = document_.findStep(id)) {
+    const bool isCloud =
+        s->operation.startsWith(QLatin1String("cloud_"));
+    if (isCloud) {
+      if (asTarget && s->operation == QLatin1String("cloud_register")) {
+        s->params.insert(QStringLiteral("targetSource"), QStringLiteral("file"));
+        s->params.insert(QStringLiteral("targetPath"), path);
+      } else {
+        s->params.insert(QStringLiteral("inputSource"), QStringLiteral("file"));
+        s->params.insert(QStringLiteral("cloudPath"), path);
+      }
+      document_.syncActiveIntoFlows();
+      commitCanvasUndo(asTarget ? QStringLiteral("参考点云") : QStringLiteral("导入点云"));
+      markProjectDirty();
+      if (prop_float_) prop_float_->showForStep(*s);
+    }
+  }
+  logResult(QStringLiteral("已导入点云 %1 · %2 点 · %3")
+                .arg(QFileInfo(path).fileName())
+                .arg(cloud.points.size())
+                .arg(cloud.unit));
+  showStatus(QStringLiteral("已导入点云 · %1 点").arg(cloud.points.size()));
+  return true;
+}
+
+void MainWindow::onImportPointCloud() {
+  if (workbenchIsHeadless()) return;
+  const QString path = QFileDialog::getOpenFileName(
+      this, QStringLiteral("导入点云"), QString(),
+      QStringLiteral("点云 (*.ply *.pcd *.xyz *.txt *.csv);;全部 (*.*)"));
+  if (path.isEmpty()) return;
+  importPointCloudPath(path, false);
+}
+
+void MainWindow::onImportCloudTarget() {
+  if (workbenchIsHeadless()) return;
+  const QString path = QFileDialog::getOpenFileName(
+      this, QStringLiteral("设置参考点云"), QString(),
+      QStringLiteral("点云 (*.ply *.pcd *.xyz *.txt *.csv);;全部 (*.*)"));
+  if (path.isEmpty()) return;
+  importPointCloudPath(path, true);
 }
 
 
