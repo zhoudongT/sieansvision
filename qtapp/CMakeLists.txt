@@ -93,6 +93,10 @@ add_executable(sieans_qt
   src/YoloInfer.cpp
   src/CloudOps.hpp
   src/CloudOps.cpp
+  src/SocketExchange.hpp
+  src/SocketExchange.cpp
+  src/FlowExtras.hpp
+  src/FlowExtras.cpp
   src/ConditionEval.hpp
   src/ConditionEval.cpp
   src/SubflowExec.hpp

@@ -893,6 +893,46 @@ void SieansDocument::seedGentlQrDemo() {
        {QStringLiteral("iterations"), 40},
        {QStringLiteral("resultVar"), QStringLiteral("cloudReg")}});
 
+  add(QStringLiteral("delay1"), QStringLiteral("延时等待 · 短等待"),
+      QStringLiteral("delay"), 80, 4580, QStringLiteral("cloudReg"),
+      {{QStringLiteral("milliseconds"), 5},
+       {QStringLiteral("resultVar"), QStringLiteral("delay")}});
+  add(QStringLiteral("varsSet"), QStringLiteral("变量赋值 · 写入"),
+      QStringLiteral("variables"), 80, 4700, QStringLiteral("delay1"),
+      {{QStringLiteral("scope"), QStringLiteral("flow")},
+       {QStringLiteral("name"), QStringLiteral("varsAssign")},
+       {QStringLiteral("mode"), QStringLiteral("set")},
+       {QStringLiteral("value"), 4242},
+       {QStringLiteral("resultVar"), QStringLiteral("varsSet")}});
+  add(QStringLiteral("varsInc"), QStringLiteral("变量赋值 · 累加"),
+      QStringLiteral("variables"), 80, 4820, QStringLiteral("varsSet"),
+      {{QStringLiteral("scope"), QStringLiteral("flow")},
+       {QStringLiteral("name"), QStringLiteral("varsAssign")},
+       {QStringLiteral("mode"), QStringLiteral("increment")},
+       {QStringLiteral("value"), 1},
+       {QStringLiteral("resultVar"), QStringLiteral("varsInc")}});
+  add(QStringLiteral("tcpEx"), QStringLiteral("TCP 报文通信 · 回显"),
+      QStringLiteral("tcp_exchange"), 80, 4940, QStringLiteral("varsInc"),
+      {{QStringLiteral("connection"), QStringLiteral("simulator")},
+       {QStringLiteral("mode"), QStringLiteral("exchange")},
+       {QStringLiteral("encoding"), QStringLiteral("text")},
+       {QStringLiteral("value"), QStringLiteral("SIEANS-TCP-4242")},
+       {QStringLiteral("txFraming"), QStringLiteral("crlf")},
+       {QStringLiteral("rxFraming"), QStringLiteral("crlf")},
+       {QStringLiteral("timeoutMs"), 3000},
+       {QStringLiteral("maxBytes"), 65536},
+       {QStringLiteral("resultVar"), QStringLiteral("tcpEx")}});
+  add(QStringLiteral("udpEx"), QStringLiteral("UDP 报文通信 · 回显"),
+      QStringLiteral("udp_exchange"), 80, 5060, QStringLiteral("tcpEx"),
+      {{QStringLiteral("connection"), QStringLiteral("simulator")},
+       {QStringLiteral("mode"), QStringLiteral("exchange")},
+       {QStringLiteral("encoding"), QStringLiteral("text")},
+       {QStringLiteral("value"), QStringLiteral("SIEANS-UDP-9001")},
+       {QStringLiteral("timeoutMs"), 3000},
+       {QStringLiteral("maxBytes"), 65536},
+       {QStringLiteral("resultVar"), QStringLiteral("udpEx")}});
+
+
 
 
   auto link = [&](const QString& a, const QString& b,
@@ -963,6 +1003,11 @@ void SieansDocument::seedGentlQrDemo() {
   link(QStringLiteral("cloudClust"), QStringLiteral("cloudMeas"));
   link(QStringLiteral("cloudMeas"), QStringLiteral("cloudHgt"));
   link(QStringLiteral("cloudHgt"), QStringLiteral("cloudReg"));
+  link(QStringLiteral("cloudReg"), QStringLiteral("delay1"));
+  link(QStringLiteral("delay1"), QStringLiteral("varsSet"));
+  link(QStringLiteral("varsSet"), QStringLiteral("varsInc"));
+  link(QStringLiteral("varsInc"), QStringLiteral("tcpEx"));
+  link(QStringLiteral("tcpEx"), QStringLiteral("udpEx"));
 
   variables_ = {
       {QStringLiteral("barcodeCount"), 0},
@@ -1131,6 +1176,20 @@ void SieansDocument::seedGentlQrDemo() {
       {QStringLiteral("cloudRegDz"), 0},
       {QStringLiteral("cloudRegFitness"), 0},
       {QStringLiteral("cloudRegRms"), 0},
+      {QStringLiteral("delayOk"), 0},
+      {QStringLiteral("delayMs"), 0},
+      {QStringLiteral("delayElapsed"), 0},
+      {QStringLiteral("varsAssign"), 0},
+      {QStringLiteral("varsSetOk"), 0},
+      {QStringLiteral("varsSetValue"), 0},
+      {QStringLiteral("varsIncOk"), 0},
+      {QStringLiteral("varsIncValue"), 0},
+      {QStringLiteral("tcpExOk"), 0},
+      {QStringLiteral("tcpExValue"), QString()},
+      {QStringLiteral("tcpExDelivery"), QString()},
+      {QStringLiteral("udpExOk"), 0},
+      {QStringLiteral("udpExValue"), QString()},
+      {QStringLiteral("udpExDelivery"), QString()},
   };
   subflows_.clear();
   subflows_.push_back(makeCounterSubflow());

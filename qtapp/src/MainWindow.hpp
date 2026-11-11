@@ -157,6 +157,9 @@ class MainWindow : public QMainWindow {
 
   QTimer continuous_timer_;
   std::atomic<bool> busy_{false};
+  std::atomic<bool> pipeline_cancel_{false};
+  QVariantMap global_vars_;
+  QHash<QString, QVariantMap> module_vars_;
   bool continuous_run_ = false;
   bool run_paused_ = false;
   bool run_mode_ = false;

@@ -221,6 +221,41 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
     }
     return f;
   }
+  if (op == QLatin1String("tcp_exchange") || op == QLatin1String("udp_exchange")) {
+    QVector<Spec> f = {
+        S("connection", "通信设备", kChoice, "simulator|本机模拟设备;device|远端设备"),
+        S("mode", "通信方式", kChoice, "exchange|发送并等待应答;send|仅发送;receive|仅接收"),
+        S("host", "远端 IP / 主机名", kLine, "device 模式使用；模拟器自动选择"),
+        S("port", "远端端口", kInt, "1–65535"),
+        S("encoding", "消息内容格式", kChoice, "text|文本;structured|结构化 JSON;bytes|字节数组"),
+        S("value", "发送内容", kLine, "可使用 ${flow.x} 模板"),
+        S("timeoutMs", "操作总超时 (ms)", kInt, "100–60000"),
+        S("maxBytes", "接收字节上限", kInt, "1–65536"),
+        S("resultVar", "结果前缀", kLine, "tcpEx / udpEx")};
+    if (op == QLatin1String("tcp_exchange")) {
+      f.append(S("txFraming", "发送分帧方式", kChoice,
+                 "raw|原始;lf|LF;crlf|CRLF;nul|零字节;length16be|2字节大端;length16le|2字节小端;length32be|4字节大端;length32le|4字节小端"));
+      f.append(S("rxFraming", "接收完成条件", kChoice,
+                 "lf|LF;crlf|CRLF;nul|零字节;length16be|2字节大端;length16le|2字节小端;length32be|4字节大端;length32le|4字节小端;fixed|定长;eof|对端结束发送"));
+      f.append(S("responseBytes", "应答字节数", kInt, "rxFraming=fixed 时使用"));
+    } else {
+      f.append(S("localAddress", "本地 IP（空白自动选择）", kLine, ""));
+      f.append(S("localPort", "本地 UDP 端口（0 自动）", kInt, "仅接收时须指定"));
+    }
+    return f;
+  }
+  if (op == QLatin1String("delay")) {
+    return {S("milliseconds", "等待时间 (ms)", kInt, "0–30000；停止可取消"),
+            S("resultVar", "结果前缀", kLine, "delay → delayOk/delayElapsed")};
+  }
+  if (op == QLatin1String("variables")) {
+    return {S("scope", "作用域", kChoice, "flow|流程;global|全局;module|模块"),
+            S("name", "变量名", kLine, "字母或下划线开头"),
+            S("mode", "写入方式", kChoice, "set|赋值;increment|累加"),
+            S("value", "赋值内容", kLine, "字面量或 ${flow.x}"),
+            S("valueFrom", "从变量读取", kLine, "可选，优先于 value"),
+            S("resultVar", "结果前缀", kLine, "varsSet / varsInc")};
+  }
   if (op == QLatin1String("geometry")) {
     return {S("feature", "特征类型", kChoice,
               "contours|轮廓;lines|直线;circles|圆;rects|矩形;edges|边缘"),
@@ -1192,6 +1227,14 @@ void PropertyPanel::showStep(const FlowStep& step) {
     hint += QStringLiteral(" · 高度/体积 · cloudHgtVolume/cloudHgtMax · 缺失格不补齐");
   else if (step.operation == QLatin1String("cloud_register"))
     hint += QStringLiteral(" · 点云配准 · cloudRegDx/Dy/Dz / fitness · ICP 或 PCA 全局");
+  else if (step.operation == QLatin1String("tcp_exchange"))
+    hint += QStringLiteral(" · TCP 请求应答 · 分帧 · tcpExValue/tcpExDelivery · 不占用 :19956");
+  else if (step.operation == QLatin1String("udp_exchange"))
+    hint += QStringLiteral(" · UDP 数据报 · 对端筛选 · udpExValue/udpExDelivery");
+  else if (step.operation == QLatin1String("delay"))
+    hint += QStringLiteral(" · 可取消延时 · delayOk/delayElapsed · 0–30000 ms");
+  else if (step.operation == QLatin1String("variables"))
+    hint += QStringLiteral(" · 变量赋值/累加 · scope+name · 写入 flow/global/module");
   else if (step.operation == QLatin1String("locate"))
     hint += QStringLiteral(" · 模板 SAD + 旋转搜索 · locateX/Y/Angle/Score");
   else if (step.operation == QLatin1String("pose_correct"))

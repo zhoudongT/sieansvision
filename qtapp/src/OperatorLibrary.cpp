@@ -91,6 +91,10 @@ const char* glyphKindFor(const QString& key, const QString& category) {
       key == QLatin1String("cloud_cluster") || key == QLatin1String("cloud_measure") ||
       key == QLatin1String("cloud_height") || key == QLatin1String("cloud_register"))
     return "cloud";
+  if (key == QLatin1String("tcp_exchange")) return "tx";
+  if (key == QLatin1String("udp_exchange")) return "rx";
+  if (key == QLatin1String("delay")) return "logic";
+  if (key == QLatin1String("variables")) return "var";
   if (key == QLatin1String("result_gate")) return "gate";
   if (key == QLatin1String("format_data")) return "format";
   if (key == QLatin1String("var_calc")) return "var";
@@ -325,6 +329,18 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
       {QStringLiteral("cloud_register"), QStringLiteral("3D 点云配准"),
        QStringLiteral("3D 点云"),
        QStringLiteral("点到点 ICP · PCA 全局粗对齐")},
+      {QStringLiteral("tcp_exchange"), QStringLiteral("TCP 报文通信"),
+       QStringLiteral("工业通信"),
+       QStringLiteral("请求应答 · 报文分帧 · 本机回显 / 远端 TCP")},
+      {QStringLiteral("udp_exchange"), QStringLiteral("UDP 报文通信"),
+       QStringLiteral("工业通信"),
+       QStringLiteral("单个数据报 · 对端筛选 · 本机回显 / 远端 UDP")},
+      {QStringLiteral("delay"), QStringLiteral("延时等待"),
+       QStringLiteral("流程控制"),
+       QStringLiteral("可取消 · 0–30000 ms")},
+      {QStringLiteral("variables"), QStringLiteral("变量赋值"),
+       QStringLiteral("变量与数据"),
+       QStringLiteral("set / increment · 全局 / 流程 / 模块")},
       {QStringLiteral("var_calc"), QStringLiteral("变量计算"),
        QStringLiteral("变量与数据"),
        QStringLiteral("expr: in / startswith / endswith / contains")},

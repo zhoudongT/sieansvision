@@ -14,6 +14,8 @@
 #include "MqttClient.hpp"
 #include "YoloInfer.hpp"
 #include "CloudOps.hpp"
+#include "SocketExchange.hpp"
+#include "FlowExtras.hpp"
 #include "ConditionEval.hpp"
 #include "SubflowExec.hpp"
 #include "SubflowDialog.hpp"
@@ -1909,6 +1911,7 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
 
   QImage working = src;
   PointCloud workingCloud;
+  pipeline_cancel_.store(false);
   image_view_->setLiveImage(working);
   std::vector<sieans::BarcodeHit> hits;
   double decodeMs = 0;
@@ -1958,6 +1961,12 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
   for (const QString& id : order) {
     FlowStep* step = document_.findStep(id);
     if (!step) continue;
+    if (pipeline_cancel_.load()) {
+      ++skippedCount;
+      if (updateFlowStates)
+        flow_scene_->setNodeRunState(id, QStringLiteral("SKIP"));
+      continue;
+    }
     const QString op = step->operation;
 
     QVector<FlowEdge> incoming;
@@ -3688,6 +3697,111 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
           addRow(prefix + QStringLiteral("Method"), cr.method, QStringLiteral("method"));
         }
       }
+    } else if (op == QLatin1String("delay")) {
+      const DelayResult dr = runDelay(step->params, &pipeline_cancel_);
+      QString prefix = step->params.value(QStringLiteral("resultVar"), QStringLiteral("delay"))
+                           .toString()
+                           .trimmed();
+      if (prefix.isEmpty()) prefix = QStringLiteral("delay");
+      auto put = [&](const QString& suffix, const QVariant& v) {
+        flow_vars_.insert(prefix + suffix, v);
+      };
+      put(QStringLiteral("Ok"), dr.ok ? 1 : 0);
+      put(QStringLiteral("Ms"), dr.milliseconds);
+      put(QStringLiteral("Elapsed"), dr.elapsedMs);
+      put(QStringLiteral("Cancelled"), dr.cancelled ? 1 : 0);
+      ok = dr.ok;
+      note = dr.ok ? dr.note : dr.error;
+      if (result_table_) {
+        auto addRow = [&](const QString& k, const QString& v, const QString& unit) {
+          const int row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(k));
+          result_table_->setItem(row, 1, new QTableWidgetItem(v));
+          result_table_->setItem(row, 2, new QTableWidgetItem(unit));
+        };
+        addRow(prefix + QStringLiteral("Ok"), QString::number(dr.ok ? 1 : 0),
+               QStringLiteral("gate"));
+        addRow(prefix + QStringLiteral("Elapsed"), QString::number(dr.elapsedMs),
+               QStringLiteral("ms"));
+      }
+    } else if (op == QLatin1String("variables")) {
+      QVariantMap& module = module_vars_[id];
+      const VarsAssignResult vr = runVariables(step->params, flow_vars_, global_vars_, module);
+      QString prefix = step->params.value(QStringLiteral("resultVar")).toString().trimmed();
+      if (prefix.isEmpty()) prefix = QStringLiteral("vars");
+      auto put = [&](const QString& suffix, const QVariant& v) {
+        flow_vars_.insert(prefix + suffix, v);
+      };
+      put(QStringLiteral("Ok"), vr.ok ? 1 : 0);
+      put(QStringLiteral("Value"), vr.value);
+      put(QStringLiteral("Name"), vr.name);
+      put(QStringLiteral("Scope"), vr.scope);
+      put(QStringLiteral("Mode"), vr.mode);
+      ok = vr.ok;
+      note = vr.ok ? vr.note : vr.error;
+      if (result_table_) {
+        auto addRow = [&](const QString& k, const QString& v, const QString& unit) {
+          const int row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(k));
+          result_table_->setItem(row, 1, new QTableWidgetItem(v));
+          result_table_->setItem(row, 2, new QTableWidgetItem(unit));
+        };
+        addRow(prefix + QStringLiteral("Ok"), QString::number(vr.ok ? 1 : 0),
+               QStringLiteral("gate"));
+        addRow(vr.scope + QLatin1Char('.') + vr.name, vr.value.toString(), vr.mode);
+      }
+    } else if (op == QLatin1String("tcp_exchange") || op == QLatin1String("udp_exchange")) {
+      const auto t0 = std::chrono::steady_clock::now();
+      QVariantMap sp = step->params;
+      if (sp.contains(QStringLiteral("value")) &&
+          sp.value(QStringLiteral("value")).typeId() == QMetaType::QString) {
+        sp.insert(QStringLiteral("value"),
+                  CommHub::expandTemplate(sp.value(QStringLiteral("value")).toString(),
+                                          flow_vars_));
+      }
+      const SocketXferResult xr = (op == QLatin1String("tcp_exchange"))
+                                      ? runTcpExchange(sp, &pipeline_cancel_)
+                                      : runUdpExchange(sp, &pipeline_cancel_);
+      const double xferMs = std::chrono::duration<double, std::milli>(
+                                std::chrono::steady_clock::now() - t0)
+                                .count();
+      algoMs += xferMs;
+      QString prefix = step->params.value(QStringLiteral("resultVar")).toString().trimmed();
+      if (prefix.isEmpty())
+        prefix = (op == QLatin1String("tcp_exchange")) ? QStringLiteral("tcpEx")
+                                                       : QStringLiteral("udpEx");
+      auto put = [&](const QString& suffix, const QVariant& v) {
+        flow_vars_.insert(prefix + suffix, v);
+      };
+      put(QStringLiteral("Ok"), xr.ok ? 1 : 0);
+      put(QStringLiteral("Value"), xr.value);
+      put(QStringLiteral("Delivery"), xr.delivery);
+      put(QStringLiteral("Ack"), xr.acknowledged ? 1 : 0);
+      put(QStringLiteral("Bytes"), xr.byteLength);
+      put(QStringLiteral("SentBytes"), xr.sentBytes);
+      put(QStringLiteral("Trailing"), xr.trailingBytes);
+      put(QStringLiteral("Host"), xr.host);
+      put(QStringLiteral("Port"), xr.port);
+      put(QStringLiteral("Sim"), xr.simulated ? 1 : 0);
+      put(QStringLiteral("Error"), xr.error);
+      ok = xr.ok;
+      note = xr.ok ? QStringLiteral("%1 · %2 ms").arg(xr.note).arg(xferMs, 0, 'f', 1)
+                   : xr.error;
+      if (result_table_) {
+        auto addRow = [&](const QString& k, const QString& v, const QString& unit) {
+          const int row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(k));
+          result_table_->setItem(row, 1, new QTableWidgetItem(v));
+          result_table_->setItem(row, 2, new QTableWidgetItem(unit));
+        };
+        addRow(prefix + QStringLiteral("Ok"), QString::number(xr.ok ? 1 : 0),
+               QStringLiteral("gate"));
+        addRow(prefix + QStringLiteral("Value"), xr.value.toString(), xr.encoding);
+        addRow(prefix + QStringLiteral("Delivery"), xr.delivery, QStringLiteral("delivery"));
+      }
     } else {
       note = QStringLiteral("透传 / 未实现执行体");
       ok = true;
@@ -4092,6 +4206,28 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                   .arg(flow_vars_.value(QStringLiteral("cloudRegDz")).toString())
                   .arg(flow_vars_.value(QStringLiteral("cloudRegFitness")).toString())
                   .arg(flow_vars_.value(QStringLiteral("cloudRegRms")).toString());
+      line += QChar(' ');
+      line += QStringLiteral(
+                  "delayOk=%1 delayMs=%2 delayElapsed=%3 "
+                  "varsAssign=%4 varsSetOk=%5 varsSetValue=%6 varsIncOk=%7 varsIncValue=%8")
+                  .arg(flow_vars_.value(QStringLiteral("delayOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("delayMs")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("delayElapsed")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("varsAssign")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("varsSetOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("varsSetValue")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("varsIncOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("varsIncValue")).toString());
+      line += QChar(' ');
+      line += QStringLiteral(
+                  "tcpExOk=%1 tcpExValue=%2 tcpExDelivery=%3 "
+                  "udpExOk=%4 udpExValue=%5 udpExDelivery=%6")
+                  .arg(flow_vars_.value(QStringLiteral("tcpExOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("tcpExValue")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("tcpExDelivery")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("udpExOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("udpExValue")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("udpExDelivery")).toString());
 
 line += QLatin1Char('\n');
       f.write(line.toUtf8());
@@ -4549,6 +4685,7 @@ void MainWindow::onResumeRun() {
 }
 
 void MainWindow::onStopRun() {
+  pipeline_cancel_.store(true);
   continuous_run_ = false;
   run_paused_ = false;
   continuous_timer_.stop();
@@ -5071,6 +5208,39 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("maxDistance"), 5},
                 {QStringLiteral("iterations"), 50},
                 {QStringLiteral("resultVar"), QStringLiteral("cloudReg")}};
+  } else if (key == QLatin1String("delay")) {
+    s.params = {{QStringLiteral("milliseconds"), 100},
+                {QStringLiteral("resultVar"), QStringLiteral("delay")}};
+  } else if (key == QLatin1String("variables")) {
+    s.params = {{QStringLiteral("scope"), QStringLiteral("flow")},
+                {QStringLiteral("name"), QStringLiteral("counter")},
+                {QStringLiteral("mode"), QStringLiteral("increment")},
+                {QStringLiteral("value"), 1},
+                {QStringLiteral("resultVar"), QStringLiteral("vars")}};
+  } else if (key == QLatin1String("tcp_exchange")) {
+    s.params = {{QStringLiteral("connection"), QStringLiteral("simulator")},
+                {QStringLiteral("mode"), QStringLiteral("exchange")},
+                {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+                {QStringLiteral("port"), 9000},
+                {QStringLiteral("encoding"), QStringLiteral("text")},
+                {QStringLiteral("value"), QStringLiteral("SIEANS 检测完成")},
+                {QStringLiteral("txFraming"), QStringLiteral("crlf")},
+                {QStringLiteral("rxFraming"), QStringLiteral("crlf")},
+                {QStringLiteral("timeoutMs"), 3000},
+                {QStringLiteral("maxBytes"), 65536},
+                {QStringLiteral("responseBytes"), 8},
+                {QStringLiteral("resultVar"), QStringLiteral("tcpEx")}};
+  } else if (key == QLatin1String("udp_exchange")) {
+    s.params = {{QStringLiteral("connection"), QStringLiteral("simulator")},
+                {QStringLiteral("mode"), QStringLiteral("exchange")},
+                {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+                {QStringLiteral("port"), 9000},
+                {QStringLiteral("encoding"), QStringLiteral("text")},
+                {QStringLiteral("value"), QStringLiteral("SIEANS 检测完成")},
+                {QStringLiteral("timeoutMs"), 3000},
+                {QStringLiteral("maxBytes"), 65536},
+                {QStringLiteral("localPort"), 0},
+                {QStringLiteral("resultVar"), QStringLiteral("udpEx")}};
   } else if (key == QLatin1String("result_gate")) {
     s.params = {{QStringLiteral("minCount"), 1},
                 {QStringLiteral("sourceVar"), QStringLiteral("barcodeCount")},
