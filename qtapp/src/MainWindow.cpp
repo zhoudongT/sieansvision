@@ -9,6 +9,7 @@
 #include "MeasureDim.hpp"
 #include "SerialExchange.hpp"
 #include "ModbusClient.hpp"
+#include "S7Client.hpp"
 #include "ConditionEval.hpp"
 #include "SubflowExec.hpp"
 #include "SubflowDialog.hpp"
@@ -230,6 +231,29 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
       } else {
         logResult(QStringLiteral("ModbusRtuLoopback 启动失败: %1").arg(rtuErr));
       }
+    }
+  }
+
+  {
+    const QVariantMap s7 =
+        document_.commManager().value(QStringLiteral("s7Real")).toMap();
+    const bool want = s7.value(QStringLiteral("autoStart"), true).toBool() ||
+                      qgetenv("SIEANS_QT_FORCE_SEED") == "1";
+    if (want) {
+      int base = s7.value(QStringLiteral("port"), 1102).toInt();
+      if (base <= 0) base = 1102;
+      QString s7Err;
+      bool ok = false;
+      for (int d = 0; d <= 4; ++d) {
+        QString e;
+        if (s7SoftServer().start(quint16(base + d), &e)) {
+          logResult(QStringLiteral("S7TcpLoopback: %1").arg(s7SoftServer().endpoint()));
+          ok = true;
+          break;
+        }
+        s7Err = e;
+      }
+      if (!ok) logResult(QStringLiteral("S7TcpLoopback 启动失败: %1").arg(s7Err));
     }
   }
 
@@ -3166,6 +3190,65 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                  QString::number(mr.triggered ? 1 : 0), QStringLiteral("gate"));
         addRow(prefix + QStringLiteral("Protocol"), mr.protocol, QStringLiteral("proto"));
       }
+    } else if (op == QLatin1String("s7_read") || op == QLatin1String("s7_write")) {
+      QVariantMap mp = step->params;
+      if (mp.contains(QStringLiteral("value")) &&
+          mp.value(QStringLiteral("value")).typeId() == QMetaType::QString) {
+        const QString expanded = CommHub::expandTemplate(
+            mp.value(QStringLiteral("value")).toString(), flow_vars_);
+        bool isNum = false;
+        const double d = expanded.toDouble(&isNum);
+        if (isNum && !expanded.contains(QLatin1Char(' '))) {
+          if (expanded.contains(QLatin1Char('.')))
+            mp.insert(QStringLiteral("value"), d);
+          else
+            mp.insert(QStringLiteral("value"), expanded.toLongLong());
+        } else if (expanded == QLatin1String("true") || expanded == QLatin1String("false")) {
+          mp.insert(QStringLiteral("value"), expanded == QLatin1String("true"));
+        } else {
+          mp.insert(QStringLiteral("value"), expanded);
+        }
+      }
+      const S7Result sr = (op == QLatin1String("s7_write")) ? runS7Write(mp)
+                                                            : runS7Read(mp);
+      QString prefix = step->params.value(QStringLiteral("resultVar")).toString().trimmed();
+      if (prefix.isEmpty())
+        prefix = (op == QLatin1String("s7_write")) ? QStringLiteral("s7Write")
+                                                   : QStringLiteral("s7Read");
+      auto put = [&](const QString& suffix, const QVariant& v) {
+        flow_vars_.insert(prefix + suffix, v);
+      };
+      const int okI = sr.ok ? 1 : 0;
+      put(QStringLiteral("Ok"), okI);
+      put(QStringLiteral("Value"), sr.value);
+      put(QStringLiteral("Values"), sr.values);
+      put(QStringLiteral("Count"), sr.count);
+      put(QStringLiteral("Area"), sr.area);
+      put(QStringLiteral("Db"), sr.dbNumber);
+      put(QStringLiteral("Offset"), sr.byteOffset);
+      put(QStringLiteral("Ack"), sr.acknowledged ? 1 : 0);
+      put(QStringLiteral("Error"), sr.error);
+      put(QStringLiteral("Elapsed"), sr.elapsedMs);
+      put(QStringLiteral("Quality"), sr.quality);
+      ok = sr.ok;
+      note = sr.ok ? sr.note : sr.error;
+      if (result_table_) {
+        auto addRow = [&](const QString& k, const QString& v, const QString& unit) {
+          const int row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(k));
+          result_table_->setItem(row, 1, new QTableWidgetItem(v));
+          result_table_->setItem(row, 2, new QTableWidgetItem(unit));
+        };
+        addRow(prefix + QStringLiteral("Ok"), QString::number(okI), QStringLiteral("gate"));
+        addRow(prefix + QStringLiteral("Value"), sr.value.toString(), sr.dataType);
+        if (op == QLatin1String("s7_write"))
+          addRow(prefix + QStringLiteral("Ack"), QString::number(sr.acknowledged ? 1 : 0),
+                 QStringLiteral("ack"));
+        addRow(prefix + QStringLiteral("Area"),
+               QStringLiteral("%1 DB%2.%3").arg(sr.area).arg(sr.dbNumber).arg(sr.byteOffset),
+               QStringLiteral("addr"));
+      }
     } else {
       note = QStringLiteral("透传 / 未实现执行体");
       ok = true;
@@ -3471,6 +3554,20 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                   .arg(flow_vars_.value(QStringLiteral("mbRtuWriteValue")).toString())
                   .arg(flow_vars_.value(QStringLiteral("mbRtuReadOk")).toString())
                   .arg(flow_vars_.value(QStringLiteral("mbRtuReadValue")).toString());
+      line += QChar(' ');
+      line += QStringLiteral(
+                  "s7WriteOk=%1 s7WriteValue=%2 s7WriteAck=%3 "
+                  "s7ReadOk=%4 s7ReadValue=%5 "
+                  "s7TcpWriteOk=%6 s7TcpWriteValue=%7 s7TcpReadOk=%8 s7TcpReadValue=%9")
+                  .arg(flow_vars_.value(QStringLiteral("s7WriteOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("s7WriteValue")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("s7WriteAck")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("s7ReadOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("s7ReadValue")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("s7TcpWriteOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("s7TcpWriteValue")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("s7TcpReadOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("s7TcpReadValue")).toString());
 
 line += QLatin1Char('\n');
       f.write(line.toUtf8());
@@ -4293,6 +4390,34 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
                 {QStringLiteral("port"), 1502},
                 {QStringLiteral("resultVar"), QStringLiteral("mbWait")}};
+  } else if (key == QLatin1String("s7_read")) {
+    s.params = {{QStringLiteral("connection"), QStringLiteral("simulator")},
+                {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+                {QStringLiteral("port"), 1102},
+                {QStringLiteral("rack"), 0},
+                {QStringLiteral("slot"), 1},
+                {QStringLiteral("area"), QStringLiteral("db")},
+                {QStringLiteral("dbNumber"), 1},
+                {QStringLiteral("byteOffset"), 0},
+                {QStringLiteral("bitOffset"), 0},
+                {QStringLiteral("dataType"), QStringLiteral("uint16")},
+                {QStringLiteral("timeoutMs"), 3000},
+                {QStringLiteral("count"), 1},
+                {QStringLiteral("resultVar"), QStringLiteral("s7Read")}};
+  } else if (key == QLatin1String("s7_write")) {
+    s.params = {{QStringLiteral("connection"), QStringLiteral("simulator")},
+                {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+                {QStringLiteral("port"), 1102},
+                {QStringLiteral("rack"), 0},
+                {QStringLiteral("slot"), 1},
+                {QStringLiteral("area"), QStringLiteral("db")},
+                {QStringLiteral("dbNumber"), 1},
+                {QStringLiteral("byteOffset"), 10},
+                {QStringLiteral("bitOffset"), 0},
+                {QStringLiteral("dataType"), QStringLiteral("uint16")},
+                {QStringLiteral("timeoutMs"), 3000},
+                {QStringLiteral("value"), 0},
+                {QStringLiteral("resultVar"), QStringLiteral("s7Write")}};
 } else if (key == QLatin1String("result_gate")) {
     s.params = {{QStringLiteral("minCount"), 1},
                 {QStringLiteral("sourceVar"), QStringLiteral("barcodeCount")},

@@ -346,6 +346,27 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
     specs << S("resultVar", "结果变量前缀", kLine, "mbRead / mbWrite / mbWait");
     return specs;
   }
+  if (op == QLatin1String("s7_read") || op == QLatin1String("s7_write")) {
+    QVector<Spec> specs;
+    specs << S("connection", "连接方式", kChoice, "simulator|模拟器;plc|真实 PLC / 软从站");
+    specs << S("host", "设备 IP / 主机名", kLine, "127.0.0.1");
+    specs << S("port", "TCP 端口", kInt, "软从站默认 1102（102 需特权）");
+    specs << S("rack", "机架号", kInt, "0–7");
+    specs << S("slot", "槽号", kInt, "0–31");
+    specs << S("area", "数据区域", kChoice, "db|DB 数据块;mk|M 标志;pe|I 输入;pa|Q 输出");
+    specs << S("dbNumber", "数据块编号", kInt, "仅 DB 区使用");
+    specs << S("byteOffset", "字节偏移（从 0 开始）", kInt, "DB1.DBW10 填 10");
+    specs << S("dataType", "数据类型", kChoice,
+              "bool|BOOL;uint8|uint8;int8|int8;uint16|uint16;int16|int16;uint32|uint32;int32|int32;float32|float32;float64|float64");
+    specs << S("bitOffset", "位偏移", kInt, "BOOL 使用 0–7");
+    specs << S("timeoutMs", "事务超时 (ms)", kInt, "100–10000");
+    if (op == QLatin1String("s7_read"))
+      specs << S("count", "读取值数量", kInt, "单次最多 200 字节");
+    if (op == QLatin1String("s7_write"))
+      specs << S("value", "写入值", kLine, "数值 / true false / 或绑定变量");
+    specs << S("resultVar", "结果变量前缀", kLine, "s7Read / s7Write");
+    return specs;
+  }
   if (op == QLatin1String("subflow") || op == QLatin1String("loop")) {
     QVector<Spec> specs;
     specs << S("subflowId", "子流程", kChoice, "");
@@ -1000,6 +1021,9 @@ void PropertyPanel::showStep(const FlowStep& step) {
            step.operation == QLatin1String("modbus_write") ||
            step.operation == QLatin1String("modbus_wait"))
     hint += QStringLiteral(" · 模拟器 / TCP 软从站 / RTU PTY · 协议零地址 · values/value");
+  else if (step.operation == QLatin1String("s7_read") ||
+           step.operation == QLatin1String("s7_write"))
+    hint += QStringLiteral(" · 模拟器 / ISO-on-TCP 软从站 · DB/M/I/Q 大端 · s7Read/s7Write");
   else if (step.operation == QLatin1String("result_gate"))
     hint += QStringLiteral(" · sourceVar → passVar");
   else if (step.operation == QLatin1String("var_calc"))

@@ -671,6 +671,54 @@ void SieansDocument::seedGentlQrDemo() {
        {QStringLiteral("timeoutMs"), 2000},
        {QStringLiteral("deviceId"), 1},
        {QStringLiteral("resultVar"), QStringLiteral("mbRtuRead")}});
+  add(QStringLiteral("s7W"), QStringLiteral("S7 写入 · 模拟器"),
+      QStringLiteral("s7_write"), 80, 1940, QStringLiteral("mbRtuR"),
+      {{QStringLiteral("connection"), QStringLiteral("simulator")},
+       {QStringLiteral("area"), QStringLiteral("db")},
+       {QStringLiteral("dbNumber"), 1},
+       {QStringLiteral("byteOffset"), 10},
+       {QStringLiteral("dataType"), QStringLiteral("uint16")},
+       {QStringLiteral("value"), 4242},
+       {QStringLiteral("timeoutMs"), 3000},
+       {QStringLiteral("resultVar"), QStringLiteral("s7Write")}});
+  add(QStringLiteral("s7R"), QStringLiteral("S7 读取 · 模拟器"),
+      QStringLiteral("s7_read"), 80, 2060, QStringLiteral("s7W"),
+      {{QStringLiteral("connection"), QStringLiteral("simulator")},
+       {QStringLiteral("area"), QStringLiteral("db")},
+       {QStringLiteral("dbNumber"), 1},
+       {QStringLiteral("byteOffset"), 10},
+       {QStringLiteral("count"), 1},
+       {QStringLiteral("dataType"), QStringLiteral("uint16")},
+       {QStringLiteral("timeoutMs"), 3000},
+       {QStringLiteral("resultVar"), QStringLiteral("s7Read")}});
+  add(QStringLiteral("s7TcpW"), QStringLiteral("S7 写入 · TCP 回环"),
+      QStringLiteral("s7_write"), 80, 2180, QStringLiteral("s7R"),
+      {{QStringLiteral("connection"), QStringLiteral("plc")},
+       {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+       {QStringLiteral("port"), 1102},
+       {QStringLiteral("rack"), 0},
+       {QStringLiteral("slot"), 1},
+       {QStringLiteral("area"), QStringLiteral("db")},
+       {QStringLiteral("dbNumber"), 1},
+       {QStringLiteral("byteOffset"), 20},
+       {QStringLiteral("dataType"), QStringLiteral("uint16")},
+       {QStringLiteral("value"), 9001},
+       {QStringLiteral("timeoutMs"), 3000},
+       {QStringLiteral("resultVar"), QStringLiteral("s7TcpWrite")}});
+  add(QStringLiteral("s7TcpR"), QStringLiteral("S7 读取 · TCP 回环"),
+      QStringLiteral("s7_read"), 80, 2300, QStringLiteral("s7TcpW"),
+      {{QStringLiteral("connection"), QStringLiteral("plc")},
+       {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+       {QStringLiteral("port"), 1102},
+       {QStringLiteral("rack"), 0},
+       {QStringLiteral("slot"), 1},
+       {QStringLiteral("area"), QStringLiteral("db")},
+       {QStringLiteral("dbNumber"), 1},
+       {QStringLiteral("byteOffset"), 20},
+       {QStringLiteral("count"), 1},
+       {QStringLiteral("dataType"), QStringLiteral("uint16")},
+       {QStringLiteral("timeoutMs"), 3000},
+       {QStringLiteral("resultVar"), QStringLiteral("s7TcpRead")}});
 
   auto link = [&](const QString& a, const QString& b,
                   const QString& when = QStringLiteral("always")) {
@@ -718,6 +766,10 @@ void SieansDocument::seedGentlQrDemo() {
   link(QStringLiteral("mbTcpW"), QStringLiteral("mbTcpR"));
   link(QStringLiteral("mbTcpR"), QStringLiteral("mbRtuW"));
   link(QStringLiteral("mbRtuW"), QStringLiteral("mbRtuR"));
+  link(QStringLiteral("mbRtuR"), QStringLiteral("s7W"));
+  link(QStringLiteral("s7W"), QStringLiteral("s7R"));
+  link(QStringLiteral("s7R"), QStringLiteral("s7TcpW"));
+  link(QStringLiteral("s7TcpW"), QStringLiteral("s7TcpR"));
 
   variables_ = {
       {QStringLiteral("barcodeCount"), 0},
@@ -823,6 +875,15 @@ void SieansDocument::seedGentlQrDemo() {
       {QStringLiteral("mbRtuWriteValue"), 0},
       {QStringLiteral("mbRtuReadOk"), 0},
       {QStringLiteral("mbRtuReadValue"), 0},
+      {QStringLiteral("s7WriteOk"), 0},
+      {QStringLiteral("s7WriteValue"), 0},
+      {QStringLiteral("s7WriteAck"), 0},
+      {QStringLiteral("s7ReadOk"), 0},
+      {QStringLiteral("s7ReadValue"), 0},
+      {QStringLiteral("s7TcpWriteOk"), 0},
+      {QStringLiteral("s7TcpWriteValue"), 0},
+      {QStringLiteral("s7TcpReadOk"), 0},
+      {QStringLiteral("s7TcpReadValue"), 0},
   };
   subflows_.clear();
   subflows_.push_back(makeCounterSubflow());
@@ -853,6 +914,12 @@ void SieansDocument::seedGentlQrDemo() {
                        {QStringLiteral("name"), QStringLiteral("ModbusRtuLoopback")},
                        {QStringLiteral("protocol"), QStringLiteral("Modbus RTU")},
                        {QStringLiteral("enabled"), true}},
+           QVariantMap{{QStringLiteral("id"), QStringLiteral("s7-tcp-loopback")},
+                       {QStringLiteral("name"), QStringLiteral("S7TcpLoopback")},
+                       {QStringLiteral("protocol"), QStringLiteral("S7")},
+                       {QStringLiteral("enabled"), true},
+                       {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+                       {QStringLiteral("port"), 1102}},
        }},
       {QStringLiteral("tcpReal"),
        QVariantMap{{QStringLiteral("host"), QStringLiteral("127.0.0.1")},
@@ -870,6 +937,12 @@ void SieansDocument::seedGentlQrDemo() {
        QVariantMap{{QStringLiteral("autoStart"), true},
                    {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
                    {QStringLiteral("port"), 1502}}},
+      {QStringLiteral("s7Real"),
+       QVariantMap{{QStringLiteral("autoStart"), true},
+                   {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+                   {QStringLiteral("port"), 1102},
+                   {QStringLiteral("rack"), 0},
+                   {QStringLiteral("slot"), 1}}},
       {QStringLiteral("sendEvents"),
        QVariantList{
            QVariantMap{{QStringLiteral("device"), QStringLiteral("LocalLoop")},
