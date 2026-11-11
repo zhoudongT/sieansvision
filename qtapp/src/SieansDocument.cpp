@@ -3302,6 +3302,125 @@ QVector<QVariantMap> SieansDocument::collectStringCommands(const QString& receiv
   return out;
 }
 
+
+int SieansDocument::eventTriggerCount() const {
+  return globalTriggers().value(QStringLiteral("events")).toList().size();
+}
+
+QString SieansDocument::addEventTrigger(const QString& eventName, const QString& commandType,
+                                        bool enabled) {
+  const QString ev = eventName.trimmed();
+  const QString typ = normalizeTriggerCommand(commandType);
+  if (ev.isEmpty() || typ.isEmpty()) return {};
+  QVariantMap bag = globalTriggers();
+  QVariantList events = bag.value(QStringLiteral("events")).toList();
+  QVariantMap row;
+  row.insert(QStringLiteral("event"), ev);
+  row.insert(QStringLiteral("commandType"), typ);
+  row.insert(QStringLiteral("enabled"), enabled);
+  events.append(row);
+  bag.insert(QStringLiteral("events"), events);
+  if (!bag.contains(QStringLiteral("strings")))
+    bag.insert(QStringLiteral("strings"), QVariantList{});
+  setGlobalTriggers(bag);
+  return ev;
+}
+
+QVector<QVariantMap> SieansDocument::collectEventCommands(const QString& eventName) const {
+  QVector<QVariantMap> out;
+  const QString name = eventName.trimmed();
+  if (name.isEmpty()) return out;
+  const QVariantList events =
+      globalTriggers().value(QStringLiteral("events")).toList();
+  for (const QVariant& v : events) {
+    const QVariantMap row = v.toMap();
+    if (!triggerRowEnabled(row)) continue;
+    if (row.value(QStringLiteral("event")).toString().trimmed() != name) continue;
+    appendCommandsFromRow(out, row, QStringLiteral("event"), name);
+  }
+  for (QVariantMap& cmd : out) cmd.insert(QStringLiteral("event"), name);
+  return out;
+}
+
+QStringList SieansDocument::triggerEventSelfTest() {
+  QStringList fails;
+  auto check = [&](const char* name, bool ok, const QString& detail = QString()) {
+    if (!ok)
+      fails << (detail.isEmpty() ? QString::fromUtf8(name)
+                                 : QStringLiteral("%1: %2").arg(QString::fromUtf8(name), detail));
+  };
+  auto typesOf = [](const QVector<QVariantMap>& cmds) {
+    QStringList t;
+    for (const QVariantMap& c : cmds) t << c.value(QStringLiteral("type")).toString();
+    return t;
+  };
+
+  SieansDocument doc;
+  check("empty", doc.eventTriggerCount() == 0);
+  check("no-match", doc.collectEventCommands(QStringLiteral("流程开始")).isEmpty());
+  check("add-start",
+        doc.addEventTrigger(QStringLiteral("流程开始"), QStringLiteral("状态·报警")) ==
+            QStringLiteral("流程开始"));
+  check("add-end",
+        !doc.addEventTrigger(QStringLiteral("流程结束"), QStringLiteral("stop")).isEmpty());
+  check("add-ng",
+        !doc.addEventTrigger(QStringLiteral("流程NG"), QStringLiteral("状态·报警")).isEmpty());
+  check("count3", doc.eventTriggerCount() == 3, QString::number(doc.eventTriggerCount()));
+
+  const auto start = doc.collectEventCommands(QStringLiteral("流程开始"));
+  check("match-start", typesOf(start).contains(QStringLiteral("状态·报警")),
+        typesOf(start).join(QLatin1Char(',')));
+  const auto end = doc.collectEventCommands(QStringLiteral("流程结束"));
+  check("match-end", typesOf(end).contains(QStringLiteral("执行·停止")),
+        typesOf(end).join(QLatin1Char(',')));
+  const auto ng = doc.collectEventCommands(QStringLiteral("流程NG"));
+  check("match-ng", typesOf(ng).contains(QStringLiteral("状态·报警")),
+        typesOf(ng).join(QLatin1Char(',')));
+  check("no-camera", doc.collectEventCommands(QStringLiteral("相机连通")).isEmpty());
+
+  QVariantMap bag = doc.globalTriggers();
+  QVariantList events = bag.value(QStringLiteral("events")).toList();
+  QVariantMap disabled;
+  disabled.insert(QStringLiteral("event"), QStringLiteral("流程开始"));
+  disabled.insert(QStringLiteral("commandType"), QStringLiteral("执行·连续"));
+  disabled.insert(QStringLiteral("enabled"), false);
+  events.append(disabled);
+  QVariantMap seedRow;
+  seedRow.insert(QStringLiteral("event"), QStringLiteral("流程结束"));
+  QVariantMap cmd;
+  cmd.insert(QStringLiteral("action"), QStringLiteral("alarm"));
+  seedRow.insert(QStringLiteral("commands"), QVariantList{cmd});
+  events.append(seedRow);
+  bag.insert(QStringLiteral("events"), events);
+  doc.setGlobalTriggers(bag);
+  const auto start2 = doc.collectEventCommands(QStringLiteral("流程开始"));
+  check("disabled-skipped", !typesOf(start2).contains(QStringLiteral("执行·连续")),
+        typesOf(start2).join(QLatin1Char(',')));
+  const auto end2 = doc.collectEventCommands(QStringLiteral("流程结束"));
+  check("seed-schema", typesOf(end2).contains(QStringLiteral("状态·报警")),
+        typesOf(end2).join(QLatin1Char(',')));
+
+  QTemporaryDir tmp;
+  check("tmpdir", tmp.isValid());
+  if (tmp.isValid()) {
+    const QString path = tmp.filePath(QStringLiteral("events.sieans"));
+    QString se;
+    check("save", doc.saveToFile(path, &se), se);
+    SieansDocument loaded;
+    QString le;
+    check("load", loaded.loadFromFile(path, &le), le);
+    check("load-count", loaded.eventTriggerCount() == doc.eventTriggerCount(),
+          QString::number(loaded.eventTriggerCount()));
+    check("load-match",
+          !loaded.collectEventCommands(QStringLiteral("流程NG")).isEmpty());
+  }
+
+  SieansDocument live;
+  live.seedGentlQrDemo();
+  check("live-untouched", live.eventTriggerCount() == 0 && live.stringTriggerCount() == 0);
+  return fails;
+}
+
 QStringList SieansDocument::triggerSelfTest() {
   QStringList fails;
   auto check = [&](const char* name, bool ok, const QString& detail = QString()) {

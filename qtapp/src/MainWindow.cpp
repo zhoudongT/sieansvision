@@ -1328,6 +1328,8 @@ void MainWindow::buildMenus() {
   tools->addAction(QStringLiteral("子流程管理…"), this, &MainWindow::onOpenSubflowManager);
   tools->addAction(QStringLiteral("产线配方 / 换型…"), this, &MainWindow::onOpenRecipeSwitch);
   tools->addAction(QStringLiteral("全局触发…"), this, &MainWindow::onOpenGlobalTriggers);
+  tools->addAction(QStringLiteral("注入RUN"), this, &MainWindow::injectRunTrigger);
+  tools->addAction(QStringLiteral("注入STOP"), this, &MainWindow::injectStopTrigger);
 
   auto* system = menuBar()->addMenu(QStringLiteral("系统"));
   auto* edit = system->addMenu(QStringLiteral("编辑"));
@@ -1483,6 +1485,11 @@ void MainWindow::buildToolbar() {
       tb->addAction(QStringLiteral("停预览"), this, &MainWindow::onStopContinuousPreview);
   act_preview_stop_->setToolTip(QStringLiteral("停止连续采集预览 · 不影响流程运行态"));
   act_preview_stop_->setStatusTip(QStringLiteral("预览 · 停止"));
+  tb->addSeparator();
+  tb->addAction(QStringLiteral("注入RUN"), this, &MainWindow::injectRunTrigger)
+      ->setToolTip(QStringLiteral("向字符串触发注入 RUN（软通信环回，无真 PLC）"));
+  tb->addAction(QStringLiteral("注入STOP"), this, &MainWindow::injectStopTrigger)
+      ->setToolTip(QStringLiteral("向字符串触发注入 STOP（软通信环回，无真 PLC）"));
   tb->addSeparator();
   act_run_ = tb->addAction(QStringLiteral("▶ 运行"), this, &MainWindow::onRunOnce);
   act_run_->setShortcut(QKeySequence(Qt::Key_F5));
@@ -2408,6 +2415,9 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
     showStatus(QStringLiteral("请先加载图像或开启预览"));
     return;
   }
+  if (updateFlowStates && !dispatching_triggers_)
+    fireEventTriggers(QStringLiteral("流程开始"), true);
+
   QImage working = src;
   PointCloud workingCloud;
   if (!imported_cloud_path_.isEmpty()) {
@@ -4426,6 +4436,14 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
   const double toolMs = qMax(0.0, flowMs - algoMs);
   last_cycle_ms_ = flowMs;
   appendInspectionHistory();
+  if (updateFlowStates && !dispatching_triggers_) {
+    const bool hasGate = flow_vars_.contains(QStringLiteral("passGate"));
+    const bool gateOk = !hasGate || flow_vars_.value(QStringLiteral("passGate")).toInt() != 0 ||
+                        flow_vars_.value(QStringLiteral("passGate")).toBool();
+    if (hasGate && !gateOk)
+      fireEventTriggers(QStringLiteral("流程NG"), false);
+    fireEventTriggers(QStringLiteral("流程结束"), continuous_run_);
+  }
   if (host_strip_) host_strip_->setCycleTiming(flowMs);
   if (host_sm_ && host_strip_)
     host_sm_->setRunStats(host_strip_->okStreak(), host_strip_->ngCount(), flowMs);
@@ -5068,6 +5086,15 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                       .arg(rf.isEmpty() ? QStringLiteral("0")
                                          : rf.join(QLatin1Char('|')).left(160))
                       .arg(recent_files_.paths().size());
+        }
+        {
+          const QStringList ef = SieansDocument::triggerEventSelfTest();
+          line += QChar(' ');
+          line += QStringLiteral("triggerEventOk=%1 triggerEventFails=%2 triggerEventLive=%3")
+                      .arg(ef.isEmpty() ? 1 : 0)
+                      .arg(ef.isEmpty() ? QStringLiteral("0")
+                                         : ef.join(QLatin1Char('|')).left(160))
+                      .arg(document_.eventTriggerCount());
         }
       }
 
@@ -6485,6 +6512,39 @@ bool MainWindow::fireStringTrigger(const QString& text, const QString& reason) {
   return true;
 }
 
+void MainWindow::injectRunTrigger() {
+  const bool hit = fireStringTrigger(QStringLiteral("RUN"), QStringLiteral("注入RUN"));
+  showStatus(hit ? QStringLiteral("已注入 RUN") : QStringLiteral("注入 RUN：无匹配字符串触发"));
+}
+
+void MainWindow::injectStopTrigger() {
+  const bool hit = fireStringTrigger(QStringLiteral("STOP"), QStringLiteral("注入STOP"));
+  showStatus(hit ? QStringLiteral("已注入 STOP") : QStringLiteral("注入 STOP：无匹配字符串触发"));
+}
+
+void MainWindow::fireEventTriggers(const QString& eventName, bool skipRerun) {
+  if (dispatching_triggers_) return;
+  const QString name = eventName.trimmed();
+  if (name.isEmpty()) return;
+  QVector<QVariantMap> cmds = document_.collectEventCommands(name);
+  if (skipRerun) {
+    QVector<QVariantMap> kept;
+    for (const QVariantMap& c : cmds) {
+      const QString typ = c.value(QStringLiteral("type")).toString();
+      if (typ == QStringLiteral("执行·单次") || typ == QStringLiteral("执行") ||
+          typ == QStringLiteral("执行·连续") || typ == QStringLiteral("执行·继续"))
+        continue;
+      kept.append(c);
+    }
+    cmds = kept;
+  }
+  if (cmds.isEmpty()) return;
+  logResult(QStringLiteral("事件触发「%1」×%2").arg(name).arg(cmds.size()));
+  dispatching_triggers_ = true;
+  dispatchGlobalTriggers(cmds);
+  dispatching_triggers_ = false;
+}
+
 void MainWindow::rememberRecentFile(const QString& path) {
   if (path.trimmed().isEmpty()) return;
   recent_files_.remember(path);
@@ -6591,8 +6651,12 @@ void MainWindow::onOpenGlobalTriggers() {
   if (workbenchIsHeadless()) return;
   QDialog dlg(this);
   dlg.setWindowTitle(QStringLiteral("全局触发"));
-  dlg.resize(520, 360);
+  dlg.resize(560, 560);
   auto* lay = new QVBoxLayout(&dlg);
+  const QStringList cmdItems = {QStringLiteral("执行·单次"), QStringLiteral("执行·连续"),
+                                QStringLiteral("执行·停止"), QStringLiteral("执行·暂停"),
+                                QStringLiteral("状态·报警"), QStringLiteral("状态·清除报警"),
+                                QStringLiteral("注入·RUN"), QStringLiteral("注入·STOP")};
   lay->addWidget(new QLabel(
       QStringLiteral("字符串触发（部分匹配）→ 执行·单次 / 连续 / 停止。由通信收数或注入派发。配置随方案保存。无真 PLC。")));
   auto* list = new QListWidget;
@@ -6600,8 +6664,7 @@ void MainWindow::onOpenGlobalTriggers() {
   auto* patEdit = new QLineEdit;
   patEdit->setPlaceholderText(QStringLiteral("匹配字符串，如 RUN / STOP"));
   auto* cmdBox = new QComboBox;
-  cmdBox->addItems({QStringLiteral("执行·单次"), QStringLiteral("执行·连续"),
-                    QStringLiteral("执行·停止"), QStringLiteral("执行·暂停")});
+  cmdBox->addItems(cmdItems);
   auto* partial = new QCheckBox(QStringLiteral("部分匹配"));
   partial->setChecked(true);
   lay->addWidget(patEdit);
@@ -6610,14 +6673,34 @@ void MainWindow::onOpenGlobalTriggers() {
   auto* btns = new QHBoxLayout;
   auto* addBtn = new QPushButton(QStringLiteral("添加"));
   auto* delBtn = new QPushButton(QStringLiteral("删除"));
-  auto* closeBtn = new QPushButton(QStringLiteral("关闭"));
   btns->addWidget(addBtn);
   btns->addWidget(delBtn);
   btns->addStretch();
-  btns->addWidget(closeBtn);
   lay->addLayout(btns);
 
-  auto reload = [this, list]() {
+  lay->addWidget(new QLabel(
+      QStringLiteral("事件触发：流程开始（过滤再跑）、流程结束、流程NG（passGate 失败）。不写到冒烟种子。")));
+  auto* evList = new QListWidget;
+  lay->addWidget(evList, 1);
+  auto* evBox = new QComboBox;
+  evBox->addItems({QStringLiteral("流程开始"), QStringLiteral("流程结束"),
+                   QStringLiteral("流程NG")});
+  auto* evCmd = new QComboBox;
+  evCmd->addItems(cmdItems);
+  evCmd->setCurrentText(QStringLiteral("状态·报警"));
+  lay->addWidget(evBox);
+  lay->addWidget(evCmd);
+  auto* evBtns = new QHBoxLayout;
+  auto* evAdd = new QPushButton(QStringLiteral("添加事件"));
+  auto* evDel = new QPushButton(QStringLiteral("删除事件"));
+  auto* closeBtn = new QPushButton(QStringLiteral("关闭"));
+  evBtns->addWidget(evAdd);
+  evBtns->addWidget(evDel);
+  evBtns->addStretch();
+  evBtns->addWidget(closeBtn);
+  lay->addLayout(evBtns);
+
+  auto reload = [this, list, evList]() {
     list->clear();
     const QVariantList rows =
         document_.globalTriggers().value(QStringLiteral("strings")).toList();
@@ -6641,6 +6724,24 @@ void MainWindow::onOpenGlobalTriggers() {
                    en ? QString() : QStringLiteral(" · 禁用")));
       item->setData(Qt::UserRole, i);
       list->addItem(item);
+    }
+    evList->clear();
+    const QVariantList evs =
+        document_.globalTriggers().value(QStringLiteral("events")).toList();
+    for (int i = 0; i < evs.size(); ++i) {
+      const QVariantMap row = evs.at(i).toMap();
+      const QString ev = row.value(QStringLiteral("event")).toString();
+      const QString typ = row.value(QStringLiteral("commandType"),
+                                    row.value(QStringLiteral("command")))
+                              .toString();
+      const bool en = !row.contains(QStringLiteral("enabled")) ||
+                      row.value(QStringLiteral("enabled")).toBool();
+      auto* item = new QListWidgetItem(
+          QStringLiteral("%1  →  %2%3")
+              .arg(ev, typ.isEmpty() ? QStringLiteral("commands[]") : typ,
+                   en ? QString() : QStringLiteral("  · 禁用")));
+      item->setData(Qt::UserRole, i);
+      evList->addItem(item);
     }
   };
   reload();
@@ -6673,6 +6774,29 @@ void MainWindow::onOpenGlobalTriggers() {
     markProjectDirty();
     reload();
     logResult(QStringLiteral("已删除字符串触发"));
+  });
+  QObject::connect(evAdd, &QPushButton::clicked, box, [=]() {
+    const QString ev = evBox->currentText().trimmed();
+    if (document_.addEventTrigger(ev, evCmd->currentText(), true).isEmpty()) return;
+    document_.syncActiveIntoFlows();
+    markProjectDirty();
+    reload();
+    logResult(QStringLiteral("已添加事件触发 · %1 → %2").arg(ev, evCmd->currentText()));
+  });
+  QObject::connect(evDel, &QPushButton::clicked, box, [this, evList, reload]() {
+    auto* item = evList->currentItem();
+    if (!item) return;
+    const int idx = item->data(Qt::UserRole).toInt();
+    QVariantMap bag = document_.globalTriggers();
+    QVariantList rows = bag.value(QStringLiteral("events")).toList();
+    if (idx < 0 || idx >= rows.size()) return;
+    rows.removeAt(idx);
+    bag.insert(QStringLiteral("events"), rows);
+    document_.setGlobalTriggers(bag);
+    document_.syncActiveIntoFlows();
+    markProjectDirty();
+    reload();
+    logResult(QStringLiteral("已删除事件触发"));
   });
   QObject::connect(closeBtn, &QPushButton::clicked, box, &QDialog::accept);
   dlg.exec();

@@ -208,6 +208,14 @@ class SieansDocument {
   QVector<QVariantMap> collectStringCommands(const QString& received) const;
   /** Isolated match / persist / load trigger checks. Empty list = pass. */
   static QStringList triggerSelfTest();
+  int eventTriggerCount() const;
+  /** Append an event-trigger row (流程开始/结束/NG …) and return the event name. */
+  QString addEventTrigger(const QString& eventName, const QString& commandType,
+                          bool enabled = true);
+  /** Commands whose event row equals eventName. */
+  QVector<QVariantMap> collectEventCommands(const QString& eventName) const;
+  /** Isolated event-row match / persist / load checks. Empty list = pass. */
+  static QStringList triggerEventSelfTest();
 
   /** Record the active-flow graph if it changed (steps/edges/source/output). Cap 31. */
   void commitCanvasUndo(const QString& label = QString());

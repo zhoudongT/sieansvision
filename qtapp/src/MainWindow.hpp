@@ -61,10 +61,15 @@ class MainWindow : public QMainWindow {
   void onOpenInspectionHistory();
   /** Load a .sieans from the project library as the current document. */
   void onLoadRecipeLibrary();
-  /** Edit project globalTriggers string rows (headless no-op). */
+  /** Edit project globalTriggers string/event rows (headless no-op). */
   void onOpenGlobalTriggers();
   /** Match a comm/inject payload against string triggers and dispatch run/stop. */
   bool fireStringTrigger(const QString& text, const QString& reason = QString());
+  /** Dispatch event-trigger rows (流程开始/结束/NG); skipRerun drops 执行·单次/连续. */
+  void fireEventTriggers(const QString& eventName, bool skipRerun = false);
+  /** Toolbar/menu inject: fire the RUN / STOP string triggers (soft loopback, no PLC). */
+  void injectRunTrigger();
+  void injectStopTrigger();
   /** Execute a list of trigger command maps (type/config). */
   void dispatchGlobalTriggers(const QVector<QVariantMap>& cmds);
   /** Remember a successfully opened or saved .sieans / .prc path. */
@@ -260,6 +265,7 @@ class MainWindow : public QMainWindow {
   InspectionHistory inspection_history_;
   RecentFiles recent_files_;
   class QMenu* recent_menu_ = nullptr;
+  bool dispatching_triggers_ = false;
   class QComboBox* variant_chip_ = nullptr;
   bool refreshing_variant_chip_ = false;
   QAction* act_undo_ = nullptr;
