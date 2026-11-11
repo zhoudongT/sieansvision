@@ -80,6 +80,9 @@ const char* glyphKindFor(const QString& key, const QString& category) {
   if (key == QLatin1String("modbus_write")) return "mbwrite";
   if (key == QLatin1String("modbus_wait")) return "mbwait";
   if (key == QLatin1String("s7_read") || key == QLatin1String("s7_write")) return "s7";
+  if (key == QLatin1String("opcua_read") || key == QLatin1String("opcua_write") ||
+      key == QLatin1String("opcua_browse") || key == QLatin1String("opcua_wait"))
+    return "opcua";
   if (key == QLatin1String("result_gate")) return "gate";
   if (key == QLatin1String("format_data")) return "format";
   if (key == QLatin1String("var_calc")) return "var";
@@ -234,6 +237,13 @@ QIcon opGlyph(const char* kind, const QColor& accent) {
     f.setBold(true);
     p.setFont(f);
     p.drawText(QRectF(8, 5, 18, 14), Qt::AlignCenter, QStringLiteral("S7"));
+  } else if (std::strcmp(kind, "opcua") == 0) {
+    p.drawRoundedRect(QRectF(6, 5, 22, 14), 2, 2);
+    QFont f = p.font();
+    f.setPointSize(6);
+    f.setBold(true);
+    p.setFont(f);
+    p.drawText(QRectF(6, 5, 22, 14), Qt::AlignCenter, QStringLiteral("UA"));
   } else {
     p.drawEllipse(QRectF(cx - 6, cy - 6, 12, 12));
     p.drawPoint(QPointF(cx, cy));
@@ -303,6 +313,18 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
       {QStringLiteral("s7_write"), QStringLiteral("S7 写入"),
        QStringLiteral("工业通信"),
        QStringLiteral("西门子 · 检测结果输出")},
+      {QStringLiteral("opcua_read"), QStringLiteral("OPC UA 读取"),
+       QStringLiteral("工业通信"),
+       QStringLiteral("状态码 · 时间戳 · 变量")},
+      {QStringLiteral("opcua_write"), QStringLiteral("OPC UA 写入"),
+       QStringLiteral("工业通信"),
+       QStringLiteral("带类型写入 · 检测结果")},
+      {QStringLiteral("opcua_browse"), QStringLiteral("OPC UA 浏览"),
+       QStringLiteral("工业通信"),
+       QStringLiteral("设备 · 地址空间")},
+      {QStringLiteral("opcua_wait"), QStringLiteral("等待 OPC UA 信号"),
+       QStringLiteral("工业通信"),
+       QStringLiteral("订阅 · 条件 / 边沿触发")},
       {QStringLiteral("condition"), QStringLiteral("条件判断"),
        QStringLiteral("流程控制"),
        QStringLiteral("数值 / 文本 / 开关分支 · 真/假出边 when=true/false")},

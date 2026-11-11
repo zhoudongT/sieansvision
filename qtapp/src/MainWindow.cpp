@@ -10,6 +10,7 @@
 #include "SerialExchange.hpp"
 #include "ModbusClient.hpp"
 #include "S7Client.hpp"
+#include "OpcUaClient.hpp"
 #include "ConditionEval.hpp"
 #include "SubflowExec.hpp"
 #include "SubflowDialog.hpp"
@@ -254,6 +255,29 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         s7Err = e;
       }
       if (!ok) logResult(QStringLiteral("S7TcpLoopback 启动失败: %1").arg(s7Err));
+    }
+  }
+
+  {
+    const QVariantMap opc =
+        document_.commManager().value(QStringLiteral("opcuaReal")).toMap();
+    const bool want = opc.value(QStringLiteral("autoStart"), true).toBool() ||
+                      qgetenv("SIEANS_QT_FORCE_SEED") == "1";
+    if (want) {
+      int base = opc.value(QStringLiteral("port"), 4840).toInt();
+      if (base <= 0) base = 4840;
+      QString opcErr;
+      bool ok = false;
+      for (int d = 0; d <= 4; ++d) {
+        QString e;
+        if (opcUaSoftServer().start(quint16(base + d), &e)) {
+          logResult(QStringLiteral("OpcUaLoopback: %1").arg(opcUaSoftServer().endpoint()));
+          ok = true;
+          break;
+        }
+        opcErr = e;
+      }
+      if (!ok) logResult(QStringLiteral("OpcUaLoopback 启动失败: %1").arg(opcErr));
     }
   }
 
@@ -3249,6 +3273,88 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                QStringLiteral("%1 DB%2.%3").arg(sr.area).arg(sr.dbNumber).arg(sr.byteOffset),
                QStringLiteral("addr"));
       }
+    } else if (op == QLatin1String("opcua_read") || op == QLatin1String("opcua_write") ||
+               op == QLatin1String("opcua_browse") || op == QLatin1String("opcua_wait")) {
+      QVariantMap mp = step->params;
+      if (mp.contains(QStringLiteral("value")) &&
+          mp.value(QStringLiteral("value")).typeId() == QMetaType::QString) {
+        const QString expanded = CommHub::expandTemplate(
+            mp.value(QStringLiteral("value")).toString(), flow_vars_);
+        bool isNum = false;
+        const double d = expanded.toDouble(&isNum);
+        if (isNum && !expanded.contains(QLatin1Char(' '))) {
+          if (expanded.contains(QLatin1Char('.')))
+            mp.insert(QStringLiteral("value"), d);
+          else
+            mp.insert(QStringLiteral("value"), expanded.toLongLong());
+        } else if (expanded == QLatin1String("true") || expanded == QLatin1String("false")) {
+          mp.insert(QStringLiteral("value"), expanded == QLatin1String("true"));
+        } else {
+          mp.insert(QStringLiteral("value"), expanded);
+        }
+      }
+      OpcUaResult orr;
+      if (op == QLatin1String("opcua_write"))
+        orr = runOpcUaWrite(mp);
+      else if (op == QLatin1String("opcua_browse"))
+        orr = runOpcUaBrowse(mp);
+      else if (op == QLatin1String("opcua_wait"))
+        orr = runOpcUaWait(mp);
+      else
+        orr = runOpcUaRead(mp);
+      QString prefix = step->params.value(QStringLiteral("resultVar")).toString().trimmed();
+      if (prefix.isEmpty()) {
+        if (op == QLatin1String("opcua_write"))
+          prefix = QStringLiteral("opcWrite");
+        else if (op == QLatin1String("opcua_browse"))
+          prefix = QStringLiteral("opcBrowse");
+        else if (op == QLatin1String("opcua_wait"))
+          prefix = QStringLiteral("opcWait");
+        else
+          prefix = QStringLiteral("opcRead");
+      }
+      auto put = [&](const QString& suffix, const QVariant& v) {
+        flow_vars_.insert(prefix + suffix, v);
+      };
+      const int okI = orr.ok ? 1 : 0;
+      put(QStringLiteral("Ok"), okI);
+      put(QStringLiteral("Value"), orr.value);
+      put(QStringLiteral("Ack"), orr.acknowledged ? 1 : 0);
+      put(QStringLiteral("Triggered"), orr.triggered ? 1 : 0);
+      put(QStringLiteral("Passed"), orr.passed ? 1 : 0);
+      put(QStringLiteral("TimedOut"), orr.timedOut ? 1 : 0);
+      put(QStringLiteral("Count"), orr.browseCount ? orr.browseCount : orr.notificationCount);
+      put(QStringLiteral("Items"), QVariant(orr.items));
+      put(QStringLiteral("NodeId"), orr.nodeId);
+      put(QStringLiteral("DataType"), orr.dataType);
+      put(QStringLiteral("Status"), orr.status);
+      put(QStringLiteral("Quality"), orr.quality);
+      put(QStringLiteral("Error"), orr.error);
+      put(QStringLiteral("Elapsed"), orr.elapsedMs);
+      ok = orr.ok;
+      note = orr.ok ? orr.note : orr.error;
+      if (result_table_) {
+        auto addRow = [&](const QString& k, const QString& v, const QString& unit) {
+          const int row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(k));
+          result_table_->setItem(row, 1, new QTableWidgetItem(v));
+          result_table_->setItem(row, 2, new QTableWidgetItem(unit));
+        };
+        addRow(prefix + QStringLiteral("Ok"), QString::number(okI), QStringLiteral("gate"));
+        addRow(prefix + QStringLiteral("Value"), orr.value.toString(),
+               orr.dataType.isEmpty() ? QStringLiteral("value") : orr.dataType);
+        if (op == QLatin1String("opcua_write"))
+          addRow(prefix + QStringLiteral("Ack"), QString::number(orr.acknowledged ? 1 : 0),
+                 QStringLiteral("ack"));
+        if (op == QLatin1String("opcua_wait"))
+          addRow(prefix + QStringLiteral("Triggered"),
+                 QString::number(orr.triggered ? 1 : 0), QStringLiteral("trig"));
+        if (op == QLatin1String("opcua_browse"))
+          addRow(prefix + QStringLiteral("Count"), QString::number(orr.browseCount),
+                 QStringLiteral("refs"));
+        addRow(prefix + QStringLiteral("NodeId"), orr.nodeId, QStringLiteral("addr"));
+      }
     } else {
       note = QStringLiteral("透传 / 未实现执行体");
       ok = true;
@@ -3568,6 +3674,29 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                   .arg(flow_vars_.value(QStringLiteral("s7TcpWriteValue")).toString())
                   .arg(flow_vars_.value(QStringLiteral("s7TcpReadOk")).toString())
                   .arg(flow_vars_.value(QStringLiteral("s7TcpReadValue")).toString());
+      line += QChar(' ');
+      line += QStringLiteral(
+                  "opcWriteOk=%1 opcWriteValue=%2 opcWriteAck=%3 "
+                  "opcReadOk=%4 opcReadValue=%5 "
+                  "opcWaitOk=%6 opcWaitTriggered=%7 opcWaitValue=%8")
+                  .arg(flow_vars_.value(QStringLiteral("opcWriteOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("opcWriteValue")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("opcWriteAck")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("opcReadOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("opcReadValue")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("opcWaitOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("opcWaitTriggered")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("opcWaitValue")).toString());
+      line += QChar(' ');
+      line += QStringLiteral(
+                  "opcBrowseOk=%1 opcBrowseCount=%2 "
+                  "opcTcpWriteOk=%3 opcTcpWriteValue=%4 opcTcpReadOk=%5 opcTcpReadValue=%6")
+                  .arg(flow_vars_.value(QStringLiteral("opcBrowseOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("opcBrowseCount")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("opcTcpWriteOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("opcTcpWriteValue")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("opcTcpReadOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("opcTcpReadValue")).toString());
 
 line += QLatin1Char('\n');
       f.write(line.toUtf8());
@@ -4418,6 +4547,44 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("timeoutMs"), 3000},
                 {QStringLiteral("value"), 0},
                 {QStringLiteral("resultVar"), QStringLiteral("s7Write")}};
+  } else if (key == QLatin1String("opcua_read")) {
+    s.params = {{QStringLiteral("connection"), QStringLiteral("simulator")},
+                {QStringLiteral("endpoint"), QStringLiteral("opc.tcp://127.0.0.1:4840/sieans/")},
+                {QStringLiteral("security"), QStringLiteral("None")},
+                {QStringLiteral("nodeId"), QStringLiteral("ns=2;s=SIEANS.Count")},
+                {QStringLiteral("timeoutMs"), 3000},
+                {QStringLiteral("requireGood"), true},
+                {QStringLiteral("resultVar"), QStringLiteral("opcRead")}};
+  } else if (key == QLatin1String("opcua_write")) {
+    s.params = {{QStringLiteral("connection"), QStringLiteral("simulator")},
+                {QStringLiteral("endpoint"), QStringLiteral("opc.tcp://127.0.0.1:4840/sieans/")},
+                {QStringLiteral("security"), QStringLiteral("None")},
+                {QStringLiteral("nodeId"), QStringLiteral("ns=2;s=SIEANS.Count")},
+                {QStringLiteral("dataType"), QStringLiteral("UInt32")},
+                {QStringLiteral("value"), 0},
+                {QStringLiteral("timeoutMs"), 3000},
+                {QStringLiteral("resultVar"), QStringLiteral("opcWrite")}};
+  } else if (key == QLatin1String("opcua_browse")) {
+    s.params = {{QStringLiteral("connection"), QStringLiteral("simulator")},
+                {QStringLiteral("endpoint"), QStringLiteral("opc.tcp://127.0.0.1:4840/sieans/")},
+                {QStringLiteral("security"), QStringLiteral("None")},
+                {QStringLiteral("nodeId"), QStringLiteral("ns=2;s=SIEANS")},
+                {QStringLiteral("browseLimit"), 100},
+                {QStringLiteral("timeoutMs"), 3000},
+                {QStringLiteral("resultVar"), QStringLiteral("opcBrowse")}};
+  } else if (key == QLatin1String("opcua_wait")) {
+    s.params = {{QStringLiteral("connection"), QStringLiteral("simulator")},
+                {QStringLiteral("endpoint"), QStringLiteral("opc.tcp://127.0.0.1:4840/sieans/")},
+                {QStringLiteral("security"), QStringLiteral("None")},
+                {QStringLiteral("nodeId"), QStringLiteral("ns=2;s=SIEANS.Count")},
+                {QStringLiteral("comparison"), QStringLiteral("eq")},
+                {QStringLiteral("expectedValue"), 0},
+                {QStringLiteral("triggerMode"), QStringLiteral("level")},
+                {QStringLiteral("publishingIntervalMs"), 100},
+                {QStringLiteral("waitTimeoutMs"), 10000},
+                {QStringLiteral("onTimeout"), QStringLiteral("error")},
+                {QStringLiteral("timeoutMs"), 3000},
+                {QStringLiteral("resultVar"), QStringLiteral("opcWait")}};
 } else if (key == QLatin1String("result_gate")) {
     s.params = {{QStringLiteral("minCount"), 1},
                 {QStringLiteral("sourceVar"), QStringLiteral("barcodeCount")},

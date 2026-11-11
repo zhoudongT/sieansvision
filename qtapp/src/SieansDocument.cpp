@@ -719,6 +719,61 @@ void SieansDocument::seedGentlQrDemo() {
        {QStringLiteral("dataType"), QStringLiteral("uint16")},
        {QStringLiteral("timeoutMs"), 3000},
        {QStringLiteral("resultVar"), QStringLiteral("s7TcpRead")}});
+  add(QStringLiteral("opcW"), QStringLiteral("OPC UA 写入 · 模拟器"),
+      QStringLiteral("opcua_write"), 80, 2420, QStringLiteral("s7TcpR"),
+      {{QStringLiteral("connection"), QStringLiteral("simulator")},
+       {QStringLiteral("endpoint"), QStringLiteral("opc.tcp://127.0.0.1:4840/sieans/")},
+       {QStringLiteral("nodeId"), QStringLiteral("ns=2;s=SIEANS.Count")},
+       {QStringLiteral("dataType"), QStringLiteral("UInt32")},
+       {QStringLiteral("value"), 4242},
+       {QStringLiteral("timeoutMs"), 3000},
+       {QStringLiteral("resultVar"), QStringLiteral("opcWrite")}});
+  add(QStringLiteral("opcR"), QStringLiteral("OPC UA 读取 · 模拟器"),
+      QStringLiteral("opcua_read"), 80, 2540, QStringLiteral("opcW"),
+      {{QStringLiteral("connection"), QStringLiteral("simulator")},
+       {QStringLiteral("endpoint"), QStringLiteral("opc.tcp://127.0.0.1:4840/sieans/")},
+       {QStringLiteral("nodeId"), QStringLiteral("ns=2;s=SIEANS.Count")},
+       {QStringLiteral("requireGood"), true},
+       {QStringLiteral("timeoutMs"), 3000},
+       {QStringLiteral("resultVar"), QStringLiteral("opcRead")}});
+  add(QStringLiteral("opcWait"), QStringLiteral("等待 OPC UA 信号 · 模拟器"),
+      QStringLiteral("opcua_wait"), 80, 2660, QStringLiteral("opcR"),
+      {{QStringLiteral("connection"), QStringLiteral("simulator")},
+       {QStringLiteral("endpoint"), QStringLiteral("opc.tcp://127.0.0.1:4840/sieans/")},
+       {QStringLiteral("nodeId"), QStringLiteral("ns=2;s=SIEANS.Count")},
+       {QStringLiteral("comparison"), QStringLiteral("eq")},
+       {QStringLiteral("expectedValue"), 4242},
+       {QStringLiteral("triggerMode"), QStringLiteral("level")},
+       {QStringLiteral("publishingIntervalMs"), 100},
+       {QStringLiteral("waitTimeoutMs"), 3000},
+       {QStringLiteral("onTimeout"), QStringLiteral("error")},
+       {QStringLiteral("timeoutMs"), 3000},
+       {QStringLiteral("resultVar"), QStringLiteral("opcWait")}});
+  add(QStringLiteral("opcBrowse"), QStringLiteral("OPC UA 浏览 · 模拟器"),
+      QStringLiteral("opcua_browse"), 80, 2780, QStringLiteral("opcWait"),
+      {{QStringLiteral("connection"), QStringLiteral("simulator")},
+       {QStringLiteral("endpoint"), QStringLiteral("opc.tcp://127.0.0.1:4840/sieans/")},
+       {QStringLiteral("nodeId"), QStringLiteral("ns=2;s=SIEANS")},
+       {QStringLiteral("browseLimit"), 100},
+       {QStringLiteral("timeoutMs"), 3000},
+       {QStringLiteral("resultVar"), QStringLiteral("opcBrowse")}});
+  add(QStringLiteral("opcTcpW"), QStringLiteral("OPC UA 写入 · TCP 回环"),
+      QStringLiteral("opcua_write"), 80, 2900, QStringLiteral("opcBrowse"),
+      {{QStringLiteral("connection"), QStringLiteral("server")},
+       {QStringLiteral("endpoint"), QStringLiteral("opc.tcp://127.0.0.1:4840/sieans/")},
+       {QStringLiteral("nodeId"), QStringLiteral("ns=2;s=SIEANS.Count")},
+       {QStringLiteral("dataType"), QStringLiteral("UInt32")},
+       {QStringLiteral("value"), 9001},
+       {QStringLiteral("timeoutMs"), 3000},
+       {QStringLiteral("resultVar"), QStringLiteral("opcTcpWrite")}});
+  add(QStringLiteral("opcTcpR"), QStringLiteral("OPC UA 读取 · TCP 回环"),
+      QStringLiteral("opcua_read"), 80, 3020, QStringLiteral("opcTcpW"),
+      {{QStringLiteral("connection"), QStringLiteral("server")},
+       {QStringLiteral("endpoint"), QStringLiteral("opc.tcp://127.0.0.1:4840/sieans/")},
+       {QStringLiteral("nodeId"), QStringLiteral("ns=2;s=SIEANS.Count")},
+       {QStringLiteral("requireGood"), true},
+       {QStringLiteral("timeoutMs"), 3000},
+       {QStringLiteral("resultVar"), QStringLiteral("opcTcpRead")}});
 
   auto link = [&](const QString& a, const QString& b,
                   const QString& when = QStringLiteral("always")) {
@@ -770,6 +825,12 @@ void SieansDocument::seedGentlQrDemo() {
   link(QStringLiteral("s7W"), QStringLiteral("s7R"));
   link(QStringLiteral("s7R"), QStringLiteral("s7TcpW"));
   link(QStringLiteral("s7TcpW"), QStringLiteral("s7TcpR"));
+  link(QStringLiteral("s7TcpR"), QStringLiteral("opcW"));
+  link(QStringLiteral("opcW"), QStringLiteral("opcR"));
+  link(QStringLiteral("opcR"), QStringLiteral("opcWait"));
+  link(QStringLiteral("opcWait"), QStringLiteral("opcBrowse"));
+  link(QStringLiteral("opcBrowse"), QStringLiteral("opcTcpW"));
+  link(QStringLiteral("opcTcpW"), QStringLiteral("opcTcpR"));
 
   variables_ = {
       {QStringLiteral("barcodeCount"), 0},
@@ -884,6 +945,20 @@ void SieansDocument::seedGentlQrDemo() {
       {QStringLiteral("s7TcpWriteValue"), 0},
       {QStringLiteral("s7TcpReadOk"), 0},
       {QStringLiteral("s7TcpReadValue"), 0},
+      {QStringLiteral("opcWriteOk"), 0},
+      {QStringLiteral("opcWriteValue"), 0},
+      {QStringLiteral("opcWriteAck"), 0},
+      {QStringLiteral("opcReadOk"), 0},
+      {QStringLiteral("opcReadValue"), 0},
+      {QStringLiteral("opcWaitOk"), 0},
+      {QStringLiteral("opcWaitTriggered"), 0},
+      {QStringLiteral("opcWaitValue"), 0},
+      {QStringLiteral("opcBrowseOk"), 0},
+      {QStringLiteral("opcBrowseCount"), 0},
+      {QStringLiteral("opcTcpWriteOk"), 0},
+      {QStringLiteral("opcTcpWriteValue"), 0},
+      {QStringLiteral("opcTcpReadOk"), 0},
+      {QStringLiteral("opcTcpReadValue"), 0},
   };
   subflows_.clear();
   subflows_.push_back(makeCounterSubflow());
@@ -920,6 +995,12 @@ void SieansDocument::seedGentlQrDemo() {
                        {QStringLiteral("enabled"), true},
                        {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
                        {QStringLiteral("port"), 1102}},
+           QVariantMap{{QStringLiteral("id"), QStringLiteral("opcua-tcp-loopback")},
+                       {QStringLiteral("name"), QStringLiteral("OpcUaLoopback")},
+                       {QStringLiteral("protocol"), QStringLiteral("OPC UA")},
+                       {QStringLiteral("enabled"), true},
+                       {QStringLiteral("endpoint"),
+                        QStringLiteral("opc.tcp://127.0.0.1:4840/sieans/")}},
        }},
       {QStringLiteral("tcpReal"),
        QVariantMap{{QStringLiteral("host"), QStringLiteral("127.0.0.1")},
@@ -943,6 +1024,11 @@ void SieansDocument::seedGentlQrDemo() {
                    {QStringLiteral("port"), 1102},
                    {QStringLiteral("rack"), 0},
                    {QStringLiteral("slot"), 1}}},
+      {QStringLiteral("opcuaReal"),
+       QVariantMap{{QStringLiteral("autoStart"), true},
+                   {QStringLiteral("endpoint"),
+                    QStringLiteral("opc.tcp://127.0.0.1:4840/sieans/")},
+                   {QStringLiteral("port"), 4840}}},
       {QStringLiteral("sendEvents"),
        QVariantList{
            QVariantMap{{QStringLiteral("device"), QStringLiteral("LocalLoop")},

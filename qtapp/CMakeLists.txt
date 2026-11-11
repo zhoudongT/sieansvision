@@ -85,6 +85,8 @@ add_executable(sieans_qt
   src/ModbusClient.cpp
   src/S7Client.hpp
   src/S7Client.cpp
+  src/OpcUaClient.hpp
+  src/OpcUaClient.cpp
   src/ConditionEval.hpp
   src/ConditionEval.cpp
   src/SubflowExec.hpp

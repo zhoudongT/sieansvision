@@ -367,6 +367,40 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
     specs << S("resultVar", "结果变量前缀", kLine, "s7Read / s7Write");
     return specs;
   }
+  if (op == QLatin1String("opcua_read") || op == QLatin1String("opcua_write") ||
+      op == QLatin1String("opcua_browse") || op == QLatin1String("opcua_wait")) {
+    QVector<Spec> specs;
+    specs << S("connection", "连接目标", kChoice, "simulator|模拟器;server|真实服务器 / 软从站");
+    specs << S("endpoint", "服务器端点", kLine, "opc.tcp://127.0.0.1:4840/sieans/");
+    specs << S("security", "安全策略", kChoice, "None|None;Basic256Sha256|Basic256Sha256");
+    specs << S("applicationUri", "客户端应用 URI", kLine, "urn:sieans:vision:client");
+    specs << S("namespaceUri", "命名空间 URI（可选）", kLine, "urn:sieans:simulator");
+    specs << S("nodeId", "节点地址", kLine, "ns=2;s=SIEANS.Count");
+    specs << S("timeoutMs", "通信超时 (ms)", kInt, "100–10000");
+    if (op == QLatin1String("opcua_read"))
+      specs << S("requireGood", "仅接受良好数据质量", kChoice, "true|是;false|否");
+    if (op == QLatin1String("opcua_write")) {
+      specs << S("dataType", "节点值类型", kChoice,
+                "Boolean|Boolean;SByte|SByte;Byte|Byte;Int16|Int16;UInt16|UInt16;"
+                "Int32|Int32;UInt32|UInt32;Int64|Int64;UInt64|UInt64;"
+                "Float|Float;Double|Double;String|String;DateTime|DateTime;"
+                "Guid|Guid;ByteString|ByteString");
+      specs << S("value", "写入值", kLine, "数值 / true false / 或绑定变量");
+    }
+    if (op == QLatin1String("opcua_browse"))
+      specs << S("browseLimit", "单层浏览上限", kInt, "1–500");
+    if (op == QLatin1String("opcua_wait")) {
+      specs << S("comparison", "信号条件", kChoice,
+                "eq|等于;ne|不等于;gt|大于;gte|大于等于;lt|小于;lte|小于等于;is_true|为真;is_false|为假");
+      specs << S("expectedValue", "比较值", kLine, "有限数值");
+      specs << S("triggerMode", "触发方式", kChoice, "level|条件成立;rising|上升沿;falling|下降沿");
+      specs << S("publishingIntervalMs", "请求发布/采样间隔 (ms)", kInt, "20–10000");
+      specs << S("waitTimeoutMs", "等待超时 (ms)", kInt, "100–600000");
+      specs << S("onTimeout", "超时处理", kChoice, "error|报错;continue|继续");
+    }
+    specs << S("resultVar", "结果变量前缀", kLine, "opcRead / opcWrite / opcBrowse / opcWait");
+    return specs;
+  }
   if (op == QLatin1String("subflow") || op == QLatin1String("loop")) {
     QVector<Spec> specs;
     specs << S("subflowId", "子流程", kChoice, "");
@@ -1024,6 +1058,11 @@ void PropertyPanel::showStep(const FlowStep& step) {
   else if (step.operation == QLatin1String("s7_read") ||
            step.operation == QLatin1String("s7_write"))
     hint += QStringLiteral(" · 模拟器 / ISO-on-TCP 软从站 · DB/M/I/Q 大端 · s7Read/s7Write");
+  else if (step.operation == QLatin1String("opcua_read") ||
+           step.operation == QLatin1String("opcua_write") ||
+           step.operation == QLatin1String("opcua_browse") ||
+           step.operation == QLatin1String("opcua_wait"))
+    hint += QStringLiteral(" · 模拟器 / opc.tcp 软从站 Security=None · opcRead/opcWrite");
   else if (step.operation == QLatin1String("result_gate"))
     hint += QStringLiteral(" · sourceVar → passVar");
   else if (step.operation == QLatin1String("var_calc"))
