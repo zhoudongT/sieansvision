@@ -1309,6 +1309,7 @@ void MainWindow::buildMenus() {
   tools->addAction(QStringLiteral("适应流程画布"), flow_view_, &FlowView::fitAll);
   tools->addAction(QStringLiteral("流程 I/O 绑定…"), this, &MainWindow::onOpenFlowIo);
   tools->addAction(QStringLiteral("子流程管理…"), this, &MainWindow::onOpenSubflowManager);
+  tools->addAction(QStringLiteral("产线配方 / 换型…"), this, &MainWindow::onOpenRecipeSwitch);
 
   auto* system = menuBar()->addMenu(QStringLiteral("系统"));
   auto* edit = system->addMenu(QStringLiteral("编辑"));
@@ -1333,6 +1334,7 @@ void MainWindow::buildMenus() {
   });
 
   auto* work = menuBar()->addMenu(QStringLiteral("工程管理"));
+  work->addAction(QStringLiteral("产线配方 / 换型…"), this, &MainWindow::onOpenRecipeSwitch);
   work->addAction(QStringLiteral("变量监视"), this, [this]() {
     if (bottom_tabs_ && var_watch_) {
       bottom_tabs_->setCurrentWidget(var_watch_);
@@ -4925,6 +4927,15 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                     .arg(sf.isEmpty() ? 1 : 0)
                     .arg(sf.isEmpty() ? QStringLiteral("0")
                                       : sf.join(QLatin1Char('|')).left(160));
+        {
+          const QStringList rf = SieansDocument::recipeSelfTest();
+          line += QChar(' ');
+          line += QStringLiteral("recipeOk=%1 recipeFails=%2 recipeLive=%3")
+                      .arg(rf.isEmpty() ? 1 : 0)
+                      .arg(rf.isEmpty() ? QStringLiteral("0")
+                                         : rf.join(QLatin1Char('|')).left(160))
+                      .arg(document_.recipeCount());
+        }
       }
 
 
@@ -6229,6 +6240,113 @@ void MainWindow::onOpenFlowIo() {
   logResult(QStringLiteral("流程 I/O 已更新 · 输入 %1 · 输出 %2").arg(nin).arg(nout));
   showStatus(QStringLiteral("流程 I/O 绑定已保存"));
   refreshConfigStatus();
+}
+
+void MainWindow::onOpenRecipeSwitch() {
+  if (workbenchIsHeadless()) return;
+  QDialog dlg(this);
+  dlg.setWindowTitle(QStringLiteral("产线配方 / 换型"));
+  dlg.resize(460, 360);
+  auto* lay = new QVBoxLayout(&dlg);
+  lay->addWidget(new QLabel(
+      QStringLiteral("本方案配方快照（按步骤名+算子套用参数）。不打开其它工程、不新增算子。")));
+  auto* list = new QListWidget;
+  lay->addWidget(list, 1);
+  auto* nameEdit = new QLineEdit;
+  nameEdit->setPlaceholderText(QStringLiteral("配方名（保存时必填）"));
+  auto* noteEdit = new QLineEdit;
+  noteEdit->setPlaceholderText(QStringLiteral("备注（可选）"));
+  auto* varEdit = new QLineEdit;
+  varEdit->setPlaceholderText(QStringLiteral("产品变体，如 A型（可选）"));
+  lay->addWidget(nameEdit);
+  lay->addWidget(noteEdit);
+  lay->addWidget(varEdit);
+  auto* btns = new QHBoxLayout;
+  auto* saveBtn = new QPushButton(QStringLiteral("保存当前为配方"));
+  auto* applyBtn = new QPushButton(QStringLiteral("套用"));
+  auto* delBtn = new QPushButton(QStringLiteral("删除"));
+  auto* closeBtn = new QPushButton(QStringLiteral("关闭"));
+  btns->addWidget(saveBtn);
+  btns->addWidget(applyBtn);
+  btns->addWidget(delBtn);
+  btns->addStretch();
+  btns->addWidget(closeBtn);
+  lay->addLayout(btns);
+
+  auto reload = [this, list]() {
+    list->clear();
+    for (const QJsonValue& v : document_.recipesJson()) {
+      const QJsonObject o = v.toObject();
+      const QString id = o.value(QStringLiteral("id")).toString();
+      const QString name = o.value(QStringLiteral("name")).toString();
+      const QString variant = o.value(QStringLiteral("variant")).toString();
+      const int n = o.value(QStringLiteral("stepCount")).toInt();
+      QString lab = name;
+      if (!variant.isEmpty()) lab += QStringLiteral(" · %1").arg(variant);
+      lab += QStringLiteral("  (%1步)").arg(n);
+      if (id == document_.activeRecipeId()) lab += QStringLiteral("  ←当前");
+      auto* item = new QListWidgetItem(lab);
+      item->setData(Qt::UserRole, id);
+      list->addItem(item);
+    }
+  };
+  reload();
+
+  auto selectedId = [list]() -> QString {
+    auto* item = list->currentItem();
+    return item ? item->data(Qt::UserRole).toString() : QString();
+  };
+
+  QDialog* box = &dlg;
+  QObject::connect(saveBtn, &QPushButton::clicked, box, [this, box, nameEdit, noteEdit, varEdit, reload]() {
+    QString name = nameEdit->text().trimmed();
+    if (name.isEmpty()) {
+      QMessageBox::information(box, QStringLiteral("产线配方"),
+                               QStringLiteral("请填写配方名"));
+      return;
+    }
+    const QVariantMap entry =
+        document_.captureRecipe(name, noteEdit->text(), varEdit->text());
+    document_.syncActiveIntoFlows();
+    markProjectDirty();
+    reload();
+    logResult(QStringLiteral("已保存配方 · %1 · %2 步")
+                  .arg(entry.value(QStringLiteral("name")).toString())
+                  .arg(entry.value(QStringLiteral("stepCount")).toInt()));
+  });
+  QObject::connect(applyBtn, &QPushButton::clicked, box, [this, box, selectedId, reload]() {
+    const QString id = selectedId();
+    if (id.isEmpty()) {
+      QMessageBox::information(box, QStringLiteral("产线配方"),
+                               QStringLiteral("请选择要套用的配方"));
+      return;
+    }
+    QString err;
+    const QVariantMap st = document_.applyRecipe(id, &err);
+    if (!err.isEmpty()) {
+      QMessageBox::warning(box, QStringLiteral("产线配方"), err);
+      return;
+    }
+    document_.syncActiveIntoFlows();
+    markProjectDirty();
+    reload();
+    logResult(QStringLiteral("已套用配方 · %1 · 步骤 %2 · 跳过 %3")
+                  .arg(st.value(QStringLiteral("name")).toString())
+                  .arg(st.value(QStringLiteral("applied")).toInt())
+                  .arg(st.value(QStringLiteral("skipped")).toInt()));
+    showStatus(QStringLiteral("已套用配方 %1").arg(st.value(QStringLiteral("name")).toString()));
+  });
+  QObject::connect(delBtn, &QPushButton::clicked, box, [this, selectedId, reload]() {
+    const QString id = selectedId();
+    if (id.isEmpty()) return;
+    if (!document_.deleteRecipe(id)) return;
+    document_.syncActiveIntoFlows();
+    markProjectDirty();
+    reload();
+    logResult(QStringLiteral("已删除配方"));
+  });
+  QObject::connect(closeBtn, &QPushButton::clicked, &dlg, &QDialog::accept);
+  dlg.exec();
 }
 
 void MainWindow::onAbout() {

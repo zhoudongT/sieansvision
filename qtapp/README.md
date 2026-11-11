@@ -72,6 +72,8 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx`）放�
 
 **已落地（wave259）：** 对比条 ⊘ 右键长按时长预设（400 / 650 默认 / 1000 / 1500 ms），写入同一 `film/undoClearLongMs` 偏好；无界面自测只走临时 ini，不写用户仓库。`SIEANS_QT_COMPARE_STRIP_SELFTEST=1`。
 
+**已落地（wave260）：** 本方案产线配方 / 换型子集（对齐 PySide `project["recipes"]`）：按名称保存当前步骤参数快照、套用到匹配步骤（算子+名称，其次 id，再次算子）、删除、随 `.sieans` 往返。工具 / 工程管理菜单可打开对话框。无界面自测 `SIEANS_QT_RECIPE_SELFTEST=1`。不打开其它工程库、不新增目录算子。
+
 **NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。
 
 ## VM chrome (2026-11-03)

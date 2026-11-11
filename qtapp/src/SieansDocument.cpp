@@ -12,6 +12,8 @@
 #include <QTemporaryDir>
 #include <QDir>
 #include <QFileInfo>
+#include <QDateTime>
+#include <QMetaType>
 
 namespace sieans_qt {
 namespace {
@@ -2555,6 +2557,304 @@ QStringList SieansDocument::pinGroupSelfTest() {
         loaded.activePinGroup() == QStringLiteral("备用") &&
             loaded.hostWatchKeys().isEmpty(),
         loaded.activePinGroup() + QLatin1Char('/') + loaded.hostWatchKeys().join(QLatin1Char(',')));
+  return fails;
+}
+
+
+QJsonArray SieansDocument::recipesJson() const {
+  return raw_.value(QStringLiteral("recipes")).toArray();
+}
+
+QString SieansDocument::activeRecipeId() const {
+  return raw_.value(QStringLiteral("activeRecipeId")).toString();
+}
+
+QString SieansDocument::activeRecipeName() const {
+  const QString rid = activeRecipeId();
+  for (const QJsonValue& v : recipesJson()) {
+    const QJsonObject o = v.toObject();
+    if (o.value(QStringLiteral("id")).toString() == rid)
+      return o.value(QStringLiteral("name")).toString(rid);
+  }
+  return {};
+}
+
+namespace {
+QJsonObject stepRecipeSnapshot(const FlowStep& s) {
+  return QJsonObject{
+      {QStringLiteral("id"), s.id},
+      {QStringLiteral("name"), s.name},
+      {QStringLiteral("operation"), s.operation},
+      {QStringLiteral("params"), mapToObject(s.params)},
+      {QStringLiteral("imageFrom"), s.imageFrom},
+  };
+}
+
+FlowStep* matchRecipeStep(QVector<FlowStep>& live, const QJsonObject& snap) {
+  const QString op = snap.value(QStringLiteral("operation")).toString();
+  const QString name = snap.value(QStringLiteral("name")).toString();
+  const QString sid = snap.value(QStringLiteral("id")).toString();
+  for (FlowStep& s : live) {
+    if (s.operation == op && s.name == name) return &s;
+  }
+  if (!sid.isEmpty()) {
+    for (FlowStep& s : live) {
+      if (s.id == sid) return &s;
+    }
+  }
+  for (FlowStep& s : live) {
+    if (s.operation == op) return &s;
+  }
+  return nullptr;
+}
+
+void syncProductionRecipeField(QVector<FlowStep>& steps, const QString& name) {
+  for (FlowStep& s : steps) {
+    if (s.operation == QLatin1String("production_task"))
+      s.params.insert(QStringLiteral("recipe"), name);
+  }
+}
+}  // namespace
+
+QVariantMap SieansDocument::captureRecipe(const QString& name, const QString& note,
+                                          const QString& variant) {
+  const QString when = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+  QString nm = name.trimmed();
+  if (nm.isEmpty()) nm = QStringLiteral("配方%1").arg(when);
+  const QString var = variant.trimmed();
+  QJsonArray snapSteps;
+  for (const FlowStep& s : steps_) snapSteps.append(stepRecipeSnapshot(s));
+  QJsonObject varsOut;
+  for (auto it = variables_.begin(); it != variables_.end(); ++it) {
+    if (it.value().typeId() == QMetaType::QVariantMap) {
+      QVariantMap slim;
+      const QVariantMap bucket = it.value().toMap();
+      for (auto jt = bucket.begin(); jt != bucket.end(); ++jt) {
+        if (jt.value().typeId() == QMetaType::QString) {
+          const QString sv = jt.value().toString();
+          if (sv.startsWith(QLatin1String("data:image/")) || sv.size() > 4096) continue;
+        }
+        slim.insert(jt.key(), jt.value());
+      }
+      if (!slim.isEmpty()) varsOut.insert(it.key(), mapToObject(slim));
+    } else if (it.value().typeId() == QMetaType::QString) {
+      const QString sv = it.value().toString();
+      if (sv.startsWith(QLatin1String("data:image/")) || sv.size() > 4096) continue;
+      varsOut.insert(it.key(), sv);
+    } else {
+      varsOut.insert(it.key(), QJsonValue::fromVariant(it.value()));
+    }
+  }
+  const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+  QJsonObject snap;
+  snap.insert(QStringLiteral("steps"), snapSteps);
+  snap.insert(QStringLiteral("variables"), varsOut);
+  snap.insert(QStringLiteral("productionRecipe"), nm);
+  snap.insert(QStringLiteral("variant"), var);
+  QJsonObject entry;
+  entry.insert(QStringLiteral("id"), id);
+  entry.insert(QStringLiteral("name"), nm);
+  entry.insert(QStringLiteral("note"), note.trimmed());
+  entry.insert(QStringLiteral("variant"), var);
+  entry.insert(QStringLiteral("updatedAt"), when);
+  entry.insert(QStringLiteral("stepCount"), snapSteps.size());
+  entry.insert(QStringLiteral("snapshot"), snap);
+  QJsonArray arr = recipesJson();
+  arr.append(entry);
+  raw_.insert(QStringLiteral("recipes"), arr);
+  raw_.insert(QStringLiteral("activeRecipeId"), id);
+  if (!var.isEmpty()) raw_.insert(QStringLiteral("activeRecipeVariant"), var);
+  syncProductionRecipeField(steps_, nm);
+  QVariantMap out = objectToMap(entry);
+  out.insert(QStringLiteral("id"), id);
+  out.insert(QStringLiteral("name"), nm);
+  out.insert(QStringLiteral("stepCount"), snapSteps.size());
+  return out;
+}
+
+QVariantMap SieansDocument::applyRecipe(const QString& recipeId, QString* error) {
+  QVariantMap stats;
+  const QString rid = recipeId.trimmed();
+  QJsonObject entry;
+  for (const QJsonValue& v : recipesJson()) {
+    const QJsonObject o = v.toObject();
+    if (o.value(QStringLiteral("id")).toString() == rid) {
+      entry = o;
+      break;
+    }
+  }
+  if (entry.isEmpty()) {
+    if (error) *error = QStringLiteral("配方不存在");
+    return stats;
+  }
+  const QJsonObject snap = entry.value(QStringLiteral("snapshot")).toObject();
+  const QJsonArray snapSteps = snap.value(QStringLiteral("steps")).toArray();
+  int applied = 0, skipped = 0;
+  for (const QJsonValue& v : snapSteps) {
+    const QJsonObject row = v.toObject();
+    FlowStep* target = matchRecipeStep(steps_, row);
+    if (!target) {
+      ++skipped;
+      continue;
+    }
+    const QJsonObject params = row.value(QStringLiteral("params")).toObject();
+    target->params = objectToMap(params);
+    if (row.contains(QStringLiteral("imageFrom")))
+      target->imageFrom = row.value(QStringLiteral("imageFrom")).toString();
+    ++applied;
+  }
+  int varsApplied = 0;
+  const QJsonObject varsIn = snap.value(QStringLiteral("variables")).toObject();
+  if (!varsIn.isEmpty()) {
+    const QVariantMap incoming = objectToMap(varsIn);
+    for (auto it = incoming.begin(); it != incoming.end(); ++it) {
+      if (it.value().typeId() == QMetaType::QVariantMap) {
+        QVariantMap slot = variables_.value(it.key()).toMap();
+        const QVariantMap bucket = it.value().toMap();
+        for (auto jt = bucket.begin(); jt != bucket.end(); ++jt) {
+          slot.insert(jt.key(), jt.value());
+          ++varsApplied;
+        }
+        variables_.insert(it.key(), slot);
+      } else {
+        variables_.insert(it.key(), it.value());
+        ++varsApplied;
+      }
+    }
+  }
+  const QString nm = entry.value(QStringLiteral("name")).toString();
+  const QString var = entry.value(QStringLiteral("variant")).toString();
+  raw_.insert(QStringLiteral("activeRecipeId"), rid);
+  if (!var.isEmpty()) raw_.insert(QStringLiteral("activeRecipeVariant"), var);
+  syncProductionRecipeField(steps_, nm);
+  stats.insert(QStringLiteral("applied"), applied);
+  stats.insert(QStringLiteral("skipped"), skipped);
+  stats.insert(QStringLiteral("varsApplied"), varsApplied);
+  stats.insert(QStringLiteral("name"), nm);
+  stats.insert(QStringLiteral("id"), rid);
+  stats.insert(QStringLiteral("variant"), var);
+  return stats;
+}
+
+bool SieansDocument::deleteRecipe(const QString& recipeId) {
+  const QString rid = recipeId.trimmed();
+  if (rid.isEmpty()) return false;
+  QJsonArray next;
+  bool hit = false;
+  for (const QJsonValue& v : recipesJson()) {
+    const QJsonObject o = v.toObject();
+    if (o.value(QStringLiteral("id")).toString() == rid) {
+      hit = true;
+      continue;
+    }
+    next.append(o);
+  }
+  if (!hit) return false;
+  raw_.insert(QStringLiteral("recipes"), next);
+  if (activeRecipeId() == rid) {
+    raw_.insert(QStringLiteral("activeRecipeId"), QString());
+  }
+  return true;
+}
+
+QStringList SieansDocument::recipeSelfTest() {
+  QStringList fails;
+  auto check = [&](const char* name, bool ok, const QString& detail = QString()) {
+    if (!ok)
+      fails << (detail.isEmpty() ? QString::fromUtf8(name)
+                                 : QStringLiteral("%1: %2").arg(QString::fromUtf8(name), detail));
+  };
+  SieansDocument doc;
+  FlowStep loc;
+  loc.id = QStringLiteral("loc-1");
+  loc.name = QStringLiteral("定位");
+  loc.operation = QStringLiteral("locate");
+  loc.params.insert(QStringLiteral("threshold"), 80);
+  FlowStep meas;
+  meas.id = QStringLiteral("meas-1");
+  meas.name = QStringLiteral("测量");
+  meas.operation = QStringLiteral("measure");
+  meas.params.insert(QStringLiteral("minMm"), 10);
+  doc.stepsMut() << loc << meas;
+  QVariantMap vars;
+  vars.insert(QStringLiteral("limit"), 3);
+  doc.setVariables(vars);
+
+  const QVariantMap a = doc.captureRecipe(QStringLiteral("A型"), QStringLiteral("初值"),
+                                          QStringLiteral("A"));
+  check("capture-a", a.value(QStringLiteral("id")).toString().size() >= 8 &&
+                         doc.recipeCount() == 1 && doc.activeRecipeName() == QStringLiteral("A型"),
+        doc.activeRecipeName());
+  check("capture-count", a.value(QStringLiteral("stepCount")).toInt() == 2);
+
+  doc.stepsMut()[0].params.insert(QStringLiteral("threshold"), 40);
+  doc.stepsMut()[1].params.insert(QStringLiteral("minMm"), 99);
+  doc.variablesMut().insert(QStringLiteral("limit"), 9);
+  const QVariantMap b = doc.captureRecipe(QStringLiteral("B型"), QString(), QStringLiteral("B"));
+  check("capture-b", doc.recipeCount() == 2 && doc.activeRecipeName() == QStringLiteral("B型"));
+
+  QString err;
+  const QVariantMap appliedA = doc.applyRecipe(a.value(QStringLiteral("id")).toString(), &err);
+  check("apply-a-err", err.isEmpty(), err);
+  check("apply-a-count", appliedA.value(QStringLiteral("applied")).toInt() == 2,
+        QString::number(appliedA.value(QStringLiteral("applied")).toInt()));
+  check("apply-a-params",
+        doc.steps().at(0).params.value(QStringLiteral("threshold")).toInt() == 80 &&
+            doc.steps().at(1).params.value(QStringLiteral("minMm")).toInt() == 10);
+  check("apply-a-active", doc.activeRecipeId() == a.value(QStringLiteral("id")).toString());
+  check("apply-a-vars", doc.variables().value(QStringLiteral("limit")).toInt() == 3,
+        doc.variables().value(QStringLiteral("limit")).toString());
+
+  const QVariantMap appliedB = doc.applyRecipe(b.value(QStringLiteral("id")).toString(), &err);
+  check("apply-b", appliedB.value(QStringLiteral("applied")).toInt() == 2 &&
+                       doc.steps().at(0).params.value(QStringLiteral("threshold")).toInt() == 40 &&
+                       doc.steps().at(1).params.value(QStringLiteral("minMm")).toInt() == 99);
+
+  // Match by operation+name when live ids differ from the snapshot.
+  SieansDocument renamed;
+  FlowStep loc2 = loc;
+  loc2.id = QStringLiteral("loc-other");
+  loc2.params.insert(QStringLiteral("threshold"), 1);
+  FlowStep meas2 = meas;
+  meas2.id = QStringLiteral("meas-other");
+  meas2.params.insert(QStringLiteral("minMm"), 1);
+  renamed.stepsMut() << loc2 << meas2;
+  renamed.captureRecipe(QStringLiteral("名匹配"));
+  renamed.stepsMut()[0].id = QStringLiteral("brand-new");
+  renamed.stepsMut()[0].params.insert(QStringLiteral("threshold"), 7);
+  const QString mid = renamed.recipesJson().first().toObject().value(QStringLiteral("id")).toString();
+  const QVariantMap byName = renamed.applyRecipe(mid, &err);
+  check("match-op-name", byName.value(QStringLiteral("applied")).toInt() == 2 &&
+                             renamed.steps().at(0).params.value(QStringLiteral("threshold")).toInt() ==
+                                 1,
+        QString::number(renamed.steps().at(0).params.value(QStringLiteral("threshold")).toInt()));
+
+  QTemporaryDir tmp;
+  check("tmpdir", tmp.isValid());
+  if (tmp.isValid()) {
+    const QString path = tmp.filePath(QStringLiteral("recipes.sieans"));
+    QString se;
+    check("save", doc.saveToFile(path, &se), se);
+    SieansDocument loaded;
+    QString le;
+    check("load", loaded.loadFromFile(path, &le), le);
+    check("load-count", loaded.recipeCount() == 2, QString::number(loaded.recipeCount()));
+    check("load-active", loaded.activeRecipeName() == QStringLiteral("B型"),
+          loaded.activeRecipeName());
+    loaded.applyRecipe(a.value(QStringLiteral("id")).toString(), &err);
+    check("load-apply-a",
+          loaded.steps().size() >= 2 &&
+              loaded.steps().at(0).params.value(QStringLiteral("threshold")).toInt() == 80);
+  }
+
+  QString missingErr;
+  const QVariantMap miss = doc.applyRecipe(QStringLiteral("no-such"), &missingErr);
+  check("missing", miss.isEmpty() && missingErr.contains(QStringLiteral("不存在")), missingErr);
+  check("delete-b", doc.deleteRecipe(b.value(QStringLiteral("id")).toString()) &&
+                        doc.recipeCount() == 1);
+  check("delete-missing", !doc.deleteRecipe(b.value(QStringLiteral("id")).toString()));
+  check("delete-a", doc.deleteRecipe(a.value(QStringLiteral("id")).toString()) &&
+                        doc.recipeCount() == 0 && doc.activeRecipeId().isEmpty());
   return fails;
 }
 

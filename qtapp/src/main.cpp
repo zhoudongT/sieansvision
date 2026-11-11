@@ -319,6 +319,19 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
+  if (qEnvironmentVariable("SIEANS_QT_RECIPE_SELFTEST") == QLatin1String("1") &&
+      qEnvironmentVariable("SIEANS_QT_RECIPE_SELFTEST_QUIT") == QLatin1String("1")) {
+    QCoreApplication app(argc, argv);
+    const QStringList fails = sieans_qt::SieansDocument::recipeSelfTest();
+    if (fails.isEmpty()) {
+      std::fprintf(stdout, "recipe-selftest ok\n");
+      return 0;
+    }
+    for (const QString& line : fails)
+      std::fprintf(stderr, "recipe-selftest FAIL %s\n", line.toUtf8().constData());
+    return 1;
+  }
+
   if (qEnvironmentVariable("SIEANS_QT_SCHEME_SELFTEST") == QLatin1String("1") &&
       qEnvironmentVariable("SIEANS_QT_SCHEME_SELFTEST_QUIT") == QLatin1String("1")) {
     QCoreApplication app(argc, argv);

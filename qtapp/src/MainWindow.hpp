@@ -53,6 +53,8 @@ class MainWindow : public QMainWindow {
   void onDecodeQr();
   void onEnumerateGenTL();
   void onOpenCameraManager();
+  /** Open the in-project recipe capture/apply dialog (产线配方 / 换型 subset). */
+  void onOpenRecipeSwitch();
   void onOpenCommManager();
   void onOpenFlowIo();
   void onOpenSubflowManager();

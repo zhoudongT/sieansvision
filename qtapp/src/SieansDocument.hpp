@@ -159,6 +159,20 @@ class SieansDocument {
   QString activatePinGroup(const QString& name);
   /** Isolated persist/restore/activate pin-group checks. Empty list = pass. */
   static QStringList pinGroupSelfTest();
+
+  /** PySide project["recipes"] snapshots (in-project 产线配方 / 换型 subset). */
+  QJsonArray recipesJson() const;
+  int recipeCount() const { return recipesJson().size(); }
+  QString activeRecipeId() const;
+  QString activeRecipeName() const;
+  /** Snapshot current top-level step params as a named recipe; becomes active. */
+  QVariantMap captureRecipe(const QString& name, const QString& note = QString(),
+                            const QString& variant = QString());
+  /** Apply snapshot params onto matching live steps (op+name, then id, then op). */
+  QVariantMap applyRecipe(const QString& recipeId, QString* error = nullptr);
+  bool deleteRecipe(const QString& recipeId);
+  /** Isolated capture/apply/delete/save-load recipe checks. Empty list = pass. */
+  static QStringList recipeSelfTest();
   QStringList filmstripPaths() const;
   void setFilmstripPaths(const QStringList& paths);
   bool filmstripAutoSwitch() const;
