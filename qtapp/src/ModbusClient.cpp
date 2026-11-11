@@ -3,6 +3,7 @@
 #endif
 
 #include "ModbusClient.hpp"
+#include "ProtocolNet.hpp"
 
 #include <QFile>
 #include <QMutex>
@@ -801,30 +802,9 @@ quint16 nextTxId() {
 }
 
 bool transactTcp(const Prepared& c, const QByteArray& reqPdu, QByteArray* rspPdu, QString* error) {
-  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-  if (fd < 0) {
-    *error = QStringLiteral("无法创建 TCP 套接字");
-    return false;
-  }
-  // 阻塞套接字 + SO_RCVTIMEO/SNDTIMEO，避免非阻塞 poll 在本机回环上漏读应答。
-  timeval tv{};
-  tv.tv_sec = c.timeoutMs / 1000;
-  tv.tv_usec = (c.timeoutMs % 1000) * 1000;
-  setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-  setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-  sockaddr_in addr{};
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(quint16(c.port));
-  if (::inet_pton(AF_INET, c.host.toUtf8().constData(), &addr.sin_addr) != 1) {
-    *error = QStringLiteral("无法解析 Modbus 主机地址");
-    ::close(fd);
-    return false;
-  }
-  if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
-    *error = QStringLiteral("无法连接 Modbus 设备，请检查端口和地址");
-    ::close(fd);
-    return false;
-  }
+  const int fd = connectTcpTimeout(c.host, quint16(c.port), c.timeoutMs, error,
+                                   QStringLiteral("Modbus"));
+  if (fd < 0) return false;
   const quint16 tx = nextTxId();
   QByteArray mbap(7, 0);
   const int len = 1 + reqPdu.size();

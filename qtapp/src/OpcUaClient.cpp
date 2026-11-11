@@ -3,6 +3,7 @@
 #endif
 
 #include "OpcUaClient.hpp"
+#include "ProtocolNet.hpp"
 
 #include <QDateTime>
 #include <QHash>
@@ -1591,25 +1592,8 @@ bool uaClose(UaSession* s) {
 
 bool uaConnect(UaSession* s, const Prepared& c, QString* error) {
   s->timeoutMs = c.timeoutMs;
-  s->fd = ::socket(AF_INET, SOCK_STREAM, 0);
-  if (s->fd < 0) {
-    *error = QStringLiteral("无法创建 OPC UA 套接字");
-    return false;
-  }
-  setTimeo(s->fd, c.timeoutMs);
-  sockaddr_in addr{};
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(quint16(c.port));
-  if (::inet_pton(AF_INET, c.host.toUtf8().constData(), &addr.sin_addr) != 1) {
-    *error = QStringLiteral("无法解析 OPC UA 主机地址");
-    closeFd(s);
-    return false;
-  }
-  if (::connect(s->fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
-    *error = QStringLiteral("无法连接 OPC UA 设备，请检查端点");
-    closeFd(s);
-    return false;
-  }
+  s->fd = connectTcpTimeout(c.host, quint16(c.port), c.timeoutMs, error, QStringLiteral("OPC UA"));
+  if (s->fd < 0) return false;
   if (!uaHello(s, c, error) || !uaOpenChannel(s, error) || !uaCreateSession(s, c, error) ||
       !uaActivate(s, error)) {
     closeFd(s);

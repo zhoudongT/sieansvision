@@ -1,4 +1,5 @@
 #include "SocketExchange.hpp"
+#include "ProtocolNet.hpp"
 
 #include "CommHub.hpp"
 
@@ -615,14 +616,22 @@ SocketXferResult runExchange(bool udp, const QVariantMap& params, std::atomic<bo
     }
     if (sock.state() == QAbstractSocket::UnconnectedState &&
         sock.error() != QAbstractSocket::SocketTimeoutError &&
-        sock.error() != QAbstractSocket::UnknownSocketError)
-      return finishElapsed(
-          fail(protocol, QStringLiteral("TCP 通信失败：%1").arg(sock.errorString()), false));
+        sock.error() != QAbstractSocket::UnknownSocketError) {
+      const QString raw = sock.errorString();
+      const QString msg =
+          (sock.error() == QAbstractSocket::ConnectionRefusedError)
+              ? QStringLiteral("TCP 连接被拒绝 (%1:%2)").arg(host).arg(port)
+              : (sock.error() == QAbstractSocket::NetworkError ||
+                 sock.error() == QAbstractSocket::RemoteHostClosedError)
+                    ? QStringLiteral("TCP 连接已断开 (%1:%2): %3").arg(host).arg(port).arg(raw)
+                    : QStringLiteral("TCP 通信失败：%1").arg(raw);
+      return finishElapsed(fail(protocol, msg, false));
+    }
     if (QCoreApplication::instance())
       QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
   }
   if (!connected)
-    return finishElapsed(fail(protocol, QStringLiteral("网络通信总超时"), false));
+    return finishElapsed(fail(protocol, QStringLiteral("TCP 连接超时 (%1:%2, %3ms)").arg(host).arg(port).arg(timeoutMs), false));
 
   if (doSend) {
     const qint64 n = sock.write(wire);

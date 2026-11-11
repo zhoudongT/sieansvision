@@ -3,6 +3,7 @@
 #endif
 
 #include "MqttClient.hpp"
+#include "ProtocolNet.hpp"
 
 #include <QDateTime>
 #include <QJsonArray>
@@ -704,26 +705,7 @@ QByteArray buildPubComp(quint16 id) {
 }
 
 int tcpConnect(const Prepared& c, QString* error) {
-  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-  if (fd < 0) {
-    *error = QStringLiteral("无法创建 MQTT 套接字");
-    return -1;
-  }
-  setTimeo(fd, c.timeoutMs);
-  sockaddr_in addr{};
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(quint16(c.port));
-  if (::inet_pton(AF_INET, c.host.toUtf8().constData(), &addr.sin_addr) != 1) {
-    *error = QStringLiteral("无法解析 MQTT 主机地址");
-    ::close(fd);
-    return -1;
-  }
-  if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
-    *error = QStringLiteral("无法连接 MQTT 服务器，请检查主机和端口");
-    ::close(fd);
-    return -1;
-  }
-  return fd;
+  return connectTcpTimeout(c.host, quint16(c.port), c.timeoutMs, error, QStringLiteral("MQTT"));
 }
 
 bool handshake(int fd, const Prepared& c, QString* error) {

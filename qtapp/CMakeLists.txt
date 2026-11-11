@@ -83,6 +83,8 @@ add_executable(sieans_qt
   src/MeasureDim.cpp
   src/SerialExchange.hpp
   src/SerialExchange.cpp
+  src/ProtocolNet.hpp
+  src/ProtocolNet.cpp
   src/ModbusClient.hpp
   src/ModbusClient.cpp
   src/S7Client.hpp

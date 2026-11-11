@@ -18,6 +18,7 @@
 #include "SoftFrame.hpp"
 #include "MainWindow.hpp"
 #include "WorkbenchPaths.hpp"
+#include "ProtocolNet.hpp"
 #include "Theme.hpp"
 
 #include <QApplication>
@@ -221,6 +222,19 @@ int main(int argc, char* argv[]) {
     }
     for (const QString& line : fails)
       std::fprintf(stderr, "flowextras-selftest FAIL %s\n", line.toUtf8().constData());
+    return 1;
+  }
+
+  if (qEnvironmentVariable("SIEANS_QT_PROTOCOL_ROBUST_SELFTEST") == QLatin1String("1") &&
+      qEnvironmentVariable("SIEANS_QT_PROTOCOL_ROBUST_SELFTEST_QUIT") == QLatin1String("1")) {
+    QCoreApplication app(argc, argv);
+    const QStringList fails = sieans_qt::protocolRobustnessSelfTest();
+    if (fails.isEmpty()) {
+      std::fprintf(stdout, "protocol-robust-selftest ok\n");
+      return 0;
+    }
+    for (const QString& line : fails)
+      std::fprintf(stderr, "protocol-robust-selftest FAIL %s\n", line.toUtf8().constData());
     return 1;
   }
 

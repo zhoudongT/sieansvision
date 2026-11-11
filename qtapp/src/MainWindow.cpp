@@ -1,6 +1,7 @@
 #include "MainWindow.hpp"
 #include "WorkbenchPaths.hpp"
 #include "LocateMatchPanel.hpp"
+#include "ProtocolNet.hpp"
 #include "Theme.hpp"
 #include "ExprEval.hpp"
 #include "TemplateMatch.hpp"
@@ -4424,6 +4425,17 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                   .arg(flow_vars_.value(QStringLiteral("scriptOut")).toString())
                   .arg(flow_vars_.value(QStringLiteral("pluginOk")).toString())
                   .arg(flow_vars_.value(QStringLiteral("pluginValue")).toString());
+      {
+        const QStringList pf = protocolRobustnessSelfTest();
+        line += QLatin1Char(' ');
+        line += QStringLiteral(
+                    "protoRobustOk=%1 protoRobustFails=%2 protoFailClass=%3")
+                    .arg(pf.isEmpty() ? 1 : 0)
+                    .arg(pf.isEmpty() ? QStringLiteral("0")
+                                      : pf.join(QLatin1Char('|')).left(120))
+                    .arg(lastProtocolRobustClass());
+      }
+
 
 line += QLatin1Char('\n');
       f.write(line.toUtf8());
