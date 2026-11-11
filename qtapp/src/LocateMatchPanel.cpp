@@ -21,7 +21,16 @@
 #include <QTableWidgetItem>
 #include <QAbstractItemView>
 #include <QColor>
+#include <QCryptographicHash>
+#include <QInputDialog>
+#include <QListWidget>
+#include <QListWidgetItem>
+#include <QMessageBox>
+#include <QUuid>
 #include <QVBoxLayout>
+
+#include <algorithm>
+#include <optional>
 
 namespace sieans_qt {
 namespace {
@@ -33,6 +42,158 @@ QWidget* wrapForm(QFormLayout* form) {
   lay->addLayout(form);
   lay->addStretch(1);
   return w;
+}
+
+
+QString newTemplateId() {
+  return QUuid::createUuid().toString(QUuid::WithoutBraces).remove(QLatin1Char('-')).left(12);
+}
+
+QVariantList normalizedLibrary(const QVariant& raw) {
+  QVariantList out;
+  if (raw.typeId() != QMetaType::QVariantList) return out;
+  for (const QVariant& v : raw.toList()) {
+    const QVariantMap e = v.toMap();
+    if (e.isEmpty()) continue;
+    QVariantMap n;
+    n.insert(QStringLiteral("id"), e.value(QStringLiteral("id")).toString());
+    n.insert(QStringLiteral("name"), e.value(QStringLiteral("name")).toString());
+    n.insert(QStringLiteral("path"), e.value(QStringLiteral("path")).toString());
+    n.insert(QStringLiteral("note"), e.value(QStringLiteral("note")).toString());
+    if (n.value(QStringLiteral("id")).toString().isEmpty())
+      n.insert(QStringLiteral("id"), newTemplateId());
+    out.push_back(n);
+  }
+  return out;
+}
+
+double clamp01(double v) {
+  if (v < 0) return 0;
+  if (v > 1) return 1;
+  return v;
+}
+
+std::optional<double> normalizeScore(const QVariant& v) {
+  if (!v.isValid() || v.isNull() || (v.typeId() == QMetaType::QString && v.toString().isEmpty()))
+    return std::nullopt;
+  bool ok = false;
+  const double d = v.toDouble(&ok);
+  if (!ok) return std::nullopt;
+  return clamp01(d);
+}
+
+QVariantMap softEstimateScores(const QVariantList& lib, const QString& seed) {
+  QVariantMap out;
+  const QByteArray seedB = (seed.isEmpty() ? QByteArray("sieans") : seed.toUtf8());
+  for (int i = 0; i < lib.size(); ++i) {
+    const QVariantMap e = lib[i].toMap();
+    const QString eid = e.value(QStringLiteral("id")).toString().isEmpty()
+                            ? QStringLiteral("t%1").arg(i)
+                            : e.value(QStringLiteral("id")).toString();
+    const QString path = e.value(QStringLiteral("path")).toString();
+    const QByteArray dig = QCryptographicHash::hash(
+        seedB + eid.toUtf8() + path.toUtf8(), QCryptographicHash::Sha1);
+    const quint16 n = (static_cast<quint8>(dig[0]) << 8) | static_cast<quint8>(dig[1]);
+    const double score = 0.55 + 0.43 * (double(n) / 65535.0);
+    out.insert(eid, QString::number(score, 'f', 4).toDouble());
+  }
+  return out;
+}
+
+QVariant lookupScore(const QVariantMap& scores, const QVariantMap& entry) {
+  const QString eid = entry.value(QStringLiteral("id")).toString();
+  const QString name = entry.value(QStringLiteral("name")).toString();
+  const QString path = entry.value(QStringLiteral("path")).toString();
+  if (scores.contains(eid)) return scores.value(eid);
+  if (!name.isEmpty() && scores.contains(name)) return scores.value(name);
+  if (!path.isEmpty() && scores.contains(path)) return scores.value(path);
+  return {};
+}
+
+QVariantMap buildBatchScoreboard(const QVariantList& lib, const QVariantMap& scores,
+                                 double threshold, const QString& activeId) {
+  const double thr = clamp01(threshold);
+  QVariantList rows;
+  struct Ranked {
+    int index;
+    double score;
+    bool has;
+  };
+  QVector<Ranked> ranked;
+  for (int i = 0; i < lib.size(); ++i) {
+    const QVariantMap e = lib[i].toMap();
+    const QString eid = e.value(QStringLiteral("id")).toString().isEmpty()
+                            ? QStringLiteral("t%1").arg(i)
+                            : e.value(QStringLiteral("id")).toString();
+    const auto sc = normalizeScore(lookupScore(scores, e));
+    QVariantMap row;
+    row.insert(QStringLiteral("id"), eid);
+    row.insert(QStringLiteral("name"),
+               e.value(QStringLiteral("name")).toString().isEmpty()
+                   ? eid
+                   : e.value(QStringLiteral("name")).toString());
+    row.insert(QStringLiteral("path"), e.value(QStringLiteral("path")).toString());
+    row.insert(QStringLiteral("note"), e.value(QStringLiteral("note")).toString());
+    row.insert(QStringLiteral("pending"), !sc.has_value());
+    if (sc) {
+      row.insert(QStringLiteral("score"), *sc);
+      row.insert(QStringLiteral("ok"), *sc >= thr);
+    } else {
+      row.insert(QStringLiteral("score"), QVariant());
+      row.insert(QStringLiteral("ok"), false);
+    }
+    row.insert(QStringLiteral("rank"), 0);
+    row.insert(QStringLiteral("active"), !activeId.isEmpty() && eid == activeId);
+    rows.push_back(row);
+    ranked.push_back({i, sc ? *sc : -1.0, sc.has_value()});
+  }
+  std::sort(ranked.begin(), ranked.end(), [](const Ranked& a, const Ranked& b) {
+    if (a.has != b.has) return a.has > b.has;
+    return a.score > b.score;
+  });
+  int rank = 1;
+  QString bestId;
+  double bestScore = 0;
+  bool hasBest = false;
+  for (const Ranked& r : ranked) {
+    QVariantMap row = rows[r.index].toMap();
+    if (r.has) {
+      row.insert(QStringLiteral("rank"), rank++);
+      if (!hasBest) {
+        hasBest = true;
+        bestId = row.value(QStringLiteral("id")).toString();
+        bestScore = r.score;
+      }
+    } else {
+      row.insert(QStringLiteral("rank"), 0);
+    }
+    rows[r.index] = row;
+  }
+  int passN = 0, failN = 0;
+  for (const QVariant& v : rows) {
+    const QVariantMap row = v.toMap();
+    if (row.value(QStringLiteral("pending")).toBool()) continue;
+    if (row.value(QStringLiteral("ok")).toBool()) ++passN;
+    else ++failN;
+  }
+  QString summary;
+  if (!hasBest)
+    summary = QStringLiteral("未评分 · %1 项").arg(lib.size());
+  else
+    summary = QStringLiteral("最优 %1 · 过阈 %2 / 未过 %3 · 阈 %4")
+                  .arg(QString::number(bestScore, 'f', 3))
+                  .arg(passN)
+                  .arg(failN)
+                  .arg(QString::number(thr, 'f', 3));
+  QVariantMap board;
+  board.insert(QStringLiteral("rows"), rows);
+  board.insert(QStringLiteral("bestId"), bestId);
+  board.insert(QStringLiteral("bestScore"), hasBest ? QVariant(bestScore) : QVariant());
+  board.insert(QStringLiteral("passCount"), passN);
+  board.insert(QStringLiteral("failCount"), failN);
+  board.insert(QStringLiteral("threshold"), thr);
+  board.insert(QStringLiteral("summary"), summary);
+  return board;
 }
 
 }  // namespace
@@ -59,6 +220,18 @@ QVariantMap LocateMatchPanel::normalizeParams(const QVariantMap& in) {
   if (!p.contains(QStringLiteral("showAngleDeg"))) p.insert(QStringLiteral("showAngleDeg"), true);
   if (!p.contains(QStringLiteral("resultJudgeEnable")))
     p.insert(QStringLiteral("resultJudgeEnable"), false);
+  if (p.value(QStringLiteral("templateLibrary")).typeId() != QMetaType::QVariantList)
+    p.insert(QStringLiteral("templateLibrary"), QVariantList{});
+  else
+    p.insert(QStringLiteral("templateLibrary"),
+             normalizedLibrary(p.value(QStringLiteral("templateLibrary"))));
+  if (!p.contains(QStringLiteral("activeTemplateId")))
+    p.insert(QStringLiteral("activeTemplateId"), QString());
+  if (!p.contains(QStringLiteral("batchScoreThreshold")))
+    p.insert(QStringLiteral("batchScoreThreshold"),
+             p.value(QStringLiteral("minScore"), 0.85).toDouble());
+  if (p.value(QStringLiteral("lastBatchScoreboard")).typeId() != QMetaType::QVariantMap)
+    p.insert(QStringLiteral("lastBatchScoreboard"), QVariantMap{});
   return p;
 }
 
@@ -128,8 +301,99 @@ LocateMatchPanel::LocateMatchPanel(QWidget* parent) : QWidget(parent) {
   tplTip->setWordWrap(true);
   tplTip->setStyleSheet(QStringLiteral("color:#8a9098;font-size:11px;"));
   tplLay->addWidget(tplTip);
+
+  auto* libFrame = new QWidget;
+  libFrame->setObjectName(QStringLiteral("locateTemplateLibraryFrame"));
+  auto* libLay = new QVBoxLayout(libFrame);
+  libLay->setContentsMargins(8, 8, 8, 8);
+  libLay->setSpacing(6);
+  auto* libHead = new QHBoxLayout;
+  auto* libTitle = new QLabel(QStringLiteral("模板库"));
+  libTitle->setStyleSheet(QStringLiteral("font-weight:600;color:#c8d0d8;"));
+  libCount_ = new QLabel(QStringLiteral("0 项"));
+  libCount_->setObjectName(QStringLiteral("locateTplLibCount"));
+  libCount_->setStyleSheet(QStringLiteral("color:#888;"));
+  libHead->addWidget(libTitle);
+  libHead->addWidget(libCount_);
+  libHead->addStretch(1);
+  libLay->addLayout(libHead);
+  libList_ = new QListWidget;
+  libList_->setObjectName(QStringLiteral("locateTemplateLibraryList"));
+  libList_->setMinimumHeight(90);
+  libList_->setToolTip(QStringLiteral("双击选用 · 选中后可预览/移除"));
+  libLay->addWidget(libList_);
+  libPreview_ = new QLabel(QStringLiteral("预览：选中库条目查看路径/备注"));
+  libPreview_->setObjectName(QStringLiteral("locateTplLibPreview"));
+  libPreview_->setWordWrap(true);
+  libPreview_->setStyleSheet(QStringLiteral("color:#8ab;font-size:11px;padding:2px 0;"));
+  libLay->addWidget(libPreview_);
+  auto* libBtns = new QHBoxLayout;
+  auto* addLibBtn = new QPushButton(QStringLiteral("加入库"));
+  addLibBtn->setToolTip(QStringLiteral("将当前模板路径加入模板库（可改名）"));
+  auto* selLibBtn = new QPushButton(QStringLiteral("选用"));
+  auto* prevLibBtn = new QPushButton(QStringLiteral("预览"));
+  auto* rmLibBtn = new QPushButton(QStringLiteral("移除"));
+  rmLibBtn->setToolTip(QStringLiteral("从模板库移除（不删磁盘文件）"));
+  libBtns->addWidget(addLibBtn);
+  libBtns->addWidget(selLibBtn);
+  libBtns->addWidget(prevLibBtn);
+  libBtns->addWidget(rmLibBtn);
+  libBtns->addStretch(1);
+  libLay->addLayout(libBtns);
+
+  auto* sbHead = new QHBoxLayout;
+  auto* sbTitle = new QLabel(QStringLiteral("批量记分板"));
+  sbTitle->setStyleSheet(QStringLiteral("font-weight:600;color:#c8d0d8;font-size:12px;"));
+  boardSummary_ = new QLabel(QStringLiteral("未评分"));
+  boardSummary_->setObjectName(QStringLiteral("locateBatchScoreSummary"));
+  boardSummary_->setStyleSheet(QStringLiteral("color:#8ab;font-size:11px;"));
+  sbHead->addWidget(sbTitle);
+  sbHead->addWidget(boardSummary_, 1);
+  libLay->addLayout(sbHead);
+  auto* thrRow = new QHBoxLayout;
+  thrRow->addWidget(new QLabel(QStringLiteral("阈值")));
+  batchThr_ = new QDoubleSpinBox;
+  batchThr_->setObjectName(QStringLiteral("locateBatchScoreThr"));
+  batchThr_->setRange(0.0, 1.0);
+  batchThr_->setDecimals(3);
+  batchThr_->setSingleStep(0.01);
+  batchThr_->setValue(0.85);
+  auto* scoreBtn = new QPushButton(QStringLiteral("批量评分"));
+  scoreBtn->setToolTip(QStringLiteral("对模板库全员打分（软估或注入分）；无 Halcon / 无相机"));
+  auto* bestBtn = new QPushButton(QStringLiteral("选用最优"));
+  bestBtn->setToolTip(QStringLiteral("按记分板选用最高分模板"));
+  thrRow->addWidget(batchThr_);
+  thrRow->addWidget(scoreBtn);
+  thrRow->addWidget(bestBtn);
+  thrRow->addStretch(1);
+  libLay->addLayout(thrRow);
+  boardTable_ = new QTableWidget(0, 4);
+  boardTable_->setObjectName(QStringLiteral("locateBatchScoreTable"));
+  boardTable_->setHorizontalHeaderLabels(
+      {QStringLiteral("模板"), QStringLiteral("分数"), QStringLiteral("判定"), QStringLiteral("序")});
+  boardTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  boardTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
+  boardTable_->setMaximumHeight(130);
+  boardTable_->horizontalHeader()->setStretchLastSection(true);
+  libLay->addWidget(boardTable_);
+  tplLay->addWidget(libFrame);
   tplLay->addStretch(1);
   tabs_->addTab(tplPage, QStringLiteral("特征模板"));
+  connect(addLibBtn, &QPushButton::clicked, this, &LocateMatchPanel::onAddLibraryClicked);
+  connect(selLibBtn, &QPushButton::clicked, this, &LocateMatchPanel::onSelectLibraryClicked);
+  connect(prevLibBtn, &QPushButton::clicked, this, &LocateMatchPanel::onPreviewLibraryClicked);
+  connect(rmLibBtn, &QPushButton::clicked, this, &LocateMatchPanel::onRemoveLibraryClicked);
+  connect(scoreBtn, &QPushButton::clicked, this, &LocateMatchPanel::onBatchScoreClicked);
+  connect(bestBtn, &QPushButton::clicked, this, &LocateMatchPanel::onSelectBestClicked);
+  connect(libList_, &QListWidget::itemDoubleClicked, this,
+          [this](QListWidgetItem*) { onSelectLibraryClicked(); });
+  connect(libList_, &QListWidget::currentItemChanged, this,
+          [this](QListWidgetItem*, QListWidgetItem*) { refreshLibraryPreview(); });
+  connect(batchThr_, &QDoubleSpinBox::valueChanged, this, [this](double v) {
+    setParam(QStringLiteral("batchScoreThreshold"), v, true);
+    if (!params_.value(QStringLiteral("lastBatchScoreboard")).toMap().isEmpty())
+      runBatchScoreboard({}, true);
+  });
   connect(loadBtn, &QPushButton::clicked, this, &LocateMatchPanel::onLoadTemplate);
   connect(createBtn, &QPushButton::clicked, this, &LocateMatchPanel::createTemplateRequested);
   connect(clearBtn, &QPushButton::clicked, this, &LocateMatchPanel::onClearTemplate);
@@ -343,7 +607,13 @@ void LocateMatchPanel::loadEditorsFromParams() {
   if (showOrigin_) showOrigin_->setChecked(params_.value(QStringLiteral("showOrigin")).toBool());
   if (showAngleDeg_)
     showAngleDeg_->setChecked(params_.value(QStringLiteral("showAngleDeg")).toBool());
+  if (batchThr_)
+    batchThr_->setValue(params_.value(QStringLiteral("batchScoreThreshold"),
+                                      params_.value(QStringLiteral("minScore"), 0.85))
+                            .toDouble());
   applying_ = false;
+  refreshLibraryList();
+  refreshScoreboardTable();
 }
 
 void LocateMatchPanel::setParam(const QString& key, const QVariant& value, bool emitChange) {
@@ -354,6 +624,10 @@ void LocateMatchPanel::setParam(const QString& key, const QVariant& value, bool 
   const QVariant old = params_.value(key);
   params_.insert(key, value);
   if (!emitChange || old == value || nodeId_.isEmpty()) return;
+  if (value.typeId() == QMetaType::QVariantList || value.typeId() == QMetaType::QVariantMap) {
+    emit structuredParamEdited(nodeId_, key, value);
+    return;
+  }
   QString text;
   if (value.typeId() == QMetaType::Bool)
     text = value.toBool() ? QStringLiteral("true") : QStringLiteral("false");
@@ -398,6 +672,317 @@ void LocateMatchPanel::onClearTemplate() {
   setParam(QStringLiteral("templateCaptured"), false, true);
   loadEditorsFromParams();
   refreshTemplateChrome();
+}
+
+
+int LocateMatchPanel::libraryCount() const {
+  return normalizedLibrary(params_.value(QStringLiteral("templateLibrary"))).size();
+}
+
+QString LocateMatchPanel::activeTemplateId() const {
+  return params_.value(QStringLiteral("activeTemplateId")).toString();
+}
+
+QVariantMap LocateMatchPanel::lastBatchScoreboard() const {
+  return params_.value(QStringLiteral("lastBatchScoreboard")).toMap();
+}
+
+QString LocateMatchPanel::addLibraryEntry(const QString& path, const QString& name,
+                                          const QString& note) {
+  const QString p = path.trimmed();
+  if (p.isEmpty()) return {};
+  QFileInfo fi(p);
+  const QString nm = name.trimmed().isEmpty()
+                         ? (fi.completeBaseName().isEmpty() ? QStringLiteral("模板")
+                                                            : fi.completeBaseName())
+                         : name.trimmed();
+  QVariantMap entry;
+  entry.insert(QStringLiteral("id"), newTemplateId());
+  entry.insert(QStringLiteral("name"), nm);
+  entry.insert(QStringLiteral("path"), p);
+  entry.insert(QStringLiteral("note"), note);
+  QVariantList lib = normalizedLibrary(params_.value(QStringLiteral("templateLibrary")));
+  QVariantList kept;
+  for (const QVariant& v : lib) {
+    if (v.toMap().value(QStringLiteral("path")).toString() == p) continue;
+    kept.push_back(v);
+  }
+  kept.push_back(entry);
+  setParam(QStringLiteral("templateLibrary"), kept, true);
+  if (params_.value(QStringLiteral("templatePath")).toString().trimmed().isEmpty()) {
+    setParam(QStringLiteral("templatePath"), p, true);
+    setParam(QStringLiteral("activeTemplateId"), entry.value(QStringLiteral("id")), true);
+    loadEditorsFromParams();
+    refreshTemplateChrome();
+  } else {
+    refreshLibraryList();
+  }
+  return entry.value(QStringLiteral("id")).toString();
+}
+
+bool LocateMatchPanel::selectLibraryEntry(const QString& id) {
+  const QVariantList lib = normalizedLibrary(params_.value(QStringLiteral("templateLibrary")));
+  for (const QVariant& v : lib) {
+    const QVariantMap e = v.toMap();
+    if (e.value(QStringLiteral("id")).toString() != id) continue;
+    const QString path = e.value(QStringLiteral("path")).toString().trimmed();
+    if (path.isEmpty()) return false;
+    setParam(QStringLiteral("templatePath"), path, true);
+    setParam(QStringLiteral("activeTemplateId"), id, true);
+    loadEditorsFromParams();
+    refreshTemplateChrome();
+    if (libPreview_) {
+      libPreview_->setText(QStringLiteral("已选用「%1」→ %2")
+                               .arg(e.value(QStringLiteral("name")).toString(), path));
+      libPreview_->setStyleSheet(
+          QStringLiteral("color:#2e7d32;font-size:11px;font-weight:600;"));
+    }
+    return true;
+  }
+  return false;
+}
+
+bool LocateMatchPanel::removeLibraryEntry(const QString& id) {
+  if (id.isEmpty()) return false;
+  QVariantList lib = normalizedLibrary(params_.value(QStringLiteral("templateLibrary")));
+  QVariantList kept;
+  bool hit = false;
+  for (const QVariant& v : lib) {
+    if (v.toMap().value(QStringLiteral("id")).toString() == id) {
+      hit = true;
+      continue;
+    }
+    kept.push_back(v);
+  }
+  if (!hit) return false;
+  setParam(QStringLiteral("templateLibrary"), kept, true);
+  if (params_.value(QStringLiteral("activeTemplateId")).toString() == id)
+    setParam(QStringLiteral("activeTemplateId"), QString(), true);
+  refreshLibraryList();
+  refreshLibraryPreview();
+  return true;
+}
+
+QVariantMap LocateMatchPanel::runBatchScoreboard(const QVariantMap& scoresById,
+                                                 bool softFallback) {
+  const QVariantList lib = normalizedLibrary(params_.value(QStringLiteral("templateLibrary")));
+  QVariantMap scores = scoresById;
+  if (softFallback) {
+    const QVariantMap soft = softEstimateScores(
+        lib, nodeId_.isEmpty() ? QStringLiteral("sieans") : nodeId_);
+    for (auto it = soft.begin(); it != soft.end(); ++it) {
+      if (!scores.contains(it.key())) scores.insert(it.key(), it.value());
+    }
+  }
+  const double thr = params_.value(QStringLiteral("batchScoreThreshold"),
+                                   params_.value(QStringLiteral("minScore"), 0.85))
+                         .toDouble();
+  QVariantMap board =
+      buildBatchScoreboard(lib, scores, thr, params_.value(QStringLiteral("activeTemplateId")).toString());
+  setParam(QStringLiteral("lastBatchScoreboard"), board, true);
+  refreshScoreboardTable();
+  if (libPreview_ && !board.value(QStringLiteral("summary")).toString().isEmpty()) {
+    libPreview_->setText(QStringLiteral("记分板：%1").arg(board.value(QStringLiteral("summary")).toString()));
+  }
+  return board;
+}
+
+bool LocateMatchPanel::selectBestScoredTemplate(QString* error) {
+  QVariantMap board = params_.value(QStringLiteral("lastBatchScoreboard")).toMap();
+  if (board.value(QStringLiteral("rows")).toList().isEmpty())
+    board = runBatchScoreboard({}, true);
+  const QString bestId = board.value(QStringLiteral("bestId")).toString();
+  if (bestId.isEmpty()) {
+    if (error) *error = QStringLiteral("没有可选用的评分结果");
+    return false;
+  }
+  QVariantMap best;
+  for (const QVariant& v : board.value(QStringLiteral("rows")).toList()) {
+    const QVariantMap row = v.toMap();
+    if (row.value(QStringLiteral("id")).toString() == bestId) {
+      best = row;
+      break;
+    }
+  }
+  const QString path = best.value(QStringLiteral("path")).toString().trimmed();
+  if (path.isEmpty()) {
+    if (error) *error = QStringLiteral("最优条目无路径");
+    return false;
+  }
+  const double score = best.value(QStringLiteral("score")).toDouble();
+  const double thr = params_.value(QStringLiteral("batchScoreThreshold"), 0.85).toDouble();
+  if (best.value(QStringLiteral("score")).isValid() && score < thr && !workbenchIsHeadless()) {
+    const auto ans = QMessageBox::question(
+        this, QStringLiteral("选用最优"),
+        QStringLiteral("最优「%1」=%2 低于阈值 %3，仍选用？")
+            .arg(best.value(QStringLiteral("name")).toString())
+            .arg(score, 0, 'f', 3)
+            .arg(thr, 0, 'f', 3),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (ans != QMessageBox::Yes) {
+      if (error) *error = QStringLiteral("低于阈值未选用");
+      return false;
+    }
+  }
+  return selectLibraryEntry(bestId);
+}
+
+void LocateMatchPanel::refreshLibraryList() {
+  if (!libList_) return;
+  const QVariantList lib = normalizedLibrary(params_.value(QStringLiteral("templateLibrary")));
+  const QString active = params_.value(QStringLiteral("activeTemplateId")).toString();
+  const QString curPath = params_.value(QStringLiteral("templatePath")).toString().trimmed();
+  const QString prevId = libList_->currentItem()
+                             ? libList_->currentItem()->data(Qt::UserRole).toString()
+                             : QString();
+  libList_->blockSignals(true);
+  libList_->clear();
+  int restore = -1;
+  for (int i = 0; i < lib.size(); ++i) {
+    const QVariantMap e = lib[i].toMap();
+    const QString eid = e.value(QStringLiteral("id")).toString();
+    const QString name = e.value(QStringLiteral("name")).toString().isEmpty()
+                             ? QStringLiteral("模板%1").arg(i + 1)
+                             : e.value(QStringLiteral("name")).toString();
+    const QString path = e.value(QStringLiteral("path")).toString();
+    QString mark;
+    if (!eid.isEmpty() && eid == active) {
+      mark = QStringLiteral(" ★");
+      restore = libList_->count();
+    } else if (!path.isEmpty() && path == curPath) {
+      mark = QStringLiteral(" ●");
+      if (restore < 0) restore = libList_->count();
+    }
+    auto* item = new QListWidgetItem(name + mark);
+    item->setData(Qt::UserRole, eid);
+    item->setToolTip(path.isEmpty() ? QStringLiteral("(无路径)") : path);
+    libList_->addItem(item);
+    if (restore < 0 && eid == prevId) restore = libList_->count() - 1;
+  }
+  if (restore >= 0) libList_->setCurrentRow(restore);
+  libList_->blockSignals(false);
+  if (libCount_) libCount_->setText(QStringLiteral("%1 项").arg(lib.size()));
+}
+
+void LocateMatchPanel::refreshScoreboardTable() {
+  const QVariantMap board = params_.value(QStringLiteral("lastBatchScoreboard")).toMap();
+  if (boardSummary_)
+    boardSummary_->setText(board.value(QStringLiteral("summary")).toString().isEmpty()
+                               ? QStringLiteral("未评分")
+                               : board.value(QStringLiteral("summary")).toString());
+  if (!boardTable_) return;
+  const QVariantList rows = board.value(QStringLiteral("rows")).toList();
+  boardTable_->setRowCount(rows.size());
+  for (int i = 0; i < rows.size(); ++i) {
+    const QVariantMap row = rows[i].toMap();
+    const bool pending = row.value(QStringLiteral("pending")).toBool();
+    const QString scoreTxt =
+        pending ? QStringLiteral("—")
+                : QString::number(row.value(QStringLiteral("score")).toDouble(), 'f', 3);
+    const QString judge = pending ? QStringLiteral("待评")
+                                  : (row.value(QStringLiteral("ok")).toBool() ? QStringLiteral("OK")
+                                                                             : QStringLiteral("NG"));
+    const int rank = row.value(QStringLiteral("rank")).toInt();
+    boardTable_->setItem(i, 0, new QTableWidgetItem(row.value(QStringLiteral("name")).toString()));
+    boardTable_->setItem(i, 1, new QTableWidgetItem(scoreTxt));
+    boardTable_->setItem(i, 2, new QTableWidgetItem(judge));
+    boardTable_->setItem(i, 3, new QTableWidgetItem(rank > 0 ? QString::number(rank) : QStringLiteral("—")));
+  }
+}
+
+void LocateMatchPanel::refreshLibraryPreview() {
+  if (!libPreview_ || !libList_) return;
+  const QString id = libList_->currentItem() ? libList_->currentItem()->data(Qt::UserRole).toString()
+                                             : QString();
+  const QVariantList lib = normalizedLibrary(params_.value(QStringLiteral("templateLibrary")));
+  QVariantMap entry;
+  for (const QVariant& v : lib) {
+    if (v.toMap().value(QStringLiteral("id")).toString() == id) {
+      entry = v.toMap();
+      break;
+    }
+  }
+  if (entry.isEmpty()) {
+    libPreview_->setText(QStringLiteral("预览：选中库条目查看路径/备注"));
+    libPreview_->setStyleSheet(QStringLiteral("color:#8ab;font-size:11px;padding:2px 0;"));
+    return;
+  }
+  const QString path = entry.value(QStringLiteral("path")).toString();
+  const bool active = entry.value(QStringLiteral("id")).toString() ==
+                      params_.value(QStringLiteral("activeTemplateId")).toString();
+  QString txt = QStringLiteral("预览「%1」%2\n路径：%3")
+                    .arg(entry.value(QStringLiteral("name")).toString(),
+                         active ? QStringLiteral(" · 当前选用") : QString(),
+                         path.isEmpty() ? QStringLiteral("(无路径)") : path);
+  if (!entry.value(QStringLiteral("note")).toString().isEmpty())
+    txt += QStringLiteral("\n备注：%1").arg(entry.value(QStringLiteral("note")).toString());
+  if (!path.isEmpty())
+    txt += QFileInfo::exists(path) ? QStringLiteral("\n磁盘：存在")
+                                   : QStringLiteral("\n磁盘：未找到（仍可引用方案内路径）");
+  libPreview_->setText(txt);
+  libPreview_->setStyleSheet(QStringLiteral("color:#9ad;font-size:11px;padding:2px 0;"));
+}
+
+void LocateMatchPanel::onAddLibraryClicked() {
+  QString path = params_.value(QStringLiteral("templatePath")).toString().trimmed();
+  if (path.isEmpty()) {
+    if (workbenchIsHeadless()) return;
+    path = QFileDialog::getOpenFileName(
+        this, QStringLiteral("加入模板库"), workbenchTemplatesDir(),
+        QStringLiteral("模板/图像 (*.png *.bmp *.jpg *.jpeg *.tif);;所有文件 (*)"));
+    if (path.isEmpty()) return;
+  }
+  QString name = QFileInfo(path).completeBaseName();
+  if (!workbenchIsHeadless()) {
+    bool ok = false;
+    name = QInputDialog::getText(this, QStringLiteral("加入模板库"), QStringLiteral("模板名称："),
+                                 QLineEdit::Normal, name, &ok);
+    if (!ok) return;
+  }
+  addLibraryEntry(path, name);
+}
+
+void LocateMatchPanel::onSelectLibraryClicked() {
+  const QString id = libList_ && libList_->currentItem()
+                         ? libList_->currentItem()->data(Qt::UserRole).toString()
+                         : QString();
+  if (id.isEmpty()) {
+    if (!workbenchIsHeadless())
+      QMessageBox::information(this, QStringLiteral("模板库"), QStringLiteral("请先选中一条模板"));
+    return;
+  }
+  if (!selectLibraryEntry(id) && !workbenchIsHeadless())
+    QMessageBox::warning(this, QStringLiteral("模板库"), QStringLiteral("该条目无路径"));
+}
+
+void LocateMatchPanel::onPreviewLibraryClicked() { refreshLibraryPreview(); }
+
+void LocateMatchPanel::onRemoveLibraryClicked() {
+  const QString id = libList_ && libList_->currentItem()
+                         ? libList_->currentItem()->data(Qt::UserRole).toString()
+                         : QString();
+  if (id.isEmpty()) {
+    if (!workbenchIsHeadless())
+      QMessageBox::information(this, QStringLiteral("模板库"),
+                               QStringLiteral("请先选中要移除的条目"));
+    return;
+  }
+  if (!workbenchIsHeadless()) {
+    const auto ans = QMessageBox::question(
+        this, QStringLiteral("移除模板"),
+        QStringLiteral("从模板库移除选中条目？\n（不删除磁盘文件）"),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (ans != QMessageBox::Yes) return;
+  }
+  removeLibraryEntry(id);
+}
+
+void LocateMatchPanel::onBatchScoreClicked() { runBatchScoreboard({}, true); }
+
+void LocateMatchPanel::onSelectBestClicked() {
+  QString err;
+  if (!selectBestScoredTemplate(&err) && !workbenchIsHeadless() && !err.isEmpty())
+    QMessageBox::information(this, QStringLiteral("记分板"), err);
 }
 
 QStringList LocateMatchPanel::selfTest() {
@@ -450,6 +1035,52 @@ QStringList LocateMatchPanel::selfTest() {
                        {QStringLiteral("locateX"), 10},
                        {QStringLiteral("locateY"), 20},
                        {QStringLiteral("locateAngle"), 0}});
+
+  const QString pathA = path;
+  const QString pathB = path + QStringLiteral(".alt.png");
+  QImage alt(32, 32, QImage::Format_RGB888);
+  alt.fill(QColor(10, 80, 10));
+  alt.save(pathB);
+  const QString idA = panel.addLibraryEntry(pathA, QStringLiteral("模板A"));
+  const QString idB = panel.addLibraryEntry(pathB, QStringLiteral("模板B"));
+  if (panel.libraryCount() != 2)
+    fails << QStringLiteral("libraryCount=%1").arg(panel.libraryCount());
+  if (idA.isEmpty() || idB.isEmpty() || idA == idB)
+    fails << QStringLiteral("library ids");
+  if (!panel.selectLibraryEntry(idA)) fails << QStringLiteral("select library A");
+  if (panel.activeTemplateId() != idA) fails << QStringLiteral("activeTemplateId");
+  if (panel.currentParams().value(QStringLiteral("templatePath")).toString() != pathA)
+    fails << QStringLiteral("select path");
+  const QVariantMap board = panel.runBatchScoreboard({}, true);
+  const QVariantList rows = board.value(QStringLiteral("rows")).toList();
+  if (rows.size() != 2) fails << QStringLiteral("scoreboard rows");
+  if (board.value(QStringLiteral("bestId")).toString().isEmpty())
+    fails << QStringLiteral("scoreboard bestId");
+  int scored = 0;
+  for (const QVariant& v : rows) {
+    const QVariantMap r = v.toMap();
+    if (!r.value(QStringLiteral("pending")).toBool()) {
+      ++scored;
+      const double sc = r.value(QStringLiteral("score")).toDouble();
+      if (sc < 0.55 || sc > 0.98) fails << QStringLiteral("soft score range");
+    }
+  }
+  if (scored != 2) fails << QStringLiteral("soft scores missing");
+  QString bestErr;
+  if (!panel.selectBestScoredTemplate(&bestErr))
+    fails << (QStringLiteral("selectBest: ") + bestErr);
+  if (panel.activeTemplateId() != board.value(QStringLiteral("bestId")).toString())
+    fails << QStringLiteral("selectBest active");
+  const QVariantList persisted =
+      panel.currentParams().value(QStringLiteral("templateLibrary")).toList();
+  if (persisted.size() != 2) fails << QStringLiteral("params library size");
+  QVariantMap snapLib = panel.currentParams();
+  if (!panel.removeLibraryEntry(idB) || panel.libraryCount() != 1)
+    fails << QStringLiteral("remove library");
+  panel.applySnapshot(snapLib);
+  if (panel.libraryCount() != 2) fails << QStringLiteral("snapshot restore library");
+  if (n.value(QStringLiteral("templateLibrary")).typeId() != QMetaType::QVariantList)
+    fails << QStringLiteral("normalize library default");
   return fails;
 }
 

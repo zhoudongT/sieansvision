@@ -71,6 +71,7 @@ class MainWindow : public QMainWindow {
   void onDuplicateNode(const QString& nodeId);
   void onParamEdited(const QString& nodeId, const QString& key,
                      const QString& value);
+  void onStructuredParamEdited(const QString& nodeId, const QString& key, const QVariant& value);
   void onParamsReverted(const QString& nodeId, const QVariantMap& snapshot);
   void onPreviewFrame(const QImage& image, qint64 frameId);
   void onWorkerError(const QString& msg);

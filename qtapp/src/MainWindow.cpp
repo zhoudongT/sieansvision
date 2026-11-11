@@ -49,6 +49,8 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QColor>
+#include <QImage>
 #include <QFileDialog>
 #include <QFile>
 #include <QFileInfo>
@@ -625,6 +627,8 @@ void MainWindow::buildUi() {
   prop_float_ = new PropertyFloat(this);
   prop_panel_ = prop_float_->panel();
   connect(prop_float_, &PropertyFloat::paramEdited, this, &MainWindow::onParamEdited);
+  connect(prop_float_, &PropertyFloat::structuredParamEdited, this,
+          &MainWindow::onStructuredParamEdited);
   connect(prop_float_, &PropertyFloat::runModule, this, &MainWindow::onRunOnce);
   connect(prop_float_, &PropertyFloat::runModuleContinuous, this,
           &MainWindow::onRunContinuous);
@@ -4283,16 +4287,42 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
           tmp.params = lp;
           probe.bindStep(tmp);
         }
+        {
+          const QString dir = workbenchTemplatesDir() + QStringLiteral("/smoke-lib");
+          QDir().mkpath(dir);
+          const QString a = dir + QStringLiteral("/a.png");
+          const QString b = dir + QStringLiteral("/b.png");
+          QImage ia(16, 16, QImage::Format_RGB888);
+          ia.fill(QColor(200, 40, 40));
+          ia.save(a);
+          QImage ib(16, 16, QImage::Format_RGB888);
+          ib.fill(QColor(40, 200, 40));
+          ib.save(b);
+          probe.addLibraryEntry(a, QStringLiteral("烟测A"));
+          probe.addLibraryEntry(b, QStringLiteral("烟测B"));
+          probe.runBatchScoreboard({}, true);
+          probe.selectBestScoredTemplate();
+        }
         line += QStringLiteral(
                     "locatePanelOk=%1 locateTabs=%2 locateTplReady=%3 "
-                    "locateMatchMode=%4 locateAngleEnable=%5 locatePanelFails=%6 ")
+                    "locateMatchMode=%4 locateAngleEnable=%5 locatePanelFails=%6 "
+                    "locateLibCount=%7 locateLibOk=%8 locateBoardOk=%9 "
+                    "locateBoardBest=%10 locateBoardPass=%11 ")
                     .arg(locFails.isEmpty() ? 1 : 0)
                     .arg(probe.tabCount())
                     .arg(probe.templateReady() ? 1 : 0)
                     .arg(lp.value(QStringLiteral("matchMode")).toString())
                     .arg(lp.value(QStringLiteral("angleEnable")).toBool() ? 1 : 0)
                     .arg(locFails.isEmpty() ? QStringLiteral("0")
-                                            : locFails.join(QLatin1Char('|')).left(80));
+                                            : locFails.join(QLatin1Char('|')).left(80))
+                    .arg(probe.libraryCount())
+                    .arg(probe.libraryCount() == 2 && locFails.isEmpty() ? 1 : 0)
+                    .arg(probe.lastBatchScoreboard().value(QStringLiteral("rows")).toList().size()
+                                 >= 2 && locFails.isEmpty()
+                             ? 1
+                             : 0)
+                    .arg(probe.lastBatchScoreboard().value(QStringLiteral("bestId")).toString().left(16))
+                    .arg(probe.lastBatchScoreboard().value(QStringLiteral("passCount")).toInt());
       }
       line += QStringLiteral(
                   "locateOk=%1 locateScore=%2 locateX=%3 locateY=%4 locateAngle=%5 "
@@ -5696,6 +5726,18 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 .arg(int(pos.x()))
                 .arg(int(pos.y()))
                 .arg(autoWire ? QStringLiteral(" · 已串线") : QStringLiteral(" · 拖放")));
+  markProjectDirty();
+}
+
+void MainWindow::onStructuredParamEdited(const QString& nodeId, const QString& key,
+                                         const QVariant& value) {
+  if (FlowStep* s = document_.findStep(nodeId)) {
+    s->params.insert(key, value);
+    auditParam(nodeId, key, QStringLiteral("…"),
+               key == QLatin1String("templateLibrary")
+                   ? QStringLiteral("%1 项").arg(value.toList().size())
+                   : key);
+  }
   markProjectDirty();
 }
 

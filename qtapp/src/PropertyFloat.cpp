@@ -91,6 +91,8 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   root->addWidget(body, 1);
   connect(panel_, &PropertyPanel::paramEdited, this, &PropertyFloat::paramEdited);
   connect(locatePanel_, &LocateMatchPanel::paramEdited, this, &PropertyFloat::paramEdited);
+  connect(locatePanel_, &LocateMatchPanel::structuredParamEdited, this,
+          &PropertyFloat::structuredParamEdited);
 
   auto* footer = new QFrame;
   footer->setObjectName(QStringLiteral("propertyFloatFooter"));
