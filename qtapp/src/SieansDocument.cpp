@@ -2858,4 +2858,246 @@ QStringList SieansDocument::recipeSelfTest() {
   return fails;
 }
 
+
+QVariantMap SieansDocument::globalTriggers() const {
+  return objectToMap(raw_.value(QStringLiteral("globalTriggers")).toObject());
+}
+
+void SieansDocument::setGlobalTriggers(const QVariantMap& bag) {
+  QVariantMap clean = bag;
+  if (!clean.contains(QStringLiteral("events")))
+    clean.insert(QStringLiteral("events"), QVariantList{});
+  if (!clean.contains(QStringLiteral("strings")))
+    clean.insert(QStringLiteral("strings"), QVariantList{});
+  raw_.insert(QStringLiteral("globalTriggers"), mapToObject(clean));
+}
+
+int SieansDocument::stringTriggerCount() const {
+  return globalTriggers().value(QStringLiteral("strings")).toList().size();
+}
+
+namespace {
+QString normalizeTriggerCommand(const QString& raw) {
+  const QString t = raw.trimmed();
+  if (t.isEmpty()) return {};
+  static const struct {
+    const char* from;
+    const char* to;
+  } kMap[] = {
+      {"run", "执行·单次"},
+      {"run_once", "执行·单次"},
+      {"once", "执行·单次"},
+      {"执行", "执行·单次"},
+      {"continuous", "执行·连续"},
+      {"run_continuous", "执行·连续"},
+      {"stop", "执行·停止"},
+      {"pause", "执行·暂停"},
+      {"resume", "执行·继续"},
+      {"continue", "执行·继续"},
+      {"save", "方案保存"},
+      {"save_as", "方案另存"},
+      {"reset", "复位"},
+      {"alarm", "状态·报警"},
+      {"clear_alarm", "状态·清除报警"},
+      {"注入 RUN", "注入·RUN"},
+      {"注入RUN", "注入·RUN"},
+      {"注入 STOP", "注入·STOP"},
+      {"注入STOP", "注入·STOP"},
+  };
+  for (const auto& m : kMap) {
+    if (t.compare(QLatin1String(m.from), Qt::CaseInsensitive) == 0)
+      return QString::fromUtf8(m.to);
+  }
+  return t;
+}
+
+bool triggerRowEnabled(const QVariantMap& row) {
+  if (row.contains(QStringLiteral("enabled")) && !row.value(QStringLiteral("enabled")).toBool())
+    return false;
+  return true;
+}
+
+bool matchStringTriggerRow(const QString& text, const QVariantMap& row) {
+  const QString mode = row.value(QStringLiteral("match")).toString();
+  if (mode == QLatin1String("equals") || mode == QLatin1String("contains") ||
+      mode == QLatin1String("partial") || mode == QLatin1String("full")) {
+    const QString needle = row.value(QStringLiteral("pattern"),
+                                     row.value(QStringLiteral("event")))
+                               .toString();
+    if (needle.isEmpty()) return false;
+    if (mode == QLatin1String("equals") || mode == QLatin1String("full"))
+      return needle == text;
+    return text.contains(needle);
+  }
+  const QString needle = row.value(QStringLiteral("event"),
+                                   row.value(QStringLiteral("match"),
+                                            row.value(QStringLiteral("pattern"))))
+                             .toString();
+  if (needle.isEmpty()) return false;
+  const bool partial = row.contains(QStringLiteral("partial"))
+                           ? row.value(QStringLiteral("partial")).toBool()
+                           : true;
+  return partial ? text.contains(needle) : (needle == text);
+}
+
+void appendCommandsFromRow(QVector<QVariantMap>& out, const QVariantMap& row,
+                           const QString& source, const QString& match) {
+  auto push = [&](const QString& typ, const QString& cfg) {
+    const QString mapped = normalizeTriggerCommand(typ);
+    if (mapped.isEmpty()) return;
+    QVariantMap cmd;
+    cmd.insert(QStringLiteral("type"), mapped);
+    cmd.insert(QStringLiteral("config"), cfg);
+    cmd.insert(QStringLiteral("source"), source);
+    cmd.insert(QStringLiteral("match"), match);
+    out.push_back(cmd);
+  };
+  const QString ctype = row.value(QStringLiteral("commandType"),
+                                  row.value(QStringLiteral("command")))
+                            .toString();
+  if (!ctype.isEmpty())
+    push(ctype, row.value(QStringLiteral("config")).toString());
+  for (const QVariant& c : row.value(QStringLiteral("commands")).toList()) {
+    const QVariantMap m = c.toMap();
+    const QString action = m.value(QStringLiteral("action"),
+                                   m.value(QStringLiteral("type")))
+                               .toString()
+                               .trimmed();
+    if (action.isEmpty() || action == QLatin1String("log")) continue;
+    const QString cfg = m.value(QStringLiteral("config"),
+                                m.value(QStringLiteral("target"),
+                                        m.value(QStringLiteral("text"))))
+                            .toString();
+    push(action, cfg);
+  }
+}
+}  // namespace
+
+QString SieansDocument::addStringTrigger(const QString& pattern, const QString& commandType,
+                                         bool partial, bool enabled) {
+  const QString needle = pattern.trimmed();
+  const QString typ = normalizeTriggerCommand(commandType);
+  if (needle.isEmpty() || typ.isEmpty()) return {};
+  QVariantMap bag = globalTriggers();
+  QVariantList strings = bag.value(QStringLiteral("strings")).toList();
+  QVariantMap row;
+  row.insert(QStringLiteral("event"), needle);
+  row.insert(QStringLiteral("pattern"), needle);
+  row.insert(QStringLiteral("commandType"), typ);
+  row.insert(QStringLiteral("partial"), partial);
+  row.insert(QStringLiteral("enabled"), enabled);
+  strings.append(row);
+  bag.insert(QStringLiteral("strings"), strings);
+  if (!bag.contains(QStringLiteral("events")))
+    bag.insert(QStringLiteral("events"), QVariantList{});
+  setGlobalTriggers(bag);
+  return needle;
+}
+
+QVector<QVariantMap> SieansDocument::collectStringCommands(const QString& received) const {
+  QVector<QVariantMap> out;
+  const QString text = received;
+  if (text.isEmpty()) return out;
+  const QVariantList strings =
+      globalTriggers().value(QStringLiteral("strings")).toList();
+  for (const QVariant& v : strings) {
+    const QVariantMap row = v.toMap();
+    if (!triggerRowEnabled(row)) continue;
+    if (!matchStringTriggerRow(text, row)) continue;
+    const QString needle = row.value(QStringLiteral("pattern"),
+                                     row.value(QStringLiteral("event"),
+                                              row.value(QStringLiteral("match"))))
+                               .toString();
+    appendCommandsFromRow(out, row, QStringLiteral("string"), needle);
+  }
+  return out;
+}
+
+QStringList SieansDocument::triggerSelfTest() {
+  QStringList fails;
+  auto check = [&](const char* name, bool ok, const QString& detail = QString()) {
+    if (!ok)
+      fails << (detail.isEmpty() ? QString::fromUtf8(name)
+                                 : QStringLiteral("%1: %2").arg(QString::fromUtf8(name), detail));
+  };
+  SieansDocument doc;
+  check("empty-seed", doc.stringTriggerCount() == 0);
+  check("no-match-empty", doc.collectStringCommands(QStringLiteral("RUN")).isEmpty());
+  check("add-run", doc.addStringTrigger(QStringLiteral("RUN"), QStringLiteral("执行·单次")) ==
+                       QLatin1String("RUN"));
+  check("add-stop", !doc.addStringTrigger(QStringLiteral("STOP"), QStringLiteral("stop")).isEmpty());
+  check("add-go", !doc.addStringTrigger(QStringLiteral("GO"), QStringLiteral("continuous")).isEmpty());
+  check("count3", doc.stringTriggerCount() == 3, QString::number(doc.stringTriggerCount()));
+
+  auto typesOf = [](const QVector<QVariantMap>& cmds) {
+    QStringList t;
+    for (const QVariantMap& c : cmds) t << c.value(QStringLiteral("type")).toString();
+    return t;
+  };
+  const QVector<QVariantMap> exact = doc.collectStringCommands(QStringLiteral("RUN"));
+  check("match-run", typesOf(exact).contains(QStringLiteral("执行·单次")),
+        typesOf(exact).join(QLatin1Char(',')));
+  const QVector<QVariantMap> part = doc.collectStringCommands(QStringLiteral("please RUN now"));
+  check("partial-run", typesOf(part).contains(QStringLiteral("执行·单次")));
+  const QVector<QVariantMap> stop = doc.collectStringCommands(QStringLiteral("STOP"));
+  check("match-stop", typesOf(stop).contains(QStringLiteral("执行·停止")),
+        typesOf(stop).join(QLatin1Char(',')));
+  const QVector<QVariantMap> go = doc.collectStringCommands(QStringLiteral("GO-1"));
+  check("match-cont", typesOf(go).contains(QStringLiteral("执行·连续")),
+        typesOf(go).join(QLatin1Char(',')));
+  check("no-match", doc.collectStringCommands(QStringLiteral("IDLE")).isEmpty());
+
+  // equals mode must not fire on a longer payload
+  QVariantMap bag = doc.globalTriggers();
+  QVariantList strings = bag.value(QStringLiteral("strings")).toList();
+  QVariantMap eq;
+  eq.insert(QStringLiteral("match"), QStringLiteral("equals"));
+  eq.insert(QStringLiteral("pattern"), QStringLiteral("PING"));
+  eq.insert(QStringLiteral("commandType"), QStringLiteral("执行·停止"));
+  eq.insert(QStringLiteral("enabled"), true);
+  strings.append(eq);
+  QVariantMap disabled;
+  disabled.insert(QStringLiteral("pattern"), QStringLiteral("MAGIC"));
+  disabled.insert(QStringLiteral("commandType"), QStringLiteral("执行·单次"));
+  disabled.insert(QStringLiteral("enabled"), false);
+  disabled.insert(QStringLiteral("partial"), true);
+  strings.append(disabled);
+  bag.insert(QStringLiteral("strings"), strings);
+  doc.setGlobalTriggers(bag);
+  check("equals-hit", !doc.collectStringCommands(QStringLiteral("PING")).isEmpty());
+  check("equals-miss", doc.collectStringCommands(QStringLiteral("PING-ACK")).isEmpty());
+  check("disabled", doc.collectStringCommands(QStringLiteral("MAGIC")).isEmpty());
+
+  // seed-schema commands[]
+  QVariantMap seedRow;
+  seedRow.insert(QStringLiteral("match"), QStringLiteral("contains"));
+  seedRow.insert(QStringLiteral("pattern"), QStringLiteral("ACK"));
+  QVariantMap cmd;
+  cmd.insert(QStringLiteral("action"), QStringLiteral("stop"));
+  seedRow.insert(QStringLiteral("commands"), QVariantList{cmd});
+  strings = doc.globalTriggers().value(QStringLiteral("strings")).toList();
+  strings.append(seedRow);
+  bag = doc.globalTriggers();
+  bag.insert(QStringLiteral("strings"), strings);
+  doc.setGlobalTriggers(bag);
+  const QVector<QVariantMap> ack = doc.collectStringCommands(QStringLiteral("peer ACK ok"));
+  check("seed-schema", typesOf(ack).contains(QStringLiteral("执行·停止")),
+        typesOf(ack).join(QLatin1Char(',')));
+
+  QTemporaryDir tmp;
+  check("tmpdir", tmp.isValid());
+  if (tmp.isValid()) {
+    const QString path = tmp.filePath(QStringLiteral("triggers.sieans"));
+    QString se;
+    check("save", doc.saveToFile(path, &se), se);
+    SieansDocument loaded;
+    QString le;
+    check("load", loaded.loadFromFile(path, &le), le);
+    check("load-count", loaded.stringTriggerCount() == doc.stringTriggerCount(),
+          QString::number(loaded.stringTriggerCount()));
+    check("load-match", !loaded.collectStringCommands(QStringLiteral("RUN")).isEmpty());
+  }
+  return fails;
+}
+
 }  // namespace sieans_qt

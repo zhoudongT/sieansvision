@@ -76,6 +76,8 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx`）放�
 
 **已落地（wave261）：** 画布 ROI 编辑（对齐 PySide `set_roi_mode` + 对话框拖拽缩放）：在全局图像上绘制 / 移动 / 缩放所选算子 ROI，写回 `roiX/Y/W/H` 与 `roi` 列表；仅实际改动时脏污方案。无界面自测 `SIEANS_QT_ROI_EDITOR_SELFTEST=1`。
 
+**已落地（wave262）：** 全局字符串触发（对齐 PySide `globalTriggers` / `fire_string_trigger`）：通信 `payloadReceived` 与设置菜单配置的字符串行（部分/全等）可派发执行·单次/连续/停止（软通信环回，无真 PLC）。配置随方案保存。无界面自测 `SIEANS_QT_TRIGGER_SELFTEST=1`。
+
 **NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。
 
 ## VM chrome (2026-11-03)

@@ -173,6 +173,18 @@ class SieansDocument {
   bool deleteRecipe(const QString& recipeId);
   /** Isolated capture/apply/delete/save-load recipe checks. Empty list = pass. */
   static QStringList recipeSelfTest();
+
+  /** PySide project["globalTriggers"] bag (events + strings). */
+  QVariantMap globalTriggers() const;
+  void setGlobalTriggers(const QVariantMap& bag);
+  int stringTriggerCount() const;
+  /** Append a string-trigger row (dialog schema) and return its pattern. */
+  QString addStringTrigger(const QString& pattern, const QString& commandType,
+                           bool partial = true, bool enabled = true);
+  /** Commands whose string row matches received text (partial or equals). */
+  QVector<QVariantMap> collectStringCommands(const QString& received) const;
+  /** Isolated match / persist / load trigger checks. Empty list = pass. */
+  static QStringList triggerSelfTest();
   QStringList filmstripPaths() const;
   void setFilmstripPaths(const QStringList& paths);
   bool filmstripAutoSwitch() const;

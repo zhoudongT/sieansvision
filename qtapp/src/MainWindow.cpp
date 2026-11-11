@@ -59,6 +59,7 @@
 #include <QHBoxLayout>
 #include <QListWidget>
 #include <QComboBox>
+#include <QCheckBox>
 #include <QDoubleSpinBox>
 #include <QSpinBox>
 #include <QStyle>
@@ -171,6 +172,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   connect(&continuous_timer_, &QTimer::timeout, this, &MainWindow::onContinuousTick);
 
   comm_hub_ = new CommHub(this);
+  connect(comm_hub_, &CommHub::payloadReceived, this,
+          [this](const QString&, const QString& payload) {
+            fireStringTrigger(payload, QStringLiteral("通信收数"));
+          });
 
   buildUi();
   buildMenus();
@@ -1301,6 +1306,7 @@ void MainWindow::buildMenus() {
 
   auto* settings = menuBar()->addMenu(QStringLiteral("设置"));
   settings->addAction(QStringLiteral("通信管理…"), this, &MainWindow::onOpenCommManager);
+  settings->addAction(QStringLiteral("全局触发…"), this, &MainWindow::onOpenGlobalTriggers);
   settings->addAction(QStringLiteral("流程 I/O 绑定…"), this, &MainWindow::onOpenFlowIo);
   settings->addAction(QStringLiteral("子流程管理…"), this, &MainWindow::onOpenSubflowManager);
 
@@ -1312,6 +1318,7 @@ void MainWindow::buildMenus() {
   tools->addAction(QStringLiteral("流程 I/O 绑定…"), this, &MainWindow::onOpenFlowIo);
   tools->addAction(QStringLiteral("子流程管理…"), this, &MainWindow::onOpenSubflowManager);
   tools->addAction(QStringLiteral("产线配方 / 换型…"), this, &MainWindow::onOpenRecipeSwitch);
+  tools->addAction(QStringLiteral("全局触发…"), this, &MainWindow::onOpenGlobalTriggers);
 
   auto* system = menuBar()->addMenu(QStringLiteral("系统"));
   auto* edit = system->addMenu(QStringLiteral("编辑"));
@@ -4959,6 +4966,15 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                                          : rf.join(QLatin1Char('|')).left(160))
                       .arg((image_view_ && image_view_->roiMode()) ? 1 : 0);
         }
+        {
+          const QStringList tf = SieansDocument::triggerSelfTest();
+          line += QChar(' ');
+          line += QStringLiteral("triggerOk=%1 triggerFails=%2 triggerLive=%3")
+                      .arg(tf.isEmpty() ? 1 : 0)
+                      .arg(tf.isEmpty() ? QStringLiteral("0")
+                                         : tf.join(QLatin1Char('|')).left(160))
+                      .arg(document_.stringTriggerCount());
+        }
       }
 
 
@@ -6349,6 +6365,143 @@ void MainWindow::onClearSelectedRoi() {
   markProjectDirty();
   if (prop_float_) prop_float_->showForStep(*s);
   logResult(QStringLiteral("已清除模块 ROI · %1").arg(s->name));
+}
+
+bool MainWindow::fireStringTrigger(const QString& text, const QString& reason) {
+  const QString payload = text;
+  if (payload.isEmpty()) return false;
+  const QVector<QVariantMap> cmds = document_.collectStringCommands(payload);
+  if (cmds.isEmpty()) return false;
+  const QString why = reason.isEmpty() ? QStringLiteral("外部字符串") : reason;
+  logResult(QStringLiteral("字符串触发匹配「%1」×%2 · %3")
+                .arg(payload.left(48))
+                .arg(cmds.size())
+                .arg(why));
+  dispatchGlobalTriggers(cmds);
+  return true;
+}
+
+void MainWindow::dispatchGlobalTriggers(const QVector<QVariantMap>& cmds) {
+  for (const QVariantMap& cmd : cmds) {
+    const QString typ = cmd.value(QStringLiteral("type")).toString();
+    const QString cfg = cmd.value(QStringLiteral("config")).toString();
+    if (typ == QStringLiteral("执行·单次") || typ == QStringLiteral("执行")) {
+      onRunOnce();
+    } else if (typ == QStringLiteral("执行·连续") || typ == QStringLiteral("执行·继续")) {
+      onRunContinuous();
+    } else if (typ == QStringLiteral("执行·停止")) {
+      onStopRun();
+    } else if (typ == QStringLiteral("执行·暂停")) {
+      if (act_pause_ && act_pause_->isEnabled()) act_pause_->trigger();
+    } else if (typ == QStringLiteral("状态·报警")) {
+      const QString why = cfg.isEmpty() ? QStringLiteral("触发·报警") : cfg;
+      if (host_sm_) host_sm_->applyState(QStringLiteral("Alarm"));
+      if (host_strip_) host_strip_->setAlarm(true, why);
+    } else if (typ == QStringLiteral("状态·清除报警")) {
+      if (host_sm_) host_sm_->applyState(QStringLiteral("Idle"));
+      if (host_strip_) host_strip_->setAlarm(false);
+    } else if (typ == QStringLiteral("注入·RUN")) {
+      fireStringTrigger(QStringLiteral("RUN"), QStringLiteral("注入·RUN"));
+    } else if (typ == QStringLiteral("注入·STOP")) {
+      fireStringTrigger(QStringLiteral("STOP"), QStringLiteral("注入·STOP"));
+    } else if (typ == QStringLiteral("方案保存") || typ == QStringLiteral("方案另存")) {
+      if (!workbenchIsHeadless()) onSaveProject();
+    } else {
+      logResult(QStringLiteral("未接线触发命令：%1").arg(typ) +
+                (cfg.isEmpty() ? QString() : QStringLiteral(" · %1").arg(cfg)));
+    }
+  }
+}
+
+void MainWindow::onOpenGlobalTriggers() {
+  if (workbenchIsHeadless()) return;
+  QDialog dlg(this);
+  dlg.setWindowTitle(QStringLiteral("全局触发"));
+  dlg.resize(520, 360);
+  auto* lay = new QVBoxLayout(&dlg);
+  lay->addWidget(new QLabel(
+      QStringLiteral("字符串触发（部分匹配）→ 执行·单次 / 连续 / 停止。由通信收数或注入派发。配置随方案保存。无真 PLC。")));
+  auto* list = new QListWidget;
+  lay->addWidget(list, 1);
+  auto* patEdit = new QLineEdit;
+  patEdit->setPlaceholderText(QStringLiteral("匹配字符串，如 RUN / STOP"));
+  auto* cmdBox = new QComboBox;
+  cmdBox->addItems({QStringLiteral("执行·单次"), QStringLiteral("执行·连续"),
+                    QStringLiteral("执行·停止"), QStringLiteral("执行·暂停")});
+  auto* partial = new QCheckBox(QStringLiteral("部分匹配"));
+  partial->setChecked(true);
+  lay->addWidget(patEdit);
+  lay->addWidget(cmdBox);
+  lay->addWidget(partial);
+  auto* btns = new QHBoxLayout;
+  auto* addBtn = new QPushButton(QStringLiteral("添加"));
+  auto* delBtn = new QPushButton(QStringLiteral("删除"));
+  auto* closeBtn = new QPushButton(QStringLiteral("关闭"));
+  btns->addWidget(addBtn);
+  btns->addWidget(delBtn);
+  btns->addStretch();
+  btns->addWidget(closeBtn);
+  lay->addLayout(btns);
+
+  auto reload = [this, list]() {
+    list->clear();
+    const QVariantList rows =
+        document_.globalTriggers().value(QStringLiteral("strings")).toList();
+    for (int i = 0; i < rows.size(); ++i) {
+      const QVariantMap row = rows.at(i).toMap();
+      const QString needle = row.value(QStringLiteral("pattern"),
+                                       row.value(QStringLiteral("event")))
+                                 .toString();
+      const QString typ = row.value(QStringLiteral("commandType"),
+                                    row.value(QStringLiteral("command")))
+                              .toString();
+      const bool en = !row.contains(QStringLiteral("enabled")) ||
+                      row.value(QStringLiteral("enabled")).toBool();
+      const bool part = row.contains(QStringLiteral("partial"))
+                            ? row.value(QStringLiteral("partial")).toBool()
+                            : true;
+      auto* item = new QListWidgetItem(
+          QStringLiteral("%1  →  %2  (%3%4)")
+              .arg(needle, typ.isEmpty() ? QStringLiteral("commands[]") : typ,
+                   part ? QStringLiteral("部分") : QStringLiteral("全等"),
+                   en ? QString() : QStringLiteral(" · 禁用")));
+      item->setData(Qt::UserRole, i);
+      list->addItem(item);
+    }
+  };
+  reload();
+
+  QDialog* box = &dlg;
+  QObject::connect(addBtn, &QPushButton::clicked, box, [=]() {
+    const QString pat = patEdit->text().trimmed();
+    if (pat.isEmpty()) {
+      QMessageBox::information(box, QStringLiteral("全局触发"),
+                               QStringLiteral("请填写匹配字符串"));
+      return;
+    }
+    document_.addStringTrigger(pat, cmdBox->currentText(), partial->isChecked(), true);
+    document_.syncActiveIntoFlows();
+    markProjectDirty();
+    reload();
+    logResult(QStringLiteral("已添加字符串触发 · %1 → %2").arg(pat, cmdBox->currentText()));
+  });
+  QObject::connect(delBtn, &QPushButton::clicked, box, [this, list, reload]() {
+    auto* item = list->currentItem();
+    if (!item) return;
+    const int idx = item->data(Qt::UserRole).toInt();
+    QVariantMap bag = document_.globalTriggers();
+    QVariantList rows = bag.value(QStringLiteral("strings")).toList();
+    if (idx < 0 || idx >= rows.size()) return;
+    rows.removeAt(idx);
+    bag.insert(QStringLiteral("strings"), rows);
+    document_.setGlobalTriggers(bag);
+    document_.syncActiveIntoFlows();
+    markProjectDirty();
+    reload();
+    logResult(QStringLiteral("已删除字符串触发"));
+  });
+  QObject::connect(closeBtn, &QPushButton::clicked, box, &QDialog::accept);
+  dlg.exec();
 }
 
 void MainWindow::onOpenRecipeSwitch() {

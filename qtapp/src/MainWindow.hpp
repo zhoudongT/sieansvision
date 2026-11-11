@@ -55,6 +55,12 @@ class MainWindow : public QMainWindow {
   void onOpenCameraManager();
   /** Open the in-project recipe capture/apply dialog (产线配方 / 换型 subset). */
   void onOpenRecipeSwitch();
+  /** Edit project globalTriggers string rows (headless no-op). */
+  void onOpenGlobalTriggers();
+  /** Match a comm/inject payload against string triggers and dispatch run/stop. */
+  bool fireStringTrigger(const QString& text, const QString& reason = QString());
+  /** Execute a list of trigger command maps (type/config). */
+  void dispatchGlobalTriggers(const QVector<QVariantMap>& cmds);
   /** Toggle on-canvas ROI draw/move/resize for the selected operator. */
   void onToggleRoiMode();
   /** Clear ROI params on the selected operator. */
