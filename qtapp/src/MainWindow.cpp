@@ -4215,17 +4215,20 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                   .arg(flow_vars_.value(QStringLiteral("mqttTcpRecvValue")).toString());
       line += QChar(' ');
       line += QStringLiteral(
-                  "yoloOk=%1 yoloCount=%2 yoloScore=%3 yoloLabel=%4 "
-                  "yoloSegOk=%5 yoloSegCount=%6 yoloSegScore=%7 yoloSegArea=%8 yoloSegLabel=%9")
+                  "yoloOk=%1 yoloCount=%2 yoloScore=%3 yoloLabel=%4 yoloBackend=%5 "
+                  "yoloSegOk=%6 yoloSegCount=%7 yoloSegScore=%8 yoloSegArea=%9 "
+                  "yoloSegLabel=%10 yoloSegBackend=%11")
                   .arg(flow_vars_.value(QStringLiteral("yoloOk")).toString())
                   .arg(flow_vars_.value(QStringLiteral("yoloCount")).toString())
                   .arg(flow_vars_.value(QStringLiteral("yoloScore")).toString())
                   .arg(flow_vars_.value(QStringLiteral("yoloLabel")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("yoloBackend")).toString())
                   .arg(flow_vars_.value(QStringLiteral("yoloSegOk")).toString())
                   .arg(flow_vars_.value(QStringLiteral("yoloSegCount")).toString())
                   .arg(flow_vars_.value(QStringLiteral("yoloSegScore")).toString())
                   .arg(flow_vars_.value(QStringLiteral("yoloSegArea")).toString())
-                  .arg(flow_vars_.value(QStringLiteral("yoloSegLabel")).toString());
+                  .arg(flow_vars_.value(QStringLiteral("yoloSegLabel")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("yoloSegBackend")).toString());
       line += QChar(' ');
       line += QStringLiteral(
                   "cloudFiltOk=%1 cloudFiltCount=%2 "

@@ -9,6 +9,8 @@ export MVCAM_COMMON_RUNENV="${MVCAM_COMMON_RUNENV:-/opt/MVS/lib}"
 EXTRA_LIBS="$HOME/Qt/extra-libs"
 export LD_LIBRARY_PATH="/opt/MVS/lib/64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 [[ -d "$EXTRA_LIBS" ]] && export LD_LIBRARY_PATH="$EXTRA_LIBS:$LD_LIBRARY_PATH"
+ORT_LIB="${SIEANS_ONNXRUNTIME_DIR:-$HOME/.local/opt/onnxruntime}/lib"
+[[ -d "$ORT_LIB" ]] && export LD_LIBRARY_PATH="$ORT_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export DISPLAY="${DISPLAY:-:0}"
 
 # Prefer aqt Qt runtime libs when present.

@@ -6,6 +6,9 @@
 
 节点只读取本目录中的模型，不自动下载。默认 CPU 推理。当前支持目标检测与实例分割，不包括分类、姿态或训练。自定义工业零件需要对应的数据集和训练权重；通用 COCO 权重不能代替缺陷模型。
 
+Qt 工作台（`sieans_qt`）检测算子在找到本地 `.onnx` 且本机有 ONNX Runtime 时走 `backend=onnx`；缺失权重、仅有 `.pt`、或推理失败时回退 `backend=software`，算子仍成功，且不会自动下载官方 YOLO 权重。查找路径：参数中的绝对/相对路径、环境变量 `SIEANS_YOLO_MODELS_DIR`、当前目录或仓库 `models/`、`$HOME/.local/share/sieans/models/`。CPU ONNX Runtime 可用 `scripts/install-onnxruntime-user.sh` 装到 `$HOME/.local/opt/onnxruntime`（官方 v1.31.1，安装时校验 SHA-256）。`sieans-yolo-smoke.onnx` 是本地生成的链路烟测桩，不是 Ultralytics 官方模型，不能用于现场检测。分割算子目前仍走 software，待接入真实掩膜输出。
+
+
 Ultralytics 提供 AGPL-3.0 与商业许可，产品发布时需根据所采用的软件和模型许可选择发布方式： https://www.ultralytics.com/legal
 
 ## YOLOv8 / YOLO11 实例分割

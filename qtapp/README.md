@@ -36,6 +36,8 @@
 
 OCR 依赖本机 `tesseract` 与 `eng` 语言包。无 sudo 时执行 `scripts/install-tesseract-user.sh`，把 Ubuntu 官方 deb 解压到 `$HOME/.local/opt/tesseract`，并安装 `$HOME/.local/bin/tesseract` 包装脚本（eng + chi_sim）。算子会查找 PATH、该用户前缀、`SIEANS_TESSERACT` 与 `TESSDATA_PREFIX`；系统已安装 `/usr/bin/tesseract` 时仍优先使用 PATH 上的版本。
 
+YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx`）放到仓库 `models/` 或 `$HOME/.local/share/sieans/models/`（或 `SIEANS_YOLO_MODELS_DIR`）。无权重或只有 `.pt` 时算子回退 software，不会自动下载。ONNX Runtime 可用 `scripts/install-onnxruntime-user.sh` 安装到 `$HOME/.local/opt/onnxruntime`。本地烟测桩 `models/sieans-yolo-smoke.onnx` 仅用于验证推理链路，不是工业模型。
+
 启动默认尝试加载 `projects/open-and-run-gentl-qr.sieans`。
 
 ## 已落地 vs NEXT

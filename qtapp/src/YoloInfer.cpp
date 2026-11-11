@@ -1,5 +1,7 @@
 #include "YoloInfer.hpp"
 
+#include "YoloOnnx.hpp"
+
 #include "FixturePose.hpp"
 #include "SoftFrame.hpp"
 
@@ -532,8 +534,43 @@ YoloResult runYoloImpl(const QImage& image, const QVariantMap& params, bool segm
   }
 
   int unionPx = 0;
-  QVector<YoloItem> blobs = findColorBlobs(work, minArea, segment, &unionPx);
-  r.rawCount = blobs.size();
+  QVector<YoloItem> blobs;
+  QString runtimeNote;
+  const QString weightPath = resolveYoloWeightPath(r.model);
+  bool usedOnnx = false;
+  // 检测算子优先走本地 ONNX；失败或条件不满足时回退 software，不算算子失败。
+  if (!segment && !weightPath.isEmpty()) {
+    const QString suf = QFileInfo(weightPath).suffix().toLower();
+    if (suf == QLatin1String("onnx")) {
+      YoloResult onnxOut;
+      QString onnxErr;
+      if (tryYoloOnnxDetect(work, weightPath, params, imageSize, &onnxOut, &onnxErr)) {
+        usedOnnx = true;
+        r.backend = QStringLiteral("onnx");
+        r.device = onnxOut.device.isEmpty() ? QStringLiteral("cpu") : onnxOut.device;
+        blobs = onnxOut.items;
+        r.rawCount = onnxOut.rawCount;
+        runtimeNote = QStringLiteral("本地 ONNX Runtime 推理（backend=onnx）· 权重=%1")
+                          .arg(weightPath);
+      } else {
+        runtimeNote = QStringLiteral("本地 ONNX 推理失败，回退 software：%1")
+                          .arg(onnxErr);
+      }
+    } else if (suf == QLatin1String("pt") || suf == QLatin1String("pth")) {
+      runtimeNote = QStringLiteral(
+          "已找到本地 .pt 权重，C++ 路径需要同名或指定的 .onnx；未自动下载，回退 software。");
+    } else {
+      runtimeNote = QStringLiteral("本地权重扩展名不受支持，回退 software：%1").arg(weightPath);
+    }
+  } else if (segment && !weightPath.isEmpty()) {
+    runtimeNote = QStringLiteral(
+        "分割算子的真实 ONNX 掩膜路径尚未接入，回退 software。不会自动下载模型。");
+  }
+  if (!usedOnnx) {
+    blobs = findColorBlobs(work, minArea, segment, &unionPx);
+    r.rawCount = blobs.size();
+    r.backend = QStringLiteral("software");
+  }
 
   QVector<YoloItem> kept;
   kept.reserve(blobs.size());
@@ -581,12 +618,10 @@ YoloResult runYoloImpl(const QImage& image, const QVariantMap& params, bool segm
   r.count = kept.size();
   r.ok = true;
 
-  QString weightNote = QStringLiteral("模型未安装：使用软图确定性检测器（backend=software）。不会自动下载模型。");
-  const QFileInfo fi(r.model);
-  QFileInfo localFi(QStringLiteral("models/") + QFileInfo(r.model).fileName());
-  if (fi.isFile() || localFi.isFile()) {
+  QString weightNote = runtimeNote;
+  if (weightNote.isEmpty()) {
     weightNote = QStringLiteral(
-        "已发现本地权重，但 Qt 路径未接入推理运行时，仍使用软图确定性检测器（backend=software）");
+        "模型未安装：使用软图确定性检测器（backend=software）。不会自动下载模型。");
   }
   if (r.requestedDevice.startsWith(QLatin1String("cuda"), Qt::CaseInsensitive)) {
     if (!r.note.isEmpty()) r.note += QLatin1Char(' ');
@@ -716,6 +751,23 @@ QStringList yoloSelfTest() {
     const YoloResult d = runYoloDetect(scene, {{QStringLiteral("imageSize"), 31}});
     if (d.ok) fails << QStringLiteral("invalid imageSize should fail");
     if (d.error.isEmpty()) fails << QStringLiteral("invalid imageSize no error");
+  }
+
+  // 默认仍走 software；仅在显式指定本地烟测 ONNX 且运行时可用时证明真实推理路径。
+  {
+    const QString smoke = resolveYoloWeightPath(QStringLiteral("sieans-yolo-smoke.onnx"));
+    if (!smoke.isEmpty() && onnxRuntimeAvailable()) {
+      const YoloResult d = runYoloDetect(
+          scene, {{QStringLiteral("model"), smoke},
+                  {QStringLiteral("confidence"), 0.25},
+                  {QStringLiteral("imageSize"), 640}});
+      if (!d.ok) fails << QStringLiteral("onnx detect not ok: %1").arg(d.error);
+      if (d.backend != QLatin1String("onnx"))
+        fails << QStringLiteral("onnx backend %1").arg(d.backend);
+      if (d.count < 1) fails << QStringLiteral("onnx count %1").arg(d.count);
+      if (d.count >= 1 && d.items[0].confidence < 0.9)
+        fails << QStringLiteral("onnx score %1").arg(d.items[0].confidence);
+    }
   }
 
   return fails;

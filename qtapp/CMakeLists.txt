@@ -91,6 +91,8 @@ add_executable(sieans_qt
   src/MqttClient.cpp
   src/YoloInfer.hpp
   src/YoloInfer.cpp
+  src/YoloOnnx.hpp
+  src/YoloOnnx.cpp
   src/CloudOps.hpp
   src/CloudOps.cpp
   src/SocketExchange.hpp
@@ -122,6 +124,23 @@ target_link_libraries(sieans_qt PRIVATE
   Qt6::Network
   sieans_algo
 )
+
+# Optional ONNX Runtime headers (real YOLO path). The library is loaded with
+# dlopen at runtime so a machine without ORT can still run the software fallback.
+target_link_libraries(sieans_qt PRIVATE ${CMAKE_DL_LIBS})
+set(_sieans_ort "")
+if(DEFINED ENV{SIEANS_ONNXRUNTIME_DIR} AND EXISTS "$ENV{SIEANS_ONNXRUNTIME_DIR}/include/onnxruntime_c_api.h")
+  set(_sieans_ort "$ENV{SIEANS_ONNXRUNTIME_DIR}")
+elseif(EXISTS "$ENV{HOME}/.local/opt/onnxruntime/include/onnxruntime_c_api.h")
+  set(_sieans_ort "$ENV{HOME}/.local/opt/onnxruntime")
+endif()
+if(_sieans_ort)
+  message(STATUS "SIEANS ONNX Runtime headers: ${_sieans_ort}")
+  target_compile_definitions(sieans_qt PRIVATE SIEANS_HAS_ONNXRUNTIME=1)
+  target_include_directories(sieans_qt PRIVATE "${_sieans_ort}/include")
+else()
+  message(STATUS "SIEANS ONNX Runtime headers not found — YOLO uses software fallback only")
+endif()
 
 add_custom_command(TARGET sieans_qt POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:sieans_qt>/resources

@@ -44,11 +44,15 @@ struct YoloResult {
 
 /**
  * YOLO 目标检测（catalog: yolo）。
- * 无本地权重或不具备 C++ 推理运行时时，使用软图确定性检测器（backend=software），
- * 在原图上按特征色寻找目标，不自动下载模型，不要求 GPU。
+ * 本地 .onnx + 可用的 ONNX Runtime 时走真实推理（backend=onnx）。
+ * 无本地权重、不是 .onnx、或运行时/推理失败时，使用软图确定性检测器（backend=software），
+ * 在原图上按特征色寻找目标。不自动下载模型，缺失权重不算失败，不要求 GPU。
+ *
+ * 权重查找：绝对/相对路径、SIEANS_YOLO_MODELS_DIR、仓库或当前目录 models/、
+ * $HOME/.local/share/sieans/models。可将 yolov8n.onnx / yolo11n.onnx 放入上述目录。
  *
  * Params:
- *  model: 默认 yolo11n.pt（models/ 下的本地 .pt/.onnx，缺失时走 software）
+ *  model: 默认 yolo11n.pt（本地 .onnx 走真实路径；.pt 或缺失时走 software）
  *  device: cpu|auto|cuda:0（software 路径始终在 CPU 上运行）
  *  confidence: 默认 0.25
  *  iou: 默认 0.45（NMS）
