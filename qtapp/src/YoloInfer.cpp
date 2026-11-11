@@ -538,18 +538,24 @@ YoloResult runYoloImpl(const QImage& image, const QVariantMap& params, bool segm
   QString runtimeNote;
   const QString weightPath = resolveYoloWeightPath(r.model);
   bool usedOnnx = false;
-  // 检测算子优先走本地 ONNX；失败或条件不满足时回退 software，不算算子失败。
-  if (!segment && !weightPath.isEmpty()) {
+  // 检测 / 分割优先走本地 ONNX；失败或条件不满足时回退 software，不算算子失败。
+  if (!weightPath.isEmpty()) {
     const QString suf = QFileInfo(weightPath).suffix().toLower();
     if (suf == QLatin1String("onnx")) {
       YoloResult onnxOut;
       QString onnxErr;
-      if (tryYoloOnnxDetect(work, weightPath, params, imageSize, &onnxOut, &onnxErr)) {
+      const bool ok = segment
+                          ? tryYoloOnnxSegment(work, weightPath, params, imageSize, &onnxOut,
+                                               &onnxErr)
+                          : tryYoloOnnxDetect(work, weightPath, params, imageSize, &onnxOut,
+                                              &onnxErr);
+      if (ok) {
         usedOnnx = true;
         r.backend = QStringLiteral("onnx");
         r.device = onnxOut.device.isEmpty() ? QStringLiteral("cpu") : onnxOut.device;
         blobs = onnxOut.items;
         r.rawCount = onnxOut.rawCount;
+        if (segment) unionPx = onnxOut.unionAreaPixels;
         runtimeNote = QStringLiteral("本地 ONNX Runtime 推理（backend=onnx）· 权重=%1")
                           .arg(weightPath);
       } else {
@@ -562,9 +568,6 @@ YoloResult runYoloImpl(const QImage& image, const QVariantMap& params, bool segm
     } else {
       runtimeNote = QStringLiteral("本地权重扩展名不受支持，回退 software：%1").arg(weightPath);
     }
-  } else if (segment && !weightPath.isEmpty()) {
-    runtimeNote = QStringLiteral(
-        "分割算子的真实 ONNX 掩膜路径尚未接入，回退 software。不会自动下载模型。");
   }
   if (!usedOnnx) {
     blobs = findColorBlobs(work, minArea, segment, &unionPx);
@@ -707,6 +710,8 @@ QStringList yoloSelfTest() {
                 {QStringLiteral("contourTolerance"), 0.5},
                 {QStringLiteral("output"), QStringLiteral("overlay")}});
     if (!s.ok) fails << QStringLiteral("segment not ok: %1").arg(s.error);
+    if (s.backend != QLatin1String("software"))
+      fails << QStringLiteral("segment backend %1").arg(s.backend);
     if (s.count != 1) fails << QStringLiteral("segment count %1").arg(s.count);
     if (s.count >= 1) {
       if (s.items[0].areaPixels != expectArea)
@@ -767,6 +772,27 @@ QStringList yoloSelfTest() {
       if (d.count < 1) fails << QStringLiteral("onnx count %1").arg(d.count);
       if (d.count >= 1 && d.items[0].confidence < 0.9)
         fails << QStringLiteral("onnx score %1").arg(d.items[0].confidence);
+    }
+  }
+
+  {
+    const QString smoke = resolveYoloWeightPath(QStringLiteral("sieans-yolo-seg-smoke.onnx"));
+    if (!smoke.isEmpty() && onnxRuntimeAvailable()) {
+      const YoloResult s = runYoloSegment(
+          scene, {{QStringLiteral("model"), smoke},
+                  {QStringLiteral("confidence"), 0.25},
+                  {QStringLiteral("imageSize"), 640}});
+      if (!s.ok) fails << QStringLiteral("onnx segment not ok: %1").arg(s.error);
+      if (s.backend != QLatin1String("onnx"))
+        fails << QStringLiteral("onnx segment backend %1 note=%2 err=%3")
+                     .arg(s.backend, s.note, s.error);
+      if (s.count < 1) fails << QStringLiteral("onnx segment count %1").arg(s.count);
+      if (s.count >= 1 && s.items[0].confidence < 0.9)
+        fails << QStringLiteral("onnx segment score %1").arg(s.items[0].confidence);
+      if (s.count >= 1 && s.items[0].areaPixels < 1)
+        fails << QStringLiteral("onnx segment area %1").arg(s.items[0].areaPixels);
+      if (s.count >= 1 && s.items[0].contours.isEmpty())
+        fails << QStringLiteral("onnx segment missing contour");
     }
   }
 
