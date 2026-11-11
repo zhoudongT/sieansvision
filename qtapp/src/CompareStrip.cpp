@@ -11,6 +11,9 @@
 #include <QSettings>
 #include <QTimer>
 #include <QToolTip>
+#include <QMenu>
+#include <QAction>
+#include <QPoint>
 #include <QEvent>
 #include <QMouseEvent>
 #include <QColor>
@@ -139,7 +142,10 @@ CompareStrip::CompareStrip(QWidget* parent) : QWidget(parent) {
   undoClearBtn_->setObjectName(QStringLiteral("compareThumbUndoClear"));
   undoClearBtn_->setFixedSize(20, 20);
   undoClearBtn_->setEnabled(false);
-  undoClearBtn_->setToolTip(QStringLiteral("短按提示 · 长按清空撤销栈 · 无硬件"));
+  undoClearBtn_->setToolTip(QStringLiteral("短按提示 · 长按清空（650ms）· 右键选时长"));
+  undoClearBtn_->setContextMenuPolicy(Qt::CustomContextMenu);
+  connect(undoClearBtn_, &QPushButton::customContextMenuRequested, this,
+          &CompareStrip::onUndoClearContextMenu);
   connect(undoClearBtn_, &QPushButton::pressed, this, [this]() {
     if (!undo_clear_timer_) {
       undo_clear_timer_ = new QTimer(this);
@@ -266,10 +272,13 @@ void CompareStrip::applyLockChrome() {
   if (undoDepth_) undoDepth_->setText(QString::number(order_undo_.size()));
   if (undoClearBtn_) {
     undoClearBtn_->setEnabled(!order_undo_.isEmpty());
+    const QString stackBit = order_undo_.isEmpty()
+                                 ? QString()
+                                 : QStringLiteral(" · 栈%1").arg(order_undo_.size());
     undoClearBtn_->setToolTip(
-        QStringLiteral("短按提示 · 长按清空（%1ms · 栈%2）· 无硬件")
+        QStringLiteral("短按提示 · 长按清空（%1ms）· 右键选时长%2")
             .arg(undo_clear_long_ms_)
-            .arg(order_undo_.size()));
+            .arg(stackBit));
   }
   if (lockBadge_) {
     if (order_locked_) {
@@ -494,6 +503,44 @@ int CompareStrip::setUndoClearLongMs(int ms, bool persist) {
   return undo_clear_long_ms_;
 }
 
+QList<int> CompareStrip::undoClearLongMsPresets() {
+  return {400, 650, 1000, 1500};
+}
+
+QMenu* CompareStrip::buildUndoClearPresetMenu() {
+  auto* menu = new QMenu(this);
+  menu->setObjectName(QStringLiteral("compareThumbUndoClearPresetMenu"));
+  const int cur = undo_clear_long_ms_;
+  for (const int ms : undoClearLongMsPresets()) {
+    QString lab = QStringLiteral("%1 ms").arg(ms);
+    if (ms == 650) lab += QStringLiteral("（默认）");
+    if (ms == cur) lab = QStringLiteral("✓ %1").arg(lab);
+    QAction* act = menu->addAction(lab);
+    act->setData(ms);
+    act->setProperty("isDefault", ms == 650);
+    connect(act, &QAction::triggered, this, [this, ms]() { applyUndoClearPreset(ms); });
+  }
+  return menu;
+}
+
+int CompareStrip::applyUndoClearPreset(int ms) {
+  const int applied = setUndoClearLongMs(ms, true);
+  last_undo_clear_tip_ = QStringLiteral("长按时长 → %1ms").arg(applied);
+  if (undoClearBtn_) {
+    // Keep the duration tip visible on the button as well as the standing tooltip.
+    QToolTip::showText(undoClearBtn_->mapToGlobal(QPoint(0, undoClearBtn_->height())),
+                       last_undo_clear_tip_, undoClearBtn_);
+  }
+  return applied;
+}
+
+void CompareStrip::onUndoClearContextMenu(const QPoint& pos) {
+  if (!undoClearBtn_) return;
+  QMenu* menu = buildUndoClearPresetMenu();
+  menu->exec(undoClearBtn_->mapToGlobal(pos));
+  menu->deleteLater();
+}
+
 QString CompareStrip::lockBadgeText() const {
   return lockBadge_ ? lockBadge_->text() : QString();
 }
@@ -684,6 +731,65 @@ QStringList CompareStrip::compareSelfTest() {
   strip.lockBadgeClick();
   check("lock-click-toggle", strip.isOrderLocked());
   strip.lockBadgeClick();
+
+  // wave259: right-click duration presets (headless menu, temp ini only).
+  strip.setUndoClearLongMs(650, true);
+  QMenu* presetMenu = strip.buildUndoClearPresetMenu();
+  check("preset-menu", presetMenu && presetMenu->objectName() ==
+                           QStringLiteral("compareThumbUndoClearPresetMenu"));
+  const QList<QAction*> acts = presetMenu ? presetMenu->actions() : QList<QAction*>();
+  check("preset-count", acts.size() == 4, QString::number(acts.size()));
+  const QList<int> want = CompareStrip::undoClearLongMsPresets();
+  check("preset-values", want == QList<int>({400, 650, 1000, 1500}));
+  bool labelsOk = acts.size() == 4;
+  for (int i = 0; i < acts.size() && i < want.size(); ++i) {
+    const int ms = acts.at(i)->data().toInt();
+    const QString lab = acts.at(i)->text();
+    if (ms != want.at(i)) labelsOk = false;
+    if (ms == 650 && !lab.contains(QStringLiteral("（默认）"))) labelsOk = false;
+    if (ms == 650 && !lab.startsWith(QStringLiteral("✓"))) labelsOk = false;
+    if (ms != 650 && lab.startsWith(QStringLiteral("✓"))) labelsOk = false;
+    if (ms == 650 && !acts.at(i)->property("isDefault").toBool()) labelsOk = false;
+  }
+  check("preset-labels", labelsOk, acts.isEmpty() ? QStringLiteral("no-actions")
+                                                  : acts.at(1)->text());
+  check("preset-apply", strip.applyUndoClearPreset(1500) == 1500 &&
+                            strip.undoClearLongMs() == 1500);
+  check("preset-tip", strip.lastUndoClearTip().contains(QStringLiteral("1500")),
+        strip.lastUndoClearTip());
+  prefs.sync();
+  check("preset-written",
+        prefs.value(QStringLiteral("film/undoClearLongMs")).toInt() == 1500,
+        prefs.value(QStringLiteral("film/undoClearLongMs")).toString());
+  {
+    CompareStrip reloaded;
+    reloaded.setCompareSettings(&prefs);
+    reloaded.loadComparePrefs();
+    // loadComparePrefs() returns the lock flag, not load success.
+    check("preset-reload", reloaded.undoClearLongMs() == 1500,
+          QStringLiteral("ms=%1 written=%2 locked=%3")
+              .arg(reloaded.undoClearLongMs())
+              .arg(prefs.value(QStringLiteral("film/undoClearLongMs")).toInt())
+              .arg(reloaded.isOrderLocked()));
+  }
+  QMenu* marked = strip.buildUndoClearPresetMenu();
+  QString lab1500;
+  bool check1500 = false, default650 = false;
+  if (marked) {
+    for (QAction* act : marked->actions()) {
+      if (act->data().toInt() == 1500) {
+        lab1500 = act->text();
+        check1500 = lab1500.startsWith(QStringLiteral("✓"));
+      }
+      if (act->data().toInt() == 650)
+        default650 = act->text().contains(QStringLiteral("（默认）")) &&
+                     act->property("isDefault").toBool() &&
+                     !act->text().startsWith(QStringLiteral("✓"));
+    }
+  }
+  check("preset-current-mark", check1500, lab1500);
+  check("preset-default-mark", default650);
+  check("preset-apply-400", strip.applyUndoClearPreset(400) == 400);
 
   QStringList many;
   for (int i = 0; i < 8; ++i) {

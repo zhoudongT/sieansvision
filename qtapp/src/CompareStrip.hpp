@@ -11,6 +11,8 @@ class QPushButton;
 class QSettings;
 class QTimer;
 class QEvent;
+class QMenu;
+class QPoint;
 
 namespace sieans_qt {
 
@@ -66,6 +68,12 @@ class CompareStrip : public QWidget {
   QString undoClearShortPress();
   int setUndoClearLongMs(int ms, bool persist = true);
   int undoClearLongMs() const { return undo_clear_long_ms_; }
+  /** PySide presets: 400 / 650 (default) / 1000 / 1500. */
+  static QList<int> undoClearLongMsPresets();
+  /** Build the right-click duration menu (does not exec; caller owns via parent). */
+  QMenu* buildUndoClearPresetMenu();
+  /** Apply a preset and persist film/undoClearLongMs (uses injected settings if set). */
+  int applyUndoClearPreset(int ms);
   QString lastUndoClearTip() const { return last_undo_clear_tip_; }
   QString lockBadgeText() const;
 
@@ -94,6 +102,8 @@ class CompareStrip : public QWidget {
   void onRowsMoved();
   QSettings* compareSettings() const;
   QString thumbLabelFor(const QString& path) const;
+  /** Show the undo-clear duration preset menu at the button. */
+  void onUndoClearContextMenu(const QPoint& pos);
 
  protected:
   bool eventFilter(QObject* obj, QEvent* event) override;

@@ -70,6 +70,8 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx`）放�
 
 **已落地（wave258）：** 胶片条 OK/NG 测量判定徽章（对齐 PySide `set_frame_measure_badges`）：优先测量/卡尺/几何键，无则回退 `locateOk`/`passGate`；运行期缓存，不写方案。对比侧栏同步路径徽章。无界面自测 `SIEANS_QT_FILM_BADGE_SELFTEST=1`。
 
+**已落地（wave259）：** 对比条 ⊘ 右键长按时长预设（400 / 650 默认 / 1000 / 1500 ms），写入同一 `film/undoClearLongMs` 偏好；无界面自测只走临时 ini，不写用户仓库。`SIEANS_QT_COMPARE_STRIP_SELFTEST=1`。
+
 **NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。
 
 ## VM chrome (2026-11-03)

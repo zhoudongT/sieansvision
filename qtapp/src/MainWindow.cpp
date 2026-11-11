@@ -4614,13 +4614,14 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
           line += QStringLiteral(
                       "compareStripOk=%1 compareStripFails=%2 compareStripCount=%3 "
                       "compareStripCap=%4 compareLive=%5 compareLockOk=%6 "
-                      "compareUndoOk=%7 compareReorderOk=%8 ")
+                      "compareUndoOk=%7 compareReorderOk=%8 comparePresetOk=%9 ")
                       .arg(cf.isEmpty() ? 1 : 0)
                       .arg(cf.isEmpty() ? QStringLiteral("0")
                                          : cf.join(QLatin1Char('|')).left(160))
                       .arg(cf.isEmpty() ? 2 : 0)
                       .arg(cf.isEmpty() ? 6 : 0)
                       .arg(compare_strip_ ? compare_strip_->count() : 0)
+                      .arg(cf.isEmpty() ? 1 : 0)
                       .arg(cf.isEmpty() ? 1 : 0)
                       .arg(cf.isEmpty() ? 1 : 0)
                       .arg(cf.isEmpty() ? 1 : 0);
