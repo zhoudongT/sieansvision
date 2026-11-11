@@ -657,7 +657,11 @@ void MainWindow::buildUi() {
   // —— Right: image tabs + host strip + filmstrip ——
   auto* imagePane = new QWidget;
   imagePane->setObjectName(QStringLiteral("imagePane"));
-  auto* imgLay = new QVBoxLayout(imagePane);
+  auto* imgRow = new QHBoxLayout(imagePane);
+  imgRow->setContentsMargins(0, 0, 0, 0);
+  imgRow->setSpacing(0);
+  auto* imageCol = new QWidget;
+  auto* imgLay = new QVBoxLayout(imageCol);
   imgLay->setContentsMargins(0, 0, 0, 0);
   imgLay->setSpacing(0);
   image_tabs_ = new QTabWidget;
@@ -797,6 +801,21 @@ void MainWindow::buildUi() {
   }
   filmstrip_ = new FilmstripBar;
   imgLay->addWidget(filmstrip_);
+  imgRow->addWidget(imageCol, 1);
+  compare_strip_ = new CompareStrip;
+  imgRow->addWidget(compare_strip_, 0);
+  connect(compare_strip_, &CompareStrip::pathActivated, this, [this](const QString& path) {
+    if (!filmstrip_ || path.isEmpty()) return;
+    QVariantMap bag;
+    bag.insert(QStringLiteral("frame"), path);
+    const QVariantMap hit = FilmstripBar::seekFromSparkJump(filmstrip_, bag, true);
+    if (hit.value(QStringLiteral("ok")).toBool())
+      showStatus(QStringLiteral("对比焦点 · %1").arg(QFileInfo(path).fileName()));
+  });
+  connect(compare_strip_, &CompareStrip::clearRequested, this, [this]() {
+    result_compare_paths_.clear();
+    showStatus(QStringLiteral("对比已清除"));
+  });
   connect(filmstrip_, &FilmstripBar::addImagesRequested, this, [this]() {
     const QString path = QFileDialog::getOpenFileName(
         this, QStringLiteral("添加图像"),
@@ -880,6 +899,17 @@ void MainWindow::buildUi() {
                        .arg(hit.value(QStringLiteral("index")).toInt() + 1));
     }
     if (!nodeId.isEmpty() && flow_scene_) flow_scene_->selectNode(nodeId);
+  });
+  connect(result_table_, &QTableWidget::cellDoubleClicked, this, [this](int row, int) {
+    if (!result_table_ || row < 0) return;
+    auto* it = result_table_->item(row, 0);
+    if (!it) return;
+    QString path = it->data(Qt::UserRole).toString();
+    const int idx = it->data(Qt::UserRole + 1).toInt();
+    if (path.isEmpty() && filmstrip_ && idx >= 0 && idx < filmstrip_->count())
+      path = filmstrip_->paths().value(idx);
+    if (path.isEmpty() && filmstrip_) path = filmstrip_->currentPath();
+    applyResultCompare(path);
   });
   auto* resultHost = new QWidget;
   auto* resultLay = new QVBoxLayout(resultHost);
@@ -1495,6 +1525,8 @@ void MainWindow::applyDocumentToUi() {
   }
   if (host_strip_) host_strip_->setWatchKeys(document_.hostWatchKeys());
   syncHostPinGroups();
+  result_compare_paths_.clear();
+  if (compare_strip_) compare_strip_->clear();
   {
     const int iv = document_.runIntervalMs() > 0 ? document_.runIntervalMs() : 200;
     if (host_sm_) host_sm_->setRunIntervalMs(iv);
@@ -1961,6 +1993,52 @@ void MainWindow::applyHostPinGroup(const QString& name) {
   syncHostPinGroups();
   markProjectDirty();
   showStatus(QStringLiteral("钉组 %1 · %2 键").arg(document_.activePinGroup()).arg(keys.size()));
+}
+
+void MainWindow::applyResultCompare(const QString& path) {
+  const QString p = path.trimmed();
+  if (p.isEmpty()) {
+    showStatus(QStringLiteral("对比叠层：无胶片路径"));
+    return;
+  }
+  if (filmstrip_) {
+    QVariantMap bag;
+    bag.insert(QStringLiteral("frame"), p);
+    FilmstripBar::seekFromSparkJump(filmstrip_, bag, true);
+  }
+  auto samePath = [](const QString& a, const QString& b) {
+    if (a == b) return true;
+    return QFileInfo(a).fileName() == QFileInfo(b).fileName() && !a.isEmpty() && !b.isEmpty();
+  };
+  if (result_compare_paths_.size() == 1 && samePath(result_compare_paths_.first(), p)) {
+    result_compare_paths_.clear();
+    if (compare_strip_) compare_strip_->clear();
+    showStatus(QStringLiteral("再点清除对比 · %1").arg(QFileInfo(p).fileName()));
+    return;
+  }
+  int have = -1;
+  for (int i = 0; i < result_compare_paths_.size(); ++i) {
+    if (samePath(result_compare_paths_.at(i), p)) {
+      have = i;
+      break;
+    }
+  }
+  if (have >= 0) {
+    if (compare_strip_) compare_strip_->activatePath(result_compare_paths_.at(have), false);
+    showStatus(QStringLiteral("对比焦点 · %1").arg(QFileInfo(p).fileName()));
+    return;
+  }
+  if (result_compare_paths_.size() >= 6) {
+    showStatus(QStringLiteral("对比最多 6 帧"));
+    return;
+  }
+  result_compare_paths_ << p;
+  // Side rail appears at 2+ paths, matching PySide (single-frame hover does not pop it).
+  if (compare_strip_ && result_compare_paths_.size() >= 2)
+    compare_strip_->setPaths(result_compare_paths_, p);
+  showStatus(QStringLiteral("结果表双击对比 · %1 · %2 帧")
+                 .arg(QFileInfo(p).fileName())
+                 .arg(result_compare_paths_.size()));
 }
 
 void MainWindow::markProjectDirty() {
@@ -4414,6 +4492,18 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                       .arg(pf.isEmpty() ? 1 : 0)
                       .arg(cf.isEmpty() ? 1 : 0)
                       .arg(document_.pinGroupNames().size());
+        }
+        {
+          const QStringList cf = CompareStrip::compareSelfTest();
+          line += QStringLiteral(
+                      "compareStripOk=%1 compareStripFails=%2 compareStripCount=%3 "
+                      "compareStripCap=%4 compareLive=%5 ")
+                      .arg(cf.isEmpty() ? 1 : 0)
+                      .arg(cf.isEmpty() ? QStringLiteral("0")
+                                         : cf.join(QLatin1Char('|')).left(160))
+                      .arg(cf.isEmpty() ? 2 : 0)
+                      .arg(cf.isEmpty() ? 6 : 0)
+                      .arg(compare_strip_ ? compare_strip_->count() : 0);
         }
       }
       line += QStringLiteral(

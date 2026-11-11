@@ -63,6 +63,8 @@ add_executable(sieans_qt
   src/FlowTabBar.cpp
   src/FilmstripBar.hpp
   src/FilmstripBar.cpp
+  src/CompareStrip.hpp
+  src/CompareStrip.cpp
   src/SoftFrame.hpp
   src/SoftFrame.cpp
   src/HostStatePanel.hpp

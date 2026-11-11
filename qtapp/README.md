@@ -60,6 +60,8 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx`）放�
 
 **已落地（wave253）：** Host 钉组与监视芯片（对齐 PySide `hostWatch.pinGroups` / `activePinGroup`）：分组持久化与恢复、Host 条钉组芯片与变量监视下拉切换、存组/建组；运行期改监视键不改写钉组、不脏污现场种子。无界面自测 `SIEANS_QT_PIN_GROUP_SELFTEST=1`。
 
+**已落地（wave254）：** 结果表双击多选对比侧栏（对齐 PySide `CompareThumbStrip` 子集）：两帧及以上显示缩略条、单击定位胶片、再点同帧或 × 清除；运行期对比不写方案、不脏污现场种子。不发明几何叠层。无界面自测 `SIEANS_QT_COMPARE_STRIP_SELFTEST=1`。
+
 **NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。
 
 ## VM chrome (2026-11-03)

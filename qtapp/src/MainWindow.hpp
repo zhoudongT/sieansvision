@@ -11,6 +11,7 @@
 #include "VarWatchPanel.hpp"
 #include "HostStrip.hpp"
 #include "FilmstripBar.hpp"
+#include "CompareStrip.hpp"
 #include "FlowTabBar.hpp"
 #include "PropertyFloat.hpp"
 #include "OperatorRail.hpp"
@@ -94,6 +95,8 @@ class MainWindow : public QMainWindow {
   void syncHostPinGroups();
   /** Activate a named pin group and refresh chips; marks dirty unless applying. */
   void applyHostPinGroup(const QString& name);
+  /** Result-table double-click: jump film and accumulate compare-strip paths (runtime only). */
+  void applyResultCompare(const QString& path);
   /** 方案已被用户改过，标题加 *。加载/应用文档期间忽略。 */
   void markProjectDirty();
   /** 保存或重新加载成功后清除脏标记。 */
@@ -137,6 +140,8 @@ class MainWindow : public QMainWindow {
   PropertyFloat* prop_float_ = nullptr;
   FlowTabBar* flow_tabs_ = nullptr;
   FilmstripBar* filmstrip_ = nullptr;
+  CompareStrip* compare_strip_ = nullptr;
+  QStringList result_compare_paths_;
   ImageView* output_view_ = nullptr;
   QTabWidget* image_tabs_ = nullptr;
   QLabel* mode_badge_ = nullptr;
