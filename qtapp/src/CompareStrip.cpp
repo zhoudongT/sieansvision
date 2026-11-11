@@ -6,6 +6,8 @@
 #include <QPushButton>
 #include <QListWidget>
 #include <QListWidgetItem>
+#include <QAbstractItemModel>
+#include <QAbstractItemView>
 #include <QIcon>
 #include <QPixmap>
 #include <QImage>
@@ -87,6 +89,40 @@ CompareStrip::CompareStrip(QWidget* parent) : QWidget(parent) {
   });
   head->addWidget(clearBtn_);
   lay->addLayout(head);
+  auto* tools = new QHBoxLayout;
+  tools->setSpacing(2);
+  lockBtn_ = new QPushButton(QStringLiteral("🔓"));
+  lockBtn_->setObjectName(QStringLiteral("compareThumbLock"));
+  lockBtn_->setFixedSize(20, 20);
+  lockBtn_->setCheckable(true);
+  lockBtn_->setToolTip(QStringLiteral("锁定对比序（禁止拖拽）"));
+  connect(lockBtn_, &QPushButton::toggled, this, [this](bool on) { setOrderLocked(on); });
+  tools->addWidget(lockBtn_);
+  resetBtn_ = new QPushButton(QStringLiteral("↺"));
+  resetBtn_->setObjectName(QStringLiteral("compareThumbReset"));
+  resetBtn_->setFixedSize(20, 20);
+  resetBtn_->setToolTip(QStringLiteral("复位对比序到进入时顺序"));
+  connect(resetBtn_, &QPushButton::clicked, this, [this]() { resetOrder(); });
+  tools->addWidget(resetBtn_);
+  undoBtn_ = new QPushButton(QStringLiteral("↶"));
+  undoBtn_->setObjectName(QStringLiteral("compareThumbUndo"));
+  undoBtn_->setFixedSize(20, 20);
+  undoBtn_->setToolTip(QStringLiteral("撤销对比序（复位/重排）"));
+  undoBtn_->setEnabled(false);
+  connect(undoBtn_, &QPushButton::clicked, this, [this]() { undoOrder(); });
+  tools->addWidget(undoBtn_);
+  undoDepth_ = new QLabel(QStringLiteral("0"));
+  undoDepth_->setObjectName(QStringLiteral("compareThumbUndoDepth"));
+  undoDepth_->setFixedHeight(16);
+  undoDepth_->setMinimumWidth(14);
+  undoDepth_->setAlignment(Qt::AlignCenter);
+  undoDepth_->setStyleSheet(
+      QStringLiteral("background:#2a2c30;color:#6a7078;border:1px solid #3a3d42;"
+                     "border-radius:3px;padding:0 3px;font-size:9px;font-weight:700;"));
+  undoDepth_->setToolTip(QStringLiteral("撤销栈深度"));
+  tools->addWidget(undoDepth_);
+  tools->addStretch(1);
+  lay->addLayout(tools);
   list_ = new QListWidget;
   list_->setObjectName(QStringLiteral("compareThumbList"));
   list_->setViewMode(QListWidget::IconMode);
@@ -96,7 +132,7 @@ CompareStrip::CompareStrip(QWidget* parent) : QWidget(parent) {
   list_->setResizeMode(QListWidget::Adjust);
   list_->setIconSize(QSize(kThumb, kThumb));
   list_->setSpacing(4);
-  list_->setToolTip(QStringLiteral("对比缩略 · 单击定位胶片 · 无硬件"));
+  list_->setToolTip(QStringLiteral("对比缩略 · 单击定位胶片 · 拖拽重排 · 锁序后禁止拖拽 · 无硬件"));
   list_->setStyleSheet(
       QStringLiteral("QListWidget{background:#1c1e22;border:1px solid #3a5a7a;"
                      "border-radius:2px;}"
@@ -111,6 +147,10 @@ CompareStrip::CompareStrip(QWidget* parent) : QWidget(parent) {
     active_ = p;
     emit pathActivated(p);
   });
+  if (list_->model()) {
+    connect(list_->model(), &QAbstractItemModel::rowsMoved, this, [this]() { onRowsMoved(); });
+  }
+  applyLockChrome();
   lay->addWidget(list_, 1);
   hide();
 }
@@ -119,6 +159,8 @@ void CompareStrip::setPaths(const QStringList& paths, const QString& active) {
   paths_ = cleanComparePaths(paths);
   const int hit = indexOfPath(paths_, active);
   active_ = hit >= 0 ? paths_.at(hit) : (paths_.isEmpty() ? QString() : paths_.first());
+  baseline_paths_ = paths_;
+  order_undo_.clear();
   rebuild();
   emit pathsChanged();
 }
@@ -149,16 +191,113 @@ void CompareStrip::clear() {
   if (paths_.isEmpty() && isHidden()) return;
   paths_.clear();
   active_.clear();
+  baseline_paths_.clear();
+  order_undo_.clear();
   rebuild();
   emit pathsChanged();
 }
 
-void CompareStrip::rebuild() {
-  if (title_) {
-    title_->setText(paths_.isEmpty() ? QStringLiteral("对比")
-                                     : QStringLiteral("对比·%1").arg(paths_.size()));
+void CompareStrip::pushOrderUndo() {
+  if (order_undo_.size() >= 16) order_undo_.removeFirst();
+  order_undo_.push_back(paths_);
+}
+
+void CompareStrip::applyLockChrome() {
+  if (lockBtn_) {
+    lockBtn_->blockSignals(true);
+    lockBtn_->setChecked(order_locked_);
+    lockBtn_->setText(order_locked_ ? QStringLiteral("🔒") : QStringLiteral("🔓"));
+    lockBtn_->blockSignals(false);
+    lockBtn_->setToolTip(order_locked_ ? QStringLiteral("已锁定对比序")
+                                       : QStringLiteral("锁定对比序（禁止拖拽）"));
   }
   if (list_) {
+    if (order_locked_) {
+      list_->setMovement(QListWidget::Static);
+      list_->setDragDropMode(QAbstractItemView::NoDragDrop);
+    } else {
+      list_->setMovement(QListWidget::Snap);
+      list_->setDragDropMode(QAbstractItemView::InternalMove);
+      list_->setDefaultDropAction(Qt::MoveAction);
+    }
+  }
+  if (undoBtn_) undoBtn_->setEnabled(!order_undo_.isEmpty());
+  if (undoDepth_) undoDepth_->setText(QString::number(order_undo_.size()));
+}
+
+void CompareStrip::setOrderLocked(bool locked) {
+  if (order_locked_ == locked) {
+    applyLockChrome();
+    return;
+  }
+  order_locked_ = locked;
+  applyLockChrome();
+  rebuild();
+  emit lockChanged(order_locked_);
+}
+
+bool CompareStrip::moveRow(int from, int to) {
+  if (order_locked_) return false;
+  if (from < 0 || to < 0 || from >= paths_.size() || to >= paths_.size() || from == to)
+    return false;
+  pushOrderUndo();
+  paths_.move(from, to);
+  rebuild();
+  emit pathsChanged();
+  emit pathsReordered(paths_);
+  return true;
+}
+
+bool CompareStrip::resetOrder() {
+  if (paths_ == baseline_paths_ || baseline_paths_.isEmpty()) return false;
+  pushOrderUndo();
+  paths_ = baseline_paths_;
+  if (!active_.isEmpty() && !paths_.contains(active_) && !paths_.isEmpty())
+    active_ = paths_.first();
+  rebuild();
+  emit pathsChanged();
+  emit pathsReordered(paths_);
+  return true;
+}
+
+bool CompareStrip::undoOrder() {
+  if (order_undo_.isEmpty()) return false;
+  paths_ = order_undo_.takeLast();
+  if (!active_.isEmpty() && !paths_.contains(active_) && !paths_.isEmpty())
+    active_ = paths_.first();
+  rebuild();
+  emit pathsChanged();
+  emit pathsReordered(paths_);
+  return true;
+}
+
+void CompareStrip::onRowsMoved() {
+  if (suppress_reorder_ || !list_ || order_locked_) return;
+  QStringList next;
+  for (int i = 0; i < list_->count(); ++i) {
+    auto* it = list_->item(i);
+    if (!it) continue;
+    const QString p = it->data(Qt::UserRole).toString();
+    if (!p.isEmpty()) next << p;
+  }
+  if (next == paths_ || next.isEmpty()) return;
+  pushOrderUndo();
+  paths_ = next;
+  applyLockChrome();
+  emit pathsChanged();
+  emit pathsReordered(paths_);
+}
+
+void CompareStrip::rebuild() {
+  if (title_) {
+    QString text = paths_.isEmpty() ? QStringLiteral("对比")
+                                    : QStringLiteral("对比·%1").arg(paths_.size());
+    if (order_locked_ && !paths_.isEmpty()) text += QStringLiteral("🔒");
+    title_->setText(text);
+  }
+  applyLockChrome();
+  if (list_) {
+    suppress_reorder_ = true;
     list_->clear();
     int current = -1;
     for (int i = 0; i < paths_.size(); ++i) {
@@ -170,6 +309,7 @@ void CompareStrip::rebuild() {
       if (fp == active_) current = i;
     }
     if (current >= 0) list_->setCurrentRow(current);
+    suppress_reorder_ = false;
   }
   setVisible(!paths_.isEmpty());
 }
@@ -223,6 +363,36 @@ QStringList CompareStrip::compareSelfTest() {
   check("add-c", strip.addPath(c));
   check("count3", strip.count() == 3, QString::number(strip.count()));
   check("add-dup", strip.addPath(a) && strip.count() == 3);
+
+  strip.setPaths({a, b, c}, a);
+  check("baseline3", strip.baselinePaths() == QStringList({a, b, c}));
+  check("unlocked", !strip.isOrderLocked());
+  check("reorder", strip.moveRow(2, 0));
+  check("reordered", strip.paths().first() == c,
+        strip.paths().join(QLatin1Char(',')));
+  check("undo-depth", strip.orderUndoDepth() == 1,
+        QString::number(strip.orderUndoDepth()));
+  strip.setOrderLocked(true);
+  check("locked", strip.isOrderLocked());
+  check("lock-blocks", !strip.moveRow(0, 2));
+  check("lock-keeps", strip.paths().first() == c, strip.paths().join(QLatin1Char(',')));
+  check("lock-title",
+        strip.findChild<QLabel*>(QStringLiteral("compareThumbTitle")) &&
+            strip.findChild<QLabel*>(QStringLiteral("compareThumbTitle"))
+                ->text()
+                .contains(QStringLiteral("🔒")));
+  strip.setOrderLocked(false);
+  check("undo", strip.undoOrder());
+  check("undone", strip.paths() == QStringList({a, b, c}),
+        strip.paths().join(QLatin1Char(',')));
+  check("undo-empty", !strip.undoOrder());
+  check("reorder2", strip.moveRow(0, 2));
+  check("reset", strip.resetOrder());
+  check("reset-baseline", strip.paths() == QStringList({a, b, c}),
+        strip.paths().join(QLatin1Char(',')));
+  check("reset-undo", strip.undoOrder());
+  check("reset-undone", strip.paths() == QStringList({b, c, a}),
+        strip.paths().join(QLatin1Char(',')));
 
   QStringList many;
   for (int i = 0; i < 8; ++i) {
