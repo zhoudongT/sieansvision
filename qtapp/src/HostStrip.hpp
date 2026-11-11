@@ -45,6 +45,17 @@ class HostStrip : public QWidget {
   void clearWatchKeys();
   void sortWatchKeys();
   void dedupeWatchKeys();
+  /** Restore named pin groups onto the strip chip (no signal). */
+  void setPinGroups(const QStringList& names, const QString& active);
+  /** Switch the visible pin-group chip and emit pinGroupPicked. */
+  bool selectPinGroup(const QString& name);
+  QString activePinGroup() const { return activePinGroup_; }
+  QStringList pinGroupNames() const { return pinGroupNames_; }
+  QString pinGroupChipText() const;
+  bool pinGroupChipVisible() const;
+  QString watchChipsText() const;
+  /** Offscreen pin-group chip + VarWatch combo checks. Empty list = pass. */
+  static QStringList pinGroupChromeSelfTest();
   int okStreak() const { return okStreak_; }
   int ngCount() const { return ngCount_; }
   bool alarmOn() const { return alarmOn_; }
@@ -64,6 +75,8 @@ class HostStrip : public QWidget {
   void openHostRequested();
   void watchKeysChanged(const QStringList& keys);
   void intervalChanged(int ms);
+  void pinGroupPicked(const QString& name);
+  void openVarWatchRequested();
 
  protected:
   bool eventFilter(QObject* obj, QEvent* event) override;
@@ -73,10 +86,15 @@ class HostStrip : public QWidget {
   void refreshChips(const QVariantMap& vars);
   void refreshCycleChip();
   void refreshAlarmLockChrome();
+  void refreshPinGroupChip();
+  void showPinGroupPicker();
 
   QLabel* badge_ = nullptr;
   QLabel* detail_ = nullptr;
   QLabel* chips_ = nullptr;
+  QLabel* pinGroupChip_ = nullptr;
+  QStringList pinGroupNames_;
+  QString activePinGroup_;
   QLabel* alarmLabel_ = nullptr;
   QLabel* modeChip_ = nullptr;
   QLabel* lockChip_ = nullptr;

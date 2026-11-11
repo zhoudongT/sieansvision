@@ -145,6 +145,20 @@ class SieansDocument {
 
   QStringList hostWatchKeys() const;
   void setHostWatchKeys(const QStringList& keys);
+  /** hostWatch.pinGroups names in file order (also accepts pin_groups). */
+  QStringList pinGroupNames() const;
+  /** Cleaned watch keys for a named pin group. */
+  QStringList pinGroupKeys(const QString& name) const;
+  QString activePinGroup() const;
+  /** Persist pin groups + activePinGroup into hostWatch (PySide-compatible). */
+  void setPinGroups(const QVariantMap& groups, const QString& active = QString(),
+                    bool writeWatchKeys = true);
+  /** Upsert a named group; does not invent a default group on empty documents. */
+  QString ensurePinGroup(const QString& name, const QStringList& keys);
+  /** Switch the active group and write its keys to hostWatch.watchKeys. */
+  QString activatePinGroup(const QString& name);
+  /** Isolated persist/restore/activate pin-group checks. Empty list = pass. */
+  static QStringList pinGroupSelfTest();
   QStringList filmstripPaths() const;
   void setFilmstripPaths(const QStringList& paths);
   bool filmstripAutoSwitch() const;

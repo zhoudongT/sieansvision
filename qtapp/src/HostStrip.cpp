@@ -18,6 +18,10 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMenu>
+#include <QAction>
+#include <QKeySequence>
+#include "VarWatchPanel.hpp"
 
 namespace sieans_qt {
 
@@ -83,13 +87,27 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   if (lockChip_) lockChip_->installEventFilter(this);
   cycleChip_->installEventFilter(this);
   detail_->installEventFilter(this);
+  auto* chipRow = new QHBoxLayout;
+  chipRow->setSpacing(6);
+  pinGroupChip_ = new QLabel;
+  pinGroupChip_->setObjectName(QStringLiteral("hostPinGroupChip"));
+  pinGroupChip_->setVisible(false);
+  pinGroupChip_->setCursor(Qt::PointingHandCursor);
+  pinGroupChip_->setStyleSheet(
+      QStringLiteral("background:#2a3340;color:#8ec8ff;border-radius:3px;"
+                     "padding:2px 8px;font-size:11px;font-weight:600;"));
+  pinGroupChip_->setToolTip(
+      QStringLiteral("钉组 · 单击打开变量监视 · 右键选组 · 数字键 1–9 加速 · 无硬件"));
+  pinGroupChip_->installEventFilter(this);
+  chipRow->addWidget(pinGroupChip_, 0);
   chips_ = new QLabel;
   chips_->setObjectName(QStringLiteral("muted"));
   chips_->setWordWrap(true);
   chips_->setCursor(Qt::PointingHandCursor);
   chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+K/V 复制/粘贴键(JSON) · Ctrl+Shift+E JSON导出 · Alt+←→ 调序 · Ctrl+Home/End 置顶末/置底首 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Del/Bksp 删首 · Shift+Del 删末 · Ctrl+Shift+Bksp 清空 · 单击复制全文"));
   chips_->installEventFilter(this);
-  root->addWidget(chips_);
+  chipRow->addWidget(chips_, 1);
+  root->addLayout(chipRow);
   setStyleSheet(QStringLiteral("background:#232528;border-top:1px solid #4a4e54;"));
   setMinimumHeight(52);
 }
@@ -408,6 +426,10 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
       copyRunStats();
       return true;
     }
+    if (me->button() == Qt::RightButton && obj == pinGroupChip_ && pinGroupChip_) {
+      showPinGroupPicker();
+      return true;
+    }
     if (me->button() != Qt::LeftButton) return QWidget::eventFilter(obj, event);
     if (obj == lockChip_) {
       emit modeToggleRequested();
@@ -430,6 +452,10 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
         resetStreak();
         return true;
       }
+    }
+    if (obj == pinGroupChip_ && pinGroupChip_) {
+      emit openVarWatchRequested();
+      return true;
     }
     if (obj == chips_ && chips_) {
       if (chips_->text().trimmed().isEmpty() || watchKeys_.isEmpty()) {
@@ -987,6 +1013,135 @@ void HostStrip::exportWatchKeysJson() {
     clip->setText(QString::fromUtf8(bytes));
   if (chips_)
     chips_->setToolTip(QStringLiteral("已导出监视键JSON %1 · Ctrl+Shift+E").arg(watchKeys_.size()));
+}
+
+void HostStrip::setPinGroups(const QStringList& names, const QString& active) {
+  pinGroupNames_.clear();
+  for (const QString& n : names) {
+    const QString t = n.trimmed();
+    if (!t.isEmpty() && !pinGroupNames_.contains(t)) pinGroupNames_ << t;
+  }
+  QString act = active.trimmed();
+  if (!act.isEmpty() && pinGroupNames_.contains(act))
+    activePinGroup_ = act;
+  else
+    activePinGroup_ = pinGroupNames_.isEmpty() ? QString() : pinGroupNames_.first();
+  refreshPinGroupChip();
+}
+
+bool HostStrip::selectPinGroup(const QString& name) {
+  const QString n = name.trimmed();
+  if (n.isEmpty() || !pinGroupNames_.contains(n)) return false;
+  activePinGroup_ = n;
+  refreshPinGroupChip();
+  emit pinGroupPicked(n);
+  return true;
+}
+
+QString HostStrip::pinGroupChipText() const {
+  return pinGroupChip_ ? pinGroupChip_->text() : QString();
+}
+
+bool HostStrip::pinGroupChipVisible() const {
+  // isHidden() is the local flag; isVisible() is false while the strip itself
+  // has not been shown (offscreen selftest constructs a bare HostStrip).
+  return pinGroupChip_ && !pinGroupChip_->isHidden();
+}
+
+QString HostStrip::watchChipsText() const {
+  return chips_ ? chips_->text() : QString();
+}
+
+void HostStrip::refreshPinGroupChip() {
+  if (!pinGroupChip_) return;
+  if (pinGroupNames_.isEmpty()) {
+    pinGroupChip_->clear();
+    pinGroupChip_->setVisible(false);
+    return;
+  }
+  const QString act = activePinGroup_.isEmpty() ? pinGroupNames_.first() : activePinGroup_;
+  QString text = QStringLiteral("钉组:%1").arg(act);
+  if (pinGroupNames_.size() > 1)
+    text += QStringLiteral(" ×%1").arg(pinGroupNames_.size());
+  pinGroupChip_->setText(text);
+  pinGroupChip_->setVisible(true);
+  pinGroupChip_->setToolTip(
+      QStringLiteral("钉组 %1 · 共 %2 组 · 单击打开变量监视 · 右键选组 · 数字键 1–9 加速 · 无硬件")
+          .arg(act)
+          .arg(pinGroupNames_.size()));
+}
+
+void HostStrip::showPinGroupPicker() {
+  if (pinGroupNames_.isEmpty()) return;
+  QMenu menu(this);
+  int i = 0;
+  for (const QString& n : pinGroupNames_) {
+    const QString label = (i < 9) ? QStringLiteral("%1  %2").arg(i + 1).arg(n) : n;
+    QAction* a = menu.addAction(label);
+    a->setCheckable(true);
+    a->setChecked(n == activePinGroup_);
+    if (i < 9) a->setShortcut(QKeySequence(QString::number(i + 1)));
+    connect(a, &QAction::triggered, this, [this, n]() { selectPinGroup(n); });
+    ++i;
+  }
+  menu.setToolTipsVisible(true);
+  menu.exec(QCursor::pos());
+}
+
+QStringList HostStrip::pinGroupChromeSelfTest() {
+  QStringList fails;
+  auto check = [&](const char* name, bool ok, const QString& detail = QString()) {
+    if (!ok)
+      fails << (detail.isEmpty() ? QString::fromUtf8(name)
+                                 : QStringLiteral("%1: %2").arg(QString::fromUtf8(name), detail));
+  };
+  if (!qApp) {
+    fails << QStringLiteral("no-qapp");
+    return fails;
+  }
+
+  HostStrip strip;
+  check("hidden-when-empty", !strip.pinGroupChipVisible());
+  strip.setPinGroups({QStringLiteral("定位"), QStringLiteral("测量")},
+                     QStringLiteral("测量"));
+  check("chip-visible", strip.pinGroupChipVisible());
+  check("chip-text", strip.pinGroupChipText().contains(QStringLiteral("测量")),
+        strip.pinGroupChipText());
+  check("chip-count", strip.pinGroupChipText().contains(QStringLiteral("×2")),
+        strip.pinGroupChipText());
+  check("select", strip.selectPinGroup(QStringLiteral("定位")));
+  check("active-after-select", strip.activePinGroup() == QStringLiteral("定位"),
+        strip.activePinGroup());
+  check("chip-after-select", strip.pinGroupChipText().contains(QStringLiteral("定位")),
+        strip.pinGroupChipText());
+  check("select-missing", !strip.selectPinGroup(QStringLiteral("不存在")));
+  strip.setWatchKeys({QStringLiteral("locateOk"), QStringLiteral("locateScore")});
+  QVariantMap vars;
+  vars.insert(QStringLiteral("locateOk"), 1);
+  vars.insert(QStringLiteral("locateScore"), 0.91);
+  strip.updateFromVars(vars);
+  check("chips-locate", strip.watchChipsText().contains(QStringLiteral("locateOk=")),
+        strip.watchChipsText());
+  check("chips-score", strip.watchChipsText().contains(QStringLiteral("locateScore=")),
+        strip.watchChipsText());
+
+  VarWatchPanel vw;
+  QHash<QString, QStringList> keys;
+  keys.insert(QStringLiteral("定位"), QStringList{QStringLiteral("locateOk")});
+  keys.insert(QStringLiteral("测量"),
+              QStringList{QStringLiteral("caliperMm"), QStringLiteral("measureMm")});
+  vw.setPinGroups({QStringLiteral("定位"), QStringLiteral("测量")}, keys,
+                  QStringLiteral("测量"));
+  check("vw-count", vw.pinGroupCount() == 2, QString::number(vw.pinGroupCount()));
+  check("vw-active", vw.activePinGroup() == QStringLiteral("测量"), vw.activePinGroup());
+  check("vw-lab", vw.pinGroupLabelText().contains(QStringLiteral("2键")),
+        vw.pinGroupLabelText());
+  vw.selectPinGroup(QStringLiteral("定位"));
+  check("vw-switched", vw.activePinGroup() == QStringLiteral("定位"),
+        vw.activePinGroup());
+  check("vw-lab-switched", vw.pinGroupLabelText().contains(QStringLiteral("定位")),
+        vw.pinGroupLabelText());
+  return fails;
 }
 
 void HostStrip::keyPressEvent(QKeyEvent* event) {

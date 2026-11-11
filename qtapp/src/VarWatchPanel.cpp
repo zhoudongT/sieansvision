@@ -6,8 +6,12 @@
 #include "Theme.hpp"
 
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QComboBox>
+#include <QPushButton>
+#include <QInputDialog>
 #include <QHeaderView>
 #include <QAbstractItemView>
 #include <QItemSelectionModel>
@@ -36,6 +40,41 @@ VarWatchPanel::VarWatchPanel(QWidget* parent) : QWidget(parent) {
   title->setObjectName(QStringLiteral("sectionTitle"));
   title->setToolTip(QStringLiteral("变量监视 · passGate/urlOk/lastRecv 高亮 · F2 聚焦表格 · 双击复制 · Ctrl+F 过滤"));
   lay->addWidget(title);
+  {
+    auto* grow = new QHBoxLayout;
+    grow->setSpacing(6);
+    auto* glab = new QLabel(QStringLiteral("钉组"));
+    glab->setToolTip(QStringLiteral("监视钉组 · 切换显示的种子键集合 · 无硬件"));
+    grow->addWidget(glab);
+    pinGroupCombo_ = new QComboBox;
+    pinGroupCombo_->setObjectName(QStringLiteral("hostVarWatchPinGroup"));
+    pinGroupCombo_->setToolTip(QStringLiteral("监视钉组：切换显示的种子键集合"));
+    pinGroupCombo_->setMinimumWidth(100);
+    connect(pinGroupCombo_, &QComboBox::currentIndexChanged, this, [this](int) {
+      if (!pinGroupCombo_) return;
+      const QString name = pinGroupCombo_->currentData().toString();
+      if (name.isEmpty() || name == activePinGroup_) return;
+      activePinGroup_ = name;
+      syncPinGroupLabel();
+      emit pinGroupChanged(name);
+    });
+    grow->addWidget(pinGroupCombo_, 1);
+    pinGroupNewBtn_ = new QPushButton(QStringLiteral("建组"));
+    pinGroupNewBtn_->setObjectName(QStringLiteral("hostVarWatchPinGroupNewBtn"));
+    pinGroupNewBtn_->setToolTip(QStringLiteral("用当前种子键新建钉组"));
+    connect(pinGroupNewBtn_, &QPushButton::clicked, this, &VarWatchPanel::onNewPinGroup);
+    grow->addWidget(pinGroupNewBtn_);
+    pinGroupSaveBtn_ = new QPushButton(QStringLiteral("存组"));
+    pinGroupSaveBtn_->setObjectName(QStringLiteral("hostVarWatchPinGroupSaveBtn"));
+    pinGroupSaveBtn_->setToolTip(QStringLiteral("把当前种子键写入活动钉组"));
+    connect(pinGroupSaveBtn_, &QPushButton::clicked, this, [this]() { emit pinGroupSaveRequested(); });
+    grow->addWidget(pinGroupSaveBtn_);
+    pinGroupLab_ = new QLabel;
+    pinGroupLab_->setObjectName(QStringLiteral("hostVarWatchPinGroupLab"));
+    pinGroupLab_->setStyleSheet(QStringLiteral("color:#6a9;font-size:11px;"));
+    grow->addWidget(pinGroupLab_);
+    lay->addLayout(grow);
+  }
   filterEdit_ = new QLineEdit;
   filterEdit_->setObjectName(QStringLiteral("varWatchFilter"));
   filterEdit_->setPlaceholderText(QStringLiteral("过滤变量名/值 · Ctrl+F · Esc 清空"));
@@ -875,5 +914,75 @@ void VarWatchPanel::dedupeWatchKeys() {
                      table_);
 }
 
+
+
+void VarWatchPanel::setPinGroups(const QStringList& names,
+                                 const QHash<QString, QStringList>& keys,
+                                 const QString& active) {
+  pinGroupNames_.clear();
+  pinGroupKeys_ = keys;
+  for (const QString& n : names) {
+    const QString t = n.trimmed();
+    if (!t.isEmpty() && !pinGroupNames_.contains(t)) pinGroupNames_ << t;
+  }
+  for (auto it = pinGroupKeys_.begin(); it != pinGroupKeys_.end(); ++it) {
+    if (!pinGroupNames_.contains(it.key()) && !it.key().trimmed().isEmpty())
+      pinGroupNames_ << it.key();
+  }
+  QString act = active.trimmed();
+  if (!act.isEmpty() && pinGroupNames_.contains(act))
+    activePinGroup_ = act;
+  else
+    activePinGroup_ = pinGroupNames_.isEmpty() ? QString() : pinGroupNames_.first();
+  rebuildPinGroupCombo();
+}
+
+bool VarWatchPanel::selectPinGroup(const QString& name) {
+  const QString n = name.trimmed();
+  if (n.isEmpty() || !pinGroupNames_.contains(n)) return false;
+  if (n == activePinGroup_) {
+    rebuildPinGroupCombo();
+    return true;
+  }
+  activePinGroup_ = n;
+  rebuildPinGroupCombo();
+  emit pinGroupChanged(n);
+  return true;
+}
+
+QString VarWatchPanel::pinGroupLabelText() const {
+  return pinGroupLab_ ? pinGroupLab_->text() : QString();
+}
+
+void VarWatchPanel::rebuildPinGroupCombo() {
+  if (!pinGroupCombo_) return;
+  pinGroupCombo_->blockSignals(true);
+  pinGroupCombo_->clear();
+  for (const QString& n : pinGroupNames_) pinGroupCombo_->addItem(n, n);
+  const int idx = pinGroupCombo_->findData(activePinGroup_);
+  pinGroupCombo_->setCurrentIndex(idx >= 0 ? idx : (pinGroupCombo_->count() ? 0 : -1));
+  pinGroupCombo_->blockSignals(false);
+  syncPinGroupLabel();
+}
+
+void VarWatchPanel::syncPinGroupLabel() {
+  if (!pinGroupLab_) return;
+  if (activePinGroup_.isEmpty()) {
+    pinGroupLab_->setText(pinGroupNames_.isEmpty() ? QStringLiteral("无钉组") : QString());
+    return;
+  }
+  const int n = pinGroupKeys_.value(activePinGroup_).size();
+  pinGroupLab_->setText(QStringLiteral("%1 · %2键").arg(activePinGroup_).arg(n));
+}
+
+void VarWatchPanel::onNewPinGroup() {
+  bool ok = false;
+  const QString name = QInputDialog::getText(
+      this, QStringLiteral("新建钉组"), QStringLiteral("钉组名称："),
+      QLineEdit::Normal, QStringLiteral("测量"), &ok);
+  if (!ok) return;
+  const QString n = name.trimmed().isEmpty() ? QStringLiteral("未命名") : name.trimmed();
+  emit pinGroupNewRequested(n);
+}
 
 }  // namespace sieans_qt

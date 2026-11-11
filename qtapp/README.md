@@ -58,6 +58,8 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx`）放�
 
 **已落地（wave252）：** 流程 I/O 与通信共用同一套 ${flow.x}/{name}/{{name}} 解析；空绑定走 emptyDefault（可再展开模板）。I/O 对话框显示选中行的解析预览。无界面自测 `SIEANS_QT_IO_RESOLVE_SELFTEST=1`。
 
+**已落地（wave253）：** Host 钉组与监视芯片（对齐 PySide `hostWatch.pinGroups` / `activePinGroup`）：分组持久化与恢复、Host 条钉组芯片与变量监视下拉切换、存组/建组；运行期改监视键不改写钉组、不脏污现场种子。无界面自测 `SIEANS_QT_PIN_GROUP_SELFTEST=1`。
+
 **NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。
 
 ## VM chrome (2026-11-03)

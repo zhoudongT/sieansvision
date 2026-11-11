@@ -253,6 +253,20 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
+  if (qEnvironmentVariable("SIEANS_QT_PIN_GROUP_SELFTEST") == QLatin1String("1") &&
+      qEnvironmentVariable("SIEANS_QT_PIN_GROUP_SELFTEST_QUIT") == QLatin1String("1")) {
+    QApplication app(argc, argv);
+    QStringList fails = sieans_qt::SieansDocument::pinGroupSelfTest();
+    fails << sieans_qt::HostStrip::pinGroupChromeSelfTest();
+    if (fails.isEmpty()) {
+      std::fprintf(stdout, "pin-group-selftest ok\n");
+      return 0;
+    }
+    for (const QString& line : fails)
+      std::fprintf(stderr, "pin-group-selftest FAIL %s\n", line.toUtf8().constData());
+    return 1;
+  }
+
   if (qEnvironmentVariable("SIEANS_QT_FILMSTRIP_JUMP_SELFTEST") == QLatin1String("1") &&
       qEnvironmentVariable("SIEANS_QT_FILMSTRIP_JUMP_SELFTEST_QUIT") == QLatin1String("1")) {
     QApplication app(argc, argv);

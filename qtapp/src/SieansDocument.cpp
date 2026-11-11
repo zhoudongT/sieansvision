@@ -28,6 +28,43 @@ QJsonObject mapToObject(const QVariantMap& m) {
   return QJsonObject::fromVariantMap(m);
 }
 
+QString cleanPinGroupName(const QString& name) {
+  const QString t = name.trimmed();
+  return t.isEmpty() ? QStringLiteral("未命名") : t;
+}
+
+QStringList cleanPinGroupKeyList(const QJsonArray& arr) {
+  QStringList out;
+  for (const QJsonValue& v : arr) {
+    const QString k = v.toString().trimmed();
+    if (!k.isEmpty() && !out.contains(k)) out << k;
+  }
+  return out;
+}
+
+QStringList cleanPinGroupKeyVariant(const QVariant& v) {
+  QStringList raw = v.toStringList();
+  if (raw.isEmpty()) {
+    for (const QVariant& x : v.toList()) raw << x.toString();
+  }
+  QStringList out;
+  for (const QString& k : raw) {
+    const QString t = k.trimmed();
+    if (!t.isEmpty() && !out.contains(t)) out << t;
+  }
+  return out;
+}
+
+QJsonObject hostWatchObject(const QJsonObject& raw) {
+  return raw.value(QStringLiteral("hostWatch")).toObject();
+}
+
+QJsonObject pinGroupsJson(const QJsonObject& hw) {
+  QJsonObject g = hw.value(QStringLiteral("pinGroups")).toObject();
+  if (g.isEmpty()) g = hw.value(QStringLiteral("pin_groups")).toObject();
+  return g;
+}
+
 }  // namespace
 
 bool SieansDocument::loadFromFile(const QString& path, QString* error) {
@@ -1480,11 +1517,17 @@ void SieansDocument::setHostWatchKeys(const QStringList& keys) {
 }
 
 QStringList SieansDocument::hostWatchKeys() const {
-  const QVariantMap hw = objectToMap(raw_.value(QStringLiteral("hostWatch")).toObject());
+  const QJsonObject hw = raw_.value(QStringLiteral("hostWatch")).toObject();
   QStringList keys;
-  for (const QVariant& v : hw.value(QStringLiteral("watchKeys")).toList())
-    keys << v.toString();
+  for (const QJsonValue& v : hw.value(QStringLiteral("watchKeys")).toArray()) {
+    const QString t = v.toString().trimmed();
+    if (!t.isEmpty()) keys << t;
+  }
   if (keys.isEmpty()) {
+    // A present pin group (even with zero keys) must not fall back to the
+    // built-in default watch list — that would re-populate chips after 备用 etc.
+    const QString act = activePinGroup();
+    if (!act.isEmpty()) return pinGroupKeys(act);
     keys = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
             QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
             QStringLiteral("ocrCount"), QStringLiteral("ocrText"),
@@ -1521,6 +1564,120 @@ QStringList SieansDocument::hostWatchKeys() const {
             QStringLiteral("measPtsDist")};
   }
   return keys;
+}
+
+QStringList SieansDocument::pinGroupNames() const {
+  const QJsonObject g = pinGroupsJson(hostWatchObject(raw_));
+  QStringList names;
+  for (auto it = g.begin(); it != g.end(); ++it) {
+    const QString n = cleanPinGroupName(it.key());
+    if (!names.contains(n)) names << n;
+  }
+  return names;
+}
+
+QStringList SieansDocument::pinGroupKeys(const QString& name) const {
+  const QString want = cleanPinGroupName(name);
+  const QJsonObject g = pinGroupsJson(hostWatchObject(raw_));
+  QStringList keys;
+  for (auto it = g.begin(); it != g.end(); ++it) {
+    if (cleanPinGroupName(it.key()) != want) continue;
+    for (const QString& k : cleanPinGroupKeyList(it.value().toArray())) {
+      if (!keys.contains(k)) keys << k;
+    }
+  }
+  return keys;
+}
+
+QString SieansDocument::activePinGroup() const {
+  const QJsonObject hw = hostWatchObject(raw_);
+  QString a = hw.value(QStringLiteral("activePinGroup")).toString().trimmed();
+  if (a.isEmpty()) a = hw.value(QStringLiteral("active_pin_group")).toString().trimmed();
+  const QStringList names = pinGroupNames();
+  if (names.isEmpty()) return {};
+  if (!a.isEmpty()) {
+    if (names.contains(a)) return a;
+    const QString cleaned = cleanPinGroupName(a);
+    if (names.contains(cleaned)) return cleaned;
+  }
+  return names.first();
+}
+
+void SieansDocument::setPinGroups(const QVariantMap& groups, const QString& active,
+                                  bool writeWatchKeys) {
+  QJsonObject hw = hostWatchObject(raw_);
+  QJsonObject cleaned;
+  QStringList order;
+  for (auto it = groups.begin(); it != groups.end(); ++it) {
+    const QString n = cleanPinGroupName(it.key());
+    QJsonArray arr;
+    for (const QString& k : cleanPinGroupKeyVariant(it.value())) arr.append(k);
+    if (cleaned.contains(n)) {
+      QJsonArray merged = cleaned.value(n).toArray();
+      QStringList have = cleanPinGroupKeyList(merged);
+      for (const QString& k : cleanPinGroupKeyVariant(it.value())) {
+        if (have.contains(k)) continue;
+        have << k;
+        merged.append(k);
+      }
+      cleaned.insert(n, merged);
+    } else {
+      cleaned.insert(n, arr);
+      order << n;
+    }
+  }
+  if (cleaned.isEmpty()) {
+    hw.remove(QStringLiteral("pinGroups"));
+    hw.remove(QStringLiteral("pin_groups"));
+    hw.remove(QStringLiteral("activePinGroup"));
+    hw.remove(QStringLiteral("active_pin_group"));
+    raw_.insert(QStringLiteral("hostWatch"), hw);
+    return;
+  }
+  hw.insert(QStringLiteral("pinGroups"), cleaned);
+  hw.remove(QStringLiteral("pin_groups"));
+  QString act = active.trimmed();
+  if (act.isEmpty())
+    act = hw.value(QStringLiteral("activePinGroup")).toString().trimmed();
+  if (act.isEmpty())
+    act = hw.value(QStringLiteral("active_pin_group")).toString().trimmed();
+  if (!act.isEmpty() && !cleaned.contains(act))
+    act = cleanPinGroupName(act);
+  if (act.isEmpty() || !cleaned.contains(act))
+    act = order.isEmpty() ? cleaned.begin().key() : order.first();
+  hw.insert(QStringLiteral("activePinGroup"), act);
+  hw.remove(QStringLiteral("active_pin_group"));
+  if (writeWatchKeys) {
+    QJsonArray keys = cleaned.value(act).toArray();
+    hw.insert(QStringLiteral("watchKeys"), keys);
+  }
+  raw_.insert(QStringLiteral("hostWatch"), hw);
+}
+
+QString SieansDocument::ensurePinGroup(const QString& name, const QStringList& keys) {
+  const QString n = cleanPinGroupName(name);
+  QVariantMap groups;
+  const QJsonObject g = pinGroupsJson(hostWatchObject(raw_));
+  for (auto it = g.begin(); it != g.end(); ++it)
+    groups.insert(cleanPinGroupName(it.key()), cleanPinGroupKeyList(it.value().toArray()));
+  groups.insert(n, keys);
+  const QString keep = activePinGroup();
+  setPinGroups(groups, keep.isEmpty() ? n : keep, false);
+  return n;
+}
+
+QString SieansDocument::activatePinGroup(const QString& name) {
+  QString n = name.trimmed();
+  if (n.isEmpty()) n = activePinGroup();
+  if (n.isEmpty()) return {};
+  n = cleanPinGroupName(n);
+  QVariantMap groups;
+  const QJsonObject g = pinGroupsJson(hostWatchObject(raw_));
+  for (auto it = g.begin(); it != g.end(); ++it)
+    groups.insert(cleanPinGroupName(it.key()), cleanPinGroupKeyList(it.value().toArray()));
+  if (!groups.contains(n)) groups.insert(n, QStringList());
+  setPinGroups(groups, n, true);
+  return n;
 }
 
 QStringList SieansDocument::filmstripPaths() const {
@@ -2276,6 +2433,128 @@ QStringList SieansDocument::schemeSelfTest() {
   check("remove-last-rejected", !leg.removeFlow(leg.activeFlowId(), &rmErr));
   check("import-prc-file", !loaded.importPrcFromFile(prcPath, &err).id.isEmpty(), err);
   check("import-file-count", loaded.flows().size() == 4, QString::number(loaded.flows().size()));
+  return fails;
+}
+
+QStringList SieansDocument::pinGroupSelfTest() {
+  QStringList fails;
+  auto check = [&](const char* name, bool ok, const QString& detail = QString()) {
+    if (!ok)
+      fails << (detail.isEmpty() ? QString::fromUtf8(name)
+                                 : QStringLiteral("%1: %2").arg(QString::fromUtf8(name), detail));
+  };
+
+  SieansDocument empty;
+  check("empty-no-groups", empty.pinGroupNames().isEmpty());
+  check("empty-no-active", empty.activePinGroup().isEmpty());
+  const int defaultN = empty.hostWatchKeys().size();
+  check("empty-default-keys", defaultN > 0, QString::number(defaultN));
+
+  SieansDocument doc;
+  QVariantMap groups;
+  groups.insert(QStringLiteral("定位"),
+                QStringList{QStringLiteral("locateOk"), QStringLiteral("locateScore"),
+                            QStringLiteral("locateOk"), QStringLiteral(" ")});
+  groups.insert(QStringLiteral("测量"),
+                QStringList{QStringLiteral("caliperMm"), QStringLiteral("measureMm")});
+  groups.insert(QStringLiteral("  "), QStringList{QStringLiteral("passGate")});
+  doc.setPinGroups(groups, QStringLiteral("测量"), true);
+  check("count", doc.pinGroupNames().size() == 3, QString::number(doc.pinGroupNames().size()));
+  check("unnamed", doc.pinGroupNames().contains(QStringLiteral("未命名")));
+  check("active", doc.activePinGroup() == QStringLiteral("测量"), doc.activePinGroup());
+  check("watch-from-active",
+        doc.hostWatchKeys() == (QStringList{QStringLiteral("caliperMm"),
+                                            QStringLiteral("measureMm")}),
+        doc.hostWatchKeys().join(QLatin1Char(',')));
+  check("dedup-keys",
+        doc.pinGroupKeys(QStringLiteral("定位")) ==
+            (QStringList{QStringLiteral("locateOk"), QStringLiteral("locateScore")}),
+        doc.pinGroupKeys(QStringLiteral("定位")).join(QLatin1Char(',')));
+
+  // Runtime-only watch edit must not rewrite saved pin groups.
+  doc.setHostWatchKeys({QStringLiteral("hostResult"), QStringLiteral("hostMode")});
+  check("runtime-watch-keys",
+        doc.hostWatchKeys() == (QStringList{QStringLiteral("hostResult"),
+                                            QStringLiteral("hostMode")}));
+  check("runtime-keeps-groups", doc.pinGroupNames().size() == 3,
+        QString::number(doc.pinGroupNames().size()));
+  check("runtime-keeps-measure-keys",
+        doc.pinGroupKeys(QStringLiteral("测量")) ==
+            (QStringList{QStringLiteral("caliperMm"), QStringLiteral("measureMm")}),
+        doc.pinGroupKeys(QStringLiteral("测量")).join(QLatin1Char(',')));
+  check("runtime-keeps-active", doc.activePinGroup() == QStringLiteral("测量"),
+        doc.activePinGroup());
+
+  const QString act = doc.activatePinGroup(QStringLiteral("定位"));
+  check("activate-name", act == QStringLiteral("定位"), act);
+  check("activate-keys",
+        doc.hostWatchKeys() == (QStringList{QStringLiteral("locateOk"),
+                                            QStringLiteral("locateScore")}),
+        doc.hostWatchKeys().join(QLatin1Char(',')));
+
+  QString err;
+  QTemporaryDir tmp;
+  check("tmpdir", tmp.isValid());
+  if (!tmp.isValid()) return fails;
+  const QString path = tmp.filePath(QStringLiteral("pins.sieans"));
+  check("save", doc.saveToFile(path, &err), err);
+  SieansDocument loaded;
+  check("load", loaded.loadFromFile(path, &err), err);
+  check("round-count", loaded.pinGroupNames().size() == 3,
+        QString::number(loaded.pinGroupNames().size()));
+  check("round-active", loaded.activePinGroup() == QStringLiteral("定位"),
+        loaded.activePinGroup());
+  check("round-keys",
+        loaded.hostWatchKeys() == (QStringList{QStringLiteral("locateOk"),
+                                               QStringLiteral("locateScore")}),
+        loaded.hostWatchKeys().join(QLatin1Char(',')));
+  check("round-measure",
+        loaded.pinGroupKeys(QStringLiteral("测量")).size() == 2,
+        QString::number(loaded.pinGroupKeys(QStringLiteral("测量")).size()));
+
+  const QString snakePath = tmp.filePath(QStringLiteral("snake.sieans"));
+  {
+    QJsonObject bag;
+    bag.insert(QStringLiteral("name"), QStringLiteral("snake"));
+    QJsonObject hw;
+    QJsonObject pg;
+    pg.insert(QStringLiteral("定位"), QJsonArray{QStringLiteral("locateOk")});
+    hw.insert(QStringLiteral("pin_groups"), pg);
+    hw.insert(QStringLiteral("active_pin_group"), QStringLiteral("定位"));
+    bag.insert(QStringLiteral("hostWatch"), hw);
+    QFile f(snakePath);
+    const bool ok = f.open(QIODevice::WriteOnly | QIODevice::Truncate);
+    check("snake-write", ok);
+    if (ok) f.write(QJsonDocument(bag).toJson(QJsonDocument::Indented));
+  }
+  SieansDocument snake;
+  check("snake-load", snake.loadFromFile(snakePath, &err), err);
+  check("snake-names", snake.pinGroupNames() == QStringList{QStringLiteral("定位")},
+        snake.pinGroupNames().join(QLatin1Char(',')));
+  check("snake-active", snake.activePinGroup() == QStringLiteral("定位"),
+        snake.activePinGroup());
+  check("snake-keys-fallback",
+        snake.hostWatchKeys() == QStringList{QStringLiteral("locateOk")},
+        snake.hostWatchKeys().join(QLatin1Char(',')));
+
+  const QString created = loaded.activatePinGroup(QStringLiteral("备用"));
+  check("missing-creates", created == QStringLiteral("备用"), created);
+  check("missing-empty-keys", loaded.pinGroupKeys(QStringLiteral("备用")).isEmpty());
+  check("missing-in-names", loaded.pinGroupNames().contains(QStringLiteral("备用")));
+
+  const QString ens = loaded.ensurePinGroup(QStringLiteral("测量"),
+                                            {QStringLiteral("caliperMm"),
+                                             QStringLiteral("caliperOk")});
+  check("ensure-name", ens == QStringLiteral("测量"), ens);
+  check("ensure-keys",
+        loaded.pinGroupKeys(QStringLiteral("测量")) ==
+            (QStringList{QStringLiteral("caliperMm"), QStringLiteral("caliperOk")}),
+        loaded.pinGroupKeys(QStringLiteral("测量")).join(QLatin1Char(',')));
+  // ensure does not rewrite the active group's visible watch keys
+  check("ensure-no-watch-rewrite",
+        loaded.activePinGroup() == QStringLiteral("备用") &&
+            loaded.hostWatchKeys().isEmpty(),
+        loaded.activePinGroup() + QLatin1Char('/') + loaded.hostWatchKeys().join(QLatin1Char(',')));
   return fails;
 }
 

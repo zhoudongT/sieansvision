@@ -727,10 +727,20 @@ void MainWindow::buildUi() {
   });
   connect(host_strip_, &HostStrip::watchKeysChanged, this, [this](const QStringList& keys) {
     if (host_strip_) host_strip_->setWatchKeys(keys);
+    // Runtime-only chip edits persist the visible key list but do not rewrite
+    // saved pin groups or mark the live seed dirty.
     document_.setHostWatchKeys(keys);
     if (var_watch_) var_watch_->setWatchKeys(keys);
     showStatus(QStringLiteral("监视键 %1").arg(keys.join(QLatin1Char(','))));
     logResult(QStringLiteral("Host 监视键 → %1").arg(keys.join(QLatin1Char(','))));
+  });
+  connect(host_strip_, &HostStrip::pinGroupPicked, this, &MainWindow::applyHostPinGroup);
+  connect(host_strip_, &HostStrip::openVarWatchRequested, this, [this]() {
+    if (var_watch_ && bottom_tabs_) {
+      bottom_tabs_->setCurrentWidget(var_watch_);
+      var_watch_->setFocus(Qt::OtherFocusReason);
+      showStatus(QStringLiteral("变量监视"));
+    }
   });
   connect(host_strip_, &HostStrip::openHostRequested, this, [this]() {
     if (host_sm_) {
@@ -1090,6 +1100,7 @@ void MainWindow::buildUi() {
     QStringList keys = document_.hostWatchKeys();
     if (keys.contains(key)) keys.removeAll(key);
     else keys << key;
+    // Toggle is a runtime watch edit: update chips, do not rewrite pin groups or dirty.
     document_.setHostWatchKeys(keys);
     if (host_strip_) {
       host_strip_->setWatchKeys(keys);
@@ -1098,6 +1109,33 @@ void MainWindow::buildUi() {
     if (var_watch_) var_watch_->setWatchKeys(keys);
     showStatus(QStringLiteral("Host 监视 %1 %2")
                    .arg(keys.contains(key) ? QStringLiteral("＋") : QStringLiteral("－"), key));
+  });
+  connect(var_watch_, &VarWatchPanel::pinGroupChanged, this, &MainWindow::applyHostPinGroup);
+  connect(var_watch_, &VarWatchPanel::pinGroupSaveRequested, this, [this]() {
+    if (applying_document_) return;
+    QStringList keys = document_.hostWatchKeys();
+    if (host_strip_ && !host_strip_->watchChipsText().isEmpty() && !keys.isEmpty()) {
+      // keep document keys; HostStrip may have a runtime overlay already written
+    }
+    QString n = document_.activePinGroup();
+    if (n.isEmpty()) n = QStringLiteral("默认");
+    document_.ensurePinGroup(n, keys);
+    document_.activatePinGroup(n);
+    if (host_strip_) {
+      host_strip_->setWatchKeys(document_.hostWatchKeys());
+      host_strip_->updateFromVars(flow_vars_);
+    }
+    if (var_watch_) var_watch_->setWatchKeys(document_.hostWatchKeys());
+    syncHostPinGroups();
+    markProjectDirty();
+    showStatus(QStringLiteral("已存钉组 %1 · %2 键").arg(n).arg(keys.size()));
+  });
+  connect(var_watch_, &VarWatchPanel::pinGroupNewRequested, this, [this](const QString& name) {
+    if (applying_document_ || name.trimmed().isEmpty()) return;
+    const QStringList keys = document_.hostWatchKeys();
+    document_.ensurePinGroup(name, keys);
+    applyHostPinGroup(name);
+    showStatus(QStringLiteral("已建钉组 %1 · %2 键").arg(document_.activePinGroup()).arg(keys.size()));
   });
   connect(var_watch_, &VarWatchPanel::watchListChanged, this, [this](const QStringList& keys) {
     document_.setVarWatchKeys(keys);
@@ -1456,6 +1494,7 @@ void MainWindow::applyDocumentToUi() {
     var_watch_->setVariables(flow_vars_);
   }
   if (host_strip_) host_strip_->setWatchKeys(document_.hostWatchKeys());
+  syncHostPinGroups();
   {
     const int iv = document_.runIntervalMs() > 0 ? document_.runIntervalMs() : 200;
     if (host_sm_) host_sm_->setRunIntervalMs(iv);
@@ -1897,6 +1936,31 @@ QStringList MainWindow::topologicalStepIds() const {
     if (!visited.contains(s.id)) ordered << s.id;
   }
   return ordered;
+}
+
+void MainWindow::syncHostPinGroups() {
+  const QStringList names = document_.pinGroupNames();
+  const QString active = document_.activePinGroup();
+  if (host_strip_) host_strip_->setPinGroups(names, active);
+  if (var_watch_) {
+    QHash<QString, QStringList> keys;
+    for (const QString& n : names) keys.insert(n, document_.pinGroupKeys(n));
+    var_watch_->setPinGroups(names, keys, active);
+  }
+}
+
+void MainWindow::applyHostPinGroup(const QString& name) {
+  if (applying_document_ || name.trimmed().isEmpty()) return;
+  document_.activatePinGroup(name);
+  const QStringList keys = document_.hostWatchKeys();
+  if (host_strip_) {
+    host_strip_->setWatchKeys(keys);
+    host_strip_->updateFromVars(flow_vars_);
+  }
+  if (var_watch_) var_watch_->setWatchKeys(keys);
+  syncHostPinGroups();
+  markProjectDirty();
+  showStatus(QStringLiteral("钉组 %1 · %2 键").arg(document_.activePinGroup()).arg(keys.size()));
 }
 
 void MainWindow::markProjectDirty() {
@@ -4332,6 +4396,24 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                       .arg(iof.isEmpty() ? 1 : 0)
                       .arg(iof.isEmpty() ? QStringLiteral("0")
                                          : iof.join(QLatin1Char('|')).left(120));
+        }
+        {
+          const QStringList pf = SieansDocument::pinGroupSelfTest();
+          const QStringList cf = HostStrip::pinGroupChromeSelfTest();
+          QStringList all = pf;
+          all << cf;
+          line += QStringLiteral(
+                      "pinGroupOk=%1 pinGroupFails=%2 pinGroupCount=%3 "
+                      "pinGroupActive=%4 pinGroupRound=%5 pinGroupChipOk=%6 "
+                      "pinGroupLive=%7 ")
+                      .arg(all.isEmpty() ? 1 : 0)
+                      .arg(all.isEmpty() ? QStringLiteral("0")
+                                         : all.join(QLatin1Char('|')).left(160))
+                      .arg(all.isEmpty() ? 2 : 0)
+                      .arg(all.isEmpty() ? QStringLiteral("测量") : QStringLiteral("fail"))
+                      .arg(pf.isEmpty() ? 1 : 0)
+                      .arg(cf.isEmpty() ? 1 : 0)
+                      .arg(document_.pinGroupNames().size());
         }
       }
       line += QStringLiteral(

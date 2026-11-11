@@ -90,6 +90,10 @@ class MainWindow : public QMainWindow {
   void buildMenus();
   void buildToolbar();
   void applyDocumentToUi();
+  /** Restore Host/VarWatch pin-group chrome from the document without dirtying. */
+  void syncHostPinGroups();
+  /** Activate a named pin group and refresh chips; marks dirty unless applying. */
+  void applyHostPinGroup(const QString& name);
   /** 方案已被用户改过，标题加 *。加载/应用文档期间忽略。 */
   void markProjectDirty();
   /** 保存或重新加载成功后清除脏标记。 */
