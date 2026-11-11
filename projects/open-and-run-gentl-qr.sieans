@@ -372,6 +372,82 @@
         "referenceSource": "soft_scene_blemish",
         "resultVar": "defects"
       }
+    },
+    {
+      "id": "loc1",
+      "name": "模板与定位",
+      "operation": "locate",
+      "imageFrom": "a1b2c3d4e5f60718",
+      "position": {
+        "x": 780,
+        "y": 400
+      },
+      "runState": "等待执行",
+      "params": {
+        "templateSource": "soft_plate",
+        "minScore": 0.55,
+        "maxMatches": 1,
+        "overlapThreshold": 0.3,
+        "angleEnable": true,
+        "angleStart": 0,
+        "angleEnd": 0,
+        "angleStep": 10,
+        "writePassGate": false
+      }
+    },
+    {
+      "id": "pose1",
+      "name": "位置修正",
+      "operation": "pose_correct",
+      "imageFrom": "loc1",
+      "position": {
+        "x": 780,
+        "y": 520
+      },
+      "runState": "等待执行",
+      "params": {
+        "fixtureSource": "auto",
+        "bindStepId": "loc1",
+        "autoBindLocate": true,
+        "followRoi": true,
+        "resultVar": "fixture",
+        "axisLength": 48,
+        "showAxes": true,
+        "writeFlowVars": true
+      }
+    },
+    {
+      "id": "defFollow",
+      "name": "缺陷检测 · 跟随ROI",
+      "operation": "defects",
+      "imageFrom": "pose1",
+      "position": {
+        "x": 780,
+        "y": 640
+      },
+      "runState": "等待执行",
+      "params": {
+        "referenceSource": "soft_scene",
+        "differenceThreshold": 30,
+        "minArea": 20,
+        "maxCount": 200,
+        "blur": 3,
+        "ignoreBottomPx": 0,
+        "scaleReference": true,
+        "judgeEnable": true,
+        "judgeMaxCount": 0,
+        "judgeMaxRatio": 0.05,
+        "resultVar": "defectsFollow",
+        "writePassGate": false,
+        "showOverlay": true,
+        "showLabels": true,
+        "followFixture": true,
+        "fixtureVar": "fixture",
+        "roiX": -40,
+        "roiY": -18,
+        "roiW": 80,
+        "roiH": 36
+      }
     }
   ],
   "edges": [
@@ -487,6 +563,24 @@
       "from": "a1b2c3d4e5f60718",
       "to": "defNg",
       "when": "always"
+    },
+    {
+      "id": "e-cam-loc1",
+      "from": "a1b2c3d4e5f60718",
+      "to": "loc1",
+      "when": "always"
+    },
+    {
+      "id": "e-loc1-pose1",
+      "from": "loc1",
+      "to": "pose1",
+      "when": "always"
+    },
+    {
+      "id": "e-pose1-defFollow",
+      "from": "pose1",
+      "to": "defFollow",
+      "when": "always"
     }
   ],
   "variables": {
@@ -518,7 +612,21 @@
     "defectsTotalArea": 0,
     "defectsCleanCount": 0,
     "defectsCleanOk": 0,
-    "defectsCleanRatio": 0
+    "defectsCleanRatio": 0,
+    "locateOk": 0,
+    "locateScore": 0,
+    "locateX": 0,
+    "locateY": 0,
+    "locateAngle": 0,
+    "locateCount": 0,
+    "fixtureOk": 0,
+    "fixtureX": 0,
+    "fixtureY": 0,
+    "fixtureAngle": 0,
+    "defectsFollowCount": 0,
+    "defectsFollowOk": 0,
+    "defectsFollowRoiX": 0,
+    "defectsFollowRoiY": 0
   },
   "hostWatch": {
     "watchKeys": [
@@ -547,7 +655,20 @@
       "defectsPassed",
       "defectsMaxArea",
       "defectsCleanCount",
-      "defectsCleanOk"
+      "defectsCleanOk",
+      "locateOk",
+      "locateScore",
+      "locateX",
+      "locateY",
+      "locateAngle",
+      "fixtureOk",
+      "fixtureX",
+      "fixtureY",
+      "fixtureAngle",
+      "defectsFollowCount",
+      "defectsFollowOk",
+      "defectsFollowRoiX",
+      "defectsFollowRoiY"
     ],
     "active": "二维码链",
     "pinGroups": {

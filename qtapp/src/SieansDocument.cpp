@@ -326,6 +326,49 @@ void SieansDocument::seedGentlQrDemo() {
        {QStringLiteral("writePassGate"), false},
        {QStringLiteral("showOverlay"), true},
        {QStringLiteral("showLabels"), true}});
+  add(QStringLiteral("loc1"), QStringLiteral("模板与定位"),
+      QStringLiteral("locate"), 780, 400, QStringLiteral("cam1"),
+      {{QStringLiteral("templateSource"), QStringLiteral("soft_plate")},
+       {QStringLiteral("minScore"), 0.55},
+       {QStringLiteral("maxMatches"), 1},
+       {QStringLiteral("overlapThreshold"), 0.3},
+       {QStringLiteral("angleEnable"), true},
+       {QStringLiteral("angleStart"), 0},
+       {QStringLiteral("angleEnd"), 0},
+       {QStringLiteral("angleStep"), 10},
+       {QStringLiteral("writePassGate"), false}});
+  add(QStringLiteral("pose1"), QStringLiteral("位置修正"),
+      QStringLiteral("pose_correct"), 780, 520, QStringLiteral("loc1"),
+      {{QStringLiteral("fixtureSource"), QStringLiteral("auto")},
+       {QStringLiteral("bindStepId"), QStringLiteral("loc1")},
+       {QStringLiteral("autoBindLocate"), true},
+       {QStringLiteral("followRoi"), true},
+       {QStringLiteral("resultVar"), QStringLiteral("fixture")},
+       {QStringLiteral("axisLength"), 48},
+       {QStringLiteral("showAxes"), true},
+       {QStringLiteral("writeFlowVars"), true}});
+  add(QStringLiteral("defFollow"), QStringLiteral("缺陷检测 · 跟随ROI"),
+      QStringLiteral("defects"), 780, 640, QStringLiteral("pose1"),
+      {{QStringLiteral("referenceSource"), QStringLiteral("soft_scene")},
+       {QStringLiteral("differenceThreshold"), 30},
+       {QStringLiteral("minArea"), 20},
+       {QStringLiteral("maxCount"), 200},
+       {QStringLiteral("blur"), 3},
+       {QStringLiteral("ignoreBottomPx"), 0},
+       {QStringLiteral("scaleReference"), true},
+       {QStringLiteral("judgeEnable"), true},
+       {QStringLiteral("judgeMaxCount"), 0},
+       {QStringLiteral("judgeMaxRatio"), 0.05},
+       {QStringLiteral("resultVar"), QStringLiteral("defectsFollow")},
+       {QStringLiteral("writePassGate"), false},
+       {QStringLiteral("showOverlay"), true},
+       {QStringLiteral("showLabels"), true},
+       {QStringLiteral("followFixture"), true},
+       {QStringLiteral("fixtureVar"), QStringLiteral("fixture")},
+       {QStringLiteral("roiX"), -40},
+       {QStringLiteral("roiY"), -18},
+       {QStringLiteral("roiW"), 80},
+       {QStringLiteral("roiH"), 36}});
   add(QStringLiteral("var1"), QStringLiteral("变量计算 · OK/NG"),
       QStringLiteral("var_calc"), 300, 380, QStringLiteral("qr1"),
       {{QStringLiteral("scope"), QStringLiteral("flow")},
@@ -423,6 +466,9 @@ void SieansDocument::seedGentlQrDemo() {
   link(QStringLiteral("cam1"), QStringLiteral("cal1"));
   link(QStringLiteral("cam1"), QStringLiteral("defOk"));
   link(QStringLiteral("cam1"), QStringLiteral("defNg"));
+  link(QStringLiteral("cam1"), QStringLiteral("loc1"));
+  link(QStringLiteral("loc1"), QStringLiteral("pose1"));
+  link(QStringLiteral("pose1"), QStringLiteral("defFollow"));
   link(QStringLiteral("qr1"), QStringLiteral("var1"));
   link(QStringLiteral("var1"), QStringLiteral("gate1"));
   link(QStringLiteral("gate1"), QStringLiteral("fmt1"));
@@ -474,6 +520,20 @@ void SieansDocument::seedGentlQrDemo() {
       {QStringLiteral("defectsCleanCount"), 0},
       {QStringLiteral("defectsCleanOk"), 0},
       {QStringLiteral("defectsCleanRatio"), 0},
+      {QStringLiteral("locateOk"), 0},
+      {QStringLiteral("locateScore"), 0},
+      {QStringLiteral("locateX"), 0},
+      {QStringLiteral("locateY"), 0},
+      {QStringLiteral("locateAngle"), 0},
+      {QStringLiteral("locateCount"), 0},
+      {QStringLiteral("fixtureOk"), 0},
+      {QStringLiteral("fixtureX"), 0},
+      {QStringLiteral("fixtureY"), 0},
+      {QStringLiteral("fixtureAngle"), 0},
+      {QStringLiteral("defectsFollowCount"), 0},
+      {QStringLiteral("defectsFollowOk"), 0},
+      {QStringLiteral("defectsFollowRoiX"), 0},
+      {QStringLiteral("defectsFollowRoiY"), 0},
   };
   subflows_.clear();
   subflows_.push_back(makeCounterSubflow());
@@ -622,7 +682,14 @@ QStringList SieansDocument::hostWatchKeys() const {
             QStringLiteral("loopPassed"), QStringLiteral("defectsCount"),
             QStringLiteral("defectsRatio"), QStringLiteral("defectsOk"),
             QStringLiteral("defectsPassed"), QStringLiteral("defectsMaxArea"),
-            QStringLiteral("defectsCleanCount"), QStringLiteral("defectsCleanOk")};
+            QStringLiteral("defectsCleanCount"), QStringLiteral("defectsCleanOk"),
+            QStringLiteral("locateOk"), QStringLiteral("locateScore"),
+            QStringLiteral("locateX"), QStringLiteral("locateY"),
+            QStringLiteral("locateAngle"), QStringLiteral("fixtureOk"),
+            QStringLiteral("fixtureX"), QStringLiteral("fixtureY"),
+            QStringLiteral("fixtureAngle"), QStringLiteral("defectsFollowCount"),
+            QStringLiteral("defectsFollowOk"), QStringLiteral("defectsFollowRoiX"),
+            QStringLiteral("defectsFollowRoiY")};
   }
   return keys;
 }

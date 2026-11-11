@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QImage>
+#include <QRect>
 #include <QString>
 
 namespace sieans_qt {
@@ -28,6 +29,10 @@ QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gain
 QImage makeSoftScene(int width, int height);
 /** makeSoftScene 上叠加一块固定位置的深色斑块，供缺陷检出烟雾。 */
 QImage makeSoftSceneBlemish(int width, int height);
+/** SIEANS 标牌在 soft 场景中的矩形（与 makeSoftScene 绘制一致）。 */
+QRect softScenePlateRect(int width, int height);
+/** 从 soft 场景裁出标牌，用作定位模板。 */
+QImage makeSoftScenePlateTemplate(int width, int height);
 
 /**
  * Exposure/gain simulation. stampHud draws `exp=… gain=… #seq` so a live

@@ -1,7 +1,9 @@
 #include "DefectDetect.hpp"
 #include "SoftFrame.hpp"
+#include "FixturePose.hpp"
 
 #include <QColor>
+#include <QRectF>
 #include <QFileInfo>
 #include <QPainter>
 #include <QSet>
@@ -196,9 +198,27 @@ DefectResult runDefects(const QImage& current, const QImage& reference,
     return r;
   }
 
+  Pose2D followPose;
+  bool useFollow = false;
+  FollowRoi followRoi;
+  if (params.value(QStringLiteral("followFixture")).toBool()) {
+    followRoi = resolveFollowRoi(params, current.width(), current.height());
+    if (followRoi.active) {
+      followPose = poseFromParams(params);
+      followPose.ok = true;
+      useFollow = true;
+    }
+  }
+
   const int ignoreBottom = qMax(0, params.value(QStringLiteral("ignoreBottomPx"), 0).toInt());
   QPoint origin(0, 0);
-  QImage a = applyRoi(cropBottom(current, ignoreBottom), params, &origin);
+  QImage a;
+  if (useFollow) {
+    a = extractFollowPatch(current, followRoi, followPose);
+    origin = QPoint(0, 0);  // patch coords; remapped later
+  } else {
+    a = applyRoi(cropBottom(current, ignoreBottom), params, &origin);
+  }
   QImage bIn = cropBottom(reference, ignoreBottom);
   // ROI on reference: if same size as current before ROI, apply same crop via origin
   // First match sizes.
@@ -206,6 +226,23 @@ DefectResult runDefects(const QImage& current, const QImage& reference,
                         params.value(QStringLiteral("scaleReference")).toBool();
   // applyRoi already applied to current (a). If reference was full-size like current
   // before ROI, scale bIn to the pre-ROI cropped current, then apply same ROI.
+  QImage b;
+  if (useFollow) {
+    Pose2D taught = followPose;
+    if (params.contains(QStringLiteral("fixtureBaseX"))) {
+      taught.x = params.value(QStringLiteral("fixtureBaseX")).toDouble();
+      taught.y = params.value(QStringLiteral("fixtureBaseY")).toDouble();
+      taught.angleDeg = params.value(QStringLiteral("fixtureBaseAngle")).toDouble();
+      taught.scale = params.value(QStringLiteral("fixtureBaseScale"), followPose.scale).toDouble();
+      if (!(taught.scale > 0)) taught.scale = 1;
+    }
+    b = extractFollowPatch(reference, followRoi, taught);
+    if (a.isNull() || b.isNull()) {
+      r.error = QStringLiteral("定位跟随 ROI 无效");
+      r.note = r.error;
+      return r;
+    }
+  } else {
   QImage croppedCurrent = cropBottom(current, ignoreBottom);
   if (bIn.size() != croppedCurrent.size()) {
     if (!scaleRef) {
@@ -219,7 +256,7 @@ DefectResult runDefects(const QImage& current, const QImage& reference,
     }
     bIn = bIn.scaled(croppedCurrent.size(), Qt::IgnoreAspectRatio, Qt::FastTransformation);
   }
-  QImage b = (params.value(QStringLiteral("roiW"), 0).toInt() > 0 &&
+  b = (params.value(QStringLiteral("roiW"), 0).toInt() > 0 &&
               params.value(QStringLiteral("roiH"), 0).toInt() > 0)
                  ? applyRoi(bIn, params, nullptr)
                  : bIn;
@@ -230,6 +267,7 @@ DefectResult runDefects(const QImage& current, const QImage& reference,
       return r;
     }
     b = b.scaled(a.size(), Qt::IgnoreAspectRatio, Qt::FastTransformation);
+  }
   }
 
   int blurK = params.value(QStringLiteral("blur"), 3).toInt();
@@ -279,8 +317,17 @@ DefectResult runDefects(const QImage& current, const QImage& reference,
     accepted += blob.area;
     DefectItem it;
     it.areaPixels = blob.area;
-    it.bbox = QRect(blob.x0 + origin.x(), blob.y0 + origin.y(),
-                    blob.x1 - blob.x0 + 1, blob.y1 - blob.y0 + 1);
+    if (useFollow) {
+      const QPointF p0 = poseMap(followPose, QPointF(followRoi.roiX + blob.x0,
+                                                     followRoi.roiY + blob.y0));
+      const QPointF p1 = poseMap(followPose, QPointF(followRoi.roiX + blob.x1,
+                                                     followRoi.roiY + blob.y1));
+      const QRectF br = QRectF(p0, p1).normalized();
+      it.bbox = br.toAlignedRect();
+    } else {
+      it.bbox = QRect(blob.x0 + origin.x(), blob.y0 + origin.y(),
+                      blob.x1 - blob.x0 + 1, blob.y1 - blob.y0 + 1);
+    }
     r.items.push_back(it);
     if (blob.area > r.maxArea) r.maxArea = blob.area;
   }

@@ -77,11 +77,33 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("trigger", "触发", kChoice, "freerun|自由运行;software|软触发;line0|Line0")};
   }
   if (op == QLatin1String("locate")) {
-    return {S("minScore", "最小分数", kReal, ""),
-            S("maxMatches", "最大个数", kInt, ""),
-            S("templateW", "模板宽", kInt, ""),
-            S("templateH", "模板高", kInt, ""),
-            S("templatePath", "模板文件", kLine, "")};
+    return {S("templateSource", "模板来源", kChoice,
+              "file|文件路径;soft_plate|软场景标牌;capture|从当前图截取"),
+            S("templatePath", "模板文件", kLine, ""),
+            S("templateW", "截取宽", kInt, ""),
+            S("templateH", "截取高", kInt, ""),
+            S("minScore", "最低分数", kReal, ""),
+            S("maxMatches", "最多目标", kInt, ""),
+            S("overlapThreshold", "去重重叠", kReal, "0.3"),
+            S("angleEnable", "搜索旋转", kBool, ""),
+            S("angleStart", "起始角度", kReal, ""),
+            S("angleEnd", "终止角度", kReal, ""),
+            S("angleStep", "角度步长", kReal, "")};
+  }
+  if (op == QLatin1String("pose_correct")) {
+    return {S("fixtureSource", "位姿来源", kChoice,
+              "auto|自动上游定位;bind|绑定步骤;manual|手动基准"),
+            S("bindStepId", "绑定步骤", kLine, "空=最近 locate"),
+            S("autoBindLocate", "自动绑定 locate", kBool, ""),
+            S("baseX", "基准 X", kReal, ""),
+            S("baseY", "基准 Y", kReal, ""),
+            S("baseAngle", "基准角度", kReal, ""),
+            S("baseScale", "基准缩放", kReal, ""),
+            S("followRoi", "下游 ROI 跟随", kBool, ""),
+            S("resultVar", "结果前缀", kLine, "fixture"),
+            S("axisLength", "轴长度", kReal, ""),
+            S("showAxes", "显示坐标轴", kBool, ""),
+            S("writeFlowVars", "写入流程变量", kBool, "")};
   }
   if (op == QLatin1String("preprocess")) {
     return {S("mode", "方法", kChoice, "gray|灰度;mono|灰度;invert|反色;threshold|阈值"),
@@ -123,7 +145,9 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("resultVar", "结果前缀", kLine, "defects → defectsCount"),
             S("writePassGate", "写入 passGate", kBool, ""),
             S("showOverlay", "显示缺陷框", kBool, ""),
-            S("showLabels", "显示面积标签", kBool, "")};
+            S("showLabels", "显示面积标签", kBool, ""),
+            S("followFixture", "跟随定位位姿", kBool, "ROI 在夹具坐标系"),
+            S("fixtureVar", "位姿变量前缀", kLine, "fixture")};
   }
   if (op == QLatin1String("caliper") || op == QLatin1String("measure")) {
     return {S("direction", "方向", kChoice, "horizontal|水平;vertical|垂直"),
@@ -139,7 +163,9 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("judgeEnable", "启用判定", kBool, ""),
             S("judgeMinPx", "最小间距 px", kReal, ""),
             S("judgeMaxPx", "最大间距 px", kReal, ""),
-            S("showOverlay", "显示卡尺", kBool, "")};
+            S("showOverlay", "显示卡尺", kBool, ""),
+            S("followFixture", "跟随定位位姿", kBool, ""),
+            S("fixtureVar", "位姿变量前缀", kLine, "fixture")};
   }
   if (op == QLatin1String("var_calc")) {
     return {S("scope", "作用域", kChoice, "flow|流程;global|全局")};
@@ -845,7 +871,11 @@ void PropertyPanel::showStep(const FlowStep& step) {
            step.operation == QLatin1String("measure"))
     hint += QStringLiteral(" · QImage 边缘卡尺 · caliperDist/measureMm");
   else if (step.operation == QLatin1String("defects"))
-    hint += QStringLiteral(" · 灰度差影+连通域 · defectsCount/defectsRatio/defectsOk");
+    hint += QStringLiteral(" · 灰度差影+连通域 · defectsCount/defectsRatio/defectsOk · 可跟随定位");
+  else if (step.operation == QLatin1String("locate"))
+    hint += QStringLiteral(" · 模板 SAD + 旋转搜索 · locateX/Y/Angle/Score");
+  else if (step.operation == QLatin1String("pose_correct"))
+    hint += QStringLiteral(" · 定位跟随 · fixtureX/Y/Angle 供下游 ROI/测量");
   else if (step.operation == QLatin1String("subflow"))
     hint += QStringLiteral(" · 调用子流程 · 结果 subflowPassed/subflowCount");
   else if (step.operation == QLatin1String("loop"))

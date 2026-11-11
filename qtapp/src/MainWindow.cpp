@@ -2,6 +2,7 @@
 #include "Theme.hpp"
 #include "ExprEval.hpp"
 #include "TemplateMatch.hpp"
+#include "FixturePose.hpp"
 #include "CaliperMeasure.hpp"
 #include "DefectDetect.hpp"
 #include "ConditionEval.hpp"
@@ -1628,7 +1629,11 @@ void MainWindow::refreshConfigStatus() {
   int missing = 0;
   for (const FlowStep& s : document_.steps()) {
     if (s.operation == QLatin1String("locate") &&
-        s.params.value(QStringLiteral("templatePath")).toString().isEmpty()) {
+        s.params.value(QStringLiteral("templatePath")).toString().isEmpty() &&
+        s.params.value(QStringLiteral("templateSource")).toString() !=
+            QLatin1String("soft_plate") &&
+        s.params.value(QStringLiteral("templateSource")).toString() !=
+            QLatin1String("soft_scene_plate")) {
       const QString st = s.runState;
       if (st != QLatin1String("OK") && st != QLatin1String("NG") &&
           !st.contains(QStringLiteral("运行")))
@@ -1892,42 +1897,42 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                  .arg(step->params.value(QStringLiteral("mode"), QStringLiteral("gray"))
                           .toString());
     } else if (op == QLatin1String("locate")) {
-      QString tplPath = step->params.value(QStringLiteral("templatePath")).toString();
-      QImage tpl;
-      if (!tplPath.isEmpty()) tpl.load(tplPath);
-      bool created = false;
-      if (tpl.isNull()) {
-        const int tw = step->params.value(QStringLiteral("templateW"), 80).toInt();
-        const int th = step->params.value(QStringLiteral("templateH"), 64).toInt();
-        tpl = salientCrop(working, tw, th);
+      QVariantMap lp = step->params;
+      const auto t0 = std::chrono::steady_clock::now();
+      LocateResult lr = runLocate(working, lp);
+      if (lr.templateCreated && !lr.templateUsed.isNull()) {
         const QString dir =
             QStringLiteral("/home/allen/文档/sieansvision/artifacts/qt-templates");
         QDir().mkpath(dir);
-        tplPath = dir + QLatin1Char('/') + id + QStringLiteral(".png");
-        tpl.save(tplPath);
+        const QString tplPath = dir + QLatin1Char('/') + id + QStringLiteral(".png");
+        lr.templateUsed.save(tplPath);
         step->params.insert(QStringLiteral("templatePath"), tplPath);
         step->params.insert(QStringLiteral("templateCaptured"), true);
-        created = true;
+        lr.templatePath = tplPath;
       }
-      const double minScore = step->params.value(QStringLiteral("minScore"), 0.55).toDouble();
-      const int maxN = qMax(1, step->params.value(QStringLiteral("maxMatches"), 1).toInt());
-      const auto t0 = std::chrono::steady_clock::now();
-      const QVector<TemplateHit> found =
-          findTemplate(working, tpl, minScore, maxN);
       const double matchMs = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() - t0)
                                  .count();
       algoMs += matchMs;
+      const QVector<TemplateHit>& found = lr.hits;
       const double best = found.isEmpty() ? 0.0 : found.first().score;
-      ok = !found.isEmpty();
+      const QPointF c0 = found.isEmpty() ? QPointF() : found.first().center;
+      ok = lr.ok && !found.isEmpty();
       flow_vars_.insert(QStringLiteral("locateScore"), best);
       flow_vars_.insert(QStringLiteral("locateCount"), found.size());
-      flow_vars_.insert(QStringLiteral("locateX"),
-                        found.isEmpty() ? 0 : found.first().rect.center().x());
-      flow_vars_.insert(QStringLiteral("locateY"),
-                        found.isEmpty() ? 0 : found.first().rect.center().y());
+      flow_vars_.insert(QStringLiteral("locateX"), c0.x());
+      flow_vars_.insert(QStringLiteral("locateY"), c0.y());
+      flow_vars_.insert(QStringLiteral("locateAngle"),
+                        found.isEmpty() ? 0 : found.first().angleDeg);
+      flow_vars_.insert(QStringLiteral("locateScale"),
+                        found.isEmpty() ? 1 : found.first().scale);
+      flow_vars_.insert(QStringLiteral("locateW"),
+                        found.isEmpty() ? 0 : found.first().rect.width());
+      flow_vars_.insert(QStringLiteral("locateH"),
+                        found.isEmpty() ? 0 : found.first().rect.height());
       flow_vars_.insert(QStringLiteral("locateOk"), ok ? 1 : 0);
-      if (!flow_vars_.contains(QStringLiteral("barcodeCount"))) {
+      if (!flow_vars_.contains(QStringLiteral("barcodeCount")) &&
+          step->params.value(QStringLiteral("writePassGate")).toBool()) {
         flow_vars_.insert(QStringLiteral("passGate"), ok ? 1 : 0);
       }
       StepSnap snap;
@@ -1937,31 +1942,101 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
       snap.score = best;
       snap.confidence = best;
       snap.text = QString::number(best, 'f', 3);
+      snap.fields.insert(QStringLiteral("x"), c0.x());
+      snap.fields.insert(QStringLiteral("y"), c0.y());
+      snap.fields.insert(QStringLiteral("angle"),
+                         found.isEmpty() ? 0 : found.first().angleDeg);
       step_snaps.insert(id, snap);
+      int hi = 0;
       for (const TemplateHit& hit : found) {
         OverlayHit o;
-        o.format = QStringLiteral("匹配");
-        o.text = QStringLiteral("分数 %1  角度 0").arg(hit.score, 0, 'f', 2);
-        const QRect r = hit.rect;
-        o.polygon << r.topLeft() << r.topRight() << r.bottomRight() << r.bottomLeft();
+        o.format = QStringLiteral("定位");
+        o.text = QStringLiteral("分数 %1  角度 %2")
+                     .arg(hit.score, 0, 'f', 2)
+                     .arg(hit.angleDeg, 0, 'f', 1);
+        if (!hit.corners.isEmpty())
+          o.polygon = hit.corners;
+        else {
+          const QRect r = hit.rect;
+          o.polygon << r.topLeft() << r.topRight() << r.bottomRight() << r.bottomLeft();
+        }
         overlays.push_back(o);
-        const int row = result_table_->rowCount();
-        result_table_->insertRow(row);
-        result_table_->setItem(row, 0, new QTableWidgetItem(QStringLiteral("locate.score")));
-        result_table_->setItem(row, 1,
-                               new QTableWidgetItem(QString::number(hit.score, 'f', 3)));
-        result_table_->setItem(row, 2, new QTableWidgetItem(QStringLiteral("float")));
+        if (result_table_) {
+          const int row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(
+              row, 0, new QTableWidgetItem(QStringLiteral("locate[%1].score").arg(hi)));
+          result_table_->setItem(
+              row, 1, new QTableWidgetItem(QString::number(hit.score, 'f', 3)));
+          result_table_->setItem(row, 2, new QTableWidgetItem(QStringLiteral("float")));
+        }
+        ++hi;
       }
       if (output_view_) output_view_->setLiveImage(working);
-      note = created
-                 ? QStringLiteral("已创建模板 · %1 个 · %2 · %3 ms")
-                       .arg(found.size())
-                       .arg(best, 0, 'f', 2)
-                       .arg(matchMs, 0, 'f', 1)
-                 : QStringLiteral("%1 个 · 分数 %2 · %3 ms")
-                       .arg(found.size())
-                       .arg(best, 0, 'f', 2)
-                       .arg(matchMs, 0, 'f', 1);
+      note = lr.templateCreated
+                 ? QStringLiteral("已创建模板 · %1 · %2 ms").arg(lr.note).arg(matchMs, 0, 'f', 1)
+                 : (lr.ok ? QStringLiteral("%1 · %2 ms").arg(lr.note).arg(matchMs, 0, 'f', 1)
+                          : (lr.error.isEmpty() ? lr.note : lr.error));
+    } else if (op == QLatin1String("pose_correct")) {
+      const PoseCorrectResult pr = runPoseCorrect(step->params, flow_vars_);
+      ok = pr.ok;
+      note = pr.note;
+      QString prefix =
+          step->params.value(QStringLiteral("resultVar"), QStringLiteral("fixture"))
+              .toString()
+              .trimmed();
+      if (prefix.isEmpty()) prefix = QStringLiteral("fixture");
+      const bool writeVars = !step->params.contains(QStringLiteral("writeFlowVars")) ||
+                             step->params.value(QStringLiteral("writeFlowVars")).toBool();
+      if (writeVars) {
+        flow_vars_.insert(prefix + QStringLiteral("X"), pr.pose.x);
+        flow_vars_.insert(prefix + QStringLiteral("Y"), pr.pose.y);
+        flow_vars_.insert(prefix + QStringLiteral("Angle"), pr.pose.angleDeg);
+        flow_vars_.insert(prefix + QStringLiteral("Scale"), pr.pose.scale);
+        flow_vars_.insert(prefix + QStringLiteral("Ok"), pr.ok ? 1 : 0);
+        flow_vars_.insert(prefix + QStringLiteral("Status"), pr.status);
+        flow_vars_.insert(prefix + QStringLiteral("Score"), pr.score);
+        flow_vars_.insert(prefix + QStringLiteral("BaseX"), pr.pose.x);
+        flow_vars_.insert(prefix + QStringLiteral("BaseY"), pr.pose.y);
+        flow_vars_.insert(prefix + QStringLiteral("BaseAngle"), pr.pose.angleDeg);
+        if (prefix == QLatin1String("fixture")) {
+          flow_vars_.insert(QStringLiteral("fixture_x"), pr.pose.x);
+          flow_vars_.insert(QStringLiteral("fixture_y"), pr.pose.y);
+          flow_vars_.insert(QStringLiteral("fixture_angle"), pr.pose.angleDeg);
+          flow_vars_.insert(QStringLiteral("fixture_ok"), pr.ok ? 1 : 0);
+        }
+      }
+      if ((!step->params.contains(QStringLiteral("showAxes")) ||
+           step->params.value(QStringLiteral("showAxes")).toBool()) &&
+          pr.ok) {
+        OverlayHit ax;
+        ax.format = QStringLiteral("FIXTURE");
+        ax.text = QStringLiteral("X");
+        ax.polygon = pr.axisX;
+        overlays.push_back(ax);
+        OverlayHit ay;
+        ay.format = QStringLiteral("FIXTURE");
+        ay.text = QStringLiteral("Y");
+        ay.polygon = pr.axisY;
+        overlays.push_back(ay);
+      }
+      if (result_table_) {
+        auto addRow = [&](const QString& k, const QString& v, const QString& unit) {
+          const int row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(k));
+          result_table_->setItem(row, 1, new QTableWidgetItem(v));
+          result_table_->setItem(row, 2, new QTableWidgetItem(unit));
+        };
+        addRow(prefix + QStringLiteral("X"), QString::number(pr.pose.x, 'f', 1),
+               QStringLiteral("px"));
+        addRow(prefix + QStringLiteral("Y"), QString::number(pr.pose.y, 'f', 1),
+               QStringLiteral("px"));
+        addRow(prefix + QStringLiteral("Angle"),
+               QString::number(pr.pose.angleDeg, 'f', 2), QStringLiteral("deg"));
+        addRow(prefix + QStringLiteral("Ok"), QString::number(pr.ok ? 1 : 0),
+               QStringLiteral("gate"));
+      }
     } else if (op == QLatin1String("barcode") || op == QLatin1String("qr_decode")) {
       QImage rgb = toRgb888(working);
       sieans::BarcodeOptions opts;
@@ -2118,7 +2193,21 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
     } else if (op == QLatin1String("caliper") ||
                op == QLatin1String("measure")) {
       const auto t0 = std::chrono::steady_clock::now();
-      const CaliperResult cr = runCaliper(working, step->params);
+      QVariantMap cp = step->params;
+      injectFixtureFromVars(cp, flow_vars_);
+      if (cp.value(QStringLiteral("followFixture")).toBool() &&
+          cp.value(QStringLiteral("target")).toString().toLower() !=
+              QLatin1String("soft_bars")) {
+        const FollowRoi fr = resolveFollowRoi(cp, working.width(), working.height());
+        if (fr.active && !fr.aabb.isEmpty()) {
+          cp.insert(QStringLiteral("roiX"), fr.aabb.x());
+          cp.insert(QStringLiteral("roiY"), fr.aabb.y());
+          cp.insert(QStringLiteral("roiW"), fr.aabb.width());
+          cp.insert(QStringLiteral("roiH"), fr.aabb.height());
+          cp.insert(QStringLiteral("target"), QString());
+        }
+      }
+      const CaliperResult cr = runCaliper(working, cp);
       const double calMs = std::chrono::duration<double, std::milli>(
                                std::chrono::steady_clock::now() - t0)
                                .count();
@@ -2195,9 +2284,18 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
       }
     } else if (op == QLatin1String("defects")) {
       const auto t0 = std::chrono::steady_clock::now();
+      QVariantMap dp = step->params;
+      injectFixtureFromVars(dp, flow_vars_);
+      if (dp.value(QStringLiteral("followFixture")).toBool() &&
+          flow_vars_.contains(QStringLiteral("locateW"))) {
+        if (!dp.contains(QStringLiteral("locateW")))
+          dp.insert(QStringLiteral("locateW"), flow_vars_.value(QStringLiteral("locateW")));
+        if (!dp.contains(QStringLiteral("locateH")))
+          dp.insert(QStringLiteral("locateH"), flow_vars_.value(QStringLiteral("locateH")));
+      }
       QString refErr;
-      const QImage ref = resolveDefectsReference(working, step->params, &refErr);
-      DefectResult dr = runDefects(working, ref, step->params);
+      const QImage ref = resolveDefectsReference(working, dp, &refErr);
+      DefectResult dr = runDefects(working, ref, dp);
       if (!dr.ok && dr.error.isEmpty()) dr.error = refErr;
       const double defMs = std::chrono::duration<double, std::milli>(
                                std::chrono::steady_clock::now() - t0)
@@ -2222,6 +2320,20 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
         flow_vars_.insert(QStringLiteral("defects_count"), dr.count);
         flow_vars_.insert(QStringLiteral("defects_ratio"), dr.defectRatio);
         flow_vars_.insert(QStringLiteral("defects_passed"), okI);
+      }
+      if (dp.value(QStringLiteral("followFixture")).toBool()) {
+        const FollowRoi fr = resolveFollowRoi(dp, working.width(), working.height());
+        if (fr.active) {
+          put(QStringLiteral("RoiX"), fr.center.x());
+          put(QStringLiteral("RoiY"), fr.center.y());
+          if (step->params.value(QStringLiteral("showOverlay"), true).toBool()) {
+            OverlayHit fo;
+            fo.format = QStringLiteral("FOLLOW");
+            fo.text = QStringLiteral("跟随ROI");
+            fo.polygon = fr.corners;
+            overlays.push_back(fo);
+          }
+        }
       }
       const bool writeGate = step->params.value(QStringLiteral("writePassGate")).toBool();
       if (writeGate) flow_vars_.insert(QStringLiteral("passGate"), okI);
@@ -2785,6 +2897,28 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                   .arg(flow_vars_.value(QStringLiteral("defectsRatio")).toString())
                   .arg(flow_vars_.value(QStringLiteral("defectsMaxArea")).toString())
                   .arg(flow_vars_.value(QStringLiteral("defectsPassed")).toString());
+      line += QLatin1Char(' ');
+      line += QStringLiteral(
+                  "locateOk=%1 locateScore=%2 locateX=%3 locateY=%4 locateAngle=%5 "
+                  "locateCount=%6 fixtureOk=%7 fixtureX=%8 fixtureY=%9")
+                  .arg(flow_vars_.value(QStringLiteral("locateOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("locateScore")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("locateX")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("locateY")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("locateAngle")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("locateCount")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("fixtureOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("fixtureX")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("fixtureY")).toString());
+      line += QChar(' ');
+      line += QStringLiteral(
+                  "fixtureAngle=%1 defectsFollowCount=%2 defectsFollowOk=%3 "
+                  "defectsFollowRoiX=%4 defectsFollowRoiY=%5")
+                  .arg(flow_vars_.value(QStringLiteral("fixtureAngle")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("defectsFollowCount")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("defectsFollowOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("defectsFollowRoiX")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("defectsFollowRoiY")).toString());
       line += QLatin1Char('\n');
       f.write(line.toUtf8());
     }
@@ -3460,8 +3594,27 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("maxMatches"), 1},
                 {QStringLiteral("templateW"), 80},
                 {QStringLiteral("templateH"), 64},
-                {QStringLiteral("templatePath"), QString()}};
+                {QStringLiteral("templatePath"), QString()},
+                {QStringLiteral("templateSource"), QStringLiteral("file")},
+                {QStringLiteral("overlapThreshold"), 0.3},
+                {QStringLiteral("angleEnable"), true},
+                {QStringLiteral("angleStart"), 0},
+                {QStringLiteral("angleEnd"), 0},
+                {QStringLiteral("angleStep"), 10},
+                {QStringLiteral("writePassGate"), false}};
     s.runState = QStringLiteral("未配置");
+  } else if (key == QLatin1String("pose_correct")) {
+    s.params = {{QStringLiteral("fixtureSource"), QStringLiteral("auto")},
+                {QStringLiteral("autoBindLocate"), true},
+                {QStringLiteral("followRoi"), true},
+                {QStringLiteral("resultVar"), QStringLiteral("fixture")},
+                {QStringLiteral("baseX"), 0},
+                {QStringLiteral("baseY"), 0},
+                {QStringLiteral("baseAngle"), 0},
+                {QStringLiteral("baseScale"), 1},
+                {QStringLiteral("axisLength"), 40},
+                {QStringLiteral("showAxes"), true},
+                {QStringLiteral("writeFlowVars"), true}};
   } else if (key == QLatin1String("var_calc")) {
     s.params = {
         {QStringLiteral("scope"), QStringLiteral("flow")},

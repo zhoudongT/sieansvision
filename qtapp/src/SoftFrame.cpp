@@ -261,4 +261,29 @@ QImage makeSoftFrame(int width, int height, int seq, int exposureUs, double gain
 }
 
 
+QRect softScenePlateRect(int width, int height) {
+  const int w = qMax(16, width) & ~1;
+  const int h = qMax(16, height) & ~1;
+  QFont of(QStringLiteral("DejaVu Sans Mono"), 18);
+  of.setBold(true);
+  of.setPixelSize(qBound(16, qMin(w, h) / 18, 28));
+  const QFontMetrics fm(of);
+  const QString plate = QStringLiteral("SIEANS");
+  const int tw = fm.horizontalAdvance(plate) + 16;
+  const int th = fm.height() + 8;
+  const int ox = qMax(6, w - tw - 8);
+  const int oy = 6;
+  return QRect(ox, oy, tw, th);
+}
+
+QImage makeSoftScenePlateTemplate(int width, int height) {
+  const QImage scene = makeSoftScene(width, height);
+  const QRect r = softScenePlateRect(width, height);
+  if (scene.isNull() || r.isEmpty()) return {};
+  const QRect clipped = r.intersected(scene.rect());
+  if (clipped.isEmpty()) return {};
+  return scene.copy(clipped);
+}
+
+
 }  // namespace sieans_qt

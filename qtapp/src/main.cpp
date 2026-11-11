@@ -2,6 +2,7 @@
 #include "ConditionEval.hpp"
 #include "SubflowExec.hpp"
 #include "DefectDetect.hpp"
+#include "FixturePose.hpp"
 #include "SoftFrame.hpp"
 #include "MainWindow.hpp"
 #include "Theme.hpp"
@@ -60,6 +61,18 @@ int main(int argc, char* argv[]) {
     }
     for (const QString& line : fails)
       std::fprintf(stderr, "defects-selftest FAIL %s\n", line.toUtf8().constData());
+    return 1;
+  }
+
+  if (qEnvironmentVariable("SIEANS_QT_LOCATE_SELFTEST") == QLatin1String("1") &&
+      qEnvironmentVariable("SIEANS_QT_LOCATE_SELFTEST_QUIT") == QLatin1String("1")) {
+    const QStringList fails = sieans_qt::locateSelfTest();
+    if (fails.isEmpty()) {
+      std::fprintf(stdout, "locate-selftest ok\n");
+      return 0;
+    }
+    for (const QString& line : fails)
+      std::fprintf(stderr, "locate-selftest FAIL %s\n", line.toUtf8().constData());
     return 1;
   }
 
