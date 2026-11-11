@@ -7,7 +7,11 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QUuid>
+#include <QHash>
 #include <QRect>
+#include <QTemporaryDir>
+#include <QDir>
+#include <QFileInfo>
 
 namespace sieans_qt {
 namespace {
@@ -92,6 +96,27 @@ bool SieansDocument::loadFromFile(const QString& path, QString* error) {
     SubflowDef d = subflowFromJson(v.toObject());
     if (!d.id.isEmpty()) subflows_.push_back(d);
   }
+  outputNode_ = raw_.value(QStringLiteral("outputNode")).toString();
+  flows_.clear();
+  activeFlowId_.clear();
+  const QJsonArray flArr = raw_.value(QStringLiteral("flows")).toArray();
+  for (const QJsonValue& v : flArr) {
+    FlowDef f = flowFromJson(v.toObject());
+    if (!f.id.isEmpty()) flows_.push_back(f);
+  }
+  activeFlowId_ = raw_.value(QStringLiteral("activeFlowId")).toString();
+  ensureScheme();
+  if (steps_.isEmpty()) {
+    if (const FlowDef* cur = findFlow(activeFlowId_)) {
+      steps_ = cur->steps;
+      edges_ = cur->edges;
+      sourcePosition_ = cur->sourcePosition;
+      sourceConfig_ = cur->sourceConfig;
+      outputNode_ = cur->outputNode;
+      if (!cur->io.isEmpty()) flowIo_ = cur->io;
+      if (cur->runIntervalMs > 0) runIntervalMs_ = cur->runIntervalMs;
+    }
+  }
   return true;
 }
 
@@ -141,6 +166,62 @@ bool SieansDocument::saveToFile(const QString& path, QString* error) const {
     root.insert(QStringLiteral("commManager"), mapToObject(commManager_));
   if (!flowIo_.isEmpty())
     root.insert(QStringLiteral("io"), mapToObject(flowIo_));
+  if (!outputNode_.isEmpty())
+    root.insert(QStringLiteral("outputNode"), outputNode_);
+
+  // Keep top-level graph as the active flow (PySide scheme_for_disk).
+  QVector<FlowDef> snap = flows_;
+  if (snap.isEmpty()) {
+    FlowDef one;
+    one.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    one.name = QStringLiteral("流程1");
+    one.steps = steps_;
+    one.edges = edges_;
+    one.sourcePosition = sourcePosition_;
+    one.sourceConfig = sourceConfig_;
+    one.outputNode = outputNode_;
+    one.io = flowIo_;
+    one.runIntervalMs = runIntervalMs_;
+    snap.push_back(one);
+    root.insert(QStringLiteral("activeFlowId"), one.id);
+  } else {
+    bool hit = false;
+    for (FlowDef& f : snap) {
+      if (f.id != activeFlowId_) continue;
+      f.steps = steps_;
+      f.edges = edges_;
+      f.sourcePosition = sourcePosition_;
+      f.sourceConfig = sourceConfig_;
+      f.outputNode = outputNode_;
+      f.io = flowIo_;
+      f.runIntervalMs = runIntervalMs_;
+      hit = true;
+      break;
+    }
+    if (!hit) {
+      FlowDef one;
+      one.id = activeFlowId_.isEmpty()
+                   ? QUuid::createUuid().toString(QUuid::WithoutBraces)
+                   : activeFlowId_;
+      one.name = QStringLiteral("流程1");
+      one.steps = steps_;
+      one.edges = edges_;
+      one.sourcePosition = sourcePosition_;
+      one.sourceConfig = sourceConfig_;
+      one.outputNode = outputNode_;
+      one.io = flowIo_;
+      one.runIntervalMs = runIntervalMs_;
+      snap.push_back(one);
+      root.insert(QStringLiteral("activeFlowId"), one.id);
+    } else {
+      root.insert(QStringLiteral("activeFlowId"), activeFlowId_);
+    }
+  }
+  QJsonArray flArr;
+  for (const FlowDef& f : snap) flArr.append(flowToJson(f));
+  root.insert(QStringLiteral("flows"), flArr);
+  if (raw_.contains(QStringLiteral("flowEdges")))
+    root.insert(QStringLiteral("flowEdges"), raw_.value(QStringLiteral("flowEdges")));
 
   QFile f(path);
   if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
@@ -1374,6 +1455,9 @@ void SieansDocument::seedGentlQrDemo() {
        QVariantMap{{QStringLiteral("globalImage"), true},
                    {QStringLiteral("note"), QStringLiteral("Qt VM I/O 绑定")}}},
   };
+  flows_.clear();
+  activeFlowId_.clear();
+  ensureScheme();
 }
 
 
@@ -1716,7 +1800,11 @@ void SieansDocument::loadFromSubflow(const SubflowDef& d) {
   commManager_.clear();
   flowIo_.clear();
   subflows_.clear();
+  flows_.clear();
+  activeFlowId_.clear();
+  outputNode_.clear();
   raw_ = QJsonObject{{QStringLiteral("version"), 2}};
+  ensureScheme();
 }
 
 SubflowDef SieansDocument::exportToSubflow(const QString& id, const QString& outputNode) const {
@@ -1731,5 +1819,464 @@ SubflowDef SieansDocument::exportToSubflow(const QString& id, const QString& out
   return d;
 }
 
+
+
+namespace {
+
+QString newSchemeId() {
+  return QUuid::createUuid().toString(QUuid::WithoutBraces);
+}
+
+QString remapStepId(const QString& id, const QHash<QString, QString>& stepMap) {
+  if (id.isEmpty() || id == QLatin1String("source")) return id;
+  return stepMap.value(id, id);
+}
+
+bool flowHasStep(const QVector<FlowStep>& steps, const QString& id) {
+  if (id == QLatin1String("source")) return true;
+  for (const FlowStep& s : steps)
+    if (s.id == id) return true;
+  return false;
+}
+
+}  // namespace
+
+FlowDef SieansDocument::captureActiveFlow(const QString& name) const {
+  FlowDef f;
+  f.id = newSchemeId();
+  f.name = name.isEmpty() ? QStringLiteral("流程1") : name;
+  f.steps = steps_;
+  f.edges = edges_;
+  f.sourcePosition = sourcePosition_;
+  f.sourceConfig = sourceConfig_;
+  f.outputNode = outputNode_;
+  f.io = flowIo_;
+  f.runIntervalMs = runIntervalMs_;
+  return f;
+}
+
+void SieansDocument::applyFlowToTop(const FlowDef& f) {
+  steps_ = f.steps;
+  edges_ = f.edges;
+  sourcePosition_ = f.sourcePosition;
+  sourceConfig_ = f.sourceConfig;
+  outputNode_ = f.outputNode;
+  flowIo_ = f.io;
+  runIntervalMs_ = f.runIntervalMs;
+}
+
+const FlowDef* SieansDocument::findFlow(const QString& id) const {
+  for (const FlowDef& f : flows_)
+    if (f.id == id) return &f;
+  return nullptr;
+}
+
+FlowDef* SieansDocument::findFlow(const QString& id) {
+  return const_cast<FlowDef*>(static_cast<const SieansDocument*>(this)->findFlow(id));
+}
+
+void SieansDocument::ensureScheme() {
+  if (!flows_.isEmpty()) {
+    bool ok = false;
+    for (const FlowDef& f : flows_) {
+      if (f.id == activeFlowId_) {
+        ok = true;
+        break;
+      }
+    }
+    if (!ok) activeFlowId_ = flows_.first().id;
+    return;
+  }
+  FlowDef one = captureActiveFlow(QStringLiteral("流程1"));
+  flows_.push_back(one);
+  activeFlowId_ = one.id;
+}
+
+void SieansDocument::syncActiveIntoFlows() {
+  ensureScheme();
+  if (FlowDef* f = findFlow(activeFlowId_)) {
+    const QString keepId = f->id;
+    const QString keepName = f->name;
+    const bool en = f->enabled;
+    const int runs = f->runCount;
+    const double last = f->lastElapsedMs;
+    const QVariantMap card = f->cardPosition;
+    const bool stopNg = f->stopOnNg;
+    const int to = f->timeoutMs;
+    *f = captureActiveFlow(keepName);
+    f->id = keepId;
+    f->name = keepName;
+    f->enabled = en;
+    f->runCount = runs;
+    f->lastElapsedMs = last;
+    f->cardPosition = card;
+    f->stopOnNg = stopNg;
+    f->timeoutMs = to;
+    return;
+  }
+  FlowDef one = captureActiveFlow(QStringLiteral("流程1"));
+  one.id = activeFlowId_.isEmpty() ? one.id : activeFlowId_;
+  activeFlowId_ = one.id;
+  flows_.push_back(one);
+}
+
+bool SieansDocument::activateFlow(const QString& flowId) {
+  ensureScheme();
+  syncActiveIntoFlows();
+  FlowDef* target = findFlow(flowId);
+  if (!target) return false;
+  activeFlowId_ = flowId;
+  applyFlowToTop(*target);
+  return true;
+}
+
+FlowDef SieansDocument::addFlow(const QString& name) {
+  ensureScheme();
+  syncActiveIntoFlows();
+  FlowDef f;
+  f.id = newSchemeId();
+  const int index = flows_.size();
+  f.name = name.trimmed().isEmpty() ? QStringLiteral("流程%1").arg(index + 1)
+                                    : name.trimmed().left(80);
+  f.sourcePosition = QPointF(300, 40);
+  f.cardPosition = QVariantMap{{QStringLiteral("x"), 80 + (index % 3) * 280},
+                               {QStringLiteral("y"), 80 + (index / 3) * 200}};
+  flows_.push_back(f);
+  return f;
+}
+
+FlowDef SieansDocument::duplicateFlow(const QString& flowId, QString* error) {
+  ensureScheme();
+  syncActiveIntoFlows();
+  const FlowDef* src = findFlow(flowId);
+  if (!src) {
+    if (error) *error = QStringLiteral("流程不存在");
+    return {};
+  }
+  FlowDef copy = *src;
+  copy.id = newSchemeId();
+  copy.name = (src->name.isEmpty() ? QStringLiteral("流程") : src->name) +
+              QStringLiteral(" 副本");
+  copy.runCount = 0;
+  copy.lastElapsedMs = 0;
+  QHash<QString, QString> stepMap;
+  for (const FlowStep& s : copy.steps) stepMap.insert(s.id, newSchemeId());
+  for (FlowStep& s : copy.steps) {
+    s.id = stepMap.value(s.id);
+    s.imageFrom = remapStepId(s.imageFrom, stepMap);
+    s.position += QPointF(40, 40);
+  }
+  QVector<FlowEdge> edges;
+  for (FlowEdge e : copy.edges) {
+    e.id = newSchemeId();
+    e.from = remapStepId(e.from, stepMap);
+    e.to = remapStepId(e.to, stepMap);
+    if (!flowHasStep(copy.steps, e.to)) continue;
+    if (e.from != QLatin1String("source") && !flowHasStep(copy.steps, e.from)) continue;
+    edges.push_back(e);
+  }
+  copy.edges = edges;
+  copy.outputNode = remapStepId(copy.outputNode, stepMap);
+  const int idx = flows_.size();
+  copy.cardPosition = QVariantMap{{QStringLiteral("x"), 80 + (idx % 3) * 280},
+                                  {QStringLiteral("y"), 80 + (idx / 3) * 200}};
+  flows_.push_back(copy);
+  return copy;
+}
+
+bool SieansDocument::removeFlow(const QString& flowId, QString* error) {
+  ensureScheme();
+  syncActiveIntoFlows();
+  if (flows_.size() <= 1) {
+    if (error) *error = QStringLiteral("至少保留一个流程");
+    return false;
+  }
+  QVector<FlowDef> kept;
+  for (const FlowDef& f : flows_)
+    if (f.id != flowId) kept.push_back(f);
+  if (kept.size() == flows_.size()) {
+    if (error) *error = QStringLiteral("流程不存在");
+    return false;
+  }
+  flows_ = kept;
+  if (activeFlowId_ == flowId) return activateFlow(flows_.first().id);
+  return true;
+}
+
+bool SieansDocument::renameFlow(const QString& flowId, const QString& name) {
+  ensureScheme();
+  syncActiveIntoFlows();
+  FlowDef* f = findFlow(flowId);
+  if (!f) return false;
+  const QString trimmed = name.trimmed();
+  f->name = trimmed.isEmpty() ? QStringLiteral("未命名流程") : trimmed.left(80);
+  return true;
+}
+
+QJsonObject SieansDocument::exportPrc(const QString& flowId, QString* error) const {
+  FlowDef f;
+  if (flowId == activeFlowId_ || (flows_.isEmpty() && flowId.isEmpty())) {
+    const FlowDef* cur = findFlow(activeFlowId_);
+    f = captureActiveFlow(cur ? cur->name : QStringLiteral("流程1"));
+    if (cur) {
+      f.id = cur->id;
+      f.name = cur->name;
+      f.enabled = cur->enabled;
+      f.cardPosition = cur->cardPosition;
+      f.stopOnNg = cur->stopOnNg;
+      f.timeoutMs = cur->timeoutMs;
+    } else if (!activeFlowId_.isEmpty()) {
+      f.id = activeFlowId_;
+    }
+  } else if (const FlowDef* cur = findFlow(flowId)) {
+    f = *cur;
+  } else {
+    if (error) *error = QStringLiteral("流程不存在");
+    return {};
+  }
+  return QJsonObject{
+      {QStringLiteral("format"), QStringLiteral("sieans.prc")},
+      {QStringLiteral("version"), 1},
+      {QStringLiteral("kind"), QStringLiteral("process")},
+      {QStringLiteral("flow"), flowToJson(f)},
+      {QStringLiteral("exportedFrom"),
+       QJsonObject{{QStringLiteral("schemeId"),
+                    raw_.value(QStringLiteral("id")).toString()},
+                   {QStringLiteral("schemeName"), name_}}},
+  };
+}
+
+bool SieansDocument::exportPrcToFile(const QString& flowId, const QString& path,
+                                     QString* error) const {
+  const QJsonObject obj = exportPrc(flowId, error);
+  if (obj.isEmpty()) return false;
+  QFile f(path);
+  if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    if (error) *error = QStringLiteral("无法写入: %1").arg(path);
+    return false;
+  }
+  f.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
+  return true;
+}
+
+FlowDef SieansDocument::importPrc(const QJsonObject& payload, QString* error) {
+  ensureScheme();
+  syncActiveIntoFlows();
+  FlowDef flow;
+  if (payload.contains(QStringLiteral("flow")) && payload.value(QStringLiteral("flow")).isObject()) {
+    flow = flowFromJson(payload.value(QStringLiteral("flow")).toObject());
+  } else if (payload.contains(QStringLiteral("steps"))) {
+    flow = flowFromJson(payload);
+    if (flow.name.isEmpty())
+      flow.name = payload.value(QStringLiteral("name")).toString(QStringLiteral("导入流程"));
+  } else {
+    if (error) *error = QStringLiteral("无效的流程文件（.prc）");
+    return {};
+  }
+  flow.id = newSchemeId();
+  QHash<QString, QString> stepMap;
+  for (const FlowStep& s : flow.steps) stepMap.insert(s.id, newSchemeId());
+  for (FlowStep& s : flow.steps) {
+    s.id = stepMap.value(s.id, newSchemeId());
+    s.imageFrom = remapStepId(s.imageFrom, stepMap);
+  }
+  QVector<FlowEdge> edges;
+  for (FlowEdge e : flow.edges) {
+    e.id = newSchemeId();
+    if (e.from != QLatin1String("source")) {
+      if (!stepMap.contains(e.from)) continue;
+      e.from = stepMap.value(e.from);
+    }
+    if (!stepMap.contains(e.to)) continue;
+    e.to = stepMap.value(e.to);
+    edges.push_back(e);
+  }
+  flow.edges = edges;
+  flow.outputNode = remapStepId(flow.outputNode, stepMap);
+  if (flow.name.trimmed().isEmpty()) flow.name = QStringLiteral("导入流程");
+  flow.name = flow.name.left(80);
+  flow.runCount = 0;
+  flow.lastElapsedMs = 0;
+  const int idx = flows_.size();
+  flow.cardPosition = QVariantMap{{QStringLiteral("x"), 80 + (idx % 3) * 280},
+                                  {QStringLiteral("y"), 80 + (idx / 3) * 200}};
+  flows_.push_back(flow);
+  return flow;
+}
+
+FlowDef SieansDocument::importPrcFromFile(const QString& path, QString* error) {
+  QFile f(path);
+  if (!f.open(QIODevice::ReadOnly)) {
+    if (error) *error = QStringLiteral("无法打开: %1").arg(path);
+    return {};
+  }
+  QJsonParseError pe;
+  const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &pe);
+  if (pe.error != QJsonParseError::NoError || !doc.isObject()) {
+    if (error) *error = QStringLiteral("无效的流程文件（.prc）");
+    return {};
+  }
+  return importPrc(doc.object(), error);
+}
+
+FlowDef SieansDocument::flowFromJson(const QJsonObject& o) {
+  FlowDef f;
+  f.id = o.value(QStringLiteral("id")).toString();
+  f.name = o.value(QStringLiteral("name")).toString();
+  f.outputNode = o.value(QStringLiteral("outputNode")).toString();
+  f.enabled = o.value(QStringLiteral("enabled")).toBool(true);
+  f.runIntervalMs = o.value(QStringLiteral("runIntervalMs")).toInt(0);
+  f.stopOnNg = o.value(QStringLiteral("stopOnNg")).toBool(false);
+  f.timeoutMs = o.value(QStringLiteral("timeoutMs")).toInt(0);
+  f.runCount = o.value(QStringLiteral("runCount")).toInt(0);
+  f.lastElapsedMs = o.value(QStringLiteral("lastElapsedMs")).toDouble(0);
+  f.sourceConfig = objectToMap(o.value(QStringLiteral("sourceConfig")).toObject());
+  f.io = objectToMap(o.value(QStringLiteral("io")).toObject());
+  f.cardPosition = objectToMap(o.value(QStringLiteral("cardPosition")).toObject());
+  const QJsonObject sp = o.value(QStringLiteral("sourcePosition")).toObject();
+  f.sourcePosition = QPointF(sp.value(QStringLiteral("x")).toDouble(300),
+                             sp.value(QStringLiteral("y")).toDouble(40));
+  for (const QJsonValue& v : o.value(QStringLiteral("steps")).toArray()) {
+    FlowStep s = stepFromJson(v.toObject());
+    if (!s.id.isEmpty()) f.steps.push_back(s);
+  }
+  for (const QJsonValue& v : o.value(QStringLiteral("edges")).toArray()) {
+    FlowEdge e = edgeFromJson(v.toObject());
+    if (!e.from.isEmpty() && !e.to.isEmpty()) f.edges.push_back(e);
+  }
+  if (f.id.isEmpty()) f.id = newSchemeId();
+  if (f.name.isEmpty()) f.name = QStringLiteral("流程1");
+  return f;
+}
+
+QJsonObject SieansDocument::flowToJson(const FlowDef& f) {
+  QJsonArray steps;
+  for (const FlowStep& s : f.steps) steps.append(stepToJson(s));
+  QJsonArray edges;
+  for (const FlowEdge& e : f.edges) edges.append(edgeToJson(e));
+  QJsonObject o;
+  o.insert(QStringLiteral("id"), f.id);
+  o.insert(QStringLiteral("name"), f.name);
+  o.insert(QStringLiteral("outputNode"), f.outputNode);
+  o.insert(QStringLiteral("steps"), steps);
+  o.insert(QStringLiteral("edges"), edges);
+  o.insert(QStringLiteral("sourcePosition"),
+           QJsonObject{{QStringLiteral("x"), f.sourcePosition.x()},
+                       {QStringLiteral("y"), f.sourcePosition.y()}});
+  o.insert(QStringLiteral("sourceConfig"), mapToObject(f.sourceConfig));
+  o.insert(QStringLiteral("io"), mapToObject(f.io));
+  o.insert(QStringLiteral("cardPosition"), mapToObject(f.cardPosition));
+  o.insert(QStringLiteral("enabled"), f.enabled);
+  o.insert(QStringLiteral("runIntervalMs"), f.runIntervalMs);
+  o.insert(QStringLiteral("stopOnNg"), f.stopOnNg);
+  o.insert(QStringLiteral("timeoutMs"), f.timeoutMs);
+  o.insert(QStringLiteral("runCount"), f.runCount);
+  o.insert(QStringLiteral("lastElapsedMs"), f.lastElapsedMs);
+  return o;
+}
+
+QStringList SieansDocument::schemeSelfTest() {
+  QStringList fails;
+  auto check = [&](const char* name, bool ok, const QString& detail = QString()) {
+    if (!ok)
+      fails << (detail.isEmpty() ? QString::fromUtf8(name)
+                                 : QStringLiteral("%1: %2").arg(QString::fromUtf8(name), detail));
+  };
+
+  SieansDocument doc;
+  doc.seedGentlQrDemo();
+  check("seed-flow-count", doc.flows().size() == 1, QString::number(doc.flows().size()));
+  check("seed-active", !doc.activeFlowId().isEmpty());
+  check("seed-name", !doc.flows().isEmpty() && doc.flows().first().name == QStringLiteral("流程1"),
+        doc.flows().isEmpty() ? QStringLiteral("empty") : doc.flows().first().name);
+  check("seed-has-locate", doc.findStep(QStringLiteral("loc1")) != nullptr);
+  const int seedSteps = doc.steps().size();
+  const int subN = doc.subflows().size();
+  check("seed-subflows", subN >= 1, QString::number(subN));
+  const QString firstId = doc.activeFlowId();
+
+  const FlowDef added = doc.addFlow(QStringLiteral("流程2"));
+  check("add-count", doc.flows().size() == 2, QString::number(doc.flows().size()));
+  check("add-id", !added.id.isEmpty() && added.id != firstId);
+  check("add-keeps-active", doc.activeFlowId() == firstId, doc.activeFlowId());
+
+  check("activate-2", doc.activateFlow(added.id));
+  check("switch-clears-main", doc.findStep(QStringLiteral("loc1")) == nullptr);
+  check("activate-1", doc.activateFlow(firstId));
+  check("switch-restores-locate", doc.findStep(QStringLiteral("loc1")) != nullptr);
+  check("switch-step-count", doc.steps().size() == seedSteps,
+        QStringLiteral("%1 vs %2").arg(doc.steps().size()).arg(seedSteps));
+
+  QString err;
+  const QJsonObject prc = doc.exportPrc(firstId, &err);
+  check("export-prc", prc.value(QStringLiteral("format")).toString() == QLatin1String("sieans.prc"),
+        err);
+  const FlowDef imported = doc.importPrc(prc, &err);
+  check("import-prc", !imported.id.isEmpty() && doc.flows().size() == 3, err);
+  check("import-new-id", imported.id != firstId);
+  check("import-has-steps", !imported.steps.isEmpty());
+  bool remapped = true;
+  for (const FlowStep& s : imported.steps) {
+    if (s.id == QLatin1String("loc1")) remapped = false;
+  }
+  check("import-ids-remapped", remapped);
+  check("import-keeps-subflows", doc.subflows().size() == subN,
+        QString::number(doc.subflows().size()));
+
+  QTemporaryDir tmp;
+  check("tmpdir", tmp.isValid());
+  if (!tmp.isValid()) return fails;
+  const QString sieansPath = tmp.filePath(QStringLiteral("multi.sieans"));
+  const QString prcPath = tmp.filePath(QStringLiteral("flow.prc"));
+  check("save-sieans", doc.saveToFile(sieansPath, &err), err);
+  check("export-prc-file", doc.exportPrcToFile(firstId, prcPath, &err), err);
+
+  SieansDocument loaded;
+  check("load-sieans", loaded.loadFromFile(sieansPath, &err), err);
+  check("load-flow-count", loaded.flows().size() == 3, QString::number(loaded.flows().size()));
+  check("load-active", loaded.activeFlowId() == firstId, loaded.activeFlowId());
+  check("load-locate", loaded.findStep(QStringLiteral("loc1")) != nullptr);
+  check("load-subflows", loaded.subflows().size() == subN, QString::number(loaded.subflows().size()));
+
+  SieansDocument legacySrc;
+  legacySrc.seedGentlQrDemo();
+  QJsonObject bare;
+  bare.insert(QStringLiteral("name"), QStringLiteral("旧方案"));
+  QJsonArray st;
+  for (const FlowStep& s : legacySrc.steps()) st.append(stepToJson(s));
+  QJsonArray ed;
+  for (const FlowEdge& e : legacySrc.edges()) ed.append(edgeToJson(e));
+  bare.insert(QStringLiteral("steps"), st);
+  bare.insert(QStringLiteral("edges"), ed);
+  const QString legacyPath = tmp.filePath(QStringLiteral("legacy.sieans"));
+  {
+    QFile f(legacyPath);
+    const bool ok = f.open(QIODevice::WriteOnly | QIODevice::Truncate);
+    check("legacy-write", ok);
+    if (ok) f.write(QJsonDocument(bare).toJson(QJsonDocument::Indented));
+  }
+  SieansDocument leg;
+  check("legacy-load", leg.loadFromFile(legacyPath, &err), err);
+  check("legacy-migrates", leg.flows().size() == 1, QString::number(leg.flows().size()));
+  check("legacy-steps", !leg.steps().isEmpty());
+  QString err2;
+  const QString outPath = tmp.filePath(QStringLiteral("legacy-saved.sieans"));
+  check("legacy-resave", leg.saveToFile(outPath, &err2), err2);
+  QJsonObject saved;
+  {
+    QFile f(outPath);
+    const bool ok = f.open(QIODevice::ReadOnly);
+    check("legacy-reread", ok);
+    if (ok) saved = QJsonDocument::fromJson(f.readAll()).object();
+  }
+  check("compat-top-steps", saved.value(QStringLiteral("steps")).toArray().size() > 0);
+  check("compat-writes-flows", saved.value(QStringLiteral("flows")).toArray().size() == 1);
+
+  QString rmErr;
+  check("remove-last-rejected", !leg.removeFlow(leg.activeFlowId(), &rmErr));
+  check("import-prc-file", !loaded.importPrcFromFile(prcPath, &err).id.isEmpty(), err);
+  check("import-file-count", loaded.flows().size() == 4, QString::number(loaded.flows().size()));
+  return fails;
+}
 
 }  // namespace sieans_qt

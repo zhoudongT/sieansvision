@@ -3,6 +3,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 #include <QPointF>
 #include <QRect>
@@ -27,6 +28,25 @@ struct FlowEdge {
   QString fromPort = QStringLiteral("bottom");
   QString toPort = QStringLiteral("top");
   QString when = QStringLiteral("always");  // always|true|false|success|error|path
+};
+
+/** One process in a scheme (方案⊃流程), aligned with desktop/scheme.py. */
+struct FlowDef {
+  QString id;
+  QString name;
+  QString outputNode;
+  QVector<FlowStep> steps;
+  QVector<FlowEdge> edges;
+  QPointF sourcePosition{300, 40};
+  QVariantMap sourceConfig;
+  QVariantMap io;
+  QVariantMap cardPosition;
+  bool enabled = true;
+  int runIntervalMs = 0;
+  bool stopOnNg = false;
+  int timeoutMs = 0;
+  int runCount = 0;
+  double lastElapsedMs = 0;
 };
 
 /** Reusable sub-graph stored in the project (子流程定义). */
@@ -76,6 +96,35 @@ class SieansDocument {
   static QJsonObject subflowToJson(const SubflowDef& d);
   void loadFromSubflow(const SubflowDef& d);
   SubflowDef exportToSubflow(const QString& id, const QString& outputNode) const;
+
+  /** PySide scheme: flows[] + activeFlowId. Legacy single-flow files migrate to 流程1. */
+  const QVector<FlowDef>& flows() const { return flows_; }
+  QString activeFlowId() const { return activeFlowId_; }
+  const FlowDef* findFlow(const QString& id) const;
+  FlowDef* findFlow(const QString& id);
+  /** 若尚无 flows[]，把当前顶层图包装为「流程1」。 */
+  void ensureScheme();
+  /** 把当前顶层 steps/edges/source/io 写回活动流程条目。 */
+  void syncActiveIntoFlows();
+  /** 先保存当前图，再把 flowId 加载为顶层活动流程。失败返回 false。 */
+  bool activateFlow(const QString& flowId);
+  /** 追加一条空流程（不自动切换）。 */
+  FlowDef addFlow(const QString& name = QString());
+  /** 复制流程并重映射步骤 id。 */
+  FlowDef duplicateFlow(const QString& flowId, QString* error = nullptr);
+  /** 至少保留一条流程。若删的是活动流程则切到剩余第一条。 */
+  bool removeFlow(const QString& flowId, QString* error = nullptr);
+  bool renameFlow(const QString& flowId, const QString& name);
+  /** 导出 PySide 兼容的 sieans.prc JSON 对象。 */
+  QJsonObject exportPrc(const QString& flowId, QString* error = nullptr) const;
+  bool exportPrcToFile(const QString& flowId, const QString& path, QString* error = nullptr) const;
+  /** 导入 .prc（完整 sieans.prc 或带 steps 的裸流程）为新流程，步骤 id 会重映射。 */
+  FlowDef importPrc(const QJsonObject& payload, QString* error = nullptr);
+  FlowDef importPrcFromFile(const QString& path, QString* error = nullptr);
+  static FlowDef flowFromJson(const QJsonObject& o);
+  static QJsonObject flowToJson(const FlowDef& f);
+  /** 多流程往返、.prc 导入导出、旧单流程文件兼容、子流程仍保留。空列表表示通过。 */
+  static QStringList schemeSelfTest();
 
   QPointF sourcePosition() const { return sourcePosition_; }
   void setSourcePosition(const QPointF& p) { sourcePosition_ = p; }
@@ -135,12 +184,20 @@ class SieansDocument {
   QVector<FlowStep> steps_;
   QVector<FlowEdge> edges_;
   QVector<SubflowDef> subflows_;
+  QVector<FlowDef> flows_;
+  QString activeFlowId_;
+  QString outputNode_;
   QPointF sourcePosition_{80, 160};
   int runIntervalMs_ = 0;
   QVariantMap variables_;
   QVariantMap commManager_;
   QVariantMap flowIo_;
   QJsonObject raw_;
+
+  /** 把当前顶层图做成一条流程条目（新 id）。 */
+  FlowDef captureActiveFlow(const QString& name) const;
+  /** 用流程条目覆盖顶层 steps/edges/source/io。 */
+  void applyFlowToTop(const FlowDef& f);
 };
 
 }  // namespace sieans_qt

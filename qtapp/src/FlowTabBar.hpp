@@ -1,10 +1,13 @@
 #pragma once
 #include <QWidget>
+#include <QVector>
+#include <QPair>
 class QPushButton;
 class QHBoxLayout;
 class QLabel;
 class QEvent;
 class QKeyEvent;
+class QWidget;
 
 namespace sieans_qt {
 
@@ -14,12 +17,19 @@ class FlowTabBar : public QWidget {
  public:
   explicit FlowTabBar(QWidget* parent = nullptr);
   void setFlowName(const QString& name);
+  /** 刷新流程 Tab：id/name 列表与当前活动 id（不自动发 flowActivated）。 */
+  void setFlows(const QVector<QPair<QString, QString>>& flows, const QString& activeId);
   void setRunChrome(const QString& mode, int cycle, double lastMs, bool continuous, bool paused);
   void setIntervalMs(int ms);
   void pasteIntervalMs();
   void copyCycleChip();
   void setDesignLocked(bool locked);
  signals:
+  void flowActivated(const QString& flowId);
+  void addFlowRequested();
+  void renameFlowRequested(const QString& flowId);
+  void duplicateFlowRequested(const QString& flowId);
+  void removeFlowRequested(const QString& flowId);
   void allFlowsRequested();
   void runOnceRequested();
   void runContinuousRequested();
@@ -37,6 +47,16 @@ class FlowTabBar : public QWidget {
  private:
   QPushButton* allBtn_ = nullptr;
   QPushButton* flowBtn_ = nullptr;
+  QWidget* flowTabsHost_ = nullptr;
+  QHBoxLayout* flowTabsLay_ = nullptr;
+  QPushButton* addFlowBtn_ = nullptr;
+  QVector<QPair<QString, QString>> flowTabs_;
+  QString activeFlowId_;
+  bool designLocked_ = false;
+  /** 按 flowTabs_ 重建可点选的流程页签和 + 按钮。 */
+  void rebuildFlowTabs();
+  /** 弹出流程页签的重命名/复制/删除菜单。 */
+  void showFlowTabMenu(const QString& flowId, const QPoint& globalPos);
   QPushButton* pauseBtn_ = nullptr;
   QLabel* cycleLabel_ = nullptr;
   QLabel* modeChip_ = nullptr;

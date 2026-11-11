@@ -11,6 +11,9 @@
 #include <QClipboard>
 #include <QGuiApplication>
 #include <QRegularExpression>
+#include <QMenu>
+#include <QAction>
+#include <QContextMenuEvent>
 
 namespace sieans_qt {
 
@@ -26,11 +29,25 @@ FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   allBtn_->setCheckable(true);
   allBtn_->setFlat(true);
   allBtn_->setObjectName(QStringLiteral("flowTab"));
+  flowTabsHost_ = new QWidget(this);
+  flowTabsHost_->setObjectName(QStringLiteral("flowTabsHost"));
+  flowTabsLay_ = new QHBoxLayout(flowTabsHost_);
+  flowTabsLay_->setContentsMargins(0, 0, 0, 0);
+  flowTabsLay_->setSpacing(0);
   flowBtn_ = new QPushButton(QStringLiteral("流程1"));
   flowBtn_->setCheckable(true);
   flowBtn_->setChecked(true);
   flowBtn_->setFlat(true);
   flowBtn_->setObjectName(QStringLiteral("flowTabActive"));
+  flowBtn_->setProperty("flowId", QString());
+  flowTabsLay_->addWidget(flowBtn_);
+  addFlowBtn_ = new QPushButton(QStringLiteral("+"));
+  addFlowBtn_->setFlat(true);
+  addFlowBtn_->setFixedWidth(24);
+  addFlowBtn_->setObjectName(QStringLiteral("flowTab"));
+  addFlowBtn_->setToolTip(QStringLiteral("新建流程"));
+  addFlowBtn_->setStatusTip(QStringLiteral("流程 · 新建"));
+  connect(addFlowBtn_, &QPushButton::clicked, this, &FlowTabBar::addFlowRequested);
   auto* runOnce = new QPushButton(QStringLiteral("▶"));
   runOnce->setFixedWidth(28);
   runOnce->setToolTip(QStringLiteral("运行当前流程一次 · F5/F9 · 设计/运行态均可"));
@@ -78,7 +95,8 @@ FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
   auto* hint = new QLabel(QStringLiteral("F5 一次 · F6 连续 · F/R 适应 · I/O 绑定 · Esc 取消连线 · Del 删连线"));
   hint->setObjectName(QStringLiteral("muted"));
   lay->addWidget(allBtn_);
-  lay->addWidget(flowBtn_);
+  lay->addWidget(flowTabsHost_);
+  lay->addWidget(addFlowBtn_);
   lay->addSpacing(8);
   lay->addWidget(runOnce);
   lay->addWidget(runCont);
@@ -107,7 +125,85 @@ FlowTabBar::FlowTabBar(QWidget* parent) : QWidget(parent) {
 }
 
 void FlowTabBar::setFlowName(const QString& name) {
-  flowBtn_->setText(name.isEmpty() ? QStringLiteral("流程1") : name);
+  const QString text = name.isEmpty() ? QStringLiteral("流程1") : name;
+  if (flowBtn_) flowBtn_->setText(text);
+  if (!flowTabs_.isEmpty()) {
+    for (auto& tab : flowTabs_) {
+      if (tab.first == activeFlowId_ || (activeFlowId_.isEmpty() && tab == flowTabs_.first())) {
+        tab.second = text;
+        break;
+      }
+    }
+  }
+}
+
+void FlowTabBar::setFlows(const QVector<QPair<QString, QString>>& flows, const QString& activeId) {
+  flowTabs_ = flows;
+  activeFlowId_ = activeId;
+  if (activeFlowId_.isEmpty() && !flowTabs_.isEmpty())
+    activeFlowId_ = flowTabs_.first().first;
+  rebuildFlowTabs();
+}
+
+void FlowTabBar::rebuildFlowTabs() {
+  if (!flowTabsLay_) return;
+  while (QLayoutItem* item = flowTabsLay_->takeAt(0)) {
+    if (QWidget* w = item->widget()) {
+      w->hide();
+      w->deleteLater();
+    }
+    delete item;
+  }
+  flowBtn_ = nullptr;
+  if (flowTabs_.isEmpty()) {
+    flowBtn_ = new QPushButton(QStringLiteral("流程1"), flowTabsHost_);
+    flowBtn_->setCheckable(true);
+    flowBtn_->setChecked(true);
+    flowBtn_->setFlat(true);
+    flowBtn_->setObjectName(QStringLiteral("flowTabActive"));
+    flowBtn_->setEnabled(!designLocked_);
+    flowTabsLay_->addWidget(flowBtn_);
+    return;
+  }
+  for (const auto& tab : flowTabs_) {
+    auto* btn = new QPushButton(tab.second.isEmpty() ? QStringLiteral("流程") : tab.second,
+                                flowTabsHost_);
+    btn->setCheckable(true);
+    btn->setFlat(true);
+    const bool active = (tab.first == activeFlowId_);
+    btn->setChecked(active);
+    btn->setObjectName(active ? QStringLiteral("flowTabActive") : QStringLiteral("flowTab"));
+    btn->setProperty("flowId", tab.first);
+    btn->setEnabled(!designLocked_);
+    btn->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(btn, &QPushButton::clicked, this, [this, id = tab.first]() {
+      if (id == activeFlowId_) return;
+      emit flowActivated(id);
+    });
+    connect(btn, &QPushButton::customContextMenuRequested, this,
+            [this, id = tab.first, btn](const QPoint& pos) {
+              showFlowTabMenu(id, btn->mapToGlobal(pos));
+            });
+    flowTabsLay_->addWidget(btn);
+    if (active) flowBtn_ = btn;
+  }
+  if (!flowBtn_ && !flowTabsLay_->isEmpty()) {
+    if (auto* w = flowTabsLay_->itemAt(0)->widget())
+      flowBtn_ = qobject_cast<QPushButton*>(w);
+  }
+}
+
+void FlowTabBar::showFlowTabMenu(const QString& flowId, const QPoint& globalPos) {
+  if (designLocked_ || flowId.isEmpty()) return;
+  QMenu menu(this);
+  QAction* rename = menu.addAction(QStringLiteral("重命名流程"));
+  QAction* dup = menu.addAction(QStringLiteral("复制流程"));
+  QAction* rem = menu.addAction(QStringLiteral("删除流程"));
+  rem->setEnabled(flowTabs_.size() > 1);
+  QAction* chosen = menu.exec(globalPos);
+  if (chosen == rename) emit renameFlowRequested(flowId);
+  else if (chosen == dup) emit duplicateFlowRequested(flowId);
+  else if (chosen == rem) emit removeFlowRequested(flowId);
 }
 
 void FlowTabBar::setRunChrome(const QString& mode, int cycle, double lastMs,
@@ -136,8 +232,15 @@ void FlowTabBar::setRunChrome(const QString& mode, int cycle, double lastMs,
 }
 
 void FlowTabBar::setDesignLocked(bool locked) {
+  designLocked_ = locked;
   if (allBtn_) allBtn_->setEnabled(!locked);
-  if (flowBtn_) flowBtn_->setEnabled(!locked);
+  if (addFlowBtn_) addFlowBtn_->setEnabled(!locked);
+  if (flowTabsHost_) {
+    const auto btns = flowTabsHost_->findChildren<QPushButton*>();
+    for (QPushButton* b : btns) b->setEnabled(!locked);
+  } else if (flowBtn_) {
+    flowBtn_->setEnabled(!locked);
+  }
   // run/pause/stop/fit/io stay usable in 运行态 (VisionMaster HMI)
 }
 

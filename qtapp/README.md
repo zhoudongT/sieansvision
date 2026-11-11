@@ -48,7 +48,11 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx`）放�
 
 **已落地（wave247）：** 定位/快速匹配属性浮窗四 Tab（基本参数 / 特征或灰度模板 / 运行参数 / 结果显示），含载入与从当前图创建模板、角度搜索和结果回显；与已有 SAD 匹配及 `templateSource`/`angle*` 参数兼容。
 
-**NEXT：** 多流程 Tab 与 `.prc` 导入导出（PySide `desktop/scheme.py` 已有，Qt 仍是单主流程 + 子流程）· 运行界面设计器（不在目录中新增 HMI 算子）。
+**已落地（wave248）：** 协议连接超时与失败分类（拒绝/超时/对端关闭），断连后在同一端口重连；烟测 `protoRobustOk`。
+
+**已落地（wave249）：** Qt 方案多流程 Tab（方案⊃流程，对齐 PySide `desktop/scheme.py`）：同一 `.sieans` 可保存 `flows[]`+`activeFlowId`，并继续写出顶层 `steps` 以兼容旧单流程文件；支持流程切换、新建/复制/重命名/删除（至少一条）；`sieans.prc` 导入导出（完整 prc 或带 `steps` 的裸对象，步骤 id 重映射）。子流程仍为方案级。无界面自测：`SIEANS_QT_SCHEME_SELFTEST=1`。
+
+**NEXT：** 定位模板库 / 成绩板（四 Tab 面板上仍缺的 PySide chrome）· 运行界面设计器（不在目录中新增 HMI 算子）。
 
 ## VM chrome (2026-11-03)
 

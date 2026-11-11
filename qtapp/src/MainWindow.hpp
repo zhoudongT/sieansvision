@@ -45,6 +45,8 @@ class MainWindow : public QMainWindow {
   void onOpenProject();
   void onSaveProject();
   void onSaveProjectAs();
+  void onExportCurrentFlow();
+  void onImportFlow();
   void onOpenImage();
   void onLoadSample();
   void onDecodeQr();

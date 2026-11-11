@@ -536,6 +536,59 @@ void MainWindow::buildUi() {
     updateRunChrome();
     showStatus(QStringLiteral("周期已清零"));
   });
+  connect(flow_tabs_, &FlowTabBar::flowActivated, this, [this](const QString& id) {
+    if (id.isEmpty() || id == document_.activeFlowId()) return;
+    if (!document_.activateFlow(id)) {
+      showStatus(QStringLiteral("切换流程失败"));
+      return;
+    }
+    applyDocumentToUi();
+    QString name;
+    if (const FlowDef* f = document_.findFlow(id)) name = f->name;
+    showStatus(QStringLiteral("当前流程：%1").arg(name.isEmpty() ? id : name));
+  });
+  connect(flow_tabs_, &FlowTabBar::addFlowRequested, this, [this]() {
+    const FlowDef added = document_.addFlow();
+    document_.activateFlow(added.id);
+    applyDocumentToUi();
+    markProjectDirty();
+    showStatus(QStringLiteral("已新建流程：%1").arg(added.name));
+  });
+  connect(flow_tabs_, &FlowTabBar::renameFlowRequested, this, [this](const QString& id) {
+    const FlowDef* cur = document_.findFlow(id);
+    if (!cur) return;
+    if (workbenchIsHeadless()) return;
+    bool ok = false;
+    const QString name = QInputDialog::getText(
+        this, QStringLiteral("重命名流程"), QStringLiteral("流程名称"),
+        QLineEdit::Normal, cur->name, &ok);
+    if (!ok) return;
+    if (!document_.renameFlow(id, name)) return;
+    applyDocumentToUi();
+    markProjectDirty();
+  });
+  connect(flow_tabs_, &FlowTabBar::duplicateFlowRequested, this, [this](const QString& id) {
+    QString err;
+    const FlowDef copy = document_.duplicateFlow(id, &err);
+    if (copy.id.isEmpty()) {
+      showStatus(err.isEmpty() ? QStringLiteral("复制流程失败") : err);
+      return;
+    }
+    document_.activateFlow(copy.id);
+    applyDocumentToUi();
+    markProjectDirty();
+    showStatus(QStringLiteral("已复制流程：%1").arg(copy.name));
+  });
+  connect(flow_tabs_, &FlowTabBar::removeFlowRequested, this, [this](const QString& id) {
+    QString err;
+    if (!document_.removeFlow(id, &err)) {
+      showStatus(err.isEmpty() ? QStringLiteral("删除流程失败") : err);
+      return;
+    }
+    applyDocumentToUi();
+    markProjectDirty();
+    showStatus(QStringLiteral("已删除流程"));
+  });
   horizontal->addWidget(flowPane);
 
   connect(flow_scene_, &FlowScene::nodeSelected, this, &MainWindow::onNodeSelected);
@@ -1133,6 +1186,9 @@ void MainWindow::buildMenus() {
   files->addAction(QStringLiteral("保存方案"), this, &MainWindow::onSaveProject,
                    QKeySequence::Save);
   files->addAction(QStringLiteral("方案另存为…"), this, &MainWindow::onSaveProjectAs);
+  files->addAction(QStringLiteral("导出当前流程（.prc）…"), this,
+                   &MainWindow::onExportCurrentFlow);
+  files->addAction(QStringLiteral("导入流程（.prc）…"), this, &MainWindow::onImportFlow);
   files->addSeparator();
   files->addAction(QStringLiteral("打开图像…"), this, &MainWindow::onOpenImage);
   files->addAction(QStringLiteral("加载示例 QR"), this, &MainWindow::onLoadSample);
@@ -1350,7 +1406,17 @@ void MainWindow::applyDocumentToUi() {
   run_mode_ = document_.recipeLocked();
   if (flow_scene_) flow_scene_->setEditingLocked(run_mode_);
   refreshProjectTitle();
-  if (flow_tabs_) flow_tabs_->setFlowName(QStringLiteral("流程1"));
+  if (flow_tabs_) {
+    document_.ensureScheme();
+    QVector<QPair<QString, QString>> tabs;
+    QString activeName = QStringLiteral("流程1");
+    for (const FlowDef& f : document_.flows()) {
+      tabs.append({f.id, f.name});
+      if (f.id == document_.activeFlowId()) activeName = f.name;
+    }
+    flow_tabs_->setFlows(tabs, document_.activeFlowId());
+    flow_tabs_->setFlowName(activeName);
+  }
   QTimer::singleShot(0, flow_view_, &FlowView::fitAll);
   if (prop_float_) prop_float_->hide();
   else if (prop_panel_) prop_panel_->clear();
@@ -1959,6 +2025,50 @@ void MainWindow::onSaveProjectAs() {
   document_.loadFromFile(path);
   markProjectClean();
   logResult(QStringLiteral("方案已保存：%1").arg(path));
+}
+
+void MainWindow::onExportCurrentFlow() {
+  document_.ensureScheme();
+  QString name = QStringLiteral("流程");
+  if (const FlowDef* f = document_.findFlow(document_.activeFlowId()))
+    name = f->name;
+  QString path;
+  if (workbenchIsHeadless()) {
+    path = workbenchArtifactsDir() + QLatin1Char('/') + name + QStringLiteral(".prc");
+  } else {
+    path = QFileDialog::getSaveFileName(
+        this, QStringLiteral("导出当前流程"),
+        defaultProjectsDir() + QLatin1Char('/') + name + QStringLiteral(".prc"),
+        QStringLiteral("SIEANS 流程 (*.prc)"));
+  }
+  if (path.isEmpty()) return;
+  QString err;
+  if (!document_.exportPrcToFile(document_.activeFlowId(), path, &err)) {
+    if (!workbenchIsHeadless())
+      QMessageBox::warning(this, QStringLiteral("导出失败"), err);
+    logResult(QStringLiteral("导出流程失败：%1").arg(err));
+    return;
+  }
+  logResult(QStringLiteral("已导出流程：%1").arg(path));
+}
+
+void MainWindow::onImportFlow() {
+  QString path;
+  if (workbenchIsHeadless()) return;
+  path = QFileDialog::getOpenFileName(
+      this, QStringLiteral("导入流程"), defaultProjectsDir(),
+      QStringLiteral("SIEANS 流程 (*.prc *.json);;全部 (*.*)"));
+  if (path.isEmpty()) return;
+  QString err;
+  const FlowDef imported = document_.importPrcFromFile(path, &err);
+  if (imported.id.isEmpty()) {
+    QMessageBox::warning(this, QStringLiteral("导入失败"), err);
+    return;
+  }
+  document_.activateFlow(imported.id);
+  applyDocumentToUi();
+  markProjectDirty();
+  logResult(QStringLiteral("已导入流程：%1").arg(imported.name));
 }
 
 void MainWindow::onOpenImage() {
@@ -4434,6 +4544,26 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                     .arg(pf.isEmpty() ? QStringLiteral("0")
                                       : pf.join(QLatin1Char('|')).left(120))
                     .arg(lastProtocolRobustClass());
+      }
+      {
+        const QStringList sf = SieansDocument::schemeSelfTest();
+        QString activeName;
+        for (const FlowDef& f : document_.flows()) {
+          if (f.id == document_.activeFlowId()) {
+            activeName = f.name;
+            break;
+          }
+        }
+        if (activeName.isEmpty() && !document_.flows().isEmpty())
+          activeName = document_.flows().first().name;
+        line += QLatin1Char(' ');
+        line += QStringLiteral(
+                    "flowCount=%1 activeFlowName=%2 schemeSelfOk=%3 schemeSelfFails=%4")
+                    .arg(document_.flows().size())
+                    .arg(activeName.left(40).replace(QLatin1Char('\n'), QLatin1Char('|')))
+                    .arg(sf.isEmpty() ? 1 : 0)
+                    .arg(sf.isEmpty() ? QStringLiteral("0")
+                                      : sf.join(QLatin1Char('|')).left(160));
       }
 
 
