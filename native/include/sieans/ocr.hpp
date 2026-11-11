@@ -16,10 +16,11 @@ struct OcrOptions {
   std::string lang = "eng";   // tessdata lang, e.g. eng
   int psm = 6;                // page segmentation (6=block, 7=line)
   int min_confidence = 0;     // drop lines below this (0 = keep all)
-  std::string tessdata_prefix;  // empty → auto /usr/share/tesseract-ocr/5/tessdata
+  // empty → TESSDATA_PREFIX, then user-local and system tessdata dirs
+  std::string tessdata_prefix;
 };
 
-/** OCR a contiguous image buffer via system tesseract CLI (no Halcon). */
+/** OCR a contiguous image buffer via system or user-local tesseract CLI (no Halcon). */
 std::vector<OcrHit> recognize_text(
     const uint8_t* data,
     int width,
@@ -28,7 +29,7 @@ std::vector<OcrHit> recognize_text(
     PixelFormat format,
     const OcrOptions& options = {});
 
-/** True when `tesseract` is on PATH. */
+/** True when a tesseract binary and eng tessdata are reachable (PATH, user-local, or system). */
 bool ocr_available();
 
 }  // namespace sieans

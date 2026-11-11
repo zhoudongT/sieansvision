@@ -34,6 +34,8 @@
 - `SIEANS_QT_SCREENSHOT=/path.png` — 启动后抓窗（配合 `SIEANS_QT_SCREENSHOT_QUIT=1` 可退出）
 - `SIEANS_QT_SMOKE_REPORT=/path.txt` — 写出 codes/ms/passGate 一行
 
+OCR 依赖本机 `tesseract` 与 `eng` 语言包。无 sudo 时执行 `scripts/install-tesseract-user.sh`，把 Ubuntu 官方 deb 解压到 `$HOME/.local/opt/tesseract`，并安装 `$HOME/.local/bin/tesseract` 包装脚本（eng + chi_sim）。算子会查找 PATH、该用户前缀、`SIEANS_TESSERACT` 与 `TESSDATA_PREFIX`；系统已安装 `/usr/bin/tesseract` 时仍优先使用 PATH 上的版本。
+
 启动默认尝试加载 `projects/open-and-run-gentl-qr.sieans`。
 
 ## 已落地 vs NEXT

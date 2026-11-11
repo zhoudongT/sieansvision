@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -18,10 +19,101 @@
 namespace sieans {
 namespace {
 
+/** 判断 path 是否为可执行的普通文件（目录对 X_OK 也会成功，必须排除）。 */
+bool is_executable_file(const std::string& path) {
+  if (path.empty()) return false;
+  struct stat st {};
+  if (stat(path.c_str(), &st) != 0) return false;
+  if (!S_ISREG(st.st_mode)) return false;
+  return access(path.c_str(), X_OK) == 0;
+}
+
+/** 去掉末尾斜杠，避免拼接 tessdata 时出现双分隔符。 */
+std::string trim_trailing_slash(std::string path) {
+  while (path.size() > 1 && path.back() == '/') path.pop_back();
+  return path;
+}
+
+/** 若 path 本身或 path/tessdata 含 eng.traineddata，返回 tessdata 目录。 */
+std::string tessdata_if_valid(const std::string& path) {
+  if (path.empty()) return {};
+  const std::string direct = trim_trailing_slash(path);
+  if (access((direct + "/eng.traineddata").c_str(), R_OK) == 0) return direct;
+  const std::string nested = direct + "/tessdata";
+  if (access((nested + "/eng.traineddata").c_str(), R_OK) == 0) return nested;
+  return {};
+}
+
+/** 当前用户主目录；无 HOME 时返回空，跳过用户前缀查找。 */
+std::string home_dir() {
+  const char* home = std::getenv("HOME");
+  if (!home || home[0] == '\0') return {};
+  return trim_trailing_slash(home);
+}
+
+/**
+ * 解析 tesseract 可执行文件：SIEANS_TESSERACT、PATH、用户前缀，最后才是系统路径。
+ * 用户前缀默认 $HOME/.local/bin/tesseract 与 $HOME/.local/opt/tesseract/usr/bin/tesseract。
+ */
+std::string find_tesseract_bin() {
+  if (const char* env = std::getenv("SIEANS_TESSERACT")) {
+    if (is_executable_file(env)) return env;
+  }
+  if (const char* path = std::getenv("PATH")) {
+    std::string cur;
+    for (const char* p = path;; ++p) {
+      if (*p == ':' || *p == '\0') {
+        if (!cur.empty()) {
+          const std::string cand = trim_trailing_slash(cur) + "/tesseract";
+          if (is_executable_file(cand)) return cand;
+        }
+        cur.clear();
+        if (*p == '\0') break;
+      } else {
+        cur.push_back(*p);
+      }
+    }
+  }
+  const std::string home = home_dir();
+  if (!home.empty()) {
+    static const char* user_bins[] = {
+        "/.local/bin/tesseract",
+        "/.local/opt/tesseract/usr/bin/tesseract",
+    };
+    for (const char* rel : user_bins) {
+      const std::string cand = home + rel;
+      if (is_executable_file(cand)) return cand;
+    }
+  }
+  static const char* system_bins[] = {
+      "/usr/local/bin/tesseract",
+      "/usr/bin/tesseract",
+  };
+  for (const char* c : system_bins) {
+    if (is_executable_file(c)) return c;
+  }
+  return {};
+}
+
+/**
+ * 定位 tessdata 目录（内含 eng.traineddata）。
+ * 优先覆盖路径与 TESSDATA_PREFIX，再查用户前缀，最后才是发行版路径。
+ */
 std::string find_tessdata_prefix(const std::string& override_path) {
-  if (!override_path.empty()) return override_path;
+  if (const std::string hit = tessdata_if_valid(override_path); !hit.empty()) return hit;
   if (const char* env = std::getenv("TESSDATA_PREFIX")) {
-    if (env[0] != '\0') return env;
+    if (const std::string hit = tessdata_if_valid(env); !hit.empty()) return hit;
+  }
+  const std::string home = home_dir();
+  if (!home.empty()) {
+    static const char* user_dirs[] = {
+        "/.local/share/tessdata",
+        "/.local/opt/tesseract/usr/share/tesseract-ocr/5/tessdata",
+        "/.local/share/tesseract-ocr/5/tessdata",
+    };
+    for (const char* rel : user_dirs) {
+      if (const std::string hit = tessdata_if_valid(home + rel); !hit.empty()) return hit;
+    }
   }
   static const char* cands[] = {
       "/usr/share/tesseract-ocr/5/tessdata",
@@ -29,10 +121,38 @@ std::string find_tessdata_prefix(const std::string& override_path) {
       "/usr/share/tessdata",
   };
   for (const char* c : cands) {
-    std::string eng = std::string(c) + "/eng.traineddata";
-    if (access(eng.c_str(), R_OK) == 0) return c;
+    if (const std::string hit = tessdata_if_valid(c); !hit.empty()) return hit;
   }
   return {};
+}
+
+/**
+ * 若二进制位于用户前缀（.../usr/bin/tesseract），把同前缀的 lib 目录前置到
+ * LD_LIBRARY_PATH，这样不经过包装脚本也能找到 libtesseract/liblept。
+ */
+void prepend_user_tesseract_libs(const std::string& bin) {
+  const auto slash = bin.find_last_of('/');
+  if (slash == std::string::npos || slash == 0) return;
+  const std::string bindir = bin.substr(0, slash);
+  const std::string cands[] = {
+      bindir + "/../lib/x86_64-linux-gnu",
+      bindir + "/../lib",
+  };
+  for (const std::string& raw : cands) {
+    const std::string dir = trim_trailing_slash(raw);
+    if (access((dir + "/libtesseract.so.5").c_str(), R_OK) != 0 &&
+        access((dir + "/liblept.so.5").c_str(), R_OK) != 0) {
+      continue;
+    }
+    const char* old = std::getenv("LD_LIBRARY_PATH");
+    std::string neu = dir;
+    if (old && old[0] != '\0') {
+      neu.push_back(':');
+      neu += old;
+    }
+    setenv("LD_LIBRARY_PATH", neu.c_str(), 1);
+    return;
+  }
 }
 
 bool to_gray(const uint8_t* data, int width, int height, int stride,
@@ -86,7 +206,10 @@ bool write_pgm(const std::string& path, int width, int height,
   return static_cast<bool>(f);
 }
 
+/** 调用已定位的 tesseract CLI；用 --tessdata-dir 显式传入语言包目录。 */
 std::string run_tesseract(const std::string& img_path, const OcrOptions& opt) {
+  const std::string bin = find_tesseract_bin();
+  if (bin.empty()) return {};
   const std::string tessdata = find_tessdata_prefix(opt.tessdata_prefix);
   const std::string lang = opt.lang.empty() ? "eng" : opt.lang;
   int psm = opt.psm;
@@ -110,10 +233,18 @@ std::string run_tesseract(const std::string& img_path, const OcrOptions& opt) {
       close(devnull);
     }
     close(pipefd[1]);
+    prepend_user_tesseract_libs(bin);
+    // Ubuntu 5.3.4 把 TESSDATA_PREFIX 当作 tessdata 目录本身。
     if (!tessdata.empty()) setenv("TESSDATA_PREFIX", tessdata.c_str(), 1);
     const std::string psm_s = std::to_string(psm);
-    execlp("tesseract", "tesseract", img_path.c_str(), "stdout", "-l", lang.c_str(),
-           "--psm", psm_s.c_str(), static_cast<char*>(nullptr));
+    if (!tessdata.empty()) {
+      execl(bin.c_str(), "tesseract", img_path.c_str(), "stdout", "-l", lang.c_str(),
+            "--psm", psm_s.c_str(), "--tessdata-dir", tessdata.c_str(),
+            static_cast<char*>(nullptr));
+    } else {
+      execl(bin.c_str(), "tesseract", img_path.c_str(), "stdout", "-l", lang.c_str(),
+            "--psm", psm_s.c_str(), static_cast<char*>(nullptr));
+    }
     _exit(127);
   }
   close(pipefd[1]);
@@ -159,8 +290,7 @@ std::vector<OcrHit> parse_lines(const std::string& raw, int min_conf) {
 }  // namespace
 
 bool ocr_available() {
-  return access("/usr/bin/tesseract", X_OK) == 0 ||
-         access("/usr/local/bin/tesseract", X_OK) == 0;
+  return !find_tesseract_bin().empty() && !find_tessdata_prefix({}).empty();
 }
 
 std::vector<OcrHit> recognize_text(const uint8_t* data, int width, int height,
