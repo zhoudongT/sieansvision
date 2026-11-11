@@ -18,6 +18,9 @@ QString workbenchProjectsDir();
 /** 运行产物目录：仓库 artifacts/（必要时创建）。 */
 QString workbenchArtifactsDir();
 
+/** 用户数据目录：$HOME/.local/share/sieans（必要时创建）。不写方案文件。 */
+QString workbenchUserDataDir();
+
 /** 快速匹配模板落盘目录：artifacts/qt-templates（必要时创建）。 */
 QString workbenchTemplatesDir();
 

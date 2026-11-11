@@ -6,6 +6,7 @@
 #include "OperatorLibrary.hpp"
 #include "PropertyPanel.hpp"
 #include "SieansDocument.hpp"
+#include "InspectionHistory.hpp"
 #include "CommHub.hpp"
 #include "CommPanel.hpp"
 #include "VarWatchPanel.hpp"
@@ -55,6 +56,8 @@ class MainWindow : public QMainWindow {
   void onOpenCameraManager();
   /** Open the in-project recipe capture/apply dialog (产线配方 / 换型 subset). */
   void onOpenRecipeSwitch();
+  /** Show the local inspection-history table (headless no-op). */
+  void onOpenInspectionHistory();
   /** Edit project globalTriggers string rows (headless no-op). */
   void onOpenGlobalTriggers();
   /** Match a comm/inject payload against string triggers and dispatch run/stop. */
@@ -143,6 +146,8 @@ class MainWindow : public QMainWindow {
   bool importPointCloudPath(const QString& path, bool asTarget);
   /** 按方案名、设计/运行态和脏标记刷新窗口标题与方案标签。 */
   void refreshProjectTitle();
+  /** Append one OK/NG row to the local inspection history after a finished run. */
+  void appendInspectionHistory();
   /** 有未保存修改时询问保存/放弃/取消；无界面冒烟直接视为放弃。取消则返回 false。 */
   bool confirmDiscardOrSave();
   void logResult(const QString& line);
@@ -239,6 +244,7 @@ class MainWindow : public QMainWindow {
   bool project_dirty_ = false;
   bool applying_document_ = false;
   bool restoring_canvas_undo_ = false;
+  InspectionHistory inspection_history_;
   QAction* act_undo_ = nullptr;
   QAction* act_redo_ = nullptr;
   QString imported_cloud_path_;

@@ -1418,6 +1418,7 @@ void MainWindow::buildMenus() {
       showStatus(QStringLiteral("历史结果"));
     }
   });
+  records->addAction(QStringLiteral("检测历史…"), this, &MainWindow::onOpenInspectionHistory);
   records->addAction(QStringLiteral("变量监视…"), this, [this]() {
     if (bottom_tabs_ && var_watch_) {
       bottom_tabs_->setCurrentWidget(var_watch_);
@@ -4406,6 +4407,7 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                             .count();
   const double toolMs = qMax(0.0, flowMs - algoMs);
   last_cycle_ms_ = flowMs;
+  appendInspectionHistory();
   if (host_strip_) host_strip_->setCycleTiming(flowMs);
   if (host_sm_ && host_strip_)
     host_sm_->setRunStats(host_strip_->okStreak(), host_strip_->ngCount(), flowMs);
@@ -5017,6 +5019,15 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                       .arg(cf.isEmpty() ? QStringLiteral("0")
                                          : cf.join(QLatin1Char('|')).left(160))
                       .arg(imported_cloud_path_.isEmpty() ? 0 : 1);
+        }
+        {
+          const QStringList hf = InspectionHistory::historySelfTest();
+          line += QChar(' ');
+          line += QStringLiteral("histOk=%1 histFails=%2 histLive=%3")
+                      .arg(hf.isEmpty() ? 1 : 0)
+                      .arg(hf.isEmpty() ? QStringLiteral("0")
+                                         : hf.join(QLatin1Char('|')).left(160))
+                      .arg(inspection_history_.count());
         }
       }
 
@@ -6804,6 +6815,77 @@ void MainWindow::onImportCloudTarget() {
       QStringLiteral("点云 (*.ply *.pcd *.xyz *.txt *.csv);;全部 (*.*)"));
   if (path.isEmpty()) return;
   importPointCloudPath(path, true);
+}
+
+
+
+void MainWindow::appendInspectionHistory() {
+  if (applying_document_) return;
+  InspectionRecord rec;
+  rec.projectName = document_.name();
+  QString flow;
+  for (const FlowDef& f : document_.flows()) {
+    if (f.id == document_.activeFlowId()) {
+      flow = f.name;
+      break;
+    }
+  }
+  if (flow.isEmpty() && !document_.flows().isEmpty())
+    flow = document_.flows().first().name;
+  rec.flowName = flow;
+  rec.recipeName = document_.activeRecipeName();
+  bool ok = true;
+  if (flow_vars_.contains(QStringLiteral("passGate"))) {
+    const QVariant g = flow_vars_.value(QStringLiteral("passGate"));
+    ok = g.toInt() != 0 || g.toBool();
+  } else {
+    const QString hr = flow_vars_.value(QStringLiteral("hostResult")).toString();
+    if (!hr.isEmpty())
+      ok = hr.compare(QLatin1String("OK"), Qt::CaseInsensitive) == 0 || hr == QLatin1String("1");
+  }
+  rec.verdict = ok ? QStringLiteral("OK") : QStringLiteral("NG");
+  rec.elapsedMs = qint64(last_cycle_ms_ + 0.5);
+  rec.detail = QStringLiteral("passGate=%1").arg(
+      flow_vars_.value(QStringLiteral("passGate")).toString());
+  inspection_history_.append(rec);
+}
+
+void MainWindow::onOpenInspectionHistory() {
+  if (workbenchIsHeadless()) return;
+  inspection_history_.load();
+  QDialog dlg(this);
+  dlg.setWindowTitle(QStringLiteral("检测历史"));
+  dlg.resize(760, 420);
+  auto* lay = new QVBoxLayout(&dlg);
+  auto* table = new QTableWidget(0, 6);
+  table->setHorizontalHeaderLabels({QStringLiteral("时间"), QStringLiteral("工程"),
+                                    QStringLiteral("流程"), QStringLiteral("配方"),
+                                    QStringLiteral("判定"), QStringLiteral("耗时 (ms)")});
+  table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  table->setSelectionBehavior(QAbstractItemView::SelectRows);
+  table->setSelectionMode(QAbstractItemView::SingleSelection);
+  table->horizontalHeader()->setStretchLastSection(true);
+  table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+  const auto rows = inspection_history_.records();
+  table->setRowCount(rows.size());
+  for (int i = 0; i < rows.size(); ++i) {
+    const InspectionRecord& r = rows[i];
+    table->setItem(i, 0, new QTableWidgetItem(r.startedAt));
+    table->setItem(i, 1, new QTableWidgetItem(r.projectName));
+    table->setItem(i, 2, new QTableWidgetItem(r.flowName));
+    table->setItem(i, 3, new QTableWidgetItem(r.recipeName));
+    table->setItem(i, 4, new QTableWidgetItem(r.verdict));
+    table->setItem(i, 5, new QTableWidgetItem(QString::number(r.elapsedMs)));
+  }
+  lay->addWidget(table);
+  auto* hint = new QLabel(QStringLiteral("共 %1 条 · 本机记录，不写入方案文件")
+                              .arg(inspection_history_.count()));
+  hint->setWordWrap(true);
+  lay->addWidget(hint);
+  auto* close = new QPushButton(QStringLiteral("关闭"));
+  QObject::connect(close, &QPushButton::clicked, &dlg, &QDialog::accept);
+  lay->addWidget(close, 0, Qt::AlignRight);
+  dlg.exec();
 }
 
 

@@ -105,6 +105,8 @@ add_executable(sieans_qt
   src/WorkbenchPaths.cpp
   src/CloudOps.hpp
   src/CloudOps.cpp
+  src/InspectionHistory.hpp
+  src/InspectionHistory.cpp
   src/SocketExchange.hpp
   src/SocketExchange.cpp
   src/FlowExtras.hpp

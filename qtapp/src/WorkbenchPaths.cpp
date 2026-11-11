@@ -77,6 +77,12 @@ QString workbenchArtifactsDir() {
   return ensureDir(home);
 }
 
+QString workbenchUserDataDir() {
+  const QByteArray env = qgetenv("SIEANS_QT_USER_DATA");
+  if (!env.isEmpty()) return ensureDir(QString::fromUtf8(env));
+  return ensureDir(QDir::home().filePath(QStringLiteral(".local/share/sieans")));
+}
+
 QString workbenchTemplatesDir() {
   return ensureDir(workbenchArtifactsDir() + QStringLiteral("/qt-templates"));
 }

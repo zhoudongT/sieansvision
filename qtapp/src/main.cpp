@@ -12,6 +12,7 @@
 #include "MqttClient.hpp"
 #include "YoloInfer.hpp"
 #include "CloudOps.hpp"
+#include "InspectionHistory.hpp"
 #include "SocketExchange.hpp"
 #include "FlowExtras.hpp"
 #include "PythonExt.hpp"
@@ -371,6 +372,20 @@ int main(int argc, char* argv[]) {
       std::fprintf(stderr, "cloud-file-selftest FAIL %s\n", line.toUtf8().constData());
     return 1;
   }
+
+  if (qEnvironmentVariable("SIEANS_QT_HISTORY_SELFTEST") == QLatin1String("1") &&
+      qEnvironmentVariable("SIEANS_QT_HISTORY_SELFTEST_QUIT") == QLatin1String("1")) {
+    QCoreApplication app(argc, argv);
+    const QStringList fails = sieans_qt::InspectionHistory::historySelfTest();
+    if (fails.isEmpty()) {
+      std::fprintf(stdout, "history-selftest ok\n");
+      return 0;
+    }
+    for (const QString& line : fails)
+      std::fprintf(stderr, "history-selftest FAIL %s\n", line.toUtf8().constData());
+    return 1;
+  }
+
 
   if (qEnvironmentVariable("SIEANS_QT_RECIPE_SELFTEST") == QLatin1String("1") &&
       qEnvironmentVariable("SIEANS_QT_RECIPE_SELFTEST_QUIT") == QLatin1String("1")) {
