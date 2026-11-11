@@ -101,6 +101,10 @@ class MainWindow : public QMainWindow {
   void cacheFilmstripGeomOverlays(const QVector<OverlayHit>& hits);
   /** Rebuild result-view compare overlays for the selected compare/film frame. */
   void refreshGeomCompareOverlays();
+  /** Stash OK/NG measure badge for the current film path from flow vars (runtime-only). */
+  void cacheFilmstripMeasureBadge();
+  /** Push cached path badges onto the filmstrip and compare strip. */
+  void syncFilmstripMeasureBadges();
   /** 方案已被用户改过，标题加 *。加载/应用文档期间忽略。 */
   void markProjectDirty();
   /** 保存或重新加载成功后清除脏标记。 */
@@ -147,6 +151,7 @@ class MainWindow : public QMainWindow {
   CompareStrip* compare_strip_ = nullptr;
   QStringList result_compare_paths_;
   QHash<QString, QVector<GeomPickable>> filmstrip_geom_cache_;
+  QHash<QString, QString> filmstrip_measure_badges_;
   QString last_run_film_path_;
   ImageView* output_view_ = nullptr;
   QTabWidget* image_tabs_ = nullptr;

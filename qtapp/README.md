@@ -68,6 +68,8 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx`）放�
 
 **已落地（wave257）：** 对比条锁序 `QSettings` 偏好（`SIEANS/VisionDesktop`：`film/compareOrderLocked`、`film/undoClearLongMs`）、锁徽章单击切换并持久化、双击复位到进入序并解锁（撤销可按进入时锁态重新上锁）、⊘ 长按清空撤销栈（短按仅提示）。构造时不自动读用户偏好，由主窗 `loadComparePrefs()` 加载；无界面自测注入临时 ini，不写用户仓库。`SIEANS_QT_COMPARE_STRIP_SELFTEST=1`。
 
+**已落地（wave258）：** 胶片条 OK/NG 测量判定徽章（对齐 PySide `set_frame_measure_badges`）：优先测量/卡尺/几何键，无则回退 `locateOk`/`passGate`；运行期缓存，不写方案。对比侧栏同步路径徽章。无界面自测 `SIEANS_QT_FILM_BADGE_SELFTEST=1`。
+
 **NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。
 
 ## VM chrome (2026-11-03)

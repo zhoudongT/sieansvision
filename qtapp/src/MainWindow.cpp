@@ -1536,7 +1536,9 @@ void MainWindow::applyDocumentToUi() {
   result_compare_paths_.clear();
   if (compare_strip_) compare_strip_->clear();
   filmstrip_geom_cache_.clear();
+  filmstrip_measure_badges_.clear();
   last_run_film_path_.clear();
+  if (filmstrip_) filmstrip_->clearFrameMeasureBadges();
   if (output_view_) output_view_->clearGeomOverlays();
   if (image_view_) image_view_->clearGeomOverlays();
   {
@@ -2048,8 +2050,10 @@ void MainWindow::applyResultCompare(const QString& path) {
   }
   result_compare_paths_ << p;
   // Side rail appears at 2+ paths, matching PySide (single-frame hover does not pop it).
-  if (compare_strip_ && result_compare_paths_.size() >= 2)
+  if (compare_strip_ && result_compare_paths_.size() >= 2) {
     compare_strip_->setPaths(result_compare_paths_, p);
+    compare_strip_->setPathBadges(filmstrip_measure_badges_);
+  }
   showStatus(QStringLiteral("结果表双击对比 · %1 · %2 帧")
                  .arg(QFileInfo(p).fileName())
                  .arg(result_compare_paths_.size()));
@@ -2112,6 +2116,42 @@ void MainWindow::refreshGeomCompareOverlays() {
   } else {
     output_view_->clearGeomOverlays();
   }
+}
+
+void MainWindow::cacheFilmstripMeasureBadge() {
+  const QString path = filmstrip_ ? filmstrip_->currentPath().trimmed() : QString();
+  if (path.isEmpty()) {
+    syncFilmstripMeasureBadges();
+    return;
+  }
+  const QString tag = FilmstripBar::measureBadgeFromVars(flow_vars_);
+  if (tag.isEmpty())
+    filmstrip_measure_badges_.remove(path);
+  else
+    filmstrip_measure_badges_.insert(path, tag);
+  while (filmstrip_measure_badges_.size() > 32) {
+    const QString first = filmstrip_measure_badges_.constBegin().key();
+    if (first == path) {
+      bool evicted = false;
+      for (auto it = filmstrip_measure_badges_.constBegin();
+           it != filmstrip_measure_badges_.constEnd(); ++it) {
+        if (it.key() != path) {
+          filmstrip_measure_badges_.remove(it.key());
+          evicted = true;
+          break;
+        }
+      }
+      if (!evicted) break;
+    } else {
+      filmstrip_measure_badges_.remove(first);
+    }
+  }
+  syncFilmstripMeasureBadges();
+}
+
+void MainWindow::syncFilmstripMeasureBadges() {
+  if (filmstrip_) filmstrip_->setFrameMeasureBadges(filmstrip_measure_badges_);
+  if (compare_strip_) compare_strip_->setPathBadges(filmstrip_measure_badges_);
 }
 
 void MainWindow::markProjectDirty() {
@@ -4300,6 +4340,7 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
   image_view_->setOverlays(overlays);
   if (output_view_) output_view_->setOverlays(overlays);
   cacheFilmstripGeomOverlays(overlays);
+  cacheFilmstripMeasureBadge();
   refreshGeomCompareOverlays();
   if (flow_vars_.contains(QStringLiteral("passGate"))) {
     const bool gateOk = flow_vars_.value(QStringLiteral("passGate")).toInt() != 0 ||
@@ -4596,6 +4637,21 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                       .arg(gf.isEmpty() ? 1 : 0)
                       .arg(filmstrip_geom_cache_.size())
                       .arg(output_view_ ? output_view_->geomOverlayCount() : 0);
+        }
+        {
+          const QStringList bf = FilmstripBar::measureBadgeSelfTest();
+          int live = 0;
+          if (filmstrip_) {
+            for (const QString& path : filmstrip_->paths()) {
+              if (!filmstrip_->frameMeasureBadge(path).isEmpty()) ++live;
+            }
+          }
+          line += QStringLiteral(
+                      "filmBadgeOk=%1 filmBadgeFails=%2 filmBadgeLive=%3 ")
+                      .arg(bf.isEmpty() ? 1 : 0)
+                      .arg(bf.isEmpty() ? QStringLiteral("0")
+                                         : bf.join(QLatin1Char('|')).left(160))
+                      .arg(live);
         }
       }
       line += QStringLiteral(

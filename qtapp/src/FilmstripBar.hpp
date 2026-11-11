@@ -3,9 +3,13 @@
 #include <QWidget>
 #include <QStringList>
 #include <QVariantMap>
+#include <QVariant>
+#include <QHash>
+#include <QString>
 
 class QLabel;
 class QListWidget;
+class QListWidgetItem;
 class QCheckBox;
 class QKeyEvent;
 class QEvent;
@@ -67,6 +71,18 @@ class FilmstripBar : public QWidget {
   /** 路径/下标/基名跳帧与 flash 标记。空列表表示通过。需要 QApplication。 */
   static QStringList jumpSelfTest();
 
+  /** Annotate thumbs with OK/NG measure tags (runtime-only, does not change paths). */
+  void setFrameMeasureBadges(const QHash<QString, QString>& badges);
+  QString frameMeasureBadge(const QString& path) const;
+  void clearFrameMeasureBadges();
+  /** Normalize a badge token to OK, NG, or empty. */
+  static QString normalizeMeasureBadge(const QVariant& value);
+  /** Derive OK/NG from measure/caliper/geom (then locate/passGate) flow vars. */
+  static QString measureBadgeFromVars(const QVariantMap& vars);
+  QString thumbLabel(const QString& path) const;
+  /** Isolated OK/NG thumb label/color checks. Empty list = pass. Needs QApplication. */
+  static QStringList measureBadgeSelfTest();
+
  protected:
   void keyPressEvent(QKeyEvent* event) override;
   bool eventFilter(QObject* obj, QEvent* event) override;
@@ -85,12 +101,15 @@ class FilmstripBar : public QWidget {
   void rebuildThumbs();
   void notifyPathsChanged();
   QIcon makeThumb(const QString& path) const;
+  /** Apply OK/NG text, tooltip, and color onto one thumb item. */
+  void applyThumbMeasureChrome(QListWidgetItem* item, const QString& path) const;
 
   QLabel* countLabel_ = nullptr;
   QLabel* status_ = nullptr;
   QCheckBox* autoSwitch_ = nullptr;
   QListWidget* list_ = nullptr;
   QStringList paths_;
+  QHash<QString, QString> measure_badges_;
   int index_ = -1;
   bool rebuilding_ = false;
   class QTimer* seekFlashTimer_ = nullptr;

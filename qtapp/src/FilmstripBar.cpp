@@ -33,12 +33,15 @@
 #include <QScrollBar>
 #include <QRandomGenerator>
 #include <QColor>
+#include <QBrush>
 #include <QDir>
 #include <QFile>
 #include <QListWidgetItem>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QVariantMap>
+#include <QMetaType>
+#include <QListWidgetItem>
 
 namespace sieans_qt {
 namespace {
@@ -220,17 +223,10 @@ void FilmstripBar::rebuildThumbs() {
   list_->clear();
   for (const QString& path : paths_) {
     const QFileInfo fi(path);
-    auto* item = new QListWidgetItem(makeThumb(path), fi.completeBaseName().left(10));
-    QImage probe(path);
-    const QString tip = probe.isNull()
-                            ? path
-                            : QStringLiteral("%1\n%2×%3")
-                                  .arg(path)
-                                  .arg(probe.width())
-                                  .arg(probe.height());
-    item->setToolTip(tip);
+    auto* item = new QListWidgetItem(makeThumb(path), thumbLabel(path));
     item->setData(Qt::UserRole, path);
     item->setTextAlignment(Qt::AlignHCenter | Qt::AlignTop);
+    applyThumbMeasureChrome(item, path);
     list_->addItem(item);
   }
   rebuilding_ = false;
@@ -1358,6 +1354,179 @@ QStringList FilmstripBar::jumpSelfTest() {
   FilmstripBar empty;
   const QVariantMap emptyHit = empty.seekFrameToken(a, -1, false, false);
   check("empty-bar", !emptyHit.value(QStringLiteral("ok")).toBool());
+  return fails;
+}
+
+
+QString FilmstripBar::normalizeMeasureBadge(const QVariant& value) {
+  if (value.isNull() || !value.isValid()) return {};
+  if (value.typeId() == QMetaType::Bool)
+    return value.toBool() ? QStringLiteral("OK") : QStringLiteral("NG");
+  const QString v = value.toString().trimmed().toUpper();
+  if (v == QLatin1String("OK") || v == QLatin1String("PASS") || v == QLatin1String("1") ||
+      v == QLatin1String("TRUE"))
+    return QStringLiteral("OK");
+  if (v == QLatin1String("NG") || v == QLatin1String("FAIL") || v == QLatin1String("0") ||
+      v == QLatin1String("FALSE"))
+    return QStringLiteral("NG");
+  return {};
+}
+
+QString FilmstripBar::measureBadgeFromVars(const QVariantMap& vars) {
+  const QStringList measureKeys{
+      QStringLiteral("caliperOk"), QStringLiteral("measureOk"),
+      QStringLiteral("measCircOk"), QStringLiteral("measLineOk"),
+      QStringLiteral("measAngOk"), QStringLiteral("measPtsOk"),
+      QStringLiteral("geomCircOk"), QStringLiteral("geomLineOk"),
+      QStringLiteral("geomFollowOk")};
+  bool saw = false, ng = false, ok = false;
+  for (const QString& k : measureKeys) {
+    if (!vars.contains(k)) continue;
+    saw = true;
+    const QString tag = normalizeMeasureBadge(vars.value(k));
+    if (tag == QLatin1String("NG")) ng = true;
+    else if (tag == QLatin1String("OK")) ok = true;
+  }
+  if (saw) return ng ? QStringLiteral("NG") : (ok ? QStringLiteral("OK") : QString());
+  for (const QString& k : {QStringLiteral("locateOk"), QStringLiteral("passGate")}) {
+    if (!vars.contains(k)) continue;
+    const QString tag = normalizeMeasureBadge(vars.value(k));
+    if (tag == QLatin1String("NG")) ng = true;
+    else if (tag == QLatin1String("OK")) ok = true;
+    saw = true;
+  }
+  if (!saw) return {};
+  return ng ? QStringLiteral("NG") : (ok ? QStringLiteral("OK") : QString());
+}
+
+QString FilmstripBar::frameMeasureBadge(const QString& path) const {
+  const QString t = path.trimmed();
+  if (measure_badges_.contains(t)) return measure_badges_.value(t);
+  const QString base = QFileInfo(t).fileName();
+  for (auto it = measure_badges_.begin(); it != measure_badges_.end(); ++it) {
+    if (QFileInfo(it.key()).fileName() == base) return it.value();
+  }
+  return {};
+}
+
+QString FilmstripBar::thumbLabel(const QString& path) const {
+  const QString leaf = QFileInfo(path).completeBaseName().left(10);
+  const QString badge = frameMeasureBadge(path);
+  if (badge.isEmpty()) return leaf;
+  return QStringLiteral("[%1] %2").arg(badge, leaf);
+}
+
+void FilmstripBar::applyThumbMeasureChrome(QListWidgetItem* item, const QString& path) const {
+  if (!item) return;
+  item->setText(thumbLabel(path));
+  QImage probe(path);
+  QString tip = probe.isNull()
+                    ? path
+                    : QStringLiteral("%1\n%2×%3").arg(path).arg(probe.width()).arg(probe.height());
+  const QString badge = frameMeasureBadge(path);
+  if (!badge.isEmpty()) tip += QStringLiteral("\n测量判定：%1").arg(badge);
+  item->setToolTip(tip);
+  if (badge == QLatin1String("NG"))
+    item->setForeground(QBrush(QColor(QStringLiteral("#c62828"))));
+  else if (badge == QLatin1String("OK"))
+    item->setForeground(QBrush(QColor(QStringLiteral("#2e7d32"))));
+  else
+    item->setForeground(QBrush());
+}
+
+void FilmstripBar::setFrameMeasureBadges(const QHash<QString, QString>& badges) {
+  measure_badges_.clear();
+  for (auto it = badges.begin(); it != badges.end(); ++it) {
+    const QString k = it.key().trimmed();
+    if (k.isEmpty()) continue;
+    const QString tag = normalizeMeasureBadge(it.value());
+    if (!tag.isEmpty()) measure_badges_.insert(k, tag);
+  }
+  if (!list_) return;
+  for (int i = 0; i < list_->count(); ++i) {
+    auto* item = list_->item(i);
+    if (!item) continue;
+    const QString path = item->data(Qt::UserRole).toString();
+    applyThumbMeasureChrome(item, path);
+  }
+}
+
+void FilmstripBar::clearFrameMeasureBadges() {
+  if (measure_badges_.isEmpty()) return;
+  measure_badges_.clear();
+  if (!list_) return;
+  for (int i = 0; i < list_->count(); ++i) {
+    auto* item = list_->item(i);
+    if (!item) continue;
+    applyThumbMeasureChrome(item, item->data(Qt::UserRole).toString());
+  }
+}
+
+QStringList FilmstripBar::measureBadgeSelfTest() {
+  QStringList fails;
+  auto check = [&](const char* name, bool ok, const QString& detail = QString()) {
+    if (!ok)
+      fails << (detail.isEmpty() ? QString::fromUtf8(name)
+                                 : QStringLiteral("%1: %2").arg(QString::fromUtf8(name), detail));
+  };
+  if (!qApp) {
+    fails << QStringLiteral("no-qapp");
+    return fails;
+  }
+  QVariantMap okVars;
+  okVars.insert(QStringLiteral("caliperOk"), 1);
+  okVars.insert(QStringLiteral("measLineOk"), 1);
+  check("vars-ok", measureBadgeFromVars(okVars) == QLatin1String("OK"),
+        measureBadgeFromVars(okVars));
+  QVariantMap ngVars = okVars;
+  ngVars.insert(QStringLiteral("geomCircOk"), 0);
+  check("vars-ng-wins", measureBadgeFromVars(ngVars) == QLatin1String("NG"),
+        measureBadgeFromVars(ngVars));
+  QVariantMap loc;
+  loc.insert(QStringLiteral("locateOk"), 1);
+  check("vars-locate-fallback", measureBadgeFromVars(loc) == QLatin1String("OK"));
+  check("norm-true", normalizeMeasureBadge(true) == QLatin1String("OK"));
+  check("norm-fail", normalizeMeasureBadge(QStringLiteral("fail")) == QLatin1String("NG"));
+
+  QTemporaryDir tmp;
+  check("tmpdir", tmp.isValid());
+  if (!tmp.isValid()) return fails;
+  const QString a = tmp.filePath(QStringLiteral("frame-a.png"));
+  const QString b = tmp.filePath(QStringLiteral("frame-b.png"));
+  QImage ia(16, 16, QImage::Format_RGB888);
+  ia.fill(QColor(200, 40, 40));
+  check("write-a", ia.save(a));
+  QImage ib(16, 16, QImage::Format_RGB888);
+  ib.fill(QColor(40, 200, 40));
+  check("write-b", ib.save(b));
+  FilmstripBar bar;
+  bar.setPaths({a, b});
+  QHash<QString, QString> badges;
+  badges.insert(a, QStringLiteral("OK"));
+  badges.insert(b, QStringLiteral("NG"));
+  bar.setFrameMeasureBadges(badges);
+  check("badge-a", bar.frameMeasureBadge(a) == QLatin1String("OK"));
+  check("badge-b", bar.frameMeasureBadge(QStringLiteral("frame-b.png")) == QLatin1String("NG"));
+  check("label-ok", bar.thumbLabel(a).startsWith(QStringLiteral("[OK]")), bar.thumbLabel(a));
+  check("label-ng", bar.thumbLabel(b).startsWith(QStringLiteral("[NG]")), bar.thumbLabel(b));
+  QListWidgetItem* ia0 = nullptr;
+  QListWidgetItem* ib0 = nullptr;
+  if (bar.findChild<QListWidget*>()) {
+    auto* list = bar.findChild<QListWidget*>();
+    if (list && list->count() >= 2) {
+      ia0 = list->item(0);
+      ib0 = list->item(1);
+    }
+  }
+  check("tip-ok", ia0 && ia0->toolTip().contains(QStringLiteral("测量判定：OK")),
+        ia0 ? ia0->toolTip() : QStringLiteral("no-item"));
+  check("tip-ng", ib0 && ib0->toolTip().contains(QStringLiteral("测量判定：NG")),
+        ib0 ? ib0->toolTip() : QStringLiteral("no-item"));
+  check("color-ok", ia0 && ia0->foreground().color() == QColor(QStringLiteral("#2e7d32")));
+  check("color-ng", ib0 && ib0->foreground().color() == QColor(QStringLiteral("#c62828")));
+  bar.clearFrameMeasureBadges();
+  check("cleared", bar.frameMeasureBadge(a).isEmpty() &&
+                       !bar.thumbLabel(a).startsWith(QLatin1Char('[')));
   return fails;
 }
 
