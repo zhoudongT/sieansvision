@@ -2,6 +2,7 @@
 
 #include <QWidget>
 #include <QStringList>
+#include <QVariantMap>
 
 class QLabel;
 class QListWidget;
@@ -52,6 +53,20 @@ class FilmstripBar : public QWidget {
   void moveSelectedBy(int delta);
   void reversePaths();
 
+  /** 按完整路径或文件名选中缩略图。找不到返回 false。 */
+  bool selectPath(const QString& path, bool emitSignal = true);
+  /** 火花线跳帧：显式下标 → 路径/基名 → stem/子串 → 数字 token。 */
+  QVariantMap seekFrameToken(const QString& token, int index = -1,
+                             bool emitSignal = true, bool flash = true);
+  /** 短暂高亮定位到的缩略图（软反馈，无硬件）。 */
+  QVariantMap flashSeekThumb(int index, const QString& path = QString(),
+                             int ms = 480);
+  /** 把火花跳帧 bag（frame/label/index）对到胶片条，对齐 PySide seek_filmstrip_from_spark_jump。 */
+  static QVariantMap seekFromSparkJump(FilmstripBar* bar, const QVariantMap& bag,
+                                       bool flash = true);
+  /** 路径/下标/基名跳帧与 flash 标记。空列表表示通过。需要 QApplication。 */
+  static QStringList jumpSelfTest();
+
  protected:
   void keyPressEvent(QKeyEvent* event) override;
   bool eventFilter(QObject* obj, QEvent* event) override;
@@ -78,6 +93,11 @@ class FilmstripBar : public QWidget {
   QStringList paths_;
   int index_ = -1;
   bool rebuilding_ = false;
+  class QTimer* seekFlashTimer_ = nullptr;
+  int seekFlashIndex_ = -1;
+  QString thumbsBaseStyle_;
+  /** 清除上一次跳帧高亮。 */
+  void clearSeekFlash();
 };
 
 }  // namespace sieans_qt

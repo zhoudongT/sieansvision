@@ -72,6 +72,9 @@ class MainWindow : public QMainWindow {
   void onParamEdited(const QString& nodeId, const QString& key,
                      const QString& value);
   void onStructuredParamEdited(const QString& nodeId, const QString& key, const QVariant& value);
+  void onSparkFilmstripJump(const QVariantMap& bag);
+  /** 胶片帧对应到结果表行并选中画布节点（不写脏标记）。 */
+  void focusFilmstripResult(const QString& path, const QString& nodeId = QString());
   void onParamsReverted(const QString& nodeId, const QVariantMap& snapshot);
   void onPreviewFrame(const QImage& image, qint64 frameId);
   void onWorkerError(const QString& msg);

@@ -464,6 +464,16 @@ QString FlowScene::selectedNodeId() const {
   return {};
 }
 
+void FlowScene::selectNode(const QString& id) {
+  clearSelection();
+  if (id.isEmpty()) return;
+  FlowNodeItem* n = nodes_.value(id, nullptr);
+  if (!n) return;
+  n->setSelected(true);
+  for (QGraphicsView* v : views()) v->ensureVisible(n);
+  emit nodeSelected(id);
+}
+
 void FlowScene::setNodeLabel(const QString& id, const QString& label) {
   if (auto* n = nodes_.value(id, nullptr)) n->setLabel(label);
 }

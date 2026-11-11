@@ -629,6 +629,8 @@ void MainWindow::buildUi() {
   connect(prop_float_, &PropertyFloat::paramEdited, this, &MainWindow::onParamEdited);
   connect(prop_float_, &PropertyFloat::structuredParamEdited, this,
           &MainWindow::onStructuredParamEdited);
+  connect(prop_float_, &PropertyFloat::sparkJumpRequested, this,
+          &MainWindow::onSparkFilmstripJump);
   connect(prop_float_, &PropertyFloat::runModule, this, &MainWindow::onRunOnce);
   connect(prop_float_, &PropertyFloat::runModuleContinuous, this,
           &MainWindow::onRunContinuous);
@@ -812,6 +814,7 @@ void MainWindow::buildUi() {
           [this](const QString& path) {
             loadImagePath(path, false);
             if (filmstrip_) document_.setFilmstripIndex(filmstrip_->index());
+            if (!applying_document_) focusFilmstripResult(path);
           });
   connect(filmstrip_, &FilmstripBar::runAllRequested, this, &MainWindow::onRunAllImages);
   connect(filmstrip_, &FilmstripBar::pathsChanged, this, [this]() {
@@ -848,7 +851,25 @@ void MainWindow::buildUi() {
   result_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
   result_table_->setObjectName(QStringLiteral("resultTree"));
   result_table_->setToolTip(QStringLiteral("当前结果 · Ctrl+C 选中 · Ctrl+Shift+C 可见全部 · Ctrl+Shift+J JSON · Home/End/Pg · 过滤 Ctrl+Shift+F"));
-  result_table_->setStatusTip(QStringLiteral("结果表 · Ctrl+C/Ctrl+Shift+C/J · Home/End/Pg · 过滤 Ctrl+Shift+F"));
+  result_table_->setStatusTip(QStringLiteral("结果表 · Ctrl+C/Ctrl+Shift+C/J · Home/End/Pg · 过滤 Ctrl+Shift+F · 单击定位胶片"));
+  connect(result_table_, &QTableWidget::cellClicked, this, [this](int row, int) {
+    if (!result_table_ || row < 0) return;
+    auto* it = result_table_->item(row, 0);
+    if (!it) return;
+    const QString path = it->data(Qt::UserRole).toString();
+    const int idx = it->data(Qt::UserRole + 1).toInt();
+    const QString nodeId = it->data(Qt::UserRole + 2).toString();
+    if (filmstrip_) {
+      QVariantMap bag;
+      bag.insert(QStringLiteral("frame"), path);
+      if (idx >= 0) bag.insert(QStringLiteral("index"), idx);
+      const QVariantMap hit = FilmstripBar::seekFromSparkJump(filmstrip_, bag, true);
+      if (hit.value(QStringLiteral("ok")).toBool())
+        showStatus(QStringLiteral("结果表定位胶片 · #%1")
+                       .arg(hit.value(QStringLiteral("index")).toInt() + 1));
+    }
+    if (!nodeId.isEmpty() && flow_scene_) flow_scene_->selectNode(nodeId);
+  });
   auto* resultHost = new QWidget;
   auto* resultLay = new QVBoxLayout(resultHost);
   resultLay->setContentsMargins(0, 0, 0, 0);
@@ -2314,8 +2335,12 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
         if (result_table_) {
           const int row = result_table_->rowCount();
           result_table_->insertRow(row);
-          result_table_->setItem(
-              row, 0, new QTableWidgetItem(QStringLiteral("locate[%1].score").arg(hi)));
+          auto* keyItem = new QTableWidgetItem(QStringLiteral("locate[%1].score").arg(hi));
+          const QString filmPath = filmstrip_ ? filmstrip_->currentPath() : QString();
+          keyItem->setData(Qt::UserRole, filmPath);
+          keyItem->setData(Qt::UserRole + 1, filmstrip_ ? filmstrip_->index() : -1);
+          keyItem->setData(Qt::UserRole + 2, id);
+          result_table_->setItem(row, 0, keyItem);
           result_table_->setItem(
               row, 1, new QTableWidgetItem(QString::number(hit.score, 'f', 3)));
           result_table_->setItem(row, 2, new QTableWidgetItem(QStringLiteral("float")));
@@ -2323,7 +2348,12 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
         ++hi;
       }
       if (output_view_) output_view_->setLiveImage(working);
-      if (prop_float_) prop_float_->setLocateLastResult(flow_vars_);
+      if (prop_float_) {
+        QVariantMap locVars = flow_vars_;
+        if (filmstrip_)
+          locVars.insert(QStringLiteral("filmstripPath"), filmstrip_->currentPath());
+        prop_float_->setLocateLastResult(locVars);
+      }
       note = lr.templateCreated
                  ? QStringLiteral("已创建模板 · %1 · %2 ms").arg(lr.note).arg(matchMs, 0, 'f', 1)
                  : (lr.ok ? QStringLiteral("%1 · %2 ms").arg(lr.note).arg(matchMs, 0, 'f', 1)
@@ -4323,6 +4353,17 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                              : 0)
                     .arg(probe.lastBatchScoreboard().value(QStringLiteral("bestId")).toString().left(16))
                     .arg(probe.lastBatchScoreboard().value(QStringLiteral("passCount")).toInt());
+        {
+          const QStringList jf = FilmstripBar::jumpSelfTest();
+          QVariantMap demo;
+          // last successful spark-index style check is represented by empty fails
+          line += QStringLiteral(
+                      "filmJumpOk=%1 filmJumpFails=%2 filmJumpBy=%3 ")
+                      .arg(jf.isEmpty() ? 1 : 0)
+                      .arg(jf.isEmpty() ? QStringLiteral("0")
+                                        : jf.join(QLatin1Char('|')).left(120))
+                      .arg(jf.isEmpty() ? QStringLiteral("path") : QStringLiteral("fail"));
+        }
       }
       line += QStringLiteral(
                   "locateOk=%1 locateScore=%2 locateX=%3 locateY=%4 locateAngle=%5 "
@@ -5739,6 +5780,58 @@ void MainWindow::onStructuredParamEdited(const QString& nodeId, const QString& k
                    : key);
   }
   markProjectDirty();
+}
+
+void MainWindow::focusFilmstripResult(const QString& path, const QString& nodeId) {
+  int first = -1;
+  if (result_table_ && !path.isEmpty()) {
+    const QString base = QFileInfo(path).fileName();
+    for (int r = 0; r < result_table_->rowCount(); ++r) {
+      auto* it = result_table_->item(r, 0);
+      if (!it) continue;
+      const QString stamped = it->data(Qt::UserRole).toString();
+      const bool match = stamped == path || QFileInfo(stamped).fileName() == base;
+      if (match && first < 0) {
+        first = r;
+        result_table_->selectRow(r);
+        result_table_->scrollToItem(it);
+      }
+    }
+    if (first >= 0 && bottom_tabs_) {
+      for (int i = 0; i < bottom_tabs_->count(); ++i) {
+        QWidget* w = bottom_tabs_->widget(i);
+        if (w && (w == result_table_->parentWidget() || w->isAncestorOf(result_table_))) {
+          bottom_tabs_->setCurrentIndex(i);
+          break;
+        }
+      }
+    }
+  }
+  QString focusId = nodeId;
+  if (focusId.isEmpty() && result_table_) {
+    if (auto* it = result_table_->currentItem() ? result_table_->item(result_table_->currentRow(), 0)
+                                                : nullptr)
+      focusId = it->data(Qt::UserRole + 2).toString();
+  }
+  if (focusId.isEmpty() && first >= 0 && document_.findStep(QStringLiteral("loc1")))
+    focusId = QStringLiteral("loc1");
+  if (!focusId.isEmpty() && flow_scene_) flow_scene_->selectNode(focusId);
+}
+
+void MainWindow::onSparkFilmstripJump(const QVariantMap& bag) {
+  QVariantMap hit;
+  if (filmstrip_) hit = FilmstripBar::seekFromSparkJump(filmstrip_, bag, true);
+  const QString path = hit.value(QStringLiteral("path")).toString().isEmpty()
+                           ? bag.value(QStringLiteral("frame")).toString()
+                           : hit.value(QStringLiteral("path")).toString();
+  const QString nodeId = bag.value(QStringLiteral("nodeId")).toString();
+  focusFilmstripResult(path, nodeId);
+  if (hit.value(QStringLiteral("ok")).toBool())
+    showStatus(QStringLiteral("跳帧 · 胶片#%1 · %2")
+                   .arg(hit.value(QStringLiteral("index")).toInt() + 1)
+                   .arg(hit.value(QStringLiteral("matchedBy")).toString()));
+  else
+    showStatus(QStringLiteral("跳帧 · 胶片未命中"));
 }
 
 void MainWindow::onParamEdited(const QString& nodeId, const QString& key,

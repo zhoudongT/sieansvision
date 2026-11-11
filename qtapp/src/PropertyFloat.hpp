@@ -31,6 +31,7 @@ class PropertyFloat : public QDialog {
  signals:
   void paramEdited(const QString& nodeId, const QString& key, const QString& value);
   void structuredParamEdited(const QString& nodeId, const QString& key, const QVariant& value);
+  void sparkJumpRequested(const QVariantMap& bag);
   void runModule();
   void runModuleContinuous();
   void acceptedCommit();

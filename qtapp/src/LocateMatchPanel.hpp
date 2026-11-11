@@ -6,6 +6,7 @@
 #include <QString>
 #include <QStringList>
 #include <QVariantMap>
+#include <QVector>
 #include <QWidget>
 
 class QTabWidget;
@@ -19,6 +20,36 @@ class QTableWidget;
 class QListWidget;
 
 namespace sieans_qt {
+
+/** 匹配分趋势火花线：悬停看点，点击跳到对应胶片帧（无硬件）。 */
+class MatchScoreSpark : public QWidget {
+  Q_OBJECT
+ public:
+  explicit MatchScoreSpark(QWidget* parent = nullptr);
+  /** 用趋势点刷新柱高（score/ok/frame/label/templateId）。 */
+  void setPoints(const QVector<QVariantMap>& pts);
+  QVector<QVariantMap> points() const { return points_; }
+  /** 按可见柱下标发出 frameJumpRequested，返回跳帧 bag。 */
+  QVariantMap jumpToLocal(int local);
+  int barCount() const { return heights_.size(); }
+
+ signals:
+  void frameJumpRequested(const QVariantMap& bag);
+
+ protected:
+  void paintEvent(QPaintEvent* event) override;
+  void mousePressEvent(QMouseEvent* event) override;
+  void mouseMoveEvent(QMouseEvent* event) override;
+  void leaveEvent(QEvent* event) override;
+
+ private:
+  /** 把鼠标 x 映射到当前可见柱下标。 */
+  int localAtX(int x) const;
+  QVector<QVariantMap> points_;
+  QVector<double> heights_;
+  int hover_ = -1;
+  int windowStart_ = 0;
+};
 
 /**
  * VisionMaster / PySide 快速匹配四 Tab 属性页（基本参数 / 模板 / 运行参数 / 结果显示）。
@@ -37,8 +68,12 @@ class LocateMatchPanel : public QWidget {
   void applySnapshot(const QVariantMap& snap);
   /** 提交仍在编辑的数值框。 */
   void flushPendingEdits();
-  /** 用最近一次运行的 locate* 流程变量刷新结果显示。 */
+  /** 用最近一次运行的 locate* 流程变量刷新结果显示，并写入趋势（不弄脏方案）。 */
   void setLastResult(const QVariantMap& vars);
+  int trendCount() const { return trendPoints_.size(); }
+  QVariantMap lastSparkJump() const { return lastSparkJump_; }
+  /** 按趋势柱跳帧（无界面自测用）。 */
+  QVariantMap jumpTrendLocal(int local);
 
   int tabCount() const;
   bool templateReady() const;
@@ -77,6 +112,7 @@ class LocateMatchPanel : public QWidget {
   void structuredParamEdited(const QString& nodeId, const QString& key, const QVariant& value);
   /** 主窗口用当前画面图调用 createTemplateFromImage。 */
   void createTemplateRequested();
+  void sparkJumpRequested(const QVariantMap& bag);
 
  private:
   void rebuildEditors();
@@ -126,6 +162,15 @@ class LocateMatchPanel : public QWidget {
   QDoubleSpinBox* batchThr_ = nullptr;
   QLabel* boardSummary_ = nullptr;
   QTableWidget* boardTable_ = nullptr;
+  MatchScoreSpark* spark_ = nullptr;
+  QLabel* sparkJumpLab_ = nullptr;
+  QVector<QVariantMap> trendPoints_;
+  QVariantMap lastSparkJump_;
+  static const int kTrendCapacity = 32;
+  /** 推入趋势点并刷新火花线，不发 structuredParamEdited。 */
+  void appendTrendPoint(double score, bool ok, const QString& frame, const QString& label = QString());
+  /** 把内部趋势刷到火花线控件。 */
+  void refreshTrendSpark();
 };
 
 }  // namespace sieans_qt

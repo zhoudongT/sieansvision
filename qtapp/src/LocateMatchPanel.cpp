@@ -28,6 +28,10 @@
 #include <QMessageBox>
 #include <QUuid>
 #include <QVBoxLayout>
+#include <QPainter>
+#include <QPaintEvent>
+#include <QMouseEvent>
+#include <QEvent>
 
 #include <algorithm>
 #include <optional>
@@ -197,6 +201,134 @@ QVariantMap buildBatchScoreboard(const QVariantList& lib, const QVariantMap& sco
 }
 
 }  // namespace
+
+
+MatchScoreSpark::MatchScoreSpark(QWidget* parent) : QWidget(parent) {
+  setObjectName(QStringLiteral("matchScoreSparkWidget"));
+  setFixedHeight(28);
+  setMinimumWidth(120);
+  setMouseTracking(true);
+  setCursor(Qt::PointingHandCursor);
+  setToolTip(QStringLiteral("匹配分趋势 · 悬停看点 · 点击跳帧 · 无硬件"));
+}
+
+void MatchScoreSpark::setPoints(const QVector<QVariantMap>& pts) {
+  points_ = pts;
+  const int cap = 16;
+  windowStart_ = qMax(0, pts.size() - cap);
+  QVector<double> vals;
+  for (int i = windowStart_; i < pts.size(); ++i)
+    vals.push_back(pts[i].value(QStringLiteral("score")).toDouble());
+  heights_.clear();
+  if (vals.size() >= 2) {
+    double lo = vals[0], hi = vals[0];
+    for (double v : vals) {
+      lo = qMin(lo, v);
+      hi = qMax(hi, v);
+    }
+    const double span = hi - lo;
+    for (double v : vals)
+      heights_.push_back(span < 1e-9 ? 0.5 : (v - lo) / span);
+  } else if (vals.size() == 1) {
+    heights_.push_back(qBound(0.0, vals[0], 1.0));
+  }
+  hover_ = -1;
+  update();
+}
+
+int MatchScoreSpark::localAtX(int x) const {
+  const int n = heights_.size();
+  if (n <= 0) return -1;
+  const int pad = 3;
+  const int gap = 1;
+  const int avail = qMax(1, width() - pad * 2);
+  const int barW = qMax(1, (avail - gap * (n - 1)) / n);
+  if (x < pad) return 0;
+  const int stride = barW + gap;
+  const int i = (x - pad) / stride;
+  return qBound(0, i, n - 1);
+}
+
+QVariantMap MatchScoreSpark::jumpToLocal(int local) {
+  if (local < 0 || local >= heights_.size()) return {};
+  const int absIndex = windowStart_ + local;
+  QVariantMap pt;
+  if (absIndex >= 0 && absIndex < points_.size()) pt = points_[absIndex];
+  QVariantMap bag;
+  bag.insert(QStringLiteral("index"), absIndex);
+  bag.insert(QStringLiteral("local"), local);
+  bag.insert(QStringLiteral("frame"), pt.value(QStringLiteral("frame")).toString());
+  bag.insert(QStringLiteral("label"), pt.value(QStringLiteral("label")).toString());
+  bag.insert(QStringLiteral("score"),
+             pt.contains(QStringLiteral("score")) ? pt.value(QStringLiteral("score"))
+                                                  : QVariant(heights_[local]));
+  bag.insert(QStringLiteral("ok"), pt.value(QStringLiteral("ok")));
+  bag.insert(QStringLiteral("templateId"), pt.value(QStringLiteral("templateId")).toString());
+  emit frameJumpRequested(bag);
+  return bag;
+}
+
+void MatchScoreSpark::paintEvent(QPaintEvent*) {
+  QPainter p(this);
+  p.fillRect(rect(), QColor(QStringLiteral("#12161c")));
+  const int n = heights_.size();
+  if (n <= 0) return;
+  const int pad = 3;
+  const int gap = 1;
+  const int avail = qMax(1, width() - pad * 2);
+  const int barW = qMax(1, (avail - gap * (n - 1)) / n);
+  const int h = height() - 4;
+  for (int i = 0; i < n; ++i) {
+    const int x = pad + i * (barW + gap);
+    const int bh = qMax(2, int(heights_[i] * h));
+    const int y = height() - 2 - bh;
+    QColor c(QStringLiteral("#5aa0d0"));
+    const int absI = windowStart_ + i;
+    if (absI >= 0 && absI < points_.size()) {
+      const QVariant okv = points_[absI].value(QStringLiteral("ok"));
+      if (okv.isValid())
+        c = okv.toBool() ? QColor(QStringLiteral("#3ecf8e")) : QColor(QStringLiteral("#d08080"));
+    }
+    if (i == hover_) c = c.lighter(130);
+    p.fillRect(x, y, barW, bh, c);
+  }
+}
+
+void MatchScoreSpark::mouseMoveEvent(QMouseEvent* event) {
+  hover_ = localAtX(event->position().toPoint().x());
+  if (hover_ >= 0) {
+    const auto bag = [&]() {
+      const int absI = windowStart_ + hover_;
+      if (absI >= 0 && absI < points_.size()) return points_[absI];
+      return QVariantMap{};
+    }();
+    const bool hasOk = bag.contains(QStringLiteral("ok"));
+    const QString mark = hasOk ? (bag.value(QStringLiteral("ok")).toBool() ? QStringLiteral("✓")
+                                                                          : QStringLiteral("✗"))
+                               : QStringLiteral("·");
+    QString tip = QStringLiteral("#%1 %2 %3")
+                      .arg(windowStart_ + hover_ + 1)
+                      .arg(mark)
+                      .arg(bag.value(QStringLiteral("score"), heights_.value(hover_)).toDouble(), 0, 'f', 3);
+    if (!bag.value(QStringLiteral("label")).toString().isEmpty())
+      tip += QStringLiteral(" · ") + bag.value(QStringLiteral("label")).toString();
+    if (!bag.value(QStringLiteral("frame")).toString().isEmpty())
+      tip += QStringLiteral(" · frame=") + QFileInfo(bag.value(QStringLiteral("frame")).toString()).fileName();
+    tip += QStringLiteral(" · 点击跳到该帧");
+    setToolTip(tip);
+  }
+  update();
+}
+
+void MatchScoreSpark::mousePressEvent(QMouseEvent* event) {
+  if (event->button() == Qt::LeftButton) jumpToLocal(localAtX(event->position().toPoint().x()));
+}
+
+void MatchScoreSpark::leaveEvent(QEvent*) {
+  hover_ = -1;
+  setToolTip(QStringLiteral("匹配分趋势 · 悬停看点 · 点击跳帧 · 无硬件"));
+  update();
+}
 
 QVariantMap LocateMatchPanel::normalizeParams(const QVariantMap& in) {
   QVariantMap p = in;
@@ -376,6 +508,30 @@ LocateMatchPanel::LocateMatchPanel(QWidget* parent) : QWidget(parent) {
   boardTable_->setMaximumHeight(130);
   boardTable_->horizontalHeader()->setStretchLastSection(true);
   libLay->addWidget(boardTable_);
+  auto* trendRow = new QHBoxLayout;
+  spark_ = new MatchScoreSpark;
+  sparkJumpLab_ = new QLabel;
+  sparkJumpLab_->setObjectName(QStringLiteral("locateMatchSparkJumpLab"));
+  sparkJumpLab_->setStyleSheet(QStringLiteral("color:#9ad;font-size:11px;"));
+  sparkJumpLab_->setVisible(false);
+  trendRow->addWidget(spark_, 0);
+  trendRow->addWidget(sparkJumpLab_, 1);
+  libLay->addLayout(trendRow);
+  connect(spark_, &MatchScoreSpark::frameJumpRequested, this,
+          [this](const QVariantMap& bag) {
+            lastSparkJump_ = bag;
+            lastSparkJump_.insert(QStringLiteral("nodeId"), nodeId_);
+            if (sparkJumpLab_) {
+              const QString frame = bag.value(QStringLiteral("frame")).toString();
+              sparkJumpLab_->setText(
+                  QStringLiteral("跳帧 · #%1 · %2")
+                      .arg(bag.value(QStringLiteral("index")).toInt() + 1)
+                      .arg(frame.isEmpty() ? bag.value(QStringLiteral("label")).toString()
+                                           : QFileInfo(frame).fileName()));
+              sparkJumpLab_->setVisible(true);
+            }
+            emit sparkJumpRequested(lastSparkJump_);
+          });
   tplLay->addWidget(libFrame);
   tplLay->addStretch(1);
   tabs_->addTab(tplPage, QStringLiteral("特征模板"));
@@ -519,6 +675,30 @@ void LocateMatchPanel::flushPendingEdits() {
   if (angleStep_) angleStep_->interpretText();
 }
 
+void LocateMatchPanel::appendTrendPoint(double score, bool ok, const QString& frame,
+                                        const QString& label) {
+  if (score < 0) return;
+  QVariantMap pt;
+  pt.insert(QStringLiteral("score"), qBound(0.0, score, 1.0));
+  pt.insert(QStringLiteral("ok"), ok);
+  pt.insert(QStringLiteral("frame"), frame);
+  pt.insert(QStringLiteral("label"),
+            label.isEmpty() ? QStringLiteral("#%1").arg(trendPoints_.size() + 1) : label);
+  pt.insert(QStringLiteral("templateId"), params_.value(QStringLiteral("activeTemplateId")).toString());
+  trendPoints_.push_back(pt);
+  while (trendPoints_.size() > kTrendCapacity) trendPoints_.removeFirst();
+  refreshTrendSpark();
+}
+
+void LocateMatchPanel::refreshTrendSpark() {
+  if (spark_) spark_->setPoints(trendPoints_);
+}
+
+QVariantMap LocateMatchPanel::jumpTrendLocal(int local) {
+  if (!spark_) return {};
+  return spark_->jumpToLocal(local);
+}
+
 void LocateMatchPanel::setLastResult(const QVariantMap& vars) {
   const int count = vars.value(QStringLiteral("locateCount")).toInt();
   const bool ok = vars.value(QStringLiteral("locateOk")).toInt() != 0;
@@ -545,6 +725,9 @@ void LocateMatchPanel::setLastResult(const QVariantMap& vars) {
       hitTable_->setItem(0, 3, new QTableWidgetItem(QString::number(y, 'f', 1)));
     }
   }
+  const QString frame = vars.value(QStringLiteral("filmstripPath")).toString();
+  if (vars.contains(QStringLiteral("locateScore")))
+    appendTrendPoint(score, ok, frame);
 }
 
 int LocateMatchPanel::tabCount() const { return tabs_ ? tabs_->count() : 0; }
@@ -1034,7 +1217,19 @@ QStringList LocateMatchPanel::selfTest() {
                        {QStringLiteral("locateScore"), 0.97},
                        {QStringLiteral("locateX"), 10},
                        {QStringLiteral("locateY"), 20},
-                       {QStringLiteral("locateAngle"), 0}});
+                       {QStringLiteral("locateAngle"), 0},
+                       {QStringLiteral("filmstripPath"), QStringLiteral("/tmp/frame-a.png")}});
+  if (panel.trendCount() < 1) fails << QStringLiteral("trend not recorded");
+  panel.setLastResult({{QStringLiteral("locateOk"), 1},
+                       {QStringLiteral("locateCount"), 1},
+                       {QStringLiteral("locateScore"), 0.80},
+                       {QStringLiteral("locateX"), 11},
+                       {QStringLiteral("locateY"), 21},
+                       {QStringLiteral("locateAngle"), 0},
+                       {QStringLiteral("filmstripPath"), QStringLiteral("/tmp/frame-b.png")}});
+  const QVariantMap jbag = panel.jumpTrendLocal(1);
+  if (jbag.value(QStringLiteral("frame")).toString() != QLatin1String("/tmp/frame-b.png"))
+    fails << QStringLiteral("spark jump frame");
 
   const QString pathA = path;
   const QString pathB = path + QStringLiteral(".alt.png");

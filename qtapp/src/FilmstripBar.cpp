@@ -32,6 +32,13 @@
 #include <QWheelEvent>
 #include <QScrollBar>
 #include <QRandomGenerator>
+#include <QColor>
+#include <QDir>
+#include <QFile>
+#include <QListWidgetItem>
+#include <QTemporaryDir>
+#include <QTimer>
+#include <QVariantMap>
 
 namespace sieans_qt {
 namespace {
@@ -307,6 +314,9 @@ void FilmstripBar::selectIndex(int index, bool emitSignal) {
                              .arg(probe.width())
                              .arg(probe.height())
                              .arg(fname));
+  if (list_) {
+    if (auto* item = list_->item(index)) list_->scrollToItem(item);
+  }
   if (emitSignal) emit imageSelected(paths_.at(index));
   if (list_ && !list_->hasFocus()) list_->setFocus(Qt::OtherFocusReason);
 }
@@ -1058,6 +1068,297 @@ void FilmstripBar::cutSelectedPaths() {
     refreshCount();
   }
   setStatus(QStringLiteral("已剪切 %1 · Ctrl+X · Ctrl+Shift+V 粘贴").arg(lines.size()));
+}
+
+
+void FilmstripBar::clearSeekFlash() {
+  if (seekFlashIndex_ >= 0 && list_) {
+    if (auto* it = list_->item(seekFlashIndex_)) {
+      it->setBackground(Qt::NoBrush);
+      it->setForeground(QBrush());
+    }
+  }
+  if (list_ && !thumbsBaseStyle_.isEmpty())
+    list_->setStyleSheet(thumbsBaseStyle_);
+  seekFlashIndex_ = -1;
+}
+
+bool FilmstripBar::selectPath(const QString& path, bool emitSignal) {
+  const QString token = path.trimmed();
+  if (token.isEmpty() || paths_.isEmpty()) return false;
+  const QString target = QFileInfo(token).canonicalFilePath().isEmpty()
+                             ? token
+                             : QFileInfo(token).canonicalFilePath();
+  int hit = -1;
+  for (int i = 0; i < paths_.size(); ++i) {
+    const QString pth = paths_.at(i);
+    const QString resolved = QFileInfo(pth).canonicalFilePath();
+    if (pth == token || pth == target || (!resolved.isEmpty() && resolved == target)) {
+      hit = i;
+      break;
+    }
+  }
+  if (hit < 0) {
+    const QString base = QFileInfo(token).fileName();
+    for (int i = 0; i < paths_.size(); ++i) {
+      if (QFileInfo(paths_.at(i)).fileName() == base) {
+        hit = i;
+        break;
+      }
+    }
+  }
+  if (hit < 0) return false;
+  selectIndex(hit, emitSignal);
+  return true;
+}
+
+QVariantMap FilmstripBar::flashSeekThumb(int index, const QString& path, int ms) {
+  QVariantMap out;
+  out.insert(QStringLiteral("ok"), false);
+  out.insert(QStringLiteral("index"), -1);
+  out.insert(QStringLiteral("path"), QString());
+  out.insert(QStringLiteral("ms"), ms > 0 ? ms : 480);
+  out.insert(QStringLiteral("flashed"), false);
+  int idx = index;
+  if (idx < 0 && !path.trimmed().isEmpty()) {
+    const QString token = path.trimmed();
+    const QString base = QFileInfo(token).fileName();
+    for (int i = 0; i < paths_.size(); ++i) {
+      const QString pth = paths_.at(i);
+      if (pth == token || QFileInfo(pth).fileName() == base ||
+          QFileInfo(pth).fileName() == token) {
+        idx = i;
+        break;
+      }
+    }
+  }
+  if (idx < 0 && index_ >= 0 && index_ < paths_.size()) idx = index_;
+  if (idx < 0 || idx >= paths_.size() || !list_) {
+    out.insert(QStringLiteral("reason"), QStringLiteral("no target"));
+    return out;
+  }
+  auto* item = list_->item(idx);
+  if (!item) {
+    out.insert(QStringLiteral("reason"), QStringLiteral("no item"));
+    return out;
+  }
+  if (seekFlashTimer_) seekFlashTimer_->stop();
+  if (seekFlashIndex_ >= 0 && seekFlashIndex_ != idx) clearSeekFlash();
+  if (thumbsBaseStyle_.isEmpty() && list_) thumbsBaseStyle_ = list_->styleSheet();
+  item->setBackground(QColor(QStringLiteral("#4a3a18")));
+  item->setForeground(QColor(QStringLiteral("#ffe08a")));
+  seekFlashIndex_ = idx;
+  list_->setStyleSheet(
+      thumbsBaseStyle_ +
+      QStringLiteral("\nQListWidget::item:selected{border:2px solid #ffd24a;background:#3a3020;}"));
+  const bool keepRebuild = rebuilding_;
+  rebuilding_ = true;
+  list_->setCurrentRow(idx);
+  list_->scrollToItem(item);
+  rebuilding_ = keepRebuild;
+  if (!seekFlashTimer_) {
+    seekFlashTimer_ = new QTimer(this);
+    seekFlashTimer_->setSingleShot(true);
+    connect(seekFlashTimer_, &QTimer::timeout, this, &FilmstripBar::clearSeekFlash);
+  }
+  seekFlashTimer_->start(qMax(120, ms > 0 ? ms : 480));
+  out.insert(QStringLiteral("ok"), true);
+  out.insert(QStringLiteral("flashed"), true);
+  out.insert(QStringLiteral("index"), idx);
+  out.insert(QStringLiteral("path"), paths_.at(idx));
+  return out;
+}
+
+QVariantMap FilmstripBar::seekFrameToken(const QString& token, int index, bool emitSignal,
+                                         bool flash) {
+  const QString tok = token.trimmed();
+  QVariantMap out;
+  out.insert(QStringLiteral("ok"), false);
+  out.insert(QStringLiteral("index"), -1);
+  out.insert(QStringLiteral("path"), QString());
+  out.insert(QStringLiteral("matchedBy"), QString());
+  out.insert(QStringLiteral("token"), tok);
+  if (paths_.isEmpty()) {
+    out.insert(QStringLiteral("reason"), QStringLiteral("empty"));
+    return out;
+  }
+  if (index >= 0 && index < paths_.size()) {
+    selectIndex(index, emitSignal);
+    out.insert(QStringLiteral("ok"), true);
+    out.insert(QStringLiteral("index"), index);
+    out.insert(QStringLiteral("path"), paths_.at(index));
+    out.insert(QStringLiteral("matchedBy"), QStringLiteral("index"));
+    if (flash) out.insert(QStringLiteral("flash"), flashSeekThumb(index, paths_.at(index)));
+    return out;
+  }
+  if (tok.isEmpty()) {
+    out.insert(QStringLiteral("reason"), QStringLiteral("no token"));
+    return out;
+  }
+  if (selectPath(tok, emitSignal)) {
+    out.insert(QStringLiteral("ok"), true);
+    out.insert(QStringLiteral("index"), index_);
+    out.insert(QStringLiteral("path"), currentPath());
+    out.insert(QStringLiteral("matchedBy"), QStringLiteral("path"));
+    if (flash) out.insert(QStringLiteral("flash"), flashSeekThumb(index_, currentPath()));
+    return out;
+  }
+  const QString base = QFileInfo(tok).fileName();
+  const QString stem = QFileInfo(tok).completeBaseName();
+  int hit = -1;
+  QString how;
+  for (int i = 0; i < paths_.size(); ++i) {
+    const QString pn = QFileInfo(paths_.at(i)).fileName();
+    const QString ps = QFileInfo(paths_.at(i)).completeBaseName();
+    if (pn == base || pn == tok) {
+      hit = i;
+      how = QStringLiteral("basename");
+      break;
+    }
+    if (!stem.isEmpty() && (ps == stem || pn.contains(stem) || ps.contains(stem))) {
+      hit = i;
+      how = QStringLiteral("stem");
+      break;
+    }
+  }
+  if (hit < 0) {
+    for (int i = 0; i < paths_.size(); ++i) {
+      if (paths_.at(i).contains(tok)) {
+        hit = i;
+        how = QStringLiteral("substr");
+        break;
+      }
+    }
+  }
+  if (hit < 0) {
+    bool ok = false;
+    const int asIndex = tok.toInt(&ok);
+    if (ok && asIndex >= 0 && asIndex < paths_.size()) {
+      hit = asIndex;
+      how = QStringLiteral("tokenIndex");
+    }
+  }
+  if (hit < 0) {
+    out.insert(QStringLiteral("reason"), QStringLiteral("not found"));
+    return out;
+  }
+  selectIndex(hit, emitSignal);
+  out.insert(QStringLiteral("ok"), true);
+  out.insert(QStringLiteral("index"), hit);
+  out.insert(QStringLiteral("path"), paths_.at(hit));
+  out.insert(QStringLiteral("matchedBy"), how);
+  if (flash) out.insert(QStringLiteral("flash"), flashSeekThumb(hit, paths_.at(hit)));
+  return out;
+}
+
+QVariantMap FilmstripBar::seekFromSparkJump(FilmstripBar* bar, const QVariantMap& bag,
+                                            bool flash) {
+  QVariantMap out;
+  out.insert(QStringLiteral("ok"), false);
+  out.insert(QStringLiteral("index"), -1);
+  out.insert(QStringLiteral("path"), QString());
+  out.insert(QStringLiteral("matchedBy"), QString());
+  const QString frame = bag.value(QStringLiteral("frame")).toString();
+  const QString label = bag.value(QStringLiteral("label")).toString();
+  const QVariant sparkIndex = bag.value(QStringLiteral("index"));
+  out.insert(QStringLiteral("frame"), frame);
+  out.insert(QStringLiteral("label"), label);
+  out.insert(QStringLiteral("sparkIndex"), sparkIndex);
+  if (!bar) {
+    out.insert(QStringLiteral("reason"), QStringLiteral("no filmstrip"));
+    return out;
+  }
+  const auto finish = [&](QVariantMap hit, const QString& fallbackHow) {
+    hit.insert(QStringLiteral("frame"), frame);
+    hit.insert(QStringLiteral("label"), label);
+    hit.insert(QStringLiteral("sparkIndex"), sparkIndex);
+    if (hit.value(QStringLiteral("matchedBy")).toString().isEmpty())
+      hit.insert(QStringLiteral("matchedBy"), fallbackHow);
+    return hit;
+  };
+  if (!frame.isEmpty()) {
+    QVariantMap hit = bar->seekFrameToken(frame, -1, true, flash);
+    if (hit.value(QStringLiteral("ok")).toBool()) return finish(hit, QStringLiteral("frame"));
+  }
+  if (!label.isEmpty()) {
+    QVariantMap hit = bar->seekFrameToken(label, -1, true, flash);
+    if (hit.value(QStringLiteral("ok")).toBool()) return finish(hit, QStringLiteral("label"));
+  }
+  bool ok = false;
+  const int idx = sparkIndex.toInt(&ok);
+  if (ok) {
+    QVariantMap hit = bar->seekFrameToken(QString(), idx, true, flash);
+    if (hit.value(QStringLiteral("ok")).toBool())
+      return finish(hit, QStringLiteral("sparkIndex"));
+  }
+  out.insert(QStringLiteral("reason"), QStringLiteral("not found"));
+  return out;
+}
+
+QStringList FilmstripBar::jumpSelfTest() {
+  QStringList fails;
+  auto check = [&](const char* name, bool ok, const QString& detail = QString()) {
+    if (!ok)
+      fails << (detail.isEmpty() ? QString::fromUtf8(name)
+                                 : QStringLiteral("%1: %2").arg(QString::fromUtf8(name), detail));
+  };
+  QTemporaryDir tmp;
+  check("tmpdir", tmp.isValid());
+  if (!tmp.isValid()) return fails;
+  const QString a = tmp.filePath(QStringLiteral("frame-a.png"));
+  const QString b = tmp.filePath(QStringLiteral("frame-b.png"));
+  QImage ia(16, 16, QImage::Format_RGB888);
+  ia.fill(QColor(200, 40, 40));
+  check("write-a", ia.save(a));
+  QImage ib(16, 16, QImage::Format_RGB888);
+  ib.fill(QColor(40, 80, 200));
+  check("write-b", ib.save(b));
+
+  FilmstripBar bar;
+  bar.setPaths({a, b});
+  check("count", bar.count() == 2, QString::number(bar.count()));
+  check("select-path", bar.selectPath(a, false) && bar.index() == 0);
+  check("select-basename", bar.selectPath(QStringLiteral("frame-b.png"), false) && bar.index() == 1);
+
+  const QVariantMap byFrame = bar.seekFrameToken(b, -1, false, true);
+  check("seek-path", byFrame.value(QStringLiteral("ok")).toBool() &&
+                         byFrame.value(QStringLiteral("index")).toInt() == 1,
+        byFrame.value(QStringLiteral("reason")).toString());
+  check("seek-flash", byFrame.value(QStringLiteral("flash")).toMap().value(QStringLiteral("ok")).toBool());
+
+  const QVariantMap byIndex = bar.seekFrameToken(QString(), 0, false, false);
+  check("seek-index", byIndex.value(QStringLiteral("ok")).toBool() &&
+                          byIndex.value(QStringLiteral("index")).toInt() == 0 &&
+                          byIndex.value(QStringLiteral("matchedBy")).toString() ==
+                              QLatin1String("index"));
+
+  const QVariantMap byStem = bar.seekFrameToken(QStringLiteral("frame-b"), -1, false, false);
+  check("seek-stem", byStem.value(QStringLiteral("ok")).toBool() &&
+                         byStem.value(QStringLiteral("index")).toInt() == 1,
+        byStem.value(QStringLiteral("matchedBy")).toString() +
+            byStem.value(QStringLiteral("reason")).toString());
+
+  QVariantMap bag;
+  bag.insert(QStringLiteral("frame"), b);
+  bag.insert(QStringLiteral("index"), 0);
+  const QVariantMap jump = seekFromSparkJump(&bar, bag, false);
+  check("spark-frame", jump.value(QStringLiteral("ok")).toBool() &&
+                           jump.value(QStringLiteral("index")).toInt() == 1,
+        jump.value(QStringLiteral("matchedBy")).toString());
+
+  QVariantMap bagIdx;
+  bagIdx.insert(QStringLiteral("index"), 0);
+  const QVariantMap jumpIdx = seekFromSparkJump(&bar, bagIdx, false);
+  check("spark-index", jumpIdx.value(QStringLiteral("ok")).toBool() &&
+                           jumpIdx.value(QStringLiteral("index")).toInt() == 0);
+
+  const QVariantMap miss = bar.seekFrameToken(QStringLiteral("no-such-frame"), -1, false, false);
+  check("seek-miss", !miss.value(QStringLiteral("ok")).toBool());
+
+  FilmstripBar empty;
+  const QVariantMap emptyHit = empty.seekFrameToken(a, -1, false, false);
+  check("empty-bar", !emptyHit.value(QStringLiteral("ok")).toBool());
+  return fails;
 }
 
 }  // namespace sieans_qt

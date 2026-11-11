@@ -120,6 +120,8 @@ class FlowScene : public QGraphicsScene {
   bool editingLocked() const { return editingLocked_; }
   FlowNodeItem* selectedNode() const;
   QString selectedNodeId() const;
+  /** 选中 id 对应节点并滚入视口，发出 nodeSelected。找不到则只清空选择。 */
+  void selectNode(const QString& id);
   void setNodeLabel(const QString& id, const QString& label);
   FlowEdgeItem* selectedEdge() const;
 
