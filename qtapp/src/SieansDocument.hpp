@@ -29,6 +29,17 @@ struct FlowEdge {
   QString when = QStringLiteral("always");  // always|true|false|success|error|path
 };
 
+/** Reusable sub-graph stored in the project (子流程定义). */
+struct SubflowDef {
+  QString id;
+  QString name;
+  QString outputNode;
+  QVector<FlowStep> steps;
+  QVector<FlowEdge> edges;
+  QVariantMap variables;
+  QPointF sourcePosition{80, 80};
+};
+
 /** Minimal .sieans project model for GenTL→QR open-and-run parity. */
 class SieansDocument {
  public:
@@ -49,6 +60,22 @@ class SieansDocument {
 
   FlowStep* findStep(const QString& id);
   const FlowStep* findStep(const QString& id) const;
+
+  const QVector<SubflowDef>& subflows() const { return subflows_; }
+  QVector<SubflowDef>& subflowsMut() { return subflows_; }
+  const SubflowDef* findSubflow(const QString& idOrName) const;
+  SubflowDef* findSubflow(const QString& idOrName);
+  /** True if any subflow/loop step (main or nested) references id. */
+  bool subflowIsReferenced(const QString& id) const;
+
+  static FlowStep stepFromJson(const QJsonObject& o);
+  static QJsonObject stepToJson(const FlowStep& s);
+  static FlowEdge edgeFromJson(const QJsonObject& o);
+  static QJsonObject edgeToJson(const FlowEdge& e);
+  static SubflowDef subflowFromJson(const QJsonObject& o);
+  static QJsonObject subflowToJson(const SubflowDef& d);
+  void loadFromSubflow(const SubflowDef& d);
+  SubflowDef exportToSubflow(const QString& id, const QString& outputNode) const;
 
   QPointF sourcePosition() const { return sourcePosition_; }
   void setSourcePosition(const QPointF& p) { sourcePosition_ = p; }
@@ -107,6 +134,7 @@ class SieansDocument {
   QVariantMap sourceConfig_;
   QVector<FlowStep> steps_;
   QVector<FlowEdge> edges_;
+  QVector<SubflowDef> subflows_;
   QPointF sourcePosition_{80, 160};
   int runIntervalMs_ = 0;
   QVariantMap variables_;

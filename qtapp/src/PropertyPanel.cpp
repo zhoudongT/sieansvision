@@ -160,6 +160,19 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
   if (op == QLatin1String("branch_merge")) {
     return {};
   }
+  if (op == QLatin1String("subflow") || op == QLatin1String("loop")) {
+    QVector<Spec> specs;
+    specs << S("subflowId", "子流程", kChoice, "");
+    specs << S("stateMode", "局部状态", kChoice, "reset|每次重置;preserve|保留上次");
+    if (op == QLatin1String("loop")) {
+      specs << S("mode", "循环模式", kChoice, "count|固定次数;until|直到条件");
+      specs << S("iterations", "次数 / 上限", kInt, "1–100");
+      specs << S("frameMode", "图像帧", kChoice, "previous|上一轮;original|原始帧");
+      specs << S("stopField", "停止字段", kLine, "passed");
+      specs << S("stopValue", "停止值", kBool, "");
+    }
+    return specs;
+  }
   return {};
 }
 
@@ -600,12 +613,21 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
       auto* combo = new QComboBox;
       const QString cur = value.toString();
       int pick = 0;
-      const QStringList opts = spec.choices.split(QLatin1Char(';'), Qt::SkipEmptyParts);
+      QStringList opts = spec.choices.split(QLatin1Char(';'), Qt::SkipEmptyParts);
+      if (key == QLatin1String("subflowId")) {
+        opts.clear();
+        opts << QStringLiteral("|请选择子流程");
+        for (const QString& pairTxt : subflowChoices_) opts << pairTxt;
+      }
       for (int i = 0; i < opts.size(); ++i) {
         const QStringList pair = opts[i].split(QLatin1Char('|'));
         const QString val = pair.value(0);
         combo->addItem(pair.value(1, val), val);
         if (val == cur) pick = i;
+      }
+      if (key == QLatin1String("subflowId") && pick == 0 && !cur.isEmpty()) {
+        combo->addItem(cur, cur);
+        pick = combo->count() - 1;
       }
       combo->setCurrentIndex(pick);
       connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
@@ -625,6 +647,84 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
       break;
     }
   }
+}
+
+void PropertyPanel::setSubflowChoices(const QStringList& idNamePairs) {
+  subflowChoices_ = idNamePairs;
+}
+
+void PropertyPanel::addArgumentsTable(const QVariant& raw) {
+  QVariantList rows;
+  if (raw.typeId() == QMetaType::QVariantList) {
+    rows = raw.toList();
+  } else {
+    const QVariantMap map = raw.toMap();
+    for (auto it = map.begin(); it != map.end(); ++it) {
+      QVariantMap row;
+      row.insert(QStringLiteral("name"), it.key());
+      row.insert(QStringLiteral("value"), it.value());
+      rows.push_back(row);
+    }
+  }
+  if (rows.isEmpty()) {
+    QVariantMap row;
+    row.insert(QStringLiteral("name"), QString());
+    row.insert(QStringLiteral("value"), QString());
+    rows.push_back(row);
+  }
+  auto* table = new QTableWidget(rows.size(), 2);
+  table->setObjectName(QStringLiteral("subflowArgsTable"));
+  table->setProperty("propKey", QStringLiteral("arguments"));
+  table->setHorizontalHeaderLabels({QStringLiteral("参数名"), QStringLiteral("值 / 父变量")});
+  table->horizontalHeader()->setStretchLastSection(true);
+  table->verticalHeader()->setVisible(false);
+  table->setMinimumHeight(110);
+  auto emitArgs = [this, table]() {
+    if (building_) return;
+    QVariantMap out;
+    for (int r = 0; r < table->rowCount(); ++r) {
+      QTableWidgetItem* name = table->item(r, 0);
+      QTableWidgetItem* val = table->item(r, 1);
+      if (!name || name->text().trimmed().isEmpty()) continue;
+      out.insert(name->text().trimmed(), val ? val->text() : QString());
+    }
+    emitEdit(QStringLiteral("arguments"),
+             QString::fromUtf8(QJsonDocument::fromVariant(out).toJson(QJsonDocument::Compact)));
+  };
+  for (int i = 0; i < rows.size(); ++i) {
+    const QVariantMap row = rows[i].toMap();
+    table->setItem(i, 0, new QTableWidgetItem(row.value(QStringLiteral("name")).toString()));
+    table->setItem(i, 1, new QTableWidgetItem(row.value(QStringLiteral("value")).toString()));
+  }
+  connect(table, &QTableWidget::itemChanged, this, [emitArgs](QTableWidgetItem*) { emitArgs(); });
+  auto* box = new QWidget;
+  auto* v = new QVBoxLayout(box);
+  v->setContentsMargins(0, 0, 0, 0);
+  v->setSpacing(4);
+  v->addWidget(table);
+  auto* btns = new QHBoxLayout;
+  auto* add = new QPushButton(QStringLiteral("添加参数"));
+  auto* del = new QPushButton(QStringLiteral("删除选中"));
+  btns->addWidget(add);
+  btns->addWidget(del);
+  btns->addStretch();
+  v->addLayout(btns);
+  connect(add, &QPushButton::clicked, this, [table, emitArgs]() {
+    const int r = table->rowCount();
+    table->insertRow(r);
+    table->setItem(r, 0, new QTableWidgetItem);
+    table->setItem(r, 1, new QTableWidgetItem);
+    emitArgs();
+  });
+  connect(del, &QPushButton::clicked, this, [table, emitArgs]() {
+    const int r = table->currentRow();
+    if (r >= 0) table->removeRow(r);
+    emitArgs();
+  });
+  auto* lab = new QLabel(QStringLiteral("输入参数"));
+  lab->setProperty("propKey", QStringLiteral("arguments"));
+  lab->setProperty("propLabel", QStringLiteral("输入参数"));
+  form_->addRow(lab, box);
 }
 
 void PropertyPanel::rebuildForm(const QString& title, const QString& nodeId,
@@ -650,10 +750,20 @@ void PropertyPanel::rebuildForm(const QString& title, const QString& nodeId,
     hint->setObjectName(QStringLiteral("muted"));
     form_->addRow(hint);
   }
+  if (op == QLatin1String("subflow") || op == QLatin1String("loop")) {
+    addArgumentsTable(params.value(QStringLiteral("arguments")));
+    auto* hint = new QLabel(
+        op == QLatin1String("loop")
+            ? QStringLiteral("循环 1–100 轮；until 模式要求输出节点的停止字段为布尔值，达上限仍未满足则失败。")
+            : QStringLiteral("在「全流程 / 子流程管理」中定义可复用流程。参数名不可为 _iteration / _iterations。"));
+    hint->setWordWrap(true);
+    hint->setObjectName(QStringLiteral("muted"));
+    form_->addRow(hint);
+  }
 
   QStringList used;
   used << QStringLiteral("expressions") << QStringLiteral("rules")
-       << QStringLiteral("paths");
+       << QStringLiteral("paths") << QStringLiteral("arguments");
   for (const Spec& spec : specsFor(op)) {
     addSpecRow(spec, params);
     used << spec.key;
@@ -711,6 +821,10 @@ void PropertyPanel::showStep(const FlowStep& step) {
   else if (step.operation == QLatin1String("caliper") ||
            step.operation == QLatin1String("measure"))
     hint += QStringLiteral(" · QImage 边缘卡尺 · caliperDist/measureMm");
+  else if (step.operation == QLatin1String("subflow"))
+    hint += QStringLiteral(" · 调用子流程 · 结果 subflowPassed/subflowCount");
+  else if (step.operation == QLatin1String("loop"))
+    hint += QStringLiteral(" · 循环子流程 · loopCount/loopStoppedEarly · 最多 100 轮");
   meta_->setText(hint);
   rebuildForm(QStringLiteral("属性 · %1").arg(step.name), step.id, step.operation,
               step.params);

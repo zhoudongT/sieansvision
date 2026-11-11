@@ -4,6 +4,8 @@
 #include "TemplateMatch.hpp"
 #include "CaliperMeasure.hpp"
 #include "ConditionEval.hpp"
+#include "SubflowExec.hpp"
+#include "SubflowDialog.hpp"
 #include "FlowIoDialog.hpp"
 #include <QInputDialog>
 #include <QShortcut>
@@ -376,6 +378,7 @@ void MainWindow::buildUi() {
     else onPauseRun();
   });
   connect(flow_tabs_, &FlowTabBar::ioRequested, this, &MainWindow::onOpenFlowIo);
+  connect(flow_tabs_, &FlowTabBar::allFlowsRequested, this, &MainWindow::onOpenSubflowManager);
   connect(flow_tabs_, &FlowTabBar::fitRequested, flow_view_, &FlowView::fitAll);
     connect(flow_tabs_, &FlowTabBar::modeToggleRequested, this, [this]() {
     if (act_mode_) act_mode_->toggle();
@@ -986,6 +989,7 @@ void MainWindow::buildMenus() {
   auto* settings = menuBar()->addMenu(QStringLiteral("设置"));
   settings->addAction(QStringLiteral("通信管理…"), this, &MainWindow::onOpenCommManager);
   settings->addAction(QStringLiteral("流程 I/O 绑定…"), this, &MainWindow::onOpenFlowIo);
+  settings->addAction(QStringLiteral("子流程管理…"), this, &MainWindow::onOpenSubflowManager);
 
   auto* tools = menuBar()->addMenu(QStringLiteral("工具"));
   tools->addAction(QStringLiteral("C++ QR 解码"), this, &MainWindow::onDecodeQr,
@@ -993,6 +997,7 @@ void MainWindow::buildMenus() {
   tools->addAction(QStringLiteral("适应图像窗口"), image_view_, &ImageView::fitToView);
   tools->addAction(QStringLiteral("适应流程画布"), flow_view_, &FlowView::fitAll);
   tools->addAction(QStringLiteral("流程 I/O 绑定…"), this, &MainWindow::onOpenFlowIo);
+  tools->addAction(QStringLiteral("子流程管理…"), this, &MainWindow::onOpenSubflowManager);
 
   auto* system = menuBar()->addMenu(QStringLiteral("系统"));
   auto* edit = system->addMenu(QStringLiteral("编辑"));
@@ -1100,6 +1105,10 @@ void MainWindow::buildToolbar() {
     auto* a = tb->addAction(QStringLiteral("I/O"), this, &MainWindow::onOpenFlowIo);
     a->setShortcut(QKeySequence(QStringLiteral("Ctrl+I")));
     a->setToolTip(QStringLiteral("流程 I/O 绑定 · Ctrl+I · emptyDefault/{name}/${flow.x}"));
+  }
+  {
+    auto* a = tb->addAction(QStringLiteral("子流程"), this, &MainWindow::onOpenSubflowManager);
+    a->setToolTip(QStringLiteral("子流程管理 · 定义可复用流程并给循环调用"));
   }
   act_preview_ = tb->addAction(QStringLiteral("连续预览"), this,
                                &MainWindow::onStartContinuousPreview);
@@ -2411,6 +2420,96 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
       nx.ok = true;
       nx.mergeFrom = fromName;
       execInfo.insert(id, nx);
+    } else if (op == QLatin1String("subflow") || op == QLatin1String("loop")) {
+      const bool isLoop = op == QLatin1String("loop");
+      const SubflowCallParams cp = parseSubflowParams(step->params, isLoop);
+      const SubflowDef* def = document_.findSubflow(cp.subflowId);
+      if (!def) {
+        ok = false;
+        note = cp.subflowId.isEmpty() ? QStringLiteral("请选择子流程")
+                                      : QStringLiteral("子流程不存在: %1").arg(cp.subflowId);
+        NodeExec ng;
+        ng.executed = true;
+        ng.ok = false;
+        execInfo.insert(id, ng);
+      } else {
+        SubflowState* st = nullptr;
+        if (cp.stateMode == QLatin1String("preserve")) st = &subflow_states_[id];
+        int visits = 0;
+        const SubflowResult r = runSubflowCall(*def, document_.subflows(), cp, flow_vars_,
+                                               st, 0, visits, {});
+        if (!r.ok) {
+          ok = false;
+          note = r.error;
+          NodeExec ng;
+          ng.executed = true;
+          ng.ok = false;
+          execInfo.insert(id, ng);
+        } else {
+          ok = true;
+          note = r.note;
+          if (isLoop) {
+            flow_vars_.insert(QStringLiteral("loopCompleted"), r.completedIterations);
+            flow_vars_.insert(QStringLiteral("loopStoppedEarly"), r.stoppedEarly ? 1 : 0);
+            flow_vars_.insert(QStringLiteral("loopCount"),
+                             r.localVars.value(QStringLiteral("count"),
+                                               r.value.value(QStringLiteral("count"))));
+            flow_vars_.insert(QStringLiteral("loopPassed"), r.passed ? 1 : 0);
+          } else {
+            flow_vars_.insert(QStringLiteral("subflowPassed"), r.passed ? 1 : 0);
+            flow_vars_.insert(QStringLiteral("subflowCount"),
+                             r.localVars.value(QStringLiteral("count"),
+                                               r.value.value(QStringLiteral("count"))));
+          }
+          NodeExec nx;
+          nx.executed = true;
+          nx.ok = true;
+          nx.passed = r.passed;
+          execInfo.insert(id, nx);
+        }
+      }
+      if (result_table_) {
+        if (!isLoop) {
+          int row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(QStringLiteral("subflowPassed")));
+          result_table_->setItem(
+              row, 1,
+              new QTableWidgetItem(flow_vars_.value(QStringLiteral("subflowPassed")).toString()));
+          row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(QStringLiteral("subflowCount")));
+          result_table_->setItem(
+              row, 1,
+              new QTableWidgetItem(flow_vars_.value(QStringLiteral("subflowCount")).toString()));
+        } else {
+          int row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(QStringLiteral("loopCompleted")));
+          result_table_->setItem(
+              row, 1,
+              new QTableWidgetItem(flow_vars_.value(QStringLiteral("loopCompleted")).toString()));
+          row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(QStringLiteral("loopStoppedEarly")));
+          result_table_->setItem(
+              row, 1,
+              new QTableWidgetItem(
+                  flow_vars_.value(QStringLiteral("loopStoppedEarly")).toString()));
+          row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(QStringLiteral("loopCount")));
+          result_table_->setItem(
+              row, 1,
+              new QTableWidgetItem(flow_vars_.value(QStringLiteral("loopCount")).toString()));
+          row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(QStringLiteral("loopPassed")));
+          result_table_->setItem(
+              row, 1,
+              new QTableWidgetItem(flow_vars_.value(QStringLiteral("loopPassed")).toString()));
+        }
+      }
     } else {
       note = QStringLiteral("透传 / 未实现执行体");
       ok = true;
@@ -2583,6 +2682,16 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                            .replace(QLatin1Char('\n'), QLatin1Char('|')))
                   .arg(flow_vars_.value(QStringLiteral("skippedCount")).toString())
                   .arg(flow_vars_.value(QStringLiteral("conditionOk")).toString());
+      line += QLatin1Char(' ');
+      line += QStringLiteral(
+                  "subflowPassed=%1 subflowCount=%2 loopCompleted=%3 "
+                  "loopStoppedEarly=%4 loopCount=%5 loopPassed=%6")
+                  .arg(flow_vars_.value(QStringLiteral("subflowPassed")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("subflowCount")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("loopCompleted")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("loopStoppedEarly")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("loopCount")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("loopPassed")).toString());
       line += QLatin1Char('\n');
       f.write(line.toUtf8());
     }
@@ -3111,6 +3220,12 @@ void MainWindow::onNodeSelected(const QString& nodeId) {
     return;
   }
   if (const FlowStep* s = document_.findStep(nodeId)) {
+    if (prop_float_->panel()) {
+      QStringList choices;
+      for (const SubflowDef& d : document_.subflows())
+        choices << QStringLiteral("%1|%2").arg(d.id, d.name.isEmpty() ? d.id : d.name);
+      prop_float_->panel()->setSubflowChoices(choices);
+    }
     prop_float_->showForStep(*s);
     const QRect saved = document_.propertyFloatGeometry();
     if (saved.isValid()) {
@@ -3309,6 +3424,23 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
          }}};
   } else if (key == QLatin1String("branch_merge")) {
     s.params = {};
+  } else if (key == QLatin1String("subflow")) {
+    QString sfId;
+    if (!document_.subflows().isEmpty()) sfId = document_.subflows().first().id;
+    s.params = {{QStringLiteral("subflowId"), sfId},
+                {QStringLiteral("stateMode"), QStringLiteral("reset")},
+                {QStringLiteral("arguments"), QVariantMap{}}};
+  } else if (key == QLatin1String("loop")) {
+    QString sfId;
+    if (!document_.subflows().isEmpty()) sfId = document_.subflows().first().id;
+    s.params = {{QStringLiteral("subflowId"), sfId},
+                {QStringLiteral("stateMode"), QStringLiteral("reset")},
+                {QStringLiteral("mode"), QStringLiteral("count")},
+                {QStringLiteral("iterations"), 3},
+                {QStringLiteral("frameMode"), QStringLiteral("previous")},
+                {QStringLiteral("stopField"), QStringLiteral("passed")},
+                {QStringLiteral("stopValue"), true},
+                {QStringLiteral("arguments"), QVariantMap{}}};
   }
   if (autoWire) {
     QString from = QStringLiteral("source");
@@ -3423,6 +3555,15 @@ void MainWindow::onParamsReverted(const QString& nodeId, const QVariantMap& snap
   }
   pushSoftControls();
   logResult(QStringLiteral("已放弃属性修改: %1").arg(nodeId));
+}
+
+void MainWindow::onOpenSubflowManager() {
+  SubflowDialog dlg(&document_, this);
+  dlg.exec();
+  applyDocumentToUi();
+  const int n = document_.subflows().size();
+  logResult(QStringLiteral("子流程管理已关闭 · 定义 %1 个").arg(n));
+  showStatus(QStringLiteral("子流程定义 %1 个").arg(n), 2500);
 }
 
 void MainWindow::onOpenFlowIo() {

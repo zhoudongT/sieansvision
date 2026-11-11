@@ -281,6 +281,43 @@
         "y": 760
       },
       "params": {}
+    },
+    {
+      "id": "sf1",
+      "name": "子流程调用",
+      "operation": "subflow",
+      "imageFrom": "merge1",
+      "position": {
+        "x": 560,
+        "y": 880
+      },
+      "runState": "等待执行",
+      "params": {
+        "subflowId": "counter",
+        "stateMode": "reset",
+        "arguments": {}
+      }
+    },
+    {
+      "id": "loop1",
+      "name": "循环子流程",
+      "operation": "loop",
+      "imageFrom": "sf1",
+      "position": {
+        "x": 560,
+        "y": 1000
+      },
+      "runState": "等待执行",
+      "params": {
+        "subflowId": "counter",
+        "stateMode": "reset",
+        "mode": "until",
+        "iterations": 10,
+        "frameMode": "previous",
+        "stopField": "passed",
+        "stopValue": true,
+        "arguments": {}
+      }
     }
   ],
   "edges": [
@@ -372,6 +409,18 @@
       "fromPort": "bottom",
       "toPort": "top",
       "when": "always"
+    },
+    {
+      "id": "e-merge1-sf1",
+      "from": "merge1",
+      "to": "sf1",
+      "when": "always"
+    },
+    {
+      "id": "e-sf1-loop1",
+      "from": "sf1",
+      "to": "loop1",
+      "when": "always"
     }
   ],
   "variables": {
@@ -388,7 +437,13 @@
     "branchTaken": "",
     "branchRoute": "",
     "mergeFrom": "",
-    "skippedCount": 0
+    "skippedCount": 0,
+    "subflowPassed": 0,
+    "subflowCount": 0,
+    "loopCompleted": 0,
+    "loopStoppedEarly": 0,
+    "loopCount": 0,
+    "loopPassed": 0
   },
   "hostWatch": {
     "watchKeys": [
@@ -404,7 +459,13 @@
       "branchTaken",
       "branchRoute",
       "mergeFrom",
-      "skippedCount"
+      "skippedCount",
+      "subflowPassed",
+      "subflowCount",
+      "loopCompleted",
+      "loopStoppedEarly",
+      "loopCount",
+      "loopPassed"
     ],
     "active": "二维码链",
     "pinGroups": {
@@ -611,5 +672,80 @@
       "globalImage": true,
       "note": "Qt VM I/O 绑定"
     }
-  }
+  },
+  "subflows": [
+    {
+      "id": "counter",
+      "name": "计数子流程",
+      "outputNode": "done",
+      "variables": {
+        "count": 0,
+        "limit": 3
+      },
+      "sourcePosition": {
+        "x": 80,
+        "y": 80
+      },
+      "steps": [
+        {
+          "id": "inc",
+          "name": "计数加一",
+          "operation": "var_calc",
+          "position": {
+            "x": 300,
+            "y": 140
+          },
+          "params": {
+            "scope": "flow",
+            "expressions": [
+              {
+                "name": "count",
+                "expr": "count + 1",
+                "enabled": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "done",
+          "name": "是否达到上限",
+          "operation": "condition",
+          "imageFrom": "inc",
+          "position": {
+            "x": 300,
+            "y": 260
+          },
+          "params": {
+            "logic": "and",
+            "comparison": "gte",
+            "left": "count",
+            "right": "limit",
+            "writePassGate": false,
+            "rules": [
+              {
+                "left": "count",
+                "comparison": "gte",
+                "right": "limit",
+                "enabled": true
+              }
+            ]
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-src-inc",
+          "from": "source",
+          "to": "inc",
+          "when": "always"
+        },
+        {
+          "id": "e-inc-done",
+          "from": "inc",
+          "to": "done",
+          "when": "always"
+        }
+      ]
+    }
+  ]
 }

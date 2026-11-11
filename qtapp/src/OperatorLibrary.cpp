@@ -246,6 +246,12 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
       {QStringLiteral("branch_merge"), QStringLiteral("分支汇合"),
        QStringLiteral("流程控制"),
        QStringLiteral("等待互斥分支，接收唯一激活路的结果")},
+      {QStringLiteral("subflow"), QStringLiteral("子流程调用"),
+       QStringLiteral("流程控制"),
+       QStringLiteral("调用工程内可复用子流程，局部变量按调用点隔离")},
+      {QStringLiteral("loop"), QStringLiteral("循环子流程"),
+       QStringLiteral("流程控制"),
+       QStringLiteral("重复执行子流程：固定次数或直到输出开关成立")},
   };
 }
 

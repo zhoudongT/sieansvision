@@ -15,6 +15,7 @@
 #include "PropertyFloat.hpp"
 #include "OperatorRail.hpp"
 #include "HostStatePanel.hpp"
+#include "SubflowExec.hpp"
 
 #include <QMainWindow>
 #include <QEvent>
@@ -24,6 +25,7 @@
 #include <QThread>
 #include <QTimer>
 #include <QVariantMap>
+#include <QHash>
 #include <atomic>
 
 namespace sieans_qt {
@@ -47,6 +49,7 @@ class MainWindow : public QMainWindow {
   void onOpenCameraManager();
   void onOpenCommManager();
   void onOpenFlowIo();
+  void onOpenSubflowManager();
   void onStartContinuousPreview();
   void onStopContinuousPreview();
   void onRunOnce();
@@ -147,6 +150,7 @@ class MainWindow : public QMainWindow {
   SieansDocument document_;
   QString current_path_;
   QVariantMap flow_vars_;
+  QHash<QString, SubflowState> subflow_states_;
 
   QThread* cam_thread_ = nullptr;
   GenTLWorker* cam_worker_ = nullptr;

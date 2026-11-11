@@ -37,3 +37,5 @@ qtapp/build/
 # accidental GenICam/Windows env-expand debris (do not commit)
 $(ALLUSERSPROFILE)/
 /os
+
+/build/

@@ -73,6 +73,10 @@ add_executable(sieans_qt
   src/CaliperMeasure.cpp
   src/ConditionEval.hpp
   src/ConditionEval.cpp
+  src/SubflowExec.hpp
+  src/SubflowExec.cpp
+  src/SubflowDialog.hpp
+  src/SubflowDialog.cpp
   src/FlowMinimap.hpp
   src/FlowMinimap.cpp
   src/FlowIoDialog.hpp

@@ -20,6 +20,8 @@ class PropertyPanel : public QWidget {
 
   void showSource(const QVariantMap& sourceConfig);
   void showStep(const FlowStep& step);
+  /** id|显示名 列表，供子流程/循环的 subflowId 下拉使用. */
+  void setSubflowChoices(const QStringList& idNamePairs);
   void clear();
   /** Live param map while the float is open (edits applied immediately). */
   QVariantMap currentParams() const { return params_; }
@@ -50,6 +52,7 @@ class PropertyPanel : public QWidget {
   void addExprTable(const QVariantList& rows);
   void addRulesTable(const QVariantList& rows);
   void addPathsTable(const QVariantList& rows);
+  void addArgumentsTable(const QVariant& raw);
   void emitEdit(const QString& key, const QString& value);
   void applyFilter();
 
@@ -61,6 +64,7 @@ class PropertyPanel : public QWidget {
   QString currentId_;
   QVariantMap params_;
   bool building_ = false;
+  QStringList subflowChoices_;
 };
 
 }  // namespace sieans_qt
