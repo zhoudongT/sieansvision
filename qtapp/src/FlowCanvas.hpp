@@ -7,6 +7,8 @@
 #include <QGraphicsPathItem>
 #include <QGraphicsScene>
 #include <QGraphicsView>
+#include <QGraphicsSimpleTextItem>
+#include <QGraphicsSceneContextMenuEvent>
 #include <QHash>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -78,23 +80,30 @@ class FlowNodeItem : public QGraphicsObject {
 class FlowEdgeItem : public QGraphicsPathItem {
  public:
   FlowEdgeItem(const QString& id, FlowNodeItem* from, FlowNodeItem* to,
-               const QString& fromPort, const QString& toPort);
+               const QString& fromPort, const QString& toPort,
+               const QString& when = QStringLiteral("always"));
   void refresh();
   QString edgeId() const { return id_; }
   FlowNodeItem* fromNode() const { return from_; }
   FlowNodeItem* toNode() const { return to_; }
   QString fromPort() const { return fromPort_; }
   QString toPort() const { return toPort_; }
+  QString when() const { return when_; }
+  void setWhen(const QString& when);
 
  protected:
   void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
+  void contextMenuEvent(QGraphicsSceneContextMenuEvent* event) override;
 
  private:
+  void updateWhenChrome();
   QString id_;
   FlowNodeItem* from_ = nullptr;
   FlowNodeItem* to_ = nullptr;
   QString fromPort_;
   QString toPort_;
+  QString when_ = QStringLiteral("always");
+  QGraphicsSimpleTextItem* label_ = nullptr;
 };
 
 class FlowScene : public QGraphicsScene {
@@ -132,6 +141,7 @@ class FlowScene : public QGraphicsScene {
   void edgeConnected(const QString& fromId, const QString& toId,
                      const QString& fromPort, const QString& toPort);
   void edgeRemoved(const QString& edgeId);
+  void edgeWhenChanged(const QString& edgeId, const QString& when);
   void linkNotice(const QString& msg);
   void renameRequested(const QString& nodeId);
   void duplicateRequested(const QString& nodeId);

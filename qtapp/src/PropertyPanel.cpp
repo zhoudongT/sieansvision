@@ -20,6 +20,9 @@
 #include <QGuiApplication>
 #include <QKeySequence>
 #include <QFrame>
+#include <QPushButton>
+#include <QHBoxLayout>
+#include <QVBoxLayout>
 
 namespace sieans_qt {
 namespace {
@@ -141,6 +144,22 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
   if (op == QLatin1String("save_image")) {
     return {S("dir", "目录", kLine, "")};
   }
+  if (op == QLatin1String("condition")) {
+    return {S("logic", "规则逻辑", kChoice, "and|全部满足 (AND);or|任一满足 (OR)"),
+            S("comparison", "判断方式", kChoice,
+              "eq|等于;ne|不等于;gt|大于;gte|大于等于;lt|小于;lte|小于等于;"
+              "contains|包含;starts_with|开头是;ends_with|结尾是;regex|正则;"
+              "empty|为空;not_empty|非空;is_true|为真;is_false|为假"),
+            S("left", "左侧值 / 变量", kLine, "barcodeCount / ${flow.ocrOk} / 1"),
+            S("right", "右侧值 / 变量", kLine, ""),
+            S("writePassGate", "写入 passGate", kBool, "")};
+  }
+  if (op == QLatin1String("branch")) {
+    return {S("defaultPathId", "默认路径", kLine, "default")};
+  }
+  if (op == QLatin1String("branch_merge")) {
+    return {};
+  }
   return {};
 }
 
@@ -258,6 +277,250 @@ void PropertyPanel::addExprTable(const QVariantList& rows) {
 }
 
 
+
+static const char* kCmpChoices =
+    "eq|等于;ne|不等于;gt|大于;gte|大于等于;lt|小于;lte|小于等于;"
+    "contains|包含;starts_with|开头是;ends_with|结尾是;regex|正则;"
+    "empty|为空;not_empty|非空;is_true|为真;is_false|为假";
+
+void fillComparisonCombo(QComboBox* combo, const QString& cur) {
+  const QStringList opts =
+      QString::fromUtf8(kCmpChoices).split(QLatin1Char(';'), Qt::SkipEmptyParts);
+  int pick = 0;
+  for (int i = 0; i < opts.size(); ++i) {
+    const QStringList pair = opts[i].split(QLatin1Char('|'));
+    const QString val = pair.value(0);
+    combo->addItem(pair.value(1, val), val);
+    if (val == cur) pick = i;
+  }
+  combo->setCurrentIndex(pick);
+}
+
+void PropertyPanel::addRulesTable(const QVariantList& rows) {
+  QVariantList use = rows;
+  if (use.isEmpty()) {
+    QVariantMap r;
+    r.insert(QStringLiteral("left"), params_.value(QStringLiteral("left"), 0));
+    r.insert(QStringLiteral("comparison"),
+             params_.value(QStringLiteral("comparison"), QStringLiteral("eq")));
+    r.insert(QStringLiteral("right"), params_.value(QStringLiteral("right"), 0));
+    r.insert(QStringLiteral("enabled"), true);
+    use.push_back(r);
+  }
+  auto* table = new QTableWidget(use.size(), 4);
+  table->setObjectName(QStringLiteral("conditionRulesTable"));
+  table->setProperty("propKey", QStringLiteral("rules"));
+  table->setHorizontalHeaderLabels({QStringLiteral("启用"), QStringLiteral("左侧"),
+                                    QStringLiteral("比较"), QStringLiteral("右侧")});
+  table->horizontalHeader()->setStretchLastSection(true);
+  table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+  table->verticalHeader()->setVisible(false);
+  table->setMinimumHeight(140);
+  auto emitRules = [this, table]() {
+    if (building_) return;
+    QVariantList out;
+    for (int r = 0; r < table->rowCount(); ++r) {
+      QTableWidgetItem* en = table->item(r, 0);
+      QTableWidgetItem* left = table->item(r, 1);
+      auto* cmp = qobject_cast<QComboBox*>(table->cellWidget(r, 2));
+      QTableWidgetItem* right = table->item(r, 3);
+      QVariantMap row;
+      row.insert(QStringLiteral("enabled"), en && en->checkState() == Qt::Checked);
+      row.insert(QStringLiteral("left"), left ? left->text() : QString());
+      row.insert(QStringLiteral("comparison"),
+                 cmp ? cmp->currentData().toString() : QStringLiteral("eq"));
+      row.insert(QStringLiteral("right"), right ? right->text() : QString());
+      out.push_back(row);
+    }
+    emitEdit(QStringLiteral("rules"),
+             QString::fromUtf8(QJsonDocument::fromVariant(out).toJson(QJsonDocument::Compact)));
+    if (!out.isEmpty()) {
+      const QVariantMap r0 = out.first().toMap();
+      emitEdit(QStringLiteral("left"), r0.value(QStringLiteral("left")).toString());
+      emitEdit(QStringLiteral("comparison"), r0.value(QStringLiteral("comparison")).toString());
+      emitEdit(QStringLiteral("right"), r0.value(QStringLiteral("right")).toString());
+    }
+  };
+  for (int i = 0; i < use.size(); ++i) {
+    const QVariantMap row = use[i].toMap();
+    auto* en = new QTableWidgetItem;
+    en->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled);
+    const bool enabled =
+        !row.contains(QStringLiteral("enabled")) || row.value(QStringLiteral("enabled")).toBool();
+    en->setCheckState(enabled ? Qt::Checked : Qt::Unchecked);
+    table->setItem(i, 0, en);
+    table->setItem(i, 1, new QTableWidgetItem(row.value(QStringLiteral("left")).toString()));
+    auto* cmp = new QComboBox;
+    fillComparisonCombo(
+        cmp, row.value(QStringLiteral("comparison"), QStringLiteral("eq")).toString());
+    table->setCellWidget(i, 2, cmp);
+    connect(cmp, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [emitRules](int) { emitRules(); });
+    table->setItem(i, 3, new QTableWidgetItem(row.value(QStringLiteral("right")).toString()));
+  }
+  connect(table, &QTableWidget::itemChanged, this, [emitRules](QTableWidgetItem*) { emitRules(); });
+
+  auto* box = new QWidget;
+  auto* v = new QVBoxLayout(box);
+  v->setContentsMargins(0, 0, 0, 0);
+  v->setSpacing(4);
+  v->addWidget(table);
+  auto* btns = new QHBoxLayout;
+  auto* add = new QPushButton(QStringLiteral("添加规则"));
+  auto* del = new QPushButton(QStringLiteral("删除选中"));
+  btns->addWidget(add);
+  btns->addWidget(del);
+  btns->addStretch();
+  v->addLayout(btns);
+  connect(add, &QPushButton::clicked, this, [this, table, emitRules]() {
+    const int r = table->rowCount();
+    table->insertRow(r);
+    auto* en = new QTableWidgetItem;
+    en->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled);
+    en->setCheckState(Qt::Checked);
+    table->setItem(r, 0, en);
+    table->setItem(r, 1, new QTableWidgetItem);
+    auto* cmp = new QComboBox;
+    fillComparisonCombo(cmp, QStringLiteral("eq"));
+    table->setCellWidget(r, 2, cmp);
+    connect(cmp, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [emitRules](int) { emitRules(); });
+    table->setItem(r, 3, new QTableWidgetItem);
+    emitRules();
+  });
+  connect(del, &QPushButton::clicked, this, [table, emitRules]() {
+    const int r = table->currentRow();
+    if (r >= 0) table->removeRow(r);
+    emitRules();
+  });
+  auto* lab = new QLabel(QStringLiteral("条件规则"));
+  lab->setProperty("propKey", QStringLiteral("rules"));
+  lab->setProperty("propLabel", QStringLiteral("条件规则"));
+  form_->addRow(lab, box);
+}
+
+void PropertyPanel::addPathsTable(const QVariantList& rows) {
+  QVariantList use = rows;
+  if (use.isEmpty()) {
+    use.push_back(QVariantMap{{QStringLiteral("id"), QStringLiteral("path1")},
+                              {QStringLiteral("name"), QStringLiteral("分支1")},
+                              {QStringLiteral("left"), QString()},
+                              {QStringLiteral("comparison"), QStringLiteral("eq")},
+                              {QStringLiteral("right"), QString()},
+                              {QStringLiteral("enabled"), true}});
+    use.push_back(QVariantMap{{QStringLiteral("id"), QStringLiteral("path2")},
+                              {QStringLiteral("name"), QStringLiteral("分支2")},
+                              {QStringLiteral("left"), QString()},
+                              {QStringLiteral("comparison"), QStringLiteral("eq")},
+                              {QStringLiteral("right"), QString()},
+                              {QStringLiteral("enabled"), true}});
+    use.push_back(QVariantMap{{QStringLiteral("id"), QStringLiteral("default")},
+                              {QStringLiteral("name"), QStringLiteral("默认")},
+                              {QStringLiteral("left"), QString()},
+                              {QStringLiteral("comparison"), QStringLiteral("is_true")},
+                              {QStringLiteral("right"), QString()},
+                              {QStringLiteral("enabled"), true}});
+  }
+  auto* table = new QTableWidget(use.size(), 5);
+  table->setObjectName(QStringLiteral("branchPathsTable"));
+  table->setProperty("propKey", QStringLiteral("paths"));
+  table->setHorizontalHeaderLabels({QStringLiteral("启用"), QStringLiteral("名称"),
+                                    QStringLiteral("左侧"), QStringLiteral("比较"),
+                                    QStringLiteral("右侧")});
+  table->horizontalHeader()->setStretchLastSection(true);
+  table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+  table->verticalHeader()->setVisible(false);
+  table->setMinimumHeight(160);
+  auto emitPaths = [this, table]() {
+    if (building_) return;
+    QVariantList out;
+    for (int r = 0; r < table->rowCount(); ++r) {
+      QTableWidgetItem* en = table->item(r, 0);
+      QTableWidgetItem* name = table->item(r, 1);
+      QTableWidgetItem* left = table->item(r, 2);
+      auto* cmp = qobject_cast<QComboBox*>(table->cellWidget(r, 3));
+      QTableWidgetItem* right = table->item(r, 4);
+      QVariantMap row;
+      const QString nm = name ? name->text().trimmed() : QString();
+      const QString storedId = name ? name->data(Qt::UserRole).toString() : QString();
+      row.insert(QStringLiteral("enabled"), en && en->checkState() == Qt::Checked);
+      row.insert(QStringLiteral("name"), nm);
+      row.insert(QStringLiteral("id"),
+                 storedId.isEmpty()
+                     ? (nm.isEmpty() ? QStringLiteral("path%1").arg(r + 1) : nm)
+                     : storedId);
+      row.insert(QStringLiteral("left"), left ? left->text() : QString());
+      row.insert(QStringLiteral("comparison"),
+                 cmp ? cmp->currentData().toString() : QStringLiteral("eq"));
+      row.insert(QStringLiteral("right"), right ? right->text() : QString());
+      out.push_back(row);
+    }
+    emitEdit(QStringLiteral("paths"),
+             QString::fromUtf8(QJsonDocument::fromVariant(out).toJson(QJsonDocument::Compact)));
+  };
+  for (int i = 0; i < use.size(); ++i) {
+    const QVariantMap row = use[i].toMap();
+    auto* en = new QTableWidgetItem;
+    en->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled);
+    const bool enabled =
+        !row.contains(QStringLiteral("enabled")) || row.value(QStringLiteral("enabled")).toBool();
+    en->setCheckState(enabled ? Qt::Checked : Qt::Unchecked);
+    table->setItem(i, 0, en);
+    auto* name = new QTableWidgetItem(row.value(QStringLiteral("name")).toString());
+    name->setData(Qt::UserRole, row.value(QStringLiteral("id")).toString());
+    table->setItem(i, 1, name);
+    table->setItem(i, 2, new QTableWidgetItem(row.value(QStringLiteral("left")).toString()));
+    auto* cmp = new QComboBox;
+    fillComparisonCombo(
+        cmp, row.value(QStringLiteral("comparison"), QStringLiteral("eq")).toString());
+    table->setCellWidget(i, 3, cmp);
+    connect(cmp, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [emitPaths](int) { emitPaths(); });
+    table->setItem(i, 4, new QTableWidgetItem(row.value(QStringLiteral("right")).toString()));
+  }
+  connect(table, &QTableWidget::itemChanged, this, [emitPaths](QTableWidgetItem*) { emitPaths(); });
+  auto* box = new QWidget;
+  auto* v = new QVBoxLayout(box);
+  v->setContentsMargins(0, 0, 0, 0);
+  v->setSpacing(4);
+  v->addWidget(table);
+  auto* btns = new QHBoxLayout;
+  auto* add = new QPushButton(QStringLiteral("添加路径"));
+  auto* del = new QPushButton(QStringLiteral("删除选中"));
+  btns->addWidget(add);
+  btns->addWidget(del);
+  btns->addStretch();
+  v->addLayout(btns);
+  connect(add, &QPushButton::clicked, this, [this, table, emitPaths]() {
+    const int r = table->rowCount();
+    table->insertRow(r);
+    auto* en = new QTableWidgetItem;
+    en->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled);
+    en->setCheckState(Qt::Checked);
+    table->setItem(r, 0, en);
+    auto* name = new QTableWidgetItem(QStringLiteral("分支%1").arg(r + 1));
+    name->setData(Qt::UserRole, QStringLiteral("path%1").arg(r + 1));
+    table->setItem(r, 1, name);
+    table->setItem(r, 2, new QTableWidgetItem);
+    auto* cmp = new QComboBox;
+    fillComparisonCombo(cmp, QStringLiteral("eq"));
+    table->setCellWidget(r, 3, cmp);
+    connect(cmp, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [emitPaths](int) { emitPaths(); });
+    table->setItem(r, 4, new QTableWidgetItem);
+    emitPaths();
+  });
+  connect(del, &QPushButton::clicked, this, [table, emitPaths]() {
+    const int r = table->currentRow();
+    if (r >= 0) table->removeRow(r);
+    emitPaths();
+  });
+  auto* lab = new QLabel(QStringLiteral("分支路径"));
+  lab->setProperty("propKey", QStringLiteral("paths"));
+  lab->setProperty("propLabel", QStringLiteral("分支路径"));
+  form_->addRow(lab, box);
+}
+
 void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
   const QString key = spec.key;
   const QString label = spec.label;
@@ -282,6 +545,14 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
       return QStringLiteral("通信绑定 · flow.formatted / LocalBus 设备名");
     if (k == QLatin1String("expressions") || k == QLatin1String("expression"))
       return QStringLiteral("expr · in/startswith/…/isempty/notempty · 见底部提示");
+    if (k == QLatin1String("left") || k == QLatin1String("right"))
+      return QStringLiteral("常量、引号文本，或变量 barcodeCount / ${flow.ocrOk}");
+    if (k == QLatin1String("logic"))
+      return QStringLiteral("多规则合成：AND 全部满足 / OR 任一满足");
+    if (k == QLatin1String("writePassGate"))
+      return QStringLiteral("判断结果写入 passGate，供 Host OK/NG 使用");
+    if (k == QLatin1String("defaultPathId"))
+      return QStringLiteral("未命中任何路径时走此路径 id");
     return {};
   };
   const QString tip = tipFor(key);
@@ -366,9 +637,23 @@ void PropertyPanel::rebuildForm(const QString& title, const QString& nodeId,
 
   if (op == QLatin1String("var_calc"))
     addExprTable(params.value(QStringLiteral("expressions")).toList());
+  if (op == QLatin1String("condition"))
+    addRulesTable(params.value(QStringLiteral("rules")).toList());
+  if (op == QLatin1String("branch"))
+    addPathsTable(params.value(QStringLiteral("paths")).toList());
+  if (op == QLatin1String("condition") || op == QLatin1String("branch")) {
+    auto* hint = new QLabel(
+        op == QLatin1String("branch")
+            ? QStringLiteral("画布出边 when 填路径名；无命中走默认路径。禁用路径不参与匹配。")
+            : QStringLiteral("真分支 when=true，假分支 when=false。多规则按 AND/OR 合成。未选中的分支显示已跳过。"));
+    hint->setWordWrap(true);
+    hint->setObjectName(QStringLiteral("muted"));
+    form_->addRow(hint);
+  }
 
   QStringList used;
-  used << QStringLiteral("expressions");
+  used << QStringLiteral("expressions") << QStringLiteral("rules")
+       << QStringLiteral("paths");
   for (const Spec& spec : specsFor(op)) {
     addSpecRow(spec, params);
     used << spec.key;

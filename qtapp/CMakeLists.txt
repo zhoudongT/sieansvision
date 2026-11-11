@@ -71,6 +71,8 @@ add_executable(sieans_qt
   src/TemplateMatch.cpp
   src/CaliperMeasure.hpp
   src/CaliperMeasure.cpp
+  src/ConditionEval.hpp
+  src/ConditionEval.cpp
   src/FlowMinimap.hpp
   src/FlowMinimap.cpp
   src/FlowIoDialog.hpp

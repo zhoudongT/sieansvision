@@ -78,6 +78,8 @@ bool SieansDocument::loadFromFile(const QString& path, QString* error) {
     e.to = o.value(QStringLiteral("to")).toString();
     e.fromPort = o.value(QStringLiteral("fromPort")).toString(QStringLiteral("bottom"));
     e.toPort = o.value(QStringLiteral("toPort")).toString(QStringLiteral("top"));
+    e.when = o.value(QStringLiteral("when")).toString(QStringLiteral("always"));
+    if (e.when.isEmpty()) e.when = QStringLiteral("always");
     if (e.id.isEmpty())
       e.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     if (!e.from.isEmpty() && !e.to.isEmpty()) edges_.push_back(e);
@@ -118,6 +120,7 @@ bool SieansDocument::saveToFile(const QString& path, QString* error) const {
         {QStringLiteral("to"), e.to},
         {QStringLiteral("fromPort"), e.fromPort},
         {QStringLiteral("toPort"), e.toPort},
+        {QStringLiteral("when"), e.when.isEmpty() ? QStringLiteral("always") : e.when},
     });
   }
   root.insert(QStringLiteral("edges"), edgesArr);
@@ -320,12 +323,39 @@ void SieansDocument::seedGentlQrDemo() {
       {{QStringLiteral("device"), QStringLiteral("LocalLoop")},
        {QStringLiteral("targetVar"), QStringLiteral("lastRecv")},
        {QStringLiteral("timeoutMs"), 200}});
+  add(QStringLiteral("cond1"), QStringLiteral("条件判断"),
+      QStringLiteral("condition"), 520, 500, QStringLiteral("gate1"),
+      {{QStringLiteral("logic"), QStringLiteral("and")},
+       {QStringLiteral("comparison"), QStringLiteral("gte")},
+       {QStringLiteral("left"), QStringLiteral("barcodeCount")},
+       {QStringLiteral("right"), 1},
+       {QStringLiteral("writePassGate"), false},
+       {QStringLiteral("rules"),
+        QVariantList{QVariantMap{{QStringLiteral("left"), QStringLiteral("barcodeCount")},
+                                 {QStringLiteral("comparison"), QStringLiteral("gte")},
+                                 {QStringLiteral("right"), 1},
+                                 {QStringLiteral("enabled"), true}}}}});
+  add(QStringLiteral("taken1"), QStringLiteral("成立分支"),
+      QStringLiteral("format_data"), 460, 640, QStringLiteral("cond1"),
+      {{QStringLiteral("template"), QStringLiteral("ROUTE=OK")},
+       {QStringLiteral("args"), QString()},
+       {QStringLiteral("targetVar"), QStringLiteral("branchRoute")}});
+  add(QStringLiteral("skipped1"), QStringLiteral("不成立分支"),
+      QStringLiteral("format_data"), 680, 640, QStringLiteral("cond1"),
+      {{QStringLiteral("template"), QStringLiteral("ROUTE=NG")},
+       {QStringLiteral("args"), QString()},
+       {QStringLiteral("targetVar"), QStringLiteral("branchRoute")}});
+  add(QStringLiteral("merge1"), QStringLiteral("分支汇合"),
+      QStringLiteral("branch_merge"), 560, 760, QStringLiteral("taken1"),
+      {});
 
-  auto link = [&](const QString& a, const QString& b) {
+  auto link = [&](const QString& a, const QString& b,
+                  const QString& when = QStringLiteral("always")) {
     FlowEdge e;
     e.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     e.from = a;
     e.to = b;
+    e.when = when;
     edges_.push_back(e);
   };
   link(QStringLiteral("source"), QStringLiteral("cam1"));
@@ -337,6 +367,11 @@ void SieansDocument::seedGentlQrDemo() {
   link(QStringLiteral("gate1"), QStringLiteral("fmt1"));
   link(QStringLiteral("fmt1"), QStringLiteral("tx1"));
   link(QStringLiteral("tx1"), QStringLiteral("rx1"));
+  link(QStringLiteral("gate1"), QStringLiteral("cond1"));
+  link(QStringLiteral("cond1"), QStringLiteral("taken1"), QStringLiteral("true"));
+  link(QStringLiteral("cond1"), QStringLiteral("skipped1"), QStringLiteral("false"));
+  link(QStringLiteral("taken1"), QStringLiteral("merge1"));
+  link(QStringLiteral("skipped1"), QStringLiteral("merge1"));
 
   variables_ = {
       {QStringLiteral("barcodeCount"), 0},
@@ -355,6 +390,12 @@ void SieansDocument::seedGentlQrDemo() {
       {QStringLiteral("formatted"), QString()},
       {QStringLiteral("commPayload"), QString()},
       {QStringLiteral("lastRecv"), QString()},
+      {QStringLiteral("conditionPassed"), 0},
+      {QStringLiteral("conditionOk"), 0},
+      {QStringLiteral("branchTaken"), QString()},
+      {QStringLiteral("branchRoute"), QString()},
+      {QStringLiteral("mergeFrom"), QString()},
+      {QStringLiteral("skippedCount"), 0},
   };
   commManager_ = {
       {QStringLiteral("devices"),
@@ -492,7 +533,10 @@ QStringList SieansDocument::hostWatchKeys() const {
             QStringLiteral("formatted"), QStringLiteral("lastRecv"),
             QStringLiteral("commPayload"), QStringLiteral("hostResult"),
             QStringLiteral("hostMode"), QStringLiteral("hostState"),
-            QStringLiteral("hostOkStreak"), QStringLiteral("hostNgCount")};
+            QStringLiteral("hostOkStreak"), QStringLiteral("hostNgCount"),
+            QStringLiteral("conditionPassed"), QStringLiteral("branchTaken"),
+            QStringLiteral("branchRoute"), QStringLiteral("mergeFrom"),
+            QStringLiteral("skippedCount")};
   }
   return keys;
 }

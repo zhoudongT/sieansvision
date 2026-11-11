@@ -26,6 +26,7 @@ struct FlowEdge {
   QString to;
   QString fromPort = QStringLiteral("bottom");
   QString toPort = QStringLiteral("top");
+  QString when = QStringLiteral("always");  // always|true|false|success|error|path
 };
 
 /** Minimal .sieans project model for GenTL→QR open-and-run parity. */

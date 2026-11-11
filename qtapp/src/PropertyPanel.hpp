@@ -48,6 +48,8 @@ class PropertyPanel : public QWidget {
                    const QVariantMap& params);
   void addSpecRow(const Spec& spec, const QVariantMap& params);
   void addExprTable(const QVariantList& rows);
+  void addRulesTable(const QVariantList& rows);
+  void addPathsTable(const QVariantList& rows);
   void emitEdit(const QString& key, const QString& value);
   void applyFilter();
 

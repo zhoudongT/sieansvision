@@ -70,6 +70,7 @@ class MainWindow : public QMainWindow {
   void onContinuousTick();
   void onEdgeConnected(const QString& fromId, const QString& toId,
                        const QString& fromPort, const QString& toPort);
+  void onEdgeWhenChanged(const QString& edgeId, const QString& when);
   void onLinkNotice(const QString& msg);
 
  private:

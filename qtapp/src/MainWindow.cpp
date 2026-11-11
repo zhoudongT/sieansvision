@@ -3,6 +3,7 @@
 #include "ExprEval.hpp"
 #include "TemplateMatch.hpp"
 #include "CaliperMeasure.hpp"
+#include "ConditionEval.hpp"
 #include "FlowIoDialog.hpp"
 #include <QInputDialog>
 #include <QShortcut>
@@ -158,8 +159,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
                  .arg(sieans::GenTLCapture::available() ? QStringLiteral("可用")
                                                         : QStringLiteral("桩/不可用")));
 
+  const QByteArray projEnv = qgetenv("SIEANS_QT_PROJECT");
   const QString proj =
-      defaultProjectsDir() + QStringLiteral("/open-and-run-gentl-qr.sieans");
+      !projEnv.isEmpty() ? QString::fromUtf8(projEnv)
+                         : defaultProjectsDir() + QStringLiteral("/open-and-run-gentl-qr.sieans");
   QString err;
   if (qgetenv("SIEANS_QT_FORCE_SEED") == "1") {
     document_.seedGentlQrDemo();
@@ -405,6 +408,7 @@ void MainWindow::buildUi() {
 
   connect(flow_scene_, &FlowScene::nodeSelected, this, &MainWindow::onNodeSelected);
   connect(flow_scene_, &FlowScene::edgeConnected, this, &MainWindow::onEdgeConnected);
+  connect(flow_scene_, &FlowScene::edgeWhenChanged, this, &MainWindow::onEdgeWhenChanged);
   connect(flow_scene_, &FlowScene::linkNotice, this, &MainWindow::onLinkNotice);
   connect(flow_scene_, &FlowScene::duplicateRequested, this, &MainWindow::onDuplicateNode);
   connect(flow_scene_, &FlowScene::renameRequested, this, [this](const QString& nodeId) {
@@ -1646,15 +1650,28 @@ QStringList MainWindow::topologicalStepIds() const {
   QStringList ordered;
   QSet<QString> visited;
   QHash<QString, QStringList> outs;
-  for (const FlowEdge& e : document_.edges()) outs[e.from] << e.to;
+  QHash<QString, int> indeg;
+  for (const FlowStep& s : document_.steps()) indeg[s.id] = 0;
+  for (const FlowEdge& e : document_.edges()) {
+    if (e.from.isEmpty() || e.to.isEmpty()) continue;
+    outs[e.from] << e.to;
+    if (indeg.contains(e.to)) indeg[e.to] += 1;
+  }
   QQueue<QString> q;
   q.enqueue(QStringLiteral("source"));
+  for (const FlowStep& s : document_.steps()) {
+    if (indeg.value(s.id, 0) == 0) q.enqueue(s.id);
+  }
   while (!q.isEmpty()) {
     const QString id = q.dequeue();
     if (visited.contains(id)) continue;
     visited.insert(id);
     if (id != QLatin1String("source")) ordered << id;
-    for (const QString& n : outs.value(id)) q.enqueue(n);
+    for (const QString& n : outs.value(id)) {
+      if (!indeg.contains(n)) continue;
+      indeg[n] -= 1;
+      if (indeg[n] <= 0) q.enqueue(n);
+    }
   }
   for (const FlowStep& s : document_.steps()) {
     if (!visited.contains(s.id)) ordered << s.id;
@@ -1762,10 +1779,94 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
 
   const QStringList order = topologicalStepIds();
   QHash<QString, StepSnap> step_snaps;
+  struct NodeExec {
+    bool executed = false;
+    bool skipped = false;
+    bool ok = true;
+    bool passed = false;
+    bool evalFailed = false;
+    QString branchTaken;
+    QString mergeFrom;
+  };
+  QHash<QString, NodeExec> execInfo;
+  {
+    NodeExec src;
+    src.executed = true;
+    src.ok = true;
+    execInfo.insert(QStringLiteral("source"), src);
+  }
+  int skippedCount = 0;
+
+  auto edgeFires = [&](const FlowEdge& e) -> bool {
+    if (e.from == QLatin1String("source")) return true;
+    const NodeExec up = execInfo.value(e.from);
+    if (!up.executed || up.skipped) return false;
+    const QString when = e.when.isEmpty() ? QStringLiteral("always") : e.when;
+    if (when == QLatin1String("always")) return true;
+    if (up.evalFailed &&
+        (when == QLatin1String("true") || when == QLatin1String("false")))
+      return false;
+    if (when == QLatin1String("success")) return up.ok;
+    if (when == QLatin1String("error")) return !up.ok;
+    if (when == QLatin1String("true")) return up.passed;
+    if (when == QLatin1String("false")) return !up.passed;
+    return up.branchTaken == when;
+  };
+
   for (const QString& id : order) {
     FlowStep* step = document_.findStep(id);
     if (!step) continue;
     const QString op = step->operation;
+
+    QVector<FlowEdge> incoming;
+    for (const FlowEdge& e : document_.edges()) {
+      if (e.to == id) incoming.push_back(e);
+    }
+    bool activate = true;
+    QString mergeFromId;
+    if (!incoming.isEmpty()) {
+      if (op == QLatin1String("branch_merge")) {
+        int live = 0;
+        for (const FlowEdge& e : incoming) {
+          if (edgeFires(e)) {
+            ++live;
+            mergeFromId = e.from;
+          }
+        }
+        if (live == 0) {
+          activate = false;
+        } else if (live > 1) {
+          if (updateFlowStates)
+            flow_scene_->setNodeRunState(id, QStringLiteral("NG"));
+          NodeExec ng;
+          ng.executed = true;
+          ng.ok = false;
+          execInfo.insert(id, ng);
+          flow_vars_.insert(QStringLiteral("mergeFrom"), QString());
+          logResult(QStringLiteral("%1 [branch_merge] 多路同时激活，汇合失败")
+                        .arg(step->name));
+          continue;
+        }
+      } else {
+        for (const FlowEdge& e : incoming) {
+          if (!edgeFires(e)) {
+            activate = false;
+            break;
+          }
+        }
+      }
+    }
+    if (!activate) {
+      ++skippedCount;
+      NodeExec sk;
+      sk.skipped = true;
+      execInfo.insert(id, sk);
+      if (updateFlowStates)
+        flow_scene_->setNodeRunState(id, QStringLiteral("已跳过"));
+      logResult(QStringLiteral("%1 [%2] 已跳过").arg(step->name, op));
+      continue;
+    }
+
     if (updateFlowStates)
       flow_scene_->setNodeRunState(id, QStringLiteral("运行中"));
 
@@ -2191,8 +2292,11 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
           step->params.value(QStringLiteral("targetVar"), QStringLiteral("formatted"))
               .toString();
       flow_vars_.insert(target, out);
-      flow_vars_.insert(QStringLiteral("formatted"), out);
-      flow_vars_.insert(QStringLiteral("commPayload"), out);
+      if (target == QLatin1String("formatted") || target.isEmpty())
+        flow_vars_.insert(QStringLiteral("formatted"), out);
+      if (target == QLatin1String("commPayload") || target == QLatin1String("formatted") ||
+          target.isEmpty())
+        flow_vars_.insert(QStringLiteral("commPayload"), out);
       note = usedEmpty ? QStringLiteral("emptyDefault→%1").arg(out.left(64))
                        : out.left(80);
     } else if (op == QLatin1String("send_data")) {
@@ -2231,17 +2335,101 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                         QStringLiteral("HHmmss")));
       ok = working.save(path);
       note = path;
+    } else if (op == QLatin1String("condition") || op == QLatin1String("branch")) {
+      QVariantMap params = step->params;
+      const QByteArray rightOv = qgetenv("SIEANS_QT_CONDITION_RIGHT");
+      if (op == QLatin1String("condition") && !rightOv.isEmpty()) {
+        params.insert(QStringLiteral("right"), QString::fromUtf8(rightOv));
+        QVariantList rules = params.value(QStringLiteral("rules")).toList();
+        if (rules.isEmpty()) {
+          QVariantMap r0;
+          r0.insert(QStringLiteral("left"), params.value(QStringLiteral("left")));
+          r0.insert(QStringLiteral("comparison"), params.value(QStringLiteral("comparison")));
+          r0.insert(QStringLiteral("right"), QString::fromUtf8(rightOv));
+          r0.insert(QStringLiteral("enabled"), true);
+          rules.push_back(r0);
+        } else {
+          QVariantMap r0 = rules.first().toMap();
+          r0.insert(QStringLiteral("right"), QString::fromUtf8(rightOv));
+          rules[0] = r0;
+        }
+        params.insert(QStringLiteral("rules"), rules);
+      }
+      const ConditionResult cr = (op == QLatin1String("branch"))
+                                     ? evaluateBranch(params, flow_vars_)
+                                     : evaluateCondition(params, flow_vars_);
+      if (!cr.ok) {
+        ok = false;
+        note = cr.error;
+        flow_vars_.insert(QStringLiteral("conditionOk"), 0);
+        flow_vars_.insert(QStringLiteral("conditionPassed"), 0);
+        flow_vars_.insert(QStringLiteral("branchTaken"), QString());
+        NodeExec ng;
+        ng.executed = true;
+        ng.ok = false;
+        ng.evalFailed = true;
+        execInfo.insert(id, ng);
+      } else {
+        ok = true;
+        note = cr.note;
+        flow_vars_.insert(QStringLiteral("conditionOk"), 1);
+        flow_vars_.insert(QStringLiteral("conditionPassed"), cr.passed ? 1 : 0);
+        flow_vars_.insert(QStringLiteral("branchTaken"), cr.branchTaken);
+        const bool writeGate =
+            !params.contains(QStringLiteral("writePassGate")) ||
+            params.value(QStringLiteral("writePassGate")).toBool();
+        if (writeGate && op == QLatin1String("condition"))
+          flow_vars_.insert(QStringLiteral("passGate"), cr.passed ? 1 : 0);
+        NodeExec nx;
+        nx.executed = true;
+        nx.ok = true;
+        nx.passed = cr.passed;
+        nx.branchTaken = cr.branchTaken;
+        execInfo.insert(id, nx);
+      }
+      if (result_table_) {
+        const int row = result_table_->rowCount();
+        result_table_->insertRow(row);
+        result_table_->setItem(row, 0, new QTableWidgetItem(QStringLiteral("condition.passed")));
+        result_table_->setItem(
+            row, 1,
+            new QTableWidgetItem(flow_vars_.value(QStringLiteral("conditionPassed")).toString()));
+        const int row2 = result_table_->rowCount();
+        result_table_->insertRow(row2);
+        result_table_->setItem(row2, 0, new QTableWidgetItem(QStringLiteral("condition.branchTaken")));
+        result_table_->setItem(
+            row2, 1, new QTableWidgetItem(flow_vars_.value(QStringLiteral("branchTaken")).toString()));
+      }
+    } else if (op == QLatin1String("branch_merge")) {
+      const FlowStep* src = document_.findStep(mergeFromId);
+      const QString fromName = src ? src->name : mergeFromId;
+      flow_vars_.insert(QStringLiteral("mergeFrom"), fromName);
+      note = QStringLiteral("汇合自 %1").arg(fromName);
+      ok = true;
+      NodeExec nx;
+      nx.executed = true;
+      nx.ok = true;
+      nx.mergeFrom = fromName;
+      execInfo.insert(id, nx);
     } else {
       note = QStringLiteral("透传 / 未实现执行体");
       ok = true;
     }
 
+    if (!execInfo.contains(id)) {
+      NodeExec nx;
+      nx.executed = true;
+      nx.ok = ok;
+      nx.passed = ok;
+      execInfo.insert(id, nx);
+    }
     if (updateFlowStates) {
       flow_scene_->setNodeRunState(
           id, ok ? QStringLiteral("OK") : QStringLiteral("NG"));
     }
     logResult(QStringLiteral("%1 [%2] %3").arg(step->name, op, note));
   }
+  flow_vars_.insert(QStringLiteral("skippedCount"), skippedCount);
 
   image_view_->setOverlays(overlays);
   if (output_view_) output_view_->setOverlays(overlays);
@@ -2383,6 +2571,18 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                   .arg(flow_vars_.value(QStringLiteral("caliperDist")).toString())
                   .arg(flow_vars_.value(QStringLiteral("caliperOk")).toString())
                   .arg(flow_vars_.value(QStringLiteral("measureMm")).toString());
+      line += QLatin1Char(' ');
+      line += QStringLiteral(
+                  "conditionPassed=%1 branchTaken=%2 branchRoute=%3 "
+                  "mergeFrom=%4 skippedCount=%5 conditionOk=%6")
+                  .arg(flow_vars_.value(QStringLiteral("conditionPassed")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("branchTaken")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("branchRoute")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mergeFrom")).toString()
+                           .left(40)
+                           .replace(QLatin1Char('\n'), QLatin1Char('|')))
+                  .arg(flow_vars_.value(QStringLiteral("skippedCount")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("conditionOk")).toString());
       line += QLatin1Char('\n');
       f.write(line.toUtf8());
     }
@@ -2927,6 +3127,22 @@ void MainWindow::onEdgeConnected(const QString&, const QString&, const QString&,
   // document already updated by FlowScene
 }
 
+void MainWindow::onEdgeWhenChanged(const QString& edgeId, const QString& when) {
+  for (FlowEdge& e : document_.edgesMut()) {
+    if (e.id != edgeId) continue;
+    e.when = when.isEmpty() ? QStringLiteral("always") : when;
+    const QString label = (e.when == QLatin1String("true"))
+                              ? QStringLiteral("成立")
+                              : (e.when == QLatin1String("false")
+                                     ? QStringLiteral("不成立")
+                                     : e.when);
+    logResult(QStringLiteral("连线条件: %1 → %2  when=%3")
+                  .arg(e.from, e.to, label));
+    showStatus(QStringLiteral("连线触发条件：%1").arg(label), 2500);
+    return;
+  }
+}
+
 void MainWindow::onLinkNotice(const QString& msg) {
   showStatus(msg, 2500);
   logResult(msg);
@@ -3055,6 +3271,44 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
   } else if (key == QLatin1String("save_image")) {
     s.params = {{QStringLiteral("dir"),
                  QStringLiteral("/home/allen/文档/sieansvision/artifacts")}};
+  } else if (key == QLatin1String("condition")) {
+    s.params = {
+        {QStringLiteral("logic"), QStringLiteral("and")},
+        {QStringLiteral("comparison"), QStringLiteral("eq")},
+        {QStringLiteral("left"), QStringLiteral("barcodeCount")},
+        {QStringLiteral("right"), 1},
+        {QStringLiteral("writePassGate"), true},
+        {QStringLiteral("rules"),
+         QVariantList{QVariantMap{{QStringLiteral("left"), QStringLiteral("barcodeCount")},
+                                  {QStringLiteral("comparison"), QStringLiteral("eq")},
+                                  {QStringLiteral("right"), 1},
+                                  {QStringLiteral("enabled"), true}}}}};
+  } else if (key == QLatin1String("branch")) {
+    s.params = {
+        {QStringLiteral("defaultPathId"), QStringLiteral("default")},
+        {QStringLiteral("paths"),
+         QVariantList{
+             QVariantMap{{QStringLiteral("id"), QStringLiteral("path1")},
+                         {QStringLiteral("name"), QStringLiteral("分支1")},
+                         {QStringLiteral("left"), QStringLiteral("barcodeCount")},
+                         {QStringLiteral("comparison"), QStringLiteral("eq")},
+                         {QStringLiteral("right"), 1},
+                         {QStringLiteral("enabled"), true}},
+             QVariantMap{{QStringLiteral("id"), QStringLiteral("path2")},
+                         {QStringLiteral("name"), QStringLiteral("分支2")},
+                         {QStringLiteral("left"), QStringLiteral("barcodeCount")},
+                         {QStringLiteral("comparison"), QStringLiteral("eq")},
+                         {QStringLiteral("right"), 0},
+                         {QStringLiteral("enabled"), true}},
+             QVariantMap{{QStringLiteral("id"), QStringLiteral("default")},
+                         {QStringLiteral("name"), QStringLiteral("默认")},
+                         {QStringLiteral("left"), QString()},
+                         {QStringLiteral("comparison"), QStringLiteral("is_true")},
+                         {QStringLiteral("right"), QString()},
+                         {QStringLiteral("enabled"), true}},
+         }}};
+  } else if (key == QLatin1String("branch_merge")) {
+    s.params = {};
   }
   if (autoWire) {
     QString from = QStringLiteral("source");
@@ -3065,6 +3319,19 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
     e.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     e.from = from;
     e.to = s.id;
+    e.when = QStringLiteral("always");
+    if (const FlowStep* fs = document_.findStep(from)) {
+      if (fs->operation == QLatin1String("condition")) {
+        bool hasTrue = false, hasFalse = false;
+        for (const FlowEdge& ex : document_.edges()) {
+          if (ex.from != from) continue;
+          if (ex.when == QLatin1String("true")) hasTrue = true;
+          if (ex.when == QLatin1String("false")) hasFalse = true;
+        }
+        if (!hasTrue) e.when = QStringLiteral("true");
+        else if (!hasFalse) e.when = QStringLiteral("false");
+      }
+    }
     document_.edgesMut().push_back(e);
   } else {
     document_.stepsMut().push_back(s);
@@ -3108,6 +3375,33 @@ void MainWindow::onParamEdited(const QString& nodeId, const QString& key,
   if (FlowStep* s = document_.findStep(nodeId)) {
     oldText = s->params.value(key).toString();
     s->params.insert(key, coerceParam(key, value, s->params.value(key)));
+    if (s->operation == QLatin1String("condition") &&
+        (key == QLatin1String("left") || key == QLatin1String("right") ||
+         key == QLatin1String("comparison") || key == QLatin1String("logic"))) {
+      QVariantList rules = s->params.value(QStringLiteral("rules")).toList();
+      if (rules.isEmpty()) {
+        QVariantMap r0;
+        r0.insert(QStringLiteral("left"), s->params.value(QStringLiteral("left")));
+        r0.insert(QStringLiteral("comparison"), s->params.value(QStringLiteral("comparison")));
+        r0.insert(QStringLiteral("right"), s->params.value(QStringLiteral("right")));
+        r0.insert(QStringLiteral("enabled"), true);
+        rules.push_back(r0);
+      } else {
+        QVariantMap r0 = rules.first().toMap();
+        if (key != QLatin1String("logic")) r0.insert(key, s->params.value(key));
+        rules[0] = r0;
+      }
+      s->params.insert(QStringLiteral("rules"), rules);
+    }
+    if (s->operation == QLatin1String("condition") && key == QLatin1String("rules")) {
+      const QVariantList rules = s->params.value(QStringLiteral("rules")).toList();
+      if (!rules.isEmpty()) {
+        const QVariantMap r0 = rules.first().toMap();
+        s->params.insert(QStringLiteral("left"), r0.value(QStringLiteral("left")));
+        s->params.insert(QStringLiteral("comparison"), r0.value(QStringLiteral("comparison")));
+        s->params.insert(QStringLiteral("right"), r0.value(QStringLiteral("right")));
+      }
+    }
     auditParam(nodeId, key, oldText, value);
     if (isExposureKey(key)) {
       auto cam = document_.sourceConfig().value(QStringLiteral("cameraParams")).toMap();

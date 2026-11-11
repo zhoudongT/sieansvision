@@ -215,6 +215,72 @@
         "targetVar": "lastRecv",
         "timeoutMs": 200
       }
+    },
+    {
+      "id": "cond1",
+      "name": "条件判断",
+      "operation": "condition",
+      "imageFrom": "g7b8193a4b5c6d7e",
+      "position": {
+        "x": 520,
+        "y": 500
+      },
+      "params": {
+        "logic": "and",
+        "comparison": "gte",
+        "left": "barcodeCount",
+        "right": 1,
+        "writePassGate": false,
+        "rules": [
+          {
+            "left": "barcodeCount",
+            "comparison": "gte",
+            "right": 1,
+            "enabled": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "taken1",
+      "name": "成立分支",
+      "operation": "format_data",
+      "imageFrom": "cond1",
+      "position": {
+        "x": 460,
+        "y": 640
+      },
+      "params": {
+        "template": "ROUTE=OK",
+        "args": "",
+        "targetVar": "branchRoute"
+      }
+    },
+    {
+      "id": "skipped1",
+      "name": "不成立分支",
+      "operation": "format_data",
+      "imageFrom": "cond1",
+      "position": {
+        "x": 680,
+        "y": 640
+      },
+      "params": {
+        "template": "ROUTE=NG",
+        "args": "",
+        "targetVar": "branchRoute"
+      }
+    },
+    {
+      "id": "merge1",
+      "name": "分支汇合",
+      "operation": "branch_merge",
+      "imageFrom": "taken1",
+      "position": {
+        "x": 560,
+        "y": 760
+      },
+      "params": {}
     }
   ],
   "edges": [
@@ -266,6 +332,46 @@
       "to": "f6a708293a4b5c6d",
       "fromPort": "bottom",
       "toPort": "top"
+    },
+    {
+      "id": "e-cond-in",
+      "from": "g7b8193a4b5c6d7e",
+      "to": "cond1",
+      "fromPort": "bottom",
+      "toPort": "top",
+      "when": "always"
+    },
+    {
+      "id": "e-cond-true",
+      "from": "cond1",
+      "to": "taken1",
+      "fromPort": "bottom",
+      "toPort": "top",
+      "when": "true"
+    },
+    {
+      "id": "e-cond-false",
+      "from": "cond1",
+      "to": "skipped1",
+      "fromPort": "right",
+      "toPort": "top",
+      "when": "false"
+    },
+    {
+      "id": "e-merge-ok",
+      "from": "taken1",
+      "to": "merge1",
+      "fromPort": "bottom",
+      "toPort": "top",
+      "when": "always"
+    },
+    {
+      "id": "e-merge-ng",
+      "from": "skipped1",
+      "to": "merge1",
+      "fromPort": "bottom",
+      "toPort": "top",
+      "when": "always"
     }
   ],
   "variables": {
@@ -276,7 +382,13 @@
     "passGate": 0,
     "formatted": "",
     "commPayload": "",
-    "lastRecv": ""
+    "lastRecv": "",
+    "conditionPassed": 0,
+    "conditionOk": 0,
+    "branchTaken": "",
+    "branchRoute": "",
+    "mergeFrom": "",
+    "skippedCount": 0
   },
   "hostWatch": {
     "watchKeys": [
@@ -287,7 +399,12 @@
       "passGate",
       "formatted",
       "urlOk",
-      "lastRecv"
+      "lastRecv",
+      "conditionPassed",
+      "branchTaken",
+      "branchRoute",
+      "mergeFrom",
+      "skippedCount"
     ],
     "active": "二维码链",
     "pinGroups": {

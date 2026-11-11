@@ -77,6 +77,9 @@ const char* glyphKindFor(const QString& key, const QString& category) {
   if (key == QLatin1String("result_gate")) return "gate";
   if (key == QLatin1String("format_data")) return "format";
   if (key == QLatin1String("var_calc")) return "var";
+  if (key == QLatin1String("condition")) return "condition";
+  if (key == QLatin1String("branch")) return "branch";
+  if (key == QLatin1String("branch_merge")) return "merge";
   if (category.contains(QStringLiteral("3D"))) return "cloud";
   if (category.contains(QStringLiteral("流程"))) return "logic";
   return "ext";
@@ -175,6 +178,27 @@ QIcon opGlyph(const char* kind, const QColor& accent) {
     f.setPointSize(10);
     p.setFont(f);
     p.drawText(QRectF(6, 0, w - 6, h), Qt::AlignCenter, QStringLiteral("x"));
+  } else if (std::strcmp(kind, "condition") == 0) {
+    QPolygonF poly;
+    poly << QPointF(cx, 3) << QPointF(26, cy) << QPointF(cx, h - 3) << QPointF(9, cy);
+    p.drawPolygon(poly);
+    QFont f = p.font();
+    f.setBold(true);
+    f.setPointSize(8);
+    p.setFont(f);
+    p.drawText(QRectF(6, 0, w - 4, h), Qt::AlignCenter, QStringLiteral("?"));
+  } else if (std::strcmp(kind, "branch") == 0) {
+    p.drawLine(QPointF(10, cy), QPointF(16, cy));
+    p.drawLine(QPointF(16, cy), QPointF(24, 7));
+    p.drawLine(QPointF(16, cy), QPointF(24, 17));
+    p.drawLine(QPointF(10, 6), QPointF(10, 18));
+  } else if (std::strcmp(kind, "merge") == 0) {
+    QPolygonF bow;
+    bow << QPointF(10, 5) << QPointF(cx, cy) << QPointF(24, 5);
+    p.drawPolyline(bow);
+    QPolygonF bow2;
+    bow2 << QPointF(10, 19) << QPointF(cx, cy) << QPointF(24, 19);
+    p.drawPolyline(bow2);
   } else {
     p.drawEllipse(QRectF(cx - 6, cy - 6, 12, 12));
     p.drawPoint(QPointF(cx, cy));
@@ -213,6 +237,15 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
        QStringLiteral("工业通信"), QStringLiteral("TCP / LocalBus TX")},
       {QStringLiteral("receive_data"), QStringLiteral("接收数据"),
        QStringLiteral("工业通信"), QStringLiteral("TCP / LocalBus RX → 变量")},
+      {QStringLiteral("condition"), QStringLiteral("条件判断"),
+       QStringLiteral("流程控制"),
+       QStringLiteral("数值 / 文本 / 开关分支 · 真/假出边 when=true/false")},
+      {QStringLiteral("branch"), QStringLiteral("分支模块"),
+       QStringLiteral("流程控制"),
+       QStringLiteral("多路径表 · 出边 when=路径名，未命中走默认")},
+      {QStringLiteral("branch_merge"), QStringLiteral("分支汇合"),
+       QStringLiteral("流程控制"),
+       QStringLiteral("等待互斥分支，接收唯一激活路的结果")},
   };
 }
 

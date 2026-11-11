@@ -19,6 +19,9 @@
 #include <QToolTip>
 #include <QCursor>
 #include <QUuid>
+#include <QMenu>
+#include <QGraphicsSimpleTextItem>
+#include <QGraphicsSceneContextMenuEvent>
 #include <algorithm>
 #include <QtMath>
 #include <cmath>
@@ -132,6 +135,8 @@ void FlowNodeItem::setRunState(const QString& state, const QColor& badge) {
     badgeColor_ = QColor(QStringLiteral("#e53935"));
   else if (state.contains(QStringLiteral("运行")))
     badgeColor_ = QColor(theme::WARN);
+  else if (state.contains(QStringLiteral("跳过")))
+    badgeColor_ = QColor(theme::TEXT_DIM);
   else
     badgeColor_ = QColor(theme::ACCENT);
   setToolTip(QStringLiteral("%1\n状态：%2").arg(label_, runState_));
@@ -238,14 +243,55 @@ QVariant FlowNodeItem::itemChange(GraphicsItemChange change,
 
 // ── Edge ─────────────────────────────────────────────────────────────
 
+static QString whenLabelText(const QString& when) {
+  if (when.isEmpty() || when == QLatin1String("always")) return {};
+  if (when == QLatin1String("true")) return QStringLiteral("成立");
+  if (when == QLatin1String("false")) return QStringLiteral("不成立");
+  if (when == QLatin1String("success")) return QStringLiteral("成功时");
+  if (when == QLatin1String("error")) return QStringLiteral("失败时");
+  return when;
+}
+
+static QColor whenPenColor(const QString& when) {
+  if (when == QLatin1String("true")) return QColor(theme::OK);
+  if (when == QLatin1String("false")) return QColor(theme::NG);
+  if (when == QLatin1String("error")) return QColor(theme::NG);
+  if (when == QLatin1String("success")) return QColor(theme::OK);
+  return QColor(theme::ACCENT);
+}
+
 FlowEdgeItem::FlowEdgeItem(const QString& id, FlowNodeItem* from, FlowNodeItem* to,
-                           const QString& fromPort, const QString& toPort)
-    : id_(id), from_(from), to_(to), fromPort_(fromPort), toPort_(toPort) {
+                           const QString& fromPort, const QString& toPort,
+                           const QString& when)
+    : id_(id), from_(from), to_(to), fromPort_(fromPort), toPort_(toPort),
+      when_(when.isEmpty() ? QStringLiteral("always") : when) {
   setZValue(1);
   setFlag(ItemIsSelectable);
-  setPen(QPen(QColor(theme::ACCENT), 1.6));
-  setToolTip(QStringLiteral("连线 · Delete 删除"));
+  label_ = new QGraphicsSimpleTextItem(this);
+  QFont f = label_->font();
+  f.setPointSize(8);
+  f.setBold(true);
+  label_->setFont(f);
+  updateWhenChrome();
   refresh();
+}
+
+void FlowEdgeItem::setWhen(const QString& when) {
+  when_ = when.isEmpty() ? QStringLiteral("always") : when;
+  updateWhenChrome();
+  refresh();
+}
+
+void FlowEdgeItem::updateWhenChrome() {
+  setPen(QPen(whenPenColor(when_), 1.6));
+  const QString text = whenLabelText(when_);
+  if (label_) {
+    label_->setText(text);
+    label_->setBrush(whenPenColor(when_));
+    label_->setVisible(!text.isEmpty());
+  }
+  const QString tipWhen = text.isEmpty() ? QStringLiteral("始终") : text;
+  setToolTip(QStringLiteral("连线 · %1 · 右键设置触发条件 · Delete 删除").arg(tipWhen));
 }
 
 void FlowEdgeItem::refresh() {
@@ -267,11 +313,64 @@ void FlowEdgeItem::refresh() {
     path.cubicTo(a + QPointF(cx, 0), b - QPointF(cx, 0), b);
   }
   setPath(path);
+  if (label_ && label_->isVisible()) {
+    const QPointF mid = path.pointAtPercent(0.5);
+    label_->setPos(mid + QPointF(6, -8));
+  }
 }
 
 void FlowEdgeItem::mousePressEvent(QGraphicsSceneMouseEvent* event) {
   setSelected(true);
   QGraphicsPathItem::mousePressEvent(event);
+}
+
+void FlowEdgeItem::contextMenuEvent(QGraphicsSceneContextMenuEvent* event) {
+  auto* sc = qobject_cast<FlowScene*>(scene());
+  QMenu menu;
+  auto addWhen = [&](const QString& value, const QString& title) {
+    QAction* act = menu.addAction(title);
+    act->setCheckable(true);
+    act->setChecked(when_ == value);
+    QObject::connect(act, &QAction::triggered, [this, sc, value]() {
+      setWhen(value);
+      if (sc) emit sc->edgeWhenChanged(id_, value);
+    });
+  };
+  addWhen(QStringLiteral("always"), QStringLiteral("始终（正常完成后）"));
+  addWhen(QStringLiteral("success"), QStringLiteral("成功时"));
+  addWhen(QStringLiteral("error"), QStringLiteral("失败时"));
+  bool isCondition = false;
+  bool isBranch = false;
+  QVariantList paths;
+  if (sc) {
+    // Peek document through friend access in this method? FlowEdgeItem is not a friend.
+    // Use dynamic property stored on the from node? We'll set node operation via tooltip...
+    // FlowScene is friend of itself; we'll query via a helper on FlowScene later.
+  }
+  if (from_ && from_->data(Qt::UserRole + 2).isValid()) {
+    const QString op = from_->data(Qt::UserRole + 2).toString();
+    isCondition = (op == QLatin1String("condition"));
+    isBranch = (op == QLatin1String("branch"));
+    paths = from_->data(Qt::UserRole + 3).toList();
+  }
+  if (isCondition) {
+    menu.addSeparator();
+    addWhen(QStringLiteral("true"), QStringLiteral("判断成立时"));
+    addWhen(QStringLiteral("false"), QStringLiteral("判断不成立时"));
+  }
+  if (isBranch) {
+    menu.addSeparator();
+    for (const QVariant& pv : paths) {
+      const QVariantMap path = pv.toMap();
+      const QString name = path.value(QStringLiteral("name")).toString();
+      const QString id = path.value(QStringLiteral("id")).toString();
+      const QString key = name.isEmpty() ? id : name;
+      if (key.isEmpty()) continue;
+      addWhen(key, QStringLiteral("路径：%1").arg(key));
+    }
+  }
+  menu.exec(event->screenPos());
+  event->accept();
 }
 
 // ── Scene ────────────────────────────────────────────────────────────
@@ -306,6 +405,8 @@ void FlowScene::loadDocument(SieansDocument* doc) {
     auto* n = new FlowNodeItem(s.id, s.name, false);
     n->setPos(s.position);
     n->setRunState(s.runState);
+    n->setData(Qt::UserRole + 2, s.operation);
+    n->setData(Qt::UserRole + 3, s.params.value(QStringLiteral("paths")));
     addItem(n);
     nodes_.insert(s.id, n);
   }
@@ -323,7 +424,7 @@ void FlowScene::rebuildEdgesFromDoc() {
     FlowNodeItem* a = nodes_.value(e.from);
     FlowNodeItem* b = nodes_.value(e.to);
     if (!a || !b) continue;
-    auto* edge = new FlowEdgeItem(e.id, a, b, e.fromPort, e.toPort);
+    auto* edge = new FlowEdgeItem(e.id, a, b, e.fromPort, e.toPort, e.when);
     addItem(edge);
     edges_.push_back(edge);
   }
@@ -477,22 +578,52 @@ void FlowScene::finishLink(FlowPortItem* target) {
     inPort = fromSide;
   }
   if (!doc_) return;
-  // Remove existing edge into same input (single subscription)
   auto& edges = doc_->edgesMut();
-  edges.erase(std::remove_if(edges.begin(), edges.end(),
-                             [&](const FlowEdge& e) { return e.to == inId; }),
-              edges.end());
+  const FlowStep* inStep = doc_->findStep(inId);
+  const bool mergeTarget =
+      inStep && inStep->operation == QLatin1String("branch_merge");
+  // Ordinary nodes keep a single image subscription; 分支汇合 accepts many inputs.
+  if (!mergeTarget) {
+    edges.erase(std::remove_if(edges.begin(), edges.end(),
+                               [&](const FlowEdge& e) { return e.to == inId; }),
+                edges.end());
+  } else {
+    edges.erase(std::remove_if(edges.begin(), edges.end(),
+                               [&](const FlowEdge& e) {
+                                 return e.from == outId && e.to == inId;
+                               }),
+                edges.end());
+  }
   FlowEdge ne;
   ne.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
   ne.from = outId;
   ne.to = inId;
   ne.fromPort = outPort;
   ne.toPort = inPort;
+  ne.when = QStringLiteral("always");
+  const FlowStep* outStep = doc_->findStep(outId);
+  if (outStep && outStep->operation == QLatin1String("condition")) {
+    bool hasTrue = false, hasFalse = false;
+    for (const FlowEdge& e : edges) {
+      if (e.from != outId) continue;
+      if (e.when == QLatin1String("true")) hasTrue = true;
+      if (e.when == QLatin1String("false")) hasFalse = true;
+    }
+    if (!hasTrue) ne.when = QStringLiteral("true");
+    else if (!hasFalse) ne.when = QStringLiteral("false");
+  }
   edges.push_back(ne);
   if (FlowStep* s = doc_->findStep(inId)) s->imageFrom = outId;
   rebuildEdgesFromDoc();
   emit edgeConnected(outId, inId, outPort, inPort);
-  emit linkNotice(QStringLiteral("已建立连线"));
+  const QString whenTxt = (ne.when == QLatin1String("true"))
+                              ? QStringLiteral("成立")
+                              : (ne.when == QLatin1String("false")
+                                     ? QStringLiteral("不成立")
+                                     : QString());
+  emit linkNotice(whenTxt.isEmpty()
+                      ? QStringLiteral("已建立连线")
+                      : QStringLiteral("已建立连线 · %1").arg(whenTxt));
 }
 
 void FlowScene::cancelLink() {
