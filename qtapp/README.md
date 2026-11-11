@@ -17,6 +17,8 @@
 
 ## 构建 / 运行
 
+新机器从检出构建、用户级依赖（无 sudo）与自检见 [docs/qt-workbench-setup.md](../docs/qt-workbench-setup.md)。先跑 `./scripts/doctor-sieans-qt.sh` 查看本机缺什么。
+
 ```bash
 ./qtapp/scripts/build.sh
 ./scripts/run-sieans-qt.sh          # 前台

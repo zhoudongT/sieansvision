@@ -1,6 +1,6 @@
 # SIEANS Vision
 
-原生桌面迁移入口：[Qt 原生桌面开发版与迁移清单](docs/native-desktop.md)。已接入流程、81 个算子入口、149 个演示工程、相机管理、训练标注、三级变量、运行画面组态、连续检测、工程库、插件及账号/记录管理。操作员发布与受限运行仍待迁移；完整边界见清单。Windows EXE 构建入口为 `scripts/build-native.ps1`，当前为依赖本机算法环境的开发版。
+原生桌面迁移入口：[Qt 原生桌面开发版与迁移清单](docs/native-desktop.md)。 Qt 6 C++ 工作台（`sieans_qt`）的无 sudo 依赖、构建与启动路径见 [docs/qt-workbench-setup.md](docs/qt-workbench-setup.md)，自检：`./scripts/doctor-sieans-qt.sh`。已接入流程、81 个算子入口、149 个演示工程、相机管理、训练标注、三级变量、运行画面组态、连续检测、工程库、插件及账号/记录管理。操作员发布与受限运行仍待迁移；完整边界见清单。Windows EXE 构建入口为 `scripts/build-native.ps1`，当前为依赖本机算法环境的开发版。
 
 算法、依赖、YOLO 模型、相机 SDK 的官方下载地址及 Windows/Linux 配置集中见 [算法与依赖下载配置 README](docs/algorithms/README.md)。
 

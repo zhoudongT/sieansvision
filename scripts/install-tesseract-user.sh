@@ -90,9 +90,13 @@ WRAP
 fi
 chmod +x "$BIN_LINK"
 
-mkdir -p "$HOME/.local/share"
-if [[ ! -e "$HOME/.local/share/tessdata" ]]; then
-  ln -s "$TESSDATA" "$HOME/.local/share/tessdata"
+# Only link the default user tessdata path when installing to the default prefix.
+# Override prefixes (doctor --prove-install temp dirs) must not steal this symlink.
+if [[ "$PREFIX" == "$HOME/.local/opt/tesseract" ]]; then
+  mkdir -p "$HOME/.local/share"
+  if [[ ! -e "$HOME/.local/share/tessdata" ]]; then
+    ln -s "$TESSDATA" "$HOME/.local/share/tessdata"
+  fi
 fi
 
 export LD_LIBRARY_PATH="$PREFIX/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
