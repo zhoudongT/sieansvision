@@ -156,6 +156,7 @@ bool SieansDocument::loadFromFile(const QString& path, QString* error) {
       if (cur->runIntervalMs > 0) runIntervalMs_ = cur->runIntervalMs;
     }
   }
+  resetCanvasUndo();
   return true;
 }
 
@@ -1497,6 +1498,7 @@ void SieansDocument::seedGentlQrDemo() {
   flows_.clear();
   activeFlowId_.clear();
   ensureScheme();
+  resetCanvasUndo();
 }
 
 
@@ -2086,6 +2088,7 @@ bool SieansDocument::activateFlow(const QString& flowId) {
   if (!target) return false;
   activeFlowId_ = flowId;
   applyFlowToTop(*target);
+  resetCanvasUndo();
   return true;
 }
 
@@ -3099,5 +3102,238 @@ QStringList SieansDocument::triggerSelfTest() {
   }
   return fails;
 }
+
+SieansDocument::CanvasSnap SieansDocument::captureCanvasSnap(const QString& label) const {
+  CanvasSnap s;
+  s.label = label;
+  s.steps = steps_;
+  for (FlowStep& st : s.steps) st.runState.clear();
+  s.edges = edges_;
+  s.sourcePosition = sourcePosition_;
+  s.sourceConfig = sourceConfig_;
+  s.outputNode = outputNode_;
+  return s;
+}
+
+void SieansDocument::restoreCanvasSnap(const CanvasSnap& snap) {
+  steps_ = snap.steps;
+  for (FlowStep& st : steps_) {
+    if (st.runState.isEmpty()) st.runState = QStringLiteral("等待执行");
+  }
+  edges_ = snap.edges;
+  sourcePosition_ = snap.sourcePosition;
+  sourceConfig_ = snap.sourceConfig;
+  outputNode_ = snap.outputNode;
+  syncActiveIntoFlows();
+}
+
+bool SieansDocument::canvasSnapEquals(const CanvasSnap& a, const CanvasSnap& b) {
+  if (a.steps.size() != b.steps.size() || a.edges.size() != b.edges.size())
+    return false;
+  if (a.sourcePosition != b.sourcePosition || a.outputNode != b.outputNode)
+    return false;
+  if (a.sourceConfig != b.sourceConfig) return false;
+  for (int i = 0; i < a.steps.size(); ++i) {
+    const FlowStep& l = a.steps[i];
+    const FlowStep& r = b.steps[i];
+    if (l.id != r.id || l.name != r.name || l.operation != r.operation ||
+        l.imageFrom != r.imageFrom || l.position != r.position || l.params != r.params)
+      return false;
+  }
+  for (int i = 0; i < a.edges.size(); ++i) {
+    const FlowEdge& l = a.edges[i];
+    const FlowEdge& r = b.edges[i];
+    if (l.id != r.id || l.from != r.from || l.to != r.to || l.fromPort != r.fromPort ||
+        l.toPort != r.toPort || l.when != r.when)
+      return false;
+  }
+  return true;
+}
+
+void SieansDocument::resetCanvasUndo() {
+  canvas_history_.clear();
+  canvas_history_.push_back(captureCanvasSnap(QStringLiteral("打开")));
+  canvas_index_ = 0;
+  canvas_clean_index_ = 0;
+}
+
+void SieansDocument::markCanvasUndoClean() {
+  canvas_clean_index_ = canvas_index_;
+}
+
+bool SieansDocument::canvasUndoAtClean() const {
+  return canvas_clean_index_ >= 0 && canvas_index_ == canvas_clean_index_;
+}
+
+void SieansDocument::commitCanvasUndo(const QString& label) {
+  if (canvas_history_.isEmpty()) resetCanvasUndo();
+  const CanvasSnap now = captureCanvasSnap(label);
+  if (canvasSnapEquals(now, canvas_history_.at(canvas_index_))) return;
+  if (canvas_index_ + 1 < canvas_history_.size())
+    canvas_history_ = canvas_history_.mid(0, canvas_index_ + 1);
+  canvas_history_.push_back(now);
+  while (canvas_history_.size() > 31) {
+    canvas_history_.removeFirst();
+    if (canvas_index_ > 0) --canvas_index_;
+    if (canvas_clean_index_ > 0)
+      --canvas_clean_index_;
+    else
+      canvas_clean_index_ = -1;
+  }
+  canvas_index_ = canvas_history_.size() - 1;
+}
+
+bool SieansDocument::undoCanvas() {
+  if (canvas_history_.isEmpty()) resetCanvasUndo();
+  if (canvas_index_ <= 0) return false;
+  --canvas_index_;
+  restoreCanvasSnap(canvas_history_.at(canvas_index_));
+  return true;
+}
+
+bool SieansDocument::redoCanvas() {
+  if (canvas_history_.isEmpty()) return false;
+  if (canvas_index_ + 1 >= canvas_history_.size()) return false;
+  ++canvas_index_;
+  restoreCanvasSnap(canvas_history_.at(canvas_index_));
+  return true;
+}
+
+int SieansDocument::canvasUndoDepth() const {
+  return canvas_index_;
+}
+
+int SieansDocument::canvasRedoDepth() const {
+  if (canvas_history_.isEmpty()) return 0;
+  return canvas_history_.size() - 1 - canvas_index_;
+}
+
+QString SieansDocument::canvasUndoLabel() const {
+  if (canvas_index_ <= 0 || canvas_index_ >= canvas_history_.size()) return {};
+  return canvas_history_.at(canvas_index_).label;
+}
+
+QString SieansDocument::canvasRedoLabel() const {
+  if (canvas_index_ + 1 >= canvas_history_.size()) return {};
+  return canvas_history_.at(canvas_index_ + 1).label;
+}
+
+QStringList SieansDocument::canvasUndoSelfTest() {
+  QStringList fails;
+  auto check = [&](const char* name, bool ok, const QString& detail = QString()) {
+    if (!ok)
+      fails << (detail.isEmpty() ? QString::fromUtf8(name)
+                                 : QStringLiteral("%1: %2").arg(QString::fromUtf8(name), detail));
+  };
+  SieansDocument doc;
+  doc.seedGentlQrDemo();
+  const int n0 = doc.steps().size();
+  const int e0 = doc.edges().size();
+  check("seed-baseline", doc.canvasUndoDepth() == 0 && doc.canvasRedoDepth() == 0,
+        QStringLiteral("undo=%1 redo=%2").arg(doc.canvasUndoDepth()).arg(doc.canvasRedoDepth()));
+  check("seed-clean", doc.canvasUndoAtClean());
+  check("undo-empty", !doc.undoCanvas());
+  check("redo-empty", !doc.redoCanvas());
+
+  FlowStep s;
+  s.id = QStringLiteral("undo-tmp");
+  s.name = QStringLiteral("撤销测");
+  s.operation = QStringLiteral("cloud_measure");
+  s.position = QPointF(12, 24);
+  doc.stepsMut().push_back(s);
+  doc.commitCanvasUndo(QStringLiteral("添加模块"));
+  check("add-commit", doc.canvasUndoDepth() == 1 && doc.steps().size() == n0 + 1,
+        QStringLiteral("depth=%1 steps=%2").arg(doc.canvasUndoDepth()).arg(doc.steps().size()));
+  check("add-dirty", !doc.canvasUndoAtClean());
+
+  // identical commit is a no-op
+  doc.commitCanvasUndo(QStringLiteral("重复"));
+  check("noop-commit", doc.canvasUndoDepth() == 1);
+
+  FlowEdge e;
+  e.id = QStringLiteral("undo-edge");
+  e.from = QStringLiteral("source");
+  e.to = QStringLiteral("undo-tmp");
+  doc.edgesMut().push_back(e);
+  doc.commitCanvasUndo(QStringLiteral("连线"));
+  check("wire-commit", doc.edges().size() == e0 + 1);
+
+  if (FlowStep* st = doc.findStep(QStringLiteral("undo-tmp"))) {
+    st->position = QPointF(90, 110);
+    st->params.insert(QStringLiteral("roiX"), 7);
+    doc.commitCanvasUndo(QStringLiteral("移动参数"));
+  }
+  check("param-commit", doc.findStep(QStringLiteral("undo-tmp")) &&
+                            doc.findStep(QStringLiteral("undo-tmp"))->params.value(QStringLiteral("roiX")).toInt() == 7);
+
+  check("undo-param", doc.undoCanvas());
+  const FlowStep* afterParam = doc.findStep(QStringLiteral("undo-tmp"));
+  check("param-restored", afterParam && afterParam->position == QPointF(12, 24) &&
+                              afterParam->params.value(QStringLiteral("roiX")).toInt() != 7);
+  check("redo-param", doc.redoCanvas());
+  check("param-redone", doc.findStep(QStringLiteral("undo-tmp")) &&
+                            doc.findStep(QStringLiteral("undo-tmp"))->params.value(QStringLiteral("roiX")).toInt() == 7);
+
+  check("undo-param2", doc.undoCanvas());
+  check("undo-wire", doc.undoCanvas());
+  check("wire-gone", doc.edges().size() == e0, QString::number(doc.edges().size()));
+  check("undo-add", doc.undoCanvas());
+  check("add-gone", doc.steps().size() == n0 && !doc.findStep(QStringLiteral("undo-tmp")),
+        QString::number(doc.steps().size()));
+  check("undone-clean", doc.canvasUndoAtClean());
+  check("redo-after-full-undo", doc.canvasRedoDepth() == 3, QString::number(doc.canvasRedoDepth()));
+
+  // new edit must drop the redo tail
+  FlowStep s2;
+  s2.id = QStringLiteral("undo-tmp2");
+  s2.name = QStringLiteral("新编辑");
+  s2.operation = QStringLiteral("cloud_filter");
+  s2.position = QPointF(1, 2);
+  doc.stepsMut().push_back(s2);
+  doc.commitCanvasUndo(QStringLiteral("新编辑"));
+  check("redo-cleared", doc.canvasRedoDepth() == 0 && doc.findStep(QStringLiteral("undo-tmp2")));
+  check("old-add-dropped", !doc.findStep(QStringLiteral("undo-tmp")));
+  check("undo-new", doc.undoCanvas());
+  check("back-to-seed", doc.steps().size() == n0 && doc.canvasUndoAtClean());
+
+  // cap 31 (baseline + 30 edits)
+  SieansDocument cap;
+  cap.seedGentlQrDemo();
+  FlowStep hold;
+  hold.id = QStringLiteral("cap-node");
+  hold.name = QStringLiteral("cap");
+  hold.operation = QStringLiteral("cloud_measure");
+  cap.stepsMut().push_back(hold);
+  cap.commitCanvasUndo(QStringLiteral("cap0"));
+  if (FlowStep* h = cap.findStep(QStringLiteral("cap-node"))) {
+    for (int i = 1; i <= 40; ++i) {
+      h->params.insert(QStringLiteral("n"), i);
+      cap.commitCanvasUndo(QStringLiteral("cap%1").arg(i));
+    }
+  }
+  check("cap-size", cap.canvasUndoDepth() <= 30,
+        QString::number(cap.canvasUndoDepth()));
+  check("cap-can-undo", cap.undoCanvas());
+  const FlowStep* last = cap.findStep(QStringLiteral("cap-node"));
+  check("cap-value", last && last->params.value(QStringLiteral("n")).toInt() == 39,
+        last ? QString::number(last->params.value(QStringLiteral("n")).toInt()) : QStringLiteral("missing"));
+
+  // scratch isolation: mutating a second document does not affect a seed copy
+  SieansDocument live;
+  live.seedGentlQrDemo();
+  const int liveN = live.steps().size();
+  SieansDocument scratch = live;
+  FlowStep sc;
+  sc.id = QStringLiteral("scratch-only");
+  sc.operation = QStringLiteral("cloud_measure");
+  scratch.stepsMut().push_back(sc);
+  scratch.commitCanvasUndo(QStringLiteral("scratch"));
+  check("scratch-dirty", !scratch.canvasUndoAtClean());
+  check("live-untouched", live.steps().size() == liveN && live.canvasUndoDepth() == 0 &&
+                              live.canvasUndoAtClean() && !live.findStep(QStringLiteral("scratch-only")));
+  check("scratch-undo-restores", scratch.undoCanvas() && scratch.steps().size() == liveN);
+  return fails;
+}
+
 
 }  // namespace sieans_qt

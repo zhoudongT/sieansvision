@@ -139,6 +139,8 @@ class FlowScene : public QGraphicsScene {
  signals:
   void nodeSelected(const QString& nodeId);
   void nodeMoved(const QString& nodeId, const QPointF& pos);
+  /** Emitted on mouse release when a node actually changed position. */
+  void nodeMoveFinished(const QString& nodeId, const QPointF& pos);
   void canvasBackgroundClicked();
   void edgeConnected(const QString& fromId, const QString& toId,
                      const QString& fromPort, const QString& toPort);
@@ -171,6 +173,10 @@ class FlowScene : public QGraphicsScene {
   QString linkSide_;
   bool linkOutput_ = true;
   QGraphicsPathItem* linkPreview_ = nullptr;
+
+  bool move_tracking_ = false;
+  QString move_id_;
+  QPointF move_origin_;
 };
 
 class FlowMinimap;

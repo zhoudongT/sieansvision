@@ -715,6 +715,12 @@ void FlowScene::mousePressEvent(QGraphicsSceneMouseEvent* event) {
   if (!itemAt(event->scenePos(), QTransform()) && !linking_) {
     clearSelection();
     emit canvasBackgroundClicked();
+  } else if (event->button() == Qt::LeftButton && !linking_ && !editingLocked_) {
+    if (FlowNodeItem* n = selectedNode()) {
+      move_tracking_ = true;
+      move_id_ = n->nodeId();
+      move_origin_ = n->pos();
+    }
   }
 }
 
@@ -737,6 +743,13 @@ void FlowScene::mouseReleaseEvent(QGraphicsSceneMouseEvent* event) {
     return;
   }
   QGraphicsScene::mouseReleaseEvent(event);
+  if (move_tracking_) {
+    if (FlowNodeItem* n = nodes_.value(move_id_)) {
+      if (n->pos() != move_origin_) emit nodeMoveFinished(move_id_, n->pos());
+    }
+    move_tracking_ = false;
+    move_id_.clear();
+  }
 }
 
 void FlowScene::handleKey(QKeyEvent* event) {

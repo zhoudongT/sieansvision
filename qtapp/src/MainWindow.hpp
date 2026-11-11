@@ -69,6 +69,10 @@ class MainWindow : public QMainWindow {
   void applyCanvasRoi(const QRect& r);
   /** Show the selected step ROI on the image canvas without dirtying. */
   void syncCanvasRoiFromSelection();
+  /** Undo the last canvas graph/param/ROI edit (Ctrl+Z). */
+  void undoCanvasEdit();
+  /** Redo a canvas edit (Ctrl+Shift+Z / Ctrl+Y). */
+  void redoCanvasEdit();
   void onOpenCommManager();
   void onOpenFlowIo();
   void onOpenSubflowManager();
@@ -125,6 +129,12 @@ class MainWindow : public QMainWindow {
   void markProjectDirty();
   /** 保存或重新加载成功后清除脏标记。 */
   void markProjectClean();
+  /** Push a canvas undo snapshot after a user graph/param/ROI mutation. */
+  void commitCanvasUndo(const QString& label);
+  /** Refresh 撤销/重做 action enabled state and labels. */
+  void updateCanvasUndoActions();
+  /** Reload only the flow canvas from the document (used by undo/redo). */
+  void reloadCanvasFromDocument();
   /** 按方案名、设计/运行态和脏标记刷新窗口标题与方案标签。 */
   void refreshProjectTitle();
   /** 有未保存修改时询问保存/放弃/取消；无界面冒烟直接视为放弃。取消则返回 false。 */
@@ -222,6 +232,9 @@ class MainWindow : public QMainWindow {
   bool preview_active_ = false;
   bool project_dirty_ = false;
   bool applying_document_ = false;
+  bool restoring_canvas_undo_ = false;
+  QAction* act_undo_ = nullptr;
+  QAction* act_redo_ = nullptr;
   qint64 preview_frames_ = 0;
 };
 

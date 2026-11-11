@@ -185,6 +185,25 @@ class SieansDocument {
   QVector<QVariantMap> collectStringCommands(const QString& received) const;
   /** Isolated match / persist / load trigger checks. Empty list = pass. */
   static QStringList triggerSelfTest();
+
+  /** Record the active-flow graph if it changed (steps/edges/source/output). Cap 31. */
+  void commitCanvasUndo(const QString& label = QString());
+  /** Restore the previous canvas snapshot. False if already at the baseline. */
+  bool undoCanvas();
+  /** Restore the next canvas snapshot after undo. False if none. */
+  bool redoCanvas();
+  int canvasUndoDepth() const;
+  int canvasRedoDepth() const;
+  QString canvasUndoLabel() const;
+  QString canvasRedoLabel() const;
+  /** True when the stack index matches the last load/save (or seed) baseline. */
+  bool canvasUndoAtClean() const;
+  /** Remember the current stack index as the saved/clean baseline. */
+  void markCanvasUndoClean();
+  /** Drop history and keep a single baseline snapshot of the current graph. */
+  void resetCanvasUndo();
+  /** Isolated add/wire/move/param/undo/redo/cap checks on a scratch document. */
+  static QStringList canvasUndoSelfTest();
   QStringList filmstripPaths() const;
   void setFilmstripPaths(const QStringList& paths);
   bool filmstripAutoSwitch() const;
@@ -233,6 +252,22 @@ class SieansDocument {
   QVariantMap commManager_;
   QVariantMap flowIo_;
   QJsonObject raw_;
+
+  struct CanvasSnap {
+    QString label;
+    QVector<FlowStep> steps;
+    QVector<FlowEdge> edges;
+    QPointF sourcePosition;
+    QVariantMap sourceConfig;
+    QString outputNode;
+  };
+  CanvasSnap captureCanvasSnap(const QString& label = QString()) const;
+  void restoreCanvasSnap(const CanvasSnap& snap);
+  static bool canvasSnapEquals(const CanvasSnap& a, const CanvasSnap& b);
+
+  QVector<CanvasSnap> canvas_history_;
+  int canvas_index_ = 0;
+  int canvas_clean_index_ = 0;
 
   /** 把当前顶层图做成一条流程条目（新 id）。 */
   FlowDef captureActiveFlow(const QString& name) const;

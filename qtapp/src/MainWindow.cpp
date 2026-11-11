@@ -605,7 +605,12 @@ void MainWindow::buildUi() {
   connect(flow_scene_, &FlowScene::nodeMoved, this, [this](const QString&, const QPointF&) {
     markProjectDirty();
   });
+  connect(flow_scene_, &FlowScene::nodeMoveFinished, this, [this](const QString&, const QPointF&) {
+    commitCanvasUndo(QStringLiteral("移动模块"));
+    markProjectDirty();
+  });
   connect(flow_scene_, &FlowScene::edgeRemoved, this, [this](const QString&) {
+    commitCanvasUndo(QStringLiteral("删除连线"));
     markProjectDirty();
   });
   connect(flow_scene_, &FlowScene::linkNotice, this, &MainWindow::onLinkNotice);
@@ -626,6 +631,7 @@ void MainWindow::buildUi() {
       prop_float_->setNodeTitle(name, step->operation);
     showStatus(QStringLiteral("已重命名 · %1").arg(name));
     logResult(QStringLiteral("重命名模块 %1 → %2").arg(nodeId, name));
+    commitCanvasUndo(QStringLiteral("重命名模块"));
     markProjectDirty();
   });
 
@@ -1322,6 +1328,14 @@ void MainWindow::buildMenus() {
 
   auto* system = menuBar()->addMenu(QStringLiteral("系统"));
   auto* edit = system->addMenu(QStringLiteral("编辑"));
+  act_undo_ = edit->addAction(QStringLiteral("撤销"), this, &MainWindow::undoCanvasEdit);
+  act_undo_->setShortcut(QKeySequence::Undo);
+  act_undo_->setShortcutContext(Qt::WindowShortcut);
+  act_redo_ = edit->addAction(QStringLiteral("重做"), this, &MainWindow::redoCanvasEdit);
+  act_redo_->setShortcuts({QKeySequence::Redo, QKeySequence(QStringLiteral("Ctrl+Y"))});
+  act_redo_->setShortcutContext(Qt::WindowShortcut);
+  updateCanvasUndoActions();
+  edit->addSeparator();
   edit->addAction(QStringLiteral("删除选中节点"), this, [this]() {
     const QString id = flow_scene_->selectedNodeId();
     if (id.isEmpty() || id == QLatin1String("source")) return;
@@ -1336,6 +1350,7 @@ void MainWindow::buildMenus() {
                                }),
                 edges.end());
     applyDocumentToUi();
+    commitCanvasUndo(QStringLiteral("删除模块"));
     markProjectDirty();
   });
   edit->addAction(QStringLiteral("删除选中连线"), this, [this]() {
@@ -1630,6 +1645,7 @@ void MainWindow::applyDocumentToUi() {
   applying_document_ = false;
   refreshProjectTitle();
   syncCanvasRoiFromSelection();
+  updateCanvasUndoActions();
 }
 
 void MainWindow::syncVarsToUi(bool hostEvaluated) {
@@ -2189,7 +2205,9 @@ void MainWindow::markProjectDirty() {
 
 void MainWindow::markProjectClean() {
   project_dirty_ = false;
+  document_.markCanvasUndoClean();
   refreshProjectTitle();
+  updateCanvasUndoActions();
 }
 
 void MainWindow::refreshProjectTitle() {
@@ -4975,6 +4993,15 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                                          : tf.join(QLatin1Char('|')).left(160))
                       .arg(document_.stringTriggerCount());
         }
+        {
+          const QStringList uf = SieansDocument::canvasUndoSelfTest();
+          line += QChar(' ');
+          line += QStringLiteral("flowUndoOk=%1 flowUndoFails=%2 flowUndoLive=%3")
+                      .arg(uf.isEmpty() ? 1 : 0)
+                      .arg(uf.isEmpty() ? QStringLiteral("0")
+                                         : uf.join(QLatin1Char('|')).left(160))
+                      .arg(document_.canvasUndoDepth());
+        }
       }
 
 
@@ -5479,6 +5506,7 @@ void MainWindow::onToggleRunMode(bool on) {
   logResult(on ? QStringLiteral("运行模式：画布/算子库已锁定 · 报警历史已写回")
                : QStringLiteral("设计态：画布可编辑 · 配方锁已解除写回"));
   showStatus(on ? QStringLiteral("运行模式 · 配方锁") : QStringLiteral("设计态"));
+  updateCanvasUndoActions();
 }
 
 void MainWindow::onRunAllImages() {
@@ -5533,6 +5561,7 @@ void MainWindow::onNodeSelected(const QString& nodeId) {
 void MainWindow::onEdgeConnected(const QString&, const QString&, const QString&,
                                  const QString&) {
   // document already updated by FlowScene
+  commitCanvasUndo(QStringLiteral("连线"));
   markProjectDirty();
 }
 
@@ -5548,6 +5577,7 @@ void MainWindow::onEdgeWhenChanged(const QString& edgeId, const QString& when) {
     logResult(QStringLiteral("连线条件: %1 → %2  when=%3")
                   .arg(e.from, e.to, label));
     showStatus(QStringLiteral("连线触发条件：%1").arg(label), 2500);
+    commitCanvasUndo(QStringLiteral("连线条件"));
     markProjectDirty();
     return;
   }
@@ -5583,6 +5613,7 @@ void MainWindow::onDuplicateNode(const QString& nodeId) {
   applyDocumentToUi();
   logResult(QStringLiteral("已复制模块: %1 → %2").arg(src->name, s.name));
   showStatus(QStringLiteral("已复制模块 · Ctrl+D · %1").arg(s.name));
+  commitCanvasUndo(QStringLiteral("复制模块"));
   markProjectDirty();
 }
 
@@ -6108,6 +6139,7 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 .arg(int(pos.x()))
                 .arg(int(pos.y()))
                 .arg(autoWire ? QStringLiteral(" · 已串线") : QStringLiteral(" · 拖放")));
+  commitCanvasUndo(QStringLiteral("添加模块"));
   markProjectDirty();
 }
 
@@ -6120,6 +6152,7 @@ void MainWindow::onStructuredParamEdited(const QString& nodeId, const QString& k
                    ? QStringLiteral("%1 项").arg(value.toList().size())
                    : key);
   }
+  commitCanvasUndo(QStringLiteral("参数"));
   markProjectDirty();
 }
 
@@ -6248,6 +6281,7 @@ void MainWindow::onParamEdited(const QString& nodeId, const QString& key,
         key == QLatin1String("roi"))
       syncCanvasRoiFromSelection();
   }
+  commitCanvasUndo(QStringLiteral("参数"));
   markProjectDirty();
 }
 
@@ -6259,6 +6293,7 @@ void MainWindow::onParamsReverted(const QString& nodeId, const QVariantMap& snap
   }
   pushSoftControls();
   logResult(QStringLiteral("已放弃属性修改: %1").arg(nodeId));
+  commitCanvasUndo(QStringLiteral("放弃属性"));
   markProjectDirty();
 }
 
@@ -6336,6 +6371,7 @@ void MainWindow::applyCanvasRoi(const QRect& r) {
   if (cur == n) return;
   writeRoiToParams(s->params, n);
   document_.syncActiveIntoFlows();
+  commitCanvasUndo(QStringLiteral("ROI"));
   markProjectDirty();
   if (prop_float_) prop_float_->showForStep(*s);
   logResult(QStringLiteral("ROI 已更新 · %1 [%2,%3,%4,%5]")
@@ -6362,6 +6398,7 @@ void MainWindow::onClearSelectedRoi() {
   clearRoiFromParams(s->params);
   document_.syncActiveIntoFlows();
   if (image_view_) image_view_->clearRoi(false);
+  commitCanvasUndo(QStringLiteral("清除 ROI"));
   markProjectDirty();
   if (prop_float_) prop_float_->showForStep(*s);
   logResult(QStringLiteral("已清除模块 ROI · %1").arg(s->name));
@@ -6596,6 +6633,7 @@ void MainWindow::onOpenRecipeSwitch() {
                   .arg(st.value(QStringLiteral("name")).toString())
                   .arg(st.value(QStringLiteral("applied")).toInt())
                   .arg(st.value(QStringLiteral("skipped")).toInt()));
+    commitCanvasUndo(QStringLiteral("套用配方"));
     showStatus(QStringLiteral("已套用配方 %1").arg(st.value(QStringLiteral("name")).toString()));
   });
   QObject::connect(delBtn, &QPushButton::clicked, box, [this, selectedId, reload]() {
@@ -6622,5 +6660,81 @@ void MainWindow::onAbout() {
           .arg(sieans::GenTLCapture::available() ? QStringLiteral("built")
                                                  : QStringLiteral("stub")));
 }
+
+
+void MainWindow::commitCanvasUndo(const QString& label) {
+  if (applying_document_ || restoring_canvas_undo_) return;
+  document_.commitCanvasUndo(label);
+  updateCanvasUndoActions();
+}
+
+void MainWindow::updateCanvasUndoActions() {
+  if (act_undo_) {
+    const bool ok = document_.canvasUndoDepth() > 0 && !run_mode_;
+    act_undo_->setEnabled(ok);
+    const QString lab = document_.canvasUndoLabel();
+    act_undo_->setText(lab.isEmpty() ? QStringLiteral("撤销")
+                                     : QStringLiteral("撤销 %1").arg(lab));
+  }
+  if (act_redo_) {
+    const bool ok = document_.canvasRedoDepth() > 0 && !run_mode_;
+    act_redo_->setEnabled(ok);
+    const QString lab = document_.canvasRedoLabel();
+    act_redo_->setText(lab.isEmpty() ? QStringLiteral("重做")
+                                     : QStringLiteral("重做 %1").arg(lab));
+  }
+}
+
+void MainWindow::reloadCanvasFromDocument() {
+  applying_document_ = true;
+  if (flow_scene_) flow_scene_->loadDocument(&document_);
+  applying_document_ = false;
+  if (prop_float_) prop_float_->hide();
+  else if (prop_panel_) prop_panel_->clear();
+  syncCanvasRoiFromSelection();
+}
+
+void MainWindow::undoCanvasEdit() {
+  if (run_mode_) {
+    showStatus(QStringLiteral("运行模式已锁定画布"));
+    return;
+  }
+  if (!document_.undoCanvas()) {
+    showStatus(QStringLiteral("无法撤销"));
+    return;
+  }
+  restoring_canvas_undo_ = true;
+  reloadCanvasFromDocument();
+  restoring_canvas_undo_ = false;
+  if (document_.canvasUndoAtClean())
+    markProjectClean();
+  else
+    markProjectDirty();
+  updateCanvasUndoActions();
+  showStatus(QStringLiteral("已撤销画布编辑"));
+  logResult(QStringLiteral("画布撤销"));
+}
+
+void MainWindow::redoCanvasEdit() {
+  if (run_mode_) {
+    showStatus(QStringLiteral("运行模式已锁定画布"));
+    return;
+  }
+  if (!document_.redoCanvas()) {
+    showStatus(QStringLiteral("无法重做"));
+    return;
+  }
+  restoring_canvas_undo_ = true;
+  reloadCanvasFromDocument();
+  restoring_canvas_undo_ = false;
+  if (document_.canvasUndoAtClean())
+    markProjectClean();
+  else
+    markProjectDirty();
+  updateCanvasUndoActions();
+  showStatus(QStringLiteral("已重做画布编辑"));
+  logResult(QStringLiteral("画布重做"));
+}
+
 
 }  // namespace sieans_qt

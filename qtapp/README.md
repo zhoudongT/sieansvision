@@ -78,7 +78,9 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx`）放�
 
 **已落地（wave262）：** 全局字符串触发（对齐 PySide `globalTriggers` / `fire_string_trigger`）：通信 `payloadReceived` 与设置菜单配置的字符串行（部分/全等）可派发执行·单次/连续/停止（软通信环回，无真 PLC）。配置随方案保存。无界面自测 `SIEANS_QT_TRIGGER_SELFTEST=1`。
 
-**NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。
+**已落地（wave263）：** 流程画布撤销/重做（对齐 PySide `Document.commit/undo/redo` 的画布子集）：有界栈（最多 31）快照当前活动流程的 steps/edges/source/outputNode，覆盖添加/删除/复制/连线/移动（鼠标松开合并）/参数/ROI；快捷键 Ctrl+Z、Ctrl+Shift+Z 与 Ctrl+Y，系统>编辑菜单。不覆盖配方/通信/胶片等整案事务。无界面自测 `SIEANS_QT_FLOW_UNDO_SELFTEST=1`，不脏污现场 FORCE_SEED。
+
+**NEXT：** 本地点云文件导入（喂给已有 cloud_*）。运行界面设计器（不在目录中新增 HMI 算子）。检验历史/操作员账号，最近文件菜单，配方回滚/工具条/配方库换型，触发事件行（流程开始/结束/NG）及注入工具条按钮。
 
 ## VM chrome (2026-11-03)
 
