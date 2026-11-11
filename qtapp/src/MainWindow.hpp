@@ -55,6 +55,14 @@ class MainWindow : public QMainWindow {
   void onOpenCameraManager();
   /** Open the in-project recipe capture/apply dialog (产线配方 / 换型 subset). */
   void onOpenRecipeSwitch();
+  /** Toggle on-canvas ROI draw/move/resize for the selected operator. */
+  void onToggleRoiMode();
+  /** Clear ROI params on the selected operator. */
+  void onClearSelectedRoi();
+  /** Write a canvas ROI into the selected step (dirties only if changed). */
+  void applyCanvasRoi(const QRect& r);
+  /** Show the selected step ROI on the image canvas without dirtying. */
+  void syncCanvasRoiFromSelection();
   void onOpenCommManager();
   void onOpenFlowIo();
   void onOpenSubflowManager();
@@ -178,6 +186,7 @@ class MainWindow : public QMainWindow {
   QLabel* status_timing_ = nullptr;
   QLabel* project_label_ = nullptr;
 
+  QAction* roi_action_ = nullptr;
   QAction* act_run_ = nullptr;
   QAction* act_cont_ = nullptr;
   QAction* act_pause_ = nullptr;

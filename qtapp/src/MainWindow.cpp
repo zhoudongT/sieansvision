@@ -697,6 +697,8 @@ void MainWindow::buildUi() {
   };
   connect(image_view_, &ImageView::imageSaveToFilmstripRequested, this, saveViewToFilmstrip);
   connect(output_view_, &ImageView::imageSaveToFilmstripRequested, this, saveViewToFilmstrip);
+  connect(image_view_, &ImageView::roiEdited, this, &MainWindow::applyCanvasRoi);
+  connect(image_view_, &ImageView::roiCleared, this, &MainWindow::onClearSelectedRoi);
   image_tabs_->addTab(image_view_, QStringLiteral("全局图像"));
   image_tabs_->addTab(output_view_, QStringLiteral("模块结果"));
   imgLay->addWidget(image_tabs_, 1);
@@ -1332,6 +1334,17 @@ void MainWindow::buildMenus() {
   edit->addAction(QStringLiteral("删除选中连线"), this, [this]() {
     flow_scene_->removeSelectedEdge();
   });
+  auto* view = system->addMenu(QStringLiteral("视图"));
+  view->addAction(QStringLiteral("适应图像窗口"), image_view_, &ImageView::fitToView);
+  view->addAction(QStringLiteral("适应流程画布"), flow_view_, &FlowView::fitAll);
+  roi_action_ = view->addAction(QStringLiteral("框选所选模块 ROI"));
+  roi_action_->setCheckable(true);
+  roi_action_->setToolTip(QStringLiteral("在全局图像上绘制 / 拖动 / 缩放所选算子的 ROI"));
+  connect(roi_action_, &QAction::toggled, this, [this](bool on) {
+    if (roi_action_ && roi_action_->isChecked() != on) return;
+    onToggleRoiMode();
+  });
+  view->addAction(QStringLiteral("清除所选模块 ROI"), this, &MainWindow::onClearSelectedRoi);
 
   auto* work = menuBar()->addMenu(QStringLiteral("工程管理"));
   work->addAction(QStringLiteral("产线配方 / 换型…"), this, &MainWindow::onOpenRecipeSwitch);
@@ -1609,6 +1622,7 @@ void MainWindow::applyDocumentToUi() {
   refreshConfigStatus();
   applying_document_ = false;
   refreshProjectTitle();
+  syncCanvasRoiFromSelection();
 }
 
 void MainWindow::syncVarsToUi(bool hostEvaluated) {
@@ -4936,6 +4950,15 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                                          : rf.join(QLatin1Char('|')).left(160))
                       .arg(document_.recipeCount());
         }
+        {
+          const QStringList rf = ImageView::roiEditorSelfTest();
+          line += QChar(' ');
+          line += QStringLiteral("roiEditorOk=%1 roiEditorFails=%2 roiEditorLive=%3")
+                      .arg(rf.isEmpty() ? 1 : 0)
+                      .arg(rf.isEmpty() ? QStringLiteral("0")
+                                         : rf.join(QLatin1Char('|')).left(160))
+                      .arg((image_view_ && image_view_->roiMode()) ? 1 : 0);
+        }
       }
 
 
@@ -5488,6 +5511,7 @@ void MainWindow::onNodeSelected(const QString& nodeId) {
       prop_float_->move(g);
     }
   }
+  syncCanvasRoiFromSelection();
 }
 
 void MainWindow::onEdgeConnected(const QString&, const QString&, const QString&,
@@ -6203,6 +6227,10 @@ void MainWindow::onParamEdited(const QString& nodeId, const QString& key,
       pushSoftControls();
     }
     if (key == QLatin1String("templatePath")) refreshConfigStatus();
+    if (key == QLatin1String("roiX") || key == QLatin1String("roiY") ||
+        key == QLatin1String("roiW") || key == QLatin1String("roiH") ||
+        key == QLatin1String("roi"))
+      syncCanvasRoiFromSelection();
   }
   markProjectDirty();
 }
@@ -6240,6 +6268,87 @@ void MainWindow::onOpenFlowIo() {
   logResult(QStringLiteral("流程 I/O 已更新 · 输入 %1 · 输出 %2").arg(nin).arg(nout));
   showStatus(QStringLiteral("流程 I/O 绑定已保存"));
   refreshConfigStatus();
+}
+
+void MainWindow::syncCanvasRoiFromSelection() {
+  if (!image_view_) return;
+  const QString id = flow_scene_ ? flow_scene_->selectedNodeId() : QString();
+  if (const FlowStep* s = document_.findStep(id)) {
+    if (operationSupportsRoi(s->operation)) {
+      const QRect r = roiFromParams(s->params);
+      if (r.isValid())
+        image_view_->setRoi(r, false);
+      else
+        image_view_->clearRoi(false);
+      return;
+    }
+  }
+  image_view_->clearRoi(false);
+}
+
+void MainWindow::onToggleRoiMode() {
+  if (!image_view_ || !roi_action_) return;
+  const bool want = roi_action_->isChecked();
+  if (!want) {
+    image_view_->setRoiMode(false);
+    return;
+  }
+  const QString id = flow_scene_ ? flow_scene_->selectedNodeId() : QString();
+  const FlowStep* s = document_.findStep(id);
+  if (!s || !operationSupportsRoi(s->operation)) {
+    roi_action_->blockSignals(true);
+    roi_action_->setChecked(false);
+    roi_action_->blockSignals(false);
+    image_view_->setRoiMode(false);
+    showStatus(QStringLiteral("请先选择带 ROI 的检测模块"));
+    logResult(QStringLiteral("框选 ROI · 请先选择带 ROI 的检测模块"));
+    return;
+  }
+  syncCanvasRoiFromSelection();
+  image_view_->setRoiMode(true);
+  if (image_tabs_ && image_view_) image_tabs_->setCurrentWidget(image_view_);
+  showStatus(QStringLiteral("ROI 编辑：拖画新框，拖内部移动，拖角/边缩放"));
+}
+
+void MainWindow::applyCanvasRoi(const QRect& r) {
+  if (applying_document_) return;
+  const QString id = flow_scene_ ? flow_scene_->selectedNodeId() : QString();
+  FlowStep* s = document_.findStep(id);
+  if (!s || !operationSupportsRoi(s->operation)) return;
+  const QRect cur = roiFromParams(s->params);
+  const QRect n = r.normalized();
+  if (cur == n) return;
+  writeRoiToParams(s->params, n);
+  document_.syncActiveIntoFlows();
+  markProjectDirty();
+  if (prop_float_) prop_float_->showForStep(*s);
+  logResult(QStringLiteral("ROI 已更新 · %1 [%2,%3,%4,%5]")
+                .arg(s->name)
+                .arg(n.x())
+                .arg(n.y())
+                .arg(n.width())
+                .arg(n.height()));
+}
+
+void MainWindow::onClearSelectedRoi() {
+  if (applying_document_) return;
+  const QString id = flow_scene_ ? flow_scene_->selectedNodeId() : QString();
+  FlowStep* s = document_.findStep(id);
+  if (!s || !operationSupportsRoi(s->operation)) {
+    if (image_view_) image_view_->clearRoi(false);
+    return;
+  }
+  const QRect cur = roiFromParams(s->params);
+  if (cur.isNull()) {
+    if (image_view_) image_view_->clearRoi(false);
+    return;
+  }
+  clearRoiFromParams(s->params);
+  document_.syncActiveIntoFlows();
+  if (image_view_) image_view_->clearRoi(false);
+  markProjectDirty();
+  if (prop_float_) prop_float_->showForStep(*s);
+  logResult(QStringLiteral("已清除模块 ROI · %1").arg(s->name));
 }
 
 void MainWindow::onOpenRecipeSwitch() {

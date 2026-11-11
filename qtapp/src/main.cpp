@@ -20,6 +20,7 @@
 #include "WorkbenchPaths.hpp"
 #include "SieansDocument.hpp"
 #include "FilmstripBar.hpp"
+#include "ImageView.hpp"
 #include "CommHub.hpp"
 #include "ProtocolNet.hpp"
 #include "Theme.hpp"
@@ -316,6 +317,19 @@ int main(int argc, char* argv[]) {
     }
     for (const QString& line : fails)
       std::fprintf(stderr, "filmstrip-jump-selftest FAIL %s\n", line.toUtf8().constData());
+    return 1;
+  }
+
+  if (qEnvironmentVariable("SIEANS_QT_ROI_EDITOR_SELFTEST") == QLatin1String("1") &&
+      qEnvironmentVariable("SIEANS_QT_ROI_EDITOR_SELFTEST_QUIT") == QLatin1String("1")) {
+    QApplication app(argc, argv);
+    const QStringList fails = sieans_qt::ImageView::roiEditorSelfTest();
+    if (fails.isEmpty()) {
+      std::fprintf(stdout, "roi-editor-selftest ok\n");
+      return 0;
+    }
+    for (const QString& line : fails)
+      std::fprintf(stderr, "roi-editor-selftest FAIL %s\n", line.toUtf8().constData());
     return 1;
   }
 

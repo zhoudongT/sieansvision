@@ -74,6 +74,8 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx`）放�
 
 **已落地（wave260）：** 本方案产线配方 / 换型子集（对齐 PySide `project["recipes"]`）：按名称保存当前步骤参数快照、套用到匹配步骤（算子+名称，其次 id，再次算子）、删除、随 `.sieans` 往返。工具 / 工程管理菜单可打开对话框。无界面自测 `SIEANS_QT_RECIPE_SELFTEST=1`。不打开其它工程库、不新增目录算子。
 
+**已落地（wave261）：** 画布 ROI 编辑（对齐 PySide `set_roi_mode` + 对话框拖拽缩放）：在全局图像上绘制 / 移动 / 缩放所选算子 ROI，写回 `roiX/Y/W/H` 与 `roi` 列表；仅实际改动时脏污方案。无界面自测 `SIEANS_QT_ROI_EDITOR_SELFTEST=1`。
+
 **NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。
 
 ## VM chrome (2026-11-03)
