@@ -424,6 +424,59 @@ void SieansDocument::seedGentlQrDemo() {
        {QStringLiteral("writePassGate"), false},
        {QStringLiteral("showOverlay"), true},
        {QStringLiteral("showLabels"), true}});
+  add(QStringLiteral("measCirc"), QStringLiteral("测量 · 圆直径"),
+      QStringLiteral("measure"), 1100, 400, QStringLiteral("cam1"),
+      {{QStringLiteral("feature"), QStringLiteral("circles")},
+       {QStringLiteral("target"), QStringLiteral("soft_circle")},
+       {QStringLiteral("minRadius"), 22},
+       {QStringLiteral("maxRadius"), 50},
+       {QStringLiteral("votes"), 16},
+       {QStringLiteral("pxPerMm"), 10},
+       {QStringLiteral("unit"), QStringLiteral("mm")},
+       {QStringLiteral("judgeEnable"), true},
+       {QStringLiteral("judgeMin"), 60},
+       {QStringLiteral("judgeMax"), 85},
+       {QStringLiteral("resultVar"), QStringLiteral("measCirc")},
+       {QStringLiteral("writePassGate"), false},
+       {QStringLiteral("showOverlay"), true},
+       {QStringLiteral("showLabels"), true}});
+  add(QStringLiteral("measLine"), QStringLiteral("测量 · 直线长度"),
+      QStringLiteral("measure"), 1100, 520, QStringLiteral("cam1"),
+      {{QStringLiteral("feature"), QStringLiteral("lines")},
+       {QStringLiteral("target"), QStringLiteral("soft_line")},
+       {QStringLiteral("minLength"), 80},
+       {QStringLiteral("votes"), 20},
+       {QStringLiteral("judgeEnable"), true},
+       {QStringLiteral("judgeMin"), 100},
+       {QStringLiteral("judgeMax"), 220},
+       {QStringLiteral("resultVar"), QStringLiteral("measLine")},
+       {QStringLiteral("writePassGate"), false},
+       {QStringLiteral("showOverlay"), true},
+       {QStringLiteral("showLabels"), true}});
+  add(QStringLiteral("measAngle"), QStringLiteral("测量 · 夹角"),
+      QStringLiteral("measure"), 1100, 640, QStringLiteral("cam1"),
+      {{QStringLiteral("feature"), QStringLiteral("angle")},
+       {QStringLiteral("target"), QStringLiteral("soft_angle")},
+       {QStringLiteral("judgeEnable"), true},
+       {QStringLiteral("judgeMin"), 80},
+       {QStringLiteral("judgeMax"), 100},
+       {QStringLiteral("resultVar"), QStringLiteral("measAng")},
+       {QStringLiteral("writePassGate"), false},
+       {QStringLiteral("showOverlay"), true},
+       {QStringLiteral("showLabels"), true}});
+  add(QStringLiteral("measPts"), QStringLiteral("测量 · 两点距"),
+      QStringLiteral("measure"), 1100, 760, QStringLiteral("cam1"),
+      {{QStringLiteral("feature"), QStringLiteral("points")},
+       {QStringLiteral("target"), QStringLiteral("soft_points")},
+       {QStringLiteral("pxPerMm"), 10},
+       {QStringLiteral("unit"), QStringLiteral("mm")},
+       {QStringLiteral("judgeEnable"), true},
+       {QStringLiteral("judgeMin"), 120},
+       {QStringLiteral("judgeMax"), 180},
+       {QStringLiteral("resultVar"), QStringLiteral("measPts")},
+       {QStringLiteral("writePassGate"), false},
+       {QStringLiteral("showOverlay"), true},
+       {QStringLiteral("showLabels"), true}});
   add(QStringLiteral("var1"), QStringLiteral("变量计算 · OK/NG"),
       QStringLiteral("var_calc"), 300, 380, QStringLiteral("qr1"),
       {{QStringLiteral("scope"), QStringLiteral("flow")},
@@ -527,6 +580,10 @@ void SieansDocument::seedGentlQrDemo() {
   link(QStringLiteral("cam1"), QStringLiteral("geomCirc"));
   link(QStringLiteral("cam1"), QStringLiteral("geomLine"));
   link(QStringLiteral("pose1"), QStringLiteral("geomFollow"));
+  link(QStringLiteral("cam1"), QStringLiteral("measCirc"));
+  link(QStringLiteral("cam1"), QStringLiteral("measLine"));
+  link(QStringLiteral("cam1"), QStringLiteral("measAngle"));
+  link(QStringLiteral("cam1"), QStringLiteral("measPts"));
   link(QStringLiteral("qr1"), QStringLiteral("var1"));
   link(QStringLiteral("var1"), QStringLiteral("gate1"));
   link(QStringLiteral("gate1"), QStringLiteral("fmt1"));
@@ -606,6 +663,18 @@ void SieansDocument::seedGentlQrDemo() {
       {QStringLiteral("geomFollowRadius"), 0},
       {QStringLiteral("geomFollowRoiX"), 0},
       {QStringLiteral("geomFollowRoiY"), 0},
+      {QStringLiteral("measCircCount"), 0},
+      {QStringLiteral("measCircOk"), 0},
+      {QStringLiteral("measCircDiameter"), 0},
+      {QStringLiteral("measCircRadius"), 0},
+      {QStringLiteral("measCircDiameterMm"), 0},
+      {QStringLiteral("measLineCount"), 0},
+      {QStringLiteral("measLineOk"), 0},
+      {QStringLiteral("measLineLength"), 0},
+      {QStringLiteral("measAngAngle"), 0},
+      {QStringLiteral("measAngOk"), 0},
+      {QStringLiteral("measPtsDist"), 0},
+      {QStringLiteral("measPtsOk"), 0},
   };
   subflows_.clear();
   subflows_.push_back(makeCounterSubflow());
@@ -765,7 +834,10 @@ QStringList SieansDocument::hostWatchKeys() const {
             QStringLiteral("geomCircCount"), QStringLiteral("geomCircOk"),
             QStringLiteral("geomCircRadius"), QStringLiteral("geomLineCount"),
             QStringLiteral("geomLineLength"), QStringLiteral("geomFollowCount"),
-            QStringLiteral("geomFollowOk"), QStringLiteral("geomFollowRadius")};
+            QStringLiteral("geomFollowOk"), QStringLiteral("geomFollowRadius"),
+            QStringLiteral("measCircDiameter"), QStringLiteral("measCircOk"),
+            QStringLiteral("measLineLength"), QStringLiteral("measAngAngle"),
+            QStringLiteral("measPtsDist")};
   }
   return keys;
 }

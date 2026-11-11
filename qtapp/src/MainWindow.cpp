@@ -6,6 +6,7 @@
 #include "CaliperMeasure.hpp"
 #include "DefectDetect.hpp"
 #include "GeometryFind.hpp"
+#include "MeasureDim.hpp"
 #include "ConditionEval.hpp"
 #include "SubflowExec.hpp"
 #include "SubflowDialog.hpp"
@@ -2191,8 +2192,7 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
         result_table_->setItem(row, 2, new QTableWidgetItem(QStringLiteral("OCR")));
         ++i;
       }
-    } else if (op == QLatin1String("caliper") ||
-               op == QLatin1String("measure")) {
+    } else if (op == QLatin1String("caliper")) {
       const auto t0 = std::chrono::steady_clock::now();
       QVariantMap cp = step->params;
       injectFixtureFromVars(cp, flow_vars_);
@@ -2283,7 +2283,153 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                                                                   : QStringLiteral("0")));
         result_table_->setItem(row3, 2, new QTableWidgetItem(QStringLiteral("gate")));
       }
+    } else if (op == QLatin1String("measure")) {
+      const auto t0 = std::chrono::steady_clock::now();
+      QVariantMap mp = step->params;
+      injectFixtureFromVars(mp, flow_vars_);
+      if (mp.value(QStringLiteral("followFixture")).toBool() &&
+          flow_vars_.contains(QStringLiteral("locateW"))) {
+        if (!mp.contains(QStringLiteral("locateW")))
+          mp.insert(QStringLiteral("locateW"), flow_vars_.value(QStringLiteral("locateW")));
+        if (!mp.contains(QStringLiteral("locateH")))
+          mp.insert(QStringLiteral("locateH"), flow_vars_.value(QStringLiteral("locateH")));
+      }
+      const MeasureResult mr = runMeasure(working, mp);
+      const double mMs = std::chrono::duration<double, std::milli>(
+                             std::chrono::steady_clock::now() - t0)
+                             .count();
+      algoMs += mMs;
+      QString prefix =
+          step->params.value(QStringLiteral("resultVar"), QStringLiteral("measure"))
+              .toString()
+              .trimmed();
+      if (prefix.isEmpty()) prefix = QStringLiteral("measure");
+      auto put = [&](const QString& suffix, const QVariant& v) {
+        flow_vars_.insert(prefix + suffix, v);
+      };
+      const int okI = (mr.ok && (!mr.judgeEnable || mr.judgeOk)) ? 1 : 0;
+      put(QStringLiteral("Count"), mr.count);
+      put(QStringLiteral("Ok"), okI);
+      put(QStringLiteral("Passed"), okI);
+      put(QStringLiteral("Mode"), mr.mode);
+      put(QStringLiteral("Unit"), mr.unit);
+      put(QStringLiteral("Px"), mr.valuePx);
+      put(QStringLiteral("Value"), mr.value);
+      put(QStringLiteral("Mm"), mr.value);
+      put(QStringLiteral("Radius"), mr.radiusPx);
+      put(QStringLiteral("Diameter"), mr.diameterPx);
+      put(QStringLiteral("RadiusMm"), mr.radius);
+      put(QStringLiteral("DiameterMm"), mr.diameter);
+      put(QStringLiteral("Length"), mr.lengthPx);
+      put(QStringLiteral("LengthMm"), mr.length);
+      put(QStringLiteral("Angle"), mr.angleDeg);
+      put(QStringLiteral("Width"), mr.widthPx);
+      put(QStringLiteral("Height"), mr.heightPx);
+      put(QStringLiteral("Area"), mr.areaPx);
+      put(QStringLiteral("X"), mr.center.x());
+      put(QStringLiteral("Y"), mr.center.y());
+      put(QStringLiteral("X1"), mr.p0.x());
+      put(QStringLiteral("Y1"), mr.p0.y());
+      put(QStringLiteral("X2"), mr.p1.x());
+      put(QStringLiteral("Y2"), mr.p1.y());
+      put(QStringLiteral("Dist"), mr.lengthPx > 0 ? mr.lengthPx : mr.valuePx);
+      if (prefix == QLatin1String("measure") && mr.mode == QLatin1String("caliper")) {
+        flow_vars_.insert(QStringLiteral("measureMm"), mr.value);
+        flow_vars_.insert(QStringLiteral("caliperDist"), mr.valuePx);
+        flow_vars_.insert(QStringLiteral("caliperOk"), okI);
+        flow_vars_.insert(QStringLiteral("caliperMm"), mr.value);
+      }
+      if (mp.value(QStringLiteral("followFixture")).toBool()) {
+        const FollowRoi fr = resolveFollowRoi(mp, working.width(), working.height());
+        if (fr.active) {
+          put(QStringLiteral("RoiX"), fr.center.x());
+          put(QStringLiteral("RoiY"), fr.center.y());
+          if (step->params.value(QStringLiteral("showOverlay"), true).toBool()) {
+            OverlayHit fo;
+            fo.format = QStringLiteral("FOLLOW");
+            fo.text = QStringLiteral("跟随ROI");
+            fo.polygon = fr.corners;
+            overlays.push_back(fo);
+          }
+        }
+      }
+      if (step->params.value(QStringLiteral("writePassGate")).toBool())
+        flow_vars_.insert(QStringLiteral("passGate"), okI);
+      {
+        StepSnap snap;
+        snap.count = mr.count;
+        snap.ok = okI != 0;
+        snap.matches = mr.count;
+        snap.score = mr.valuePx;
+        snap.text = mr.note;
+        snap.fields.insert(QStringLiteral("value"), mr.value);
+        snap.fields.insert(QStringLiteral("px"), mr.valuePx);
+        step_snaps.insert(id, snap);
+      }
+      ok = mr.ok && (!mr.judgeEnable || mr.judgeOk);
+      if (!mr.ok) ok = false;
+      note = mr.ok ? QStringLiteral("%1 · %2 ms").arg(mr.note).arg(mMs, 0, 'f', 1)
+                   : (mr.error.isEmpty() ? mr.note : mr.error);
+      if (step->params.value(QStringLiteral("showOverlay"), true).toBool()) {
+        const bool showLab =
+            !step->params.contains(QStringLiteral("showLabels")) ||
+            step->params.value(QStringLiteral("showLabels")).toBool();
+        int idx = 1;
+        for (const MeasureItem& it : mr.items) {
+          OverlayHit o;
+          o.format = QStringLiteral("MEASURE");
+          if (showLab) {
+            if (it.kind == QLatin1String("circle"))
+              o.text = QStringLiteral("d=%1").arg(it.diameterPx, 0, 'f', 1);
+            else if (it.kind == QLatin1String("angle"))
+              o.text = QStringLiteral("%1deg").arg(it.angleDeg, 0, 'f', 1);
+            else if (it.kind == QLatin1String("line") || it.kind == QLatin1String("points") ||
+                     it.kind == QLatin1String("caliper"))
+              o.text = QStringLiteral("L=%1").arg(it.lengthPx, 0, 'f', 1);
+            else
+              o.text = QStringLiteral("%1x%2")
+                           .arg(it.widthPx, 0, 'f', 0)
+                           .arg(it.heightPx, 0, 'f', 0);
+            if (idx > 1) o.text = QStringLiteral("%1 ").arg(idx) + o.text;
+          }
+          if (it.polygon.size() >= 2)
+            o.polygon = it.polygon;
+          overlays.push_back(o);
+          ++idx;
+        }
+      }
+      if (result_table_) {
+        auto addRow = [&](const QString& k, const QString& v, const QString& unit) {
+          const int row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(k));
+          result_table_->setItem(row, 1, new QTableWidgetItem(v));
+          result_table_->setItem(row, 2, new QTableWidgetItem(unit));
+        };
+        addRow(prefix + QStringLiteral("Ok"), QString::number(okI),
+               QStringLiteral("gate"));
+        addRow(prefix + QStringLiteral("Px"), QString::number(mr.valuePx, 'f', 2),
+               mr.mode == QLatin1String("angle") ? QStringLiteral("deg")
+                                                : QStringLiteral("px"));
+        if (mr.calibrated && mr.mode != QLatin1String("angle"))
+          addRow(prefix + QStringLiteral("Value"), QString::number(mr.value, 'f', 3),
+                 mr.unit);
+        if (mr.mode == QLatin1String("circles")) {
+          addRow(prefix + QStringLiteral("Diameter"),
+                 QString::number(mr.diameterPx, 'f', 2), QStringLiteral("px"));
+          addRow(prefix + QStringLiteral("Radius"),
+                 QString::number(mr.radiusPx, 'f', 2), QStringLiteral("px"));
+        } else if (mr.mode == QLatin1String("lines") ||
+                   mr.mode == QLatin1String("points")) {
+          addRow(prefix + QStringLiteral("Length"),
+                 QString::number(mr.lengthPx, 'f', 2), QStringLiteral("px"));
+        } else if (mr.mode == QLatin1String("angle")) {
+          addRow(prefix + QStringLiteral("Angle"),
+                 QString::number(mr.angleDeg, 'f', 2), QStringLiteral("deg"));
+        }
+      }
     } else if (op == QLatin1String("defects")) {
+
       const auto t0 = std::chrono::steady_clock::now();
       QVariantMap dp = step->params;
       injectFixtureFromVars(dp, flow_vars_);
@@ -3085,6 +3231,27 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                   .arg(flow_vars_.value(QStringLiteral("geomFollowRadius")).toString())
                   .arg(flow_vars_.value(QStringLiteral("geomFollowRoiX")).toString())
                   .arg(flow_vars_.value(QStringLiteral("geomFollowRoiY")).toString());
+      line += QChar(' ');
+      line += QStringLiteral(
+                  "measCircCount=%1 measCircOk=%2 measCircDiameter=%3 "
+                  "measCircRadius=%4 measCircDiameterMm=%5")
+                  .arg(flow_vars_.value(QStringLiteral("measCircCount")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("measCircOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("measCircDiameter")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("measCircRadius")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("measCircDiameterMm")).toString());
+      line += QChar(' ');
+      line += QStringLiteral(
+                  "measLineCount=%1 measLineOk=%2 measLineLength=%3 "
+                  "measAngAngle=%4 measAngOk=%5 measPtsDist=%6 measPtsOk=%7")
+                  .arg(flow_vars_.value(QStringLiteral("measLineCount")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("measLineOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("measLineLength")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("measAngAngle")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("measAngOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("measPtsDist")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("measPtsOk")).toString());
+
 line += QLatin1Char('\n');
       f.write(line.toUtf8());
     }
@@ -3720,7 +3887,7 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("judgeMinCount"), 1},
                 {QStringLiteral("minConfidence"), 0},
                 {QStringLiteral("showOverlay"), true}};
-  } else if (key == QLatin1String("caliper") || key == QLatin1String("measure")) {
+  } else if (key == QLatin1String("caliper")) {
     s.params = {{QStringLiteral("direction"), QStringLiteral("horizontal")},
                 {QStringLiteral("target"), QStringLiteral("soft_bars")},
                 {QStringLiteral("threshold"), 18},
@@ -3731,6 +3898,20 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("judgeMinPx"), 50},
                 {QStringLiteral("judgeMaxPx"), 400},
                 {QStringLiteral("showOverlay"), true}};
+  } else if (key == QLatin1String("measure")) {
+    s.params = {{QStringLiteral("feature"), QStringLiteral("circles")},
+                {QStringLiteral("target"), QStringLiteral("soft_circle")},
+                {QStringLiteral("threshold"), 127},
+                {QStringLiteral("minArea"), 50},
+                {QStringLiteral("invert"), true},
+                {QStringLiteral("pxPerMm"), 0},
+                {QStringLiteral("unit"), QStringLiteral("px")},
+                {QStringLiteral("judgeEnable"), false},
+                {QStringLiteral("resultVar"), QStringLiteral("measure")},
+                {QStringLiteral("writePassGate"), false},
+                {QStringLiteral("showOverlay"), true},
+                {QStringLiteral("showLabels"), true},
+                {QStringLiteral("followFixture"), false}};
   } else if (key == QLatin1String("defects")) {
     s.params = {{QStringLiteral("referenceSource"), QStringLiteral("file")},
                 {QStringLiteral("referencePath"), QString()},

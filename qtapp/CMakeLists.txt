@@ -77,6 +77,8 @@ add_executable(sieans_qt
   src/FixturePose.cpp
   src/GeometryFind.hpp
   src/GeometryFind.cpp
+  src/MeasureDim.hpp
+  src/MeasureDim.cpp
   src/ConditionEval.hpp
   src/ConditionEval.cpp
   src/SubflowExec.hpp

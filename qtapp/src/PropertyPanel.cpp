@@ -186,7 +186,48 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("followFixture", "跟随定位位姿", kBool, "ROI 在夹具坐标系"),
             S("fixtureVar", "位姿变量前缀", kLine, "fixture")};
   }
-  if (op == QLatin1String("caliper") || op == QLatin1String("measure")) {
+  if (op == QLatin1String("measure")) {
+    return {S("feature", "测量对象", kChoice,
+              "circles|圆直径/半径;lines|直线长度;points|两点距离;angle|夹角;contours|轮廓外接矩形;caliper|卡尺间距"),
+            S("target", "软场景目标", kChoice,
+              "|手动/ROI;soft_circle|软圆;soft_line|软直线;soft_points|软直线两端;soft_angle|软直线⊥垂直;soft_bars|软卡尺条"),
+            S("pxPerMm", "像素/毫米", kReal, "0=仅像素；与标定二选一"),
+            S("unit", "单位", kLine, "px 或 mm"),
+            S("calDistance", "标定点实际距离", kReal, "配合 calX1..calY2"),
+            S("calX1", "标定点1 X", kReal, ""),
+            S("calY1", "标定点1 Y", kReal, ""),
+            S("calX2", "标定点2 X", kReal, ""),
+            S("calY2", "标定点2 Y", kReal, ""),
+            S("x1", "点1 / 线1起点 X", kReal, ""),
+            S("y1", "点1 / 线1起点 Y", kReal, ""),
+            S("x2", "点2 / 线1终点 X", kReal, ""),
+            S("y2", "点2 / 线1终点 Y", kReal, ""),
+            S("x3", "线2起点 X", kReal, "夹角"),
+            S("y3", "线2起点 Y", kReal, ""),
+            S("x4", "线2终点 X", kReal, ""),
+            S("y4", "线2终点 Y", kReal, ""),
+            S("threshold", "轮廓阈值", kInt, ""),
+            S("minArea", "最小面积", kInt, ""),
+            S("invert", "深色目标", kBool, ""),
+            S("minRadius", "最小半径", kInt, ""),
+            S("maxRadius", "最大半径", kInt, ""),
+            S("minLength", "最小直线长度", kInt, ""),
+            S("votes", "霍夫投票", kInt, ""),
+            S("roiX", "ROI X", kInt, ""),
+            S("roiY", "ROI Y", kInt, ""),
+            S("roiW", "ROI 宽", kInt, ""),
+            S("roiH", "ROI 高", kInt, ""),
+            S("judgeEnable", "启用判定", kBool, ""),
+            S("judgeMin", "判定下限", kReal, "直径/长度/角度/间距"),
+            S("judgeMax", "判定上限", kReal, ""),
+            S("resultVar", "结果前缀", kLine, "measure → measureDiameter"),
+            S("writePassGate", "写入 passGate", kBool, ""),
+            S("showOverlay", "显示标注", kBool, ""),
+            S("showLabels", "显示标签", kBool, ""),
+            S("followFixture", "跟随定位位姿", kBool, ""),
+            S("fixtureVar", "位姿变量前缀", kLine, "fixture")};
+  }
+  if (op == QLatin1String("caliper")) {
     return {S("direction", "方向", kChoice, "horizontal|水平;vertical|垂直"),
             S("target", "目标", kLine, "soft_bars|软靶 / 空=ROI"),
             S("roiX", "ROI X", kInt, ""),
@@ -906,8 +947,9 @@ void PropertyPanel::showStep(const FlowStep& step) {
     hint += QStringLiteral(" · Tesseract · lang/psm · ocrText");
   else if (step.operation == QLatin1String("geometry"))
     hint += QStringLiteral(" · 直线/圆/矩形/轮廓/边缘 · geomCount/X/Y/Radius/Length");
-  else if (step.operation == QLatin1String("caliper") ||
-           step.operation == QLatin1String("measure"))
+  else if (step.operation == QLatin1String("measure"))
+    hint += QStringLiteral(" · 直径/线长/两点距/夹角/轮廓 · 等比例标定 pxPerMm");
+  else if (step.operation == QLatin1String("caliper"))
     hint += QStringLiteral(" · QImage 边缘卡尺 · caliperDist/measureMm");
   else if (step.operation == QLatin1String("defects"))
     hint += QStringLiteral(" · 灰度差影+连通域 · defectsCount/defectsRatio/defectsOk · 可跟随定位");

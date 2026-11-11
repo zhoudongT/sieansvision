@@ -4,6 +4,7 @@
 #include "DefectDetect.hpp"
 #include "FixturePose.hpp"
 #include "GeometryFind.hpp"
+#include "MeasureDim.hpp"
 #include "SoftFrame.hpp"
 #include "MainWindow.hpp"
 #include "Theme.hpp"
@@ -86,6 +87,18 @@ int main(int argc, char* argv[]) {
     }
     for (const QString& line : fails)
       std::fprintf(stderr, "geometry-selftest FAIL %s\n", line.toUtf8().constData());
+    return 1;
+  }
+
+  if (qEnvironmentVariable("SIEANS_QT_MEASURE_SELFTEST") == QLatin1String("1") &&
+      qEnvironmentVariable("SIEANS_QT_MEASURE_SELFTEST_QUIT") == QLatin1String("1")) {
+    const QStringList fails = sieans_qt::measureSelfTest();
+    if (fails.isEmpty()) {
+      std::fprintf(stdout, "measure-selftest ok\n");
+      return 0;
+    }
+    for (const QString& line : fails)
+      std::fprintf(stderr, "measure-selftest FAIL %s\n", line.toUtf8().constData());
     return 1;
   }
 
