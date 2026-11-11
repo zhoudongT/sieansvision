@@ -95,6 +95,8 @@ const char* glyphKindFor(const QString& key, const QString& category) {
   if (key == QLatin1String("udp_exchange")) return "rx";
   if (key == QLatin1String("delay")) return "logic";
   if (key == QLatin1String("variables")) return "var";
+  if (key == QLatin1String("script")) return "logic";
+  if (key == QLatin1String("plugin")) return "var";
   if (key == QLatin1String("result_gate")) return "gate";
   if (key == QLatin1String("format_data")) return "format";
   if (key == QLatin1String("var_calc")) return "var";
@@ -341,6 +343,12 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
       {QStringLiteral("variables"), QStringLiteral("变量赋值"),
        QStringLiteral("变量与数据"),
        QStringLiteral("set / increment · 全局 / 流程 / 模块")},
+      {QStringLiteral("script"), QStringLiteral("Python 自定义脚本"),
+       QStringLiteral("流程控制"),
+       QStringLiteral("run(ctx) · 读写流程变量 · 可取消超时")},
+      {QStringLiteral("plugin"), QStringLiteral("算子插件"),
+       QStringLiteral("扩展算子"),
+       QStringLiteral("已安装 Python 插件 · 钉死版本")},
       {QStringLiteral("var_calc"), QStringLiteral("变量计算"),
        QStringLiteral("变量与数据"),
        QStringLiteral("expr: in / startswith / endswith / contains")},
@@ -500,6 +508,7 @@ void OperatorLibrary::rebuild() {
       {QStringLiteral("变量与数据"), QColor(QStringLiteral("#6a8090"))},
       {QStringLiteral("流程控制"), QColor(QStringLiteral("#6a7a90"))},
       {QStringLiteral("3D 点云"), QColor(QStringLiteral("#4a7fc5"))},
+      {QStringLiteral("扩展算子"), QColor(QStringLiteral("#6a8090"))},
   };
   QString lastCat;
   if (categoryFilter_.isEmpty() && !recentKeys_.isEmpty()) {

@@ -931,9 +931,30 @@ void SieansDocument::seedGentlQrDemo() {
        {QStringLiteral("timeoutMs"), 3000},
        {QStringLiteral("maxBytes"), 65536},
        {QStringLiteral("resultVar"), QStringLiteral("udpEx")}});
-
-
-
+  add(QStringLiteral("script1"), QStringLiteral("Python 脚本 · 烟测"),
+      QStringLiteral("script"), 80, 5180, QStringLiteral("udpEx"),
+      {{QStringLiteral("code"),
+        QStringLiteral("def run(ctx):\n"
+                       "    count = ctx[\"params\"].get(\"count\", 0)\n"
+                       "    return dict(result=dict(scriptOut=4242, count=count, passed=True))\n")},
+       {QStringLiteral("timeoutMs"), 5000},
+       {QStringLiteral("arguments"), QVariantMap{{QStringLiteral("count"), 1}}},
+       {QStringLiteral("outputBindings"),
+        QVariantList{QVariantMap{{QStringLiteral("field"), QStringLiteral("scriptOut")},
+                                 {QStringLiteral("scope"), QStringLiteral("flow")},
+                                 {QStringLiteral("name"), QStringLiteral("scriptOut")}}}},
+       {QStringLiteral("resultVar"), QStringLiteral("script")}});
+  add(QStringLiteral("plugin1"), QStringLiteral("算子插件 · 软件烟测"),
+      QStringLiteral("plugin"), 80, 5300, QStringLiteral("script1"),
+      {{QStringLiteral("pluginId"), QStringLiteral("sieans-soft-smoke")},
+       {QStringLiteral("pluginVersion"), QStringLiteral("1.0.0")},
+       {QStringLiteral("operatorId"), QStringLiteral("fixed-value")},
+       {QStringLiteral("arguments"), QVariantMap{{QStringLiteral("value"), 9001}}},
+       {QStringLiteral("outputBindings"),
+        QVariantList{QVariantMap{{QStringLiteral("field"), QStringLiteral("value")},
+                                 {QStringLiteral("scope"), QStringLiteral("flow")},
+                                 {QStringLiteral("name"), QStringLiteral("pluginValue")}}}},
+       {QStringLiteral("resultVar"), QStringLiteral("plugin")}});
 
   auto link = [&](const QString& a, const QString& b,
                   const QString& when = QStringLiteral("always")) {
@@ -1008,6 +1029,8 @@ void SieansDocument::seedGentlQrDemo() {
   link(QStringLiteral("varsSet"), QStringLiteral("varsInc"));
   link(QStringLiteral("varsInc"), QStringLiteral("tcpEx"));
   link(QStringLiteral("tcpEx"), QStringLiteral("udpEx"));
+  link(QStringLiteral("udpEx"), QStringLiteral("script1"));
+  link(QStringLiteral("script1"), QStringLiteral("plugin1"));
 
   variables_ = {
       {QStringLiteral("barcodeCount"), 0},
@@ -1190,6 +1213,10 @@ void SieansDocument::seedGentlQrDemo() {
       {QStringLiteral("udpExOk"), 0},
       {QStringLiteral("udpExValue"), QString()},
       {QStringLiteral("udpExDelivery"), QString()},
+      {QStringLiteral("scriptOk"), 0},
+      {QStringLiteral("scriptOut"), 0},
+      {QStringLiteral("pluginOk"), 0},
+      {QStringLiteral("pluginValue"), 0},
   };
   subflows_.clear();
   subflows_.push_back(makeCounterSubflow());

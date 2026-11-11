@@ -256,6 +256,21 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("valueFrom", "从变量读取", kLine, "可选，优先于 value"),
             S("resultVar", "结果前缀", kLine, "varsSet / varsInc")};
   }
+  if (op == QLatin1String("script")) {
+    return {S("code", "Python 源码", kLine, "必须定义 run(ctx)，返回字典"),
+            S("timeoutMs", "超时 (ms)", kInt, "100–30000"),
+            S("arguments", "脚本参数 JSON", kLine, "注入 ctx.params"),
+            S("outputBindings", "输出绑定 JSON", kLine, "[{field,scope,name}]"),
+            S("resultVar", "结果前缀", kLine, "script → scriptOk/scriptOut")};
+  }
+  if (op == QLatin1String("plugin")) {
+    return {S("pluginId", "插件标识", kLine, "已安装插件 ID"),
+            S("pluginVersion", "钉死版本", kLine, "须与已安装版本一致"),
+            S("operatorId", "算子标识", kLine, "插件内算子 ID"),
+            S("arguments", "插件参数 JSON", kLine, "按清单补全默认值"),
+            S("outputBindings", "输出绑定 JSON", kLine, "[{field,scope,name}]"),
+            S("resultVar", "结果前缀", kLine, "plugin → pluginOk/pluginValue")};
+  }
   if (op == QLatin1String("geometry")) {
     return {S("feature", "特征类型", kChoice,
               "contours|轮廓;lines|直线;circles|圆;rects|矩形;edges|边缘"),
@@ -1235,6 +1250,10 @@ void PropertyPanel::showStep(const FlowStep& step) {
     hint += QStringLiteral(" · 可取消延时 · delayOk/delayElapsed · 0–30000 ms");
   else if (step.operation == QLatin1String("variables"))
     hint += QStringLiteral(" · 变量赋值/累加 · scope+name · 写入 flow/global/module");
+  else if (step.operation == QLatin1String("script"))
+    hint += QStringLiteral(" · Python run(ctx) · scriptOut / 输出绑定 · 可取消超时");
+  else if (step.operation == QLatin1String("plugin"))
+    hint += QStringLiteral(" · 已安装算子插件 · pluginId/version · pluginValue");
   else if (step.operation == QLatin1String("locate"))
     hint += QStringLiteral(" · 模板 SAD + 旋转搜索 · locateX/Y/Angle/Score");
   else if (step.operation == QLatin1String("pose_correct"))

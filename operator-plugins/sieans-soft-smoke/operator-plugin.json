@@ -1,0 +1,25 @@
+{
+  "apiVersion": 1,
+  "id": "sieans-soft-smoke",
+  "name": "SIEANS Qt 软件路径烟测插件",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "软件/模拟路径：无网络、无第三方依赖的确定性数值输出，供 Qt 工作台 plugin 烟测。不是现场检测算法。",
+  "operators": [
+    {
+      "id": "fixed-value",
+      "name": "固定值输出",
+      "description": "返回参数 value（默认 9001）及通过标志，用于流程变量绑定与烟测。",
+      "entry": "smoke_value.py",
+      "input": "none",
+      "timeoutMs": 3000,
+      "parameters": [
+        {"key": "value", "label": "输出数值", "type": "integer", "default": 9001, "required": true}
+      ],
+      "outputs": [
+        {"key": "value", "label": "输出数值", "type": "integer", "required": true},
+        {"key": "passed", "label": "是否通过", "type": "boolean", "required": true}
+      ]
+    }
+  ]
+}

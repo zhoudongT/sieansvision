@@ -16,6 +16,7 @@
 #include "CloudOps.hpp"
 #include "SocketExchange.hpp"
 #include "FlowExtras.hpp"
+#include "PythonExt.hpp"
 #include "ConditionEval.hpp"
 #include "SubflowExec.hpp"
 #include "SubflowDialog.hpp"
@@ -3802,6 +3803,60 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
         addRow(prefix + QStringLiteral("Value"), xr.value.toString(), xr.encoding);
         addRow(prefix + QStringLiteral("Delivery"), xr.delivery, QStringLiteral("delivery"));
       }
+    } else if (op == QLatin1String("script") || op == QLatin1String("plugin")) {
+      const auto t0 = std::chrono::steady_clock::now();
+      QVariantMap& module = module_vars_[id];
+      const PythonExtResult pr = (op == QLatin1String("script"))
+                                     ? runScript(step->params, flow_vars_, global_vars_, module,
+                                                 {}, &pipeline_cancel_)
+                                     : runPlugin(step->params, flow_vars_, global_vars_, module,
+                                                 {}, &pipeline_cancel_);
+      const double pyMs = std::chrono::duration<double, std::milli>(
+                              std::chrono::steady_clock::now() - t0)
+                              .count();
+      algoMs += pyMs;
+      QString prefix = step->params.value(QStringLiteral("resultVar")).toString().trimmed();
+      if (prefix.isEmpty())
+        prefix = (op == QLatin1String("script")) ? QStringLiteral("script")
+                                                 : QStringLiteral("plugin");
+      auto put = [&](const QString& suffix, const QVariant& v) {
+        flow_vars_.insert(prefix + suffix, v);
+      };
+      put(QStringLiteral("Ok"), pr.ok ? 1 : 0);
+      put(QStringLiteral("Elapsed"), pr.elapsedMs);
+      put(QStringLiteral("Error"), pr.error);
+      if (op == QLatin1String("script")) {
+        if (pr.result.contains(QStringLiteral("scriptOut")))
+          put(QStringLiteral("Out"), pr.result.value(QStringLiteral("scriptOut")));
+      } else {
+        if (pr.result.contains(QStringLiteral("value")))
+          put(QStringLiteral("Value"), pr.result.value(QStringLiteral("value")));
+        put(QStringLiteral("Id"), pr.pluginId);
+        put(QStringLiteral("Op"), pr.operatorId);
+      }
+      ok = pr.ok;
+      note = pr.ok ? QStringLiteral("%1 · %2 ms").arg(pr.note).arg(pyMs, 0, 'f', 1) : pr.error;
+      if (result_table_) {
+        auto addRow = [&](const QString& k, const QString& v, const QString& unit) {
+          const int row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(k));
+          result_table_->setItem(row, 1, new QTableWidgetItem(v));
+          result_table_->setItem(row, 2, new QTableWidgetItem(unit));
+        };
+        addRow(prefix + QStringLiteral("Ok"), QString::number(pr.ok ? 1 : 0),
+               QStringLiteral("gate"));
+        if (op == QLatin1String("script"))
+          addRow(prefix + QStringLiteral("Out"),
+                 pr.result.value(QStringLiteral("scriptOut")).toString(),
+                 QStringLiteral("result"));
+        else
+          addRow(prefix + QStringLiteral("Value"),
+                 pr.result.value(QStringLiteral("value")).toString(),
+                 QStringLiteral("result"));
+        addRow(prefix + QStringLiteral("Elapsed"), QString::number(pr.elapsedMs),
+               QStringLiteral("ms"));
+      }
     } else {
       note = QStringLiteral("透传 / 未实现执行体");
       ok = true;
@@ -4228,6 +4283,14 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                   .arg(flow_vars_.value(QStringLiteral("udpExOk")).toString())
                   .arg(flow_vars_.value(QStringLiteral("udpExValue")).toString())
                   .arg(flow_vars_.value(QStringLiteral("udpExDelivery")).toString());
+      line += QLatin1Char(' ');
+      line += QStringLiteral(
+                  "scriptOk=%1 scriptOut=%2 "
+                  "pluginOk=%3 pluginValue=%4")
+                  .arg(flow_vars_.value(QStringLiteral("scriptOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("scriptOut")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("pluginOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("pluginValue")).toString());
 
 line += QLatin1Char('\n');
       f.write(line.toUtf8());
@@ -5241,6 +5304,19 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("maxBytes"), 65536},
                 {QStringLiteral("localPort"), 0},
                 {QStringLiteral("resultVar"), QStringLiteral("udpEx")}};
+  } else if (key == QLatin1String("script")) {
+    s.params = {{QStringLiteral("code"),
+                 QStringLiteral("def run(ctx):\n"
+                                "    return dict(result=dict(scriptOut=4242, passed=True))\n")},
+                {QStringLiteral("timeoutMs"), 5000},
+                {QStringLiteral("arguments"), QVariantMap{{QStringLiteral("count"), 0}}},
+                {QStringLiteral("resultVar"), QStringLiteral("script")}};
+  } else if (key == QLatin1String("plugin")) {
+    s.params = {{QStringLiteral("pluginId"), QStringLiteral("sieans-soft-smoke")},
+                {QStringLiteral("pluginVersion"), QStringLiteral("1.0.0")},
+                {QStringLiteral("operatorId"), QStringLiteral("fixed-value")},
+                {QStringLiteral("arguments"), QVariantMap{{QStringLiteral("value"), 9001}}},
+                {QStringLiteral("resultVar"), QStringLiteral("plugin")}};
   } else if (key == QLatin1String("result_gate")) {
     s.params = {{QStringLiteral("minCount"), 1},
                 {QStringLiteral("sourceVar"), QStringLiteral("barcodeCount")},

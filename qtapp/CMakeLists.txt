@@ -97,6 +97,8 @@ add_executable(sieans_qt
   src/SocketExchange.cpp
   src/FlowExtras.hpp
   src/FlowExtras.cpp
+  src/PythonExt.hpp
+  src/PythonExt.cpp
   src/ConditionEval.hpp
   src/ConditionEval.cpp
   src/SubflowExec.hpp
