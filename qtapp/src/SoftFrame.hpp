@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QImage>
+#include <QLine>
+#include <QPoint>
 #include <QRect>
 #include <QString>
 
@@ -33,6 +35,19 @@ QImage makeSoftSceneBlemish(int width, int height);
 QRect softScenePlateRect(int width, int height);
 /** 从 soft 场景裁出标牌，用作定位模板。 */
 QImage makeSoftScenePlateTemplate(int width, int height);
+
+/** Dark filled circle in the soft-scene quiet zone (bottom-right). */
+QPoint softSceneGeomCircleCenter(int width, int height);
+int softSceneGeomCircleRadius(int width, int height);
+QRect softSceneGeomCircleRect(int width, int height);
+
+/** Smaller dark circle just below the SIEANS plate, for fixture-follow. */
+QPoint softSceneGeomFollowCircleCenter(int width, int height);
+int softSceneGeomFollowCircleRadius(int width, int height);
+
+/** Dark line in the soft-scene quiet zone (bottom-right, above the large circle). */
+QLine softSceneGeomLine(int width, int height);
+
 
 /**
  * Exposure/gain simulation. stampHud draws `exp=… gain=… #seq` so a live

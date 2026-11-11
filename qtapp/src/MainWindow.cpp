@@ -5,6 +5,7 @@
 #include "FixturePose.hpp"
 #include "CaliperMeasure.hpp"
 #include "DefectDetect.hpp"
+#include "GeometryFind.hpp"
 #include "ConditionEval.hpp"
 #include "SubflowExec.hpp"
 #include "SubflowDialog.hpp"
@@ -2384,6 +2385,148 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
         addRow(prefix + QStringLiteral("MaxArea"), QString::number(dr.maxArea),
                QStringLiteral("px"));
       }
+    } else if (op == QLatin1String("geometry")) {
+      const auto t0 = std::chrono::steady_clock::now();
+      QVariantMap gp = step->params;
+      injectFixtureFromVars(gp, flow_vars_);
+      if (gp.value(QStringLiteral("followFixture")).toBool() &&
+          flow_vars_.contains(QStringLiteral("locateW"))) {
+        if (!gp.contains(QStringLiteral("locateW")))
+          gp.insert(QStringLiteral("locateW"), flow_vars_.value(QStringLiteral("locateW")));
+        if (!gp.contains(QStringLiteral("locateH")))
+          gp.insert(QStringLiteral("locateH"), flow_vars_.value(QStringLiteral("locateH")));
+      }
+      GeometryResult gr = runGeometry(working, gp);
+      const double gMs = std::chrono::duration<double, std::milli>(
+                             std::chrono::steady_clock::now() - t0)
+                             .count();
+      algoMs += gMs;
+      QString prefix =
+          step->params.value(QStringLiteral("resultVar"), QStringLiteral("geom"))
+              .toString()
+              .trimmed();
+      if (prefix.isEmpty()) prefix = QStringLiteral("geom");
+      auto put = [&](const QString& suffix, const QVariant& v) {
+        flow_vars_.insert(prefix + suffix, v);
+      };
+      const GeometryItem g0 = gr.items.isEmpty() ? GeometryItem{} : gr.items.first();
+      const int okI = (gr.ok && (!gr.judgeEnable || gr.judgeOk) && gr.count >= 1) ? 1 : 0;
+      put(QStringLiteral("Count"), gr.count);
+      put(QStringLiteral("Ok"), okI);
+      put(QStringLiteral("Passed"), okI);
+      put(QStringLiteral("Feature"), gr.feature);
+      put(QStringLiteral("EdgePixels"), gr.edgePixels);
+      put(QStringLiteral("X"), g0.center.x());
+      put(QStringLiteral("Y"), g0.center.y());
+      put(QStringLiteral("Radius"), g0.radius);
+      put(QStringLiteral("Diameter"), g0.diameter);
+      put(QStringLiteral("Length"), g0.length);
+      put(QStringLiteral("Angle"), g0.angleDeg);
+      put(QStringLiteral("Area"), g0.area);
+      put(QStringLiteral("Width"), g0.width);
+      put(QStringLiteral("Height"), g0.height);
+      put(QStringLiteral("Perimeter"), g0.perimeter);
+      put(QStringLiteral("Circularity"), g0.circularity);
+      put(QStringLiteral("X1"), g0.start.x());
+      put(QStringLiteral("Y1"), g0.start.y());
+      put(QStringLiteral("X2"), g0.end.x());
+      put(QStringLiteral("Y2"), g0.end.y());
+      if (gp.value(QStringLiteral("followFixture")).toBool()) {
+        const FollowRoi fr = resolveFollowRoi(gp, working.width(), working.height());
+        if (fr.active) {
+          put(QStringLiteral("RoiX"), fr.center.x());
+          put(QStringLiteral("RoiY"), fr.center.y());
+          if (step->params.value(QStringLiteral("showOverlay"), true).toBool()) {
+            OverlayHit fo;
+            fo.format = QStringLiteral("FOLLOW");
+            fo.text = QStringLiteral("跟随ROI");
+            fo.polygon = fr.corners;
+            overlays.push_back(fo);
+          }
+        }
+      }
+      const bool writeGate = step->params.value(QStringLiteral("writePassGate")).toBool();
+      if (writeGate) flow_vars_.insert(QStringLiteral("passGate"), okI);
+      {
+        StepSnap snap;
+        snap.count = gr.count;
+        snap.ok = okI != 0;
+        snap.matches = gr.count;
+        snap.score = g0.radius > 0 ? g0.radius : (g0.length > 0 ? g0.length : g0.area);
+        snap.text = gr.note;
+        snap.fields.insert(QStringLiteral("count"), gr.count);
+        snap.fields.insert(QStringLiteral("x"), g0.center.x());
+        snap.fields.insert(QStringLiteral("y"), g0.center.y());
+        step_snaps.insert(id, snap);
+      }
+      ok = gr.ok && (!gr.judgeEnable || gr.judgeOk);
+      if (!gr.ok) ok = false;
+      note = gr.ok ? QStringLiteral("%1 · %2 ms").arg(gr.note).arg(gMs, 0, 'f', 1)
+                   : (gr.error.isEmpty() ? gr.note : gr.error);
+      if (step->params.value(QStringLiteral("showOverlay"), true).toBool()) {
+        const bool showLab =
+            !step->params.contains(QStringLiteral("showLabels")) ||
+            step->params.value(QStringLiteral("showLabels")).toBool();
+        int idx = 1;
+        for (const GeometryItem& it : gr.items) {
+          OverlayHit o;
+          o.format = QStringLiteral("GEOM");
+          if (showLab) {
+            if (it.kind == QLatin1String("circle"))
+              o.text = QStringLiteral("%1 r=%2").arg(idx).arg(it.radius, 0, 'f', 1);
+            else if (it.kind == QLatin1String("line"))
+              o.text = QStringLiteral("%1 L=%2").arg(idx).arg(it.length, 0, 'f', 1);
+            else if (it.kind == QLatin1String("rect"))
+              o.text = QStringLiteral("%1 %2x%3")
+                           .arg(idx)
+                           .arg(it.width, 0, 'f', 0)
+                           .arg(it.height, 0, 'f', 0);
+            else
+              o.text = QStringLiteral("%1 A=%2").arg(idx).arg(int(it.area));
+          }
+          if (it.polygon.size() >= 2)
+            o.polygon = it.polygon;
+          else if (it.bbox.isValid()) {
+            const QRectF b = it.bbox;
+            o.polygon << b.topLeft() << b.topRight() << b.bottomRight()
+                      << b.bottomLeft();
+          }
+          overlays.push_back(o);
+          ++idx;
+        }
+      }
+      if (result_table_) {
+        auto addRow = [&](const QString& k, const QString& v, const QString& unit) {
+          const int row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(k));
+          result_table_->setItem(row, 1, new QTableWidgetItem(v));
+          result_table_->setItem(row, 2, new QTableWidgetItem(unit));
+        };
+        addRow(prefix + QStringLiteral("Count"), QString::number(gr.count),
+               QStringLiteral("count"));
+        addRow(prefix + QStringLiteral("Ok"), QString::number(okI),
+               QStringLiteral("gate"));
+        if (gr.feature == QLatin1String("circles")) {
+          addRow(prefix + QStringLiteral("X"), QString::number(g0.center.x(), 'f', 2),
+                 QStringLiteral("px"));
+          addRow(prefix + QStringLiteral("Y"), QString::number(g0.center.y(), 'f', 2),
+                 QStringLiteral("px"));
+          addRow(prefix + QStringLiteral("Radius"),
+                 QString::number(g0.radius, 'f', 2), QStringLiteral("px"));
+        } else if (gr.feature == QLatin1String("lines")) {
+          addRow(prefix + QStringLiteral("Length"),
+                 QString::number(g0.length, 'f', 2), QStringLiteral("px"));
+          addRow(prefix + QStringLiteral("Angle"),
+                 QString::number(g0.angleDeg, 'f', 2), QStringLiteral("deg"));
+        } else if (gr.feature == QLatin1String("edges")) {
+          addRow(prefix + QStringLiteral("EdgePixels"),
+                 QString::number(gr.edgePixels), QStringLiteral("px"));
+        } else {
+          addRow(prefix + QStringLiteral("Area"), QString::number(g0.area, 'f', 1),
+                 QStringLiteral("px"));
+        }
+      }
     } else if (op == QLatin1String("var_calc")) {
       ExprEval ev;
       ev.setVars(flow_vars_);
@@ -2919,7 +3062,30 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                   .arg(flow_vars_.value(QStringLiteral("defectsFollowOk")).toString())
                   .arg(flow_vars_.value(QStringLiteral("defectsFollowRoiX")).toString())
                   .arg(flow_vars_.value(QStringLiteral("defectsFollowRoiY")).toString());
-      line += QLatin1Char('\n');
+      line += QChar(' ');
+      line += QStringLiteral(
+                  "geomCircCount=%1 geomCircOk=%2 geomCircX=%3 geomCircY=%4 "
+                  "geomCircRadius=%5")
+                  .arg(flow_vars_.value(QStringLiteral("geomCircCount")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("geomCircOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("geomCircX")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("geomCircY")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("geomCircRadius")).toString());
+      line += QChar(' ');
+      line += QStringLiteral(
+                  "geomLineCount=%1 geomLineOk=%2 geomLineLength=%3 geomLineAngle=%4 "
+                  "geomFollowCount=%5 geomFollowOk=%6 geomFollowRadius=%7 "
+                  "geomFollowRoiX=%8 geomFollowRoiY=%9")
+                  .arg(flow_vars_.value(QStringLiteral("geomLineCount")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("geomLineOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("geomLineLength")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("geomLineAngle")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("geomFollowCount")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("geomFollowOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("geomFollowRadius")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("geomFollowRoiX")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("geomFollowRoiY")).toString());
+line += QLatin1Char('\n');
       f.write(line.toUtf8());
     }
   }
@@ -3582,6 +3748,26 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("writePassGate"), false},
                 {QStringLiteral("showOverlay"), true},
                 {QStringLiteral("showLabels"), true}};
+  } else if (key == QLatin1String("geometry")) {
+    s.params = {{QStringLiteral("feature"), QStringLiteral("contours")},
+                {QStringLiteral("threshold"), 127},
+                {QStringLiteral("minArea"), 50},
+                {QStringLiteral("invert"), false},
+                {QStringLiteral("filterSize"), 1},
+                {QStringLiteral("maxCount"), 50},
+                {QStringLiteral("cannyLow"), 50},
+                {QStringLiteral("cannyHigh"), 150},
+                {QStringLiteral("votes"), 30},
+                {QStringLiteral("minLength"), 40},
+                {QStringLiteral("minRadius"), 5},
+                {QStringLiteral("maxRadius"), 200},
+                {QStringLiteral("minDistance"), 30},
+                {QStringLiteral("judgeEnable"), false},
+                {QStringLiteral("resultVar"), QStringLiteral("geom")},
+                {QStringLiteral("writePassGate"), false},
+                {QStringLiteral("showOverlay"), true},
+                {QStringLiteral("showLabels"), true},
+                {QStringLiteral("followFixture"), false}};
   } else if (key == QLatin1String("camera_capture")) {
     s.params = {{QStringLiteral("driver"), QStringLiteral("gentl")},
                 {QStringLiteral("backendKind"), QStringLiteral("gentl")},

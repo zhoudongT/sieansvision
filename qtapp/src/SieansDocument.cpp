@@ -369,6 +369,61 @@ void SieansDocument::seedGentlQrDemo() {
        {QStringLiteral("roiY"), -18},
        {QStringLiteral("roiW"), 80},
        {QStringLiteral("roiH"), 36}});
+  add(QStringLiteral("geomCirc"), QStringLiteral("几何 · 圆"),
+      QStringLiteral("geometry"), 940, 400, QStringLiteral("cam1"),
+      {{QStringLiteral("feature"), QStringLiteral("circles")},
+       {QStringLiteral("target"), QStringLiteral("soft_circle")},
+       {QStringLiteral("minRadius"), 22},
+       {QStringLiteral("maxRadius"), 50},
+       {QStringLiteral("minDistance"), 20},
+       {QStringLiteral("votes"), 16},
+       {QStringLiteral("maxCount"), 3},
+       {QStringLiteral("filterSize"), 1},
+       {QStringLiteral("judgeEnable"), true},
+       {QStringLiteral("judgeMin"), 20},
+       {QStringLiteral("judgeMax"), 50},
+       {QStringLiteral("resultVar"), QStringLiteral("geomCirc")},
+       {QStringLiteral("writePassGate"), false},
+       {QStringLiteral("showOverlay"), true},
+       {QStringLiteral("showLabels"), true}});
+  add(QStringLiteral("geomLine"), QStringLiteral("几何 · 直线"),
+      QStringLiteral("geometry"), 940, 520, QStringLiteral("cam1"),
+      {{QStringLiteral("feature"), QStringLiteral("lines")},
+       {QStringLiteral("target"), QStringLiteral("soft_line")},
+       {QStringLiteral("minLength"), 80},
+       {QStringLiteral("votes"), 20},
+       {QStringLiteral("maxGap"), 12},
+       {QStringLiteral("maxCount"), 3},
+       {QStringLiteral("filterSize"), 1},
+       {QStringLiteral("judgeEnable"), true},
+       {QStringLiteral("judgeMin"), 100},
+       {QStringLiteral("judgeMax"), 220},
+       {QStringLiteral("resultVar"), QStringLiteral("geomLine")},
+       {QStringLiteral("writePassGate"), false},
+       {QStringLiteral("showOverlay"), true},
+       {QStringLiteral("showLabels"), true}});
+  add(QStringLiteral("geomFollow"), QStringLiteral("几何 · 跟随圆"),
+      QStringLiteral("geometry"), 940, 640, QStringLiteral("pose1"),
+      {{QStringLiteral("feature"), QStringLiteral("circles")},
+       {QStringLiteral("target"), QStringLiteral("soft_follow")},
+       {QStringLiteral("followFixture"), true},
+       {QStringLiteral("fixtureVar"), QStringLiteral("fixture")},
+       {QStringLiteral("roiX"), -40},
+       {QStringLiteral("roiY"), 20},
+       {QStringLiteral("roiW"), 80},
+       {QStringLiteral("roiH"), 70},
+       {QStringLiteral("minRadius"), 10},
+       {QStringLiteral("maxRadius"), 36},
+       {QStringLiteral("minDistance"), 16},
+       {QStringLiteral("votes"), 12},
+       {QStringLiteral("maxCount"), 3},
+       {QStringLiteral("judgeEnable"), true},
+       {QStringLiteral("judgeMin"), 10},
+       {QStringLiteral("judgeMax"), 36},
+       {QStringLiteral("resultVar"), QStringLiteral("geomFollow")},
+       {QStringLiteral("writePassGate"), false},
+       {QStringLiteral("showOverlay"), true},
+       {QStringLiteral("showLabels"), true}});
   add(QStringLiteral("var1"), QStringLiteral("变量计算 · OK/NG"),
       QStringLiteral("var_calc"), 300, 380, QStringLiteral("qr1"),
       {{QStringLiteral("scope"), QStringLiteral("flow")},
@@ -469,6 +524,9 @@ void SieansDocument::seedGentlQrDemo() {
   link(QStringLiteral("cam1"), QStringLiteral("loc1"));
   link(QStringLiteral("loc1"), QStringLiteral("pose1"));
   link(QStringLiteral("pose1"), QStringLiteral("defFollow"));
+  link(QStringLiteral("cam1"), QStringLiteral("geomCirc"));
+  link(QStringLiteral("cam1"), QStringLiteral("geomLine"));
+  link(QStringLiteral("pose1"), QStringLiteral("geomFollow"));
   link(QStringLiteral("qr1"), QStringLiteral("var1"));
   link(QStringLiteral("var1"), QStringLiteral("gate1"));
   link(QStringLiteral("gate1"), QStringLiteral("fmt1"));
@@ -534,6 +592,20 @@ void SieansDocument::seedGentlQrDemo() {
       {QStringLiteral("defectsFollowOk"), 0},
       {QStringLiteral("defectsFollowRoiX"), 0},
       {QStringLiteral("defectsFollowRoiY"), 0},
+      {QStringLiteral("geomCircCount"), 0},
+      {QStringLiteral("geomCircOk"), 0},
+      {QStringLiteral("geomCircX"), 0},
+      {QStringLiteral("geomCircY"), 0},
+      {QStringLiteral("geomCircRadius"), 0},
+      {QStringLiteral("geomLineCount"), 0},
+      {QStringLiteral("geomLineOk"), 0},
+      {QStringLiteral("geomLineLength"), 0},
+      {QStringLiteral("geomLineAngle"), 0},
+      {QStringLiteral("geomFollowCount"), 0},
+      {QStringLiteral("geomFollowOk"), 0},
+      {QStringLiteral("geomFollowRadius"), 0},
+      {QStringLiteral("geomFollowRoiX"), 0},
+      {QStringLiteral("geomFollowRoiY"), 0},
   };
   subflows_.clear();
   subflows_.push_back(makeCounterSubflow());
@@ -689,7 +761,11 @@ QStringList SieansDocument::hostWatchKeys() const {
             QStringLiteral("fixtureX"), QStringLiteral("fixtureY"),
             QStringLiteral("fixtureAngle"), QStringLiteral("defectsFollowCount"),
             QStringLiteral("defectsFollowOk"), QStringLiteral("defectsFollowRoiX"),
-            QStringLiteral("defectsFollowRoiY")};
+            QStringLiteral("defectsFollowRoiY"),
+            QStringLiteral("geomCircCount"), QStringLiteral("geomCircOk"),
+            QStringLiteral("geomCircRadius"), QStringLiteral("geomLineCount"),
+            QStringLiteral("geomLineLength"), QStringLiteral("geomFollowCount"),
+            QStringLiteral("geomFollowOk"), QStringLiteral("geomFollowRadius")};
   }
   return keys;
 }

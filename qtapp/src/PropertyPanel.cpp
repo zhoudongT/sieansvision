@@ -149,6 +149,43 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("followFixture", "跟随定位位姿", kBool, "ROI 在夹具坐标系"),
             S("fixtureVar", "位姿变量前缀", kLine, "fixture")};
   }
+  if (op == QLatin1String("geometry")) {
+    return {S("feature", "特征类型", kChoice,
+              "contours|轮廓;lines|直线;circles|圆;rects|矩形;edges|边缘"),
+            S("target", "软场景目标", kChoice,
+              "|手动ROI;soft_circle|软圆;soft_line|软直线;soft_follow|软跟随圆"),
+            S("threshold", "轮廓二值阈值", kInt, "0–255"),
+            S("minArea", "最小轮廓面积", kInt, ""),
+            S("invert", "反色提取深色目标", kBool, ""),
+            S("filterSize", "平滑半径", kInt, "1=不模糊"),
+            S("maxCount", "最多特征数", kInt, "1–100"),
+            S("cannyLow", "Canny 低阈值", kInt, ""),
+            S("cannyHigh", "Canny 高阈值", kInt, ""),
+            S("edgeThreshold", "边缘阈值", kInt, "覆盖 cannyLow"),
+            S("votes", "霍夫投票阈值", kInt, ""),
+            S("minLength", "最小直线长度", kInt, ""),
+            S("maxGap", "最大间隙", kInt, ""),
+            S("minDistance", "圆心最小间距", kInt, ""),
+            S("minRadius", "最小半径", kInt, ""),
+            S("maxRadius", "最大半径", kInt, ""),
+            S("annulusInner", "扇环内径", kInt, "0=不限制"),
+            S("annulusOuter", "扇环外径", kInt, "0=不限制"),
+            S("angleNormalize", "角度归一化 0–180", kBool, ""),
+            S("reverseFind", "互换直线端点", kBool, ""),
+            S("roiX", "ROI X", kInt, ""),
+            S("roiY", "ROI Y", kInt, ""),
+            S("roiW", "ROI 宽", kInt, ""),
+            S("roiH", "ROI 高", kInt, ""),
+            S("judgeEnable", "启用判定", kBool, ""),
+            S("judgeMin", "判定下限", kReal, "半径/长度/面积"),
+            S("judgeMax", "判定上限", kReal, ""),
+            S("resultVar", "结果前缀", kLine, "geom → geomCount"),
+            S("writePassGate", "写入 passGate", kBool, ""),
+            S("showOverlay", "显示特征", kBool, ""),
+            S("showLabels", "显示标签", kBool, ""),
+            S("followFixture", "跟随定位位姿", kBool, "ROI 在夹具坐标系"),
+            S("fixtureVar", "位姿变量前缀", kLine, "fixture")};
+  }
   if (op == QLatin1String("caliper") || op == QLatin1String("measure")) {
     return {S("direction", "方向", kChoice, "horizontal|水平;vertical|垂直"),
             S("target", "目标", kLine, "soft_bars|软靶 / 空=ROI"),
@@ -867,6 +904,8 @@ void PropertyPanel::showStep(const FlowStep& step) {
     hint += QStringLiteral(" · ZXing 多码 · 判定 judgeMinCount");
   else if (step.operation == QLatin1String("ocr"))
     hint += QStringLiteral(" · Tesseract · lang/psm · ocrText");
+  else if (step.operation == QLatin1String("geometry"))
+    hint += QStringLiteral(" · 直线/圆/矩形/轮廓/边缘 · geomCount/X/Y/Radius/Length");
   else if (step.operation == QLatin1String("caliper") ||
            step.operation == QLatin1String("measure"))
     hint += QStringLiteral(" · QImage 边缘卡尺 · caliperDist/measureMm");

@@ -1,6 +1,8 @@
 #include "SoftFrame.hpp"
 
 #include <QPainter>
+#include <QPen>
+#include <QLine>
 #include <QFont>
 #include <QFontMetrics>
 #include <QFileInfo>
@@ -132,6 +134,64 @@ QImage applySoftTone(const QImage& src, int exposureUs, double gainDb, int seq,
   return img;
 }
 
+
+int softSceneGeomCircleRadius(int width, int height) {
+  const int w = qMax(16, width) & ~1;
+  const int h = qMax(16, height) & ~1;
+  return qBound(22, qMin(w, h) / 28, 36);
+}
+
+QPoint softSceneGeomCircleCenter(int width, int height) {
+  const int w = qMax(16, width) & ~1;
+  const int h = qMax(16, height) & ~1;
+  const int r = softSceneGeomCircleRadius(w, h);
+  // Bottom-right quiet zone, above the 18px HUD strip.
+  return QPoint(w - r - 40, h - 18 - r - 28);
+}
+
+QRect softSceneGeomCircleRect(int width, int height) {
+  const QPoint c = softSceneGeomCircleCenter(width, height);
+  const int r = softSceneGeomCircleRadius(width, height);
+  return QRect(c.x() - r, c.y() - r, 2 * r, 2 * r);
+}
+
+int softSceneGeomFollowCircleRadius(int width, int height) {
+  const int w = qMax(16, width) & ~1;
+  const int h = qMax(16, height) & ~1;
+  return qBound(14, qMin(w, h) / 48, 22);
+}
+
+QPoint softSceneGeomFollowCircleCenter(int width, int height) {
+  const QRect plate = softScenePlateRect(width, height);
+  const int r = softSceneGeomFollowCircleRadius(width, height);
+  return QPoint(plate.center().x(), plate.bottom() + 8 + r);
+}
+
+QLine softSceneGeomLine(int width, int height) {
+  const QPoint c = softSceneGeomCircleCenter(width, height);
+  const int r = softSceneGeomCircleRadius(width, height);
+  const int y = c.y() - r - 24;
+  const int x1 = qMax(c.x() - 80, (qMax(16, width) & ~1) - 180);
+  const int x2 = qMin((qMax(16, width) & ~1) - 16, x1 + 160);
+  return QLine(x1, y, x2, y);
+}
+
+void drawSoftGeomTargets(QPainter& p, int width, int height) {
+  p.setRenderHint(QPainter::Antialiasing, false);
+  p.setPen(Qt::NoPen);
+  p.setBrush(QColor(15, 15, 15));
+  const QPoint fc = softSceneGeomFollowCircleCenter(width, height);
+  const int fr = softSceneGeomFollowCircleRadius(width, height);
+  p.drawEllipse(fc, fr, fr);
+  const QPoint c = softSceneGeomCircleCenter(width, height);
+  const int r = softSceneGeomCircleRadius(width, height);
+  p.drawEllipse(c, r, r);
+  const QLine L = softSceneGeomLine(width, height);
+  p.setPen(QPen(QColor(15, 15, 15), 6, Qt::SolidLine, Qt::FlatCap));
+  p.setBrush(Qt::NoBrush);
+  p.drawLine(L);
+}
+
 QImage makeSoftScene(int width, int height) {
   // Force even canvas so letterbox origin & finder stay on integer grid.
   const int w = qMax(16, width) & ~1;
@@ -208,6 +268,7 @@ QImage makeSoftScene(int width, int height) {
     drawFinder(p, QRect(plate.right() - fs - 8, plate.top() + 8, fs, fs));
     drawFinder(p, QRect(plate.left() + 8, plate.bottom() - fs - 8, fs, fs));
   }
+  drawSoftGeomTargets(p, w, h);
   p.end();
   return img;
 }

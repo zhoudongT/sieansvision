@@ -75,6 +75,8 @@ add_executable(sieans_qt
   src/DefectDetect.cpp
   src/FixturePose.hpp
   src/FixturePose.cpp
+  src/GeometryFind.hpp
+  src/GeometryFind.cpp
   src/ConditionEval.hpp
   src/ConditionEval.cpp
   src/SubflowExec.hpp

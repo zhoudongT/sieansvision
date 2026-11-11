@@ -70,6 +70,7 @@ const char* glyphKindFor(const QString& key, const QString& category) {
   if (key == QLatin1String("save_image")) return "save";
   if (key == QLatin1String("locate")) return "locate";
   if (key == QLatin1String("caliper") || key == QLatin1String("measure")) return "caliper";
+  if (key == QLatin1String("geometry")) return "geometry";
   if (key == QLatin1String("barcode") || key == QLatin1String("qr_decode")) return "barcode";
   if (key == QLatin1String("ocr")) return "ocr";
   if (key == QLatin1String("send_data")) return "tx";
@@ -192,6 +193,10 @@ QIcon opGlyph(const char* kind, const QColor& accent) {
     p.drawLine(QPointF(16, cy), QPointF(24, 7));
     p.drawLine(QPointF(16, cy), QPointF(24, 17));
     p.drawLine(QPointF(10, 6), QPointF(10, 18));
+  } else if (std::strcmp(kind, "geometry") == 0) {
+    p.drawEllipse(QRectF(cx - 6, cy - 6, 12, 12));
+    p.drawLine(QPointF(9, 18), QPointF(25, 7));
+    p.drawPoint(QPointF(cx, cy));
   } else if (std::strcmp(kind, "merge") == 0) {
     QPolygonF bow;
     bow << QPointF(10, 5) << QPointF(cx, cy) << QPointF(24, 5);
@@ -223,6 +228,9 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
        QStringLiteral("绑定上游定位，输出夹具位姿供 ROI/测量跟随")},
       {QStringLiteral("caliper"), QStringLiteral("卡尺测量"),
        QStringLiteral("定位与测量"), QStringLiteral("QImage 边缘间距（px/mm）")},
+      {QStringLiteral("geometry"), QStringLiteral("几何特征查找"),
+       QStringLiteral("定位与测量"),
+       QStringLiteral("直线 · 圆 · 矩形 · 轮廓 · 边缘（QImage）")},
       {QStringLiteral("save_image"), QStringLiteral("保存图像"),
        QStringLiteral("图像处理"), QStringLiteral("运行时落盘（可选）")},
       {QStringLiteral("barcode"), QStringLiteral("条码 / 二维码"),

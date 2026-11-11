@@ -3,6 +3,7 @@
 #include "SubflowExec.hpp"
 #include "DefectDetect.hpp"
 #include "FixturePose.hpp"
+#include "GeometryFind.hpp"
 #include "SoftFrame.hpp"
 #include "MainWindow.hpp"
 #include "Theme.hpp"
@@ -73,6 +74,18 @@ int main(int argc, char* argv[]) {
     }
     for (const QString& line : fails)
       std::fprintf(stderr, "locate-selftest FAIL %s\n", line.toUtf8().constData());
+    return 1;
+  }
+
+  if (qEnvironmentVariable("SIEANS_QT_GEOMETRY_SELFTEST") == QLatin1String("1") &&
+      qEnvironmentVariable("SIEANS_QT_GEOMETRY_SELFTEST_QUIT") == QLatin1String("1")) {
+    const QStringList fails = sieans_qt::geometrySelfTest();
+    if (fails.isEmpty()) {
+      std::fprintf(stdout, "geometry-selftest ok\n");
+      return 0;
+    }
+    for (const QString& line : fails)
+      std::fprintf(stderr, "geometry-selftest FAIL %s\n", line.toUtf8().constData());
     return 1;
   }
 
