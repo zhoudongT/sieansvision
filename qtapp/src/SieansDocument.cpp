@@ -585,6 +585,92 @@ void SieansDocument::seedGentlQrDemo() {
        {QStringLiteral("stopbits"), 1},
        {QStringLiteral("timeoutMs"), 2000},
        {QStringLiteral("resultVar"), QStringLiteral("serialPty")}});
+  add(QStringLiteral("mbW"), QStringLiteral("Modbus 写入 · 模拟器"),
+      QStringLiteral("modbus_write"), 80, 1100, QStringLiteral("serPty"),
+      {{QStringLiteral("transport"), QStringLiteral("simulator")},
+       {QStringLiteral("area"), QStringLiteral("holding")},
+       {QStringLiteral("address"), 10},
+       {QStringLiteral("dataType"), QStringLiteral("uint16")},
+       {QStringLiteral("value"), 4242},
+       {QStringLiteral("timeoutMs"), 1500},
+       {QStringLiteral("deviceId"), 1},
+       {QStringLiteral("resultVar"), QStringLiteral("mbWrite")}});
+  add(QStringLiteral("mbR"), QStringLiteral("Modbus 读取 · 模拟器"),
+      QStringLiteral("modbus_read"), 80, 1220, QStringLiteral("mbW"),
+      {{QStringLiteral("transport"), QStringLiteral("simulator")},
+       {QStringLiteral("area"), QStringLiteral("holding")},
+       {QStringLiteral("address"), 10},
+       {QStringLiteral("count"), 1},
+       {QStringLiteral("dataType"), QStringLiteral("uint16")},
+       {QStringLiteral("timeoutMs"), 1500},
+       {QStringLiteral("deviceId"), 1},
+       {QStringLiteral("resultVar"), QStringLiteral("mbRead")}});
+  add(QStringLiteral("mbWait"), QStringLiteral("等待 PLC 信号 · 模拟器"),
+      QStringLiteral("modbus_wait"), 80, 1340, QStringLiteral("mbR"),
+      {{QStringLiteral("transport"), QStringLiteral("simulator")},
+       {QStringLiteral("area"), QStringLiteral("holding")},
+       {QStringLiteral("address"), 10},
+       {QStringLiteral("dataType"), QStringLiteral("uint16")},
+       {QStringLiteral("comparison"), QStringLiteral("eq")},
+       {QStringLiteral("expectedValue"), 4242},
+       {QStringLiteral("triggerMode"), QStringLiteral("level")},
+       {QStringLiteral("pollIntervalMs"), 50},
+       {QStringLiteral("waitTimeoutMs"), 2000},
+       {QStringLiteral("onTimeout"), QStringLiteral("error")},
+       {QStringLiteral("deviceId"), 1},
+       {QStringLiteral("resultVar"), QStringLiteral("mbWait")}});
+  add(QStringLiteral("mbTcpW"), QStringLiteral("Modbus 写入 · TCP 回环"),
+      QStringLiteral("modbus_write"), 80, 1460, QStringLiteral("mbWait"),
+      {{QStringLiteral("transport"), QStringLiteral("tcp")},
+       {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+       {QStringLiteral("port"), 1502},
+       {QStringLiteral("area"), QStringLiteral("holding")},
+       {QStringLiteral("address"), 20},
+       {QStringLiteral("dataType"), QStringLiteral("uint16")},
+       {QStringLiteral("value"), 9001},
+       {QStringLiteral("timeoutMs"), 1500},
+       {QStringLiteral("deviceId"), 1},
+       {QStringLiteral("resultVar"), QStringLiteral("mbTcpWrite")}});
+  add(QStringLiteral("mbTcpR"), QStringLiteral("Modbus 读取 · TCP 回环"),
+      QStringLiteral("modbus_read"), 80, 1580, QStringLiteral("mbTcpW"),
+      {{QStringLiteral("transport"), QStringLiteral("tcp")},
+       {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+       {QStringLiteral("port"), 1502},
+       {QStringLiteral("area"), QStringLiteral("holding")},
+       {QStringLiteral("address"), 20},
+       {QStringLiteral("count"), 1},
+       {QStringLiteral("dataType"), QStringLiteral("uint16")},
+       {QStringLiteral("timeoutMs"), 1500},
+       {QStringLiteral("deviceId"), 1},
+       {QStringLiteral("resultVar"), QStringLiteral("mbTcpRead")}});
+  add(QStringLiteral("mbRtuW"), QStringLiteral("Modbus 写入 · RTU 回环"),
+      QStringLiteral("modbus_write"), 80, 1700, QStringLiteral("mbTcpR"),
+      {{QStringLiteral("transport"), QStringLiteral("rtu")},
+       {QStringLiteral("serialPort"), QStringLiteral("ModbusRtuLoopback")},
+       {QStringLiteral("baudrate"), 115200},
+       {QStringLiteral("parity"), QStringLiteral("N")},
+       {QStringLiteral("stopbits"), 1},
+       {QStringLiteral("area"), QStringLiteral("holding")},
+       {QStringLiteral("address"), 30},
+       {QStringLiteral("dataType"), QStringLiteral("uint16")},
+       {QStringLiteral("value"), 777},
+       {QStringLiteral("timeoutMs"), 2000},
+       {QStringLiteral("deviceId"), 1},
+       {QStringLiteral("resultVar"), QStringLiteral("mbRtuWrite")}});
+  add(QStringLiteral("mbRtuR"), QStringLiteral("Modbus 读取 · RTU 回环"),
+      QStringLiteral("modbus_read"), 80, 1820, QStringLiteral("mbRtuW"),
+      {{QStringLiteral("transport"), QStringLiteral("rtu")},
+       {QStringLiteral("serialPort"), QStringLiteral("ModbusRtuLoopback")},
+       {QStringLiteral("baudrate"), 115200},
+       {QStringLiteral("parity"), QStringLiteral("N")},
+       {QStringLiteral("stopbits"), 1},
+       {QStringLiteral("area"), QStringLiteral("holding")},
+       {QStringLiteral("address"), 30},
+       {QStringLiteral("count"), 1},
+       {QStringLiteral("dataType"), QStringLiteral("uint16")},
+       {QStringLiteral("timeoutMs"), 2000},
+       {QStringLiteral("deviceId"), 1},
+       {QStringLiteral("resultVar"), QStringLiteral("mbRtuRead")}});
 
   auto link = [&](const QString& a, const QString& b,
                   const QString& when = QStringLiteral("always")) {
@@ -625,6 +711,13 @@ void SieansDocument::seedGentlQrDemo() {
   link(QStringLiteral("sf1"), QStringLiteral("loop1"));
   link(QStringLiteral("rx1"), QStringLiteral("ser1"));
   link(QStringLiteral("ser1"), QStringLiteral("serPty"));
+  link(QStringLiteral("serPty"), QStringLiteral("mbW"));
+  link(QStringLiteral("mbW"), QStringLiteral("mbR"));
+  link(QStringLiteral("mbR"), QStringLiteral("mbWait"));
+  link(QStringLiteral("mbWait"), QStringLiteral("mbTcpW"));
+  link(QStringLiteral("mbTcpW"), QStringLiteral("mbTcpR"));
+  link(QStringLiteral("mbTcpR"), QStringLiteral("mbRtuW"));
+  link(QStringLiteral("mbRtuW"), QStringLiteral("mbRtuR"));
 
   variables_ = {
       {QStringLiteral("barcodeCount"), 0},
@@ -714,6 +807,22 @@ void SieansDocument::seedGentlQrDemo() {
       {QStringLiteral("serialPtyRx"), QString()},
       {QStringLiteral("serialPtyTx"), QString()},
       {QStringLiteral("serialPtyBytes"), 0},
+      {QStringLiteral("mbWriteOk"), 0},
+      {QStringLiteral("mbWriteValue"), 0},
+      {QStringLiteral("mbWriteAck"), 0},
+      {QStringLiteral("mbReadOk"), 0},
+      {QStringLiteral("mbReadValue"), 0},
+      {QStringLiteral("mbWaitOk"), 0},
+      {QStringLiteral("mbWaitTriggered"), 0},
+      {QStringLiteral("mbWaitValue"), 0},
+      {QStringLiteral("mbTcpWriteOk"), 0},
+      {QStringLiteral("mbTcpWriteValue"), 0},
+      {QStringLiteral("mbTcpReadOk"), 0},
+      {QStringLiteral("mbTcpReadValue"), 0},
+      {QStringLiteral("mbRtuWriteOk"), 0},
+      {QStringLiteral("mbRtuWriteValue"), 0},
+      {QStringLiteral("mbRtuReadOk"), 0},
+      {QStringLiteral("mbRtuReadValue"), 0},
   };
   subflows_.clear();
   subflows_.push_back(makeCounterSubflow());
@@ -734,6 +843,16 @@ void SieansDocument::seedGentlQrDemo() {
                        {QStringLiteral("name"), QStringLiteral("SerialLoopback")},
                        {QStringLiteral("protocol"), QStringLiteral("Serial PTY")},
                        {QStringLiteral("enabled"), true}},
+           QVariantMap{{QStringLiteral("id"), QStringLiteral("modbus-tcp-loopback")},
+                       {QStringLiteral("name"), QStringLiteral("ModbusTcpLoopback")},
+                       {QStringLiteral("protocol"), QStringLiteral("Modbus TCP")},
+                       {QStringLiteral("enabled"), true},
+                       {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+                       {QStringLiteral("port"), 1502}},
+           QVariantMap{{QStringLiteral("id"), QStringLiteral("modbus-rtu-loopback")},
+                       {QStringLiteral("name"), QStringLiteral("ModbusRtuLoopback")},
+                       {QStringLiteral("protocol"), QStringLiteral("Modbus RTU")},
+                       {QStringLiteral("enabled"), true}},
        }},
       {QStringLiteral("tcpReal"),
        QVariantMap{{QStringLiteral("host"), QStringLiteral("127.0.0.1")},
@@ -747,6 +866,10 @@ void SieansDocument::seedGentlQrDemo() {
        QVariantMap{{QStringLiteral("autoStart"), true},
                    {QStringLiteral("framing"), QStringLiteral("crlf")},
                    {QStringLiteral("echo"), true}}},
+      {QStringLiteral("modbusReal"),
+       QVariantMap{{QStringLiteral("autoStart"), true},
+                   {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+                   {QStringLiteral("port"), 1502}}},
       {QStringLiteral("sendEvents"),
        QVariantList{
            QVariantMap{{QStringLiteral("device"), QStringLiteral("LocalLoop")},

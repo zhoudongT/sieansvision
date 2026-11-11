@@ -81,6 +81,8 @@ add_executable(sieans_qt
   src/MeasureDim.cpp
   src/SerialExchange.hpp
   src/SerialExchange.cpp
+  src/ModbusClient.hpp
+  src/ModbusClient.cpp
   src/ConditionEval.hpp
   src/ConditionEval.cpp
   src/SubflowExec.hpp

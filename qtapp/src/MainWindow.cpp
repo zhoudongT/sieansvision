@@ -8,6 +8,7 @@
 #include "GeometryFind.hpp"
 #include "MeasureDim.hpp"
 #include "SerialExchange.hpp"
+#include "ModbusClient.hpp"
 #include "ConditionEval.hpp"
 #include "SubflowExec.hpp"
 #include "SubflowDialog.hpp"
@@ -196,6 +197,38 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
                       .arg(serialPtyLoopback().slavePath()));
       } else {
         logResult(QStringLiteral("SerialLoopback PTY 启动失败: %1").arg(ptyErr));
+      }
+    }
+  }
+
+  {
+    const QVariantMap mb =
+        document_.commManager().value(QStringLiteral("modbusReal")).toMap();
+    const bool want = mb.value(QStringLiteral("autoStart"), true).toBool() ||
+                      qgetenv("SIEANS_QT_FORCE_SEED") == "1";
+    if (want) {
+      int base = mb.value(QStringLiteral("port"), 1502).toInt();
+      if (base <= 0) base = 1502;
+      QString mbErr;
+      bool ok = false;
+      for (int d = 0; d <= 4; ++d) {
+        QString e;
+        if (modbusSoftServer().start(quint16(base + d), &e)) {
+          logResult(QStringLiteral("ModbusTcpLoopback: %1")
+                        .arg(modbusSoftServer().endpoint()));
+          ok = true;
+          break;
+        }
+        mbErr = e;
+      }
+      if (!ok)
+        logResult(QStringLiteral("ModbusTcpLoopback 启动失败: %1").arg(mbErr));
+      QString rtuErr;
+      if (modbusRtuPeer().start(&rtuErr)) {
+        logResult(QStringLiteral("ModbusRtuLoopback PTY: %1")
+                      .arg(modbusRtuPeer().slavePath()));
+      } else {
+        logResult(QStringLiteral("ModbusRtuLoopback 启动失败: %1").arg(rtuErr));
       }
     }
   }
@@ -3056,6 +3089,83 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                QStringLiteral("bytes"));
         addRow(prefix + QStringLiteral("Port"), sr.serialPort, QStringLiteral("port"));
       }
+    } else if (op == QLatin1String("modbus_read") ||
+               op == QLatin1String("modbus_write") ||
+               op == QLatin1String("modbus_wait")) {
+      QVariantMap mp = step->params;
+      if (mp.contains(QStringLiteral("value")) &&
+          mp.value(QStringLiteral("value")).typeId() == QMetaType::QString) {
+        const QString expanded = CommHub::expandTemplate(
+            mp.value(QStringLiteral("value")).toString(), flow_vars_);
+        // 纯数字模板展开后仍按数值写入，避免把 "4242" 当成非法结构。
+        bool isNum = false;
+        const double d = expanded.toDouble(&isNum);
+        if (isNum && !expanded.contains(QLatin1Char(' '))) {
+          if (expanded.contains(QLatin1Char('.')))
+            mp.insert(QStringLiteral("value"), d);
+          else
+            mp.insert(QStringLiteral("value"), expanded.toLongLong());
+        } else if (expanded == QLatin1String("true") || expanded == QLatin1String("false")) {
+          mp.insert(QStringLiteral("value"), expanded == QLatin1String("true"));
+        } else {
+          mp.insert(QStringLiteral("value"), expanded);
+        }
+      }
+      ModbusResult mr;
+      if (op == QLatin1String("modbus_write"))
+        mr = runModbusWrite(mp);
+      else if (op == QLatin1String("modbus_wait"))
+        mr = runModbusWait(mp);
+      else
+        mr = runModbusRead(mp);
+      QString prefix = step->params.value(QStringLiteral("resultVar")).toString().trimmed();
+      if (prefix.isEmpty()) {
+        if (op == QLatin1String("modbus_write"))
+          prefix = QStringLiteral("mbWrite");
+        else if (op == QLatin1String("modbus_wait"))
+          prefix = QStringLiteral("mbWait");
+        else
+          prefix = QStringLiteral("mbRead");
+      }
+      auto put = [&](const QString& suffix, const QVariant& v) {
+        flow_vars_.insert(prefix + suffix, v);
+      };
+      const int okI = mr.ok ? 1 : 0;
+      put(QStringLiteral("Ok"), okI);
+      put(QStringLiteral("Value"), mr.value);
+      put(QStringLiteral("Values"), mr.values);
+      put(QStringLiteral("Registers"), mr.registers);
+      put(QStringLiteral("Count"), mr.count);
+      put(QStringLiteral("Address"), mr.address);
+      put(QStringLiteral("Area"), mr.area);
+      put(QStringLiteral("Protocol"), mr.protocol);
+      put(QStringLiteral("Ack"), mr.acknowledged ? 1 : 0);
+      put(QStringLiteral("Triggered"), mr.triggered ? 1 : 0);
+      put(QStringLiteral("Passed"), mr.passed ? 1 : 0);
+      put(QStringLiteral("Samples"), mr.samples);
+      put(QStringLiteral("Reason"), mr.reason);
+      put(QStringLiteral("Error"), mr.error);
+      put(QStringLiteral("Elapsed"), mr.elapsedMs);
+      ok = mr.ok;
+      note = mr.ok ? mr.note : mr.error;
+      if (result_table_) {
+        auto addRow = [&](const QString& k, const QString& v, const QString& unit) {
+          const int row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(k));
+          result_table_->setItem(row, 1, new QTableWidgetItem(v));
+          result_table_->setItem(row, 2, new QTableWidgetItem(unit));
+        };
+        addRow(prefix + QStringLiteral("Ok"), QString::number(okI), QStringLiteral("gate"));
+        addRow(prefix + QStringLiteral("Value"), mr.value.toString(), mr.dataType);
+        if (op == QLatin1String("modbus_write"))
+          addRow(prefix + QStringLiteral("Ack"), QString::number(mr.acknowledged ? 1 : 0),
+                 QStringLiteral("ack"));
+        if (op == QLatin1String("modbus_wait"))
+          addRow(prefix + QStringLiteral("Triggered"),
+                 QString::number(mr.triggered ? 1 : 0), QStringLiteral("gate"));
+        addRow(prefix + QStringLiteral("Protocol"), mr.protocol, QStringLiteral("proto"));
+      }
     } else {
       note = QStringLiteral("透传 / 未实现执行体");
       ok = true;
@@ -3336,6 +3446,31 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                   .arg(flow_vars_.value(QStringLiteral("serialPtyRx")).toString()
                            .left(80)
                            .replace(QLatin1Char('\n'), QLatin1Char('|')));
+      line += QChar(' ');
+      line += QStringLiteral(
+                  "mbWriteOk=%1 mbWriteValue=%2 mbWriteAck=%3 "
+                  "mbReadOk=%4 mbReadValue=%5 mbWaitOk=%6 mbWaitTriggered=%7 "
+                  "mbWaitValue=%8")
+                  .arg(flow_vars_.value(QStringLiteral("mbWriteOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mbWriteValue")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mbWriteAck")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mbReadOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mbReadValue")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mbWaitOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mbWaitTriggered")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mbWaitValue")).toString());
+      line += QChar(' ');
+      line += QStringLiteral(
+                  "mbTcpWriteOk=%1 mbTcpWriteValue=%2 mbTcpReadOk=%3 mbTcpReadValue=%4 "
+                  "mbRtuWriteOk=%5 mbRtuWriteValue=%6 mbRtuReadOk=%7 mbRtuReadValue=%8")
+                  .arg(flow_vars_.value(QStringLiteral("mbTcpWriteOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mbTcpWriteValue")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mbTcpReadOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mbTcpReadValue")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mbRtuWriteOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mbRtuWriteValue")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mbRtuReadOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("mbRtuReadValue")).toString());
 
 line += QLatin1Char('\n');
       f.write(line.toUtf8());
@@ -4115,7 +4250,50 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("rxFraming"), QStringLiteral("crlf")},
                 {QStringLiteral("responseBytes"), 8},
                 {QStringLiteral("resultVar"), QStringLiteral("serial")}};
-  } else if (key == QLatin1String("result_gate")) {
+    } else if (key == QLatin1String("modbus_read")) {
+    s.params = {{QStringLiteral("transport"), QStringLiteral("simulator")},
+                {QStringLiteral("area"), QStringLiteral("holding")},
+                {QStringLiteral("address"), 0},
+                {QStringLiteral("count"), 1},
+                {QStringLiteral("dataType"), QStringLiteral("uint16")},
+                {QStringLiteral("byteOrder"), QStringLiteral("big")},
+                {QStringLiteral("wordOrder"), QStringLiteral("big")},
+                {QStringLiteral("timeoutMs"), 1500},
+                {QStringLiteral("deviceId"), 1},
+                {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+                {QStringLiteral("port"), 1502},
+                {QStringLiteral("resultVar"), QStringLiteral("mbRead")}};
+  } else if (key == QLatin1String("modbus_write")) {
+    s.params = {{QStringLiteral("transport"), QStringLiteral("simulator")},
+                {QStringLiteral("area"), QStringLiteral("holding")},
+                {QStringLiteral("address"), 10},
+                {QStringLiteral("dataType"), QStringLiteral("uint16")},
+                {QStringLiteral("byteOrder"), QStringLiteral("big")},
+                {QStringLiteral("wordOrder"), QStringLiteral("big")},
+                {QStringLiteral("value"), 0},
+                {QStringLiteral("timeoutMs"), 1500},
+                {QStringLiteral("deviceId"), 1},
+                {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+                {QStringLiteral("port"), 1502},
+                {QStringLiteral("resultVar"), QStringLiteral("mbWrite")}};
+  } else if (key == QLatin1String("modbus_wait")) {
+    s.params = {{QStringLiteral("transport"), QStringLiteral("simulator")},
+                {QStringLiteral("area"), QStringLiteral("holding")},
+                {QStringLiteral("address"), 0},
+                {QStringLiteral("dataType"), QStringLiteral("uint16")},
+                {QStringLiteral("comparison"), QStringLiteral("eq")},
+                {QStringLiteral("expectedValue"), 123},
+                {QStringLiteral("triggerMode"), QStringLiteral("level")},
+                {QStringLiteral("pollIntervalMs"), 100},
+                {QStringLiteral("stableMs"), 0},
+                {QStringLiteral("waitTimeoutMs"), 10000},
+                {QStringLiteral("onTimeout"), QStringLiteral("error")},
+                {QStringLiteral("timeoutMs"), 1500},
+                {QStringLiteral("deviceId"), 1},
+                {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
+                {QStringLiteral("port"), 1502},
+                {QStringLiteral("resultVar"), QStringLiteral("mbWait")}};
+} else if (key == QLatin1String("result_gate")) {
     s.params = {{QStringLiteral("minCount"), 1},
                 {QStringLiteral("sourceVar"), QStringLiteral("barcodeCount")},
                 {QStringLiteral("passVar"), QStringLiteral("passGate")}};

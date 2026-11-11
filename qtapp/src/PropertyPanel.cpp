@@ -311,6 +311,41 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("responseBytes", "应答字节数", kInt, "定长分帧时使用"),
             S("resultVar", "结果变量前缀", kLine, "serial")};
   }
+  if (op == QLatin1String("modbus_read") || op == QLatin1String("modbus_write") ||
+      op == QLatin1String("modbus_wait")) {
+    QVector<Spec> specs;
+    specs << S("transport", "连接方式", kChoice, "simulator|模拟器;tcp|Modbus TCP;rtu|Modbus RTU");
+    specs << S("host", "设备 IP / 主机名", kLine, "127.0.0.1");
+    specs << S("port", "TCP 端口", kInt, "回环软从站默认 1502");
+    specs << S("serialPort", "串口路径", kLine, "/dev/ttyUSB0 或 ModbusRtuLoopback");
+    specs << S("baudrate", "波特率", kInt, "");
+    specs << S("parity", "校验位", kChoice, "N|无;E|偶;O|奇");
+    specs << S("stopbits", "停止位", kChoice, "1|1;2|2");
+    specs << S("deviceId", "设备站号", kInt, "0–255");
+    specs << S("area", "数据区域", kChoice, "holding|保持寄存器;input|输入寄存器;coils|线圈;discrete|离散输入");
+    specs << S("address", "起始地址（从 0 开始）", kInt, "不要把手册 40001 直接当 0");
+    specs << S("dataType", "数据类型", kChoice,
+              "uint16|uint16;int16|int16;uint32|uint32;int32|int32;float32|float32;float64|float64");
+    specs << S("byteOrder", "字节序", kChoice, "big|大端;little|小端");
+    specs << S("wordOrder", "字序", kChoice, "big|大端;little|小端");
+    specs << S("timeoutMs", "超时 (ms)", kInt, "100–10000");
+    if (op == QLatin1String("modbus_read"))
+      specs << S("count", "读取值数量", kInt, "32/64 位占多个寄存器");
+    if (op == QLatin1String("modbus_write"))
+      specs << S("value", "写入值", kLine, "数值 / true false / 或绑定变量");
+    if (op == QLatin1String("modbus_wait")) {
+      specs << S("comparison", "信号条件", kChoice,
+                "eq|等于;ne|不等于;gt|大于;gte|大于等于;lt|小于;lte|小于等于;is_true|开关为是;is_false|开关为否");
+      specs << S("expectedValue", "比较值", kReal, "");
+      specs << S("triggerMode", "触发方式", kChoice, "level|电平;rising|上升沿;falling|下降沿");
+      specs << S("pollIntervalMs", "采样间隔 (ms)", kInt, "");
+      specs << S("stableMs", "连续采样稳定时间 (ms)", kInt, "");
+      specs << S("waitTimeoutMs", "等待超时 (ms)", kInt, "");
+      specs << S("onTimeout", "超时处理", kChoice, "error|报错停止;continue|继续并置 triggered=false");
+    }
+    specs << S("resultVar", "结果变量前缀", kLine, "mbRead / mbWrite / mbWait");
+    return specs;
+  }
   if (op == QLatin1String("subflow") || op == QLatin1String("loop")) {
     QVector<Spec> specs;
     specs << S("subflowId", "子流程", kChoice, "");
@@ -961,6 +996,10 @@ void PropertyPanel::showStep(const FlowStep& step) {
     hint += QStringLiteral(" · LocalLoop 回环 / TCP");
   else if (step.operation == QLatin1String("serial_exchange"))
     hint += QStringLiteral(" · 回环模拟 / 真实串口 / PTY 回环 · serialOk / serialRx");
+  else if (step.operation == QLatin1String("modbus_read") ||
+           step.operation == QLatin1String("modbus_write") ||
+           step.operation == QLatin1String("modbus_wait"))
+    hint += QStringLiteral(" · 模拟器 / TCP 软从站 / RTU PTY · 协议零地址 · values/value");
   else if (step.operation == QLatin1String("result_gate"))
     hint += QStringLiteral(" · sourceVar → passVar");
   else if (step.operation == QLatin1String("var_calc"))

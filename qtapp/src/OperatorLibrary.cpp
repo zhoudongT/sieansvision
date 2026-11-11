@@ -76,6 +76,9 @@ const char* glyphKindFor(const QString& key, const QString& category) {
   if (key == QLatin1String("send_data")) return "tx";
   if (key == QLatin1String("receive_data")) return "rx";
   if (key == QLatin1String("serial_exchange")) return "serial";
+  if (key == QLatin1String("modbus_read")) return "mbread";
+  if (key == QLatin1String("modbus_write")) return "mbwrite";
+  if (key == QLatin1String("modbus_wait")) return "mbwait";
   if (key == QLatin1String("result_gate")) return "gate";
   if (key == QLatin1String("format_data")) return "format";
   if (key == QLatin1String("var_calc")) return "var";
@@ -213,6 +216,16 @@ QIcon opGlyph(const char* kind, const QColor& accent) {
     p.drawLine(QPointF(25, 15), QPointF(28, 15));
     p.drawLine(QPointF(13, 10), QPointF(21, 10));
     p.drawLine(QPointF(13, 14), QPointF(18, 14));
+  } else if (std::strcmp(kind, "mbread") == 0) {
+    p.drawRoundedRect(QRectF(10, 5, 14, 14), 2, 2);
+    p.drawText(QRectF(10, 5, 14, 14), Qt::AlignCenter, QStringLiteral("R"));
+  } else if (std::strcmp(kind, "mbwrite") == 0) {
+    p.drawRoundedRect(QRectF(10, 5, 14, 14), 2, 2);
+    p.drawText(QRectF(10, 5, 14, 14), Qt::AlignCenter, QStringLiteral("W"));
+  } else if (std::strcmp(kind, "mbwait") == 0) {
+    p.drawLine(QPointF(cx, 5), QPointF(cx + 5, cy));
+    p.drawLine(QPointF(cx + 5, cy), QPointF(cx - 2, cy));
+    p.drawLine(QPointF(cx - 2, cy), QPointF(cx + 3, h - 5));
   } else {
     p.drawEllipse(QRectF(cx - 6, cy - 6, 12, 12));
     p.drawPoint(QPointF(cx, cy));
@@ -267,6 +280,15 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
       {QStringLiteral("serial_exchange"), QStringLiteral("串口报文通信"),
        QStringLiteral("工业通信"),
        QStringLiteral("串口收发 · 回环模拟 / 真实端口 / PTY 回环")},
+      {QStringLiteral("modbus_read"), QStringLiteral("Modbus 读取"),
+       QStringLiteral("工业通信"),
+       QStringLiteral("TCP / RTU / 模拟器 · 寄存器 / 线圈")},
+      {QStringLiteral("modbus_write"), QStringLiteral("Modbus 写入"),
+       QStringLiteral("工业通信"),
+       QStringLiteral("TCP / RTU / 模拟器 · 检测结果输出")},
+      {QStringLiteral("modbus_wait"), QStringLiteral("等待 PLC 信号"),
+       QStringLiteral("工业通信"),
+       QStringLiteral("Modbus 条件 / 边沿触发")},
       {QStringLiteral("condition"), QStringLiteral("条件判断"),
        QStringLiteral("流程控制"),
        QStringLiteral("数值 / 文本 / 开关分支 · 真/假出边 when=true/false")},
