@@ -56,7 +56,9 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx`）放�
 
 **已落地（wave251）：** 定位火花线点击跳到胶片帧（路径/基名/下标），缩略图短暂高亮；结果表行点击同样定位胶片并选中对应画布节点。无界面自测 `SIEANS_QT_FILMSTRIP_JUMP_SELFTEST=1`。不写脏方案。
 
-**NEXT：** 深化已有 Host / 结果 / I/O / 通信交互残留 · 运行界面设计器（不在目录中新增 HMI 算子）。
+**已落地（wave252）：** 流程 I/O 与通信共用同一套 ${flow.x}/{name}/{{name}} 解析；空绑定走 emptyDefault（可再展开模板）。I/O 对话框显示选中行的解析预览。无界面自测 `SIEANS_QT_IO_RESOLVE_SELFTEST=1`。
+
+**NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。
 
 ## VM chrome (2026-11-03)
 

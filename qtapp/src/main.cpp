@@ -20,6 +20,7 @@
 #include "WorkbenchPaths.hpp"
 #include "SieansDocument.hpp"
 #include "FilmstripBar.hpp"
+#include "CommHub.hpp"
 #include "ProtocolNet.hpp"
 #include "Theme.hpp"
 
@@ -237,6 +238,18 @@ int main(int argc, char* argv[]) {
     }
     for (const QString& line : fails)
       std::fprintf(stderr, "protocol-robust-selftest FAIL %s\n", line.toUtf8().constData());
+    return 1;
+  }
+
+  if (qEnvironmentVariable("SIEANS_QT_IO_RESOLVE_SELFTEST") == QLatin1String("1") &&
+      qEnvironmentVariable("SIEANS_QT_IO_RESOLVE_SELFTEST_QUIT") == QLatin1String("1")) {
+    const QStringList fails = sieans_qt::CommHub::ioResolveSelfTest();
+    if (fails.isEmpty()) {
+      std::fprintf(stdout, "io-resolve-selftest ok\n");
+      return 0;
+    }
+    for (const QString& line : fails)
+      std::fprintf(stderr, "io-resolve-selftest FAIL %s\n", line.toUtf8().constData());
     return 1;
   }
 

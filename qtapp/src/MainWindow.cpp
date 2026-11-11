@@ -24,6 +24,7 @@
 #include "SubflowExec.hpp"
 #include "SubflowDialog.hpp"
 #include "FlowIoDialog.hpp"
+#include "CommHub.hpp"
 #include <QInputDialog>
 #include <QShortcut>
 #include <QScrollBar>
@@ -1686,56 +1687,13 @@ void MainWindow::setBusy(bool busy) {
 
 
 QVariant MainWindow::resolveIoBinding(const QString& binding) const {
-  const QString b = binding.trimmed();
-  if (b.isEmpty() || b == QLatin1String("—") || b == QLatin1String("-")) return {};
-  if (b.startsWith(QStringLiteral("flow."))) {
-    const QString key = b.mid(5);
-    if (key == QLatin1String("vars")) return flow_vars_;
-    if (flow_vars_.contains(key)) return flow_vars_.value(key);
-    // dotted flow.host.result / flow.io.Result already stored as flat keys
-    return flow_vars_.value(key);
-  }
-  if (b.startsWith(QStringLiteral("host."))) {
-    // host.result → dotted key or camel alias hostResult
-    if (flow_vars_.contains(b)) return flow_vars_.value(b);
-    QString camel = QStringLiteral("host");
-    const QString rest = b.mid(5);
-    for (int i = 0; i < rest.size(); ++i) {
-      if (rest[i] == QLatin1Char('.') && i + 1 < rest.size()) {
-        camel += rest[i + 1].toUpper();
-        ++i;
-      } else if (rest[i] != QLatin1Char('.')) {
-        camel += rest[i];
-      }
-    }
-    if (flow_vars_.contains(camel)) return flow_vars_.value(camel);
-    return flow_vars_.value(b);
-  }
-  if (b.startsWith(QStringLiteral("source."))) {
-    const QString key = b.mid(7);
-    if (key == QLatin1String("image") || key.startsWith(QStringLiteral("image")))
-      return QStringLiteral("%1x%2")
-          .arg(image_view_ ? image_view_->currentImage().width() : 0)
-          .arg(image_view_ ? image_view_->currentImage().height() : 0);
-    return document_.sourceConfig().value(key);
-  }
-  // "0 模块.字段" or "模块.字段"
-  QString path = b;
-  const int sp = path.indexOf(QLatin1Char(' '));
-  if (sp > 0) {
-    bool idxOk = false;
-    path.left(sp).toInt(&idxOk);
-    if (idxOk) path = path.mid(sp + 1).trimmed();
-  }
-  path.replace(QStringLiteral("[]"), QString());
-  if (path.contains(QLatin1Char('.'))) {
-    const QString field = path.section(QLatin1Char('.'), -1);
-    if (flow_vars_.contains(field)) return flow_vars_.value(field);
-    if (field == QLatin1String("图像") || field.compare(QStringLiteral("image"), Qt::CaseInsensitive) == 0)
-      return resolveIoBinding(QStringLiteral("source.image"));
-  }
-  if (flow_vars_.contains(b)) return flow_vars_.value(b);
-  return b;
+  const QString imgHint =
+      (image_view_ && !image_view_->currentImage().isNull())
+          ? QStringLiteral("%1x%2")
+                .arg(image_view_->currentImage().width())
+                .arg(image_view_->currentImage().height())
+          : QString();
+  return CommHub::resolveBinding(binding, flow_vars_, document_.sourceConfig(), imgHint);
 }
 
 void MainWindow::applyFlowIoBindings() {
@@ -1746,11 +1704,15 @@ void MainWindow::applyFlowIoBindings() {
     const QString name = row.value(QStringLiteral("name")).toString().trimmed();
     if (name.isEmpty()) continue;
     const QString binding = row.value(QStringLiteral("binding")).toString();
-    QVariant val = resolveIoBinding(binding);
     const QString emptyDef = row.value(QStringLiteral("emptyDefault")).toString();
-    const bool emptyVal = !val.isValid() || val.isNull() ||
-                          (val.typeId() == QMetaType::QString && val.toString().isEmpty());
-    if (emptyVal && !emptyDef.isEmpty()) val = emptyDef;
+    const QString imgHint =
+        (image_view_ && !image_view_->currentImage().isNull())
+            ? QStringLiteral("%1x%2")
+                  .arg(image_view_->currentImage().width())
+                  .arg(image_view_->currentImage().height())
+            : QString();
+    QVariant val = CommHub::resolveBindingOrDefault(
+        binding, emptyDef, flow_vars_, document_.sourceConfig(), imgHint);
     flow_vars_.insert(QStringLiteral("io.%1").arg(name), val);
     // also mirror Result / common names into plain vars for Comm/HMI
     if (name == QLatin1String("Result") && !flow_vars_.contains(QStringLiteral("formatted"))) {
@@ -4364,6 +4326,13 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                                         : jf.join(QLatin1Char('|')).left(120))
                       .arg(jf.isEmpty() ? QStringLiteral("path") : QStringLiteral("fail"));
         }
+        {
+          const QStringList iof = CommHub::ioResolveSelfTest();
+          line += QStringLiteral("ioResolveOk=%1 ioResolveFails=%2 ")
+                      .arg(iof.isEmpty() ? 1 : 0)
+                      .arg(iof.isEmpty() ? QStringLiteral("0")
+                                         : iof.join(QLatin1Char('|')).left(120));
+        }
       }
       line += QStringLiteral(
                   "locateOk=%1 locateScore=%2 locateX=%3 locateY=%4 locateAngle=%5 "
@@ -5928,6 +5897,8 @@ void MainWindow::onOpenSubflowManager() {
 
 void MainWindow::onOpenFlowIo() {
   FlowIoDialog dlg(document_.flowIo(), this);
+  dlg.setPreviewVars(flow_vars_);
+  if (workbenchIsHeadless()) return;
   if (dlg.exec() != QDialog::Accepted) return;
   document_.setFlowIo(dlg.resultIo());
   publishHostToFlowVars();

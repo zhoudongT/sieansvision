@@ -1,4 +1,5 @@
 #include "FlowIoDialog.hpp"
+#include "CommHub.hpp"
 #include "Theme.hpp"
 
 #include <QCheckBox>
@@ -114,6 +115,19 @@ FlowIoDialog::FlowIoDialog(const QVariantMap& io, QWidget* parent)
   tabs->addTab(outHost, QStringLiteral("输出设置"));
   tabs->addTab(disp, QStringLiteral("显示设置"));
   root->addWidget(tabs, 1);
+  previewLab_ = new QLabel(QStringLiteral("预览：选中一行查看 ${flow.x} / {name} / emptyDefault 解析值"));
+  previewLab_->setObjectName(QStringLiteral("flowIoPreview"));
+  previewLab_->setWordWrap(true);
+  previewLab_->setStyleSheet(QStringLiteral("color:#9ad;font-size:11px;padding:4px 2px;"));
+  root->addWidget(previewLab_);
+  auto hookPrev = [this](QTableWidget* table) {
+    connect(table, &QTableWidget::currentCellChanged, this, [this](int, int, int, int) {
+      refreshPreview();
+    });
+    connect(table, &QTableWidget::itemChanged, this, [this](QTableWidgetItem*) { refreshPreview(); });
+  };
+  hookPrev(inTable_);
+  hookPrev(outTable_);
   auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
   connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
   connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
@@ -962,6 +976,42 @@ bool FlowIoDialog::eventFilter(QObject* obj, QEvent* event) {
     }
   }
   return QDialog::eventFilter(obj, event);
+}
+
+
+void FlowIoDialog::setPreviewVars(const QVariantMap& vars) {
+  previewVars_ = vars;
+  refreshPreview();
+}
+
+QString FlowIoDialog::currentPreviewText() const {
+  return previewLab_ ? previewLab_->text() : QString();
+}
+
+void FlowIoDialog::refreshPreview() {
+  if (!previewLab_) return;
+  QTableWidget* table = inTable_;
+  if (outTable_ && outTable_->hasFocus()) table = outTable_;
+  else if (inTable_ && inTable_->hasFocus()) table = inTable_;
+  else if (outTable_ && outTable_->currentRow() >= 0) table = outTable_;
+  if (!table || table->currentRow() < 0) {
+    previewLab_->setText(QStringLiteral("预览：选中一行查看 ${flow.x} / {name} / emptyDefault 解析值"));
+    return;
+  }
+  const int r = table->currentRow();
+  auto txt = [&](int c) {
+    auto* it = table->item(r, c);
+    return it ? it->text() : QString();
+  };
+  const QString name = txt(0);
+  const QString binding = txt(2);
+  const QString emptyDef = txt(3);
+  const QVariant val = CommHub::resolveBindingOrDefault(binding, emptyDef, previewVars_);
+  const QString shown = val.toString();
+  previewLab_->setText(QStringLiteral("预览「%1」· %2 → %3")
+                           .arg(name.isEmpty() ? QStringLiteral("—") : name,
+                                binding.isEmpty() ? QStringLiteral("(空绑定)") : binding,
+                                shown.isEmpty() ? QStringLiteral("(空)") : shown));
 }
 
 }  // namespace sieans_qt

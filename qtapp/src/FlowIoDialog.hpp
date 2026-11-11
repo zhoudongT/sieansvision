@@ -8,6 +8,7 @@
 class QTableWidget;
 class QCheckBox;
 class QHBoxLayout;
+class QLabel;
 
 namespace sieans_qt {
 
@@ -17,6 +18,10 @@ class FlowIoDialog : public QDialog {
  public:
   explicit FlowIoDialog(const QVariantMap& io, QWidget* parent = nullptr);
   QVariantMap resultIo() const;
+  /** 用当前流程变量刷新选中行的解析预览（${flow.x}/{name}/emptyDefault）。 */
+  void setPreviewVars(const QVariantMap& vars);
+  /** 当前选中绑定解析后的预览文本（无界面自测可用）。 */
+  QString currentPreviewText() const;
 
  protected:
   bool eventFilter(QObject* obj, QEvent* event) override;
@@ -54,6 +59,10 @@ class FlowIoDialog : public QDialog {
   QTableWidget* outTable_ = nullptr;
   QCheckBox* globalImage_ = nullptr;
   QVariantMap io_;
+  QVariantMap previewVars_;
+  QLabel* previewLab_ = nullptr;
+  /** 按选中行的 binding/emptyDefault 刷新预览标签。 */
+  void refreshPreview();
 };
 
 }  // namespace sieans_qt

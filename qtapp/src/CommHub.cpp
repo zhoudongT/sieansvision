@@ -80,7 +80,156 @@ QString CommHub::expandTemplate(const QString& tmpl, const QVariantMap& vars) {
   applyRe(QRegularExpression(QStringLiteral(R"(\{\{([A-Za-z_][A-Za-z0-9_.]*)\}\})")), true);
   // Named braces {barcodeText} — skip pure numeric {0}/{1} (format_data indices).
   applyRe(QRegularExpression(QStringLiteral(R"(\{([A-Za-z_][A-Za-z0-9_.]*)\})")), true);
+
   return out;
+}
+
+namespace {
+
+bool unresolvedToken(const QString& s) {
+  const QString t = s.trimmed();
+  return t.startsWith(QLatin1String("${")) || t.startsWith(QLatin1String("{{")) ||
+         (t.startsWith(QLatin1Char('{')) && t.endsWith(QLatin1Char('}')) &&
+          t.size() > 2 && t[1].isLetter());
+}
+
+QVariant resolveBarePath(const QString& binding, const QVariantMap& vars,
+                         const QVariantMap& sourceConfig, const QString& sourceImageHint) {
+  const QString b = binding.trimmed();
+  if (b.isEmpty() || b == QLatin1String("—") || b == QLatin1String("-")) return {};
+  if (b.startsWith(QStringLiteral("flow."))) {
+    const QString key = b.mid(5);
+    if (key == QLatin1String("vars")) return vars;
+    if (vars.contains(key)) return vars.value(key);
+    return vars.value(key);
+  }
+  if (b.startsWith(QStringLiteral("host."))) {
+    if (vars.contains(b)) return vars.value(b);
+    QString camel = QStringLiteral("host");
+    const QString rest = b.mid(5);
+    bool cap = true;
+    for (const QChar ch : rest) {
+      if (ch == QLatin1Char('.')) {
+        cap = true;
+        continue;
+      }
+      camel += cap ? ch.toUpper() : ch;
+      cap = false;
+    }
+    if (vars.contains(camel)) return vars.value(camel);
+    if (vars.contains(rest)) return vars.value(rest);
+    return vars.value(b);
+  }
+  if (b.startsWith(QStringLiteral("source."))) {
+    const QString key = b.mid(7);
+    if (key == QLatin1String("image") || key.startsWith(QStringLiteral("image")))
+      return sourceImageHint;
+    return sourceConfig.value(key);
+  }
+  QString path = b;
+  const int sp = path.indexOf(QLatin1Char(' '));
+  if (sp > 0) {
+    bool idxOk = false;
+    path.left(sp).toInt(&idxOk);
+    if (idxOk) path = path.mid(sp + 1).trimmed();
+  }
+  path.replace(QStringLiteral("[]"), QString());
+  if (path.contains(QLatin1Char('.'))) {
+    const QString field = path.section(QLatin1Char('.'), -1);
+    if (vars.contains(field)) return vars.value(field);
+  }
+  if (vars.contains(b)) return vars.value(b);
+  return {};
+}
+
+}  // namespace
+
+QVariant CommHub::resolveBinding(const QString& binding, const QVariantMap& vars,
+                                 const QVariantMap& sourceConfig,
+                                 const QString& sourceImageHint) {
+  const QString b = binding.trimmed();
+  if (b.isEmpty() || b == QLatin1String("—") || b == QLatin1String("-")) return {};
+  const bool templated = b.contains(QStringLiteral("${")) || b.contains(QStringLiteral("{{")) ||
+                         (b.contains(QLatin1Char('{')) && b.contains(QLatin1Char('}')));
+  if (templated) {
+    const QString expanded = expandTemplate(b, vars);
+    if (expanded.trimmed().isEmpty() || unresolvedToken(expanded)) return {};
+    // A single-token binding expands to the value; a message template stays text.
+    const bool single =
+        (b.startsWith(QLatin1String("${")) && b.endsWith(QLatin1Char('}')) &&
+         b.count(QLatin1Char('$')) == 1) ||
+        (b.startsWith(QStringLiteral("{{")) && b.endsWith(QStringLiteral("}}")) &&
+         b.count(QStringLiteral("{{")) == 1) ||
+        (b.startsWith(QLatin1Char('{')) && b.endsWith(QLatin1Char('}')) &&
+         !b.startsWith(QStringLiteral("{{")) && b.count(QLatin1Char('{')) == 1);
+    if (single) return expanded;
+    return expanded;
+  }
+  const QVariant bare = resolveBarePath(b, vars, sourceConfig, sourceImageHint);
+  if (bare.isValid()) return bare;
+  // Last resort: if it was a known missing path, stay empty (do not echo the path).
+  if (b.startsWith(QStringLiteral("flow.")) || b.startsWith(QStringLiteral("host.")) ||
+      b.startsWith(QStringLiteral("source.")))
+    return {};
+  if (vars.contains(b)) return vars.value(b);
+  return b;  // 常量绑定原文
+}
+
+QVariant CommHub::resolveBindingOrDefault(const QString& binding, const QString& emptyDefault,
+                                          const QVariantMap& vars,
+                                          const QVariantMap& sourceConfig,
+                                          const QString& sourceImageHint) {
+  QVariant val = resolveBinding(binding, vars, sourceConfig, sourceImageHint);
+  const bool emptyVal = !val.isValid() || val.isNull() ||
+                        (val.typeId() == QMetaType::QString && val.toString().isEmpty());
+  if (!emptyVal) return val;
+  if (emptyDefault.trimmed().isEmpty()) return val;
+  const QString filled = expandTemplate(emptyDefault, vars);
+  return filled;
+}
+
+QStringList CommHub::ioResolveSelfTest() {
+  QStringList fails;
+  auto check = [&](const char* name, bool ok, const QString& detail = QString()) {
+    if (!ok)
+      fails << (detail.isEmpty() ? QString::fromUtf8(name)
+                                 : QStringLiteral("%1: %2").arg(QString::fromUtf8(name), detail));
+  };
+  QVariantMap vars;
+  vars.insert(QStringLiteral("barcodeText"), QStringLiteral("SIEANS"));
+  vars.insert(QStringLiteral("passGate"), 1);
+  vars.insert(QStringLiteral("hostResult"), QStringLiteral("OK"));
+  vars.insert(QStringLiteral("formatted"), QStringLiteral("BARCODE ok=1"));
+  QVariantMap src;
+  src.insert(QStringLiteral("backendKind"), QStringLiteral("soft"));
+  const QString img = QStringLiteral("640x480");
+
+  const auto g = [&](const QString& b) {
+    return resolveBinding(b, vars, src, img).toString();
+  };
+  check("bare-flow", g(QStringLiteral("flow.barcodeText")) == QLatin1String("SIEANS"),
+        g(QStringLiteral("flow.barcodeText")));
+  check("dollar-flow", g(QStringLiteral("${flow.barcodeText}")) == QLatin1String("SIEANS"),
+        g(QStringLiteral("${flow.barcodeText}")));
+  check("brace-name", g(QStringLiteral("{barcodeText}")) == QLatin1String("SIEANS"));
+  check("mustache", g(QStringLiteral("{{barcodeText}}")) == QLatin1String("SIEANS"));
+  check("host-dot", g(QStringLiteral("host.result")) == QLatin1String("OK"),
+        g(QStringLiteral("host.result")));
+  check("source-image", g(QStringLiteral("source.image")) == img);
+  check("missing-empty", g(QStringLiteral("${flow.missing}")).isEmpty());
+  const QString fb = resolveBindingOrDefault(QStringLiteral("${flow.missing}"),
+                                            QStringLiteral("FALLBACK"), vars, src, img)
+                         .toString();
+  check("empty-default", fb == QLatin1String("FALLBACK"), fb);
+  const QString defTpl = resolveBindingOrDefault(QStringLiteral("${flow.missing}"),
+                                                 QStringLiteral("NG {passGate}"), vars)
+                             .toString();
+  check("empty-default-tpl", defTpl == QLatin1String("NG 1"), defTpl);
+  const QString msg = g(QStringLiteral("ok=${flow.passGate} text=${flow.barcodeText}"));
+  check("message-tpl", msg == QLatin1String("ok=1 text=SIEANS"), msg);
+  check("expand-same",
+        expandTemplate(QStringLiteral("{{barcodeText}}"), vars) == QLatin1String("SIEANS"));
+  return fails;
 }
 
 void CommHub::appendTranscript(const QString& tag, const QString& line) {

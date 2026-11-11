@@ -67,6 +67,18 @@ class CommHub : public QObject {
 
   /** Expand ${flow.x} / ${x} / {name} / {{name}} placeholders from vars map. */
   static QString expandTemplate(const QString& tmpl, const QVariantMap& vars);
+  /** 解析流程 I/O 绑定：裸 flow.x / host.x，或 ${flow.x}/{name}/{{name}} 模板。 */
+  static QVariant resolveBinding(const QString& binding, const QVariantMap& vars,
+                                 const QVariantMap& sourceConfig = QVariantMap(),
+                                 const QString& sourceImageHint = QString());
+  /** 绑定结果为空时使用 emptyDefault（再展开一次模板）。 */
+  static QVariant resolveBindingOrDefault(const QString& binding,
+                                          const QString& emptyDefault,
+                                          const QVariantMap& vars,
+                                          const QVariantMap& sourceConfig = QVariantMap(),
+                                          const QString& sourceImageHint = QString());
+  /** I/O 与通信模板解析一致性。空列表表示通过。 */
+  static QStringList ioResolveSelfTest();
 
  signals:
   void transcriptChanged();
