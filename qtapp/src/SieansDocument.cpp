@@ -558,6 +558,33 @@ void SieansDocument::seedGentlQrDemo() {
        {QStringLiteral("stopField"), QStringLiteral("passed")},
        {QStringLiteral("stopValue"), true},
        {QStringLiteral("arguments"), QVariantMap{}}});
+  add(QStringLiteral("ser1"), QStringLiteral("串口报文 · 回环模拟"),
+      QStringLiteral("serial_exchange"), 80, 860, QStringLiteral("rx1"),
+      {{QStringLiteral("connection"), QStringLiteral("simulator")},
+       {QStringLiteral("mode"), QStringLiteral("exchange")},
+       {QStringLiteral("value"), QStringLiteral("SIEANS-SERIAL-00042")},
+       {QStringLiteral("encoding"), QStringLiteral("text")},
+       {QStringLiteral("responseEncoding"), QStringLiteral("text")},
+       {QStringLiteral("txFraming"), QStringLiteral("crlf")},
+       {QStringLiteral("rxFraming"), QStringLiteral("crlf")},
+       {QStringLiteral("timeoutMs"), 2000},
+       {QStringLiteral("resultVar"), QStringLiteral("serial")}});
+  add(QStringLiteral("serPty"), QStringLiteral("串口报文 · PTY 回环"),
+      QStringLiteral("serial_exchange"), 80, 980, QStringLiteral("ser1"),
+      {{QStringLiteral("connection"), QStringLiteral("device")},
+       {QStringLiteral("mode"), QStringLiteral("exchange")},
+       {QStringLiteral("serialPort"), QStringLiteral("SerialLoopback")},
+       {QStringLiteral("value"), QStringLiteral("PTY-LOOP-OK")},
+       {QStringLiteral("encoding"), QStringLiteral("text")},
+       {QStringLiteral("responseEncoding"), QStringLiteral("text")},
+       {QStringLiteral("txFraming"), QStringLiteral("crlf")},
+       {QStringLiteral("rxFraming"), QStringLiteral("crlf")},
+       {QStringLiteral("baudrate"), 115200},
+       {QStringLiteral("dataBits"), 8},
+       {QStringLiteral("parity"), QStringLiteral("N")},
+       {QStringLiteral("stopbits"), 1},
+       {QStringLiteral("timeoutMs"), 2000},
+       {QStringLiteral("resultVar"), QStringLiteral("serialPty")}});
 
   auto link = [&](const QString& a, const QString& b,
                   const QString& when = QStringLiteral("always")) {
@@ -596,6 +623,8 @@ void SieansDocument::seedGentlQrDemo() {
   link(QStringLiteral("skipped1"), QStringLiteral("merge1"));
   link(QStringLiteral("merge1"), QStringLiteral("sf1"));
   link(QStringLiteral("sf1"), QStringLiteral("loop1"));
+  link(QStringLiteral("rx1"), QStringLiteral("ser1"));
+  link(QStringLiteral("ser1"), QStringLiteral("serPty"));
 
   variables_ = {
       {QStringLiteral("barcodeCount"), 0},
@@ -675,6 +704,16 @@ void SieansDocument::seedGentlQrDemo() {
       {QStringLiteral("measAngOk"), 0},
       {QStringLiteral("measPtsDist"), 0},
       {QStringLiteral("measPtsOk"), 0},
+      {QStringLiteral("serialOk"), 0},
+      {QStringLiteral("serialRx"), QString()},
+      {QStringLiteral("serialTx"), QString()},
+      {QStringLiteral("serialBytes"), 0},
+      {QStringLiteral("serialSim"), 0},
+      {QStringLiteral("serialPort"), QString()},
+      {QStringLiteral("serialPtyOk"), 0},
+      {QStringLiteral("serialPtyRx"), QString()},
+      {QStringLiteral("serialPtyTx"), QString()},
+      {QStringLiteral("serialPtyBytes"), 0},
   };
   subflows_.clear();
   subflows_.push_back(makeCounterSubflow());
@@ -691,6 +730,10 @@ void SieansDocument::seedGentlQrDemo() {
                        {QStringLiteral("enabled"), true},
                        {QStringLiteral("host"), QStringLiteral("127.0.0.1")},
                        {QStringLiteral("port"), 19956}},
+           QVariantMap{{QStringLiteral("id"), QStringLiteral("serial-pty-loopback")},
+                       {QStringLiteral("name"), QStringLiteral("SerialLoopback")},
+                       {QStringLiteral("protocol"), QStringLiteral("Serial PTY")},
+                       {QStringLiteral("enabled"), true}},
        }},
       {QStringLiteral("tcpReal"),
        QVariantMap{{QStringLiteral("host"), QStringLiteral("127.0.0.1")},
@@ -700,6 +743,10 @@ void SieansDocument::seedGentlQrDemo() {
                    {QStringLiteral("ack"), QStringLiteral("OK")},
                    {QStringLiteral("autoStart"), true},
                    {QStringLiteral("reconnect"), true}}},
+      {QStringLiteral("serialReal"),
+       QVariantMap{{QStringLiteral("autoStart"), true},
+                   {QStringLiteral("framing"), QStringLiteral("crlf")},
+                   {QStringLiteral("echo"), true}}},
       {QStringLiteral("sendEvents"),
        QVariantList{
            QVariantMap{{QStringLiteral("device"), QStringLiteral("LocalLoop")},

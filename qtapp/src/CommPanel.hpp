@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CommHub.hpp"
+#include "SerialExchange.hpp"
 
 #include <QWidget>
 #include <QPlainTextEdit>
@@ -27,6 +28,7 @@ class CommPanel : public QWidget {
  public slots:
   void refreshTranscript();
   void refreshDevices();
+  void refreshSerialPorts();
   void onTrialSend();
   void onStartTcp();
   void onStopTcp();
@@ -101,6 +103,7 @@ class CommPanel : public QWidget {
   QLineEdit* txFilter_ = nullptr;
   QStringList transcriptAll_;
   QLabel* status_ = nullptr;
+  QLabel* serialPortsLabel_ = nullptr;
   QLabel* hostResultStrip_ = nullptr;
   QLabel* detail_ = nullptr;
   QVariantMap vars_;

@@ -75,6 +75,7 @@ const char* glyphKindFor(const QString& key, const QString& category) {
   if (key == QLatin1String("ocr")) return "ocr";
   if (key == QLatin1String("send_data")) return "tx";
   if (key == QLatin1String("receive_data")) return "rx";
+  if (key == QLatin1String("serial_exchange")) return "serial";
   if (key == QLatin1String("result_gate")) return "gate";
   if (key == QLatin1String("format_data")) return "format";
   if (key == QLatin1String("var_calc")) return "var";
@@ -204,6 +205,14 @@ QIcon opGlyph(const char* kind, const QColor& accent) {
     QPolygonF bow2;
     bow2 << QPointF(10, 19) << QPointF(cx, cy) << QPointF(24, 19);
     p.drawPolyline(bow2);
+  } else if (std::strcmp(kind, "serial") == 0) {
+    p.drawRoundedRect(QRectF(9, 6, 16, 12), 2, 2);
+    p.drawLine(QPointF(9, 9), QPointF(6, 9));
+    p.drawLine(QPointF(9, 15), QPointF(6, 15));
+    p.drawLine(QPointF(25, 9), QPointF(28, 9));
+    p.drawLine(QPointF(25, 15), QPointF(28, 15));
+    p.drawLine(QPointF(13, 10), QPointF(21, 10));
+    p.drawLine(QPointF(13, 14), QPointF(18, 14));
   } else {
     p.drawEllipse(QRectF(cx - 6, cy - 6, 12, 12));
     p.drawPoint(QPointF(cx, cy));
@@ -255,6 +264,9 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
        QStringLiteral("工业通信"), QStringLiteral("TCP / LocalBus TX")},
       {QStringLiteral("receive_data"), QStringLiteral("接收数据"),
        QStringLiteral("工业通信"), QStringLiteral("TCP / LocalBus RX → 变量")},
+      {QStringLiteral("serial_exchange"), QStringLiteral("串口报文通信"),
+       QStringLiteral("工业通信"),
+       QStringLiteral("串口收发 · 回环模拟 / 真实端口 / PTY 回环")},
       {QStringLiteral("condition"), QStringLiteral("条件判断"),
        QStringLiteral("流程控制"),
        QStringLiteral("数值 / 文本 / 开关分支 · 真/假出边 when=true/false")},

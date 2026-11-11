@@ -287,6 +287,30 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
   if (op == QLatin1String("branch_merge")) {
     return {};
   }
+  if (op == QLatin1String("serial_exchange")) {
+    return {S("connection", "串口连接", kChoice, "simulator|回环模拟;device|真实端口 / PTY"),
+            S("mode", "通信方式", kChoice, "exchange|请求应答;send|仅发送;receive|仅接收"),
+            S("serialPort", "服务器串口路径", kLine, "/dev/ttyUSB0 或 SerialLoopback"),
+            S("baudrate", "波特率", kInt, "300–4000000"),
+            S("dataBits", "数据位", kChoice, "5|5;6|6;7|7;8|8"),
+            S("parity", "校验位", kChoice, "N|无;E|偶;O|奇;M|标记;S|空号"),
+            S("stopbits", "停止位", kChoice, "1|1;1.5|1.5;2|2"),
+            S("flowControl", "流量控制", kChoice, "none|无;rtscts|RTS/CTS;xonxoff|XON/XOFF;dsrdtr|DSR/DTR"),
+            S("rts", "打开时 RTS 状态", kBool, ""),
+            S("dtr", "打开时 DTR 状态", kBool, ""),
+            S("encoding", "发送内容格式", kChoice, "text|文本;structured|结构化 JSON;bytes|字节"),
+            S("responseEncoding", "接收内容格式", kChoice, "text|文本;structured|结构化 JSON;bytes|字节"),
+            S("value", "发送内容", kLine, "支持 ${flow.x} / {name}"),
+            S("timeoutMs", "通信超时 (ms)", kInt, "100–10000"),
+            S("maxBytes", "接收字节上限", kInt, ""),
+            S("clearInput", "发送前丢弃已有接收数据", kBool, ""),
+            S("txFraming", "发送分帧方式", kChoice,
+              "raw|原始;lf|LF;crlf|CRLF;nul|NUL;length16be|长度16BE;length16le|长度16LE;length32be|长度32BE;length32le|长度32LE"),
+            S("rxFraming", "接收完成条件", kChoice,
+              "lf|LF;crlf|CRLF;nul|NUL;length16be|长度16BE;length16le|长度16LE;length32be|长度32BE;length32le|长度32LE;fixed|定长"),
+            S("responseBytes", "应答字节数", kInt, "定长分帧时使用"),
+            S("resultVar", "结果变量前缀", kLine, "serial")};
+  }
   if (op == QLatin1String("subflow") || op == QLatin1String("loop")) {
     QVector<Spec> specs;
     specs << S("subflowId", "子流程", kChoice, "");
@@ -935,6 +959,8 @@ void PropertyPanel::showStep(const FlowStep& step) {
   else if (step.operation == QLatin1String("send_data") ||
            step.operation == QLatin1String("receive_data"))
     hint += QStringLiteral(" · LocalLoop 回环 / TCP");
+  else if (step.operation == QLatin1String("serial_exchange"))
+    hint += QStringLiteral(" · 回环模拟 / 真实串口 / PTY 回环 · serialOk / serialRx");
   else if (step.operation == QLatin1String("result_gate"))
     hint += QStringLiteral(" · sourceVar → passVar");
   else if (step.operation == QLatin1String("var_calc"))

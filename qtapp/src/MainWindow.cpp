@@ -7,6 +7,7 @@
 #include "DefectDetect.hpp"
 #include "GeometryFind.hpp"
 #include "MeasureDim.hpp"
+#include "SerialExchange.hpp"
 #include "ConditionEval.hpp"
 #include "SubflowExec.hpp"
 #include "SubflowDialog.hpp"
@@ -181,6 +182,22 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     document_.seedGentlQrDemo();
     applyDocumentToUi();
     logResult(QStringLiteral("已种子 GenTL→QR 演示流程"));
+  }
+
+  {
+    const QVariantMap serialReal =
+        document_.commManager().value(QStringLiteral("serialReal")).toMap();
+    const bool wantPty = serialReal.value(QStringLiteral("autoStart"), true).toBool() ||
+                         qgetenv("SIEANS_QT_FORCE_SEED") == "1";
+    if (wantPty) {
+      QString ptyErr;
+      if (serialPtyLoopback().start(&ptyErr)) {
+        logResult(QStringLiteral("SerialLoopback PTY: %1")
+                      .arg(serialPtyLoopback().slavePath()));
+      } else {
+        logResult(QStringLiteral("SerialLoopback PTY 启动失败: %1").arg(ptyErr));
+      }
+    }
   }
 
   if (qgetenv("SIEANS_QT_AUTO_SAMPLE") == "1") {
@@ -2991,6 +3008,54 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
               new QTableWidgetItem(flow_vars_.value(QStringLiteral("loopPassed")).toString()));
         }
       }
+    } else if (op == QLatin1String("serial_exchange")) {
+      QVariantMap sp = step->params;
+      if (sp.contains(QStringLiteral("value"))) {
+        const QString expanded =
+            CommHub::expandTemplate(sp.value(QStringLiteral("value")).toString(), flow_vars_);
+        sp.insert(QStringLiteral("value"), expanded);
+      }
+      const SerialResult sr = runSerialExchange(sp);
+      QString prefix =
+          step->params.value(QStringLiteral("resultVar"), QStringLiteral("serial"))
+              .toString()
+              .trimmed();
+      if (prefix.isEmpty()) prefix = QStringLiteral("serial");
+      auto put = [&](const QString& suffix, const QVariant& v) {
+        flow_vars_.insert(prefix + suffix, v);
+      };
+      const int okI = sr.ok ? 1 : 0;
+      put(QStringLiteral("Ok"), okI);
+      put(QStringLiteral("Rx"), sr.value);
+      put(QStringLiteral("Tx"), sr.sentValue);
+      put(QStringLiteral("Bytes"), sr.byteLength);
+      put(QStringLiteral("SentBytes"), sr.sentBytes);
+      put(QStringLiteral("Port"), sr.serialPort);
+      put(QStringLiteral("Mode"), sr.mode);
+      put(QStringLiteral("Sim"), sr.simulated ? 1 : 0);
+      put(QStringLiteral("Elapsed"), sr.elapsedMs);
+      put(QStringLiteral("Trailing"), sr.trailingBytes);
+      put(QStringLiteral("Discarded"), sr.discardedInputBytes);
+      put(QStringLiteral("Delivery"), sr.delivery);
+      put(QStringLiteral("Error"), sr.error);
+      ok = sr.ok;
+      note = sr.ok ? sr.note : sr.error;
+      if (result_table_) {
+        auto addRow = [&](const QString& k, const QString& v, const QString& unit) {
+          const int row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(k));
+          result_table_->setItem(row, 1, new QTableWidgetItem(v));
+          result_table_->setItem(row, 2, new QTableWidgetItem(unit));
+        };
+        addRow(prefix + QStringLiteral("Ok"), QString::number(okI),
+               QStringLiteral("gate"));
+        addRow(prefix + QStringLiteral("Rx"), sr.value, QStringLiteral("text"));
+        addRow(prefix + QStringLiteral("Tx"), sr.sentValue, QStringLiteral("text"));
+        addRow(prefix + QStringLiteral("Bytes"), QString::number(sr.byteLength),
+               QStringLiteral("bytes"));
+        addRow(prefix + QStringLiteral("Port"), sr.serialPort, QStringLiteral("port"));
+      }
     } else {
       note = QStringLiteral("透传 / 未实现执行体");
       ok = true;
@@ -3251,6 +3316,26 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                   .arg(flow_vars_.value(QStringLiteral("measAngOk")).toString())
                   .arg(flow_vars_.value(QStringLiteral("measPtsDist")).toString())
                   .arg(flow_vars_.value(QStringLiteral("measPtsOk")).toString());
+      line += QChar(' ');
+      line += QStringLiteral(
+                  "serialOk=%1 serialRx=%2 serialTx=%3 serialBytes=%4 serialSim=%5 "
+                  "serialPort=%6 serialPtyOk=%7 serialPtyRx=%8")
+                  .arg(flow_vars_.value(QStringLiteral("serialOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("serialRx")).toString()
+                           .left(80)
+                           .replace(QLatin1Char('\n'), QLatin1Char('|')))
+                  .arg(flow_vars_.value(QStringLiteral("serialTx")).toString()
+                           .left(80)
+                           .replace(QLatin1Char('\n'), QLatin1Char('|')))
+                  .arg(flow_vars_.value(QStringLiteral("serialBytes")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("serialSim")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("serialPort")).toString()
+                           .left(40)
+                           .replace(QLatin1Char('\n'), QLatin1Char('|')))
+                  .arg(flow_vars_.value(QStringLiteral("serialPtyOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("serialPtyRx")).toString()
+                           .left(80)
+                           .replace(QLatin1Char('\n'), QLatin1Char('|')));
 
 line += QLatin1Char('\n');
       f.write(line.toUtf8());
@@ -4009,6 +4094,27 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
              "text=${flow.barcodeText}")}};
   } else if (key == QLatin1String("receive_data")) {
     s.params = {{QStringLiteral("targetVar"), QStringLiteral("lastRecv")}};
+  } else if (key == QLatin1String("serial_exchange")) {
+    s.params = {{QStringLiteral("connection"), QStringLiteral("simulator")},
+                {QStringLiteral("mode"), QStringLiteral("exchange")},
+                {QStringLiteral("serialPort"), QString()},
+                {QStringLiteral("baudrate"), 115200},
+                {QStringLiteral("dataBits"), 8},
+                {QStringLiteral("parity"), QStringLiteral("N")},
+                {QStringLiteral("stopbits"), 1},
+                {QStringLiteral("flowControl"), QStringLiteral("none")},
+                {QStringLiteral("rts"), true},
+                {QStringLiteral("dtr"), true},
+                {QStringLiteral("encoding"), QStringLiteral("text")},
+                {QStringLiteral("responseEncoding"), QStringLiteral("text")},
+                {QStringLiteral("value"), QStringLiteral("SIEANS-SERIAL-00042")},
+                {QStringLiteral("timeoutMs"), 3000},
+                {QStringLiteral("maxBytes"), 65536},
+                {QStringLiteral("clearInput"), false},
+                {QStringLiteral("txFraming"), QStringLiteral("crlf")},
+                {QStringLiteral("rxFraming"), QStringLiteral("crlf")},
+                {QStringLiteral("responseBytes"), 8},
+                {QStringLiteral("resultVar"), QStringLiteral("serial")}};
   } else if (key == QLatin1String("result_gate")) {
     s.params = {{QStringLiteral("minCount"), 1},
                 {QStringLiteral("sourceVar"), QStringLiteral("barcodeCount")},

@@ -245,6 +245,18 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   row->addWidget(btnClear);
   lay->addLayout(row);
 
+  auto* serialRow = new QHBoxLayout;
+  auto* btnSerial = new QPushButton(QStringLiteral("刷新串口"));
+  btnSerial->setToolTip(QStringLiteral("枚举 /dev/ttyUSB* / ttyACM* / ttyS* 及 SerialLoopback PTY，可供串口报文算子选用"));
+  serialPortsLabel_ = new QLabel(QStringLiteral("串口：—"));
+  serialPortsLabel_->setObjectName(QStringLiteral("muted"));
+  serialPortsLabel_->setWordWrap(true);
+  serialPortsLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  serialRow->addWidget(btnSerial);
+  serialRow->addWidget(serialPortsLabel_, 1);
+  lay->addLayout(serialRow);
+  connect(btnSerial, &QPushButton::clicked, this, &CommPanel::refreshSerialPorts);
+
   txFilter_ = new QLineEdit;
   txFilter_->setObjectName(QStringLiteral("commTxFilter"));
   txFilter_->setPlaceholderText(QStringLiteral("过滤抄本 · Ctrl+F · Esc 清空"));
@@ -355,6 +367,7 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
 }
 
 void CommPanel::bindDocument(const QVariantMap& commManager) {
+  refreshSerialPorts();
   if (hub_) hub_->loadFromCommManager(commManager);
   const QVariantMap tcp = commManager.value(QStringLiteral("tcpReal")).toMap();
   hostEdit_->setText(tcp.value(QStringLiteral("host"), QStringLiteral("127.0.0.1")).toString());
@@ -1050,6 +1063,22 @@ void CommPanel::onStopTcp() {
   if (hub_) hub_->stopTcp();
 }
 
+
+
+
+/** 刷新本机串口表，并把 PTY 回环路径标出，供串口报文算子选用。 */
+void CommPanel::refreshSerialPorts() {
+  const QStringList ports = listSerialPorts();
+  const QString pty = serialPtyLoopback().slavePath();
+  QString text;
+  if (ports.isEmpty())
+    text = QStringLiteral("串口：本机未发现 /dev/ttyUSB* / ttyACM* / ttyS*");
+  else
+    text = QStringLiteral("串口（%1）：%2").arg(ports.size()).arg(ports.join(QStringLiteral("  ")));
+  if (!pty.isEmpty())
+    text += QStringLiteral("  · SerialLoopback=%1").arg(pty);
+  if (serialPortsLabel_) serialPortsLabel_->setText(text);
+}
 
 
 void CommPanel::toggleTcp() {

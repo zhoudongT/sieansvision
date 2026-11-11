@@ -79,6 +79,8 @@ add_executable(sieans_qt
   src/GeometryFind.cpp
   src/MeasureDim.hpp
   src/MeasureDim.cpp
+  src/SerialExchange.hpp
+  src/SerialExchange.cpp
   src/ConditionEval.hpp
   src/ConditionEval.cpp
   src/SubflowExec.hpp

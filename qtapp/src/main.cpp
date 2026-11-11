@@ -5,6 +5,7 @@
 #include "FixturePose.hpp"
 #include "GeometryFind.hpp"
 #include "MeasureDim.hpp"
+#include "SerialExchange.hpp"
 #include "SoftFrame.hpp"
 #include "MainWindow.hpp"
 #include "Theme.hpp"
@@ -99,6 +100,18 @@ int main(int argc, char* argv[]) {
     }
     for (const QString& line : fails)
       std::fprintf(stderr, "measure-selftest FAIL %s\n", line.toUtf8().constData());
+    return 1;
+  }
+
+  if (qEnvironmentVariable("SIEANS_QT_SERIAL_SELFTEST") == QLatin1String("1") &&
+      qEnvironmentVariable("SIEANS_QT_SERIAL_SELFTEST_QUIT") == QLatin1String("1")) {
+    const QStringList fails = sieans_qt::serialSelfTest();
+    if (fails.isEmpty()) {
+      std::fprintf(stdout, "serial-selftest ok\n");
+      return 0;
+    }
+    for (const QString& line : fails)
+      std::fprintf(stderr, "serial-selftest FAIL %s\n", line.toUtf8().constData());
     return 1;
   }
 
