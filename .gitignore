@@ -19,6 +19,7 @@ native-data-smoke-today/
 node_modules/
 *.onnx
 !models/sieans-yolo-smoke.onnx
+!models/sieans-yolo-seg-smoke.onnx
 *.pem
 *.pt
 *.pyc
