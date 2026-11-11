@@ -149,6 +149,32 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("followFixture", "跟随定位位姿", kBool, "ROI 在夹具坐标系"),
             S("fixtureVar", "位姿变量前缀", kLine, "fixture")};
   }
+  if (op == QLatin1String("yolo") || op == QLatin1String("yolo_segment")) {
+    QVector<Spec> f = {
+        S("model", "模型文件", kLine, "yolo11n.pt / yolo11n-seg.pt（models/，不自动下载）"),
+        S("device", "推理设备", kChoice, "cpu|CPU;auto|自动;cuda:0|cuda:0"),
+        S("confidence", "置信度阈值", kReal, "默认 0.25"),
+        S("iou", "NMS IoU", kReal, "默认 0.45"),
+        S("imageSize", "输入边长", kInt, "32 的倍数；检测 32–1920，分割 32–1280"),
+        S("classes", "类别筛选", kLine, "空=全部；逗号分隔 id 或名称"),
+        S("maxDetections", "最多检出", kInt, "分割 1–100，默认 50"),
+        S("minArea", "最小面积", kInt, "默认 1"),
+        S("resultVar", "结果前缀", kLine, "yolo → yoloCount / yoloSeg → yoloSegCount"),
+        S("showOverlay", "显示叠加", kBool, ""),
+        S("showLabels", "显示标签", kBool, ""),
+        S("followFixture", "跟随定位位姿", kBool, "ROI 在夹具坐标系"),
+        S("fixtureVar", "位姿变量前缀", kLine, "fixture"),
+        S("roiX", "ROI X", kInt, ""),
+        S("roiY", "ROI Y", kInt, ""),
+        S("roiW", "ROI 宽", kInt, ""),
+        S("roiH", "ROI 高", kInt, "")};
+    if (op == QLatin1String("yolo_segment")) {
+      f.append(S("contourTolerance", "轮廓简化容差", kReal, "默认 0.5，不改变面积"));
+      f.append(S("overlayAlpha", "叠加透明度", kReal, "默认 0.35"));
+      f.append(S("output", "输出模式", kChoice, "overlay|彩色叠加（下游仍用原图）;mask|二值掩膜"));
+    }
+    return f;
+  }
   if (op == QLatin1String("geometry")) {
     return {S("feature", "特征类型", kChoice,
               "contours|轮廓;lines|直线;circles|圆;rects|矩形;edges|边缘"),
@@ -1104,6 +1130,10 @@ void PropertyPanel::showStep(const FlowStep& step) {
     hint += QStringLiteral(" · QImage 边缘卡尺 · caliperDist/measureMm");
   else if (step.operation == QLatin1String("defects"))
     hint += QStringLiteral(" · 灰度差影+连通域 · defectsCount/defectsRatio/defectsOk · 可跟随定位");
+  else if (step.operation == QLatin1String("yolo"))
+    hint += QStringLiteral(" · YOLO 检测 · yoloCount/yoloScore/yoloLabel · backend=software");
+  else if (step.operation == QLatin1String("yolo_segment"))
+    hint += QStringLiteral(" · YOLO 分割 · yoloSegCount/yoloSegArea/yoloSegScore · 轮廓/孔洞");
   else if (step.operation == QLatin1String("locate"))
     hint += QStringLiteral(" · 模板 SAD + 旋转搜索 · locateX/Y/Angle/Score");
   else if (step.operation == QLatin1String("pose_correct"))

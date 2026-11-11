@@ -89,6 +89,8 @@ add_executable(sieans_qt
   src/OpcUaClient.cpp
   src/MqttClient.hpp
   src/MqttClient.cpp
+  src/YoloInfer.hpp
+  src/YoloInfer.cpp
   src/ConditionEval.hpp
   src/ConditionEval.cpp
   src/SubflowExec.hpp

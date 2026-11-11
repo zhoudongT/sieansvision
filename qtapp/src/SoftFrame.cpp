@@ -167,6 +167,45 @@ QPoint softSceneGeomFollowCircleCenter(int width, int height) {
   return QPoint(plate.center().x(), plate.bottom() + 8 + r);
 }
 
+
+QColor softSceneYoloFixtureColor() { return QColor(220, 40, 80); }
+
+/**
+ * 计算软仿真场景中 YOLO 特征色斑的外接矩形。
+ * 放在卡尺白垫右侧、底部 HUD 上方，避开右下角几何圆/直线，避免遮挡二维码有效区。
+ */
+QRect softSceneYoloFixtureRect(int width, int height) {
+  const int h = qMax(16, height) & ~1;
+  const int fw = 80;
+  const int fh = 56;
+  const int gap = 200;
+  const int barW = 6;
+  const int x0 = 24;
+  const int x = (x0 - 8) + (gap + barW + 16) + 12;  // 250
+  const int y = h - 18 - fh - 6;
+  return QRect(x, y, fw, fh);
+}
+
+/**
+ * 计算 YOLO 特征色斑内部的矩形孔（用于分割轮廓的孔洞）。
+ * 孔洞完全落在外接矩形内，面积固定为 24×16。
+ */
+QRect softSceneYoloFixtureHoleRect(int width, int height) {
+  const QRect r = softSceneYoloFixtureRect(width, height);
+  const int hw = 24;
+  const int hh = 16;
+  return QRect(r.center().x() - hw / 2, r.center().y() - hh / 2, hw, hh);
+}
+
+void drawSoftYoloFixture(QPainter& p, int width, int height) {
+  p.setRenderHint(QPainter::Antialiasing, false);
+  p.setPen(Qt::NoPen);
+  p.setBrush(softSceneYoloFixtureColor());
+  p.drawRect(softSceneYoloFixtureRect(width, height));
+  p.setBrush(QColor(255, 255, 255));
+  p.drawRect(softSceneYoloFixtureHoleRect(width, height));
+}
+
 QLine softSceneGeomLine(int width, int height) {
   const QPoint c = softSceneGeomCircleCenter(width, height);
   const int r = softSceneGeomCircleRadius(width, height);
@@ -269,6 +308,7 @@ QImage makeSoftScene(int width, int height) {
     drawFinder(p, QRect(plate.left() + 8, plate.bottom() - fs - 8, fs, fs));
   }
   drawSoftGeomTargets(p, w, h);
+  drawSoftYoloFixture(p, w, h);
   p.end();
   return img;
 }

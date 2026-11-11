@@ -821,6 +821,33 @@ void SieansDocument::seedGentlQrDemo() {
        {QStringLiteral("timeoutMs"), 5000},
        {QStringLiteral("resultVar"), QStringLiteral("mqttTcpRecv")}});
 
+  add(QStringLiteral("yolo1"), QStringLiteral("YOLO 目标检测"),
+      QStringLiteral("yolo"), 80, 3620, QStringLiteral("mqttTcpR"),
+      {{QStringLiteral("model"), QStringLiteral("yolo11n.pt")},
+       {QStringLiteral("device"), QStringLiteral("cpu")},
+       {QStringLiteral("confidence"), 0.25},
+       {QStringLiteral("iou"), 0.45},
+       {QStringLiteral("imageSize"), 640},
+       {QStringLiteral("showOverlay"), true},
+       {QStringLiteral("showLabels"), true},
+       {QStringLiteral("resultVar"), QStringLiteral("yolo")}});
+  add(QStringLiteral("yoloSeg1"), QStringLiteral("YOLO 实例分割"),
+      QStringLiteral("yolo_segment"), 80, 3740, QStringLiteral("yolo1"),
+      {{QStringLiteral("model"), QStringLiteral("yolo11n-seg.pt")},
+       {QStringLiteral("device"), QStringLiteral("cpu")},
+       {QStringLiteral("confidence"), 0.25},
+       {QStringLiteral("iou"), 0.45},
+       {QStringLiteral("imageSize"), 640},
+       {QStringLiteral("maxDetections"), 50},
+       {QStringLiteral("minArea"), 1},
+       {QStringLiteral("contourTolerance"), 0.5},
+       {QStringLiteral("overlayAlpha"), 0.35},
+       {QStringLiteral("output"), QStringLiteral("overlay")},
+       {QStringLiteral("showOverlay"), true},
+       {QStringLiteral("showLabels"), true},
+       {QStringLiteral("resultVar"), QStringLiteral("yoloSeg")}});
+
+
   auto link = [&](const QString& a, const QString& b,
                   const QString& when = QStringLiteral("always")) {
     FlowEdge e;
@@ -881,6 +908,8 @@ void SieansDocument::seedGentlQrDemo() {
   link(QStringLiteral("mqttW"), QStringLiteral("mqttR"));
   link(QStringLiteral("mqttR"), QStringLiteral("mqttTcpW"));
   link(QStringLiteral("mqttTcpW"), QStringLiteral("mqttTcpR"));
+  link(QStringLiteral("mqttTcpR"), QStringLiteral("yolo1"));
+  link(QStringLiteral("yolo1"), QStringLiteral("yoloSeg1"));
 
   variables_ = {
       {QStringLiteral("barcodeCount"), 0},
@@ -1018,6 +1047,15 @@ void SieansDocument::seedGentlQrDemo() {
       {QStringLiteral("mqttTcpPubValue"), 0},
       {QStringLiteral("mqttTcpRecvOk"), 0},
       {QStringLiteral("mqttTcpRecvValue"), 0},
+      {QStringLiteral("yoloOk"), 0},
+      {QStringLiteral("yoloCount"), 0},
+      {QStringLiteral("yoloScore"), 0},
+      {QStringLiteral("yoloLabel"), QString()},
+      {QStringLiteral("yoloSegOk"), 0},
+      {QStringLiteral("yoloSegCount"), 0},
+      {QStringLiteral("yoloSegScore"), 0},
+      {QStringLiteral("yoloSegArea"), 0},
+      {QStringLiteral("yoloSegLabel"), QString()},
   };
   subflows_.clear();
   subflows_.push_back(makeCounterSubflow());

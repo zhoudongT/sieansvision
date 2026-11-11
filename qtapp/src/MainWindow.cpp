@@ -12,6 +12,7 @@
 #include "S7Client.hpp"
 #include "OpcUaClient.hpp"
 #include "MqttClient.hpp"
+#include "YoloInfer.hpp"
 #include "ConditionEval.hpp"
 #include "SubflowExec.hpp"
 #include "SubflowDialog.hpp"
@@ -3425,6 +3426,130 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                  QStringLiteral("ack"));
         addRow(prefix + QStringLiteral("Topic"), mr.topic, QStringLiteral("topic"));
       }
+    } else if (op == QLatin1String("yolo") || op == QLatin1String("yolo_segment")) {
+      const auto t0 = std::chrono::steady_clock::now();
+      QVariantMap yp = step->params;
+      injectFixtureFromVars(yp, flow_vars_);
+      if (yp.value(QStringLiteral("followFixture")).toBool() &&
+          flow_vars_.contains(QStringLiteral("locateW"))) {
+        if (!yp.contains(QStringLiteral("locateW")))
+          yp.insert(QStringLiteral("locateW"), flow_vars_.value(QStringLiteral("locateW")));
+        if (!yp.contains(QStringLiteral("locateH")))
+          yp.insert(QStringLiteral("locateH"), flow_vars_.value(QStringLiteral("locateH")));
+      }
+      const bool isSeg = (op == QLatin1String("yolo_segment"));
+      YoloResult yr = isSeg ? runYoloSegment(working, yp) : runYoloDetect(working, yp);
+      const double yoloMs = std::chrono::duration<double, std::milli>(
+                                std::chrono::steady_clock::now() - t0)
+                                .count();
+      algoMs += yoloMs;
+      QString prefix = step->params.value(QStringLiteral("resultVar")).toString().trimmed();
+      if (prefix.isEmpty())
+        prefix = isSeg ? QStringLiteral("yoloSeg") : QStringLiteral("yolo");
+      auto put = [&](const QString& suffix, const QVariant& v) {
+        flow_vars_.insert(prefix + suffix, v);
+      };
+      const int foundI = (yr.ok && yr.count >= 1) ? 1 : 0;
+      const double bestScore =
+          yr.items.isEmpty() ? 0.0 : yr.items.front().confidence;
+      const QString bestLabel =
+          yr.items.isEmpty() ? QString() : yr.items.front().label;
+      const int bestArea = yr.items.isEmpty() ? 0 : yr.items.front().areaPixels;
+      put(QStringLiteral("Ok"), foundI);
+      put(QStringLiteral("RunOk"), yr.ok ? 1 : 0);
+      put(QStringLiteral("Count"), yr.count);
+      put(QStringLiteral("Score"), bestScore);
+      put(QStringLiteral("Label"), bestLabel);
+      put(QStringLiteral("Class"), yr.items.isEmpty() ? QString()
+                                                      : QString::number(yr.items.front().classId));
+      put(QStringLiteral("Backend"), yr.backend);
+      put(QStringLiteral("Device"), yr.device);
+      put(QStringLiteral("Model"), yr.model);
+      put(QStringLiteral("Error"), yr.error);
+      if (isSeg) {
+        put(QStringLiteral("Area"), bestArea);
+        put(QStringLiteral("UnionArea"), yr.unionAreaPixels);
+        put(QStringLiteral("SummedArea"), yr.summedAreaPixels);
+      }
+      if (yp.value(QStringLiteral("followFixture")).toBool()) {
+        const FollowRoi fr = resolveFollowRoi(yp, working.width(), working.height());
+        if (fr.active) {
+          put(QStringLiteral("RoiX"), fr.center.x());
+          put(QStringLiteral("RoiY"), fr.center.y());
+          if (step->params.value(QStringLiteral("showOverlay"), true).toBool()) {
+            OverlayHit fo;
+            fo.format = QStringLiteral("FOLLOW");
+            fo.text = QStringLiteral("跟随ROI");
+            fo.polygon = fr.corners;
+            overlays.push_back(fo);
+          }
+        }
+      }
+      ok = yr.ok;
+      note = yr.ok ? QStringLiteral("%1 · %2 ms").arg(yr.note).arg(yoloMs, 0, 'f', 1)
+                   : yr.error;
+      if (isSeg && yr.output == QLatin1String("mask") && !yr.mask.isNull()) {
+        working = yr.mask;
+        if (output_view_) output_view_->setLiveImage(working);
+      }
+      if (step->params.value(QStringLiteral("showOverlay"), true).toBool()) {
+        const bool showLab =
+            !step->params.contains(QStringLiteral("showLabels")) ||
+            step->params.value(QStringLiteral("showLabels")).toBool();
+        for (int i = 0; i < yr.items.size(); ++i) {
+          const YoloItem& it = yr.items[i];
+          OverlayHit box;
+          box.format = isSeg ? QStringLiteral("YOLOSEG") : QStringLiteral("YOLO");
+          box.text = showLab ? QStringLiteral("%1 %.2f").arg(it.label).arg(it.confidence)
+                             : QString();
+          const QRectF rct = it.bbox;
+          box.polygon << rct.topLeft() << rct.topRight() << rct.bottomRight()
+                      << rct.bottomLeft();
+          overlays.push_back(box);
+          if (isSeg) {
+            for (int c = 0; c < it.contours.size(); ++c) {
+              OverlayHit ch;
+              ch.format = it.contourIsHole.value(c) ? QStringLiteral("YOLOHOLE")
+                                                    : QStringLiteral("YOLOMASK");
+              ch.text = showLab ? (it.contourIsHole.value(c)
+                                       ? QStringLiteral("hole")
+                                       : QStringLiteral("A%1").arg(it.areaPixels))
+                                : QString();
+              for (const QPoint& pt : it.contours[c]) ch.polygon << QPointF(pt);
+              if (ch.polygon.size() >= 2) overlays.push_back(ch);
+            }
+          }
+        }
+      }
+      if (result_table_) {
+        auto addRow = [&](const QString& k, const QString& v, const QString& unit) {
+          const int row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(k));
+          result_table_->setItem(row, 1, new QTableWidgetItem(v));
+          result_table_->setItem(row, 2, new QTableWidgetItem(unit));
+        };
+        addRow(prefix + QStringLiteral("Count"), QString::number(yr.count),
+               QStringLiteral("count"));
+        addRow(prefix + QStringLiteral("Score"), QString::number(bestScore, 'f', 3),
+               QStringLiteral("score"));
+        addRow(prefix + QStringLiteral("Label"), bestLabel, QStringLiteral("class"));
+        addRow(prefix + QStringLiteral("Ok"), QString::number(foundI), QStringLiteral("gate"));
+        addRow(prefix + QStringLiteral("Backend"), yr.backend, QStringLiteral("backend"));
+        if (isSeg)
+          addRow(prefix + QStringLiteral("Area"), QString::number(bestArea),
+                 QStringLiteral("px"));
+        for (int i = 0; i < yr.items.size(); ++i) {
+          const YoloItem& it = yr.items[i];
+          addRow(QStringLiteral("%1[%2].label").arg(prefix).arg(i), it.label,
+                 QStringLiteral("class"));
+          addRow(QStringLiteral("%1[%2].score").arg(prefix).arg(i),
+                 QString::number(it.confidence, 'f', 3), QStringLiteral("score"));
+          if (isSeg)
+            addRow(QStringLiteral("%1[%2].area").arg(prefix).arg(i),
+                   QString::number(it.areaPixels), QStringLiteral("px"));
+        }
+      }
     } else {
       note = QStringLiteral("透传 / 未实现执行体");
       ok = true;
@@ -3781,6 +3906,19 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                   .arg(flow_vars_.value(QStringLiteral("mqttTcpPubValue")).toString())
                   .arg(flow_vars_.value(QStringLiteral("mqttTcpRecvOk")).toString())
                   .arg(flow_vars_.value(QStringLiteral("mqttTcpRecvValue")).toString());
+      line += QChar(' ');
+      line += QStringLiteral(
+                  "yoloOk=%1 yoloCount=%2 yoloScore=%3 yoloLabel=%4 "
+                  "yoloSegOk=%5 yoloSegCount=%6 yoloSegScore=%7 yoloSegArea=%8 yoloSegLabel=%9")
+                  .arg(flow_vars_.value(QStringLiteral("yoloOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("yoloCount")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("yoloScore")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("yoloLabel")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("yoloSegOk")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("yoloSegCount")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("yoloSegScore")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("yoloSegArea")).toString())
+                  .arg(flow_vars_.value(QStringLiteral("yoloSegLabel")).toString());
 
 line += QLatin1Char('\n');
       f.write(line.toUtf8());
@@ -4692,7 +4830,34 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("acceptRetained"), true},
                 {QStringLiteral("timeoutMs"), 5000},
                 {QStringLiteral("resultVar"), QStringLiteral("mqttRecv")}};
-} else if (key == QLatin1String("result_gate")) {
+  } else if (key == QLatin1String("yolo")) {
+    s.params = {{QStringLiteral("model"), QStringLiteral("yolo11n.pt")},
+                {QStringLiteral("device"), QStringLiteral("cpu")},
+                {QStringLiteral("confidence"), 0.25},
+                {QStringLiteral("iou"), 0.45},
+                {QStringLiteral("imageSize"), 640},
+                {QStringLiteral("classes"), QString()},
+                {QStringLiteral("maxDetections"), 50},
+                {QStringLiteral("minArea"), 1},
+                {QStringLiteral("showOverlay"), true},
+                {QStringLiteral("showLabels"), true},
+                {QStringLiteral("resultVar"), QStringLiteral("yolo")}};
+  } else if (key == QLatin1String("yolo_segment")) {
+    s.params = {{QStringLiteral("model"), QStringLiteral("yolo11n-seg.pt")},
+                {QStringLiteral("device"), QStringLiteral("cpu")},
+                {QStringLiteral("confidence"), 0.25},
+                {QStringLiteral("iou"), 0.45},
+                {QStringLiteral("imageSize"), 640},
+                {QStringLiteral("classes"), QString()},
+                {QStringLiteral("maxDetections"), 50},
+                {QStringLiteral("minArea"), 1},
+                {QStringLiteral("contourTolerance"), 0.5},
+                {QStringLiteral("overlayAlpha"), 0.35},
+                {QStringLiteral("output"), QStringLiteral("overlay")},
+                {QStringLiteral("showOverlay"), true},
+                {QStringLiteral("showLabels"), true},
+                {QStringLiteral("resultVar"), QStringLiteral("yoloSeg")}};
+  } else if (key == QLatin1String("result_gate")) {
     s.params = {{QStringLiteral("minCount"), 1},
                 {QStringLiteral("sourceVar"), QStringLiteral("barcodeCount")},
                 {QStringLiteral("passVar"), QStringLiteral("passGate")}};

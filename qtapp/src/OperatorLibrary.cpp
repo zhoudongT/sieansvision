@@ -85,6 +85,8 @@ const char* glyphKindFor(const QString& key, const QString& category) {
     return "opcua";
   if (key == QLatin1String("mqtt_publish") || key == QLatin1String("mqtt_receive"))
     return "mqtt";
+  if (key == QLatin1String("yolo") || key == QLatin1String("yolo_segment"))
+    return "yolo";
   if (key == QLatin1String("result_gate")) return "gate";
   if (key == QLatin1String("format_data")) return "format";
   if (key == QLatin1String("var_calc")) return "var";
@@ -253,6 +255,9 @@ QIcon opGlyph(const char* kind, const QColor& accent) {
     f.setBold(true);
     p.setFont(f);
     p.drawText(QRectF(6, 5, 22, 14), Qt::AlignCenter, QStringLiteral("MQ"));
+  } else if (std::strcmp(kind, "yolo") == 0) {
+    p.drawRect(QRectF(7, 5, 18, 14));
+    p.drawRect(QRectF(10, 8, 8, 6));
   } else {
     p.drawEllipse(QRectF(cx - 6, cy - 6, 12, 12));
     p.drawPoint(QPointF(cx, cy));
@@ -292,6 +297,12 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
       {QStringLiteral("defects"), QStringLiteral("参考图缺陷检测"),
        QStringLiteral("识别"),
        QStringLiteral("灰度差影 · 连通域面积 · 比例判定")},
+      {QStringLiteral("yolo"), QStringLiteral("YOLO 目标检测"),
+       QStringLiteral("识别"),
+       QStringLiteral("软件检测器 · 框 / 类别 / 置信度（可选本地权重）")},
+      {QStringLiteral("yolo_segment"), QStringLiteral("YOLO 实例分割"),
+       QStringLiteral("识别"),
+       QStringLiteral("软件检测器 · 掩膜轮廓 / 面积 / 孔洞")},
       {QStringLiteral("var_calc"), QStringLiteral("变量计算"),
        QStringLiteral("变量与数据"),
        QStringLiteral("expr: in / startswith / endswith / contains")},

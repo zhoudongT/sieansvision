@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QColor>
 #include <QImage>
 #include <QLine>
 #include <QPoint>
@@ -47,6 +48,14 @@ int softSceneGeomFollowCircleRadius(int width, int height);
 
 /** Dark line in the soft-scene quiet zone (bottom-right, above the large circle). */
 QLine softSceneGeomLine(int width, int height);
+
+/** Unique rose (220,40,80) rectangle used as the YOLO soft-scene fixture. */
+QColor softSceneYoloFixtureColor();
+/** Axis-aligned fixture rectangle (right of the caliper pad, above the HUD). */
+QRect softSceneYoloFixtureRect(int width, int height);
+/** Interior hole punched in the YOLO fixture (for instance-segmentation contours). */
+QRect softSceneYoloFixtureHoleRect(int width, int height);
+
 
 
 /**
