@@ -6,6 +6,7 @@
 #include "ColorOp.hpp"
 #include "CameraCal.hpp"
 #include "WarpOp.hpp"
+#include "PreprocessOp.hpp"
 #include "FixturePose.hpp"
 #include "GeometryFind.hpp"
 #include "MeasureDim.hpp"
@@ -136,6 +137,18 @@ int main(int argc, char* argv[]) {
     }
     for (const QString& line : fails)
       std::fprintf(stderr, "warp-selftest FAIL %s\n", line.toUtf8().constData());
+    return 1;
+  }
+
+  if (qEnvironmentVariable("SIEANS_QT_PREPROCESS_SELFTEST") == QLatin1String("1") &&
+      qEnvironmentVariable("SIEANS_QT_PREPROCESS_SELFTEST_QUIT") == QLatin1String("1")) {
+    const QStringList fails = sieans_qt::preprocessSelfTest();
+    if (fails.isEmpty()) {
+      std::fprintf(stdout, "preprocess-selftest ok\n");
+      return 0;
+    }
+    for (const QString& line : fails)
+      std::fprintf(stderr, "preprocess-selftest FAIL %s\n", line.toUtf8().constData());
     return 1;
   }
 

@@ -120,8 +120,12 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("writeFlowVars", "写入流程变量", kBool, "")};
   }
   if (op == QLatin1String("preprocess")) {
-    return {S("mode", "方法", kChoice, "gray|灰度;mono|灰度;invert|反色;threshold|阈值"),
-            S("threshold", "阈值", kInt, "")};
+    return {S("method", "处理方法", kChoice,
+              "grayscale|灰度;blur|高斯模糊;threshold|阈值;canny|Canny 边缘;open|开运算;close|闭运算;erode|腐蚀;dilate|膨胀;invert|反色;gray|灰度;mono|灰度"),
+            S("threshold", "二值阈值", kInt, "threshold 方法；Canny 未设 cannyLow 时也用它"),
+            S("kernel", "卷积核大小", kInt, "1–51，须为奇数，偶数会 +1；模糊/Canny/形态学共用"),
+            S("cannyLow", "Canny 低阈值", kInt, "滞后低阈值，默认 50"),
+            S("cannyHigh", "Canny 高阈值", kInt, "滞后高阈值，默认 150")};
   }
   if (op == QLatin1String("color")) {
     return {S("method", "处理方法", kChoice, "convert|色彩空间转换;channel|通道提取;threshold|颜色阈值"),
@@ -1278,6 +1282,8 @@ void PropertyPanel::rebuildForm(const QString& title, const QString& nodeId,
   QStringList used;
   used << QStringLiteral("expressions") << QStringLiteral("rules")
        << QStringLiteral("paths") << QStringLiteral("arguments");
+  if (op == QLatin1String("preprocess"))
+    used << QStringLiteral("mode");  // 旧方案字段，已映射到 method，避免底部再出一行
   for (const Spec& spec : specsFor(op)) {
     addSpecRow(spec, params);
     used << spec.key;
@@ -1401,9 +1407,19 @@ void PropertyPanel::showStep(const FlowStep& step) {
     hint += QStringLiteral(" · 调用子流程 · 结果 subflowPassed/subflowCount");
   else if (step.operation == QLatin1String("loop"))
     hint += QStringLiteral(" · 循环子流程 · loopCount/loopStoppedEarly · 最多 100 轮");
+  else if (step.operation == QLatin1String("preprocess"))
+    hint += QStringLiteral(" · 灰度/反色/阈值/高斯模糊/Canny/形态学 · 纯 QImage，无 OpenCV · 高斯核须为奇数（偶数会+1） · Canny 为双阈值滞后近似，无亚像素 · 形态学仅方形结构元");
   meta_->setText(hint);
+  QVariantMap shown = step.params;
+  if (step.operation == QLatin1String("preprocess") &&
+      shown.value(QStringLiteral("method")).toString().trimmed().isEmpty()) {
+    QString mode = shown.value(QStringLiteral("mode")).toString().trimmed();
+    if (mode == QLatin1String("gray") || mode == QLatin1String("mono"))
+      mode = QStringLiteral("grayscale");
+    if (!mode.isEmpty()) shown.insert(QStringLiteral("method"), mode);
+  }
   rebuildForm(QStringLiteral("属性 · %1").arg(step.name), step.id, step.operation,
-              step.params);
+              shown);
 }
 
 

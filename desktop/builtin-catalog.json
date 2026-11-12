@@ -2413,12 +2413,16 @@
   },
   "preprocess": {
     "name": "图像预处理",
-    "tag": "OpenCV · 灰度 / 滤波",
+    "tag": "QImage · 灰度 / 滤波",
     "glyph": "◐",
     "defaults": {
-      "method": "grayscale"
+      "method": "grayscale",
+      "threshold": 128,
+      "kernel": 5,
+      "cannyLow": 50,
+      "cannyHigh": 150
     },
-    "description": "预处理输出成为下一步的输入图像。支持灰度、模糊、二值化、边缘及形态学。",
+    "description": "预处理输出成为下一步的输入图像。支持灰度、反色、模糊、二值化、Canny 边缘及形态学。纯 QImage，无 OpenCV / Halcon。",
     "fields": [
       [
         "method",
@@ -2431,7 +2435,8 @@
           "open",
           "close",
           "erode",
-          "dilate"
+          "dilate",
+          "invert"
         ]
       ],
       [
@@ -2445,9 +2450,21 @@
         "卷积核大小",
         1,
         51
+      ],
+      [
+        "cannyLow",
+        "Canny 低阈值",
+        0,
+        255
+      ],
+      [
+        "cannyHigh",
+        "Canny 高阈值",
+        0,
+        255
       ]
     ],
-    "hint": "按处理方法显示参数。高斯模糊的卷积核大小须为奇数；边缘提取使用低、高两个阈值。"
+    "hint": "按处理方法显示参数。纯 QImage，无 OpenCV。高斯模糊的卷积核大小须为奇数（偶数会 +1），范围 1–51。Canny 使用 cannyLow / cannyHigh 双阈值滞后，未设置时由 threshold 与 2×threshold 推导；无亚像素。形态学为方形结构元的灰度最小/最大。invert 为既有反色能力。大核在大图上会较慢。"
   },
   "color": {
     "name": "颜色处理",

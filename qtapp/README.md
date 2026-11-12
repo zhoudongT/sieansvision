@@ -108,6 +108,8 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx` / `yol
 
 **已落地（wave277）：** 加深 `locate`：仔细读过 TemplateMatch.cpp 后确认原先只有灰度 SAD、旋转与多目标，没有 NCC、尺度搜索或真正的多模板匹配（面板虽有 templateLibrary 但引擎未用；目录文案里的均匀缩放此前也未实现）。现支持 metric/matchMode=ncc（零均值 NCC）、scaleEnable 均匀尺度与 scaleAniso 各向异性（X/Y 独立）尺度搜索、以及 templateLibrary/templatePaths 多模板一起搜（NMS 跨模板）。组合上限 400。变形/变化模型匹配做不到诚实的有限实现，已推迟。自测仍走 `SIEANS_QT_LOCATE_SELFTEST=1`。
 
+**已落地（wave278）：** 补齐目录已宣传但 C++ 原先只有灰度/反色/阈值的 `preprocess`：可分离高斯模糊、Canny 风格边缘（Sobel + 非极大值抑制 + 双阈值滞后）、方形结构元灰度开/闭/腐蚀/膨胀。参数对齐目录 `method` / `threshold` / `kernel`，并增加 `cannyLow` / `cannyHigh`；旧方案 `mode=gray|mono|invert|threshold` 仍可用。invert 为既有能力，予以保留。纯 QImage，无 OpenCV/Halcon。无界面自测 `SIEANS_QT_PREPROCESS_SELFTEST=1`：冲激平滑且能量近似守恒、已知竖直阶跃边被 Canny 检出、形态学对已知斑块面积变化符合方形结构元预期。诚实限制：Canny 无亚像素；形态学仅方形核；大核大图会慢。
+
 **NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。操作员账号（PySide 走独立 RPC/部署凭据，未在本机落地）。云 SaaS / 模板市场。真机硬件（`/opt/MVS`、真实 PLC）。官方 YOLO 权重需自行放入上述模型目录。
 
 ## VM chrome (2026-11-03)

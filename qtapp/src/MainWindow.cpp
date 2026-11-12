@@ -15,6 +15,7 @@
 #include "ColorOp.hpp"
 #include "CameraCal.hpp"
 #include "WarpOp.hpp"
+#include "PreprocessOp.hpp"
 #include "GeometryFind.hpp"
 #include "MeasureDim.hpp"
 #include "SerialExchange.hpp"
@@ -103,31 +104,6 @@ QImage toRgb888(const QImage& src) {
   if (src.isNull()) return {};
   if (src.format() == QImage::Format_RGB888) return src;
   return src.convertToFormat(QImage::Format_RGB888);
-}
-
-QImage applyPreprocess(const QImage& src, const QVariantMap& params) {
-  if (src.isNull()) return src;
-  QString mode = params.value(QStringLiteral("mode"), QStringLiteral("gray")).toString();
-  QImage out = src;
-  if (mode == QLatin1String("gray") || mode == QLatin1String("mono")) {
-    out = src.convertToFormat(QImage::Format_Grayscale8)
-              .convertToFormat(QImage::Format_RGB888);
-  } else if (mode == QLatin1String("invert")) {
-    out = src.convertToFormat(QImage::Format_RGB888).copy();
-    for (int y = 0; y < out.height(); ++y) {
-      uchar* line = out.scanLine(y);
-      for (int x = 0; x < out.width() * 3; ++x) line[x] = 255 - line[x];
-    }
-  } else if (mode == QLatin1String("threshold")) {
-    const int thr = params.value(QStringLiteral("threshold"), 128).toInt();
-    QImage g = src.convertToFormat(QImage::Format_Grayscale8);
-    for (int y = 0; y < g.height(); ++y) {
-      uchar* line = g.scanLine(y);
-      for (int x = 0; x < g.width(); ++x) line[x] = line[x] >= thr ? 255 : 0;
-    }
-    out = g.convertToFormat(QImage::Format_RGB888);
-  }
-  return out;
 }
 
 QVariant coerceParam(const QString& key, const QString& value, const QVariant& old) {
@@ -2614,11 +2590,12 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
     if (op == QLatin1String("camera_capture")) {
       note = QStringLiteral("采图 %1×%2").arg(working.width()).arg(working.height());
     } else if (op == QLatin1String("preprocess")) {
-      working = applyPreprocess(working, step->params);
+      const PreprocessResult pr = runPreprocess(working, step->params);
+      if (!pr.image.isNull()) working = pr.image;
       image_view_->setLiveImage(working);
-      note = QStringLiteral("预处理 %1")
-                 .arg(step->params.value(QStringLiteral("mode"), QStringLiteral("gray"))
-                          .toString());
+      note = pr.ok ? (pr.note.isEmpty() ? QStringLiteral("预处理 %1").arg(pr.method)
+                                        : pr.note)
+                   : QStringLiteral("预处理失败 %1").arg(pr.error);
     } else if (op == QLatin1String("color")) {
       const auto t0 = std::chrono::steady_clock::now();
       QVariantMap cp = step->params;
@@ -6205,8 +6182,12 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("backendKind"), QStringLiteral("gentl")},
                 {QStringLiteral("continuousLive"), true}};
   } else if (key == QLatin1String("preprocess")) {
-    s.params = {{QStringLiteral("mode"), QStringLiteral("gray")},
-                {QStringLiteral("threshold"), 128}};
+    s.params = {{QStringLiteral("method"), QStringLiteral("grayscale")},
+                {QStringLiteral("mode"), QStringLiteral("grayscale")},
+                {QStringLiteral("threshold"), 128},
+                {QStringLiteral("kernel"), 5},
+                {QStringLiteral("cannyLow"), 50},
+                {QStringLiteral("cannyHigh"), 150}};
   } else if (key == QLatin1String("color")) {
     s.params = {{QStringLiteral("method"), QStringLiteral("convert")},
                 {QStringLiteral("space"), QStringLiteral("hsv")},
