@@ -81,6 +81,8 @@ add_executable(sieans_qt
   src/CaliperMeasure.cpp
   src/DefectDetect.hpp
   src/DefectDetect.cpp
+  src/RegionAnalyze.hpp
+  src/RegionAnalyze.cpp
   src/FixturePose.hpp
   src/FixturePose.cpp
   src/GeometryFind.hpp

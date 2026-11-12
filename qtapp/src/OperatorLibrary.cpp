@@ -70,7 +70,7 @@ const char* glyphKindFor(const QString& key, const QString& category) {
   if (key == QLatin1String("save_image")) return "save";
   if (key == QLatin1String("locate")) return "locate";
   if (key == QLatin1String("caliper") || key == QLatin1String("measure")) return "caliper";
-  if (key == QLatin1String("geometry")) return "geometry";
+  if (key == QLatin1String("geometry") || key == QLatin1String("region")) return "geometry";
   if (key == QLatin1String("barcode") || key == QLatin1String("qr_decode")) return "barcode";
   if (key == QLatin1String("ocr")) return "ocr";
   if (key == QLatin1String("send_data")) return "tx";
@@ -284,6 +284,9 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
        QStringLiteral("相机采集"), QStringLiteral("GenTL / UVC 采集")},
       {QStringLiteral("preprocess"), QStringLiteral("图像预处理"),
        QStringLiteral("图像处理"), QStringLiteral("灰度 / 反色 / 阈值（QImage）")},
+      {QStringLiteral("region"), QStringLiteral("区域分析"),
+       QStringLiteral("图像处理"),
+       QStringLiteral("阈值 / 连通域 / 面积圆形度灰度过滤（QImage，无 OpenCV）")},
       {QStringLiteral("locate"), QStringLiteral("模板与定位"),
        QStringLiteral("定位与测量"),
        QStringLiteral("模板匹配 · 旋转搜索 · 定位跟随位姿")},

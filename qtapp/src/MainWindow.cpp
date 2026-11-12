@@ -11,6 +11,7 @@
 #include "FixturePose.hpp"
 #include "CaliperMeasure.hpp"
 #include "DefectDetect.hpp"
+#include "RegionAnalyze.hpp"
 #include "GeometryFind.hpp"
 #include "MeasureDim.hpp"
 #include "SerialExchange.hpp"
@@ -3170,6 +3171,128 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                  QString::number(mr.angleDeg, 'f', 2), QStringLiteral("deg"));
         }
       }
+    } else if (op == QLatin1String("region")) {
+      const auto t0 = std::chrono::steady_clock::now();
+      QVariantMap rp = step->params;
+      injectFixtureFromVars(rp, flow_vars_);
+      if (rp.value(QStringLiteral("followFixture")).toBool()) {
+        const FollowRoi fr = resolveFollowRoi(rp, working.width(), working.height());
+        if (fr.active && !fr.aabb.isEmpty()) {
+          rp.insert(QStringLiteral("roiX"), fr.aabb.x());
+          rp.insert(QStringLiteral("roiY"), fr.aabb.y());
+          rp.insert(QStringLiteral("roiW"), fr.aabb.width());
+          rp.insert(QStringLiteral("roiH"), fr.aabb.height());
+        }
+      }
+      const RegionResult rr = runRegionAnalyze(working, rp);
+      const double rMs = std::chrono::duration<double, std::milli>(
+                             std::chrono::steady_clock::now() - t0)
+                             .count();
+      algoMs += rMs;
+      QString prefix =
+          step->params.value(QStringLiteral("resultVar"), QStringLiteral("region"))
+              .toString()
+              .trimmed();
+      if (prefix.isEmpty()) prefix = QStringLiteral("region");
+      auto put = [&](const QString& suffix, const QVariant& v) {
+        flow_vars_.insert(prefix + suffix, v);
+      };
+      const RegionBlob b0 = rr.items.isEmpty() ? RegionBlob{} : rr.items.first();
+      const int okI = (rr.ok && rr.count >= 1) ? 1 : 0;
+      put(QStringLiteral("Count"), rr.count);
+      put(QStringLiteral("RawCount"), rr.rawCount);
+      put(QStringLiteral("Ok"), okI);
+      put(QStringLiteral("Passed"), okI);
+      put(QStringLiteral("Method"), rr.method);
+      put(QStringLiteral("Threshold"), rr.thresholdUsed);
+      put(QStringLiteral("X"), b0.centroid.x());
+      put(QStringLiteral("Y"), b0.centroid.y());
+      put(QStringLiteral("Area"), b0.areaPixels);
+      put(QStringLiteral("Circularity"), b0.circularity);
+      put(QStringLiteral("Orientation"), b0.orientationDeg);
+      put(QStringLiteral("GrayMean"), b0.grayMean);
+      put(QStringLiteral("GrayMin"), b0.grayMin);
+      put(QStringLiteral("GrayMax"), b0.grayMax);
+      put(QStringLiteral("Width"), b0.bbox.width());
+      put(QStringLiteral("Height"), b0.bbox.height());
+      put(QStringLiteral("Major"), b0.majorAxisPx);
+      put(QStringLiteral("Minor"), b0.minorAxisPx);
+      if (prefix == QLatin1String("region")) {
+        flow_vars_.insert(QStringLiteral("region_count"), rr.count);
+        flow_vars_.insert(QStringLiteral("region_ok"), okI);
+      }
+      const QString outMode =
+          step->params.value(QStringLiteral("output"), QStringLiteral("overlay")).toString();
+      if (outMode == QLatin1String("mask") && !rr.mask.isNull())
+        working = rr.mask.convertToFormat(QImage::Format_RGB888);
+      const bool writeGate = step->params.value(QStringLiteral("writePassGate")).toBool();
+      if (writeGate) flow_vars_.insert(QStringLiteral("passGate"), okI);
+      {
+        StepSnap snap;
+        snap.count = rr.count;
+        snap.ok = rr.ok && rr.count >= 1;
+        snap.matches = rr.count;
+        snap.score = b0.areaPixels;
+        snap.text = rr.note;
+        snap.fields.insert(QStringLiteral("count"), rr.count);
+        snap.fields.insert(QStringLiteral("area"), b0.areaPixels);
+        step_snaps.insert(id, snap);
+      }
+      ok = rr.ok;
+      note = rr.ok ? QStringLiteral("%1 · %2 ms").arg(rr.note).arg(rMs, 0, 'f', 1)
+                   : rr.error;
+      if (step->params.value(QStringLiteral("showOverlay"), true).toBool()) {
+        const bool showLab =
+            !step->params.contains(QStringLiteral("showLabels")) ||
+            step->params.value(QStringLiteral("showLabels")).toBool();
+        if (rp.value(QStringLiteral("followFixture")).toBool()) {
+          const FollowRoi fr = resolveFollowRoi(rp, working.width(), working.height());
+          if (fr.active) {
+            OverlayHit fo;
+            fo.format = QStringLiteral("FOLLOW");
+            fo.text = QStringLiteral("跟随ROI");
+            fo.polygon = fr.corners;
+            overlays.push_back(fo);
+          }
+        }
+        for (const RegionBlob& it : rr.items) {
+          OverlayHit o;
+          o.format = QStringLiteral("REGION");
+          o.text = showLab ? QStringLiteral("A%1").arg(it.areaPixels) : QString();
+          const QRect rct = it.bbox;
+          o.polygon << rct.topLeft() << rct.topRight() << rct.bottomRight()
+                    << rct.bottomLeft();
+          overlays.push_back(o);
+        }
+      }
+      if (result_table_) {
+        auto addRow = [&](const QString& k, const QString& v, const QString& unit) {
+          const int row = result_table_->rowCount();
+          result_table_->insertRow(row);
+          result_table_->setItem(row, 0, new QTableWidgetItem(k));
+          result_table_->setItem(row, 1, new QTableWidgetItem(v));
+          result_table_->setItem(row, 2, new QTableWidgetItem(unit));
+        };
+        addRow(prefix + QStringLiteral("Count"), QString::number(rr.count),
+               QStringLiteral("count"));
+        addRow(prefix + QStringLiteral("Threshold"), QString::number(rr.thresholdUsed),
+               QStringLiteral("gray"));
+        int rowLimit = 0;
+        for (const RegionBlob& it : rr.items) {
+          if (rowLimit++ >= 20) break;
+          addRow(QStringLiteral("%1#%2.Area").arg(prefix).arg(it.label),
+                 QString::number(it.areaPixels), QStringLiteral("px"));
+          addRow(QStringLiteral("%1#%2.XY").arg(prefix).arg(it.label),
+                 QStringLiteral("%1,%2")
+                     .arg(it.centroid.x(), 0, 'f', 1)
+                     .arg(it.centroid.y(), 0, 'f', 1),
+                 QStringLiteral("px"));
+          addRow(QStringLiteral("%1#%2.Circ").arg(prefix).arg(it.label),
+                 QString::number(it.circularity, 'f', 3), QStringLiteral("ratio"));
+          addRow(QStringLiteral("%1#%2.Gray").arg(prefix).arg(it.label),
+                 QString::number(it.grayMean, 'f', 1), QStringLiteral("gray"));
+        }
+      }
     } else if (op == QLatin1String("defects")) {
 
       const auto t0 = std::chrono::steady_clock::now();
@@ -5848,6 +5971,23 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("unit"), QStringLiteral("px")},
                 {QStringLiteral("judgeEnable"), false},
                 {QStringLiteral("resultVar"), QStringLiteral("measure")},
+                {QStringLiteral("writePassGate"), false},
+                {QStringLiteral("showOverlay"), true},
+                {QStringLiteral("showLabels"), true},
+                {QStringLiteral("followFixture"), false}};
+  } else if (key == QLatin1String("region")) {
+    s.params = {{QStringLiteral("method"), QStringLiteral("fixed")},
+                {QStringLiteral("threshold"), 127},
+                {QStringLiteral("invert"), false},
+                {QStringLiteral("minArea"), 20},
+                {QStringLiteral("maxArea"), 0},
+                {QStringLiteral("minCircularity"), 0.0},
+                {QStringLiteral("maxCircularity"), 1.0},
+                {QStringLiteral("minGrayMean"), 0.0},
+                {QStringLiteral("maxGrayMean"), 255.0},
+                {QStringLiteral("maxCount"), 200},
+                {QStringLiteral("resultVar"), QStringLiteral("region")},
+                {QStringLiteral("output"), QStringLiteral("overlay")},
                 {QStringLiteral("writePassGate"), false},
                 {QStringLiteral("showOverlay"), true},
                 {QStringLiteral("showLabels"), true},

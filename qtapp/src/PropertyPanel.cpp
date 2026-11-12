@@ -128,6 +128,29 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("minConfidence", "最低置信度", kInt, ""),
             S("showOverlay", "显示文本框", kBool, "")};
   }
+  if (op == QLatin1String("region")) {
+    return {S("method", "阈值方法", kChoice, "fixed|固定阈值;otsu|自动 Otsu"),
+            S("threshold", "固定阈值", kInt, "method=fixed 时使用，0–255"),
+            S("invert", "提取暗目标", kBool, "灰度小于阈值视为前景"),
+            S("minArea", "最小面积", kInt, "像素"),
+            S("maxArea", "最大面积", kInt, "0=不限制"),
+            S("minCircularity", "最小圆形度", kReal, "4πA/P²，离散边界近似"),
+            S("maxCircularity", "最大圆形度", kReal, "默认 1"),
+            S("minGrayMean", "最小灰度均值", kReal, "0–255"),
+            S("maxGrayMean", "最大灰度均值", kReal, "默认 255"),
+            S("maxCount", "最多目标数", kInt, "默认 200，上限 2000"),
+            S("roiX", "ROI X", kInt, ""),
+            S("roiY", "ROI Y", kInt, ""),
+            S("roiW", "ROI 宽", kInt, "0=整图"),
+            S("roiH", "ROI 高", kInt, "0=整图"),
+            S("resultVar", "结果前缀", kLine, "region → regionCount/X/Y/Area"),
+            S("output", "输出模式", kChoice, "overlay|叠加（下游仍用原图）;mask|二值掩膜替换工作图"),
+            S("writePassGate", "写入 passGate", kBool, ""),
+            S("showOverlay", "显示区域框", kBool, ""),
+            S("showLabels", "显示面积标签", kBool, ""),
+            S("followFixture", "跟随定位位姿", kBool, "ROI 在夹具坐标系"),
+            S("fixtureVar", "位姿变量前缀", kLine, "fixture")};
+  }
   if (op == QLatin1String("defects")) {
     return {S("referenceSource", "参考来源", kChoice,
               "file|文件路径;soft_scene|软仿真场景;soft_scene_blemish|软场景+斑块"),
@@ -1231,6 +1254,8 @@ void PropertyPanel::showStep(const FlowStep& step) {
     hint += QStringLiteral(" · 直径/线长/两点距/夹角/轮廓 · 等比例标定 pxPerMm");
   else if (step.operation == QLatin1String("caliper"))
     hint += QStringLiteral(" · QImage 边缘卡尺 · caliperDist/measureMm");
+  else if (step.operation == QLatin1String("region"))
+    hint += QStringLiteral(" · 固定/Otsu 阈值+连通域特征 · regionCount/Area/X/Y · 粘连会合并不做分水岭");
   else if (step.operation == QLatin1String("defects"))
     hint += QStringLiteral(" · 灰度差影+连通域 · defectsCount/defectsRatio/defectsOk · 可跟随定位");
   else if (step.operation == QLatin1String("yolo"))
