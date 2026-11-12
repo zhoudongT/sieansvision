@@ -2451,21 +2451,26 @@
   },
   "region": {
     "name": "区域分析",
-    "tag": "阈值 · 连通域 · 特征",
+    "tag": "阈值 · 连通域 · 分水岭",
     "glyph": "◌",
     "defaults": {
       "method": "fixed",
       "threshold": 127,
-      "minArea": 20
+      "minArea": 20,
+      "minSeedRadius": 3,
+      "minSeedDist": 8,
+      "growTolerance": 25
     },
-    "description": "按固定或 Otsu 阈值提取连通域，输出面积、质心、方向、等效椭圆、圆形度与灰度统计，并可按面积/圆形度/灰度均值过滤。",
+    "description": "按固定或 Otsu 阈值提取连通域，输出面积、质心、方向、等效椭圆、圆形度与灰度统计，并可按面积/圆形度/灰度均值过滤。method=watershed 用距离变换标记分水岭拆分有颈缩的粘连目标；method=growing 从距离峰按灰度容差生长。严重重叠或无稳定距离峰时仍可能合并。",
     "fields": [
       [
         "method",
-        "阈值方法",
+        "分析方法",
         [
           "fixed",
-          "otsu"
+          "otsu",
+          "watershed",
+          "growing"
         ]
       ],
       [
@@ -2478,6 +2483,26 @@
         "invert",
         "提取暗目标",
         "boolean"
+      ],
+      [
+        "minSeedRadius",
+        "最小种子半径",
+        0,
+        200,
+        0.5
+      ],
+      [
+        "minSeedDist",
+        "种子最小间距",
+        0,
+        500,
+        0.5
+      ],
+      [
+        "growTolerance",
+        "生长灰度容差",
+        0,
+        255
       ],
       [
         "minArea",
@@ -2518,7 +2543,7 @@
         255
       ]
     ],
-    "hint": "纯 QImage 实现，不用 OpenCV/Halcon。周长按离散边界像素计数，圆形度对理想离散圆通常低于 1。粘连或重叠目标会合并且不能在本算子内分开。"
+    "hint": "纯 QImage 实现，不用 OpenCV/Halcon。周长按离散边界像素计数，圆形度对理想离散圆通常低于 1。粘连目标可用分水岭或区域生长拆分；严重重叠、没有稳定距离峰、或目标与背景连成一片时仍可能合并。分水岭更适合近圆凸目标，不是通用实例分割。区域生长在灰度接近时主要靠多种子先到先得，分界不一定落在最窄颈缩处。"
   },
   "locate": {
     "name": "模板与定位",

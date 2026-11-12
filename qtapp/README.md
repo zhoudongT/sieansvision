@@ -98,6 +98,8 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx` / `yol
 
 **已落地（wave272）：** 新目录算子 `region`（区域分析）：固定/Otsu 阈值、可选反色与 ROI、8 连通域、面积/质心/方向/等效椭圆/圆形度/灰度统计，并按面积及圆形度或灰度均值过滤；可输出二值掩膜给下游，叠加与 followFixture 对齐既有算子。纯 QImage，无 OpenCV/Halcon。粘连目标会合并。无界面自测 `SIEANS_QT_REGION_SELFTEST=1`。
 
+**已落地（wave273）：** `region` 增加 `watershed`（距离变换标记分水岭）与 `growing`（距离峰种子+灰度容差区域生长），用于拆分有颈缩或灰度差别的粘连目标。普通阈值连通域仍会合并。无新第三方库。自测仍走 `SIEANS_QT_REGION_SELFTEST=1`：两粘连圆盘连通域 count=1、分水岭/区域生长 count=2。诚实限制见属性提示：严重重叠或无稳定距离峰时仍可能合并。
+
 **NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。操作员账号（PySide 走独立 RPC/部署凭据，未在本机落地）。云 SaaS / 模板市场。真机硬件（`/opt/MVS`、真实 PLC）。官方 YOLO 权重需自行放入上述模型目录。
 
 ## VM chrome (2026-11-03)

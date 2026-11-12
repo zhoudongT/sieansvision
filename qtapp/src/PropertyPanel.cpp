@@ -129,9 +129,12 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("showOverlay", "显示文本框", kBool, "")};
   }
   if (op == QLatin1String("region")) {
-    return {S("method", "阈值方法", kChoice, "fixed|固定阈值;otsu|自动 Otsu"),
-            S("threshold", "固定阈值", kInt, "method=fixed 时使用，0–255"),
+    return {S("method", "分析方法", kChoice, "fixed|固定阈值;otsu|自动 Otsu;watershed|分水岭拆分;growing|区域生长拆分"),
+            S("threshold", "固定阈值", kInt, "fixed/watershed/growing 二值化，0–255"),
             S("invert", "提取暗目标", kBool, "灰度小于阈值视为前景"),
+            S("minSeedRadius", "最小种子半径", kReal, "距离峰下限，默认 3"),
+            S("minSeedDist", "种子最小间距", kReal, "默认 8，仅拆分方法"),
+            S("growTolerance", "生长灰度容差", kInt, "仅区域生长，默认 25"),
             S("minArea", "最小面积", kInt, "像素"),
             S("maxArea", "最大面积", kInt, "0=不限制"),
             S("minCircularity", "最小圆形度", kReal, "4πA/P²，离散边界近似"),
@@ -1255,7 +1258,7 @@ void PropertyPanel::showStep(const FlowStep& step) {
   else if (step.operation == QLatin1String("caliper"))
     hint += QStringLiteral(" · QImage 边缘卡尺 · caliperDist/measureMm");
   else if (step.operation == QLatin1String("region"))
-    hint += QStringLiteral(" · 固定/Otsu 阈值+连通域特征 · regionCount/Area/X/Y · 粘连会合并不做分水岭");
+    hint += QStringLiteral(" · 固定/Otsu 或分水岭/区域生长拆分 · regionCount/Area/X/Y · 无稳定距离峰或严重重叠仍可能合并");
   else if (step.operation == QLatin1String("defects"))
     hint += QStringLiteral(" · 灰度差影+连通域 · defectsCount/defectsRatio/defectsOk · 可跟随定位");
   else if (step.operation == QLatin1String("yolo"))

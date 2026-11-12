@@ -3205,6 +3205,7 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
       put(QStringLiteral("Passed"), okI);
       put(QStringLiteral("Method"), rr.method);
       put(QStringLiteral("Threshold"), rr.thresholdUsed);
+      put(QStringLiteral("SeedCount"), rr.seedCount);
       put(QStringLiteral("X"), b0.centroid.x());
       put(QStringLiteral("Y"), b0.centroid.y());
       put(QStringLiteral("Area"), b0.areaPixels);
@@ -5979,6 +5980,9 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
     s.params = {{QStringLiteral("method"), QStringLiteral("fixed")},
                 {QStringLiteral("threshold"), 127},
                 {QStringLiteral("invert"), false},
+                {QStringLiteral("minSeedRadius"), 3},
+                {QStringLiteral("minSeedDist"), 8},
+                {QStringLiteral("growTolerance"), 25},
                 {QStringLiteral("minArea"), 20},
                 {QStringLiteral("maxArea"), 0},
                 {QStringLiteral("minCircularity"), 0.0},

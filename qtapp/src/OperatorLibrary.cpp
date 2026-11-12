@@ -286,7 +286,7 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
        QStringLiteral("图像处理"), QStringLiteral("灰度 / 反色 / 阈值（QImage）")},
       {QStringLiteral("region"), QStringLiteral("区域分析"),
        QStringLiteral("图像处理"),
-       QStringLiteral("阈值 / 连通域 / 面积圆形度灰度过滤（QImage，无 OpenCV）")},
+       QStringLiteral("阈值 / 连通域 / 分水岭与区域生长拆分（QImage，无 OpenCV）")},
       {QStringLiteral("locate"), QStringLiteral("模板与定位"),
        QStringLiteral("定位与测量"),
        QStringLiteral("模板匹配 · 旋转搜索 · 定位跟随位姿")},
