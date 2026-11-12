@@ -11,6 +11,7 @@
 #include <QPainterPath>
 #include <QPen>
 #include <QFont>
+#include <QApplication>
 #include <QWheelEvent>
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -168,11 +169,15 @@ void FlowNodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*,
     fill = QColor(selected ? QStringLiteral("#fff8f0") : QStringLiteral("#f2f2f2"));
     border = QColor(selected ? theme::ACCENT : QStringLiteral("#c8c8c8"));
   }
-  QPen pen(border, selected ? 1.8 : 1.1);
-  if (selected) pen.setStyle(Qt::DashLine);
+  QPen pen(border, selected ? 2.0 : 1.1);
   painter->setPen(pen);
   painter->setBrush(fill);
-  painter->drawRoundedRect(QRectF(0, 0, kWidth, kHeight), 3, 3);
+  painter->drawRoundedRect(QRectF(0, 0, kWidth, kHeight), 4, 4);
+  if (selected) {
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(QColor(theme::ACCENT));
+    painter->drawRoundedRect(QRectF(0, 0, 3, kHeight), 1, 1);
+  }
 
   painter->setPen(Qt::NoPen);
   painter->setBrush(badgeColor_);
@@ -186,8 +191,11 @@ void FlowNodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*,
     painter->drawPoint(QPointF(14, 14));
   }
 
+  painter->setRenderHint(QPainter::TextAntialiasing, true);
   painter->setPen(QColor(QStringLiteral("#222222")));
-  QFont font(QStringLiteral("Microsoft YaHei UI"), 9, QFont::Medium);
+  QFont font = QApplication::font();
+  font.setPointSize(9);
+  font.setWeight(QFont::Medium);
   painter->setFont(font);
   const bool showState =
       !runState_.isEmpty() && runState_ != QStringLiteral("等待执行");
@@ -283,7 +291,8 @@ void FlowEdgeItem::setWhen(const QString& when) {
 }
 
 void FlowEdgeItem::updateWhenChrome() {
-  setPen(QPen(whenPenColor(when_), 1.6));
+  setPen(QPen(isSelected() ? QColor(theme::ACCENT) : whenPenColor(when_),
+              isSelected() ? 2.4 : 1.6));
   const QString text = whenLabelText(when_);
   if (label_) {
     label_->setText(text);
@@ -292,6 +301,11 @@ void FlowEdgeItem::updateWhenChrome() {
   }
   const QString tipWhen = text.isEmpty() ? QStringLiteral("始终") : text;
   setToolTip(QStringLiteral("连线 · %1 · 右键设置触发条件 · Delete 删除").arg(tipWhen));
+}
+
+QVariant FlowEdgeItem::itemChange(GraphicsItemChange change, const QVariant& value) {
+  if (change == ItemSelectedHasChanged) updateWhenChrome();
+  return QGraphicsPathItem::itemChange(change, value);
 }
 
 void FlowEdgeItem::refresh() {
@@ -834,10 +848,22 @@ FlowView::FlowView(FlowScene* scene, QWidget* parent)
 }
 
 
+/** 适应画布：能放下就放下；过大时不缩到标签不可读，而是按最小比例对准流程顶部。 */
 void FlowView::fitAll() {
   if (!scene() || scene()->items().isEmpty()) return;
-  fitInView(scene()->itemsBoundingRect().adjusted(-40, -40, 40, 40),
-            Qt::KeepAspectRatio);
+  const QRectF br = scene()->itemsBoundingRect().adjusted(-40, -40, 40, 40);
+  if (!br.isValid() || br.width() < 1.0 || br.height() < 1.0) return;
+  fitInView(br, Qt::KeepAspectRatio);
+  const qreal s = transform().m11();
+  constexpr qreal kMin = 0.72;
+  constexpr qreal kMax = 1.25;
+  if (s >= kMin && s <= kMax) return;
+  QTransform xf;
+  const qreal target = qBound(kMin, s, kMax);
+  xf.scale(target, target);
+  setTransform(xf);
+  const QRectF vis = mapToScene(viewport()->rect()).boundingRect();
+  centerOn(QPointF(br.center().x(), br.top() + vis.height() * 0.42));
 }
 
 void FlowView::wheelEvent(QWheelEvent* event) {

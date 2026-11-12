@@ -101,7 +101,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   pinGroupChip_->installEventFilter(this);
   chipRow->addWidget(pinGroupChip_, 0);
   chips_ = new QLabel;
-  chips_->setObjectName(QStringLiteral("muted"));
+  chips_->setObjectName(QStringLiteral("hostWatchChips"));
   chips_->setWordWrap(true);
   chips_->setCursor(Qt::PointingHandCursor);
   chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+K/V 复制/粘贴键(JSON) · Ctrl+Shift+E JSON导出 · Alt+←→ 调序 · Ctrl+Home/End 置顶末/置底首 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Del/Bksp 删首 · Shift+Del 删末 · Ctrl+Shift+Bksp 清空 · 单击复制全文"));

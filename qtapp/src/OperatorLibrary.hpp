@@ -7,7 +7,7 @@ class QListWidget;
 class QListWidgetItem;
 class QLineEdit;
 class QEvent;
-class QHBoxLayout;
+class QLayout;
 class QWidget;
 
 namespace sieans_qt {
@@ -42,7 +42,7 @@ class OperatorLibrary : public QWidget {
   QListWidget* list_ = nullptr;
   QLineEdit* search_ = nullptr;
   QWidget* catChipHost_ = nullptr;
-  QHBoxLayout* catChipLay_ = nullptr;
+  QLayout* catChipLay_ = nullptr;
   QString categoryFilter_;
   QStringList recentKeys_;
 };

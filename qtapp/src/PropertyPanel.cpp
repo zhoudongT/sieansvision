@@ -755,14 +755,15 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
 }
 
 PropertyPanel::PropertyPanel(QWidget* parent) : QWidget(parent) {
+  setObjectName(QStringLiteral("propertyPanel"));
   auto* lay = new QVBoxLayout(this);
-  lay->setContentsMargins(6, 6, 6, 6);
-  lay->setSpacing(4);
+  lay->setContentsMargins(8, 8, 8, 8);
+  lay->setSpacing(6);
   title_ = new QLabel(QStringLiteral("属性"));
   title_->setObjectName(QStringLiteral("sectionTitle"));
   lay->addWidget(title_);
   meta_ = new QLabel(QStringLiteral("选中流程节点以编辑参数"));
-  meta_->setObjectName(QStringLiteral("muted"));
+  meta_->setObjectName(QStringLiteral("propHint"));
   meta_->setWordWrap(true);
   lay->addWidget(meta_);
   filterEdit_ = new QLineEdit;
@@ -797,9 +798,12 @@ PropertyPanel::PropertyPanel(QWidget* parent) : QWidget(parent) {
   scroll->setFrameShape(QFrame::NoFrame);
   formHost_ = new QWidget;
   form_ = new QFormLayout(formHost_);
-  form_->setContentsMargins(0, 0, 0, 0);
-  form_->setSpacing(4);
-  form_->setLabelAlignment(Qt::AlignLeft);
+  form_->setContentsMargins(0, 0, 2, 0);
+  form_->setHorizontalSpacing(8);
+  form_->setVerticalSpacing(6);
+  form_->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+  form_->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
+  form_->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
   scroll->setWidget(formHost_);
   lay->addWidget(scroll, 1);
 }
@@ -1119,6 +1123,10 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
   auto* lab = new QLabel(label);
   lab->setProperty("propKey", key);
   lab->setProperty("propLabel", label);
+  lab->setWordWrap(true);
+  lab->setMinimumWidth(88);
+  lab->setMaximumWidth(124);
+  lab->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
   const auto tipFor = [](const QString& k) -> QString {
     if (k == QLatin1String("emptyDefault"))
       return QStringLiteral("模板展开为空时写入的默认值（如 BARCODE empty）");
@@ -1146,7 +1154,10 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
       return QStringLiteral("未命中任何路径时走此路径 id");
     return {};
   };
-  const QString tip = tipFor(key);
+  QString tip = tipFor(key);
+  // 非下拉字段的 choices 存的是说明文字，作为标签提示，避免长参数名把行撑乱。
+  if (tip.isEmpty() && spec.kind != 4 && !spec.choices.trimmed().isEmpty())
+    tip = spec.choices.trimmed();
   if (!tip.isEmpty()) lab->setToolTip(tip);
   switch (spec.kind) {
     case 3: {
@@ -1473,7 +1484,36 @@ void PropertyPanel::showStep(const FlowStep& step) {
     hint += QStringLiteral(" · 自研基数 2 FFT，无 FFTW/OpenCV/Halcon · 内部补到 2 的幂（上限 4096）再裁回 · 截止频率 Nyquist=0.5 · 高通/带通显示偏置 +128 · 清晰度为输入高频能量比，不是自动对焦");
   else if (step.operation == QLatin1String("classify"))
     hint += QStringLiteral(" · 本地特征表上的 KNN / 线性或 RBF SVM / GMM / 小 MLP · 不是 YOLO · 每次运行从样本表重训 · 样本建议几十到几千、维数≤32 · 线性 SVM 只能分近似可分数据");
-  meta_->setText(hint);
+  QString brief = QStringLiteral("算子 %1 · %2").arg(step.operation, step.runState);
+  const QString op = step.operation;
+  if (op == QLatin1String("preprocess"))
+    brief += QStringLiteral(" · 灰度/滤波/均衡/算术/缩放/裁剪 · 纯 QImage");
+  else if (op == QLatin1String("measure"))
+    brief += QStringLiteral(" · 圆/线/角/卡尺/圆弧/剖面/液位 · 等比例标定");
+  else if (op == QLatin1String("fft"))
+    brief += QStringLiteral(" · 自研 FFT 滤波/幅度谱 · 清晰度非对焦");
+  else if (op == QLatin1String("classify"))
+    brief += QStringLiteral(" · KNN / SVM / GMM / 小 MLP · 本地特征表");
+  else if (op == QLatin1String("locate"))
+    brief += QStringLiteral(" · SAD/NCC · 旋转/尺度 · 可选弹性分块");
+  else if (op == QLatin1String("color"))
+    brief += QStringLiteral(" · RGB/HSV 转换、通道提取、颜色阈值");
+  else if (op == QLatin1String("camera_cal"))
+    brief += QStringLiteral(" · 针孔+径向畸变 · RMSE · 非两点 pxPerMm");
+  else if (op == QLatin1String("warp"))
+    brief += QStringLiteral(" · 仿射/透视/环形展开 · 双线性采样");
+  else if (op == QLatin1String("region"))
+    brief += QStringLiteral(" · 固定/Otsu 或分水岭/区域生长拆分");
+  else if (op == QLatin1String("geometry"))
+    brief += QStringLiteral(" · 直线/圆/矩形/轮廓/边缘");
+  else if (op == QLatin1String("caliper"))
+    brief += QStringLiteral(" · QImage 边缘卡尺");
+  else if (op == QLatin1String("defects"))
+    brief += QStringLiteral(" · 灰度差影+连通域 · 可跟随定位");
+  else
+    brief = hint;
+  meta_->setText(brief);
+  meta_->setToolTip(hint != brief ? hint : QString());
   QVariantMap shown = step.params;
   if (step.operation == QLatin1String("preprocess") &&
       shown.value(QStringLiteral("method")).toString().trimmed().isEmpty()) {

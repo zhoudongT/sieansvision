@@ -94,6 +94,7 @@ class FlowEdgeItem : public QGraphicsPathItem {
  protected:
   void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
   void contextMenuEvent(QGraphicsSceneContextMenuEvent* event) override;
+  QVariant itemChange(GraphicsItemChange change, const QVariant& value) override;
 
  private:
   void updateWhenChrome();
