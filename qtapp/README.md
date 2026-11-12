@@ -102,6 +102,8 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx` / `yol
 
 **已落地（wave274）：** 新目录算子 `color`（颜色处理）：RGB↔HSV 转换（HSV 以 8 位打包进 RGB 通道，H 为 0–255 对应 0–360°）、通道提取（R/G/B 或从 RGB 现算的 H/S/V）、RGB/HSV 颜色阈值（色相 hMin>hMax 时环绕）。纯 QImage，无 OpenCV/Halcon。无界面自测 `SIEANS_QT_COLOR_SELFTEST=1`。诚实限制：不能自动识别输入是否已是打包 HSV；往返允许数个灰阶误差；不是相机色彩标定。
 
+**已落地（wave275）：** 新目录算子 `camera_cal`（相机标定）：棋盘格内角点或圆点阵列的针孔+2 阶径向畸变标定（fx,fy,cx,cy,k1,k2 + RMSE）与去畸变。单视图锁定 fx=fy 且主点居中。不是 measure 的两点 pxPerMm。纯 QImage。无界面自测 `SIEANS_QT_CAMERA_CAL_SELFTEST=1`：精确对应点恢复内参，再用已知畸变生成的圆点阵列做检测与端到端标定。诚实限制见属性提示（无切向/鱼眼；检测需完整高对比阵列）。
+
 **NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。操作员账号（PySide 走独立 RPC/部署凭据，未在本机落地）。云 SaaS / 模板市场。真机硬件（`/opt/MVS`、真实 PLC）。官方 YOLO 权重需自行放入上述模型目录。
 
 ## VM chrome (2026-11-03)

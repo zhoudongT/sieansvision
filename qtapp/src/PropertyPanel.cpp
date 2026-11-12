@@ -139,6 +139,24 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("followFixture", "跟随定位位姿", kBool, "ROI 在夹具坐标系"),
             S("fixtureVar", "位姿变量前缀", kLine, "fixture")};
   }
+  if (op == QLatin1String("camera_cal")) {
+    return {S("method", "处理方法", kChoice, "calibrate|标定内参;undistort|去畸变"),
+            S("pattern", "靶标类型", kChoice, "checkerboard|棋盘格内角点;circles|圆点阵列"),
+            S("rows", "行数", kInt, "Y 方向内角点或圆心数"),
+            S("cols", "列数", kInt, "X 方向内角点或圆心数"),
+            S("squareSize", "点间距", kReal, "世界单位，默认 1"),
+            S("imageDir", "多视图目录", kLine, "可选 png/jpg"),
+            S("imagePaths", "多视图路径", kLine, "逗号分隔，可与当前图一起用"),
+            S("fx", "fx", kReal, "去畸变必填；标定可作成初值"),
+            S("fy", "fy", kReal, "默认与 fx 相同"),
+            S("cx", "cx", kReal, "默认图像中心"),
+            S("cy", "cy", kReal, "默认图像中心"),
+            S("k1", "k1", kReal, "径向畸变"),
+            S("k2", "k2", kReal, "径向畸变 2 阶"),
+            S("output", "输出模式", kChoice, "overlay|保留原图;undistort|用校正图替换工作图"),
+            S("resultVar", "结果前缀", kLine, "cal → calFx/Fy/Cx/Cy/K1/K2/Rmse"),
+            S("writePassGate", "写入 passGate", kBool, "")};
+  }
   if (op == QLatin1String("barcode") || op == QLatin1String("qr_decode")) {
     return {S("types", "码制", kLine, ""),
             S("maxCodes", "最多码数", kInt, ""),
@@ -1285,6 +1303,8 @@ void PropertyPanel::showStep(const FlowStep& step) {
     hint += QStringLiteral(" · QImage 边缘卡尺 · caliperDist/measureMm");
   else if (step.operation == QLatin1String("color"))
     hint += QStringLiteral(" · RGB/HSV 转换、通道提取、颜色阈值 · 打包 HSV 的 H 为 0–255（约 1.4°）· 往返允许数灰阶误差 · hMin>hMax 环绕");
+  else if (step.operation == QLatin1String("camera_cal"))
+    hint += QStringLiteral(" · 针孔+2 阶径向畸变 · RMSE · 单视图锁定 fx=fy 且主点居中 · 不是两点 pxPerMm · 无切向/鱼眼");
   else if (step.operation == QLatin1String("region"))
     hint += QStringLiteral(" · 固定/Otsu 或分水岭/区域生长拆分 · regionCount/Area/X/Y · 无稳定距离峰或严重重叠仍可能合并");
   else if (step.operation == QLatin1String("defects"))

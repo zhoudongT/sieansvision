@@ -13,6 +13,7 @@
 #include "DefectDetect.hpp"
 #include "RegionAnalyze.hpp"
 #include "ColorOp.hpp"
+#include "CameraCal.hpp"
 #include "GeometryFind.hpp"
 #include "MeasureDim.hpp"
 #include "SerialExchange.hpp"
@@ -2674,6 +2675,68 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
       ok = cr.ok;
       note = cr.ok ? QStringLiteral("%1 · %2 ms").arg(cr.note).arg(cMs, 0, 'f', 1)
                    : cr.error;
+    } else if (op == QLatin1String("camera_cal")) {
+      const auto t0 = std::chrono::steady_clock::now();
+      const CameraCalResult cc = runCameraCal(working, step->params);
+      const double cMs = std::chrono::duration<double, std::milli>(
+                             std::chrono::steady_clock::now() - t0)
+                             .count();
+      algoMs += cMs;
+      QString prefix =
+          step->params.value(QStringLiteral("resultVar"), QStringLiteral("cal"))
+              .toString()
+              .trimmed();
+      if (prefix.isEmpty()) prefix = QStringLiteral("cal");
+      auto put = [&](const QString& suffix, const QVariant& v) {
+        flow_vars_.insert(prefix + suffix, v);
+      };
+      const int okI = cc.ok ? 1 : 0;
+      put(QStringLiteral("Ok"), okI);
+      put(QStringLiteral("Passed"), okI);
+      put(QStringLiteral("Method"), cc.method);
+      put(QStringLiteral("Pattern"), cc.pattern);
+      put(QStringLiteral("Fx"), cc.intrinsics.fx);
+      put(QStringLiteral("Fy"), cc.intrinsics.fy);
+      put(QStringLiteral("Cx"), cc.intrinsics.cx);
+      put(QStringLiteral("Cy"), cc.intrinsics.cy);
+      put(QStringLiteral("K1"), cc.intrinsics.k1);
+      put(QStringLiteral("K2"), cc.intrinsics.k2);
+      put(QStringLiteral("Rmse"), cc.rmse);
+      put(QStringLiteral("Views"), cc.views);
+      put(QStringLiteral("Detected"), cc.detected);
+      if (prefix == QLatin1String("cal")) {
+        flow_vars_.insert(QStringLiteral("cal_ok"), okI);
+        flow_vars_.insert(QStringLiteral("cal_rmse"), cc.rmse);
+      }
+      if (cc.ok && !cc.image.isNull()) {
+        working = cc.image.convertToFormat(QImage::Format_RGB888);
+        image_view_->setLiveImage(working);
+      }
+      if (step->params.value(QStringLiteral("writePassGate")).toBool())
+        flow_vars_.insert(QStringLiteral("passGate"), okI);
+      {
+        StepSnap snap;
+        snap.ok = cc.ok;
+        snap.count = cc.detected;
+        snap.matches = cc.views;
+        snap.score = cc.rmse;
+        snap.text = cc.note;
+        snap.fields.insert(QStringLiteral("fx"), cc.intrinsics.fx);
+        snap.fields.insert(QStringLiteral("rmse"), cc.rmse);
+        step_snaps.insert(id, snap);
+      }
+      ok = cc.ok;
+      note = cc.ok ? QStringLiteral("%1 · %2 ms").arg(cc.note).arg(cMs, 0, 'f', 1)
+                   : cc.error;
+      if (step->params.value(QStringLiteral("showOverlay"), true).toBool()) {
+        for (const QPointF& pt : cc.corners) {
+          OverlayHit o;
+          o.format = QStringLiteral("CAL");
+          o.text = QString();
+          o.polygon = QPolygonF(QRectF(pt.x() - 3, pt.y() - 3, 6, 6));
+          overlays.push_back(o);
+        }
+      }
     } else if (op == QLatin1String("locate")) {
       QVariantMap lp = step->params;
       const auto t0 = std::chrono::steady_clock::now();
@@ -6118,6 +6181,16 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("resultVar"), QStringLiteral("color")},
                 {QStringLiteral("writePassGate"), false},
                 {QStringLiteral("followFixture"), false}};
+  } else if (key == QLatin1String("camera_cal")) {
+    s.params = {{QStringLiteral("method"), QStringLiteral("calibrate")},
+                {QStringLiteral("pattern"), QStringLiteral("checkerboard")},
+                {QStringLiteral("rows"), 6},
+                {QStringLiteral("cols"), 9},
+                {QStringLiteral("squareSize"), 1.0},
+                {QStringLiteral("output"), QStringLiteral("overlay")},
+                {QStringLiteral("resultVar"), QStringLiteral("cal")},
+                {QStringLiteral("writePassGate"), false},
+                {QStringLiteral("showOverlay"), true}};
   } else if (key == QLatin1String("locate")) {
     s.params = {{QStringLiteral("minScore"), 0.55},
                 {QStringLiteral("maxMatches"), 1},

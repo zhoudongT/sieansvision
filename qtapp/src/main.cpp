@@ -4,6 +4,7 @@
 #include "DefectDetect.hpp"
 #include "RegionAnalyze.hpp"
 #include "ColorOp.hpp"
+#include "CameraCal.hpp"
 #include "FixturePose.hpp"
 #include "GeometryFind.hpp"
 #include "MeasureDim.hpp"
@@ -108,6 +109,19 @@ int main(int argc, char* argv[]) {
     }
     for (const QString& line : fails)
       std::fprintf(stderr, "color-selftest FAIL %s\n", line.toUtf8().constData());
+    return 1;
+  }
+
+
+  if (qEnvironmentVariable("SIEANS_QT_CAMERA_CAL_SELFTEST") == QLatin1String("1") &&
+      qEnvironmentVariable("SIEANS_QT_CAMERA_CAL_SELFTEST_QUIT") == QLatin1String("1")) {
+    const QStringList fails = sieans_qt::cameraCalSelfTest();
+    if (fails.isEmpty()) {
+      std::fprintf(stdout, "camera_cal-selftest ok\n");
+      return 0;
+    }
+    for (const QString& line : fails)
+      std::fprintf(stderr, "camera_cal-selftest FAIL %s\n", line.toUtf8().constData());
     return 1;
   }
 

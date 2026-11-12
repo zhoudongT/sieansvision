@@ -69,7 +69,7 @@ const char* glyphKindFor(const QString& key, const QString& category) {
   if (key == QLatin1String("preprocess") || key == QLatin1String("color")) return "image";
   if (key == QLatin1String("save_image")) return "save";
   if (key == QLatin1String("locate")) return "locate";
-  if (key == QLatin1String("caliper") || key == QLatin1String("measure")) return "caliper";
+  if (key == QLatin1String("caliper") || key == QLatin1String("measure") || key == QLatin1String("camera_cal")) return "caliper";
   if (key == QLatin1String("geometry") || key == QLatin1String("region")) return "geometry";
   if (key == QLatin1String("barcode") || key == QLatin1String("qr_decode")) return "barcode";
   if (key == QLatin1String("ocr")) return "ocr";
@@ -301,6 +301,9 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
       {QStringLiteral("measure"), QStringLiteral("尺寸测量与标定"),
        QStringLiteral("定位与测量"),
        QStringLiteral("直径 · 线长 · 两点距 · 夹角 · 轮廓尺寸 · 等比例标定")},
+      {QStringLiteral("camera_cal"), QStringLiteral("相机标定"),
+       QStringLiteral("定位与测量"),
+       QStringLiteral("棋盘格/圆点阵列标定与去畸变（QImage，非 pxPerMm）")},
       {QStringLiteral("geometry"), QStringLiteral("几何特征查找"),
        QStringLiteral("定位与测量"),
        QStringLiteral("直线 · 圆 · 矩形 · 轮廓 · 边缘（QImage）")},
