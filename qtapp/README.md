@@ -112,6 +112,8 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx` / `yol
 
 **已落地（wave279）：** 新目录算子 `fft`（频域处理）：自研基数 2 二维 FFT，高斯低通/高通/带通/带阻后逆变换回空域，或输出对数幅度谱。截止频率为归一化频率（Nyquist=0.5）。内部补到 2 的幂（上限 4096）再裁回；可选 Hann 窗。写出 `fftOk` / `fftSharpness`（输入高频能量比，不是自动对焦）。纯 C++/QImage，无 FFTW/OpenCV/Halcon。无界面自测 `SIEANS_QT_FFT_SELFTEST=1`：低频正弦能通过低通、被高通衰减；高频正弦相反；带通/带阻方向正确；幅度谱在已知频率出现峰。诚实限制见属性提示：只处理灰度；无窗时周期延拓可能振铃；高通/带通显示偏置 +128。
 
+**已落地（wave280）：** 新目录算子 `classify`（传统分类）：本地特征表上的 KNN、线性 L2-SVM（可选 RBF 铰链核梯度）、每类 GMM（EM，默认 1 个分量）和一层隐藏的小 MLP。训练数据来自方案内 `samples` 文本或本地 `samplePath`（CSV/JSON），每次运行重训；预测可用 `features` 或流程变量 `featureVars`。写出 `classifyOk` / `classifyLabel` / `classifyScore`。无新库、无云、不自动下载。不是 YOLO。无界面自测 `SIEANS_QT_CLASSIFY_SELFTEST=1`：四类方法都在两类合成点上对留出样本预测正确，并覆盖本地 CSV 路径。诚实限制见属性提示：样本/维数上限、线性可分、GMM 高斯假设、小 MLP 过拟合、RBF 不是完整 SMO。
+
 **NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。操作员账号（PySide 走独立 RPC/部署凭据，未在本机落地）。云 SaaS / 模板市场。真机硬件（`/opt/MVS`、真实 PLC）。官方 YOLO 权重需自行放入上述模型目录。
 
 ## VM chrome (2026-11-03)

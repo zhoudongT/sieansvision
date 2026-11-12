@@ -93,6 +93,8 @@ add_executable(sieans_qt
   src/PreprocessOp.cpp
   src/FftOp.hpp
   src/FftOp.cpp
+  src/ClassifyOp.hpp
+  src/ClassifyOp.cpp
   src/FixturePose.hpp
   src/FixturePose.cpp
   src/GeometryFind.hpp

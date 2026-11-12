@@ -17,6 +17,7 @@
 #include "WarpOp.hpp"
 #include "PreprocessOp.hpp"
 #include "FftOp.hpp"
+#include "ClassifyOp.hpp"
 #include "GeometryFind.hpp"
 #include "MeasureDim.hpp"
 #include "SerialExchange.hpp"
@@ -2737,6 +2738,64 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
       ok = fr.ok;
       note = fr.ok ? QStringLiteral("%1 · %2 ms").arg(fr.note).arg(fMs, 0, 'f', 1)
                    : fr.error;
+    } else if (op == QLatin1String("classify")) {
+      const auto t0 = std::chrono::steady_clock::now();
+      QVariantMap cp = step->params;
+      if (!current_path_.isEmpty())
+        cp.insert(QStringLiteral("baseDir"), QFileInfo(current_path_).absolutePath());
+      const bool hasFeat = !cp.value(QStringLiteral("features")).toString().trimmed().isEmpty() ||
+                           cp.value(QStringLiteral("features")).metaType().id() == QMetaType::QVariantList;
+      if (!hasFeat) {
+        const QString names = cp.value(QStringLiteral("featureVars")).toString();
+        QVariantList feats;
+        for (const QString& raw : names.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+          const QString key = raw.trimmed();
+          if (key.isEmpty()) continue;
+          feats << flow_vars_.value(key);
+        }
+        if (!feats.isEmpty()) cp.insert(QStringLiteral("features"), feats);
+      }
+      const ClassifyResult cr = runClassify(cp);
+      const double cMs = std::chrono::duration<double, std::milli>(
+                             std::chrono::steady_clock::now() - t0)
+                             .count();
+      algoMs += cMs;
+      QString prefix =
+          step->params.value(QStringLiteral("resultVar"), QStringLiteral("classify"))
+              .toString()
+              .trimmed();
+      if (prefix.isEmpty()) prefix = QStringLiteral("classify");
+      auto put = [&](const QString& suffix, const QVariant& v) {
+        flow_vars_.insert(prefix + suffix, v);
+      };
+      const int okI = cr.ok ? 1 : 0;
+      put(QStringLiteral("Ok"), okI);
+      put(QStringLiteral("Passed"), okI);
+      put(QStringLiteral("Method"), cr.method);
+      put(QStringLiteral("Label"), cr.label);
+      put(QStringLiteral("Index"), cr.classIndex);
+      put(QStringLiteral("Score"), cr.score);
+      put(QStringLiteral("TrainCount"), cr.trainCount);
+      if (prefix == QLatin1String("classify")) {
+        flow_vars_.insert(QStringLiteral("classify_ok"), okI);
+        flow_vars_.insert(QStringLiteral("classify_label"), cr.label);
+        flow_vars_.insert(QStringLiteral("classify_score"), cr.score);
+      }
+      if (step->params.value(QStringLiteral("writePassGate")).toBool())
+        flow_vars_.insert(QStringLiteral("passGate"), okI);
+      {
+        StepSnap snap;
+        snap.ok = cr.ok;
+        snap.score = cr.score;
+        snap.text = cr.ok ? cr.label : cr.error;
+        snap.fields.insert(QStringLiteral("method"), cr.method);
+        snap.fields.insert(QStringLiteral("label"), cr.label);
+        snap.fields.insert(QStringLiteral("score"), cr.score);
+        step_snaps.insert(id, snap);
+      }
+      ok = cr.ok;
+      note = cr.ok ? QStringLiteral("%1 · %2 ms").arg(cr.note).arg(cMs, 0, 'f', 1)
+                   : cr.error;
     } else if (op == QLatin1String("camera_cal")) {
       const auto t0 = std::chrono::steady_clock::now();
       const CameraCalResult cc = runCameraCal(working, step->params);
@@ -6272,6 +6331,20 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("window"), QStringLiteral("none")},
                 {QStringLiteral("sharpCutoff"), 0.15},
                 {QStringLiteral("resultVar"), QStringLiteral("fft")},
+                {QStringLiteral("writePassGate"), false}};
+  } else if (key == QLatin1String("classify")) {
+    s.params = {{QStringLiteral("method"), QStringLiteral("knn")},
+                {QStringLiteral("k"), 3},
+                {QStringLiteral("weighted"), false},
+                {QStringLiteral("kernel"), QStringLiteral("linear")},
+                {QStringLiteral("C"), 1.0},
+                {QStringLiteral("gamma"), 0.5},
+                {QStringLiteral("components"), 1},
+                {QStringLiteral("hidden"), 8},
+                {QStringLiteral("epochs"), 200},
+                {QStringLiteral("lr"), 0.2},
+                {QStringLiteral("seed"), 1},
+                {QStringLiteral("resultVar"), QStringLiteral("classify")},
                 {QStringLiteral("writePassGate"), false}};
   } else if (key == QLatin1String("camera_cal")) {
     s.params = {{QStringLiteral("method"), QStringLiteral("calibrate")},

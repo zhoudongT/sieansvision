@@ -8,6 +8,7 @@
 #include "WarpOp.hpp"
 #include "PreprocessOp.hpp"
 #include "FftOp.hpp"
+#include "ClassifyOp.hpp"
 #include "FixturePose.hpp"
 #include "GeometryFind.hpp"
 #include "MeasureDim.hpp"
@@ -162,6 +163,18 @@ int main(int argc, char* argv[]) {
     }
     for (const QString& line : fails)
       std::fprintf(stderr, "fft-selftest FAIL %s\n", line.toUtf8().constData());
+    return 1;
+  }
+
+  if (qEnvironmentVariable("SIEANS_QT_CLASSIFY_SELFTEST") == QLatin1String("1") &&
+      qEnvironmentVariable("SIEANS_QT_CLASSIFY_SELFTEST_QUIT") == QLatin1String("1")) {
+    const QStringList fails = sieans_qt::classifySelfTest();
+    if (fails.isEmpty()) {
+      std::fprintf(stdout, "classify-selftest ok\n");
+      return 0;
+    }
+    for (const QString& line : fails)
+      std::fprintf(stderr, "classify-selftest FAIL %s\n", line.toUtf8().constData());
     return 1;
   }
 

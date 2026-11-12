@@ -3201,6 +3201,94 @@
     ],
     "hint": "适用于批次号、标签、日期等文字。使用清晰且方向正常的图片，实际准确率需要样本验证。"
   },
+  "classify": {
+    "name": "传统分类",
+    "tag": "QImage · 传统分类",
+    "glyph": "⊞",
+    "defaults": {
+      "method": "knn",
+      "k": 3,
+      "kernel": "linear",
+      "C": 1,
+      "components": 1,
+      "hidden": 8,
+      "epochs": 200,
+      "lr": 0.2,
+      "seed": 1
+    },
+    "description": "在本地特征表上训练并预测：KNN、线性或 RBF 铰链 SVM、每类高斯混合、一层隐藏的小 MLP。纯 C++，无新库、无云、不自动下载。不是 YOLO。",
+    "fields": [
+      [
+        "method",
+        "分类方法",
+        [
+          "knn",
+          "svm",
+          "gmm",
+          "mlp"
+        ]
+      ],
+      [
+        "samples",
+        "训练样本",
+        "text"
+      ],
+      [
+        "samplePath",
+        "样本文件",
+        "path"
+      ],
+      [
+        "features",
+        "待分类特征",
+        "text"
+      ],
+      [
+        "featureVars",
+        "特征变量",
+        "text"
+      ],
+      [
+        "k",
+        "KNN 的 k",
+        1,
+        50
+      ],
+      [
+        "kernel",
+        "SVM 核",
+        [
+          "linear",
+          "rbf"
+        ]
+      ],
+      [
+        "C",
+        "SVM C",
+        0.001,
+        100
+      ],
+      [
+        "components",
+        "GMM 分量",
+        1,
+        8
+      ],
+      [
+        "hidden",
+        "MLP 隐层",
+        2,
+        64
+      ],
+      [
+        "epochs",
+        "训练轮数",
+        20,
+        4000
+      ]
+    ],
+    "hint": "训练数据必须是本地 samples 文本或 samplePath 文件（CSV 最后一列为标签，或 JSON 数组）。每次运行重新训练，不读写云端模型。特征维不超过 32，样本建议几十到几千（上限 5000）。这不是 YOLO 或深度视觉分类。线性 SVM 是主问题铰链+L2（Pegasos 风格），只能分近似线性可分数据；RBF 是对偶铰链核梯度，不是完整 SMO/QP。GMM 默认每类一个高斯（二次判别），少样本时协方差加岭。MLP 只有一层隐藏，会过拟合，可用 seed 复现。KNN 在特征未缩放到同一量纲时会偏斜（算子内部会做训练集标准化）。"
+  },
   "defects": {
     "name": "参考图缺陷检测",
     "tag": "差异 · 区域 · 判定",

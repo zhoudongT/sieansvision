@@ -224,6 +224,25 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("resultVar", "结果前缀", kLine, "fft → fftOk/fftSharpness"),
             S("writePassGate", "写入 passGate", kBool, "")};
   }
+  if (op == QLatin1String("classify")) {
+    return {S("method", "分类方法", kChoice, "knn|K 近邻;svm|线性/RBF SVM;gmm|高斯混合;mlp|小 MLP"),
+            S("samples", "训练样本", kLine, "CSV 或 JSON 文本，最后一列/label 为标签"),
+            S("samplePath", "样本文件", kLine, "本地 CSV/JSON，相对方案目录或仓库"),
+            S("features", "待分类特征", kLine, "逗号分隔或 JSON 数组"),
+            S("featureVars", "特征变量", kLine, "从流程变量取特征，逗号分隔名"),
+            S("k", "KNN 的 k", kInt, "默认 3"),
+            S("weighted", "距离加权", kBool, "仅 KNN"),
+            S("kernel", "SVM 核", kChoice, "linear|线性 L2-SVM;rbf|RBF 铰链核梯度（非完整 SMO）"),
+            S("C", "SVM C", kReal, "默认 1"),
+            S("gamma", "RBF gamma", kReal, "默认约 1/维数"),
+            S("components", "GMM 分量", kInt, "每类分量数，默认 1"),
+            S("hidden", "MLP 隐层", kInt, "默认 8，上限 64"),
+            S("epochs", "训练轮数", kInt, "SVM/MLP"),
+            S("lr", "MLP 学习率", kReal, "默认 0.2"),
+            S("seed", "随机种子", kInt, "SVM/GMM/MLP 复现"),
+            S("resultVar", "结果前缀", kLine, "classify → classifyOk/Label/Score"),
+            S("writePassGate", "写入 passGate", kBool, "")};
+  }
   if (op == QLatin1String("barcode") || op == QLatin1String("qr_decode")) {
     return {S("types", "码制", kLine, ""),
             S("maxCodes", "最多码数", kInt, ""),
@@ -1420,6 +1439,8 @@ void PropertyPanel::showStep(const FlowStep& step) {
     hint += QStringLiteral(" · 灰度/反色/阈值/高斯模糊/Canny/形态学 · 纯 QImage，无 OpenCV · 高斯核须为奇数（偶数会+1） · Canny 为双阈值滞后近似，无亚像素 · 形态学仅方形结构元");
   else if (step.operation == QLatin1String("fft"))
     hint += QStringLiteral(" · 自研基数 2 FFT，无 FFTW/OpenCV/Halcon · 内部补到 2 的幂（上限 4096）再裁回 · 截止频率 Nyquist=0.5 · 高通/带通显示偏置 +128 · 清晰度为输入高频能量比，不是自动对焦");
+  else if (step.operation == QLatin1String("classify"))
+    hint += QStringLiteral(" · 本地特征表上的 KNN / 线性或 RBF SVM / GMM / 小 MLP · 不是 YOLO · 每次运行从样本表重训 · 样本建议几十到几千、维数≤32 · 线性 SVM 只能分近似可分数据");
   meta_->setText(hint);
   QVariantMap shown = step.params;
   if (step.operation == QLatin1String("preprocess") &&
