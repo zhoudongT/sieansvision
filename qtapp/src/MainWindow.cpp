@@ -12,6 +12,7 @@
 #include "CaliperMeasure.hpp"
 #include "DefectDetect.hpp"
 #include "RegionAnalyze.hpp"
+#include "ColorOp.hpp"
 #include "GeometryFind.hpp"
 #include "MeasureDim.hpp"
 #include "SerialExchange.hpp"
@@ -2616,6 +2617,63 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
       note = QStringLiteral("预处理 %1")
                  .arg(step->params.value(QStringLiteral("mode"), QStringLiteral("gray"))
                           .toString());
+    } else if (op == QLatin1String("color")) {
+      const auto t0 = std::chrono::steady_clock::now();
+      QVariantMap cp = step->params;
+      injectFixtureFromVars(cp, flow_vars_);
+      if (cp.value(QStringLiteral("followFixture")).toBool()) {
+        const FollowRoi fr = resolveFollowRoi(cp, working.width(), working.height());
+        if (fr.active && !fr.aabb.isEmpty()) {
+          cp.insert(QStringLiteral("roiX"), fr.aabb.x());
+          cp.insert(QStringLiteral("roiY"), fr.aabb.y());
+          cp.insert(QStringLiteral("roiW"), fr.aabb.width());
+          cp.insert(QStringLiteral("roiH"), fr.aabb.height());
+        }
+      }
+      const ColorResult cr = runColorOp(working, cp);
+      const double cMs = std::chrono::duration<double, std::milli>(
+                             std::chrono::steady_clock::now() - t0)
+                             .count();
+      algoMs += cMs;
+      QString prefix =
+          step->params.value(QStringLiteral("resultVar"), QStringLiteral("color"))
+              .toString()
+              .trimmed();
+      if (prefix.isEmpty()) prefix = QStringLiteral("color");
+      auto put = [&](const QString& suffix, const QVariant& v) {
+        flow_vars_.insert(prefix + suffix, v);
+      };
+      const int okI = cr.ok ? 1 : 0;
+      const int passed = (cr.ok && (cr.method != QLatin1String("threshold") || cr.fgCount >= 1)) ? 1 : 0;
+      put(QStringLiteral("Ok"), okI);
+      put(QStringLiteral("Passed"), passed);
+      put(QStringLiteral("Method"), cr.method);
+      put(QStringLiteral("Space"), cr.space);
+      put(QStringLiteral("Channel"), cr.channel);
+      put(QStringLiteral("FgCount"), cr.fgCount);
+      if (prefix == QLatin1String("color")) {
+        flow_vars_.insert(QStringLiteral("color_ok"), okI);
+        flow_vars_.insert(QStringLiteral("color_fg"), cr.fgCount);
+      }
+      if (cr.ok && !cr.image.isNull()) {
+        working = cr.image.convertToFormat(QImage::Format_RGB888);
+        image_view_->setLiveImage(working);
+      }
+      if (step->params.value(QStringLiteral("writePassGate")).toBool())
+        flow_vars_.insert(QStringLiteral("passGate"), passed);
+      {
+        StepSnap snap;
+        snap.ok = cr.ok;
+        snap.count = cr.fgCount;
+        snap.matches = cr.fgCount;
+        snap.text = cr.note;
+        snap.fields.insert(QStringLiteral("fgCount"), cr.fgCount);
+        snap.fields.insert(QStringLiteral("method"), cr.method);
+        step_snaps.insert(id, snap);
+      }
+      ok = cr.ok;
+      note = cr.ok ? QStringLiteral("%1 · %2 ms").arg(cr.note).arg(cMs, 0, 'f', 1)
+                   : cr.error;
     } else if (op == QLatin1String("locate")) {
       QVariantMap lp = step->params;
       const auto t0 = std::chrono::steady_clock::now();
@@ -6040,6 +6098,26 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
   } else if (key == QLatin1String("preprocess")) {
     s.params = {{QStringLiteral("mode"), QStringLiteral("gray")},
                 {QStringLiteral("threshold"), 128}};
+  } else if (key == QLatin1String("color")) {
+    s.params = {{QStringLiteral("method"), QStringLiteral("convert")},
+                {QStringLiteral("space"), QStringLiteral("hsv")},
+                {QStringLiteral("channel"), QStringLiteral("h")},
+                {QStringLiteral("hMin"), 0},
+                {QStringLiteral("hMax"), 255},
+                {QStringLiteral("sMin"), 0},
+                {QStringLiteral("sMax"), 255},
+                {QStringLiteral("vMin"), 0},
+                {QStringLiteral("vMax"), 255},
+                {QStringLiteral("rMin"), 0},
+                {QStringLiteral("rMax"), 255},
+                {QStringLiteral("gMin"), 0},
+                {QStringLiteral("gMax"), 255},
+                {QStringLiteral("bMin"), 0},
+                {QStringLiteral("bMax"), 255},
+                {QStringLiteral("invert"), false},
+                {QStringLiteral("resultVar"), QStringLiteral("color")},
+                {QStringLiteral("writePassGate"), false},
+                {QStringLiteral("followFixture"), false}};
   } else if (key == QLatin1String("locate")) {
     s.params = {{QStringLiteral("minScore"), 0.55},
                 {QStringLiteral("maxMatches"), 1},

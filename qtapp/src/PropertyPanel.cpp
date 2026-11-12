@@ -113,6 +113,32 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
     return {S("mode", "方法", kChoice, "gray|灰度;mono|灰度;invert|反色;threshold|阈值"),
             S("threshold", "阈值", kInt, "")};
   }
+  if (op == QLatin1String("color")) {
+    return {S("method", "处理方法", kChoice, "convert|色彩空间转换;channel|通道提取;threshold|颜色阈值"),
+            S("space", "色彩空间", kChoice, "hsv|HSV;rgb|RGB"),
+            S("channel", "提取通道", kChoice, "r|R;g|G;b|B;h|H;s|S;v|V"),
+            S("hMin", "H 最小", kInt, "0–255，hMin>hMax 时环绕"),
+            S("hMax", "H 最大", kInt, "默认 255"),
+            S("sMin", "S 最小", kInt, ""),
+            S("sMax", "S 最大", kInt, ""),
+            S("vMin", "V 最小", kInt, ""),
+            S("vMax", "V 最大", kInt, ""),
+            S("rMin", "R 最小", kInt, "space=rgb 时使用"),
+            S("rMax", "R 最大", kInt, ""),
+            S("gMin", "G 最小", kInt, ""),
+            S("gMax", "G 最大", kInt, ""),
+            S("bMin", "B 最小", kInt, ""),
+            S("bMax", "B 最大", kInt, ""),
+            S("invert", "反转掩膜", kBool, "仅颜色阈值"),
+            S("roiX", "ROI X", kInt, ""),
+            S("roiY", "ROI Y", kInt, ""),
+            S("roiW", "ROI 宽", kInt, "0=整图"),
+            S("roiH", "ROI 高", kInt, "0=整图"),
+            S("resultVar", "结果前缀", kLine, "color → colorOk/FgCount"),
+            S("writePassGate", "写入 passGate", kBool, ""),
+            S("followFixture", "跟随定位位姿", kBool, "ROI 在夹具坐标系"),
+            S("fixtureVar", "位姿变量前缀", kLine, "fixture")};
+  }
   if (op == QLatin1String("barcode") || op == QLatin1String("qr_decode")) {
     return {S("types", "码制", kLine, ""),
             S("maxCodes", "最多码数", kInt, ""),
@@ -1257,6 +1283,8 @@ void PropertyPanel::showStep(const FlowStep& step) {
     hint += QStringLiteral(" · 直径/线长/两点距/夹角/轮廓 · 等比例标定 pxPerMm");
   else if (step.operation == QLatin1String("caliper"))
     hint += QStringLiteral(" · QImage 边缘卡尺 · caliperDist/measureMm");
+  else if (step.operation == QLatin1String("color"))
+    hint += QStringLiteral(" · RGB/HSV 转换、通道提取、颜色阈值 · 打包 HSV 的 H 为 0–255（约 1.4°）· 往返允许数灰阶误差 · hMin>hMax 环绕");
   else if (step.operation == QLatin1String("region"))
     hint += QStringLiteral(" · 固定/Otsu 或分水岭/区域生长拆分 · regionCount/Area/X/Y · 无稳定距离峰或严重重叠仍可能合并");
   else if (step.operation == QLatin1String("defects"))

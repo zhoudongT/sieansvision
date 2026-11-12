@@ -83,6 +83,8 @@ add_executable(sieans_qt
   src/DefectDetect.cpp
   src/RegionAnalyze.hpp
   src/RegionAnalyze.cpp
+  src/ColorOp.hpp
+  src/ColorOp.cpp
   src/FixturePose.hpp
   src/FixturePose.cpp
   src/GeometryFind.hpp
