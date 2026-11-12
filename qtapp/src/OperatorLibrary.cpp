@@ -295,7 +295,7 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
        QStringLiteral("阈值 / 连通域 / 分水岭与区域生长拆分（QImage，无 OpenCV）")},
       {QStringLiteral("locate"), QStringLiteral("模板与定位"),
        QStringLiteral("定位与测量"),
-       QStringLiteral("模板匹配 · 旋转搜索 · 定位跟随位姿")},
+       QStringLiteral("SAD/NCC · 旋转与各向异性尺度 · 多模板库 · 定位跟随")},
       {QStringLiteral("pose_correct"), QStringLiteral("位置修正"),
        QStringLiteral("定位与测量"),
        QStringLiteral("绑定上游定位，输出夹具位姿供 ROI/测量跟随")},

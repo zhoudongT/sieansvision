@@ -375,6 +375,105 @@ QStringList locateSelfTest() {
     expect(cr.ok && cr.pose.x == 5 && cr.pose.y == 6, "manual pose");
   }
 
+  // NCC：同一标记应得到接近 1 的相关分数。
+  {
+    const QString path = QStringLiteral("/tmp/sieans-locate-selftest-ncc-tpl.png");
+    tpl.save(path);
+    QVariantMap np;
+    np.insert(QStringLiteral("minScore"), 0.8);
+    np.insert(QStringLiteral("maxMatches"), 1);
+    np.insert(QStringLiteral("angleStart"), 0);
+    np.insert(QStringLiteral("angleEnd"), 0);
+    np.insert(QStringLiteral("metric"), QStringLiteral("ncc"));
+    np.insert(QStringLiteral("step"), 2);
+    np.insert(QStringLiteral("templatePath"), path);
+    const LocateResult lr = runLocate(scene, np);
+    expect(lr.ok, "ncc ok");
+    if (lr.ok) {
+      expect(lr.hits.first().score >= 0.95, "ncc score");
+      expect(qAbs(lr.hits.first().center.x() - mark.center().x()) <= 3, "ncc cx");
+      expect(qAbs(lr.hits.first().center.y() - mark.center().y()) <= 3, "ncc cy");
+    }
+  }
+
+  // 各向异性：场景中的标记只在 X 方向拉到 1.4 倍，搜索应落到 scaleX≈1.4、scaleY=1。
+  {
+    QImage aniso(260, 160, QImage::Format_RGB888);
+    aniso.fill(QColor(200, 200, 200));
+    QImage stretched = tpl.scaled(qRound(tpl.width() * 1.4), tpl.height());
+    {
+      QPainter p(&aniso);
+      p.drawImage(QPoint(70, 50), stretched);
+      p.end();
+    }
+    const QString path = QStringLiteral("/tmp/sieans-locate-selftest-aniso-tpl.png");
+    tpl.save(path);
+    QVariantMap ap;
+    ap.insert(QStringLiteral("minScore"), 0.7);
+    ap.insert(QStringLiteral("maxMatches"), 1);
+    ap.insert(QStringLiteral("angleStart"), 0);
+    ap.insert(QStringLiteral("angleEnd"), 0);
+    ap.insert(QStringLiteral("scaleEnable"), true);
+    ap.insert(QStringLiteral("scaleAniso"), true);
+    ap.insert(QStringLiteral("scaleMin"), 1.0);
+    ap.insert(QStringLiteral("scaleMax"), 1.6);
+    ap.insert(QStringLiteral("scaleStep"), 0.2);
+    ap.insert(QStringLiteral("scaleYMin"), 1.0);
+    ap.insert(QStringLiteral("scaleYMax"), 1.0);
+    ap.insert(QStringLiteral("scaleYStep"), 0.2);
+    ap.insert(QStringLiteral("step"), 2);
+    ap.insert(QStringLiteral("templatePath"), path);
+    const LocateResult lr = runLocate(aniso, ap);
+    expect(lr.ok, "aniso ok");
+    if (lr.ok) {
+      expect(qAbs(lr.hits.first().scaleX - 1.4) <= 0.21, "aniso scaleX");
+      expect(qAbs(lr.hits.first().scaleY - 1.0) <= 0.05, "aniso scaleY");
+    }
+  }
+
+  // 多模板：两个不同标记，库里两个模板，应各命中一次。
+  {
+    QImage two(280, 180, QImage::Format_RGB888);
+    two.fill(QColor(200, 200, 200));
+    QImage tplB(40, 30, QImage::Format_RGB888);
+    tplB.fill(QColor(20, 90, 20));
+    {
+      QPainter p(&tplB);
+      p.fillRect(QRect(6, 6, 22, 8), QColor(240, 80, 80));
+      p.end();
+    }
+    {
+      QPainter p(&two);
+      p.drawImage(QPoint(40, 40), tpl);
+      p.drawImage(QPoint(160, 80), tplB);
+      p.end();
+    }
+    const QString pa = QStringLiteral("/tmp/sieans-locate-selftest-lib-a.png");
+    const QString pb = QStringLiteral("/tmp/sieans-locate-selftest-lib-b.png");
+    tpl.save(pa);
+    tplB.save(pb);
+    QVariantList lib;
+    lib << QVariantMap{{QStringLiteral("name"), QStringLiteral("markA")},
+                       {QStringLiteral("path"), pa}};
+    lib << QVariantMap{{QStringLiteral("name"), QStringLiteral("markB")},
+                       {QStringLiteral("path"), pb}};
+    QVariantMap mp;
+    mp.insert(QStringLiteral("minScore"), 0.75);
+    mp.insert(QStringLiteral("maxMatches"), 2);
+    mp.insert(QStringLiteral("angleStart"), 0);
+    mp.insert(QStringLiteral("angleEnd"), 0);
+    mp.insert(QStringLiteral("step"), 2);
+    mp.insert(QStringLiteral("templateLibrary"), lib);
+    const LocateResult lr = runLocate(two, mp);
+    expect(lr.ok && lr.hits.size() == 2, "multi count");
+    if (lr.hits.size() == 2) {
+      QStringList names;
+      for (const TemplateHit& h : lr.hits) names << h.templateName;
+      expect(names.contains(QStringLiteral("markA")) && names.contains(QStringLiteral("markB")),
+             "multi names");
+    }
+  }
+
   return fails;
 }
 

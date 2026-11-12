@@ -2788,7 +2788,7 @@
   },
   "locate": {
     "name": "模板与定位",
-    "tag": "多目标 · 旋转 · 定位跟随",
+    "tag": "SAD/NCC · 旋转 · 尺度",
     "glyph": "⌖",
     "defaults": {
       "minScore": 0.85,
@@ -2798,7 +2798,7 @@
       "maxMatches": 1,
       "overlapThreshold": 0.3
     },
-    "description": "上传或框选模板，搜索平移/旋转/均匀缩放目标，去除重复匹配并返回目标表及定位跟随位姿。",
+    "description": "上传或框选模板，或使用模板库多模板一起搜。度量可选灰度 SAD 或零均值 NCC；可搜索旋转、均匀尺度或 X/Y 各向异性尺度，去重后输出目标表及定位跟随位姿。不是变形/变化模型匹配。搜索组合（模板×尺度×角度）上限 400。",
     "fields": [
       [
         "minScore",
@@ -2838,9 +2838,82 @@
         0.01,
         0.9,
         0.01
+      ],
+      [
+        "matchMode",
+        "匹配模式",
+        [
+          "fast",
+          "gray",
+          "ncc"
+        ]
+      ],
+      [
+        "metric",
+        "度量",
+        [
+          "sad",
+          "ncc"
+        ]
+      ],
+      [
+        "scaleEnable",
+        "搜索尺度",
+        "boolean"
+      ],
+      [
+        "scaleMin",
+        "尺度最小",
+        0.2,
+        4,
+        0.05
+      ],
+      [
+        "scaleMax",
+        "尺度最大",
+        0.2,
+        4,
+        0.05
+      ],
+      [
+        "scaleStep",
+        "尺度步长",
+        0.05,
+        2,
+        0.05
+      ],
+      [
+        "scaleAniso",
+        "各向异性尺度",
+        "boolean"
+      ],
+      [
+        "scaleYMin",
+        "Y 尺度最小",
+        0.2,
+        4,
+        0.05
+      ],
+      [
+        "scaleYMax",
+        "Y 尺度最大",
+        0.2,
+        4,
+        0.05
+      ],
+      [
+        "scaleYStep",
+        "Y 尺度步长",
+        0.05,
+        2,
+        0.05
+      ],
+      [
+        "templatePaths",
+        "额外模板路径"
       ]
     ],
-    "hint": "搜索比例和坐标原点按表格设置。OpenCV 正角为逆时针；对称模板不能区分方向。多目标时应按目标表选择位姿；唯一目标可绑定 pose 接定位跟随。搜索范围和组合数有上限。"
+    "hint": "纯 QImage，无 OpenCV/Halcon。fast/gray 为 SAD，metric/matchMode=ncc 为零均值相关。scaleEnable 打开均匀尺度，scaleAniso 再按 X/Y 独立搜索。templateLibrary / templatePaths 做多模板。不做变形匹配。对称模板不能区分方向。组合数有上限。"
   },
   "geometry": {
     "name": "几何特征查找",

@@ -2807,6 +2807,12 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                         found.isEmpty() ? 0 : found.first().angleDeg);
       flow_vars_.insert(QStringLiteral("locateScale"),
                         found.isEmpty() ? 1 : found.first().scale);
+      flow_vars_.insert(QStringLiteral("locateScaleX"),
+                        found.isEmpty() ? 1 : found.first().scaleX);
+      flow_vars_.insert(QStringLiteral("locateScaleY"),
+                        found.isEmpty() ? 1 : found.first().scaleY);
+      flow_vars_.insert(QStringLiteral("locateTemplate"),
+                        found.isEmpty() ? QString() : found.first().templateName);
       flow_vars_.insert(QStringLiteral("locateW"),
                         found.isEmpty() ? 0 : found.first().rect.width());
       flow_vars_.insert(QStringLiteral("locateH"),

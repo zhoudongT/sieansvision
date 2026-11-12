@@ -79,17 +79,27 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
   if (op == QLatin1String("locate")) {
     return {S("templateSource", "模板来源", kChoice,
               "file|文件路径;soft_plate|软场景标牌;capture|从当前图截取"),
-            S("matchMode", "匹配模式", kChoice, "fast|快速匹配;gray|灰度模板匹配"),
+            S("matchMode", "匹配模式", kChoice, "fast|快速 SAD;gray|灰度 SAD;ncc|归一化相关 NCC"),
+            S("metric", "度量", kChoice, "sad|灰度 SAD;ncc|零均值 NCC"),
             S("templatePath", "模板文件", kLine, ""),
+            S("templatePaths", "额外模板路径", kLine, "逗号分隔，与模板库一起搜"),
             S("templateW", "截取宽", kInt, ""),
             S("templateH", "截取高", kInt, ""),
-            S("minScore", "最低分数", kReal, ""),
+            S("minScore", "最低分数", kReal, "SAD 约 0–1，NCC 约 -1–1"),
             S("maxMatches", "最多目标", kInt, ""),
             S("overlapThreshold", "去重重叠", kReal, "0.3"),
             S("angleEnable", "搜索旋转", kBool, ""),
             S("angleStart", "起始角度", kReal, ""),
             S("angleEnd", "终止角度", kReal, ""),
             S("angleStep", "角度步长", kReal, ""),
+            S("scaleEnable", "搜索尺度", kBool, "关闭时尺度=1"),
+            S("scaleMin", "尺度最小", kReal, "均匀或 X"),
+            S("scaleMax", "尺度最大", kReal, ""),
+            S("scaleStep", "尺度步长", kReal, ""),
+            S("scaleAniso", "各向异性尺度", kBool, "X/Y 独立搜索"),
+            S("scaleYMin", "Y 尺度最小", kReal, "仅各向异性"),
+            S("scaleYMax", "Y 尺度最大", kReal, ""),
+            S("scaleYStep", "Y 尺度步长", kReal, ""),
             S("showOverlay", "显示匹配框", kBool, ""),
             S("showOrigin", "显示模板原点", kBool, ""),
             S("showAngleDeg", "显示角度标注", kBool, "")};
@@ -1384,7 +1394,7 @@ void PropertyPanel::showStep(const FlowStep& step) {
   else if (step.operation == QLatin1String("plugin"))
     hint += QStringLiteral(" · 已安装算子插件 · pluginId/version · pluginValue");
   else if (step.operation == QLatin1String("locate"))
-    hint += QStringLiteral(" · 模板 SAD + 旋转搜索 · locateX/Y/Angle/Score");
+    hint += QStringLiteral(" · SAD 或 NCC · 旋转/均匀或各向异性尺度 · 多模板库 · 组合上限 400 · 无变形匹配");
   else if (step.operation == QLatin1String("pose_correct"))
     hint += QStringLiteral(" · 定位跟随 · fixtureX/Y/Angle 供下游 ROI/测量");
   else if (step.operation == QLatin1String("subflow"))

@@ -16,7 +16,11 @@ struct TemplateHit {
   QPointF center;
   double score = 0;
   double angleDeg = 0;
-  double scale = 1;
+  double scale = 1;    // 兼容：均匀尺度，或各向异性时取 scaleX
+  double scaleX = 1;
+  double scaleY = 1;
+  int templateIndex = 0;
+  QString templateName;
 };
 
 /** Grayscale SAD match. step>1 skips positions. Scores are 1 = identical. */
@@ -45,8 +49,10 @@ QImage resolveLocateTemplate(const QImage& scene, const QVariantMap& params,
                              QString* pathOut = nullptr);
 
 /**
- * Template locate with optional rotation (angleStart..angleEnd / angleStep),
- * overlap NMS, and pose (center, angle, AABB + corners). No OpenCV / Halcon.
+ * Template locate with optional rotation, uniform or anisotropic scale search,
+ * SAD or NCC metric, and a multi-template library. Overlap NMS and pose
+ * (center, angle, AABB + corners). No OpenCV / Halcon. No deformable /
+ * variation-model matching (deferred; would not be an honest subset here).
  */
 LocateResult runLocate(const QImage& scene, const QVariantMap& params);
 

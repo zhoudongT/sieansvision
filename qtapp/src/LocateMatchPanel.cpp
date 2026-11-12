@@ -384,7 +384,8 @@ LocateMatchPanel::LocateMatchPanel(QWidget* parent) : QWidget(parent) {
   matchMode_ = new QComboBox;
   matchMode_->addItem(QStringLiteral("快速匹配"), QStringLiteral("fast"));
   matchMode_->addItem(QStringLiteral("灰度模板匹配"), QStringLiteral("gray"));
-  matchMode_->setToolTip(QStringLiteral("Qt 工作台两种模式共用灰度 SAD 引擎，参数与 PySide 对齐。"));
+  matchMode_->addItem(QStringLiteral("归一化相关 NCC"), QStringLiteral("ncc"));
+  matchMode_->setToolTip(QStringLiteral("fast/gray 为灰度 SAD；ncc 为零均值归一化互相关。尺度与多模板库见属性或 templateLibrary。不做变形匹配。"));
   templateSource_ = new QComboBox;
   templateSource_->addItem(QStringLiteral("文件路径"), QStringLiteral("file"));
   templateSource_->addItem(QStringLiteral("软场景标牌"), QStringLiteral("soft_plate"));
@@ -574,7 +575,7 @@ LocateMatchPanel::LocateMatchPanel(QWidget* parent) : QWidget(parent) {
   run->addRow(QStringLiteral("起始角度"), angleStart_);
   run->addRow(QStringLiteral("终止角度"), angleEnd_);
   run->addRow(QStringLiteral("角度步长"), angleStep_);
-  auto* runTip = new QLabel(QStringLiteral("角度范围为闭区间；步长过小会增加耗时。使能关闭时只按 0° 搜索。"));
+  auto* runTip = new QLabel(QStringLiteral("角度范围为闭区间。尺度搜索用 scaleEnable / scaleMin / scaleMax / scaleStep，各向异性再开 scaleAniso。模板×尺度×角度组合上限 400。使能关闭时只按 0° 搜索。"));
   runTip->setWordWrap(true);
   runTip->setStyleSheet(QStringLiteral("color:#8a9098;font-size:11px;"));
   auto* runBox = wrapForm(run);

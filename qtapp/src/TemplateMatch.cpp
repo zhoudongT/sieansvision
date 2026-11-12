@@ -1,6 +1,7 @@
 #include "TemplateMatch.hpp"
 #include "SoftFrame.hpp"
 
+#include <QFileInfo>
 #include <QHash>
 #include <QtMath>
 #include <algorithm>
@@ -212,9 +213,107 @@ QPolygonF hitCorners(const RotatedTpl& rt, int x, int y, int tw, int th, double 
   return poly;
 }
 
+/** 双线性缩放灰度模板，供均匀/各向异性尺度搜索。 */
+QVector<uchar> resizeGray(const QVector<uchar>& T, int tw, int th, int nw, int nh) {
+  QVector<uchar> out(nw * nh, 0);
+  if (tw <= 0 || th <= 0 || nw <= 0 || nh <= 0) return out;
+  for (int y = 0; y < nh; ++y) {
+    const double oy = (nh == 1) ? 0.0 : (y + 0.5) * th / nh - 0.5;
+    const int y0 = qBound(0, int(std::floor(oy)), th - 1);
+    const int y1 = qMin(th - 1, y0 + 1);
+    const double ty = oy - y0;
+    for (int x = 0; x < nw; ++x) {
+      const double ox = (nw == 1) ? 0.0 : (x + 0.5) * tw / nw - 0.5;
+      const int x0 = qBound(0, int(std::floor(ox)), tw - 1);
+      const int x1 = qMin(tw - 1, x0 + 1);
+      const double tx = ox - x0;
+      const double v = (1 - tx) * (1 - ty) * T[y0 * tw + x0] + tx * (1 - ty) * T[y0 * tw + x1] +
+                       (1 - tx) * ty * T[y1 * tw + x0] + tx * ty * T[y1 * tw + x1];
+      out[y * nw + x] = static_cast<uchar>(qBound(0, qRound(v), 255));
+    }
+  }
+  return out;
+}
+
+enum class MatchMetric { Sad, Ncc };
+
+MatchMetric parseMetric(const QVariantMap& params) {
+  const QString m = params.value(QStringLiteral("metric"),
+                                 params.value(QStringLiteral("matchMode"), QStringLiteral("sad")))
+                        .toString()
+                        .trimmed()
+                        .toLower();
+  if (m == QLatin1String("ncc") || m == QLatin1String("zncc") || m == QLatin1String("correlation") ||
+      m == QLatin1String("corr"))
+    return MatchMetric::Ncc;
+  return MatchMetric::Sad;
+}
+
+/** 在掩膜有效像素上计算 SAD（1=相同）或零均值 NCC（[-1,1]）。 */
+double scoreWindow(const QVector<uchar>& S, int sw, int sh, const RotatedTpl& rt, int x, int y,
+                   MatchMetric metric) {
+  if (x < 0 || y < 0 || x > sw - rt.w || y > sh - rt.h) return -1;
+  if (metric == MatchMetric::Sad) {
+    long sad = 0;
+    int maskN = 0;
+    for (int ty = 0; ty < rt.h; ++ty) {
+      const uchar* row = S.constData() + (y + ty) * sw + x;
+      const uchar* trow = rt.gray.constData() + ty * rt.w;
+      const uchar* mrow = rt.mask.constData() + ty * rt.w;
+      for (int tx = 0; tx < rt.w; ++tx) {
+        if (!mrow[tx]) continue;
+        sad += qAbs(int(row[tx]) - int(trow[tx]));
+        ++maskN;
+      }
+    }
+    if (maskN < 16) return -1;
+    return 1.0 - double(sad) / (255.0 * maskN);
+  }
+  double sumS = 0, sumT = 0, sumSS = 0, sumTT = 0, sumST = 0;
+  int n = 0;
+  for (int ty = 0; ty < rt.h; ++ty) {
+    const uchar* row = S.constData() + (y + ty) * sw + x;
+    const uchar* trow = rt.gray.constData() + ty * rt.w;
+    const uchar* mrow = rt.mask.constData() + ty * rt.w;
+    for (int tx = 0; tx < rt.w; ++tx) {
+      if (!mrow[tx]) continue;
+      const double sv = row[tx];
+      const double tv = trow[tx];
+      sumS += sv;
+      sumT += tv;
+      sumSS += sv * sv;
+      sumTT += tv * tv;
+      sumST += sv * tv;
+      ++n;
+    }
+  }
+  if (n < 16) return -1;
+  const double num = n * sumST - sumS * sumT;
+  const double denS = n * sumSS - sumS * sumS;
+  const double denT = n * sumTT - sumT * sumT;
+  if (denS <= 1e-9 || denT <= 1e-9) return -1;
+  return num / std::sqrt(denS * denT);
+}
+
+QVector<double> scaleSteps(double lo, double hi, double step, bool enable) {
+  QVector<double> out;
+  if (!enable) {
+    out.push_back(1.0);
+    return out;
+  }
+  if (hi < lo) std::swap(lo, hi);
+  if (step < 1e-4) step = 0.1;
+  lo = qBound(0.2, lo, 4.0);
+  hi = qBound(0.2, hi, 4.0);
+  for (double s = lo; s <= hi + 1e-9; s += step) out.push_back(s);
+  if (out.isEmpty()) out.push_back(1.0);
+  return out;
+}
+
 }  // namespace
 
-QImage resolveLocateTemplate(const QImage& scene, const QVariantMap& params,
+QImage resolveLocateTemplate
+(const QImage& scene, const QVariantMap& params,
                              QString* error, bool* created, QString* pathOut) {
   if (created) *created = false;
   const QString src =
@@ -257,22 +356,73 @@ LocateResult runLocate(const QImage& scene, const QVariantMap& params) {
     r.note = r.error;
     return r;
   }
+
+  struct TplSrc {
+    QImage img;
+    QString name;
+    QString path;
+  };
+  QVector<TplSrc> tpls;
+  const QVariantList lib = params.value(QStringLiteral("templateLibrary")).toList();
+  const QString extraPaths = params.value(QStringLiteral("templatePaths")).toString().trimmed();
+  const bool hasLib = !lib.isEmpty() || !extraPaths.isEmpty();
+  const QString srcKind =
+      params.value(QStringLiteral("templateSource"), QStringLiteral("file")).toString();
+  const bool forceSingle =
+      (srcKind == QLatin1String("soft_plate") || srcKind == QLatin1String("soft_scene_plate") ||
+       srcKind == QLatin1String("capture") ||
+       !params.value(QStringLiteral("templatePath")).toString().trimmed().isEmpty() || !hasLib);
   bool created = false;
   QString path;
   QString err;
-  QImage tpl = resolveLocateTemplate(scene, params, &err, &created, &path);
-  r.templateCreated = created;
-  r.templatePath = path;
-  r.templateUsed = tpl;
-  if (tpl.isNull()) {
-    r.error = err.isEmpty() ? QStringLiteral("目标定位需要模板图，可上传或从原图框选模板") : err;
+  if (forceSingle) {
+    QImage tpl = resolveLocateTemplate(scene, params, &err, &created, &path);
+    r.templateCreated = created;
+    r.templatePath = path;
+    r.templateUsed = tpl;
+    if (!tpl.isNull()) {
+      TplSrc ts;
+      ts.img = tpl;
+      ts.name = QStringLiteral("current");
+      ts.path = path;
+      tpls.push_back(ts);
+    }
+  }
+  auto addPath = [&](const QString& pth, const QString& name) {
+    const QString p = pth.trimmed();
+    if (p.isEmpty()) return;
+    for (const TplSrc& e : tpls)
+      if (e.path == p) return;
+    QImage im(p);
+    if (im.isNull()) return;
+    TplSrc ts;
+    ts.img = im;
+    ts.name = name.isEmpty() ? QFileInfo(p).completeBaseName() : name;
+    ts.path = p;
+    tpls.push_back(ts);
+    if (r.templateUsed.isNull()) {
+      r.templateUsed = im;
+      r.templatePath = p;
+    }
+  };
+  for (const QVariant& v : lib) {
+    const QVariantMap e = v.toMap();
+    addPath(e.value(QStringLiteral("path")).toString(), e.value(QStringLiteral("name")).toString());
+  }
+  if (!extraPaths.isEmpty()) {
+    const QStringList parts = extraPaths.split(QLatin1Char(','), Qt::SkipEmptyParts);
+    for (const QString& p : parts) addPath(p, {});
+  }
+  if (tpls.isEmpty()) {
+    r.error = err.isEmpty() ? QStringLiteral("目标定位需要模板图，可上传、从原图框选或加入模板库") : err;
     r.note = r.error;
     return r;
   }
+
   const double minScore = params.value(QStringLiteral("minScore"), 0.55).toDouble();
   const int maxN = qBound(1, params.value(QStringLiteral("maxMatches"), 1).toInt(), 50);
-  const double iouThr =
-      params.value(QStringLiteral("overlapThreshold"), 0.3).toDouble();
+  const double iouThr = params.value(QStringLiteral("overlapThreshold"), 0.3).toDouble();
+  const MatchMetric metric = parseMetric(params);
   double a0 = params.value(QStringLiteral("angleStart"), 0).toDouble();
   double a1 = params.value(QStringLiteral("angleEnd"), a0).toDouble();
   double aStep = params.value(QStringLiteral("angleStep"), 10).toDouble();
@@ -291,101 +441,123 @@ LocateResult runLocate(const QImage& scene, const QVariantMap& params) {
   QVector<double> angles;
   for (double a = a0; a <= a1 + 1e-6; a += aStep) angles.push_back(a);
   if (angles.isEmpty() || qAbs(angles.last() - a1) > 1e-6) angles.push_back(a1);
-  if (angles.size() > 256) {
-    r.error = QStringLiteral("旋转搜索超过 256 档，请增大角度步长");
+
+  const bool scaleOn = params.value(QStringLiteral("scaleEnable"), false).toBool();
+  const bool aniso = params.value(QStringLiteral("scaleAniso"), false).toBool();
+  const QVector<double> sxs = scaleSteps(params.value(QStringLiteral("scaleMin"), 1.0).toDouble(),
+                                         params.value(QStringLiteral("scaleMax"), 1.0).toDouble(),
+                                         params.value(QStringLiteral("scaleStep"), 0.1).toDouble(),
+                                         scaleOn);
+  const QVector<double> sys =
+      aniso ? scaleSteps(
+                  params.value(QStringLiteral("scaleYMin"), params.value(QStringLiteral("scaleMin"), 1.0))
+                      .toDouble(),
+                  params.value(QStringLiteral("scaleYMax"), params.value(QStringLiteral("scaleMax"), 1.0))
+                      .toDouble(),
+                  params.value(QStringLiteral("scaleYStep"), params.value(QStringLiteral("scaleStep"), 0.1))
+                      .toDouble(),
+                  scaleOn)
+            : sxs;
+  const int combos = tpls.size() * sxs.size() * sys.size() * angles.size();
+  if (combos > 400) {
+    r.error = QStringLiteral("定位搜索组合 %1 超过 400（模板×尺度×角度），请增大步长或减少模板")
+                  .arg(combos);
     r.note = r.error;
     return r;
   }
 
-  int sw = 0, sh = 0, tw = 0, th = 0;
+  int sw = 0, sh = 0;
   const QVector<uchar> S = toGray(scene, sw, sh);
-  const QVector<uchar> T = toGray(tpl, tw, th);
-  if (tw > sw || th > sh || tw < 4 || th < 4) {
-    r.error = QStringLiteral("模板需至少 4×4 且不大于搜索图");
-    r.note = r.error;
-    return r;
-  }
-
-  int step = params.value(QStringLiteral("step"), 0).toInt();
-  if (step <= 0) {
-    const int span = qMax(sw, sh);
-    step = span > 900 ? 8 : (span > 480 ? 4 : 2);
-    const int shortSide = qMin(tw, th);
-    if (shortSide <= 48) step = qMin(step, 2);
-    else if (shortSide <= 80) step = qMin(step, 4);
-  }
 
   struct Cand {
     int x, y;
     double score;
     double angle;
+    double scaleX, scaleY;
     int rw, rh;
-    QPointF centerOff;  // center in rotated bitmap
+    int tw0, th0;
+    int tplIndex;
+    QString tplName;
+    QPointF centerOff;
   };
   QVector<Cand> cands;
 
-  for (double ang : angles) {
-    RotatedTpl rt;
-    if (qAbs(ang) < 1e-9) {
-      rt.w = tw;
-      rt.h = th;
-      rt.gray = T;
-      rt.mask = QVector<uchar>(tw * th, 255);
-      rt.centerInTpl = QPointF((tw - 1) * 0.5, (th - 1) * 0.5);
-      rt.angleDeg = 0;
-    } else {
-      rt = rotateTemplateGray(T, tw, th, ang);
+  int step = params.value(QStringLiteral("step"), 0).toInt();
+  auto autoStep = [&](int tw, int th) {
+    int st = step;
+    if (st <= 0) {
+      const int span = qMax(sw, sh);
+      st = span > 900 ? 8 : (span > 480 ? 4 : 2);
+      const int shortSide = qMin(tw, th);
+      if (shortSide <= 48)
+        st = qMin(st, 2);
+      else if (shortSide <= 80)
+        st = qMin(st, 4);
     }
-    if (rt.w > sw || rt.h > sh) continue;
-    int maskN = 0;
-    for (uchar m : rt.mask)
-      if (m) ++maskN;
-    if (maskN < 16) continue;
-    const double denom = 255.0 * maskN;
-    const double coarseMin = qMax(0.2, minScore - 0.25);
-    auto scoreAt = [&](int x, int y) -> double {
-      if (x < 0 || y < 0 || x > sw - rt.w || y > sh - rt.h) return -1;
-      long sad = 0;
-      for (int ty = 0; ty < rt.h; ++ty) {
-        const uchar* row = S.constData() + (y + ty) * sw + x;
-        const uchar* trow = rt.gray.constData() + ty * rt.w;
-        const uchar* mrow = rt.mask.constData() + ty * rt.w;
-        for (int tx = 0; tx < rt.w; ++tx) {
-          if (!mrow[tx]) continue;
-          sad += qAbs(int(row[tx]) - int(trow[tx]));
+    return st;
+  };
+
+  for (int ti = 0; ti < tpls.size(); ++ti) {
+    int tw = 0, th = 0;
+    const QVector<uchar> T = toGray(tpls[ti].img, tw, th);
+    if (tw < 4 || th < 4) continue;
+    for (double sx : sxs) {
+      for (double syv : sys) {
+        int stw = tw, sth = th;
+        QVector<uchar> Ts = T;
+        if (std::fabs(sx - 1.0) > 1e-6 || std::fabs(syv - 1.0) > 1e-6) {
+          stw = qMax(4, qRound(tw * sx));
+          sth = qMax(4, qRound(th * syv));
+          Ts = resizeGray(T, tw, th, stw, sth);
         }
-      }
-      return 1.0 - double(sad) / denom;
-    };
-    QVector<Cand> coarse;
-    for (int y = 0; y <= sh - rt.h; y += step) {
-      for (int x = 0; x <= sw - rt.w; x += step) {
-        const double score = scoreAt(x, y);
-        if (score + 1e-6 < coarseMin) continue;
-        coarse.push_back({x, y, score, ang, rt.w, rt.h, rt.centerInTpl});
-      }
-    }
-    std::sort(coarse.begin(), coarse.end(), [](const Cand& a, const Cand& b) {
-      return a.score > b.score;
-    });
-    const int refineN = qMin(coarse.size(), 24);
-    const int rad = qMax(step, 1);
-    for (int i = 0; i < refineN; ++i) {
-      const Cand& c0 = coarse[i];
-      Cand best = c0;
-      const int x0 = qMax(0, c0.x - rad), x1 = qMin(sw - rt.w, c0.x + rad);
-      const int y0 = qMax(0, c0.y - rad), y1 = qMin(sh - rt.h, c0.y + rad);
-      for (int y = y0; y <= y1; ++y) {
-        for (int x = x0; x <= x1; ++x) {
-          const double sc = scoreAt(x, y);
-          if (sc > best.score) {
-            best.x = x;
-            best.y = y;
-            best.score = sc;
+        if (stw > sw || sth > sh) continue;
+        const int useStep = autoStep(stw, sth);
+        for (double ang : angles) {
+          RotatedTpl rt;
+          if (qAbs(ang) < 1e-9) {
+            rt.w = stw;
+            rt.h = sth;
+            rt.gray = Ts;
+            rt.mask = QVector<uchar>(stw * sth, 255);
+            rt.centerInTpl = QPointF((stw - 1) * 0.5, (sth - 1) * 0.5);
+            rt.angleDeg = 0;
+          } else {
+            rt = rotateTemplateGray(Ts, stw, sth, ang);
+          }
+          if (rt.w > sw || rt.h > sh) continue;
+          const double coarseMin = qMax(-0.2, minScore - 0.25);
+          QVector<Cand> coarse;
+          for (int y = 0; y <= sh - rt.h; y += useStep) {
+            for (int x = 0; x <= sw - rt.w; x += useStep) {
+              const double score = scoreWindow(S, sw, sh, rt, x, y, metric);
+              if (score + 1e-6 < coarseMin) continue;
+              coarse.push_back({x, y, score, ang, sx, syv, rt.w, rt.h, stw, sth, ti, tpls[ti].name,
+                                rt.centerInTpl});
+            }
+          }
+          std::sort(coarse.begin(), coarse.end(),
+                    [](const Cand& a, const Cand& b) { return a.score > b.score; });
+          const int refineN = qMin(coarse.size(), 24);
+          const int rad = qMax(useStep, 1);
+          for (int i = 0; i < refineN; ++i) {
+            const Cand& c0 = coarse[i];
+            Cand best = c0;
+            const int x0 = qMax(0, c0.x - rad), x1 = qMin(sw - rt.w, c0.x + rad);
+            const int y0 = qMax(0, c0.y - rad), y1 = qMin(sh - rt.h, c0.y + rad);
+            for (int y = y0; y <= y1; ++y) {
+              for (int x = x0; x <= x1; ++x) {
+                const double sc = scoreWindow(S, sw, sh, rt, x, y, metric);
+                if (sc > best.score) {
+                  best.x = x;
+                  best.y = y;
+                  best.score = sc;
+                }
+              }
+            }
+            if (best.score + 1e-6 >= minScore) cands.push_back(best);
           }
         }
       }
-      if (best.score + 1e-6 >= minScore) cands.push_back(best);
     }
   }
 
@@ -398,37 +570,40 @@ LocateResult runLocate(const QImage& scene, const QVariantMap& params) {
 
   auto aabbOf = [](const QPolygonF& poly) {
     if (poly.isEmpty()) return QRect();
-    QRectF b = poly.boundingRect();
-    return b.toAlignedRect();
+    return poly.boundingRect().toAlignedRect();
   };
 
   for (const Cand& c : cands) {
     TemplateHit hit;
     hit.score = c.score;
     hit.angleDeg = c.angle;
-    hit.scale = 1;
+    hit.scaleX = c.scaleX;
+    hit.scaleY = c.scaleY;
+    hit.scale = c.scaleX;
+    hit.templateIndex = c.tplIndex;
+    hit.templateName = c.tplName;
     hit.center = QPointF(c.x + c.centerOff.x(), c.y + c.centerOff.y());
-    hit.corners = hitCorners([&]() {
-      RotatedTpl dummy;
-      dummy.centerInTpl = c.centerOff;
-      dummy.w = c.rw;
-      dummy.h = c.rh;
-      dummy.angleDeg = c.angle;
-      return dummy;
-    }(), c.x, c.y, tw, th, c.angle);
+    hit.corners = hitCorners(
+        [&]() {
+          RotatedTpl dummy;
+          dummy.centerInTpl = c.centerOff;
+          dummy.w = c.rw;
+          dummy.h = c.rh;
+          dummy.angleDeg = c.angle;
+          return dummy;
+        }(),
+        c.x, c.y, c.tw0, c.th0, c.angle);
     hit.rect = aabbOf(hit.corners);
-    if (hit.rect.isEmpty())
-      hit.rect = QRect(c.x, c.y, c.rw, c.rh);
+    if (hit.rect.isEmpty()) hit.rect = QRect(c.x, c.y, c.rw, c.rh);
 
     bool overlap = false;
     for (const TemplateHit& kept : r.hits) {
       const QRect inter = hit.rect.intersected(kept.rect);
       if (inter.isEmpty()) continue;
-      const double iou =
-          double(inter.width() * inter.height()) /
-          double(qMax(1, hit.rect.width() * hit.rect.height() +
-                             kept.rect.width() * kept.rect.height() -
-                             inter.width() * inter.height()));
+      const double iou = double(inter.width() * inter.height()) /
+                         double(qMax(1, hit.rect.width() * hit.rect.height() +
+                                            kept.rect.width() * kept.rect.height() -
+                                            inter.width() * inter.height()));
       if (iou > iouThr) {
         overlap = true;
         break;
@@ -441,10 +616,14 @@ LocateResult runLocate(const QImage& scene, const QVariantMap& params) {
 
   r.ok = !r.hits.isEmpty();
   if (r.ok) {
-    r.note = QStringLiteral("%1 个 · 分数 %2 · 角度 %3°")
+    const TemplateHit& h0 = r.hits.first();
+    r.note = QStringLiteral("%1 个 · 分数 %2 · 角度 %3° · 尺度 %4×%5%6")
                  .arg(r.hits.size())
-                 .arg(r.hits.first().score, 0, 'f', 3)
-                 .arg(r.hits.first().angleDeg, 0, 'f', 1);
+                 .arg(h0.score, 0, 'f', 3)
+                 .arg(h0.angleDeg, 0, 'f', 1)
+                 .arg(h0.scaleX, 0, 'f', 2)
+                 .arg(h0.scaleY, 0, 'f', 2)
+                 .arg(metric == MatchMetric::Ncc ? QStringLiteral(" · NCC") : QStringLiteral(" · SAD"));
   } else {
     r.note = QStringLiteral("未找到达到分数阈值的匹配");
   }

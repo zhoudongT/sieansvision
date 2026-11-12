@@ -106,6 +106,8 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx` / `yol
 
 **已落地（wave276）：** 新目录算子 `warp`（图像变换）：仿射、透视（单应）与环形展开。可用矩阵或 3/4 点对；invert 走逆变换。环形展开列=角度、行=半径（上内下外）。纯 QImage 双线性采样。无界面自测 `SIEANS_QT_WARP_SELFTEST=1`：已知平移/透视往返与 0° 亮点展开位置。诚实限制：奇异矩阵失败；插值在大变形下会模糊；不是相机去畸变。
 
+**已落地（wave277）：** 加深 `locate`：仔细读过 TemplateMatch.cpp 后确认原先只有灰度 SAD、旋转与多目标，没有 NCC、尺度搜索或真正的多模板匹配（面板虽有 templateLibrary 但引擎未用；目录文案里的均匀缩放此前也未实现）。现支持 metric/matchMode=ncc（零均值 NCC）、scaleEnable 均匀尺度与 scaleAniso 各向异性（X/Y 独立）尺度搜索、以及 templateLibrary/templatePaths 多模板一起搜（NMS 跨模板）。组合上限 400。变形/变化模型匹配做不到诚实的有限实现，已推迟。自测仍走 `SIEANS_QT_LOCATE_SELFTEST=1`。
+
 **NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。操作员账号（PySide 走独立 RPC/部署凭据，未在本机落地）。云 SaaS / 模板市场。真机硬件（`/opt/MVS`、真实 PLC）。官方 YOLO 权重需自行放入上述模型目录。
 
 ## VM chrome (2026-11-03)
