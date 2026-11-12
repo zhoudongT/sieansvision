@@ -23,7 +23,8 @@ def process_sample(pid):
         if not rss:
             return None
         return {"rssKiB": int(rss.group(1)), "fds": len(list(Path(f"/proc/{pid}/fd").iterdir()))}
-    except (FileNotFoundError, ProcessLookupError):
+    except (FileNotFoundError, ProcessLookupError, PermissionError):
+        # 退出/exec 边界可能暂时拒绝 /proc；不改 dumpable 或绕过 OS 权限。
         return None
 
 
@@ -38,9 +39,11 @@ def owned_loopback_ports(pid):
             address, port = fields[1].split(":")
             if fields[3] == "0A" and fields[9] in inodes and address == "0100007F":
                 ports.add(int(port, 16))
-        return ports
+        return ports, True
     except (FileNotFoundError, ProcessLookupError):
-        return set()
+        return set(), True
+    except PermissionError:
+        return set(), False
 
 
 def run_case(launcher, directory, flags, timeout=330):
@@ -56,25 +59,38 @@ def run_case(launcher, directory, flags, timeout=330):
         "SIEANS_QT_RECENT_PATH": str(directory/"recent.ini"), **flags})
     samples = []
     owned_ports = set()
+    proc_denied_samples = 0
     timed_out = False
     start = time.monotonic()
     with (directory/"console.txt").open("w") as console:
         process = subprocess.Popen([str(launcher)], env=env, cwd=directory, stdout=console, stderr=subprocess.STDOUT)
-        while process.poll() is None:
-            owned_ports.update(owned_loopback_ports(process.pid))
-            sample = process_sample(process.pid)
-            if sample:
-                samples.append({"elapsedS": round(time.monotonic()-start, 2), **sample})
-            if time.monotonic()-start > timeout:
-                timed_out = True
+        try:
+            while process.poll() is None:
+                ports, readable = owned_loopback_ports(process.pid)
+                owned_ports.update(ports)
+                if not readable:
+                    proc_denied_samples += 1
+                sample = process_sample(process.pid)
+                if sample:
+                    samples.append({"elapsedS": round(time.monotonic()-start, 2), **sample})
+                if time.monotonic()-start > timeout:
+                    timed_out = True
+                    process.terminate()
+                    try:
+                        process.wait(5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    break
+                time.sleep(0.2)
+        finally:
+            if process.poll() is None:
                 process.terminate()
                 try:
                     process.wait(5)
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait()
-                break
-            time.sleep(0.2)
     logs = "\n".join(p.read_text(errors="replace") for p in (directory/"logs").glob("*.log*"))
     stdout = (directory/"console.txt").read_text(errors="replace")
     (directory/"samples.json").write_text(json.dumps(samples, indent=2))
@@ -87,7 +103,7 @@ def run_case(launcher, directory, flags, timeout=330):
             probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             probe.bind(("127.0.0.1", port))
             released_ports.append(port)
-    result = {"releasedLoopbackPorts": released_ports, "exitCode": process.returncode, "timeout": timed_out,
+    result = {"procAccessDeniedSamples": proc_denied_samples, "releasedLoopbackPorts": released_ports, "exitCode": process.returncode, "timeout": timed_out,
         "elapsedS": round(time.monotonic()-start, 2), "peakRssKiB": max((s["rssKiB"] for s in samples), default=None),
         "secondHalfGrowthKiB": growth, "peakFds": max((s["fds"] for s in samples), default=None),
         "cleanExit": "session-clean-exit" in logs, "evidence": str(directory)}
