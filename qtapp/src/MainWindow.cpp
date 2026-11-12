@@ -16,6 +16,7 @@
 #include "CameraCal.hpp"
 #include "WarpOp.hpp"
 #include "PreprocessOp.hpp"
+#include "FftOp.hpp"
 #include "GeometryFind.hpp"
 #include "MeasureDim.hpp"
 #include "SerialExchange.hpp"
@@ -2692,6 +2693,50 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
       ok = wr.ok;
       note = wr.ok ? QStringLiteral("%1 · %2 ms").arg(wr.note).arg(wMs, 0, 'f', 1)
                    : wr.error;
+    } else if (op == QLatin1String("fft")) {
+      const auto t0 = std::chrono::steady_clock::now();
+      const FftResult fr = runFft(working, step->params);
+      const double fMs = std::chrono::duration<double, std::milli>(
+                             std::chrono::steady_clock::now() - t0)
+                             .count();
+      algoMs += fMs;
+      QString prefix =
+          step->params.value(QStringLiteral("resultVar"), QStringLiteral("fft"))
+              .toString()
+              .trimmed();
+      if (prefix.isEmpty()) prefix = QStringLiteral("fft");
+      auto put = [&](const QString& suffix, const QVariant& v) {
+        flow_vars_.insert(prefix + suffix, v);
+      };
+      const int okI = fr.ok ? 1 : 0;
+      put(QStringLiteral("Ok"), okI);
+      put(QStringLiteral("Passed"), okI);
+      put(QStringLiteral("Method"), fr.method);
+      put(QStringLiteral("Sharpness"), fr.sharpness);
+      put(QStringLiteral("PadW"), fr.padW);
+      put(QStringLiteral("PadH"), fr.padH);
+      if (prefix == QLatin1String("fft")) {
+        flow_vars_.insert(QStringLiteral("fft_ok"), okI);
+        flow_vars_.insert(QStringLiteral("fft_sharpness"), fr.sharpness);
+      }
+      if (fr.ok && !fr.image.isNull()) {
+        working = fr.image.convertToFormat(QImage::Format_RGB888);
+        image_view_->setLiveImage(working);
+      }
+      if (step->params.value(QStringLiteral("writePassGate")).toBool())
+        flow_vars_.insert(QStringLiteral("passGate"), okI);
+      {
+        StepSnap snap;
+        snap.ok = fr.ok;
+        snap.score = fr.sharpness;
+        snap.text = fr.note;
+        snap.fields.insert(QStringLiteral("method"), fr.method);
+        snap.fields.insert(QStringLiteral("sharpness"), fr.sharpness);
+        step_snaps.insert(id, snap);
+      }
+      ok = fr.ok;
+      note = fr.ok ? QStringLiteral("%1 · %2 ms").arg(fr.note).arg(fMs, 0, 'f', 1)
+                   : fr.error;
     } else if (op == QLatin1String("camera_cal")) {
       const auto t0 = std::chrono::steady_clock::now();
       const CameraCalResult cc = runCameraCal(working, step->params);
@@ -6220,6 +6265,14 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("angleSpan"), 360},
                 {QStringLiteral("invert"), false},
                 {QStringLiteral("resultVar"), QStringLiteral("warp")}};
+  } else if (key == QLatin1String("fft")) {
+    s.params = {{QStringLiteral("method"), QStringLiteral("lowpass")},
+                {QStringLiteral("cutoff"), 0.08},
+                {QStringLiteral("cutoffHigh"), 0.25},
+                {QStringLiteral("window"), QStringLiteral("none")},
+                {QStringLiteral("sharpCutoff"), 0.15},
+                {QStringLiteral("resultVar"), QStringLiteral("fft")},
+                {QStringLiteral("writePassGate"), false}};
   } else if (key == QLatin1String("camera_cal")) {
     s.params = {{QStringLiteral("method"), QStringLiteral("calibrate")},
                 {QStringLiteral("pattern"), QStringLiteral("checkerboard")},

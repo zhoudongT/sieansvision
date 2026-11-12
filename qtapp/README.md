@@ -110,6 +110,8 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx` / `yol
 
 **已落地（wave278）：** 补齐目录已宣传但 C++ 原先只有灰度/反色/阈值的 `preprocess`：可分离高斯模糊、Canny 风格边缘（Sobel + 非极大值抑制 + 双阈值滞后）、方形结构元灰度开/闭/腐蚀/膨胀。参数对齐目录 `method` / `threshold` / `kernel`，并增加 `cannyLow` / `cannyHigh`；旧方案 `mode=gray|mono|invert|threshold` 仍可用。invert 为既有能力，予以保留。纯 QImage，无 OpenCV/Halcon。无界面自测 `SIEANS_QT_PREPROCESS_SELFTEST=1`：冲激平滑且能量近似守恒、已知竖直阶跃边被 Canny 检出、形态学对已知斑块面积变化符合方形结构元预期。诚实限制：Canny 无亚像素；形态学仅方形核；大核大图会慢。
 
+**已落地（wave279）：** 新目录算子 `fft`（频域处理）：自研基数 2 二维 FFT，高斯低通/高通/带通/带阻后逆变换回空域，或输出对数幅度谱。截止频率为归一化频率（Nyquist=0.5）。内部补到 2 的幂（上限 4096）再裁回；可选 Hann 窗。写出 `fftOk` / `fftSharpness`（输入高频能量比，不是自动对焦）。纯 C++/QImage，无 FFTW/OpenCV/Halcon。无界面自测 `SIEANS_QT_FFT_SELFTEST=1`：低频正弦能通过低通、被高通衰减；高频正弦相反；带通/带阻方向正确；幅度谱在已知频率出现峰。诚实限制见属性提示：只处理灰度；无窗时周期延拓可能振铃；高通/带通显示偏置 +128。
+
 **NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。操作员账号（PySide 走独立 RPC/部署凭据，未在本机落地）。云 SaaS / 模板市场。真机硬件（`/opt/MVS`、真实 PLC）。官方 YOLO 权重需自行放入上述模型目录。
 
 ## VM chrome (2026-11-03)

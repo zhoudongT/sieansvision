@@ -2466,6 +2466,59 @@
     ],
     "hint": "按处理方法显示参数。纯 QImage，无 OpenCV。高斯模糊的卷积核大小须为奇数（偶数会 +1），范围 1–51。Canny 使用 cannyLow / cannyHigh 双阈值滞后，未设置时由 threshold 与 2×threshold 推导；无亚像素。形态学为方形结构元的灰度最小/最大。invert 为既有反色能力。大核在大图上会较慢。"
   },
+  "fft": {
+    "name": "频域处理",
+    "tag": "QImage · FFT",
+    "glyph": "∿",
+    "defaults": {
+      "method": "lowpass",
+      "cutoff": 0.08,
+      "cutoffHigh": 0.25,
+      "window": "none",
+      "sharpCutoff": 0.15
+    },
+    "description": "自研基数 2 二维 FFT：高斯低通 / 高通 / 带通 / 带阻，以及对数幅度谱预览。纯 C++/QImage，无 FFTW、OpenCV、Halcon。",
+    "fields": [
+      [
+        "method",
+        "处理方法",
+        [
+          "lowpass",
+          "highpass",
+          "bandpass",
+          "bandstop",
+          "spectrum"
+        ]
+      ],
+      [
+        "cutoff",
+        "截止频率",
+        0,
+        0.5
+      ],
+      [
+        "cutoffHigh",
+        "截止频率上限",
+        0,
+        0.5
+      ],
+      [
+        "window",
+        "窗函数",
+        [
+          "none",
+          "hann"
+        ]
+      ],
+      [
+        "sharpCutoff",
+        "清晰度频率",
+        0,
+        0.5
+      ]
+    ],
+    "hint": "截止频率为归一化频率，Nyquist=0.5。低通/高通是从直流起的高斯；带通/带阻是以 (cutoff+cutoffHigh)/2 为中心、半宽约 (cutoffHigh-cutoff)/4 为 σ 的高斯环带，不是理想矩形带。内部补到 2 的幂（单边上限 4096）再裁回原尺寸。只处理灰度。可选 Hann 窗减轻周期延拓泄漏，但会压暗边缘。高通与带通因去掉直流，显示偏置 +128。fftSharpness 是输入图高于 sharpCutoff 的频谱能量占非直流总能量的比例，可作简单清晰度参考，不是相机自动对焦。不是 Halcon/FFTW FFT。大图会较慢。"
+  },
   "color": {
     "name": "颜色处理",
     "tag": "RGB / HSV · 通道",

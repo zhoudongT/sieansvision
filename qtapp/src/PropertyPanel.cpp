@@ -215,6 +215,15 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("invert", "使用逆变换", kBool, ""),
             S("resultVar", "结果前缀", kLine, "warp → warpOk")};
   }
+  if (op == QLatin1String("fft")) {
+    return {S("method", "处理方法", kChoice, "lowpass|高斯低通;highpass|高斯高通;bandpass|高斯带通;bandstop|高斯带阻;spectrum|对数幅度谱"),
+            S("cutoff", "截止频率", kReal, "归一化频率，Nyquist=0.5，低通/高通/带通下沿"),
+            S("cutoffHigh", "截止频率上限", kReal, "带通/带阻上沿，须大于 cutoff"),
+            S("window", "窗函数", kChoice, "none|无;hann|Hann（减轻泄漏，边缘会变暗）"),
+            S("sharpCutoff", "清晰度频率", kReal, "高于此半径的能量占比，默认 0.15"),
+            S("resultVar", "结果前缀", kLine, "fft → fftOk/fftSharpness"),
+            S("writePassGate", "写入 passGate", kBool, "")};
+  }
   if (op == QLatin1String("barcode") || op == QLatin1String("qr_decode")) {
     return {S("types", "码制", kLine, ""),
             S("maxCodes", "最多码数", kInt, ""),
@@ -1409,6 +1418,8 @@ void PropertyPanel::showStep(const FlowStep& step) {
     hint += QStringLiteral(" · 循环子流程 · loopCount/loopStoppedEarly · 最多 100 轮");
   else if (step.operation == QLatin1String("preprocess"))
     hint += QStringLiteral(" · 灰度/反色/阈值/高斯模糊/Canny/形态学 · 纯 QImage，无 OpenCV · 高斯核须为奇数（偶数会+1） · Canny 为双阈值滞后近似，无亚像素 · 形态学仅方形结构元");
+  else if (step.operation == QLatin1String("fft"))
+    hint += QStringLiteral(" · 自研基数 2 FFT，无 FFTW/OpenCV/Halcon · 内部补到 2 的幂（上限 4096）再裁回 · 截止频率 Nyquist=0.5 · 高通/带通显示偏置 +128 · 清晰度为输入高频能量比，不是自动对焦");
   meta_->setText(hint);
   QVariantMap shown = step.params;
   if (step.operation == QLatin1String("preprocess") &&

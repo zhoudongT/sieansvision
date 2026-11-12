@@ -66,7 +66,7 @@ class OperatorListWidget : public QListWidget {
 
 const char* glyphKindFor(const QString& key, const QString& category) {
   if (key == QLatin1String("camera_capture")) return "camera";
-  if (key == QLatin1String("preprocess") || key == QLatin1String("color") || key == QLatin1String("warp")) return "image";
+  if (key == QLatin1String("preprocess") || key == QLatin1String("color") || key == QLatin1String("warp") || key == QLatin1String("fft")) return "image";
   if (key == QLatin1String("save_image")) return "save";
   if (key == QLatin1String("locate")) return "locate";
   if (key == QLatin1String("caliper") || key == QLatin1String("measure") || key == QLatin1String("camera_cal")) return "caliper";
@@ -291,6 +291,9 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
       {QStringLiteral("warp"), QStringLiteral("图像变换"),
        QStringLiteral("图像处理"),
        QStringLiteral("仿射 / 透视 / 环形展开（QImage，无 OpenCV）")},
+      {QStringLiteral("fft"), QStringLiteral("频域处理"),
+       QStringLiteral("图像处理"),
+       QStringLiteral("FFT 高斯低通/高通/带通/带阻与幅度谱（自研，无 FFTW）")},
       {QStringLiteral("region"), QStringLiteral("区域分析"),
        QStringLiteral("图像处理"),
        QStringLiteral("阈值 / 连通域 / 分水岭与区域生长拆分（QImage，无 OpenCV）")},
