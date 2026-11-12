@@ -157,6 +157,50 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("resultVar", "结果前缀", kLine, "cal → calFx/Fy/Cx/Cy/K1/K2/Rmse"),
             S("writePassGate", "写入 passGate", kBool, "")};
   }
+  if (op == QLatin1String("warp")) {
+    return {S("method", "变换类型", kChoice, "affine|仿射;perspective|透视;polar|环形展开"),
+            S("a00", "a00", kReal, "仿射 2×3"),
+            S("a01", "a01", kReal, ""),
+            S("a02", "a02", kReal, "平移 X"),
+            S("a10", "a10", kReal, ""),
+            S("a11", "a11", kReal, ""),
+            S("a12", "a12", kReal, "平移 Y"),
+            S("h00", "h00", kReal, "透视 3×3"),
+            S("h01", "h01", kReal, ""),
+            S("h02", "h02", kReal, ""),
+            S("h10", "h10", kReal, ""),
+            S("h11", "h11", kReal, ""),
+            S("h12", "h12", kReal, ""),
+            S("h20", "h20", kReal, ""),
+            S("h21", "h21", kReal, ""),
+            S("h22", "h22", kReal, "默认 1"),
+            S("src1X", "源点1 X", kReal, "点对可代替矩阵"),
+            S("src1Y", "源点1 Y", kReal, ""),
+            S("dst1X", "目标点1 X", kReal, ""),
+            S("dst1Y", "目标点1 Y", kReal, ""),
+            S("src2X", "源点2 X", kReal, ""),
+            S("src2Y", "源点2 Y", kReal, ""),
+            S("dst2X", "目标点2 X", kReal, ""),
+            S("dst2Y", "目标点2 Y", kReal, ""),
+            S("src3X", "源点3 X", kReal, ""),
+            S("src3Y", "源点3 Y", kReal, ""),
+            S("dst3X", "目标点3 X", kReal, ""),
+            S("dst3Y", "目标点3 Y", kReal, ""),
+            S("src4X", "源点4 X", kReal, "透视需 4 点"),
+            S("src4Y", "源点4 Y", kReal, ""),
+            S("dst4X", "目标点4 X", kReal, ""),
+            S("dst4Y", "目标点4 Y", kReal, ""),
+            S("centerX", "圆心 X", kReal, "环形展开"),
+            S("centerY", "圆心 Y", kReal, ""),
+            S("rMin", "内半径", kReal, ""),
+            S("rMax", "外半径", kReal, "0=到图像边"),
+            S("angleStart", "起始角", kReal, "度，+x 为 0，逆时针"),
+            S("angleSpan", "张角", kReal, "默认 360"),
+            S("outW", "输出宽", kInt, "0=自动"),
+            S("outH", "输出高", kInt, "0=自动"),
+            S("invert", "使用逆变换", kBool, ""),
+            S("resultVar", "结果前缀", kLine, "warp → warpOk")};
+  }
   if (op == QLatin1String("barcode") || op == QLatin1String("qr_decode")) {
     return {S("types", "码制", kLine, ""),
             S("maxCodes", "最多码数", kInt, ""),
@@ -1305,6 +1349,8 @@ void PropertyPanel::showStep(const FlowStep& step) {
     hint += QStringLiteral(" · RGB/HSV 转换、通道提取、颜色阈值 · 打包 HSV 的 H 为 0–255（约 1.4°）· 往返允许数灰阶误差 · hMin>hMax 环绕");
   else if (step.operation == QLatin1String("camera_cal"))
     hint += QStringLiteral(" · 针孔+2 阶径向畸变 · RMSE · 单视图锁定 fx=fy 且主点居中 · 不是两点 pxPerMm · 无切向/鱼眼");
+  else if (step.operation == QLatin1String("warp"))
+    hint += QStringLiteral(" · 仿射/透视/环形展开 · 双线性采样 · 矩阵或点对 · 环形列=角行=半径（上内下外）");
   else if (step.operation == QLatin1String("region"))
     hint += QStringLiteral(" · 固定/Otsu 或分水岭/区域生长拆分 · regionCount/Area/X/Y · 无稳定距离峰或严重重叠仍可能合并");
   else if (step.operation == QLatin1String("defects"))

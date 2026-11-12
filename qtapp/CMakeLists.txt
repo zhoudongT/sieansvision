@@ -87,6 +87,8 @@ add_executable(sieans_qt
   src/ColorOp.cpp
   src/CameraCal.hpp
   src/CameraCal.cpp
+  src/WarpOp.hpp
+  src/WarpOp.cpp
   src/FixturePose.hpp
   src/FixturePose.cpp
   src/GeometryFind.hpp

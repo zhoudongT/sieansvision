@@ -66,7 +66,7 @@ class OperatorListWidget : public QListWidget {
 
 const char* glyphKindFor(const QString& key, const QString& category) {
   if (key == QLatin1String("camera_capture")) return "camera";
-  if (key == QLatin1String("preprocess") || key == QLatin1String("color")) return "image";
+  if (key == QLatin1String("preprocess") || key == QLatin1String("color") || key == QLatin1String("warp")) return "image";
   if (key == QLatin1String("save_image")) return "save";
   if (key == QLatin1String("locate")) return "locate";
   if (key == QLatin1String("caliper") || key == QLatin1String("measure") || key == QLatin1String("camera_cal")) return "caliper";
@@ -287,6 +287,9 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
       {QStringLiteral("color"), QStringLiteral("颜色处理"),
        QStringLiteral("图像处理"),
        QStringLiteral("RGB/HSV 转换 · 通道提取 · 颜色阈值（QImage，无 OpenCV）")},
+      {QStringLiteral("warp"), QStringLiteral("图像变换"),
+       QStringLiteral("图像处理"),
+       QStringLiteral("仿射 / 透视 / 环形展开（QImage，无 OpenCV）")},
       {QStringLiteral("region"), QStringLiteral("区域分析"),
        QStringLiteral("图像处理"),
        QStringLiteral("阈值 / 连通域 / 分水岭与区域生长拆分（QImage，无 OpenCV）")},

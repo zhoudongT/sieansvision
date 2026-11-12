@@ -14,6 +14,7 @@
 #include "RegionAnalyze.hpp"
 #include "ColorOp.hpp"
 #include "CameraCal.hpp"
+#include "WarpOp.hpp"
 #include "GeometryFind.hpp"
 #include "MeasureDim.hpp"
 #include "SerialExchange.hpp"
@@ -2675,6 +2676,45 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
       ok = cr.ok;
       note = cr.ok ? QStringLiteral("%1 · %2 ms").arg(cr.note).arg(cMs, 0, 'f', 1)
                    : cr.error;
+    } else if (op == QLatin1String("warp")) {
+      const auto t0 = std::chrono::steady_clock::now();
+      const WarpResult wr = runWarp(working, step->params);
+      const double wMs = std::chrono::duration<double, std::milli>(
+                             std::chrono::steady_clock::now() - t0)
+                             .count();
+      algoMs += wMs;
+      QString prefix =
+          step->params.value(QStringLiteral("resultVar"), QStringLiteral("warp"))
+              .toString()
+              .trimmed();
+      if (prefix.isEmpty()) prefix = QStringLiteral("warp");
+      auto put = [&](const QString& suffix, const QVariant& v) {
+        flow_vars_.insert(prefix + suffix, v);
+      };
+      const int okI = wr.ok ? 1 : 0;
+      put(QStringLiteral("Ok"), okI);
+      put(QStringLiteral("Passed"), okI);
+      put(QStringLiteral("Method"), wr.method);
+      put(QStringLiteral("Width"), wr.outWidth);
+      put(QStringLiteral("Height"), wr.outHeight);
+      if (prefix == QLatin1String("warp"))
+        flow_vars_.insert(QStringLiteral("warp_ok"), okI);
+      if (wr.ok && !wr.image.isNull()) {
+        working = wr.image.convertToFormat(QImage::Format_RGB888);
+        image_view_->setLiveImage(working);
+      }
+      if (step->params.value(QStringLiteral("writePassGate")).toBool())
+        flow_vars_.insert(QStringLiteral("passGate"), okI);
+      {
+        StepSnap snap;
+        snap.ok = wr.ok;
+        snap.text = wr.note;
+        snap.fields.insert(QStringLiteral("method"), wr.method);
+        step_snaps.insert(id, snap);
+      }
+      ok = wr.ok;
+      note = wr.ok ? QStringLiteral("%1 · %2 ms").arg(wr.note).arg(wMs, 0, 'f', 1)
+                   : wr.error;
     } else if (op == QLatin1String("camera_cal")) {
       const auto t0 = std::chrono::steady_clock::now();
       const CameraCalResult cc = runCameraCal(working, step->params);
@@ -6181,6 +6221,18 @@ void MainWindow::addOperatorAt(const QString& key, const QString& name,
                 {QStringLiteral("resultVar"), QStringLiteral("color")},
                 {QStringLiteral("writePassGate"), false},
                 {QStringLiteral("followFixture"), false}};
+  } else if (key == QLatin1String("warp")) {
+    s.params = {{QStringLiteral("method"), QStringLiteral("affine")},
+                {QStringLiteral("a00"), 1},
+                {QStringLiteral("a01"), 0},
+                {QStringLiteral("a02"), 0},
+                {QStringLiteral("a10"), 0},
+                {QStringLiteral("a11"), 1},
+                {QStringLiteral("a12"), 0},
+                {QStringLiteral("angleStart"), 0},
+                {QStringLiteral("angleSpan"), 360},
+                {QStringLiteral("invert"), false},
+                {QStringLiteral("resultVar"), QStringLiteral("warp")}};
   } else if (key == QLatin1String("camera_cal")) {
     s.params = {{QStringLiteral("method"), QStringLiteral("calibrate")},
                 {QStringLiteral("pattern"), QStringLiteral("checkerboard")},
