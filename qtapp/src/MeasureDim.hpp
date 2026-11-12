@@ -33,7 +33,7 @@ struct MeasureResult {
   bool ok = false;
   QString error;
   QString note;
-  QString mode;  // caliper / circles / contours / lines / points / angle
+  QString mode;  // caliper / circles / contours / lines / points / angle / arc / profile / level
   QString unit;  // px | mm | ...
   bool calibrated = false;
   double pxPerMm = 0;        // pixels per millimetre (0 = px only)
@@ -65,7 +65,10 @@ struct MeasureResult {
 
 /**
  * 尺寸测量与标定，对齐 PySide/engine.measure，并补齐直线长度与夹角。
- * modes/feature: caliper | circles | contours | lines | points | angle
+ * modes/feature: caliper | circles | contours | lines | points | angle | arc | profile | level
+ * arc: 圆环卡尺上的半径/直径/弧长/圆心角（0°=+x，逆时针指向图像 -y）。
+ * profile: 沿线或 ROI 中线的一维灰度剖面找边。
+ * level: 竖直 ROI 上最强界面，高度从 ROI 底边算起；不声称哪一侧是液体。
  * 标定：pxPerMm，或 calibration.points + distance + unit（等比例平面）。
  * 卡尺模式转调 runCaliper，不改变原卡尺行为。No OpenCV / Halcon.
  */

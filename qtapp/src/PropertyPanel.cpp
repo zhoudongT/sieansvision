@@ -320,6 +320,15 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("roiY", "ROI Y", kInt, ""),
             S("roiW", "ROI 宽", kInt, ""),
             S("roiH", "ROI 高", kInt, ""),
+            S("centerX", "圆心 X", kReal, "arc；缺省用 ROI 中心"),
+            S("centerY", "圆心 Y", kReal, ""),
+            S("rMin", "内半径", kReal, "arc 圆环卡尺"),
+            S("rMax", "外半径", kReal, ""),
+            S("angleStart", "起始角", kReal, "arc，0°=+x，逆时针向 -y"),
+            S("angleSpan", "张角", kReal, "arc，度"),
+            S("direction", "剖面方向", kChoice, "horizontal|水平;vertical|垂直"),
+            S("polarity", "边缘极性", kChoice, "any|任意;dark_to_light|暗到亮;light_to_dark|亮到暗"),
+            S("bandHalf", "剖面半宽", kInt, "垂直于扫描线的平均半宽，默认 4"),
             S("judgeEnable", "启用判定", kBool, ""),
             S("judgeMaxCount", "允许最大个数", kInt, "0=有缺陷即 NG"),
             S("judgeMaxRatio", "允许最大比例", kReal, ""),
@@ -495,7 +504,8 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
   }
   if (op == QLatin1String("measure")) {
     return {S("feature", "测量对象", kChoice,
-              "circles|圆直径/半径;lines|直线长度;points|两点距离;angle|夹角;contours|轮廓外接矩形;caliper|卡尺间距"),
+              "circles|圆直径/半径;lines|直线长度;points|两点距离;angle|夹角;contours|轮廓外接矩形;caliper|卡尺间距;"
+              "arc|圆弧半径/弧长;profile|一维剖面;level|液位高度"),
             S("target", "软场景目标", kChoice,
               "|手动/ROI;soft_circle|软圆;soft_line|软直线;soft_points|软直线两端;soft_angle|软直线⊥垂直;soft_bars|软卡尺条"),
             S("pxPerMm", "像素/毫米", kReal, "0=仅像素；与标定二选一"),
@@ -1408,7 +1418,7 @@ void PropertyPanel::showStep(const FlowStep& step) {
   else if (step.operation == QLatin1String("geometry"))
     hint += QStringLiteral(" · 直线/圆/矩形/轮廓/边缘 · geomCount/X/Y/Radius/Length");
   else if (step.operation == QLatin1String("measure"))
-    hint += QStringLiteral(" · 直径/线长/两点距/夹角/轮廓 · 等比例标定 pxPerMm");
+    hint += QStringLiteral(" · 直径/线长/两点距/夹角/轮廓/卡尺 · 圆弧半径与弧长（圆环采样，0°=+x） · 一维剖面找边（刀口缺口等也走这条，不是单独算子） · 液位取竖直 ROI 最强界面、高度从底边计，不区分哪侧是液体 · 弯月面/透明壁/光照不均会偏 · 等比例标定 pxPerMm");
   else if (step.operation == QLatin1String("caliper"))
     hint += QStringLiteral(" · QImage 边缘卡尺 · caliperDist/measureMm");
   else if (step.operation == QLatin1String("color"))

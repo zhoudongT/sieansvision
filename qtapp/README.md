@@ -118,6 +118,8 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx` / `yol
 
 **已落地（wave282）：** `preprocess` 再补图像增强、算术、插值与裁剪：`equalize` 全图亮度直方图均衡（彩色按比例缩放通道，不是 CLAHE）、`gamma`、`contrast`/`brightness`、`add`/`subtract`/`multiply`/`absdiff`（第二图 `otherPath`/`_otherImage` 或常量 `value`，尺寸不同取左上重叠，不是 defects 判定）、`resize`（`scale` 或 `outW`/`outH`，`interp=nearest|bilinear|bicubic`，边长上限 4096）、`crop`（ROI，可 `followFixture`）。通道提取仍走 `color`。自测仍走 `SIEANS_QT_PREPROCESS_SELFTEST=1`：已知伽马曲线、斜坡均衡后对比度上升、相同图相减为 0、最近邻/双线性缩放结构保持、裁剪像素与 ROI 完全一致。先前模糊/Canny/形态学用例保留。
 
+**已落地（wave283）：** `measure` 增加 `feature=arc|profile|level`（不新开目录键）。圆弧在圆环卡尺上径向采边，报告半径/直径/圆心角/弧长（0°=+x，逆时针向图像 -y；点数足够时用 Kasa 拟合）。一维剖面沿线或 ROI 中线找边（刀口缺口等也走这条，不是单独算子）。液位取竖直（可 followFixture）ROI 最强界面，高度从 ROI 底边计，标定后给 mm，不声称哪一侧是液体。自测仍走 `SIEANS_QT_MEASURE_SELFTEST=1`：已知半径圆弧、水平阶跃位置、两段罐体液位（含 mm）均在给定公差内；既有圆/线/点/角/轮廓/标定点用例保留。诚实限制：弯月面、透明壁、光照不均会使液位偏离。
+
 **NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。操作员账号（PySide 走独立 RPC/部署凭据，未在本机落地）。云 SaaS / 模板市场。真机硬件（`/opt/MVS`、真实 PLC）。官方 YOLO 权重需自行放入上述模型目录。
 
 ## VM chrome (2026-11-03)

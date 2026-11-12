@@ -3169,19 +3169,26 @@
       "threshold": 127,
       "minArea": 50
     },
-    "description": "测量轮廓外接矩形或圆直径，也可指定两点测距。未标定时使用 px。",
+    "description": "测量轮廓外接矩形、圆直径、直线长度、两点距、夹角、卡尺间距、圆弧半径/弧长、一维剖面边缘与竖直 ROI 液位。未标定时使用 px。纯 QImage，无 OpenCV / Halcon。",
     "fields": [
       [
         "feature",
         "测量对象",
         [
           "contours",
-          "circles"
+          "circles",
+          "lines",
+          "points",
+          "angle",
+          "caliper",
+          "arc",
+          "profile",
+          "level"
         ]
       ],
       [
         "threshold",
-        "轮廓二值阈值",
+        "阈值",
         0,
         255
       ],
@@ -3195,9 +3202,86 @@
         "invert",
         "深色目标",
         "boolean"
+      ],
+      [
+        "pxPerMm",
+        "像素/毫米",
+        0,
+        10000,
+        0.01
+      ],
+      [
+        "centerX",
+        "圆心 X",
+        0,
+        16384,
+        0.1
+      ],
+      [
+        "centerY",
+        "圆心 Y",
+        0,
+        16384,
+        0.1
+      ],
+      [
+        "rMin",
+        "内半径",
+        0,
+        16384,
+        0.1
+      ],
+      [
+        "rMax",
+        "外半径",
+        0,
+        16384,
+        0.1
+      ],
+      [
+        "angleStart",
+        "起始角",
+        -360,
+        360,
+        0.1
+      ],
+      [
+        "angleSpan",
+        "张角",
+        -720,
+        720,
+        0.1
+      ],
+      [
+        "direction",
+        "剖面方向",
+        [
+          "horizontal",
+          "vertical"
+        ]
+      ],
+      [
+        "polarity",
+        "边缘极性",
+        [
+          "any",
+          "dark_to_light",
+          "light_to_dark"
+        ]
+      ],
+      [
+        "bandHalf",
+        "剖面半宽",
+        0,
+        64
+      ],
+      [
+        "followFixture",
+        "跟随定位",
+        "boolean"
       ]
     ],
-    "hint": "添加平面标定，填写两个像素点及实际距离、单位；添加坐标点可进行两点测距。仅支持等比例平面标定。"
+    "hint": "平面标定填写两个像素点及实际距离，或 pxPerMm；仅等比例。arc 在圆环上径向采边，0°=+x、逆时针向图像 -y。profile 沿线或 ROI 中线找边（刀口/缺口也用这条）。level 取竖直 ROI 最强界面，高度从 ROI 底边计，不声称哪一侧是液体；弯月面、透明壁与光照不均会使界面偏离。"
   },
   "camera_cal": {
     "name": "相机标定",

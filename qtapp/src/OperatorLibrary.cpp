@@ -307,7 +307,7 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
        QStringLiteral("定位与测量"), QStringLiteral("QImage 边缘间距（px/mm）")},
       {QStringLiteral("measure"), QStringLiteral("尺寸测量与标定"),
        QStringLiteral("定位与测量"),
-       QStringLiteral("直径 · 线长 · 两点距 · 夹角 · 轮廓尺寸 · 等比例标定")},
+       QStringLiteral("直径 · 线长 · 夹角 · 圆弧 · 一维剖面 · 液位 · 等比例标定")},
       {QStringLiteral("camera_cal"), QStringLiteral("相机标定"),
        QStringLiteral("定位与测量"),
        QStringLiteral("棋盘格/圆点阵列标定与去畸变（QImage，非 pxPerMm）")},
