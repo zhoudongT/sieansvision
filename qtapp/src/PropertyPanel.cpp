@@ -126,11 +126,28 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
   }
   if (op == QLatin1String("preprocess")) {
     return {S("method", "处理方法", kChoice,
-              "grayscale|灰度;blur|高斯模糊;threshold|阈值;canny|Canny 边缘;open|开运算;close|闭运算;erode|腐蚀;dilate|膨胀;invert|反色;gray|灰度;mono|灰度"),
+              "grayscale|灰度;blur|高斯模糊;threshold|阈值;canny|Canny 边缘;open|开运算;close|闭运算;erode|腐蚀;dilate|膨胀;invert|反色;"
+              "equalize|直方图均衡;gamma|伽马;contrast|对比度/亮度;add|相加;subtract|相减;multiply|相乘;absdiff|绝对差;"
+              "resize|缩放;crop|裁剪;gray|灰度;mono|灰度"),
             S("threshold", "二值阈值", kInt, "threshold 方法；Canny 未设 cannyLow 时也用它"),
             S("kernel", "卷积核大小", kInt, "1–51，须为奇数，偶数会 +1；模糊/Canny/形态学共用"),
             S("cannyLow", "Canny 低阈值", kInt, "滞后低阈值，默认 50"),
-            S("cannyHigh", "Canny 高阈值", kInt, "滞后高阈值，默认 150")};
+            S("cannyHigh", "Canny 高阈值", kInt, "滞后高阈值，默认 150"),
+            S("gamma", "伽马", kReal, "method=gamma，out=255*(in/255)^gamma，1 为恒等"),
+            S("contrast", "对比度", kReal, "method=contrast，倍率，1 为恒等"),
+            S("brightness", "亮度", kReal, "method=contrast，加到 128 偏移后，可为负"),
+            S("otherPath", "第二幅图路径", kLine, "算术运算；也可在自测里用 _otherImage；相对工程目录"),
+            S("value", "常量", kInt, "无第二图时的算术常量 0–255"),
+            S("bias", "减法偏置", kInt, "subtract 时加到差值，默认 0"),
+            S("scale", "缩放倍数", kReal, "method=resize，未设 outW/outH 时使用"),
+            S("outW", "输出宽", kInt, "resize；0 表示按 scale 或保持比例"),
+            S("outH", "输出高", kInt, "resize；0 表示按 scale 或保持比例"),
+            S("interp", "插值", kChoice, "bilinear|双线性;nearest|最近邻;bicubic|双三次 Keys"),
+            S("roiX", "ROI X", kInt, "crop；followFixture 时可被夹具覆盖"),
+            S("roiY", "ROI Y", kInt, ""),
+            S("roiW", "ROI 宽", kInt, "0 表示到图像右边"),
+            S("roiH", "ROI 高", kInt, "0 表示到图像下边"),
+            S("followFixture", "跟随定位", kBool, "crop 时用定位框覆盖 ROI")};
   }
   if (op == QLatin1String("color")) {
     return {S("method", "处理方法", kChoice, "convert|色彩空间转换;channel|通道提取;threshold|颜色阈值"),
@@ -1441,7 +1458,7 @@ void PropertyPanel::showStep(const FlowStep& step) {
   else if (step.operation == QLatin1String("loop"))
     hint += QStringLiteral(" · 循环子流程 · loopCount/loopStoppedEarly · 最多 100 轮");
   else if (step.operation == QLatin1String("preprocess"))
-    hint += QStringLiteral(" · 灰度/反色/阈值/高斯模糊/Canny/形态学 · 纯 QImage，无 OpenCV · 高斯核须为奇数（偶数会+1） · Canny 为双阈值滞后近似，无亚像素 · 形态学仅方形结构元");
+    hint += QStringLiteral(" · 灰度/反色/阈值/高斯模糊/Canny/形态学/直方图均衡/伽马/对比度 · 加减乘与绝对差（第二图或常量，不做缺陷判定） · 缩放 nearest/bilinear/bicubic · ROI 裁剪可跟夹具 · 纯 QImage，无 OpenCV · 均衡是全局的不是 CLAHE · Canny 无亚像素 · 形态学仅方形结构元 · 缩放边长上限 4096");
   else if (step.operation == QLatin1String("fft"))
     hint += QStringLiteral(" · 自研基数 2 FFT，无 FFTW/OpenCV/Halcon · 内部补到 2 的幂（上限 4096）再裁回 · 截止频率 Nyquist=0.5 · 高通/带通显示偏置 +128 · 清晰度为输入高频能量比，不是自动对焦");
   else if (step.operation == QLatin1String("classify"))

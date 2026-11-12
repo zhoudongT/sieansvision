@@ -284,7 +284,7 @@ QVector<OperatorDef> OperatorLibrary::catalog() {
        QStringLiteral("相机采集"), QStringLiteral("GenTL / UVC 采集")},
       {QStringLiteral("preprocess"), QStringLiteral("图像预处理"),
        QStringLiteral("图像处理"),
-       QStringLiteral("灰度 / 反色 / 阈值 / 高斯模糊 / Canny / 形态学（QImage，无 OpenCV）")},
+       QStringLiteral("灰度 / 滤波 / 均衡 / 伽马 / 算术 / 缩放 / 裁剪（QImage，无 OpenCV）")},
       {QStringLiteral("color"), QStringLiteral("颜色处理"),
        QStringLiteral("图像处理"),
        QStringLiteral("RGB/HSV 转换 · 通道提取 · 颜色阈值（QImage，无 OpenCV）")},

@@ -116,6 +116,8 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx` / `yol
 
 **已落地（wave281）：** `locate` 增加有限弹性分块（`matchMode=deform` / `deformEnable`）：将模板分成最多 3×3 块，每块在 `deformRadius`（≤24px）内平移，分数=块度量均值−λ×平均位移。这是 pictorial-structure / 弹性匹配的有限实现，不是 Halcon 变化模型，不是 TPS/FEM，也不用多张图训练外观方差。自测仍走 `SIEANS_QT_LOCATE_SELFTEST=1`：中段错开 14px 的水平条，刚体 NCC 找不到，弹性分块能找到；换成圆盘则拒绝。
 
+**已落地（wave282）：** `preprocess` 再补图像增强、算术、插值与裁剪：`equalize` 全图亮度直方图均衡（彩色按比例缩放通道，不是 CLAHE）、`gamma`、`contrast`/`brightness`、`add`/`subtract`/`multiply`/`absdiff`（第二图 `otherPath`/`_otherImage` 或常量 `value`，尺寸不同取左上重叠，不是 defects 判定）、`resize`（`scale` 或 `outW`/`outH`，`interp=nearest|bilinear|bicubic`，边长上限 4096）、`crop`（ROI，可 `followFixture`）。通道提取仍走 `color`。自测仍走 `SIEANS_QT_PREPROCESS_SELFTEST=1`：已知伽马曲线、斜坡均衡后对比度上升、相同图相减为 0、最近邻/双线性缩放结构保持、裁剪像素与 ROI 完全一致。先前模糊/Canny/形态学用例保留。
+
 **NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。操作员账号（PySide 走独立 RPC/部署凭据，未在本机落地）。云 SaaS / 模板市场。真机硬件（`/opt/MVS`、真实 PLC）。官方 YOLO 权重需自行放入上述模型目录。
 
 ## VM chrome (2026-11-03)

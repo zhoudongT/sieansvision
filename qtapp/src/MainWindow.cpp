@@ -2592,7 +2592,20 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
     if (op == QLatin1String("camera_capture")) {
       note = QStringLiteral("采图 %1×%2").arg(working.width()).arg(working.height());
     } else if (op == QLatin1String("preprocess")) {
-      const PreprocessResult pr = runPreprocess(working, step->params);
+      QVariantMap pp = step->params;
+      if (!current_path_.isEmpty())
+        pp.insert(QStringLiteral("baseDir"), QFileInfo(current_path_).absolutePath());
+      injectFixtureFromVars(pp, flow_vars_);
+      if (pp.value(QStringLiteral("followFixture")).toBool()) {
+        const FollowRoi fr = resolveFollowRoi(pp, working.width(), working.height());
+        if (fr.active && !fr.aabb.isEmpty()) {
+          pp.insert(QStringLiteral("roiX"), fr.aabb.x());
+          pp.insert(QStringLiteral("roiY"), fr.aabb.y());
+          pp.insert(QStringLiteral("roiW"), fr.aabb.width());
+          pp.insert(QStringLiteral("roiH"), fr.aabb.height());
+        }
+      }
+      const PreprocessResult pr = runPreprocess(working, pp);
       if (!pr.image.isNull()) working = pr.image;
       image_view_->setLiveImage(working);
       note = pr.ok ? (pr.note.isEmpty() ? QStringLiteral("预处理 %1").arg(pr.method)

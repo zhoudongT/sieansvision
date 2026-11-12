@@ -2413,7 +2413,7 @@
   },
   "preprocess": {
     "name": "图像预处理",
-    "tag": "QImage · 灰度 / 滤波",
+    "tag": "QImage · 灰度 / 滤波 / 算术",
     "glyph": "◐",
     "defaults": {
       "method": "grayscale",
@@ -2422,7 +2422,7 @@
       "cannyLow": 50,
       "cannyHigh": 150
     },
-    "description": "预处理输出成为下一步的输入图像。支持灰度、反色、模糊、二值化、Canny 边缘及形态学。纯 QImage，无 OpenCV / Halcon。",
+    "description": "预处理输出成为下一步的输入图像。支持灰度、反色、模糊、二值化、Canny、形态学、直方图均衡、伽马、对比度、加减乘与绝对差、缩放插值与 ROI 裁剪。纯 QImage，无 OpenCV / Halcon。算术不是缺陷判定；通道提取请用 color。",
     "fields": [
       [
         "method",
@@ -2436,7 +2436,16 @@
           "close",
           "erode",
           "dilate",
-          "invert"
+          "invert",
+          "equalize",
+          "gamma",
+          "contrast",
+          "add",
+          "subtract",
+          "multiply",
+          "absdiff",
+          "resize",
+          "crop"
         ]
       ],
       [
@@ -2462,9 +2471,104 @@
         "Canny 高阈值",
         0,
         255
+      ],
+      [
+        "gamma",
+        "伽马",
+        0.01,
+        8,
+        0.01
+      ],
+      [
+        "contrast",
+        "对比度",
+        0,
+        8,
+        0.01
+      ],
+      [
+        "brightness",
+        "亮度",
+        -255,
+        255,
+        1
+      ],
+      [
+        "otherPath",
+        "第二幅图路径",
+        "path"
+      ],
+      [
+        "value",
+        "算术常量",
+        0,
+        255
+      ],
+      [
+        "bias",
+        "减法偏置",
+        -255,
+        255
+      ],
+      [
+        "scale",
+        "缩放倍数",
+        0.01,
+        16,
+        0.01
+      ],
+      [
+        "outW",
+        "输出宽",
+        0,
+        4096
+      ],
+      [
+        "outH",
+        "输出高",
+        0,
+        4096
+      ],
+      [
+        "interp",
+        "插值",
+        [
+          "bilinear",
+          "nearest",
+          "bicubic"
+        ]
+      ],
+      [
+        "roiX",
+        "ROI X",
+        0,
+        16384
+      ],
+      [
+        "roiY",
+        "ROI Y",
+        0,
+        16384
+      ],
+      [
+        "roiW",
+        "ROI 宽",
+        0,
+        16384
+      ],
+      [
+        "roiH",
+        "ROI 高",
+        0,
+        16384
+      ],
+      [
+        "followFixture",
+        "跟随定位",
+        "boolean"
       ]
     ],
-    "hint": "按处理方法显示参数。纯 QImage，无 OpenCV。高斯模糊的卷积核大小须为奇数（偶数会 +1），范围 1–51。Canny 使用 cannyLow / cannyHigh 双阈值滞后，未设置时由 threshold 与 2×threshold 推导；无亚像素。形态学为方形结构元的灰度最小/最大。invert 为既有反色能力。大核在大图上会较慢。"
+    "hint": "按处理方法显示参数。纯 QImage，无 OpenCV。均衡是全图亮度直方图，不是 CLAHE。伽马 out=255*(in/255)^gamma。算术与第二图（otherPath）或常量 value 逐像素运算，尺寸不同取左上重叠，不做配准与缺陷连通域。缩放 interp=nearest|bilinear|bicubic（Keys，a=-0.5），边长上限 4096。crop 按 ROI 抠出，可 followFixture。通道提取请用 color。"
   },
   "fft": {
     "name": "频域处理",
