@@ -114,6 +114,8 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx` / `yol
 
 **已落地（wave280）：** 新目录算子 `classify`（传统分类）：本地特征表上的 KNN、线性 L2-SVM（可选 RBF 铰链核梯度）、每类 GMM（EM，默认 1 个分量）和一层隐藏的小 MLP。训练数据来自方案内 `samples` 文本或本地 `samplePath`（CSV/JSON），每次运行重训；预测可用 `features` 或流程变量 `featureVars`。写出 `classifyOk` / `classifyLabel` / `classifyScore`。无新库、无云、不自动下载。不是 YOLO。无界面自测 `SIEANS_QT_CLASSIFY_SELFTEST=1`：四类方法都在两类合成点上对留出样本预测正确，并覆盖本地 CSV 路径。诚实限制见属性提示：样本/维数上限、线性可分、GMM 高斯假设、小 MLP 过拟合、RBF 不是完整 SMO。
 
+**已落地（wave281）：** `locate` 增加有限弹性分块（`matchMode=deform` / `deformEnable`）：将模板分成最多 3×3 块，每块在 `deformRadius`（≤24px）内平移，分数=块度量均值−λ×平均位移。这是 pictorial-structure / 弹性匹配的有限实现，不是 Halcon 变化模型，不是 TPS/FEM，也不用多张图训练外观方差。自测仍走 `SIEANS_QT_LOCATE_SELFTEST=1`：中段错开 14px 的水平条，刚体 NCC 找不到，弹性分块能找到；换成圆盘则拒绝。
+
 **NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。操作员账号（PySide 走独立 RPC/部署凭据，未在本机落地）。云 SaaS / 模板市场。真机硬件（`/opt/MVS`、真实 PLC）。官方 YOLO 权重需自行放入上述模型目录。
 
 ## VM chrome (2026-11-03)

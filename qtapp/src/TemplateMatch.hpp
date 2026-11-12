@@ -50,9 +50,11 @@ QImage resolveLocateTemplate(const QImage& scene, const QVariantMap& params,
 
 /**
  * Template locate with optional rotation, uniform or anisotropic scale search,
- * SAD or NCC metric, and a multi-template library. Overlap NMS and pose
- * (center, angle, AABB + corners). No OpenCV / Halcon. No deformable /
- * variation-model matching (deferred; would not be an honest subset here).
+ * SAD or NCC metric, a multi-template library, and a limited elastic
+ * (pictorial-structure) grid: each block may shift within deformRadius,
+ * score is mean part NCC/SAD minus a shift penalty. Overlap NMS and pose
+ * (center, angle, AABB + corners). No OpenCV / Halcon. This is not a
+ * Halcon variation model, not TPS/FEM, and not a trained appearance model.
  */
 LocateResult runLocate(const QImage& scene, const QVariantMap& params);
 

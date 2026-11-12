@@ -79,7 +79,7 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
   if (op == QLatin1String("locate")) {
     return {S("templateSource", "模板来源", kChoice,
               "file|文件路径;soft_plate|软场景标牌;capture|从当前图截取"),
-            S("matchMode", "匹配模式", kChoice, "fast|快速 SAD;gray|灰度 SAD;ncc|归一化相关 NCC"),
+            S("matchMode", "匹配模式", kChoice, "fast|快速 SAD;gray|灰度 SAD;ncc|归一化相关 NCC;deform|弹性分块"),
             S("metric", "度量", kChoice, "sad|灰度 SAD;ncc|零均值 NCC"),
             S("templatePath", "模板文件", kLine, ""),
             S("templatePaths", "额外模板路径", kLine, "逗号分隔，与模板库一起搜"),
@@ -100,6 +100,11 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("scaleYMin", "Y 尺度最小", kReal, "仅各向异性"),
             S("scaleYMax", "Y 尺度最大", kReal, ""),
             S("scaleYStep", "Y 尺度步长", kReal, ""),
+            S("deformEnable", "弹性分块", kBool, "块内局部平移，不是变化模型"),
+            S("deformRadius", "块位移半径", kInt, "像素，1–24"),
+            S("deformGridX", "分块列数", kInt, "0=按模板形状自动，最大 3"),
+            S("deformGridY", "分块行数", kInt, "0=自动，最大 3"),
+            S("deformLambda", "位移惩罚", kReal, "从均分中扣 |d|/radius，默认 0.15"),
             S("showOverlay", "显示匹配框", kBool, ""),
             S("showOrigin", "显示模板原点", kBool, ""),
             S("showAngleDeg", "显示角度标注", kBool, "")};
@@ -1428,7 +1433,7 @@ void PropertyPanel::showStep(const FlowStep& step) {
   else if (step.operation == QLatin1String("plugin"))
     hint += QStringLiteral(" · 已安装算子插件 · pluginId/version · pluginValue");
   else if (step.operation == QLatin1String("locate"))
-    hint += QStringLiteral(" · SAD 或 NCC · 旋转/均匀或各向异性尺度 · 多模板库 · 组合上限 400 · 无变形匹配");
+    hint += QStringLiteral(" · SAD 或 NCC · 旋转/均匀或各向异性尺度 · 多模板库 · 组合上限 400 · 可选弹性分块（块内平移，不是变化模型/TPS）");
   else if (step.operation == QLatin1String("pose_correct"))
     hint += QStringLiteral(" · 定位跟随 · fixtureX/Y/Angle 供下游 ROI/测量");
   else if (step.operation == QLatin1String("subflow"))

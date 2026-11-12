@@ -295,6 +295,105 @@ double scoreWindow(const QVector<uchar>& S, int sw, int sh, const RotatedTpl& rt
   return num / std::sqrt(denS * denT);
 }
 
+struct DeformPart {
+  RotatedTpl rt;
+  int ox = 0;
+  int oy = 0;
+};
+
+/** 把旋转/缩放后的模板切成 gx×gy 块，块内有效像素太少则丢弃。 */
+QVector<DeformPart> splitDeformParts(const RotatedTpl& src, int gx, int gy) {
+  QVector<DeformPart> out;
+  gx = qBound(1, gx, 3);
+  gy = qBound(1, gy, 3);
+  if (src.w < 8 || src.h < 8) return out;
+  for (int iy = 0; iy < gy; ++iy) {
+    for (int ix = 0; ix < gx; ++ix) {
+      const int x0 = ix * src.w / gx;
+      const int y0 = iy * src.h / gy;
+      const int x1 = (ix + 1) * src.w / gx;
+      const int y1 = (iy + 1) * src.h / gy;
+      const int pw = x1 - x0;
+      const int ph = y1 - y0;
+      if (pw < 8 || ph < 8) continue;
+      DeformPart part;
+      part.ox = x0;
+      part.oy = y0;
+      part.rt.w = pw;
+      part.rt.h = ph;
+      part.rt.angleDeg = src.angleDeg;
+      part.rt.gray.resize(pw * ph);
+      part.rt.mask.resize(pw * ph);
+      int on = 0;
+      for (int y = 0; y < ph; ++y) {
+        for (int x = 0; x < pw; ++x) {
+          const int si = (y0 + y) * src.w + (x0 + x);
+          part.rt.gray[y * pw + x] = src.gray[si];
+          const uchar m = src.mask.isEmpty() ? 255 : src.mask[si];
+          part.rt.mask[y * pw + x] = m;
+          if (m) ++on;
+        }
+      }
+      if (on < 16) continue;
+      part.rt.centerInTpl = QPointF((pw - 1) * 0.5, (ph - 1) * 0.5);
+      out.push_back(part);
+    }
+  }
+  return out;
+}
+
+/**
+ * 在锚点 (x,y)（未变形模板左上）上做分块弹性匹配：每块在 ±radius 内寻找最佳位移，
+ * 得分为各块度量均值减去 λ×平均 |位移|/radius。位移超出图像则该块失败。
+ */
+double scoreDeform(const QVector<uchar>& S, int sw, int sh, const QVector<DeformPart>& parts, int x,
+                   int y, int radius, double lambda, MatchMetric metric) {
+  if (parts.size() < 2) return -1;
+  radius = qBound(1, radius, 24);
+  lambda = qBound(0.0, lambda, 1.0);
+  double sum = 0;
+  double pen = 0;
+  int okN = 0;
+  for (const DeformPart& part : parts) {
+    double best = -1;
+    int bestDx = 0, bestDy = 0;
+    const int step = radius > 8 ? 2 : 1;
+    for (int dy = -radius; dy <= radius; dy += step) {
+      for (int dx = -radius; dx <= radius; dx += step) {
+        const int px = x + part.ox + dx;
+        const int py = y + part.oy + dy;
+        const double sc = scoreWindow(S, sw, sh, part.rt, px, py, metric);
+        if (sc > best) {
+          best = sc;
+          bestDx = dx;
+          bestDy = dy;
+        }
+      }
+    }
+    if (step > 1 && best >= 0) {
+      for (int dy = bestDy - 1; dy <= bestDy + 1; ++dy) {
+        for (int dx = bestDx - 1; dx <= bestDx + 1; ++dx) {
+          if (dx < -radius || dx > radius || dy < -radius || dy > radius) continue;
+          const int px = x + part.ox + dx;
+          const int py = y + part.oy + dy;
+          const double sc = scoreWindow(S, sw, sh, part.rt, px, py, metric);
+          if (sc > best) {
+            best = sc;
+            bestDx = dx;
+            bestDy = dy;
+          }
+        }
+      }
+    }
+    if (best < 0) return -1;
+    sum += best;
+    pen += std::hypot(double(bestDx), double(bestDy)) / double(radius);
+    ++okN;
+  }
+  if (okN < 2) return -1;
+  return sum / okN - lambda * (pen / okN);
+}
+
 QVector<double> scaleSteps(double lo, double hi, double step, bool enable) {
   QVector<double> out;
   if (!enable) {
@@ -423,6 +522,15 @@ LocateResult runLocate(const QImage& scene, const QVariantMap& params) {
   const int maxN = qBound(1, params.value(QStringLiteral("maxMatches"), 1).toInt(), 50);
   const double iouThr = params.value(QStringLiteral("overlapThreshold"), 0.3).toDouble();
   const MatchMetric metric = parseMetric(params);
+  const QString modeStr =
+      params.value(QStringLiteral("matchMode"), QStringLiteral("fast")).toString().trimmed().toLower();
+  const bool deformOn = params.value(QStringLiteral("deformEnable"), false).toBool() ||
+                        modeStr == QLatin1String("deform") || modeStr == QLatin1String("deformable") ||
+                        modeStr == QLatin1String("elastic");
+  int deformGx = params.value(QStringLiteral("deformGridX"), 0).toInt();
+  int deformGy = params.value(QStringLiteral("deformGridY"), 0).toInt();
+  const int deformRadius = qBound(1, params.value(QStringLiteral("deformRadius"), 16).toInt(), 24);
+  const double deformLambda = qBound(0.0, params.value(QStringLiteral("deformLambda"), 0.15).toDouble(), 1.0);
   double a0 = params.value(QStringLiteral("angleStart"), 0).toDouble();
   double a1 = params.value(QStringLiteral("angleEnd"), a0).toDouble();
   double aStep = params.value(QStringLiteral("angleStep"), 10).toDouble();
@@ -525,11 +633,34 @@ LocateResult runLocate(const QImage& scene, const QVariantMap& params) {
             rt = rotateTemplateGray(Ts, stw, sth, ang);
           }
           if (rt.w > sw || rt.h > sh) continue;
+          int gx = deformGx, gy = deformGy;
+          if (deformOn && gx <= 0 && gy <= 0) {
+            if (rt.w >= 2 * rt.h) {
+              gx = 2;
+              gy = 1;
+            } else if (rt.h >= 2 * rt.w) {
+              gx = 1;
+              gy = 2;
+            } else {
+              gx = 2;
+              gy = 2;
+            }
+          }
+          const QVector<DeformPart> parts =
+              deformOn ? splitDeformParts(rt, qMax(gx, 1), qMax(gy, 1)) : QVector<DeformPart>{};
+          if (deformOn && parts.size() < 2) continue;
+          const int maxX = sw - rt.w;
+          const int maxY = sh - rt.h;
+          if (maxX < 0 || maxY < 0) continue;
+          auto evalAt = [&](int x, int y) -> double {
+            if (deformOn) return scoreDeform(S, sw, sh, parts, x, y, deformRadius, deformLambda, metric);
+            return scoreWindow(S, sw, sh, rt, x, y, metric);
+          };
           const double coarseMin = qMax(-0.2, minScore - 0.25);
           QVector<Cand> coarse;
-          for (int y = 0; y <= sh - rt.h; y += useStep) {
-            for (int x = 0; x <= sw - rt.w; x += useStep) {
-              const double score = scoreWindow(S, sw, sh, rt, x, y, metric);
+          for (int y = 0; y <= maxY; y += useStep) {
+            for (int x = 0; x <= maxX; x += useStep) {
+              const double score = evalAt(x, y);
               if (score + 1e-6 < coarseMin) continue;
               coarse.push_back({x, y, score, ang, sx, syv, rt.w, rt.h, stw, sth, ti, tpls[ti].name,
                                 rt.centerInTpl});
@@ -542,11 +673,11 @@ LocateResult runLocate(const QImage& scene, const QVariantMap& params) {
           for (int i = 0; i < refineN; ++i) {
             const Cand& c0 = coarse[i];
             Cand best = c0;
-            const int x0 = qMax(0, c0.x - rad), x1 = qMin(sw - rt.w, c0.x + rad);
-            const int y0 = qMax(0, c0.y - rad), y1 = qMin(sh - rt.h, c0.y + rad);
+            const int x0 = qMax(0, c0.x - rad), x1 = qMin(maxX, c0.x + rad);
+            const int y0 = qMax(0, c0.y - rad), y1 = qMin(maxY, c0.y + rad);
             for (int y = y0; y <= y1; ++y) {
               for (int x = x0; x <= x1; ++x) {
-                const double sc = scoreWindow(S, sw, sh, rt, x, y, metric);
+                const double sc = evalAt(x, y);
                 if (sc > best.score) {
                   best.x = x;
                   best.y = y;
@@ -623,7 +754,9 @@ LocateResult runLocate(const QImage& scene, const QVariantMap& params) {
                  .arg(h0.angleDeg, 0, 'f', 1)
                  .arg(h0.scaleX, 0, 'f', 2)
                  .arg(h0.scaleY, 0, 'f', 2)
-                 .arg(metric == MatchMetric::Ncc ? QStringLiteral(" · NCC") : QStringLiteral(" · SAD"));
+                 .arg(deformOn ? QStringLiteral(" · 弹性分块")
+                                     : (metric == MatchMetric::Ncc ? QStringLiteral(" · NCC")
+                                                                   : QStringLiteral(" · SAD")));
   } else {
     r.note = QStringLiteral("未找到达到分数阈值的匹配");
   }

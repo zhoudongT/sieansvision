@@ -474,6 +474,67 @@ QStringList locateSelfTest() {
     }
   }
 
+  // 弹性分块：水平条中段错位 14px，整体刚体 NCC 应达不到 0.75，分块应找到；
+  // 换成明显不同的方块时应拒绝。不是变化模型，只允许块内平移。
+  {
+    QImage bar(80, 20, QImage::Format_RGB888);
+    bar.fill(QColor(0, 0, 0));
+    {
+      QPainter p(&bar);
+      p.fillRect(QRect(0, 2, 80, 16), QColor(240, 240, 240));
+      p.fillRect(QRect(2, 4, 10, 12), QColor(40, 40, 200));  // 左端标记
+      p.end();
+    }
+    QImage bent(200, 100, QImage::Format_RGB888);
+    bent.fill(QColor(0, 0, 0));
+    {
+      QPainter p(&bent);
+      p.drawImage(QPoint(30, 20), bar.copy(0, 0, 40, 20));
+      p.drawImage(QPoint(70, 34), bar.copy(40, 0, 40, 20));  // 下错 14px
+      p.end();
+    }
+    const QString path = QStringLiteral("/tmp/sieans-locate-selftest-deform-tpl.png");
+    bar.save(path);
+    QVariantMap rigidP;
+    rigidP.insert(QStringLiteral("minScore"), 0.75);
+    rigidP.insert(QStringLiteral("maxMatches"), 1);
+    rigidP.insert(QStringLiteral("angleStart"), 0);
+    rigidP.insert(QStringLiteral("angleEnd"), 0);
+    rigidP.insert(QStringLiteral("metric"), QStringLiteral("ncc"));
+    rigidP.insert(QStringLiteral("step"), 2);
+    rigidP.insert(QStringLiteral("templatePath"), path);
+    const LocateResult rigid = runLocate(bent, rigidP);
+    expect(!rigid.ok, "deform rigid should miss jog");
+
+    QVariantMap dp = rigidP;
+    dp.insert(QStringLiteral("matchMode"), QStringLiteral("deform"));
+    dp.insert(QStringLiteral("deformEnable"), true);
+    dp.insert(QStringLiteral("deformRadius"), 16);
+    dp.insert(QStringLiteral("deformLambda"), 0.15);
+    dp.insert(QStringLiteral("deformGridX"), 2);
+    dp.insert(QStringLiteral("deformGridY"), 1);
+    dp.insert(QStringLiteral("minScore"), 0.7);
+    const LocateResult el = runLocate(bent, dp);
+    expect(el.ok, "deform finds jog");
+    if (el.ok) {
+      expect(el.hits.first().score >= 0.7, "deform score");
+      expect(qAbs(el.hits.first().center.x() - 70) <= 16, "deform cx");
+      expect(el.hits.first().center.y() >= 20 && el.hits.first().center.y() <= 54, "deform cy");
+    }
+
+    QImage other(200, 100, QImage::Format_RGB888);
+    other.fill(QColor(0, 0, 0));
+    {
+      QPainter p(&other);
+      p.setBrush(QColor(240, 240, 240));
+      p.setPen(Qt::NoPen);
+      p.drawEllipse(QPoint(80, 50), 28, 28);
+      p.end();
+    }
+    const LocateResult rej = runLocate(other, dp);
+    expect(!rej.ok, "deform rejects disk");
+  }
+
   return fails;
 }
 

@@ -2868,7 +2868,7 @@
       "maxMatches": 1,
       "overlapThreshold": 0.3
     },
-    "description": "上传或框选模板，或使用模板库多模板一起搜。度量可选灰度 SAD 或零均值 NCC；可搜索旋转、均匀尺度或 X/Y 各向异性尺度，去重后输出目标表及定位跟随位姿。不是变形/变化模型匹配。搜索组合（模板×尺度×角度）上限 400。",
+    "description": "上传或框选模板，或使用模板库多模板一起搜。度量可选灰度 SAD 或零均值 NCC；可搜索旋转、均匀尺度或 X/Y 各向异性尺度，去重后输出目标表及定位跟随位姿。不是变形/变化模型匹配。搜索组合（模板×尺度×角度）上限 400。 可选有限弹性分块匹配（块内平移）。",
     "fields": [
       [
         "minScore",
@@ -2915,7 +2915,8 @@
         [
           "fast",
           "gray",
-          "ncc"
+          "ncc",
+          "deform"
         ]
       ],
       [
@@ -2981,9 +2982,38 @@
       [
         "templatePaths",
         "额外模板路径"
+      ],
+      [
+        "deformEnable",
+        "弹性分块",
+        "bool"
+      ],
+      [
+        "deformRadius",
+        "块位移半径",
+        1,
+        24
+      ],
+      [
+        "deformGridX",
+        "分块列数",
+        0,
+        3
+      ],
+      [
+        "deformGridY",
+        "分块行数",
+        0,
+        3
+      ],
+      [
+        "deformLambda",
+        "位移惩罚",
+        0,
+        1
       ]
     ],
-    "hint": "纯 QImage，无 OpenCV/Halcon。fast/gray 为 SAD，metric/matchMode=ncc 为零均值相关。scaleEnable 打开均匀尺度，scaleAniso 再按 X/Y 独立搜索。templateLibrary / templatePaths 做多模板。不做变形匹配。对称模板不能区分方向。组合数有上限。"
+    "hint": "纯 QImage，无 OpenCV/Halcon。fast/gray 为 SAD，metric/matchMode=ncc 为零均值相关。scaleEnable 打开均匀尺度，scaleAniso 再按 X/Y 独立搜索。templateLibrary / templatePaths 做多模板。可选有限弹性分块（不是变化模型）。对称模板不能区分方向。组合数有上限。 可选 matchMode=deform / deformEnable：把模板分成最多 3×3 块，每块在 deformRadius（≤24px）内平移，得分为块分数均值减去位移惩罚。这是有限的 pictorial-structure / 弹性分块，不是 Halcon 变化模型，不是 TPS/FEM，也不是用多张图训练的外观方差模型。局部弯折可以找到，明显不同的物体应被阈值拒绝。大图上会比刚体匹配慢。"
   },
   "geometry": {
     "name": "几何特征查找",
