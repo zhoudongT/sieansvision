@@ -36,10 +36,7 @@ if [[ -z "${QT_QPA_PLATFORM:-}" ]]; then
     export QT_QPA_PLATFORM=xcb
   fi
 fi
-# GNOME Wayland + Qt gtk3 theme spams gdk_monitor_get_scale_factor; portal theme avoids it.
-if [[ "${QT_QPA_PLATFORM}" == "wayland" && -z "${QT_QPA_PLATFORMTHEME:-}" ]]; then
-  export QT_QPA_PLATFORMTHEME=xdgdesktopportal
-fi
+# 平台主题由用户/桌面决定；portal 覆盖实测未消除 Gdk 警告，不强改。
 
 if [[ ! -x "$BIN" ]]; then
   echo "sieans_qt not built — running qtapp/scripts/build.sh …"
@@ -47,6 +44,18 @@ if [[ ! -x "$BIN" ]]; then
 fi
 
 mkdir -p "$ROOT/artifacts"
-LOG="$ROOT/artifacts/sieans-qt.log"
+# stderr 会话按进程隔离；历史聚合日志不再继续无限追加。
+LOG_DIR="${SIEANS_QT_LOG_DIR:-$HOME/.local/share/sieans/logs}"
+mkdir -p "$LOG_DIR"
+LOG="$LOG_DIR/console-$$.log"
+# 控制台文件只有启动警告；Qt 持久日志另由 RuntimeDiagnostics 有界轮转。
+python3 - "$LOG_DIR" <<'CLEAN'
+import sys
+from pathlib import Path
+files=sorted(Path(sys.argv[1]).glob("console-*.log"), key=lambda p:p.stat().st_mtime, reverse=True)
+for p in files[20:]:
+    pid=p.stem.split("-")[-1]
+    if not Path("/proc",pid).exists(): p.unlink(missing_ok=True)
+CLEAN
 echo "launching $BIN (log: $LOG)"
 exec "$BIN" "$@" >>"$LOG" 2>&1

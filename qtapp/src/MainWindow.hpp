@@ -266,6 +266,7 @@ class MainWindow : public QMainWindow {
   bool run_mode_ = false;
   int run_cycle_ = 0;
   double last_cycle_ms_ = -1;
+  QVector<double> cycle_samples_ms_;  // 最近 200 个完整软件流程，不含等待触发/相机曝光。
   bool preview_active_ = false;
   bool project_dirty_ = false;
   bool applying_document_ = false;

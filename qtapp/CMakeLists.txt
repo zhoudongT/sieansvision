@@ -28,6 +28,8 @@ endif()
 
 add_executable(sieans_qt
   src/main.cpp
+  src/RuntimeDiagnostics.cpp
+  src/RuntimeDiagnostics.hpp
   src/MainWindow.cpp
   src/MainWindow.hpp
   src/ImageView.cpp
@@ -164,3 +166,12 @@ add_custom_command(TARGET sieans_qt POST_BUILD
   COMMENT "Copy sample-qr.png beside sieans_qt")
 
 install(TARGETS sieans_qt RUNTIME DESTINATION bin)
+
+# 版本来自本次配置的源提交，不伪装未知构建为正式发布。
+execute_process(COMMAND git rev-parse --short=12 HEAD
+  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
+  OUTPUT_VARIABLE SIEANS_BUILD_REVISION OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+if(NOT SIEANS_BUILD_REVISION)
+  set(SIEANS_BUILD_REVISION "unknown")
+endif()
+target_compile_definitions(sieans_qt PRIVATE SIEANS_BUILD_REVISION="${SIEANS_BUILD_REVISION}")

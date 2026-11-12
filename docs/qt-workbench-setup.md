@@ -70,7 +70,7 @@ export SIEANS_QT_PREFIX="${SIEANS_QT_PREFIX:-$HOME/Qt/6.7.3/gcc_64}"
 # 或前台：./scripts/run-sieans-qt.sh
 ```
 
-`launch-sieans-qt.sh` 会把用户级 Qt、`$HOME/.local/opt/onnxruntime/lib` 与可选的 `$HOME/.local/opt/xcb-cursor` 加进 `LD_LIBRARY_PATH`。Wayland 会话默认 `QT_QPA_PLATFORM=wayland`，并把 `QT_QPA_PLATFORMTHEME` 设为 `xdgdesktopportal`（避免 GNOME 上 gtk3 主题刷屏 `gdk_monitor_get_scale_factor`）。可用 `SIEANS_QT_WINDOW_SIZE=WxH` 仅用于验证窗口尺寸。方案、产物、示例图按检出根目录解析（`SIEANS_REPO` 可覆盖），不再写死某一台机器的路径。
+`launch-sieans-qt.sh` 会把用户级 Qt、`$HOME/.local/opt/onnxruntime/lib` 与可选的 `$HOME/.local/opt/xcb-cursor` 加进 `LD_LIBRARY_PATH`。Wayland 会话默认 `QT_QPA_PLATFORM=wayland`，不再强制覆盖 `QT_QPA_PLATFORMTHEME`（portal 实测未消除 GNOME Gdk 警告）。可用 `SIEANS_QT_WINDOW_SIZE=WxH` 仅用于验证窗口尺寸。方案、产物、示例图按检出根目录解析（`SIEANS_REPO` 可覆盖），不再写死某一台机器的路径。
 
 无界面打开即跑冒烟（跑完退出，不要把 App 留在后台）：
 
@@ -100,3 +100,5 @@ export SIEANS_QT_SCREENSHOT_QUIT=1
 | `SIEANS_YOLO_MODELS_DIR` | 本地 YOLO 权重目录 |
 
 更多工作台说明见 [qtapp/README.md](../qtapp/README.md)。
+
+用户级可搬迁发布、装前 doctor、桌面项及有界长跑验证见 [Qt 交付](qt-release.md)。

@@ -17,6 +17,8 @@ const char kLegacyRoot[] = "/home/allen/文档/sieansvision";
 /** 判断 dir 是否像本仓库根（构建脚本与启动脚本都在）。 */
 bool looksLikeRepo(const QString& dir) {
   if (dir.isEmpty()) return false;
+  if (QFileInfo::exists(dir + QStringLiteral("/RELEASE.json")) &&
+      QFileInfo::exists(dir + QStringLiteral("/qtapp/build/sieans_qt"))) return true;
   return QFileInfo::exists(dir + QStringLiteral("/qtapp/scripts/build.sh")) &&
          QFileInfo::exists(dir + QStringLiteral("/scripts/launch-sieans-qt.sh"));
 }
@@ -71,6 +73,8 @@ QString workbenchProjectsDir() {
 }
 
 QString workbenchArtifactsDir() {
+  const QByteArray overrideDir = qgetenv("SIEANS_QT_ARTIFACTS");
+  if (!overrideDir.isEmpty()) return ensureDir(QString::fromUtf8(overrideDir));
   const QString root = workbenchRepoRoot();
   if (!root.isEmpty()) return ensureDir(root + QStringLiteral("/artifacts"));
   const QString home = QDir::home().filePath(QStringLiteral("sieansvision-artifacts"));

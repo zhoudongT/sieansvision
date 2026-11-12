@@ -94,6 +94,8 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx` / `yol
 
 **已落地（wave270）：** 普通启动可用性收尾：显示后重设垂直分割（底栏约 1/5，避免空结果表占半屏）再 `fitAll`；打开即跑演示预载示例 QR（不自动运行、不脏污方案）；Host 条优先当前钉组（识别历史 `hostWatch.active`，避免膨胀 watchKeys 刷屏）；通信 `autoStart` 缺省改为 false（官方演示仍显式 loopback TCP）；用户级 `install-xcb-cursor-user.sh` + 启动脚本统一 Wayland/xcb，GNOME 上默认 portal 主题以减少 gdk 警告。无界面自测仍走既有 pin-group / protocol-robust。验证截图用 `SIEANS_QT_SCREENSHOT`（应用自身 grab），不要绕过 OS 截屏控制。
 
+**已落地（wave271）：** 用户级可搬迁 Linux 交付目录（Qt/ORT/Tesseract + 依赖闭包、SHA256SUMS、版本/来源、装前 doctor、版本独立桌面项，拒绝覆盖安装）。新增隔离 20 自测 + smoke + 同进程有界 soak + 双实例回归脚本；Qt 会话分 PID 有界日志与启动自检、未捕获 C++ 异常提示；历史文本控件也限 2000 blocks；状态栏显示最近 200 次软件流程 P95（nearest-rank，含 n，不是现场端到端节拍）。详见 [用户级交付](../docs/qt-release.md)。真实 UVC 仅在有 `/dev/video*` 时另验，本机没有设备节点，不宣称采集通过。
+
 **NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。操作员账号（PySide 走独立 RPC/部署凭据，未在本机落地）。云 SaaS / 模板市场。真机硬件（`/opt/MVS`、真实 PLC）。官方 YOLO 权重需自行放入上述模型目录。
 
 ## VM chrome (2026-11-03)

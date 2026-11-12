@@ -26,9 +26,6 @@ if [[ -z "${QT_QPA_PLATFORM:-}" ]]; then
     export QT_QPA_PLATFORM=xcb
   fi
 fi
-# GNOME Wayland + Qt gtk3 theme spams gdk_monitor_get_scale_factor; portal theme avoids it.
-if [[ "${QT_QPA_PLATFORM}" == "wayland" && -z "${QT_QPA_PLATFORMTHEME:-}" ]]; then
-  export QT_QPA_PLATFORMTHEME=xdgdesktopportal
-fi
+# 平台主题由用户/桌面决定；portal 覆盖实测未消除 Gdk 警告，不强改。
 [[ -x "$BIN" ]] || "$ROOT/qtapp/scripts/build.sh"
 exec "$BIN" "$@"

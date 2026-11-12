@@ -1,4 +1,6 @@
 #include "MainWindow.hpp"
+#include <QDebug>
+#include <algorithm>
 #include "RecentFiles.hpp"
 #include "WorkbenchPaths.hpp"
 #include "LocateMatchPanel.hpp"
@@ -1082,6 +1084,7 @@ void MainWindow::buildUi() {
   }
   result_log_ = new QPlainTextEdit;
   result_log_->setReadOnly(true);
+  result_log_->setMaximumBlockCount(2000);  // UI 文档也有界，不能只裁剪 resultLogAll_。
   result_log_->setPlaceholderText(
       QStringLiteral("历史结果 / 运行日志 / GenTL / 解码 / Comm"));
   auto* logHost = new QWidget;
@@ -1831,6 +1834,12 @@ void MainWindow::fireHostCommEvents(const QString& resultTag) {
 }
 
 void MainWindow::logResult(const QString& line) {
+  if (line.contains(QStringLiteral("失败")) || line.contains(QStringLiteral("异常")) ||
+      line.contains(QStringLiteral("不可用"))) {
+    qWarning().noquote() << "workbench:" << line;
+  } else {
+    qInfo().noquote() << "workbench:" << line;
+  }
   const QString stamp =
       QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss.zzz"));
   const QString entry = QStringLiteral("[%1] %2").arg(stamp, line);
@@ -4495,6 +4504,15 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                             .count();
   const double toolMs = qMax(0.0, flowMs - algoMs);
   last_cycle_ms_ = flowMs;
+  cycle_samples_ms_.push_back(flowMs);
+  if (cycle_samples_ms_.size() > 200) cycle_samples_ms_.removeFirst();
+  QVector<double> sortedCycles = cycle_samples_ms_;
+  std::sort(sortedCycles.begin(), sortedCycles.end());
+  // nearest-rank P95；小样本明确标注 n，不假称现场节拍或含曝光时间。
+  const int p95Index = qMax(0, (sortedCycles.size() * 95 + 99) / 100 - 1);
+  const double p95Ms = sortedCycles.at(p95Index);
+  setProperty("completedCycles", run_cycle_);
+  setProperty("cycleP95Ms", p95Ms);
   appendInspectionHistory();
   if (updateFlowStates && !dispatching_triggers_) {
     const bool hasGate = flow_vars_.contains(QStringLiteral("passGate"));
@@ -4508,10 +4526,11 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
   if (host_sm_ && host_strip_)
     host_sm_->setRunStats(host_strip_->okStreak(), host_strip_->ngCount(), flowMs);
   if (status_timing_) {
-    status_timing_->setText(QStringLiteral("流程 %1 ms · 工具 %2 ms · 算法 %3 ms")
+    status_timing_->setText(QStringLiteral("软件 %1 ms · 工具 %2 · 算法 %3 · P95 %4 ms (n=%5)")
                                 .arg(flowMs, 0, 'f', 2)
                                 .arg(toolMs, 0, 'f', 2)
-                                .arg(algoMs, 0, 'f', 2));
+                                .arg(algoMs, 0, 'f', 2)
+                                .arg(p95Ms, 0, 'f', 2).arg(sortedCycles.size()));
   }
   refreshConfigStatus();
   showStatus(QStringLiteral("流水线完成 · 码 %1 · %2 ms")

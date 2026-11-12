@@ -6,6 +6,9 @@
 #include "SoftFrame.hpp"
 
 #include <QFileInfo>
+#include <QFile>
+#include <QTemporaryDir>
+#include <cstdio>
 #include <QSet>
 #include <QtGlobal>
 
@@ -758,6 +761,32 @@ QStringList yoloSelfTest() {
     if (d.error.isEmpty()) fails << QStringLiteral("invalid imageSize no error");
   }
 
+  // 缺模型及损坏文件必须可辨别地回退，不能误报正式模型推理成功。
+  {
+    QTemporaryDir temp;
+    const QString badPath = temp.filePath(QStringLiteral("invalid.onnx"));
+    QFile bad(badPath);
+    if (!bad.open(QIODevice::WriteOnly)) fails << QStringLiteral("invalid-model temp write failed");
+    else { bad.write("not-an-onnx-model"); bad.close(); }
+    for (bool segment : {false, true}) {
+      const QVariantMap missing{{QStringLiteral("model"), QStringLiteral("__delivery_missing__.onnx")}};
+      const QVariantMap corrupt{{QStringLiteral("model"), badPath}};
+      const YoloResult absent = segment ? runYoloSegment(scene, missing) : runYoloDetect(scene, missing);
+      const YoloResult invalid = segment ? runYoloSegment(scene, corrupt) : runYoloDetect(scene, corrupt);
+      if (!absent.ok || absent.backend != QLatin1String("software") ||
+          !absent.note.contains(QStringLiteral("模型未安装")))
+        fails << QStringLiteral("missing model must disclose software fallback");
+      if (!invalid.ok || invalid.backend != QLatin1String("software") ||
+          !invalid.note.contains(QStringLiteral("回退")))
+        fails << QStringLiteral("invalid ONNX must disclose failed-runtime fallback: %1").arg(invalid.note);
+    }
+  }
+  if (qgetenv("SIEANS_QT_REQUIRE_ONNX_SELFTEST") == "1") {
+    if (!onnxRuntimeAvailable()) fails << QStringLiteral("required ONNX Runtime unavailable");
+    for (const QString& model : {QStringLiteral("sieans-yolo-smoke.onnx"), QStringLiteral("sieans-yolo-seg-smoke.onnx")})
+      if (resolveYoloWeightPath(model).isEmpty()) fails << QStringLiteral("required stub missing: %1").arg(model);
+  }
+
   // 默认仍走 software；仅在显式指定本地烟测 ONNX 且运行时可用时证明真实推理路径。
   {
     const QString smoke = resolveYoloWeightPath(QStringLiteral("sieans-yolo-smoke.onnx"));
@@ -766,6 +795,7 @@ QStringList yoloSelfTest() {
           scene, {{QStringLiteral("model"), smoke},
                   {QStringLiteral("confidence"), 0.25},
                   {QStringLiteral("imageSize"), 640}});
+      std::fprintf(stdout, "detect-smoke backend=%s (synthetic stub)\n", d.backend.toUtf8().constData());
       if (!d.ok) fails << QStringLiteral("onnx detect not ok: %1").arg(d.error);
       if (d.backend != QLatin1String("onnx"))
         fails << QStringLiteral("onnx backend %1").arg(d.backend);
@@ -782,6 +812,7 @@ QStringList yoloSelfTest() {
           scene, {{QStringLiteral("model"), smoke},
                   {QStringLiteral("confidence"), 0.25},
                   {QStringLiteral("imageSize"), 640}});
+      std::fprintf(stdout, "segment-smoke backend=%s (synthetic stub)\n", s.backend.toUtf8().constData());
       if (!s.ok) fails << QStringLiteral("onnx segment not ok: %1").arg(s.error);
       if (s.backend != QLatin1String("onnx"))
         fails << QStringLiteral("onnx segment backend %1 note=%2 err=%3")

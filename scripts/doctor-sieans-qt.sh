@@ -256,15 +256,18 @@ if [[ "$WANT_SELFTEST" == 1 ]]; then
     export SIEANS_QT_PROJECT_SELFTEST_QUIT=1
     unset SIEANS_QT_FORCE_SEED SIEANS_QT_AUTO_SOFT SIEANS_QT_AUTO_RUN SIEANS_QT_AUTO_TCP
     unset SIEANS_QT_SCREENSHOT SIEANS_QT_SCREENSHOT_QUIT SIEANS_QT_SMOKE_REPORT
-    if "$ROOT/scripts/launch-sieans-qt.sh"; then
-      if grep -q 'project-selftest ok' "$ROOT/artifacts/sieans-qt.log"; then
+    selftest_log="$(mktemp "${TMPDIR:-/tmp}/sieans-doctor-selftest-XXXXXX")"
+    if "$ROOT/scripts/run-sieans-qt.sh" >"$selftest_log" 2>&1; then
+      if grep -q 'project-selftest ok' "$selftest_log"; then
         ok "SIEANS_QT_PROJECT_SELFTEST ok"
       else
-        fail "launch exited 0 but artifacts/sieans-qt.log has no 'project-selftest ok'"
+        fail "current selftest exited 0 without project-selftest ok"
       fi
     else
       fail "project selftest launch failed"
+      cat "$selftest_log"
     fi
+    rm -f "$selftest_log"
   fi
 fi
 

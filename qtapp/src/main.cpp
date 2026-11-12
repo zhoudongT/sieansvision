@@ -26,6 +26,10 @@
 #include "CommHub.hpp"
 #include "ProtocolNet.hpp"
 #include "Theme.hpp"
+#include "RuntimeDiagnostics.hpp"
+#include <QTimer>
+#include <QElapsedTimer>
+#include <QDebug>
 
 #include <QApplication>
 #include <QGuiApplication>
@@ -35,8 +39,15 @@
 #include <QStyleFactory>
 
 #include <cstdio>
+#include <exception>
+#include <cstring>
 
+/** 运行隔离自测或工作台；--version 不创建图形会话。 */
 int main(int argc, char* argv[]) {
+  if (argc == 2 && std::strcmp(argv[1], "--version") == 0) {
+    std::printf("SIEANS Vision Qt 0.2.0+%s Qt=%s\n", SIEANS_BUILD_REVISION, QT_VERSION_STR);
+    return 0;
+  }
   if (qEnvironmentVariable("SIEANS_QT_EXPR_SELFTEST") == QLatin1String("1") &&
       qEnvironmentVariable("SIEANS_QT_EXPR_SELFTEST_QUIT") == QLatin1String("1")) {
     const QStringList fails = sieans_qt::exprSelfTest();
@@ -481,7 +492,15 @@ int main(int argc, char* argv[]) {
   QApplication app(argc, argv);
   QApplication::setApplicationName(QStringLiteral("SIEANS Vision Qt"));
   QApplication::setOrganizationName(QStringLiteral("SIEANS"));
-  QApplication::setApplicationVersion(QStringLiteral("0.2.0-parity"));
+  QApplication::setApplicationVersion(QStringLiteral("0.2.0+") + QStringLiteral(SIEANS_BUILD_REVISION));
+
+  sieans_qt::installRuntimeDiagnostics();
+  sieans_qt::logStartupDiagnostics();
+  std::set_terminate([]() {
+    // 仅处理 C++ 未捕获异常，不安装不安全的信号回调，不声称有 crash dump。
+    qCritical() << "uncaught C++ exception / terminate; process will abort";
+    std::abort();
+  });
 
   app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
   QFont font(QStringLiteral("Noto Sans CJK SC"));
@@ -516,5 +535,31 @@ int main(int argc, char* argv[]) {
   }
   sieans_qt::MainWindow win;
   win.show();
+  // 有界软件 soak 入口只在显式隔离 FORCE_SEED + HEADLESS 时允许；不用于现场作业。
+  const int cycles = qEnvironmentVariableIntValue("SIEANS_QT_SOAK_CYCLES");
+  QTimer soakTimer;
+  QElapsedTimer soakClock;
+  if (cycles > 0) {
+    if (cycles > 1000 || qgetenv("SIEANS_QT_FORCE_SEED") != "1" ||
+        qgetenv("SIEANS_QT_HEADLESS") != "1") {
+      qCritical() << "soak requires HEADLESS=1 FORCE_SEED=1 and 1..1000 cycles";
+      return 2;
+    }
+    soakClock.start();
+    QObject::connect(&soakTimer, &QTimer::timeout, &win, [&]() {
+      const int completed = win.property("completedCycles").toInt();
+      if (completed >= cycles) {
+        qInfo() << "soak-complete cycles=" << completed
+                << "p95Ms=" << win.property("cycleP95Ms").toDouble();
+        app.quit();
+      } else if (soakClock.elapsed() > 300000) {
+        qCritical() << "soak-timeout completed=" << completed;
+        app.exit(3);
+      } else if (soakClock.elapsed() >= 1600) {
+        QMetaObject::invokeMethod(&win, "onRunOnce", Qt::DirectConnection);
+      }
+    });
+    soakTimer.start(100);
+  }
   return app.exec();
 }
