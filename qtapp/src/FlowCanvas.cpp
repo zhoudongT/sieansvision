@@ -19,6 +19,12 @@
 #include <QGuiApplication>
 #include <QToolTip>
 #include <QCursor>
+#include <QLabel>
+#include <QPushButton>
+#include <QHBoxLayout>
+#include <QWhatsThis>
+#include <QWidget>
+#include <QSizePolicy>
 #include <QUuid>
 #include <QMenu>
 #include <QGraphicsSimpleTextItem>
@@ -830,10 +836,28 @@ void FlowScene::keyPressEvent(QKeyEvent* event) {
 
 // ── View ─────────────────────────────────────────────────────────────
 
+/** 画布完整快捷键说明，用于多行工具提示和 What's This，避免单行长条盖住左侧工具箱。 */
+static QString flowViewKeymapHelp() {
+  return QStringLiteral(
+      "快捷键\n"
+      "滚轮/+/- 缩放 · Alt+/- 微调\n"
+      "F/G/A/Space/Home/0/R 适应画布\n"
+      "Ctrl+Shift+F 适应选中\n"
+      "F2 重命名 · Ctrl+A 全选节点\n"
+      "Ctrl+C/Ctrl+Shift+C 复制选中节点\n"
+      "Ctrl+D 复制模块\n"
+      "中键/空白右键适应\n"
+      "Del/Backspace 删连线\n"
+      "Esc 取消连线\n"
+      "I 打开 I/O");
+}
+
 FlowView::FlowView(FlowScene* scene, QWidget* parent)
     : QGraphicsView(scene, parent) {
-  setToolTip(QStringLiteral("滚轮/+/- 缩放 · Alt+/- 微调 · F/G/A/Space/Home/0/R 适应画布 · Ctrl+Shift+F 适应选中 · F2 重命名 · Ctrl+A 全选节点 · Ctrl+C/Ctrl+Shift+C 复制选中节点 · Ctrl+D 复制模块 · 中键/空白右键适应 · Del/Backspace 删连线 · Esc 取消连线 · I 打开 I/O"));
+  // 视图本体只用短提示；完整键表走底栏多行 tooltip / What's This，避免再弹出超宽顶层提示。
+  setToolTip(QStringLiteral("流程画布 · 滚轮缩放 · F 适应 · I 打开 I/O"));
   setStatusTip(QStringLiteral("流程画布 · F/G/A/Space/Home/0/R 适应 · I→I/O · +/- 缩放 · Ctrl+C 节点 · Ctrl+D 复制模块 · 中键适应 · Esc 取消连线 · Del/Backspace 删连线 · 滚轮缩放"));
+  setWhatsThis(flowViewKeymapHelp());
   setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing);
   setDragMode(QGraphicsView::RubberBandDrag);
   setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
@@ -842,8 +866,39 @@ FlowView::FlowView(FlowScene* scene, QWidget* parent)
   setFocusPolicy(Qt::StrongFocus);
   setAcceptDrops(true);
 
+  hintBar_ = new QWidget(this);
+  hintBar_->setObjectName(QStringLiteral("flowCanvasHint"));
+  hintBar_->setAutoFillBackground(true);
+  hintBar_->setAttribute(Qt::WA_StyledBackground, true);
+  hintBar_->setStyleSheet(
+      QStringLiteral("QWidget#flowCanvasHint{background:#2d2f33;border:1px solid #4a4e54;}"
+                     "QPushButton#flowCanvasHintHelp{min-height:16px;min-width:16px;padding:0;"
+                     "font-weight:600;}"));
+  auto* hintLay = new QHBoxLayout(hintBar_);
+  hintLay->setContentsMargins(8, 2, 4, 2);
+  hintLay->setSpacing(4);
+  auto* hintLabel = new QLabel(QStringLiteral("滚轮缩放 · F 适应 · I 打开 I/O · ? 全部快捷键"));
+  hintLabel->setObjectName(QStringLiteral("muted"));
+  hintLabel->setTextInteractionFlags(Qt::NoTextInteraction);
+  hintLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+  hintLabel->setMinimumWidth(0);
+  hintLabel->setToolTip(flowViewKeymapHelp());
+  hintLabel->setWhatsThis(flowViewKeymapHelp());
+  auto* help = new QPushButton(QStringLiteral("?"));
+  help->setObjectName(QStringLiteral("flowCanvasHintHelp"));
+  help->setFixedSize(22, 22);
+  help->setCursor(Qt::PointingHandCursor);
+  help->setFocusPolicy(Qt::NoFocus);
+  help->setToolTip(flowViewKeymapHelp());
+  help->setWhatsThis(flowViewKeymapHelp());
+  QObject::connect(help, &QPushButton::clicked, hintBar_, [help]() {
+    QWhatsThis::showText(help->mapToGlobal(QPoint(0, help->height())), help->whatsThis(),
+                         help);
+  });
+  hintLay->addWidget(hintLabel, 1);
+  hintLay->addWidget(help, 0, Qt::AlignVCenter);
+
   minimap_ = new FlowMinimap(scene, this, this);
-  minimap_->raise();
   placeMinimap();
 }
 
@@ -1022,12 +1077,27 @@ void FlowView::dropEvent(QDropEvent* event) {
   event->accept();
 }
 
+/** 把概览和快捷键摘要都放回本视图客户区，避免子控件画出画布外。 */
 void FlowView::placeMinimap() {
-  if (!minimap_) return;
+  if (minimap_) {
+    const int m = 8;
+    minimap_->move(width() - minimap_->width() - m, height() - minimap_->height() - m);
+    minimap_->update();
+  }
+  placeHintBar();
+  if (minimap_) minimap_->raise();
+}
+
+/** 将快捷键摘要条贴在画布底部并夹在本视图宽度内，不按文案撑开。 */
+void FlowView::placeHintBar() {
+  if (!hintBar_) return;
   const int m = 8;
-  minimap_->move(width() - minimap_->width() - m, height() - minimap_->height() - m);
-  minimap_->raise();
-  minimap_->update();
+  // 右下角留给概览；宽度按本视图计算，不按文案 sizeHint 撑开。
+  const int reserve = (minimap_ && minimap_->isVisible()) ? (minimap_->width() + m) : 0;
+  const int barH = qMax(hintBar_->sizeHint().height(), 22);
+  const int barW = qMax(0, width() - m * 2 - reserve);
+  hintBar_->setGeometry(m, height() - barH - m, barW, barH);
+  hintBar_->raise();
 }
 
 void FlowView::resizeEvent(QResizeEvent* event) {

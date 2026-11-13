@@ -204,7 +204,10 @@ class FlowView : public QGraphicsView {
 
  private:
   void placeMinimap();
+  /** 把快捷键摘要条限制在画布客户区内，右下角为概览留空。 */
+  void placeHintBar();
   FlowMinimap* minimap_ = nullptr;
+  QWidget* hintBar_ = nullptr;
 };
 
 }  // namespace sieans_qt
