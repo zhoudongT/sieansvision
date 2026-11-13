@@ -250,8 +250,8 @@ QWidget#propertyFloatBody QLabel#muted { color: #a8a8a8; font-size: 11px; }
 QWidget#propertyFloatBody QLineEdit, QWidget#propertyFloatBody QSpinBox,
 QWidget#propertyFloatBody QDoubleSpinBox, QWidget#propertyFloatBody QComboBox {
   background: #3a3d42; border: 1px solid #4a4e54; border-radius: 2px;
-  padding: 3px 8px; color: #e8e8e8; selection-background-color: #3d2e1f;
-  min-height: 22px;
+  padding: 5px 10px; color: #e8e8e8; selection-background-color: #3d2e1f;
+  min-height: 26px;
 }
 QWidget#propertyFloatBody QPlainTextEdit, QWidget#propertyFloatBody QTextEdit,
 QWidget#propertyFloatBody QTableWidget {
@@ -301,7 +301,7 @@ QPushButton#propertyFloatRun, QPushButton#propertyFloatRunContinuous, QPushButto
 QPushButton#propertyFloatRun:hover, QPushButton#propertyFloatRunContinuous:hover, QPushButton#propertyFloatCancel:hover {
   border-color: #e67a2e; color: #e67a2e; background: #3d2e1f;
 }
-QWidget#propertyFloatBody QCheckBox, QWidget#propertyFloatBody QRadioButton { color: #e8e8e8; }
+QWidget#propertyFloatBody QCheckBox, QWidget#propertyFloatBody QRadioButton { color: #e8e8e8; spacing: 8px; }
 QWidget#propertyFloatBody QCheckBox::indicator, QWidget#propertyFloatBody QRadioButton::indicator {
   background: #3a3d42; border: 1px solid #4a4e54;
 }

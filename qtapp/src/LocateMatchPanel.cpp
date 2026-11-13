@@ -42,8 +42,8 @@ namespace {
 /** 属性表单：右对齐标签、字段按内容宽度，避免通栏拉宽。 */
 void polishForm(QFormLayout* form) {
   form->setContentsMargins(0, 0, 0, 0);
-  form->setHorizontalSpacing(12);
-  form->setVerticalSpacing(8);
+  form->setHorizontalSpacing(20);
+  form->setVerticalSpacing(14);
   form->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);
   form->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
   form->setFieldGrowthPolicy(QFormLayout::FieldsStayAtSizeHint);
@@ -52,7 +52,7 @@ void polishForm(QFormLayout* form) {
 /** 单行表单标签，不折成叠字。 */
 QLabel* formLabel(const QString& text, const QString& tip = {}) {
   auto* lab = new QLabel(text);
-  lab->setMinimumWidth(72);
+  lab->setMinimumWidth(88);
   lab->setWordWrap(false);
   lab->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
   if (!tip.isEmpty()) lab->setToolTip(tip);
@@ -63,7 +63,7 @@ QWidget* wrapForm(QFormLayout* form) {
   polishForm(form);
   auto* w = new QWidget;
   auto* lay = new QVBoxLayout(w);
-  lay->setContentsMargins(14, 10, 16, 12);
+  lay->setContentsMargins(20, 16, 22, 18);
   lay->addLayout(form);
   lay->addStretch(1);
   return w;
@@ -395,7 +395,7 @@ LocateMatchPanel::LocateMatchPanel(QWidget* parent) : QWidget(parent) {
       QStringLiteral("对齐 VisionMaster「快速匹配」：基本参数 / 特征模板 / 运行参数 / 结果显示"));
   hint->setObjectName(QStringLiteral("muted"));
   hint->setWordWrap(true);
-  hint->setStyleSheet(QStringLiteral("padding:8px 14px 4px 14px;"));
+  hint->setStyleSheet(QStringLiteral("padding:8px 20px 8px 20px;"));
   root->addWidget(hint);
 
   tabs_ = new QTabWidget;
@@ -440,14 +440,18 @@ LocateMatchPanel::LocateMatchPanel(QWidget* parent) : QWidget(parent) {
   // 2) 模板
   auto* tplPage = new QWidget;
   auto* tplLay = new QVBoxLayout(tplPage);
-  tplLay->setContentsMargins(10, 8, 10, 8);
+  tplLay->setContentsMargins(20, 16, 22, 18);
+  tplLay->setSpacing(12);
   auto* tplForm = new QFormLayout;
+  polishForm(tplForm);
   pathEdit_ = new QLineEdit;
   pathEdit_->setPlaceholderText(QStringLiteral("当前选用模板路径 / 方案内引用"));
-  tplForm->addRow(QStringLiteral("当前模板"), pathEdit_);
+  pathEdit_->setMinimumWidth(280);
+  tplForm->addRow(formLabel(QStringLiteral("当前模板")), pathEdit_);
   auto* row = new QWidget;
   auto* hl = new QHBoxLayout(row);
   hl->setContentsMargins(0, 0, 0, 0);
+  hl->setSpacing(10);
   auto* loadBtn = new QPushButton(QStringLiteral("载入模板…"));
   auto* createBtn = new QPushButton(QStringLiteral("创建模板…"));
   auto* clearBtn = new QPushButton(QStringLiteral("清除模板"));
@@ -468,8 +472,8 @@ LocateMatchPanel::LocateMatchPanel(QWidget* parent) : QWidget(parent) {
   auto* libFrame = new QWidget;
   libFrame->setObjectName(QStringLiteral("locateTemplateLibraryFrame"));
   auto* libLay = new QVBoxLayout(libFrame);
-  libLay->setContentsMargins(8, 8, 8, 8);
-  libLay->setSpacing(6);
+  libLay->setContentsMargins(12, 12, 12, 12);
+  libLay->setSpacing(10);
   auto* libHead = new QHBoxLayout;
   auto* libTitle = new QLabel(QStringLiteral("模板库"));
   libTitle->setStyleSheet(QStringLiteral("font-weight:600;color:#c8d0d8;"));
@@ -491,6 +495,7 @@ LocateMatchPanel::LocateMatchPanel(QWidget* parent) : QWidget(parent) {
   libPreview_->setStyleSheet(QStringLiteral("color:#8ab;font-size:11px;padding:2px 0;"));
   libLay->addWidget(libPreview_);
   auto* libBtns = new QHBoxLayout;
+  libBtns->setSpacing(10);
   auto* addLibBtn = new QPushButton(QStringLiteral("加入库"));
   addLibBtn->setToolTip(QStringLiteral("将当前模板路径加入模板库（可改名）"));
   auto* selLibBtn = new QPushButton(QStringLiteral("选用"));
@@ -514,6 +519,7 @@ LocateMatchPanel::LocateMatchPanel(QWidget* parent) : QWidget(parent) {
   sbHead->addWidget(boardSummary_, 1);
   libLay->addLayout(sbHead);
   auto* thrRow = new QHBoxLayout;
+  thrRow->setSpacing(10);
   thrRow->addWidget(new QLabel(QStringLiteral("阈值")));
   batchThr_ = new QDoubleSpinBox;
   batchThr_->setObjectName(QStringLiteral("locateBatchScoreThr"));
@@ -601,13 +607,16 @@ LocateMatchPanel::LocateMatchPanel(QWidget* parent) : QWidget(parent) {
   angleStep_ = new QDoubleSpinBox;
   angleStep_->setRange(0.5, 180);
   angleStep_->setDecimals(1);
-  run->addRow(QStringLiteral("角度搜索使能"), angleEnable_);
-  run->addRow(QStringLiteral("起始角度"), angleStart_);
-  run->addRow(QStringLiteral("终止角度"), angleEnd_);
-  run->addRow(QStringLiteral("角度步长"), angleStep_);
+  angleStart_->setMinimumWidth(96);
+  angleEnd_->setMinimumWidth(96);
+  angleStep_->setMinimumWidth(96);
+  run->addRow(formLabel(QStringLiteral("角度搜索使能")), angleEnable_);
+  run->addRow(formLabel(QStringLiteral("起始角度")), angleStart_);
+  run->addRow(formLabel(QStringLiteral("终止角度")), angleEnd_);
+  run->addRow(formLabel(QStringLiteral("角度步长")), angleStep_);
   auto* runTip = new QLabel(QStringLiteral("角度范围为闭区间。尺度搜索用 scaleEnable / scaleMin / scaleMax / scaleStep，各向异性再开 scaleAniso。模板×尺度×角度组合上限 400。使能关闭时只按 0° 搜索。"));
   runTip->setWordWrap(true);
-  runTip->setStyleSheet(QStringLiteral("color:#8a9098;font-size:11px;"));
+  runTip->setStyleSheet(QStringLiteral("color:#8a9098;font-size:11px;padding:8px 0 4px 0;"));
   auto* runBox = wrapForm(run);
   static_cast<QVBoxLayout*>(runBox->layout())->insertWidget(1, runTip);
   tabs_->addTab(runBox, QStringLiteral("运行参数"));
@@ -622,7 +631,7 @@ LocateMatchPanel::LocateMatchPanel(QWidget* parent) : QWidget(parent) {
   res->addRow(showAngleDeg_);
   resultSummary_ = new QLabel(QStringLiteral("尚未运行"));
   resultSummary_->setWordWrap(true);
-  res->addRow(QStringLiteral("结果回显"), resultSummary_);
+  res->addRow(formLabel(QStringLiteral("结果回显")), resultSummary_);
   hitTable_ = new QTableWidget(0, 4);
   hitTable_->setHorizontalHeaderLabels(
       {QStringLiteral("序"), QStringLiteral("分数"), QStringLiteral("X"), QStringLiteral("Y")});
@@ -762,6 +771,13 @@ void LocateMatchPanel::setLastResult(const QVariantMap& vars) {
 }
 
 int LocateMatchPanel::tabCount() const { return tabs_ ? tabs_->count() : 0; }
+
+void LocateMatchPanel::selectTab(int index) {
+  if (!tabs_ || index < 0 || index >= tabs_->count()) return;
+  tabs_->setCurrentIndex(index);
+}
+
+int LocateMatchPanel::currentTab() const { return tabs_ ? tabs_->currentIndex() : 0; }
 
 bool LocateMatchPanel::templateReady() const {
   const QString src = params_.value(QStringLiteral("templateSource")).toString();

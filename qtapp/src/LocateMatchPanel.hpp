@@ -76,6 +76,10 @@ class LocateMatchPanel : public QWidget {
   QVariantMap jumpTrendLocal(int local);
 
   int tabCount() const;
+  /** 核对样式时切换属性页，不改参数。 */
+  void selectTab(int index);
+  /** 当前属性页下标，无页签时为 0。 */
+  int currentTab() const;
   bool templateReady() const;
   int libraryCount() const;
   QString activeTemplateId() const;

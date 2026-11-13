@@ -763,8 +763,8 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
 PropertyPanel::PropertyPanel(QWidget* parent) : QWidget(parent) {
   setObjectName(QStringLiteral("propertyPanel"));
   auto* lay = new QVBoxLayout(this);
-  lay->setContentsMargins(8, 8, 8, 8);
-  lay->setSpacing(6);
+  lay->setContentsMargins(16, 14, 18, 16);
+  lay->setSpacing(10);
   title_ = new QLabel(QStringLiteral("属性"));
   title_->setObjectName(QStringLiteral("sectionTitle"));
   lay->addWidget(title_);
@@ -804,10 +804,10 @@ PropertyPanel::PropertyPanel(QWidget* parent) : QWidget(parent) {
   scroll->setFrameShape(QFrame::NoFrame);
   formHost_ = new QWidget;
   form_ = new QFormLayout(formHost_);
-  form_->setContentsMargins(0, 0, 2, 0);
-  form_->setHorizontalSpacing(8);
-  form_->setVerticalSpacing(6);
-  form_->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+  form_->setContentsMargins(0, 4, 8, 8);
+  form_->setHorizontalSpacing(20);
+  form_->setVerticalSpacing(14);
+  form_->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);
   form_->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
   form_->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
   scroll->setWidget(formHost_);

@@ -386,6 +386,19 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         applying_document_ = true;
         onNodeSelected(id);
         applying_document_ = prev;
+        // 可选：SIEANS_QT_AUTO_PROPERTY_TAB=0..3 或 basic/template/run/result，仅核对样式。
+        if (prop_float_ && prop_float_->locatePanel() && prop_float_->locatePanel()->isVisible()) {
+          const QByteArray tabEnv = qgetenv("SIEANS_QT_AUTO_PROPERTY_TAB");
+          if (!tabEnv.isEmpty()) {
+            const QString tab = QString::fromUtf8(tabEnv).trimmed().toLower();
+            int idx = tab.toInt();
+            if (tab == QLatin1String("basic") || tab == QLatin1String("0")) idx = 0;
+            else if (tab == QLatin1String("template") || tab == QLatin1String("1")) idx = 1;
+            else if (tab == QLatin1String("run") || tab == QLatin1String("2")) idx = 2;
+            else if (tab == QLatin1String("result") || tab == QLatin1String("3")) idx = 3;
+            prop_float_->locatePanel()->selectTab(idx);
+          }
+        }
         logResult(QStringLiteral("AUTO_PROPERTY · %1").arg(id));
       });
     }
@@ -440,6 +453,26 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
           logResult(QStringLiteral("属性浮窗截图已保存: %1").arg(outF));
         else
           logResult(QStringLiteral("属性浮窗截图失败: %1").arg(outF));
+        // 核对各页间距时再抓 basic/template/run/result，不改参数。
+        if (qgetenv("SIEANS_QT_SCREENSHOT_FLOAT_TABS") == "1" &&
+            prop_float_->locatePanel() && prop_float_->locatePanel()->isVisible()) {
+          auto* loc = prop_float_->locatePanel();
+          const int saved = loc->currentTab();
+          const QString dir = QFileInfo(outF).absolutePath();
+          const QStringList names = {QStringLiteral("basic"), QStringLiteral("template"),
+                                     QStringLiteral("run"), QStringLiteral("result")};
+          for (int i = 0; i < loc->tabCount(); ++i) {
+            loc->selectTab(i);
+            QCoreApplication::processEvents();
+            const QString name = (i < names.size()) ? names.at(i) : QString::number(i);
+            const QString path = dir + QStringLiteral("/after-property-%1.png").arg(name);
+            if (prop_float_->grab().save(path))
+              logResult(QStringLiteral("属性浮窗分页截图已保存: %1").arg(path));
+            else
+              logResult(QStringLiteral("属性浮窗分页截图失败: %1").arg(path));
+          }
+          loc->selectTab(saved);
+        }
       }
       if (qgetenv("SIEANS_QT_SCREENSHOT_QUIT") == "1") {
         onStopContinuousPreview();
