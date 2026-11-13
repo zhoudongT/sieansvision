@@ -27,6 +27,12 @@
 namespace sieans_qt {
 namespace {
 
+/** 属性浮窗中限制编辑器宽度，避免被拉成通栏。 */
+void capFieldWidth(QWidget* w, int maxW = 320) {
+  if (!w) return;
+  w->setMaximumWidth(maxW);
+}
+
 QString stringify(const QVariant& v) {
   if (v.typeId() == QMetaType::QVariantMap || v.typeId() == QMetaType::QVariantList) {
     return QString::fromUtf8(
@@ -87,7 +93,7 @@ QVector<PropertyPanel::Spec> PropertyPanel::specsFor(const QString& op) {
             S("templateH", "截取高", kInt, ""),
             S("minScore", "最低分数", kReal, "SAD 约 0–1，NCC 约 -1–1"),
             S("maxMatches", "最多目标", kInt, ""),
-            S("overlapThreshold", "去重重叠", kReal, "0.3"),
+            S("overlapThreshold", "重叠抑制", kReal, "0.3"),
             S("angleEnable", "搜索旋转", kBool, ""),
             S("angleStart", "起始角度", kReal, ""),
             S("angleEnd", "终止角度", kReal, ""),
@@ -1124,9 +1130,9 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
   lab->setProperty("propKey", key);
   lab->setProperty("propLabel", label);
   lab->setWordWrap(true);
-  lab->setMinimumWidth(88);
-  lab->setMaximumWidth(124);
-  lab->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+  lab->setMinimumWidth(80);
+  lab->setMaximumWidth(140);
+  lab->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
   const auto tipFor = [](const QString& k) -> QString {
     if (k == QLatin1String("emptyDefault"))
       return QStringLiteral("模板展开为空时写入的默认值（如 BARCODE empty）");
@@ -1144,6 +1150,8 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
       return QStringLiteral("通信绑定 · flow.formatted / LocalBus 设备名");
     if (k == QLatin1String("expressions") || k == QLatin1String("expression"))
       return QStringLiteral("expr · in/startswith/…/isempty/notempty · 见底部提示");
+    if (k == QLatin1String("overlapThreshold"))
+      return QStringLiteral("多目标 NMS 的 IoU 阈值");
     if (k == QLatin1String("left") || k == QLatin1String("right"))
       return QStringLiteral("常量、引号文本，或变量 barcodeCount / ${flow.ocrOk}");
     if (k == QLatin1String("logic"))
@@ -1176,6 +1184,7 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
       spin->setValue(value.toInt());
       connect(spin, QOverload<int>::of(&QSpinBox::valueChanged), this,
               [this, key](int v) { emitEdit(key, QString::number(v)); });
+      capFieldWidth(spin, 160);
       form_->addRow(lab, spin);
       break;
     }
@@ -1195,6 +1204,7 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
       spin->setValue(value.toDouble());
       connect(spin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
               [this, key](double v) { emitEdit(key, QString::number(v, 'g', 8)); });
+      capFieldWidth(spin, 160);
       form_->addRow(lab, spin);
       break;
     }
@@ -1221,6 +1231,7 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
       combo->setCurrentIndex(pick);
       connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
               [this, key, combo](int) { emitEdit(key, combo->currentData().toString()); });
+      capFieldWidth(combo, 280);
       form_->addRow(lab, combo);
       break;
     }
@@ -1232,6 +1243,7 @@ void PropertyPanel::addSpecRow(const Spec& spec, const QVariantMap& params) {
       connect(edit, &QLineEdit::editingFinished, this, [this, key, edit]() {
         emitEdit(key, edit->text());
       });
+      capFieldWidth(edit, 360);
       form_->addRow(lab, edit);
       break;
     }

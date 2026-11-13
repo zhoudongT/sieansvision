@@ -375,6 +375,21 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
       logResult(QStringLiteral("AUTO_TCP 失败: %1").arg(e));
     });
   }
+  {
+    const QByteArray autoProp = qgetenv("SIEANS_QT_AUTO_PROPERTY");
+    if (!autoProp.isEmpty()) {
+      // 只打开属性浮窗核对样式，不改参数、不把几何写回方案。
+      QTimer::singleShot(500, this, [this, autoProp]() {
+        QString id = QString::fromUtf8(autoProp);
+        if (id == QLatin1String("1")) id = QStringLiteral("loc1");
+        const bool prev = applying_document_;
+        applying_document_ = true;
+        onNodeSelected(id);
+        applying_document_ = prev;
+        logResult(QStringLiteral("AUTO_PROPERTY · %1").arg(id));
+      });
+    }
+  }
   // Soft/open-and-run: grab one soft frame + full pipeline (GenTL→QR→TCP chain).
   if (qgetenv("SIEANS_QT_AUTO_RUN") == "1") {
     const int runDelay = (qgetenv("SIEANS_QT_AUTO_SOFT") == "1") ? 900 : 1400;
@@ -402,7 +417,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
          qgetenv("SIEANS_QT_AUTO_MATCH") == "1" ||
          qgetenv("SIEANS_QT_AUTO_RUN") == "1")
             ? 3200
-            : 1100;
+            : (qgetenv("SIEANS_QT_AUTO_PROPERTY").isEmpty() ? 1100 : 1600);
     QTimer::singleShot(shotDelay, this, [this, shot]() {
       const QPixmap px = grab();
       const QString out = QString::fromUtf8(shot);
@@ -412,6 +427,19 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         showStatus(QStringLiteral("截图 %1").arg(out));
       } else {
         logResult(QStringLiteral("截图失败: %1").arg(out));
+      }
+      if (prop_float_ && prop_float_->isVisible()) {
+        QByteArray shotF = qgetenv("SIEANS_QT_SCREENSHOT_FLOAT");
+        QString outF = !shotF.isEmpty()
+                           ? QString::fromUtf8(shotF)
+                           : QFileInfo(out).absolutePath() + QLatin1Char('/') +
+                                 QFileInfo(out).completeBaseName() +
+                                 QStringLiteral("-float.png");
+        QDir().mkpath(QFileInfo(outF).absolutePath());
+        if (prop_float_->grab().save(outF))
+          logResult(QStringLiteral("属性浮窗截图已保存: %1").arg(outF));
+        else
+          logResult(QStringLiteral("属性浮窗截图失败: %1").arg(outF));
       }
       if (qgetenv("SIEANS_QT_SCREENSHOT_QUIT") == "1") {
         onStopContinuousPreview();

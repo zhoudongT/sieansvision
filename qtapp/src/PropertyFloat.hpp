@@ -12,7 +12,7 @@ class QFrame;
 
 namespace sieans_qt {
 
-/** Light property float over dark canvas — PySide PropertyFloat 1:1 chrome. */
+/** 炭灰+橙属性浮窗（覆盖画布的无框工具窗；快捷键走工具提示与「?」，不在页脚铺快捷键表）。 */
 class PropertyFloat : public QDialog {
   Q_OBJECT
  public:

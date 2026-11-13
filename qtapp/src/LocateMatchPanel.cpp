@@ -39,10 +39,31 @@
 namespace sieans_qt {
 namespace {
 
+/** 属性表单：右对齐标签、字段按内容宽度，避免通栏拉宽。 */
+void polishForm(QFormLayout* form) {
+  form->setContentsMargins(0, 0, 0, 0);
+  form->setHorizontalSpacing(12);
+  form->setVerticalSpacing(8);
+  form->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);
+  form->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
+  form->setFieldGrowthPolicy(QFormLayout::FieldsStayAtSizeHint);
+}
+
+/** 单行表单标签，不折成叠字。 */
+QLabel* formLabel(const QString& text, const QString& tip = {}) {
+  auto* lab = new QLabel(text);
+  lab->setMinimumWidth(72);
+  lab->setWordWrap(false);
+  lab->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+  if (!tip.isEmpty()) lab->setToolTip(tip);
+  return lab;
+}
+
 QWidget* wrapForm(QFormLayout* form) {
+  polishForm(form);
   auto* w = new QWidget;
   auto* lay = new QVBoxLayout(w);
-  lay->setContentsMargins(10, 8, 10, 8);
+  lay->setContentsMargins(14, 10, 16, 12);
   lay->addLayout(form);
   lay->addStretch(1);
   return w;
@@ -371,9 +392,10 @@ LocateMatchPanel::LocateMatchPanel(QWidget* parent) : QWidget(parent) {
   auto* root = new QVBoxLayout(this);
   root->setContentsMargins(0, 0, 0, 0);
   auto* hint = new QLabel(
-      QStringLiteral("对齐 VisionMaster「快速匹配」：基本参数 / 模板 / 运行参数 / 结果显示"));
+      QStringLiteral("对齐 VisionMaster「快速匹配」：基本参数 / 特征模板 / 运行参数 / 结果显示"));
+  hint->setObjectName(QStringLiteral("muted"));
   hint->setWordWrap(true);
-  hint->setStyleSheet(QStringLiteral("color:#8a9098;font-size:11px;padding:6px 10px 0 10px;"));
+  hint->setStyleSheet(QStringLiteral("padding:8px 14px 4px 14px;"));
   root->addWidget(hint);
 
   tabs_ = new QTabWidget;
@@ -400,11 +422,19 @@ LocateMatchPanel::LocateMatchPanel(QWidget* parent) : QWidget(parent) {
   overlap_->setRange(0.0, 1.0);
   overlap_->setSingleStep(0.05);
   overlap_->setDecimals(2);
-  basic->addRow(QStringLiteral("匹配模式"), matchMode_);
-  basic->addRow(QStringLiteral("模板来源"), templateSource_);
-  basic->addRow(QStringLiteral("最低分数"), minScore_);
-  basic->addRow(QStringLiteral("最多目标"), maxMatches_);
-  basic->addRow(QStringLiteral("去重重叠"), overlap_);
+  matchMode_->setMinimumWidth(180);
+  templateSource_->setMinimumWidth(180);
+  minScore_->setMinimumWidth(96);
+  maxMatches_->setMinimumWidth(96);
+  overlap_->setMinimumWidth(96);
+  overlap_->setToolTip(QStringLiteral("多目标 NMS 的 IoU 阈值（overlapThreshold）"));
+  basic->addRow(formLabel(QStringLiteral("匹配模式")), matchMode_);
+  basic->addRow(formLabel(QStringLiteral("模板来源")), templateSource_);
+  basic->addRow(formLabel(QStringLiteral("最低分数")), minScore_);
+  basic->addRow(formLabel(QStringLiteral("最多目标")), maxMatches_);
+  basic->addRow(formLabel(QStringLiteral("重叠抑制"),
+                         QStringLiteral("多目标 NMS 的 IoU 阈值（overlapThreshold）")),
+                overlap_);
   tabs_->addTab(wrapForm(basic), QStringLiteral("基本参数"));
 
   // 2) 模板

@@ -34,6 +34,7 @@
 - `SIEANS_QT_AUTO_MATCH=1` — 追加快速匹配并单次运行（可与 `AUTO_SOFT` 同用）
 - `SIEANS_QT_AUTO_TCP=1` — 启动后按方案 tcpReal 配置监听/连接
 - `SIEANS_QT_SCREENSHOT=/path.png` — 启动后抓窗（配合 `SIEANS_QT_SCREENSHOT_QUIT=1` 可退出）
+- `SIEANS_QT_AUTO_PROPERTY=loc1` — 启动后打开指定节点的属性浮窗（仅核对样式，不改方案）；若浮窗可见会顺带另存 `*-float.png`
 - `SIEANS_QT_SMOKE_REPORT=/path.txt` — 写出 codes/ms/passGate 一行
 
 OCR 依赖本机 `tesseract` 与 `eng` 语言包。无 sudo 时执行 `scripts/install-tesseract-user.sh`，把 Ubuntu 官方 deb 解压到 `$HOME/.local/opt/tesseract`，并安装 `$HOME/.local/bin/tesseract` 包装脚本（eng + chi_sim）。算子会查找 PATH、该用户前缀、`SIEANS_TESSERACT` 与 `TESSDATA_PREFIX`；系统已安装 `/usr/bin/tesseract` 时仍优先使用 PATH 上的版本。
@@ -123,6 +124,8 @@ YOLO 真实推理（可选）：将检测用 `.onnx`（如 `yolo11n.onnx` / `yol
 **已落地（wave285）：** 工作台视觉细调（Fusion 炭灰+橙，不改交互与算子语义）。分类芯片改为按宽度换行，不再挤成省略点；`fitAll` 设最小/最大比例，大流程不再缩到标签不可读（仍在显示后调用，底栏 1/5 上限 220px 未改）。属性区长提示改为一行摘要、完整说明放工具提示，表单标签可折行并对齐。画布选中节点用实线+左侧强调条，选中连线加粗。QSS 补齐横向滚动条、勾选框、分割条悬停、列表选中/悬停、对话框与禁用态；浮动属性窗保持浅色并覆盖勾选/滚动条。
 
 **已落地（wave286）：** 第二轮工作台视觉细修（仍是 Fusion 炭灰+橙，不改交互与算子语义，不重做 wave285 的芯片换行、fitAll 夹持、属性提示与选中节点）。结果表「值」列拉伸、「类型」按内容收窄，长 URL 不再被挤成省略；Host 条周期/模式芯片不再被压扁，明细与监视值过长时省略并在工具提示给全文（URL 只显示主机名）；胶片条「自动切换」等按钮不再被文件名挤掉，置顶/置底改为「顶」「底」以免符号缺字；状态栏忙碌/空闲保留圆点并加大间距；「清最近」默认与分类芯片同权重，悬停才强调。
+
+**已落地（wave287）：** 属性浮窗视觉细修（仍是 Fusion 炭灰+橙，不改交互与算子语义）。去掉页脚一整行快捷键表，改为「?」工具提示/WhatsThis；浮窗统一炭灰底与卡片色输入框，去掉通栏白条与浅色页脚的撞色；表单标签右对齐且不折叠字，「去重重叠」改为「重叠抑制」（键名 overlapThreshold 不变）；「确定」仍是主橙色按钮。wave270 分割条、wave285 芯片换行/fitAll/属性摘要提示、wave286 结果表与 Host/胶片条均未改。
 
 **NEXT：** 运行界面设计器（不在目录中新增 HMI 算子）。操作员账号（PySide 走独立 RPC/部署凭据，未在本机落地）。云 SaaS / 模板市场。真机硬件（`/opt/MVS`、真实 PLC）。官方 YOLO 权重需自行放入上述模型目录。
 

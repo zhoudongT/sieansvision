@@ -16,6 +16,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QGuiApplication>
+#include <QWhatsThis>
 
 namespace sieans_qt {
 
@@ -25,7 +26,7 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   setObjectName(QStringLiteral("propertyFloat"));
   setWindowFlags(Qt::Tool | Qt::FramelessWindowHint);
   setModal(false);
-  resize(460, 560);
+  resize(500, 480);
   setStyleSheet(theme::propertyFloatStyleSheet());
 
   auto* root = new QVBoxLayout(this);
@@ -35,7 +36,7 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   titleBar_ = new QFrame;
   titleBar_->setObjectName(QStringLiteral("propertyFloatTitle"));
   auto* titleLay = new QHBoxLayout(titleBar_);
-  titleLay->setContentsMargins(12, 6, 6, 6);
+  titleLay->setContentsMargins(14, 8, 8, 8);
   auto* titleCol = new QVBoxLayout;
   titleCol->setContentsMargins(0, 0, 0, 0);
   titleCol->setSpacing(0);
@@ -99,7 +100,8 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   auto* footer = new QFrame;
   footer->setObjectName(QStringLiteral("propertyFloatFooter"));
   auto* foot = new QHBoxLayout(footer);
-  foot->setContentsMargins(10, 6, 10, 8);
+  foot->setContentsMargins(12, 8, 12, 10);
+  foot->setSpacing(8);
   auto* cont = new QPushButton(QStringLiteral("连续执行"));
   cont->setObjectName(QStringLiteral("propertyFloatRunContinuous"));
   cont->setToolTip(QStringLiteral("连续运行本模块 · 保持浮窗 · F6 · Esc 仍可放弃"));
@@ -107,17 +109,34 @@ PropertyFloat::PropertyFloat(QWidget* parent) : QDialog(parent) {
   exec->setObjectName(QStringLiteral("propertyFloatRun"));
   exec->setToolTip(QStringLiteral("单次运行本模块 · F5/F9 · 保留浮窗"));
   auto* cancel = new QPushButton(QStringLiteral("取消"));
-  cancel->setObjectName(QStringLiteral("propertyFloatRun"));
+  cancel->setObjectName(QStringLiteral("propertyFloatCancel"));
   cancel->setToolTip(QStringLiteral("放弃修改并关闭 · Esc/Ctrl+W · 不写回属性"));
   auto* ok = new QPushButton(QStringLiteral("确定"));
   ok->setObjectName(QStringLiteral("propertyFloatOk"));
   ok->setToolTip(QStringLiteral("保留修改并关闭 · Ctrl/Alt/Shift+Enter · Ctrl+S · Ctrl+Shift+S 应用保持 · Esc 相反"));
-  auto* hint = new QLabel(QStringLiteral("Esc/Ctrl+W 放弃 · Enter 保留 · Tab/Home/End/PgUp/PgDn 切换 · Ctrl+R 还原 · Alt+滚轮透明度 · Ctrl+S 确定 · Ctrl+Shift+S 应用保持 · Ctrl+Enter 确定 · F5/F9 · F6"));
-  hint->setObjectName(QStringLiteral("propertyFloatHint"));
-  hint->setStyleSheet(QStringLiteral("color:#8a9098;font-size:11px;"));
+  ok->setDefault(true);
+  auto* help = new QPushButton(QStringLiteral("?"));
+  help->setObjectName(QStringLiteral("propertyFloatHelp"));
+  help->setFixedSize(28, 28);
+  help->setCursor(Qt::PointingHandCursor);
+  help->setFocusPolicy(Qt::NoFocus);
+  help->setToolTip(
+      QStringLiteral("快捷键\n"
+                     "Esc / Ctrl+W  放弃并关闭\n"
+                     "Enter / Ctrl+S  确定\n"
+                     "Ctrl+Shift+S  应用并保持浮窗\n"
+                     "F5 / F9  执行 · F6  连续执行\n"
+                     "Ctrl+R  还原 · Tab / Home / End / PgUp / PgDn  切换字段\n"
+                     "Alt+滚轮  透明度 · Ctrl+0  复位透明度\n"
+                     "双击或中键标题  钉住"));
+  help->setWhatsThis(help->toolTip());
+  connect(help, &QPushButton::clicked, this, [help]() {
+    QWhatsThis::showText(help->mapToGlobal(QPoint(0, help->height())), help->whatsThis(), help);
+  });
   foot->addWidget(cont);
   foot->addWidget(exec);
-  foot->addWidget(hint, 1);
+  foot->addStretch(1);
+  foot->addWidget(help);
   foot->addWidget(cancel);
   foot->addWidget(ok);
   root->addWidget(footer);
@@ -303,7 +322,7 @@ void PropertyFloat::keyPressEvent(QKeyEvent* event) {
   }
   if (event->key() == Qt::Key_0 && (event->modifiers() & Qt::ControlModifier) &&
       (event->modifiers() & Qt::ShiftModifier)) {
-    resize(460, 560);
+    resize(500, 480);
     notifyChromeGeometry();
     opacity_ = 1.0;
     setWindowOpacity(opacity_);
