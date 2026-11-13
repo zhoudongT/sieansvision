@@ -47,6 +47,15 @@ namespace sieans_qt {
 namespace {
 constexpr int kThumbW = 80;
 constexpr int kThumbH = 52;
+
+/** 按当前宽度中间省略胶片状态（QLabel 在 Qt 6.7 无省略 API）。 */
+void applyStatusElide(QLabel* lab) {
+  if (!lab) return;
+  const QString full = lab->property("sieansFullText").toString();
+  if (full.isEmpty()) return;
+  const int w = qMax(16, lab->contentsRect().width());
+  lab->setText(lab->fontMetrics().elidedText(full, Qt::ElideMiddle, w));
+}
 }  // namespace
 
 FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
@@ -85,14 +94,23 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   auto* next = new QPushButton(QStringLiteral("▶"));
   next->setToolTip(QStringLiteral("下一张 · → · End 到末张"));
   next->setFixedWidth(28);
-  auto* pinFront = new QPushButton(QStringLiteral("⇈"));
+  // 顶/底在中文字体里稳定可见；原 ⇈/⇊ 在本机字体下会落成竖线方块。
+  auto* pinFront = new QPushButton(QStringLiteral("顶"));
   pinFront->setToolTip(QStringLiteral("选中置顶 · Ctrl+Shift+Home · Ctrl+单击缩略图"));
   pinFront->setFixedWidth(28);
-  auto* pinEnd = new QPushButton(QStringLiteral("⇊"));
+  auto* pinEnd = new QPushButton(QStringLiteral("底"));
   pinEnd->setToolTip(QStringLiteral("选中置底 · Ctrl+Shift+End · Ctrl+Shift+单击缩略图"));
   pinEnd->setFixedWidth(28);
   auto* del = new QPushButton(QStringLiteral("删除"));
   del->setToolTip(QStringLiteral("删除选中 · Del · Ctrl+Del 清空 · 不可撤销"));
+  countLabel_->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+  status_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+  status_->setWordWrap(false);
+  status_->setMinimumWidth(48);
+  status_->setProperty("sieansFullText", QStringLiteral("本地图像"));
+  autoSwitch_->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+  for (QPushButton* b : {runAll, add, folder, prev, next, pinFront, pinEnd, del})
+    b->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
   head->addWidget(countLabel_);
   head->addWidget(status_, 1);
   head->addWidget(autoSwitch_);
@@ -181,13 +199,19 @@ FilmstripBar::FilmstripBar(QWidget* parent) : QWidget(parent) {
   refreshCount();
 }
 
-void FilmstripBar::setStatus(const QString& text) { status_->setText(text); }
+void FilmstripBar::setStatus(const QString& text) {
+  if (!status_) return;
+  status_->setProperty("sieansFullText", text);
+  applyStatusElide(status_);
+  status_->setToolTip(text + QStringLiteral("\n") +
+                      QStringLiteral("中键打开当前目录 · 右键剔重 · Ctrl+Shift+O/U"));
+}
 
 void FilmstripBar::refreshCount() {
   const int n = paths_.size();
   const int show = n == 0 ? 0 : index_ + 1;
   countLabel_->setText(QStringLiteral("图像源 (%1/%2)").arg(show).arg(n));
-  if (n == 0) status_->setText(QStringLiteral("本地图像"));
+  if (n == 0) setStatus(QStringLiteral("本地图像"));
 }
 
 QIcon FilmstripBar::makeThumb(const QString& path) const {
@@ -299,17 +323,14 @@ void FilmstripBar::selectIndex(int index, bool emitSignal) {
   refreshCount();
   QImage probe(paths_.at(index));
   const QString fname = QFileInfo(paths_.at(index)).fileName();
-  status_->setText(probe.isNull()
-                       ? QStringLiteral("%1/%2 · %3")
-                             .arg(index + 1)
-                             .arg(paths_.size())
-                             .arg(fname)
-                       : QStringLiteral("%1/%2 · %3×%4 · %5")
-                             .arg(index + 1)
-                             .arg(paths_.size())
-                             .arg(probe.width())
-                             .arg(probe.height())
-                             .arg(fname));
+  const QString st = probe.isNull()
+                         ? fname
+                         : QStringLiteral("%1×%2 · %3")
+                               .arg(probe.width())
+                               .arg(probe.height())
+                               .arg(fname);
+  // 计数已在左侧「图像源 (n/N)」；状态只留尺寸+文件名并中间省略，避免把「自动切换」挤没。
+  setStatus(st);
   if (list_) {
     if (auto* item = list_->item(index)) list_->scrollToItem(item);
   }
@@ -662,6 +683,10 @@ bool FilmstripBar::eventFilter(QObject* obj, QEvent* event) {
       return true;
     }
   }
+  if (obj == status_ && event->type() == QEvent::Resize) {
+    applyStatusElide(status_);
+    return QWidget::eventFilter(obj, event);
+  }
   if (obj == status_ && event->type() == QEvent::MouseButtonRelease) {
     auto* me = static_cast<QMouseEvent*>(event);
     if (me->button() == Qt::MiddleButton) {
@@ -813,13 +838,13 @@ void FilmstripBar::keepOnlySelected() {
   refreshCount();
   if (!paths_.isEmpty()) emit imageSelected(paths_.first());
   notifyPathsChanged();
-  if (status_) status_->setText(QStringLiteral("仅保留选中 %1 · Ctrl+Shift+K").arg(paths_.size()));
+  if (status_) setStatus(QStringLiteral("仅保留选中 %1 · Ctrl+Shift+K").arg(paths_.size()));
 }
 
 void FilmstripBar::exportPathList() {
   if (paths_.isEmpty()) return;
   if (auto* clip = QGuiApplication::clipboard()) clip->setText(paths_.join(QLatin1Char('\n')));
-  if (status_) status_->setText(QStringLiteral("已导出路径 %1 · Ctrl+E").arg(paths_.size()));
+  if (status_) setStatus(QStringLiteral("已导出路径 %1 · Ctrl+E").arg(paths_.size()));
 }
 
 
@@ -835,7 +860,7 @@ void FilmstripBar::exportSelectedPathList() {
   if (lines.isEmpty()) return;
   if (auto* clip = QGuiApplication::clipboard())
     clip->setText(lines.join(QLatin1Char('\n')));
-  if (status_) status_->setText(QStringLiteral("已导出选中 %1 · Ctrl+Shift+E").arg(lines.size()));
+  if (status_) setStatus(QStringLiteral("已导出选中 %1 · Ctrl+Shift+E").arg(lines.size()));
 }
 
 void FilmstripBar::gotoIndexDialog() {

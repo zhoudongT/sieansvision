@@ -24,6 +24,52 @@
 #include "VarWatchPanel.hpp"
 
 namespace sieans_qt {
+namespace {
+/** 把过长的监视值收成一行可扫的短文案；URL 只留主机名，全文仍走 tooltip。 */
+QString compactWatchValue(const QString& raw, int maxLen) {
+  const QString s = raw.trimmed();
+  if (s.size() <= maxLen) return s;
+  if (s.startsWith(QLatin1String("http://")) || s.startsWith(QLatin1String("https://"))) {
+    const int scheme = s.startsWith(QLatin1String("https://")) ? 8 : 7;
+    const int slash = s.indexOf(QLatin1Char('/'), scheme);
+    const QString host = slash < 0 ? s.mid(scheme) : s.mid(scheme, slash - scheme);
+    if (!host.isEmpty()) return host + QStringLiteral("/…");
+  }
+  return s.left(qMax(1, maxLen - 1)) + QStringLiteral("…");
+}
+
+const QString kChipShortcuts = QStringLiteral(
+    "监视变量芯片 · 双击编辑 · Ctrl+Shift+K/V 复制/粘贴键(JSON) · Ctrl+Shift+E JSON导出 · "
+    "Alt+←→ 调序 · Ctrl+Home/End 置顶末/置底首 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · "
+    "Ctrl+Shift+U 去重 · Del/Bksp 删首 · Shift+Del 删末 · Ctrl+Shift+Bksp 清空 · 单击复制全文");
+
+const QString kDetailShortcuts = QStringLiteral(
+    "count/text/RX/urlOk/tcp/良率 摘要 · framing lf/crlf/raw/len4 见 tcp= · "
+    "双击复制全文 · 中键复制连OK/NG · 右键/Ctrl+Shift+C 运行统计 · 悬停看全文");
+
+/** 取出标签上保存的全文；没有属性时退回当前显示文本。 */
+QString labelFullText(const QLabel* lab) {
+  if (!lab) return {};
+  const QString full = lab->property("sieansFullText").toString();
+  return full.isEmpty() ? lab->text() : full;
+}
+
+/** 按当前宽度省略显示（QLabel 在 Qt 6.7 无 setTextElideMode）。 */
+void applyElidedLabel(QLabel* lab, Qt::TextElideMode mode) {
+  if (!lab) return;
+  const QString full = lab->property("sieansFullText").toString();
+  if (full.isEmpty()) return;
+  const int w = qMax(16, lab->contentsRect().width());
+  lab->setText(lab->fontMetrics().elidedText(full, mode, w));
+}
+
+/** 记下全文并立即按宽度省略；工具提示由调用方另行设置。 */
+void setElidedLabelText(QLabel* lab, const QString& full, Qt::TextElideMode mode) {
+  if (!lab) return;
+  lab->setProperty("sieansFullText", full);
+  applyElidedLabel(lab, mode);
+}
+}  // namespace
 
 HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   setFocusPolicy(Qt::StrongFocus);
@@ -45,14 +91,20 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   modeChip_->setStyleSheet(
       QStringLiteral("background:#3a3d42;color:#a8a8a8;border-radius:3px;"
                      "padding:3px 8px;font-size:11px;font-weight:600;"));
+  modeChip_->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
   cycleChip_ = new QLabel(QStringLiteral("周期 0"));
   cycleChip_->setToolTip(QStringLiteral("运行周期计数 · 每次流程完成 +1 · 滚轮调节拍 · Ctrl+Shift+T 复制 · Ctrl+Shift+I 粘贴节拍 · 中键良率 · 右键清连OK"));
   cycleChip_->setStyleSheet(
       QStringLiteral("background:#32353a;color:#a8a8a8;border-radius:3px;"
                      "padding:3px 8px;font-size:11px;"));
+  cycleChip_->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
   detail_ = new QLabel(QStringLiteral("Host · 等待运行"));
   detail_->setObjectName(QStringLiteral("muted"));
-  detail_->setToolTip(QStringLiteral("count/text/RX/urlOk/tcp 摘要 · framing lf/crlf/raw/len4 见 tcp= · 悬停看全文"));
+  detail_->setToolTip(kDetailShortcuts);
+  detail_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+  detail_->setWordWrap(false);
+  detail_->setMinimumWidth(48);
+  detail_->setProperty("sieansFullText", QStringLiteral("Host · 等待运行"));
   alarmLabel_ = new QLabel;
   alarmLabel_->setVisible(false);
   alarmLabel_->setToolTip(QStringLiteral("报警锁存 · Host 清报警解除 · 不影响周期计数"));
@@ -104,7 +156,7 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
   chips_->setObjectName(QStringLiteral("hostWatchChips"));
   chips_->setWordWrap(true);
   chips_->setCursor(Qt::PointingHandCursor);
-  chips_->setToolTip(QStringLiteral("监视变量芯片 · 双击编辑 · Ctrl+Shift+K/V 复制/粘贴键(JSON) · Ctrl+Shift+E JSON导出 · Alt+←→ 调序 · Ctrl+Home/End 置顶末/置底首 · Ctrl+Shift+Y 反序 · Ctrl+Shift+S 排序 · Ctrl+Shift+U 去重 · Del/Bksp 删首 · Shift+Del 删末 · Ctrl+Shift+Bksp 清空 · 单击复制全文"));
+  chips_->setToolTip(kChipShortcuts);
   chips_->installEventFilter(this);
   chipRow->addWidget(chips_, 1);
   root->addLayout(chipRow);
@@ -193,6 +245,7 @@ void HostStrip::refreshCycleChip() {
     text = QStringLiteral("周期 %1").arg(cycle_);
   text += QStringLiteral(" · 节拍 %1").arg(intervalMs_);
   cycleChip_->setText(text);
+  cycleChip_->adjustSize();
   cycleChip_->setToolTip(
       QStringLiteral("周期 %1 · 上次 %2 ms · 连续节拍 %3 ms · 滚轮±50 · Ctrl+滚轮±200 · Alt+1..4 预设 · Ctrl+单击清零 · 双击清零 · 右键清连OK")
           .arg(cycle_)
@@ -208,31 +261,41 @@ void HostStrip::refreshChips(const QVariantMap& vars) {
     return;
   }
   QStringList parts;
+  QStringList full;
   for (const QString& k : watchKeys_) {
-    parts << QStringLiteral("%1=%2").arg(k, src.value(k).toString().left(24));
+    const QString v = src.value(k).toString();
+    full << QStringLiteral("%1=%2").arg(k, v);
+    parts << QStringLiteral("%1=%2").arg(k, compactWatchValue(v, 22));
   }
   // also surface bound I/O output names if present
   for (auto it = src.begin(); it != src.end(); ++it) {
-    if (it.key().startsWith(QStringLiteral("io.")))
-      parts << QStringLiteral("%1=%2").arg(it.key(), it.value().toString().left(20));
+    if (it.key().startsWith(QStringLiteral("io."))) {
+      const QString v = it.value().toString();
+      full << QStringLiteral("%1=%2").arg(it.key(), v);
+      parts << QStringLiteral("%1=%2").arg(it.key(), compactWatchValue(v, 20));
+    }
   }
   chips_->setText(parts.join(QStringLiteral("  ·  ")));
+  chips_->setProperty("sieansFullText", full.join(QLatin1Char('\n')));
+  chips_->setToolTip(full.isEmpty() ? kChipShortcuts
+                                    : full.join(QLatin1Char('\n')) + QStringLiteral("\n\n") +
+                                          kChipShortcuts);
 }
 
 void HostStrip::setTcpStatus(const QString& status) {
   tcpStatus_ = status;
   // Soft refresh of last detail line without needing vars — keep tcp visible.
-  QString d = detail_ ? detail_->text() : QString();
+  QString d = labelFullText(detail_);
   const QString marker = QStringLiteral(" · tcp=");
   const int at = d.indexOf(marker);
   if (at >= 0) d = d.left(at);
   if (!tcpStatus_.isEmpty())
     d += marker + tcpStatus_.left(36);
   if (detail_) {
-    detail_->setText(d.isEmpty() ? QStringLiteral("Host · tcp=%1").arg(tcpStatus_.left(36))
-                                 : d);
-    if (!tcpStatus_.isEmpty())
-      detail_->setToolTip(QStringLiteral("tcp=%1").arg(tcpStatus_));
+    if (d.isEmpty())
+      d = QStringLiteral("Host · tcp=%1").arg(tcpStatus_.left(36));
+    setElidedLabelText(detail_, d, Qt::ElideRight);
+    detail_->setToolTip(d + QStringLiteral("\n\n") + kDetailShortcuts);
   }
 }
 
@@ -322,7 +385,8 @@ void HostStrip::updateFromVars(const QVariantMap& vars, int codeCount, bool eval
   }
   if (lastCycleMs_ >= 0)
     detail += QStringLiteral(" · %1 ms").arg(lastCycleMs_, 0, 'f', 1);
-  detail_->setText(detail);
+  setElidedLabelText(detail_, detail, Qt::ElideRight);
+  detail_->setToolTip(detail + QStringLiteral("\n\n") + kDetailShortcuts);
   refreshChips(vars);
 }
 
@@ -331,15 +395,21 @@ void HostStrip::resetStreak() {
   okStreak_ = 0;
   ngCount_ = 0;
   if (detail_) {
-    QString d = detail_->text();
+    QString d = labelFullText(detail_);
     const int at = d.indexOf(QStringLiteral(" · 连OK"));
     if (at >= 0) d = d.left(at);
-    detail_->setText(d + QStringLiteral(" · 连OK 0 · NG 0 · 良率 0.0%"));
-    detail_->setToolTip(QStringLiteral("连OK/NG 已清零 · Alt+单击徽章 / 右键周期"));
+    d += QStringLiteral(" · 连OK 0 · NG 0 · 良率 0.0%");
+    setElidedLabelText(detail_, d, Qt::ElideRight);
+    detail_->setToolTip(d + QStringLiteral("\n\n") +
+                        QStringLiteral("连OK/NG 已清零 · Alt+单击徽章 / 右键周期"));
   }
 }
 
 bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
+  if (obj == detail_ && event->type() == QEvent::Resize) {
+    applyElidedLabel(detail_, Qt::ElideRight);
+    return QWidget::eventFilter(obj, event);
+  }
   if (event->type() == QEvent::Wheel && obj == cycleChip_) {
     auto* we = static_cast<QWheelEvent*>(event);
     const int step = (we->modifiers() & Qt::ControlModifier) ? 200 : 50;
@@ -378,7 +448,7 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
     }
     if (me->button() == Qt::LeftButton && obj == detail_ && detail_) {
       if (auto* clip = QGuiApplication::clipboard()) {
-        clip->setText(detail_->text());
+        clip->setText(labelFullText(detail_));
         detail_->setToolTip(QStringLiteral("已复制 Host 明细 · 双击"));
       }
       return true;
@@ -478,7 +548,7 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
         return true;
       }
       if (auto* clip = QGuiApplication::clipboard()) {
-        clip->setText(chips_->text());
+        clip->setText(labelFullText(chips_));
         chips_->setToolTip(QStringLiteral("已复制监视芯片 · 双击编辑键列表"));
       }
       return true;
@@ -690,7 +760,7 @@ void HostStrip::copyRunStats() {
       .arg(ngCount_)
       .arg(yld, 0, 'f', 1)
       .arg(modeChip_ ? modeChip_->text() : QString())
-      .arg(detail_ ? detail_->text() : QString());
+      .arg(labelFullText(detail_));
   if (auto* clip = QGuiApplication::clipboard()) clip->setText(line);
   if (detail_) detail_->setToolTip(QStringLiteral("已复制运行统计 · Ctrl+Shift+C"));
 }

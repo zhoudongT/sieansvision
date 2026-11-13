@@ -893,7 +893,16 @@ void MainWindow::buildUi() {
   result_table_ = new QTableWidget(0, 3);
   result_table_->setHorizontalHeaderLabels(
       {QStringLiteral("模块/字段"), QStringLiteral("值"), QStringLiteral("类型")});
-  result_table_->horizontalHeader()->setStretchLastSection(true);
+  // 值列吃剩余宽度，类型列按内容收紧；避免 StretchLast 把「类型」顶到最右而值被省略。
+  {
+    auto* hdr = result_table_->horizontalHeader();
+    hdr->setStretchLastSection(false);
+    hdr->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    hdr->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    hdr->setSectionResizeMode(1, QHeaderView::Stretch);
+    hdr->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+  }
+  result_table_->setTextElideMode(Qt::ElideRight);
   result_table_->verticalHeader()->setVisible(false);
   result_table_->setAlternatingRowColors(true);
   result_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -1279,15 +1288,18 @@ void MainWindow::buildUi() {
   statusBar()->setObjectName(QStringLiteral("workbenchStatus"));
   statusBar()->addWidget(project_label_, 1);
   status_config_ = new QLabel(QStringLiteral("组件配置完成"));
-  status_config_->setStyleSheet(QStringLiteral("color:#3ecf8e;"));
+  status_config_->setStyleSheet(QStringLiteral("color:#3ecf8e;padding:0 8px;"));
   statusBar()->addPermanentWidget(status_config_);
   status_timing_ = new QLabel(QStringLiteral("流程 — ms · 工具 — ms · 算法 — ms"));
+  status_timing_->setStyleSheet(QStringLiteral("color:#a8a8a8;padding:0 8px;"));
   statusBar()->addPermanentWidget(status_timing_);
   status_busy_ = new QLabel(QStringLiteral("● 空闲"));
+  status_busy_->setStyleSheet(QStringLiteral("color:#2d9b6c;padding:0 8px;"));
   statusBar()->addPermanentWidget(status_busy_);
   status_backend_ = new QLabel(
       QStringLiteral("SIEANS Vision · %1")
           .arg(QString::fromStdString(sieans::native_version())));
+  status_backend_->setStyleSheet(QStringLiteral("color:#787878;padding:0 8px;"));
   statusBar()->addPermanentWidget(status_backend_);
 }
 
@@ -1839,9 +1851,9 @@ void MainWindow::showStatus(const QString& msg, int timeout_ms) {
 
 void MainWindow::setBusy(bool busy) {
   busy_.store(busy);
-  status_busy_->setText(busy ? QStringLiteral("忙碌") : QStringLiteral("空闲"));
-  status_busy_->setStyleSheet(busy ? QStringLiteral("color:#d4a017;")
-                                   : QStringLiteral("color:#2d9b6c;"));
+  status_busy_->setText(busy ? QStringLiteral("● 忙碌") : QStringLiteral("● 空闲"));
+  status_busy_->setStyleSheet(busy ? QStringLiteral("color:#d4a017;font-weight:600;padding:0 8px;")
+                                   : QStringLiteral("color:#2d9b6c;padding:0 8px;"));
   updateRunChrome();
 }
 
@@ -4918,6 +4930,10 @@ void MainWindow::runPipeline(const QImage& src, bool updateFlowStates) {
                                 .arg(p95Ms, 0, 'f', 2).arg(sortedCycles.size()));
   }
   refreshConfigStatus();
+  if (result_table_) {
+    result_table_->resizeColumnToContents(0);
+    result_table_->resizeColumnToContents(2);
+  }
   showStatus(QStringLiteral("流水线完成 · 码 %1 · %2 ms")
                  .arg(hits.size())
                  .arg(decodeMs, 0, 'f', 1));

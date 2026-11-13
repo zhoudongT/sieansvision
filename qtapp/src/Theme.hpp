@@ -50,7 +50,7 @@ QToolBar {
   background: #232528; border-bottom: 1px solid #4a4e54; spacing: 1px; padding: 1px 4px;
 }
 QToolBar#mainToolBar {
-  min-height: 30px; spacing: 1px; padding: 2px 4px 2px 0;
+  min-height: 30px; spacing: 2px; padding: 2px 6px 2px 0;
 }
 QToolBar#mainToolBar QToolButton {
   padding: 3px; margin: 0 1px; border-radius: 2px; min-width: 24px; min-height: 24px;
@@ -134,6 +134,7 @@ QTreeWidget, QTableWidget, QListWidget {
 QHeaderView::section {
   background: #232528; color: #a8a8a8; padding: 5px 8px; border: 0;
   border-bottom: 1px solid #4a4e54; font-weight: 600; font-size: 11px;
+  text-align: left;
 }
 QHeaderView::section:hover { color: #e8e8e8; background: #2c2e32; }
 QTreeWidget::item, QTableWidget::item, QListWidget::item { padding: 2px 4px; }
@@ -195,6 +196,23 @@ QWidget#toolboxCatChips QPushButton:hover { color: #e8e8e8; border-color: #6a6e7
 QWidget#toolboxCatChips QPushButton:checked {
   background: #3d2e1f; color: #e67a2e; border-color: #e67a2e; font-weight: 600;
 }
+QPushButton#toolboxCatClear {
+  background: #2a2d32; color: #c09090; border: 1px solid #4a4e54;
+  border-radius: 3px; padding: 2px 8px; font-size: 11px; min-height: 18px;
+}
+QPushButton#toolboxCatClear:hover {
+  background: #3a2a2a; color: #ffc0c0; border-color: #e53935;
+}
+QLineEdit#resultFilter {
+  margin: 4px 8px 2px 8px; padding: 3px 8px;
+  background: #2a2c30; border: 1px solid #3f4348;
+}
+QLineEdit#resultFilter:focus { border: 1px solid #e67a2e; }
+QStatusBar QLabel { padding: 0 8px; color: #a8a8a8; }
+QWidget#filmstripBar QPushButton {
+  padding: 2px 7px; min-height: 20px; font-size: 11px;
+}
+QWidget#filmstripBar QCheckBox { spacing: 4px; font-size: 11px; }
 )");
 }
 

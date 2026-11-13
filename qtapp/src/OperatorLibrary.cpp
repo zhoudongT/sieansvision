@@ -740,10 +740,6 @@ void OperatorLibrary::rebuildCategoryChips() {
     clr->setToolTip(QStringLiteral("清空最近算子 · Ctrl+Shift+Del"));
     clr->setObjectName(QStringLiteral("toolboxCatClear"));
     clr->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    clr->setStyleSheet(
-        QStringLiteral("QPushButton{background:#3a2a2a;color:#e0a0a0;border:1px solid #5a3a3a;"
-                       "border-radius:3px;padding:2px 8px;font-size:11px;min-height:18px;}"
-                       "QPushButton:hover{background:#e53935;color:#fff;border-color:#e53935;}"));
     connect(clr, &QPushButton::clicked, this, [this]() {
       recentKeys_.clear();
       rebuild();
