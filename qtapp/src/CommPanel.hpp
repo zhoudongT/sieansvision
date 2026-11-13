@@ -22,6 +22,11 @@ class CommPanel : public QWidget {
  public:
   explicit CommPanel(CommHub* hub, QWidget* parent = nullptr);
 
+  /** 底栏用的紧凑默认尺寸；完整通信表单由内部滚动承载。 */
+  QSize sizeHint() const override;
+  /** 允许底栏缩到约 120px，避免把画布挤高；更矮时出滚动条而不是叠控件。 */
+  QSize minimumSizeHint() const override;
+
   void bindDocument(const QVariantMap& commManager);
   void setFlowVars(const QVariantMap& vars);
 

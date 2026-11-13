@@ -30,14 +30,31 @@
 #include <utility>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QFrame>
+#include <QSize>
+#include <QSizePolicy>
 
 namespace sieans_qt {
 
 CommPanel::CommPanel(CommHub* hub, QWidget* parent)
     : QWidget(parent), hub_(hub) {
-  auto* lay = new QVBoxLayout(this);
+  // 底栏默认约 200px（含页签），本面板行高合计远超该高度。
+  // QVBoxLayout 在小于子控件最小高度时会把后续行叠到上一行上。
+  // 内容放到可滚动内页，外层保持较小 sizeHint，不把画布挤掉。
+  setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  auto* scroll = new QScrollArea;
+  scroll->setObjectName(QStringLiteral("commPanelScroll"));
+  scroll->setWidgetResizable(true);
+  scroll->setFrameShape(QFrame::NoFrame);
+  scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  scroll->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+  auto* inner = new QWidget;
+  inner->setObjectName(QStringLiteral("commPanelInner"));
+  auto* lay = new QVBoxLayout(inner);
   lay->setContentsMargins(6, 6, 6, 6);
   lay->setSpacing(4);
+  lay->setSizeConstraint(QLayout::SetMinimumSize);
   auto* title = new QLabel(QStringLiteral("通信 · 多设备 TCP / LocalBus"));
   title->setObjectName(QStringLiteral("sectionTitle"));
   lay->addWidget(title);
@@ -199,7 +216,6 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
       QStringLiteral("BARCODE ok=${flow.passGate} text=${flow.barcodeText}"));
   payloadEdit_->setToolTip(
       QStringLiteral("报文模板 · ${flow.x} / {name} / {{name}} · 下方芯片插入 · Enter/Ctrl+Enter 试发 · Alt+↑↓ 历史 · Alt+Del 删当前 · Alt+Shift+Del 清空 · Alt+Shift+D 收录当前 · Alt+Shift+C 复制历史 · Alt+Shift+T/P 帧报复制/粘贴 · Alt+Shift+Y 反序 · Alt+Shift+S 排序 · Alt+Shift+U 去重 · Alt+Shift+J/O JSON导出/导入 · LocalBus echo"));
-  form->addRow(QStringLiteral("报文"), payloadEdit_);
   payloadEdit_->installEventFilter(this);
   lay->addLayout(form);
 
@@ -233,6 +249,13 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
     lay->addLayout(presetRow);
   }
 
+  auto* payloadRow = new QHBoxLayout;
+  payloadRow->setSpacing(6);
+  auto* payloadLab = new QLabel(QStringLiteral("报文"));
+  payloadLab->setObjectName(QStringLiteral("muted"));
+  payloadRow->addWidget(payloadLab);
+  payloadRow->addWidget(payloadEdit_, 1);
+
   auto* row = new QHBoxLayout;
   auto* btnTcp = new QPushButton(QStringLiteral("启动 TCP"));
   btnTcp->setObjectName(QStringLiteral("accentBtn"));
@@ -243,7 +266,12 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
   row->addWidget(btnStop);
   row->addWidget(btnSend);
   row->addWidget(btnClear);
-  lay->addLayout(row);
+
+  // 报文和启停按钮放到状态行下方，短底栏不用先滚过设备表和表单。
+  const int hostIdx = lay->indexOf(hostResultStrip_);
+  const int insertAt = hostIdx >= 0 ? hostIdx + 1 : lay->count();
+  lay->insertLayout(insertAt, payloadRow);
+  lay->insertLayout(insertAt + 1, row);
 
   auto* serialRow = new QHBoxLayout;
   auto* btnSerial = new QPushButton(QStringLiteral("刷新串口"));
@@ -364,6 +392,23 @@ CommPanel::CommPanel(CommHub* hub, QWidget* parent)
       refreshDeviceTxChrome();
     });
   }
+
+  scroll->setWidget(inner);
+  auto* wrap = new QVBoxLayout(this);
+  wrap->setContentsMargins(0, 0, 0, 0);
+  wrap->setSpacing(0);
+  wrap->setSizeConstraint(QLayout::SetNoConstraint);
+  wrap->addWidget(scroll);
+}
+
+/** 给底栏一个紧凑默认高度，完整控件行由内部滚动承载。 */
+QSize CommPanel::sizeHint() const {
+  return QSize(640, 220);
+}
+
+/** 允许底栏缩到约 120px；更矮时出滚动条，避免 QLayout 叠行。 */
+QSize CommPanel::minimumSizeHint() const {
+  return QSize(360, 120);
 }
 
 void CommPanel::bindDocument(const QVariantMap& commManager) {
