@@ -1500,6 +1500,24 @@ void SieansDocument::seedGentlQrDemo() {
   activeFlowId_.clear();
   ensureScheme();
   resetCanvasUndo();
+  // Match official open-and-run-gentl-qr.sieans: only the 二维码链 pin group
+  // is visible on the Host strip. Do not dump the seed variable catalog.
+  {
+    QVariantMap groups;
+    groups.insert(QStringLiteral("二维码链"),
+                  QStringList{QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
+                              QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
+                              QStringLiteral("passGate"), QStringLiteral("urlOk"),
+                              QStringLiteral("formatted")});
+    groups.insert(QStringLiteral("门限"),
+                  QStringList{QStringLiteral("barcodeOk"), QStringLiteral("passGate"),
+                              QStringLiteral("urlOk")});
+    groups.insert(QStringLiteral("通信"),
+                  QStringList{QStringLiteral("formatted"), QStringLiteral("passGate"),
+                              QStringLiteral("barcodeText"), QStringLiteral("lastRecv"),
+                              QStringLiteral("urlOk")});
+    setPinGroups(groups, QStringLiteral("二维码链"), true);
+  }
 }
 
 
@@ -1529,44 +1547,13 @@ QStringList SieansDocument::hostWatchKeys() const {
     if (!t.isEmpty()) keys << t;
   }
   if (keys.isEmpty()) {
-    // A present pin group (even with zero keys) must not fall back to the
-    // built-in default watch list — that would re-populate chips after 备用 etc.
+    // A present pin group (even with zero keys) must not fall back to a
+    // built-in catalog — that would re-populate chips after 备用 etc.
     const QString act = activePinGroup();
     if (!act.isEmpty()) return pinGroupKeys(act);
-    keys = {QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
-            QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
-            QStringLiteral("ocrCount"), QStringLiteral("ocrText"),
-            QStringLiteral("ocrAll"), QStringLiteral("ocrOk"),
-            QStringLiteral("caliperDist"), QStringLiteral("caliperOk"),
-            QStringLiteral("measureMm"), QStringLiteral("caliperMm"),
-            QStringLiteral("passGate"), QStringLiteral("urlOk"),
-            QStringLiteral("formatted"), QStringLiteral("lastRecv"),
-            QStringLiteral("commPayload"), QStringLiteral("hostResult"),
-            QStringLiteral("hostMode"), QStringLiteral("hostState"),
-            QStringLiteral("hostOkStreak"), QStringLiteral("hostNgCount"),
-            QStringLiteral("conditionPassed"), QStringLiteral("branchTaken"),
-            QStringLiteral("branchRoute"), QStringLiteral("mergeFrom"),
-            QStringLiteral("skippedCount"), QStringLiteral("subflowPassed"),
-            QStringLiteral("subflowCount"), QStringLiteral("loopCompleted"),
-            QStringLiteral("loopStoppedEarly"), QStringLiteral("loopCount"),
-            QStringLiteral("loopPassed"), QStringLiteral("defectsCount"),
-            QStringLiteral("defectsRatio"), QStringLiteral("defectsOk"),
-            QStringLiteral("defectsPassed"), QStringLiteral("defectsMaxArea"),
-            QStringLiteral("defectsCleanCount"), QStringLiteral("defectsCleanOk"),
-            QStringLiteral("locateOk"), QStringLiteral("locateScore"),
-            QStringLiteral("locateX"), QStringLiteral("locateY"),
-            QStringLiteral("locateAngle"), QStringLiteral("fixtureOk"),
-            QStringLiteral("fixtureX"), QStringLiteral("fixtureY"),
-            QStringLiteral("fixtureAngle"), QStringLiteral("defectsFollowCount"),
-            QStringLiteral("defectsFollowOk"), QStringLiteral("defectsFollowRoiX"),
-            QStringLiteral("defectsFollowRoiY"),
-            QStringLiteral("geomCircCount"), QStringLiteral("geomCircOk"),
-            QStringLiteral("geomCircRadius"), QStringLiteral("geomLineCount"),
-            QStringLiteral("geomLineLength"), QStringLiteral("geomFollowCount"),
-            QStringLiteral("geomFollowOk"), QStringLiteral("geomFollowRadius"),
-            QStringLiteral("measCircDiameter"), QStringLiteral("measCircOk"),
-            QStringLiteral("measLineLength"), QStringLiteral("measAngAngle"),
-            QStringLiteral("measPtsDist")};
+    // No watchKeys and no pin group: keep the Host strip empty. The old
+    // barcode/ocr/caliper/defects/geom catalog belongs behind the
+    // 「全部变量」toggle or in 变量监视, not the default first-open view.
   }
   return keys;
 }
@@ -2463,7 +2450,22 @@ QStringList SieansDocument::pinGroupSelfTest() {
   check("empty-no-groups", empty.pinGroupNames().isEmpty());
   check("empty-no-active", empty.activePinGroup().isEmpty());
   const int defaultN = empty.hostWatchKeys().size();
-  check("empty-default-keys", defaultN > 0, QString::number(defaultN));
+  check("empty-no-catalog-dump", defaultN == 0, QString::number(defaultN));
+
+  SieansDocument seeded;
+  seeded.seedGentlQrDemo();
+  check("seed-active-qr", seeded.activePinGroup() == QStringLiteral("二维码链"),
+        seeded.activePinGroup());
+  const QStringList qrKeys{QStringLiteral("barcodeCount"), QStringLiteral("barcodeText"),
+                           QStringLiteral("barcodeAll"), QStringLiteral("barcodeOk"),
+                           QStringLiteral("passGate"), QStringLiteral("urlOk"),
+                           QStringLiteral("formatted")};
+  check("seed-qr-keys", seeded.hostWatchKeys() == qrKeys,
+        seeded.hostWatchKeys().join(QLatin1Char(',')));
+  check("seed-not-catalog", seeded.hostWatchKeys().size() == 7,
+        QString::number(seeded.hostWatchKeys().size()));
+  check("seed-has-gate-group",
+        seeded.pinGroupKeys(QStringLiteral("门限")).contains(QStringLiteral("passGate")));
 
   SieansDocument doc;
   QVariantMap groups;

@@ -54,6 +54,9 @@ class HostStrip : public QWidget {
   QString pinGroupChipText() const;
   bool pinGroupChipVisible() const;
   QString watchChipsText() const;
+  /** 调试开关：展开全部流程变量芯片；默认关闭，只影响本窗口，不写入方案。 */
+  void setShowAllVars(bool on);
+  bool showAllVars() const { return showAllVars_; }
   /** Offscreen pin-group chip + VarWatch combo checks. Empty list = pass. */
   static QStringList pinGroupChromeSelfTest();
   int okStreak() const { return okStreak_; }
@@ -87,12 +90,15 @@ class HostStrip : public QWidget {
   void refreshCycleChip();
   void refreshAlarmLockChrome();
   void refreshPinGroupChip();
+  void refreshAllVarsChip();
   void showPinGroupPicker();
 
   QLabel* badge_ = nullptr;
   QLabel* detail_ = nullptr;
   QLabel* chips_ = nullptr;
   QLabel* pinGroupChip_ = nullptr;
+  QLabel* allVarsChip_ = nullptr;
+  bool showAllVars_ = false;
   QStringList pinGroupNames_;
   QString activePinGroup_;
   QLabel* alarmLabel_ = nullptr;

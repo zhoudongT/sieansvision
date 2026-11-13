@@ -152,9 +152,18 @@ HostStrip::HostStrip(QWidget* parent) : QWidget(parent) {
       QStringLiteral("钉组 · 单击打开变量监视 · 右键选组 · 数字键 1–9 加速 · 无硬件"));
   pinGroupChip_->installEventFilter(this);
   chipRow->addWidget(pinGroupChip_, 0);
+  allVarsChip_ = new QLabel(QStringLiteral("全部变量"));
+  allVarsChip_->setObjectName(QStringLiteral("hostAllVarsChip"));
+  allVarsChip_->setCursor(Qt::PointingHandCursor);
+  allVarsChip_->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+  allVarsChip_->installEventFilter(this);
+  chipRow->addWidget(allVarsChip_, 0);
+  refreshAllVarsChip();
   chips_ = new QLabel;
   chips_->setObjectName(QStringLiteral("hostWatchChips"));
-  chips_->setWordWrap(true);
+  chips_->setWordWrap(false);
+  chips_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+  chips_->setMinimumWidth(48);
   chips_->setCursor(Qt::PointingHandCursor);
   chips_->setToolTip(kChipShortcuts);
   chips_->installEventFilter(this);
@@ -256,30 +265,40 @@ void HostStrip::refreshCycleChip() {
 void HostStrip::refreshChips(const QVariantMap& vars) {
   if (!vars.isEmpty()) lastVars_ = vars;
   const QVariantMap& src = vars.isEmpty() ? lastVars_ : vars;
-  if (watchKeys_.isEmpty()) {
-    chips_->setText({});
-    return;
+  QStringList keys = watchKeys_;
+  if (showAllVars_) {
+    // Pinned/watch keys stay first and in saved order; remaining flow vars follow.
+    QStringList rest = src.keys();
+    rest.sort(Qt::CaseInsensitive);
+    for (const QString& k : rest) {
+      if (k.trimmed().isEmpty() || keys.contains(k)) continue;
+      keys << k;
+    }
   }
   QStringList parts;
   QStringList full;
-  for (const QString& k : watchKeys_) {
+  for (const QString& k : keys) {
     const QString v = src.value(k).toString();
     full << QStringLiteral("%1=%2").arg(k, v);
     parts << QStringLiteral("%1=%2").arg(k, compactWatchValue(v, 22));
   }
-  // also surface bound I/O output names if present
-  for (auto it = src.begin(); it != src.end(); ++it) {
-    if (it.key().startsWith(QStringLiteral("io."))) {
-      const QString v = it.value().toString();
-      full << QStringLiteral("%1=%2").arg(it.key(), v);
-      parts << QStringLiteral("%1=%2").arg(it.key(), compactWatchValue(v, 20));
+  const QString compact = parts.join(QStringLiteral("  ·  "));
+  const QString verbatim = full.join(QLatin1Char('\n'));
+  if (chips_) {
+    // Default: one elided line so a long watch list cannot wrap into a wall.
+    // 「全部变量」turns wrapping on so the debug dump stays readable.
+    chips_->setWordWrap(showAllVars_);
+    chips_->setProperty("sieansFullText", verbatim);
+    chips_->setProperty("sieansElideText", showAllVars_ ? QString() : compact);
+    if (compact.isEmpty() || showAllVars_) {
+      chips_->setText(compact);
+    } else {
+      const int w = qMax(16, chips_->contentsRect().width());
+      chips_->setText(chips_->fontMetrics().elidedText(compact, Qt::ElideRight, w));
     }
+    chips_->setToolTip(full.isEmpty() ? kChipShortcuts
+                                      : verbatim + QStringLiteral("\n\n") + kChipShortcuts);
   }
-  chips_->setText(parts.join(QStringLiteral("  ·  ")));
-  chips_->setProperty("sieansFullText", full.join(QLatin1Char('\n')));
-  chips_->setToolTip(full.isEmpty() ? kChipShortcuts
-                                    : full.join(QLatin1Char('\n')) + QStringLiteral("\n\n") +
-                                          kChipShortcuts);
 }
 
 void HostStrip::setTcpStatus(const QString& status) {
@@ -406,9 +425,19 @@ void HostStrip::resetStreak() {
 }
 
 bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
-  if (obj == detail_ && event->type() == QEvent::Resize) {
-    applyElidedLabel(detail_, Qt::ElideRight);
-    return QWidget::eventFilter(obj, event);
+  if (event->type() == QEvent::Resize) {
+    if (obj == detail_) {
+      applyElidedLabel(detail_, Qt::ElideRight);
+      return QWidget::eventFilter(obj, event);
+    }
+    if (obj == chips_ && !showAllVars_) {
+      const QString line = chips_->property("sieansElideText").toString();
+      if (!line.isEmpty()) {
+        const int w = qMax(16, chips_->contentsRect().width());
+        chips_->setText(chips_->fontMetrics().elidedText(line, Qt::ElideRight, w));
+      }
+      return QWidget::eventFilter(obj, event);
+    }
   }
   if (event->type() == QEvent::Wheel && obj == cycleChip_) {
     auto* we = static_cast<QWheelEvent*>(event);
@@ -523,6 +552,10 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
         return true;
       }
     }
+    if (obj == allVarsChip_ && allVarsChip_) {
+      setShowAllVars(!showAllVars_);
+      return true;
+    }
     if (obj == pinGroupChip_ && pinGroupChip_) {
       emit openVarWatchRequested();
       return true;
@@ -620,6 +653,11 @@ bool HostStrip::eventFilter(QObject* obj, QEvent* event) {
     if (ke->key() == Qt::Key_E && (ke->modifiers() & Qt::ControlModifier) &&
         (ke->modifiers() & Qt::ShiftModifier)) {
       exportWatchKeysJson();
+      return true;
+    }
+    if (ke->key() == Qt::Key_A && (ke->modifiers() & Qt::ControlModifier) &&
+        (ke->modifiers() & Qt::ShiftModifier)) {
+      setShowAllVars(!showAllVars_);
       return true;
     }
     if (ke->key() == Qt::Key_Escape) {
@@ -1141,6 +1179,39 @@ void HostStrip::refreshPinGroupChip() {
           .arg(pinGroupNames_.size()));
 }
 
+/** 切换是否在 Host 条展开全部流程变量；只影响本窗口显示，不写方案、不脏污。 */
+void HostStrip::setShowAllVars(bool on) {
+  if (showAllVars_ == on) {
+    refreshAllVarsChip();
+    return;
+  }
+  showAllVars_ = on;
+  refreshAllVarsChip();
+  refreshChips({});
+}
+
+/** 按开关状态刷新「全部变量」芯片颜色；开时用橙色强调，避免看起来像又一块状态墙。 */
+void HostStrip::refreshAllVarsChip() {
+  if (!allVarsChip_) return;
+  allVarsChip_->setText(QStringLiteral("全部变量"));
+  allVarsChip_->setVisible(true);
+  if (showAllVars_) {
+    allVarsChip_->setStyleSheet(
+        QStringLiteral("background:#3a2e20;color:#e67a2e;border-radius:3px;"
+                       "padding:2px 8px;font-size:11px;font-weight:600;"
+                       "border:1px solid #e67a2e;"));
+    allVarsChip_->setToolTip(
+        QStringLiteral("正在显示全部流程变量 · 单击或 Ctrl+Shift+A 收起 · 不写入方案 · 完整列表也可在变量监视查看"));
+  } else {
+    allVarsChip_->setStyleSheet(
+        QStringLiteral("background:#32353a;color:#8a8a8a;border-radius:3px;"
+                       "padding:2px 8px;font-size:11px;"
+                       "border:1px solid #3f4348;"));
+    allVarsChip_->setToolTip(
+        QStringLiteral("默认只显示钉组/监视键 · 单击或 Ctrl+Shift+A 展开全部流程变量（调试，不写入方案）"));
+  }
+}
+
 void HostStrip::showPinGroupPicker() {
   if (pinGroupNames_.isEmpty()) return;
   QMenu menu(this);
@@ -1194,6 +1265,36 @@ QStringList HostStrip::pinGroupChromeSelfTest() {
         strip.watchChipsText());
   check("chips-score", strip.watchChipsText().contains(QStringLiteral("locateScore=")),
         strip.watchChipsText());
+
+  HostStrip dump;
+  QVariantMap many;
+  many.insert(QStringLiteral("barcodeCount"), 0);
+  many.insert(QStringLiteral("ocrCount"), 0);
+  many.insert(QStringLiteral("defectsCount"), 0);
+  many.insert(QStringLiteral("io.HostMode"), QStringLiteral("Idle"));
+  many.insert(QStringLiteral("io.Result"), QStringLiteral("x"));
+  dump.updateFromVars(many);
+  check("default-empty-no-keys", dump.watchChipsText().trimmed().isEmpty(),
+        dump.watchChipsText());
+  check("all-vars-default-off", !dump.showAllVars());
+  dump.setWatchKeys({QStringLiteral("barcodeCount")});
+  dump.updateFromVars(many);
+  check("pinned-only", dump.watchChipsText().contains(QStringLiteral("barcodeCount=")),
+        dump.watchChipsText());
+  check("no-auto-io", !dump.watchChipsText().contains(QStringLiteral("io.HostMode")),
+        dump.watchChipsText());
+  check("no-unpinned", !dump.watchChipsText().contains(QStringLiteral("ocrCount=")),
+        dump.watchChipsText());
+  dump.setShowAllVars(true);
+  check("all-vars-on", dump.showAllVars());
+  check("all-shows-io", dump.watchChipsText().contains(QStringLiteral("io.HostMode")),
+        dump.watchChipsText());
+  check("all-shows-ocr", dump.watchChipsText().contains(QStringLiteral("ocrCount=")),
+        dump.watchChipsText());
+  dump.setShowAllVars(false);
+  check("all-vars-restore", !dump.showAllVars() &&
+                                !dump.watchChipsText().contains(QStringLiteral("ocrCount=")),
+        dump.watchChipsText());
 
   VarWatchPanel vw;
   QHash<QString, QStringList> keys;

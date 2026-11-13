@@ -145,6 +145,7 @@ class SieansDocument {
   QVariantMap& flowIoMut() { return flowIo_; }
   void setFlowIo(const QVariantMap& io) { flowIo_ = io; }
 
+  /** Explicit watchKeys, or the active pin group's keys; never a built-in catalog dump. */
   QStringList hostWatchKeys() const;
   void setHostWatchKeys(const QStringList& keys);
   /** hostWatch.pinGroups names in file order (also accepts pin_groups). */
