@@ -403,6 +403,36 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
       });
     }
   }
+  // 可选：SIEANS_QT_AUTO_BOTTOM_TAB=host/上位机 或底栏页签标题，仅切页，不改方案。
+  const QByteArray bottomTabEnv = qgetenv("SIEANS_QT_AUTO_BOTTOM_TAB");
+  auto applyBottomTab = [this, bottomTabEnv]() {
+    if (bottomTabEnv.isEmpty() || !bottom_tabs_) return;
+    const QString want = QString::fromUtf8(bottomTabEnv).trimmed();
+    if (want.isEmpty()) return;
+    const QString lower = want.toLower();
+    for (int i = 0; i < bottom_tabs_->count(); ++i) {
+      const QString title = bottom_tabs_->tabText(i);
+      const bool alias =
+          (title == QStringLiteral("上位机") &&
+           (lower == QLatin1String("host") || lower == QLatin1String("hmi"))) ||
+          (title == QStringLiteral("变量监视") &&
+           (lower == QLatin1String("vars") || lower == QLatin1String("watch"))) ||
+          (title == QStringLiteral("当前结果") && lower == QLatin1String("result")) ||
+          (title == QStringLiteral("历史结果") &&
+           (lower == QLatin1String("log") || lower == QLatin1String("history"))) ||
+          (title == QStringLiteral("通信") && lower == QLatin1String("comm")) ||
+          (title == QStringLiteral("帮助") && lower == QLatin1String("help"));
+      if (title == want || alias) {
+        bottom_tabs_->setCurrentIndex(i);
+        return;
+      }
+    }
+  };
+  if (!bottomTabEnv.isEmpty()) {
+    // AUTO_RUN 后再切，截图能看到运行统计；否则仅推迟一拍避开启动布局。
+    const int delay = (qgetenv("SIEANS_QT_AUTO_RUN") == "1") ? 1800 : 200;
+    QTimer::singleShot(delay, this, applyBottomTab);
+  }
   // Soft/open-and-run: grab one soft frame + full pipeline (GenTL→QR→TCP chain).
   if (qgetenv("SIEANS_QT_AUTO_RUN") == "1") {
     const int runDelay = (qgetenv("SIEANS_QT_AUTO_SOFT") == "1") ? 900 : 1400;
@@ -431,7 +461,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
          qgetenv("SIEANS_QT_AUTO_RUN") == "1")
             ? 3200
             : (qgetenv("SIEANS_QT_AUTO_PROPERTY").isEmpty() ? 1100 : 1600);
-    QTimer::singleShot(shotDelay, this, [this, shot]() {
+    QTimer::singleShot(shotDelay, this, [this, shot, applyBottomTab]() {
+      applyBottomTab();
+      QCoreApplication::processEvents();
       const QPixmap px = grab();
       const QString out = QString::fromUtf8(shot);
       QDir().mkpath(QFileInfo(out).absolutePath());

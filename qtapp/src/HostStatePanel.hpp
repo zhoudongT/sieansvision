@@ -25,6 +25,11 @@ class HostStatePanel : public QWidget {
  public:
   explicit HostStatePanel(QWidget* parent = nullptr);
 
+  /** 底栏用的紧凑默认尺寸；完整 HMI 行高由内部滚动承载。 */
+  QSize sizeHint() const override;
+  /** 允许底栏缩到约 120px，避免把画布挤高；更矮时出滚动条而不是叠控件。 */
+  QSize minimumSizeHint() const override;
+
   QString state() const { return state_; }
   void applyState(const QString& state);
   void raiseAlarm(const QString& reason);

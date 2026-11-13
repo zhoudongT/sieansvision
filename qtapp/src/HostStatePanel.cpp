@@ -11,6 +11,10 @@
 #include <QAbstractItemView>
 #include <QPushButton>
 #include <QVBoxLayout>
+#include <QScrollArea>
+#include <QFrame>
+#include <QSize>
+#include <QSizePolicy>
 #include <QTimer>
 #include <QShortcut>
 #include <QKeySequence>
@@ -52,9 +56,23 @@ BadgeStyle styleFor(const QString& state) {
 HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   setFocusPolicy(Qt::StrongFocus);
   setObjectName(QStringLiteral("hostStateMachine"));
-  auto* root = new QVBoxLayout(this);
+  // 底栏默认约 200px（含页签），本面板行高合计超过该高度。
+  // QVBoxLayout 在小于子控件最小高度时会把后续行叠到上一行上。
+  // 内容放到可滚动内页，外层保持较小 sizeHint，不把画布挤掉。
+  setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  auto* scroll = new QScrollArea;
+  scroll->setObjectName(QStringLiteral("hostStateScroll"));
+  scroll->setWidgetResizable(true);
+  scroll->setFrameShape(QFrame::NoFrame);
+  scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  scroll->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+  auto* inner = new QWidget;
+  inner->setObjectName(QStringLiteral("hostStateInner"));
+  auto* root = new QVBoxLayout(inner);
   root->setContentsMargins(8, 6, 8, 6);
-  root->setSpacing(6);
+  root->setSpacing(4);
+  root->setSizeConstraint(QLayout::SetMinimumSize);
 
   auto* head = new QHBoxLayout;
   auto* title = new QLabel(QStringLiteral("上位机控制程序"));
@@ -108,6 +126,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   root->addLayout(quick);
 
   auto* modeRow = new QHBoxLayout;
+  modeRow->setSpacing(6);
   mode_ = new QComboBox;
   mode_->addItems({QStringLiteral("正常生产"), QStringLiteral("九点标定"),
                    QStringLiteral("旋转标定")});
@@ -122,10 +141,7 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   modeRow->addWidget(policy_, 1);
   policy_->installEventFilter(this);
   policy_->setToolTip(QStringLiteral("报警清除策略 · 滚轮/中键/F4 切换 · Alt+1/2 → on_ok/手动 · 双击复制"));
-  root->addLayout(modeRow);
-
-  auto* ivRow = new QHBoxLayout;
-  ivRow->addWidget(new QLabel(QStringLiteral("连续间隔")));
+  modeRow->addWidget(new QLabel(QStringLiteral("连续间隔")));
   intervalSpin_ = new QSpinBox;
   intervalSpin_->setRange(20, 60000);
   intervalSpin_->setSingleStep(50);
@@ -134,9 +150,8 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   intervalSpin_->setToolTip(QStringLiteral("连续运行节拍 · 写入方案 runIntervalMs · 滚轮±50 · Ctrl+↑↓/[] ±50 · Ctrl+Shift+↑↓/[] ±200 · Alt+1/2/3/4 → 50/100/200/500 · 双击复制 · 中键复位200 · 运行中即时生效"));
   intervalSpin_->setStatusTip(QStringLiteral("Host · 连续间隔 ms"));
   intervalSpin_->installEventFilter(this);
-  ivRow->addWidget(intervalSpin_, 1);
-  ivRow->addStretch(1);
-  root->addLayout(ivRow);
+  modeRow->addWidget(intervalSpin_, 1);
+  root->addLayout(modeRow);
   connect(intervalSpin_, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int v) {
     emit intervalChanged(v);
     if (modeHint_)
@@ -172,6 +187,14 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   history_->installEventFilter(this);
   history_->setSelectionMode(QAbstractItemView::ExtendedSelection);
   root->addWidget(history_, 1);
+
+  scroll->setWidget(inner);
+  auto* wrap = new QVBoxLayout(this);
+  wrap->setContentsMargins(0, 0, 0, 0);
+  wrap->setSpacing(0);
+  wrap->setSizeConstraint(QLayout::SetNoConstraint);
+  wrap->addWidget(scroll);
+
   {
     auto* scL = new QShortcut(QKeySequence(QStringLiteral("Ctrl+L")), history_);
     connect(scL, &QShortcut::activated, this, [this]() {
@@ -326,6 +349,16 @@ HostStatePanel::HostStatePanel(QWidget* parent) : QWidget(parent) {
   }
 
   applyState(QStringLiteral("Idle"));
+}
+
+/** 给底栏一个紧凑默认高度，完整控件行由内部滚动承载。 */
+QSize HostStatePanel::sizeHint() const {
+  return QSize(640, 220);
+}
+
+/** 允许底栏缩到约 120px；更矮时出滚动条，避免 QLayout 叠行。 */
+QSize HostStatePanel::minimumSizeHint() const {
+  return QSize(360, 120);
 }
 
 void HostStatePanel::setRunStats(int okStreak, int ngCount, double lastMs) {
