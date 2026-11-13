@@ -185,23 +185,19 @@ QWidget#libraryPane {
 QWidget#flowPane { background: #2a2c30; }
 QWidget#imagePane { background: #2a2c30; }
 QWidget#propertyPanel { background: #32353a; }
-QLineEdit#operatorSearch, QLineEdit#propFilter {
+QLineEdit#operatorSearch { margin: 0; }
+QLineEdit#propFilter {
   margin: 0 6px 6px 6px;
-}
-QWidget#toolboxCatChips QPushButton {
-  background: #2a2d32; color: #a8a8a8; border: 1px solid #4a4e54; border-radius: 3px;
-  padding: 2px 8px; font-size: 11px; min-height: 18px;
-}
-QWidget#toolboxCatChips QPushButton:hover { color: #e8e8e8; border-color: #6a6e74; }
-QWidget#toolboxCatChips QPushButton:checked {
-  background: #3d2e1f; color: #e67a2e; border-color: #e67a2e; font-weight: 600;
 }
 QPushButton#toolboxCatClear {
   background: #2a2d32; color: #c09090; border: 1px solid #4a4e54;
-  border-radius: 3px; padding: 2px 8px; font-size: 11px; min-height: 18px;
+  border-radius: 3px; padding: 2px 8px; font-size: 11px; min-height: 22px;
 }
 QPushButton#toolboxCatClear:hover {
   background: #3a2a2a; color: #ffc0c0; border-color: #e53935;
+}
+QPushButton#toolboxCatClear:disabled {
+  color: #6a6a6a; border-color: #3f4348; background: #2a2d32;
 }
 QLineEdit#resultFilter {
   margin: 4px 8px 2px 8px; padding: 3px 8px;

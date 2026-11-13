@@ -5,8 +5,6 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
-#include <QLayout>
-#include <QStyle>
 #include <QSizePolicy>
 #include <QHash>
 #include <QDrag>
@@ -30,80 +28,6 @@
 #include <cstring>
 
 namespace sieans_qt {
-namespace {
-
-/** 让工具箱分类芯片按宽度自动换行，避免窄栏里被挤成省略点。 */
-class ChipFlowLayout : public QLayout {
- public:
-  explicit ChipFlowLayout(QWidget* parent, int margin, int spacing)
-      : QLayout(parent) {
-    setContentsMargins(margin, margin, margin, margin);
-    setSpacing(spacing);
-  }
-  ~ChipFlowLayout() override { qDeleteAll(items_); }
-
-  void addItem(QLayoutItem* item) override { items_.append(item); }
-  int count() const override { return items_.size(); }
-  QLayoutItem* itemAt(int i) const override {
-    return (i >= 0 && i < items_.size()) ? items_.at(i) : nullptr;
-  }
-  QLayoutItem* takeAt(int i) override {
-    return (i >= 0 && i < items_.size()) ? items_.takeAt(i) : nullptr;
-  }
-  Qt::Orientations expandingDirections() const override { return {}; }
-  bool hasHeightForWidth() const override { return true; }
-  int heightForWidth(int w) const override { return doLayout(QRect(0, 0, w, 0), true); }
-  QSize sizeHint() const override { return minimumSize(); }
-  QSize minimumSize() const override {
-    QSize s;
-    for (QLayoutItem* it : items_) s = s.expandedTo(it->minimumSize());
-    const QMargins m = contentsMargins();
-    s += QSize(m.left() + m.right(), m.top() + m.bottom());
-    return s;
-  }
-  void setGeometry(const QRect& r) override {
-    QLayout::setGeometry(r);
-    doLayout(r, false);
-  }
-
- private:
-  int doLayout(const QRect& r, bool testOnly) const {
-    const QMargins m = contentsMargins();
-    QRect eff = r.adjusted(m.left(), m.top(), -m.right(), -m.bottom());
-    int x = eff.x();
-    int y = eff.y();
-    int lineH = 0;
-    const int space = spacing();
-    for (QLayoutItem* it : items_) {
-      if (it->isEmpty()) continue;
-      QWidget* w = it->widget();
-      int spaceX = space;
-      int spaceY = space;
-      if (w) {
-        spaceX += w->style()->layoutSpacing(QSizePolicy::PushButton, QSizePolicy::PushButton,
-                                            Qt::Horizontal);
-        spaceY += w->style()->layoutSpacing(QSizePolicy::PushButton, QSizePolicy::PushButton,
-                                            Qt::Vertical);
-      }
-      int nextX = x + it->sizeHint().width() + spaceX;
-      if (lineH > 0 && nextX - spaceX > eff.right() + 1) {
-        x = eff.x();
-        y = y + lineH + spaceY;
-        nextX = x + it->sizeHint().width() + spaceX;
-        lineH = 0;
-      }
-      if (!testOnly) it->setGeometry(QRect(QPoint(x, y), it->sizeHint()));
-      x = nextX;
-      lineH = qMax(lineH, it->sizeHint().height());
-    }
-    return y + lineH - r.y() + m.bottom();
-  }
-
-  QList<QLayoutItem*> items_;
-};
-
-}  // namespace
-
 namespace {
 
 class OperatorListWidget : public QListWidget {
@@ -518,7 +442,7 @@ OperatorDef OperatorLibrary::findDef(const QString& key) {
 }
 
 OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
-  setStatusTip(QStringLiteral("Toolbox · / 或 Ctrl+F/L 搜索 · 最近 · Ctrl+1-9 最近项 · Ctrl+0 清过滤 · Ctrl+C 复制算子 · Ctrl+Shift+Del 清最近 · 分类芯片 · Enter 添加(列表/搜索) · Enter/中键 添加 · Home/End/PgUp/PgDn · Esc 清空 · 右键复制 · Ctrl+Shift+C 可见键 · 中键分类芯片"));
+  setStatusTip(QStringLiteral("Toolbox · / 或 Ctrl+F/L 搜索 · 最近 · Ctrl+1-9 最近项 · Ctrl+0 清过滤 · Ctrl+C 复制算子 · Ctrl+Shift+Del 清最近 · Enter 添加(列表/搜索) · Enter/中键 添加 · Home/End/PgUp/PgDn · Esc 清空 · 右键复制 · Ctrl+Shift+C 可见键"));
   setObjectName(QStringLiteral("libraryPane"));
   auto* lay = new QVBoxLayout(this);
   lay->setContentsMargins(0, 0, 0, 0);
@@ -526,17 +450,26 @@ OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
   auto* title = new QLabel(QStringLiteral("算子"));
   title->setObjectName(QStringLiteral("libraryTitle"));
   lay->addWidget(title);
+  auto* searchRow = new QWidget;
+  searchRow->setObjectName(QStringLiteral("operatorSearchRow"));
+  auto* searchLay = new QHBoxLayout(searchRow);
+  searchLay->setContentsMargins(6, 0, 6, 6);
+  searchLay->setSpacing(4);
   search_ = new QLineEdit;
   search_->setObjectName(QStringLiteral("operatorSearch"));
   search_->setPlaceholderText(QStringLiteral("搜索…"));
   search_->setClearButtonEnabled(true);
-  lay->addWidget(search_);
-  catChipHost_ = new QWidget;
-  catChipHost_->setObjectName(QStringLiteral("toolboxCatChips"));
-  auto* chipLay = new ChipFlowLayout(catChipHost_, 4, 4);
-  catChipLay_ = chipLay;
-  lay->addWidget(catChipHost_);
-  rebuildCategoryChips();
+  searchLay->addWidget(search_, 1);
+  clearRecentBtn_ = new QPushButton(QStringLiteral("清最近"));
+  clearRecentBtn_->setFlat(true);
+  clearRecentBtn_->setCursor(Qt::PointingHandCursor);
+  clearRecentBtn_->setToolTip(QStringLiteral("清空最近算子 · Ctrl+Shift+Del"));
+  clearRecentBtn_->setObjectName(QStringLiteral("toolboxCatClear"));
+  clearRecentBtn_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+  clearRecentBtn_->setEnabled(false);
+  connect(clearRecentBtn_, &QPushButton::clicked, this, [this]() { clearRecent(); });
+  searchLay->addWidget(clearRecentBtn_, 0, Qt::AlignVCenter);
+  lay->addWidget(searchRow);
   list_ = new OperatorListWidget;
   list_->setSpacing(0);
   list_->setUniformItemSizes(true);
@@ -578,8 +511,6 @@ OperatorLibrary::OperatorLibrary(QWidget* parent) : QWidget(parent) {
 void OperatorLibrary::setCategoryFilter(const QString& category) {
   categoryFilter_ = category;
   rebuild();
-  // chips may be driven externally (rail) — keep checked state in sync when host exists
-  if (catChipLay_) rebuildCategoryChips();
 }
 
 void OperatorLibrary::rememberRecent(const QString& key) {
@@ -688,6 +619,8 @@ void OperatorLibrary::rebuild() {
     if (auto* title = findChild<QLabel*>(QStringLiteral("libraryTitle")))
       title->setText(QStringLiteral("算子 · %1").arg(ops));
   }
+  if (clearRecentBtn_)
+    clearRecentBtn_->setEnabled(!recentKeys_.isEmpty());
 }
 
 void OperatorLibrary::activateRecentAt(int index) {
@@ -702,50 +635,10 @@ void OperatorLibrary::activateRecentAt(int index) {
                             .arg(def.name));
 }
 
-void OperatorLibrary::rebuildCategoryChips() {
-  if (!catChipLay_) return;
-  while (catChipLay_->count() > 0) {
-    QLayoutItem* it = catChipLay_->takeAt(0);
-    if (it->widget()) it->widget()->deleteLater();
-    delete it;
-  }
-  QStringList cats{QStringLiteral("全部")};
-  for (const auto& def : catalog()) {
-    if (!cats.contains(def.category)) cats << def.category;
-  }
-  for (const QString& c : cats) {
-    auto* b = new QPushButton(c == QLatin1String("全部") ? QStringLiteral("全部") : c);
-    b->setFlat(true);
-    b->setCheckable(true);
-    const bool on = (c == QLatin1String("全部") && categoryFilter_.isEmpty()) ||
-                    (c == categoryFilter_);
-    b->setChecked(on);
-    b->setCursor(Qt::PointingHandCursor);
-    b->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    b->setToolTip(QStringLiteral("Toolbox 分类 · %1").arg(c));
-    connect(b, &QPushButton::clicked, this, [this, c]() {
-      setCategoryFilter(c == QLatin1String("全部") ? QString() : c);
-    });
-    b->setProperty("sieansCat", c);
-    b->setToolTip(c == QLatin1String("全部")
-                      ? QStringLiteral("全部分类 · 中键同单击")
-                      : QStringLiteral("分类 %1 · 单击/中键过滤").arg(c));
-    b->installEventFilter(this);
-    catChipLay_->addWidget(b);
-  }
-    {
-    auto* clr = new QPushButton(QStringLiteral("清最近"));
-    clr->setFlat(true);
-    clr->setCursor(Qt::PointingHandCursor);
-    clr->setToolTip(QStringLiteral("清空最近算子 · Ctrl+Shift+Del"));
-    clr->setObjectName(QStringLiteral("toolboxCatClear"));
-    clr->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    connect(clr, &QPushButton::clicked, this, [this]() {
-      recentKeys_.clear();
-      rebuild();
-    });
-    catChipLay_->addWidget(clr);
-  }
+/** 清空工具箱「最近」分组；搜索框旁按钮与 Ctrl+Shift+Del 共用。 */
+void OperatorLibrary::clearRecent() {
+  recentKeys_.clear();
+  rebuild();
 }
 
 void OperatorLibrary::focusSearch() {
@@ -755,19 +648,6 @@ void OperatorLibrary::focusSearch() {
 }
 
 bool OperatorLibrary::eventFilter(QObject* obj, QEvent* event) {
-  if (event->type() == QEvent::MouseButtonRelease) {
-    auto* me = static_cast<QMouseEvent*>(event);
-    if (me->button() == Qt::MiddleButton) {
-      const QVariant cat = obj->property("sieansCat");
-      if (cat.isValid()) {
-        const QString c = cat.toString();
-        setCategoryFilter(c == QLatin1String("全部") ? QString() : c);
-        if (list_) list_->setFocus(Qt::OtherFocusReason);
-        if (search_) search_->setToolTip(QStringLiteral("分类 · 中键芯片 · %1").arg(c));
-        return true;
-      }
-    }
-  }
   if (obj == list_ && event->type() == QEvent::MouseButtonRelease) {
     auto* me = static_cast<QMouseEvent*>(event);
     if (me->button() == Qt::MiddleButton) {
@@ -837,8 +717,7 @@ bool OperatorLibrary::eventFilter(QObject* obj, QEvent* event) {
     if ((ke->modifiers() & Qt::ControlModifier) &&
         (ke->modifiers() & Qt::ShiftModifier) &&
         (ke->key() == Qt::Key_Delete || ke->key() == Qt::Key_Backspace)) {
-      recentKeys_.clear();
-      rebuild();
+      clearRecent();
       return true;
     }
     if ((ke->modifiers() & Qt::ControlModifier) &&
